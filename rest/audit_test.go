@@ -13,8 +13,10 @@ package rest
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -1459,4 +1461,90 @@ func TestAuditBlipCRUD(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestAuditLoggingGlobals modifies all the global loggers
+func TestAuditLoggingGlobals(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test can panic with gocb logging CBG-4076")
+	}
+	globalFields := map[string]any{
+		"global":  "field",
+		"global2": "field2",
+	}
+
+	globalEnvVarName := "SG_TEST_GLOBAL_AUDIT_LOGGING"
+
+	testCases := []struct {
+		name              string
+		globalAuditEvents *string
+		startupErrorMsg   string
+	}{
+		{
+			name: "no global fields",
+		},
+		{
+			name:              "with global fields",
+			globalAuditEvents: base.StringPtr(string(base.MustJSONMarshal(t, globalFields))),
+		},
+		{
+			name:              "invalid json",
+			globalAuditEvents: base.StringPtr(`notjson`),
+			startupErrorMsg:   "Unable to unmarshal",
+		},
+		{
+			name:              "empty env var",
+			globalAuditEvents: base.StringPtr(""),
+			startupErrorMsg:   "Unable to unmarshal",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			base.ResetGlobalTestLogging(t)
+			base.InitializeMemoryLoggers()
+			ctx := base.TestCtx(t)
+			if testCase.globalAuditEvents != nil {
+				require.NoError(t, os.Setenv(globalEnvVarName, *testCase.globalAuditEvents))
+				defer func() {
+					require.NoError(t, os.Unsetenv(globalEnvVarName))
+				}()
+			} else {
+				require.NoError(t, os.Unsetenv(globalEnvVarName))
+			}
+			startupConfig := DefaultStartupConfig("")
+			startupConfig.Logging = base.LoggingConfig{
+				LogFilePath: t.TempDir(),
+				Audit: &base.AuditLoggerConfig{
+					FileLoggerConfig: base.FileLoggerConfig{
+						Enabled: base.BoolPtr(true),
+					},
+				},
+			}
+			if testCase.globalAuditEvents != nil {
+				startupConfig.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
+					GlobalInfoEnvVarName: base.StringPtr(globalEnvVarName),
+				}
+			}
+			err := startupConfig.SetupAndValidateLogging(ctx)
+			if testCase.startupErrorMsg != "" {
+				require.ErrorContains(t, err, testCase.startupErrorMsg)
+				return
+			}
+			require.NoError(t, err)
+			output := base.AuditLogContents(t, func(tb testing.TB) {
+				base.Audit(ctx, base.AuditIDPublicUserAuthenticated, map[string]any{base.AuditFieldAuthMethod: "basic"})
+			})
+			var event map[string]any
+			require.NoError(t, json.Unmarshal(output, &event))
+			require.Contains(t, event, base.AuditFieldAuthMethod)
+			for k, v := range globalFields {
+				if testCase.globalAuditEvents != nil {
+					require.Equal(t, v, event[k])
+				} else {
+					require.NotContains(t, event, k)
+				}
+			}
+		})
+	}
+
 }

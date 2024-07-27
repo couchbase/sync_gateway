@@ -13,6 +13,7 @@ import (
 	"maps"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -133,9 +134,11 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			if testCase.contextFields != nil {
 				ctx = AuditLogCtx(ctx, testCase.contextFields)
 			}
-			var err error
-			auditLogger, err = NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
+			logger, err := NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
+			defer assert.NoError(t, logger.Close())
+			auditLogger.Store(logger)
+
 			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 			output := AuditLogContents(t, func(tb testing.TB) {
 				// Test basic audit event

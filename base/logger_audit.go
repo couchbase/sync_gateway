@@ -117,32 +117,33 @@ func (f *AuditFields) merge(ctx context.Context, overwrites AuditFields) {
 func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	var fields AuditFields
 
+	logger := auditLogger.Load()
 	if IsDevMode() {
 		// NOTE: This check is expensive and indicates a dev-time mistake that needs addressing.
 		// Don't bother in production code, but also delay expandFields until we know we will log.
-		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
+		fields = expandFields(id, ctx, logger.globalFields, additionalData)
 		id.MustValidateFields(fields)
 	}
 
-	if !auditLogger.shouldLog(id, ctx) {
+	if !logger.shouldLog(id, ctx) {
 		return
 	}
 
 	// delayed expansion until after enabled checks in non-dev mode
 	if fields == nil {
-		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
+		fields = expandFields(id, ctx, logger.globalFields, additionalData)
 	}
 	fieldsJSON, err := JSONMarshalCanonical(fields)
 	if err != nil {
 		AssertfCtx(ctx, "failed to marshal audit fields: %v", err)
 		return
 	}
-	auditLogger.logf(string(fieldsJSON))
+	logger.logf(string(fieldsJSON))
 }
 
 // IsAuditEnabled checks if auditing is enabled for the SG node
 func IsAuditEnabled() bool {
-	return auditLogger.FileLogger.shouldLog(LevelNone)
+	return auditLogger.Load().FileLogger.shouldLog(LevelNone)
 }
 
 // AuditLogger is a file logger with audit-specific behaviour.
@@ -221,7 +222,7 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 }
 
 func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
-	if !auditLogger.FileLogger.shouldLog(LevelNone) {
+	if !al.FileLogger.shouldLog(LevelNone) {
 		return false
 	}
 

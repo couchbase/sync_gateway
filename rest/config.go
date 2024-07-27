@@ -2222,11 +2222,7 @@ func PersistentConfigKey30(ctx context.Context, groupID string) string {
 }
 
 func HandleSighup(ctx context.Context) {
-	for logger, err := range base.RotateLogfiles(ctx) {
-		if err != nil {
-			base.WarnfCtx(ctx, "Error rotating %v: %v", logger, err)
-		}
-	}
+	base.RotateLogfiles(ctx)
 }
 
 // RegisterSignalHandler invokes functions based on the given signals:

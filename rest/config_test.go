@@ -1424,6 +1424,7 @@ func deleteTempFile(t *testing.T, file *os.File) {
 }
 
 func TestDefaultLogging(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)

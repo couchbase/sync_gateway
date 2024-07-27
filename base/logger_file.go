@@ -183,6 +183,13 @@ func (l *FileLogger) logf(format string, args ...interface{}) {
 	}
 }
 
+// conditionalPrintf will log the message if the log level is enabled.
+func (l *FileLogger) conditionalPrintf(logLevel LogLevel, format string, args ...interface{}) {
+	if l.shouldLog(logLevel) {
+		l.logf(format, args...)
+	}
+}
+
 // shouldLog returns true if we can log.
 func (l *FileLogger) shouldLog(logLevel LogLevel) bool {
 	return l != nil && l.logger != nil &&
