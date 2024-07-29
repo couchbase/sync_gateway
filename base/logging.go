@@ -96,23 +96,15 @@ var (
 )
 
 // RotateLogfiles rotates all active log files.
-func RotateLogfiles(ctx context.Context) map[*FileLogger]error {
+func RotateLogfiles(ctx context.Context) {
 	InfofCtx(ctx, KeyAll, "Rotating log files...")
 
-	loggers := map[*FileLogger]error{
-		traceLogger: nil,
-		debugLogger: nil,
-		infoLogger:  nil,
-		warnLogger:  nil,
-		errorLogger: nil,
-		statsLogger: nil,
+	for _, logger := range getFileLoggers() {
+		err := logger.Rotate()
+		if err != nil {
+			WarnfCtx(ctx, "Error rotating %v: %v", logger, err)
+		}
 	}
-
-	for logger := range loggers {
-		loggers[logger] = logger.Rotate()
-	}
-
-	return loggers
 }
 
 func init() {
