@@ -1679,13 +1679,30 @@ func TestDatabaseAuditChanges(t *testing.T) {
 			expectedEvents: []base.AuditID{},
 		},
 		{
-			name:                     "enable via _config/audit with events",
-			method:                   http.MethodPost,
+			name:                     "enable via _config/audit with events PUT",
+			method:                   http.MethodPut,
 			path:                     "/{{.db}}/_config/audit",
-			requestBody:              `{"enabled":true, "events":{"53282":true}}`,
+			requestBody:              `{"enabled":true, "events":{"53282":true}}`, // AuditIDPublicUserSessionCreated
 			expectedStatus:           http.StatusOK,
 			expectedEvents:           []base.AuditID{base.AuditIDAuditEnabled},
 			expectedEnabledEventList: []any{float64(base.AuditIDPublicUserSessionCreated)},
+		},
+		{
+			name:           "disable via _config/audit with events PUT",
+			method:         http.MethodPut,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":false, "events":{"53282":true}}`, // AuditIDPublicUserSessionCreated
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:                     "enable via _config/audit with events POST",
+			method:                   http.MethodPost,
+			path:                     "/{{.db}}/_config/audit",
+			requestBody:              `{"enabled":true, "events":{"53283":true}}`, // AuditIDPublicUserSessionDeleted
+			expectedStatus:           http.StatusOK,
+			expectedEvents:           []base.AuditID{base.AuditIDAuditEnabled},
+			expectedEnabledEventList: []any{float64(base.AuditIDPublicUserSessionCreated), float64(base.AuditIDPublicUserSessionDeleted)},
 		},
 	}
 	for _, testCase := range testCases {

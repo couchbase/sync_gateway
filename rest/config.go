@@ -2317,7 +2317,9 @@ func (c *DbConfig) IsAuditLoggingEnabled() (enabled bool, events []uint) {
 
 	if c != nil && c.Logging != nil && c.Logging.Audit != nil && c.Logging.Audit.Enabled != nil {
 		enabled = *c.Logging.Audit.Enabled
-		events = c.Logging.Audit.EnabledEvents
+		if c.Logging.Audit.EnabledEvents != nil {
+			events = *c.Logging.Audit.EnabledEvents
+		}
 		return enabled, events
 	} else {
 		// Audit logging not defined in the config.  Use default value
