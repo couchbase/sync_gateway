@@ -1687,7 +1687,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 //   - Init a channel cache by calling changes
 //   - Write a doc that will return timeout error but will successfully persist
 //   - Wait for it to arrive at change cache
-//   - Assert we don;t release a sequence for it + we hav eit in changes
+//   - Assert we don't release a sequence for it + we have it in changes cache
 //   - Write new doc with conflict error
 //   - Assert we release a sequence for this
 func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
@@ -1696,7 +1696,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 
 	var ctx context.Context
 	var db *Database
-	var enable bool
+	var forceDocConflict bool
 
 	const (
 		conflictDoc = "doc1"
@@ -1705,12 +1705,12 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 
 	// call back to create a conflict mid write and force a non timeout error upon write attempt
 	writeUpdateCallback := func(key string) {
-		if key == "doc1" && enable {
-			enable = false
+		if key == conflictDoc && forceDocConflict {
+			forceDocConflict = false
 			body := Body{"test": "doc"}
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			_, _, err := collection.Put(ctx, conflictDoc, body)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 	}
 
@@ -1723,7 +1723,8 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	// init channel cache
+	// init channel cache, this will make changes call after timeout doc is written below fail pre changes made in CBG-4067,
+	// due to duplicate sequence at the cache with an unused sequence. See steps in ticket CBG-4067 as example.
 	_, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
@@ -1751,7 +1752,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	assert.Equal(t, timeoutDoc, changes[0].ID)
 
 	// write doc that will have a conflict error, we should expect the document sequence to be released
-	enable = true
+	forceDocConflict = true
 	_, _, err = collection.Put(ctx, conflictDoc, Body{"test": "doc"})
 	require.Error(t, err)
 
