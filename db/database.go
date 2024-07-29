@@ -72,7 +72,7 @@ var (
 )
 
 var (
-	BypassReleasedSequenceWait atomic.Bool
+	BypassReleasedSequenceWait atomic.Bool // Used to optimize single-node testing, see DisableSequenceWaitOnDbRestart
 )
 
 const (

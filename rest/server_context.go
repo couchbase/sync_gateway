@@ -844,21 +844,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
-	/*
-		// If audit logging is enabled for the node, log the db setting.  This may not represent a change in
-		// auditing since the last time the db was running on this node, but we don't have any insight into the
-		// previous state.  These are global events (even though they have a db property, so audit these prior to
-		// adding DatabaseLogCtx to ensure db context filtering isn't applied.
-		if base.IsAuditEnabled() {
-			if contextOptions.LoggingConfig.DbAuditEnabled() {
-				base.Audit(ctx, base.AuditIDAuditEnabled, base.AuditFields{base.AuditFieldAuditScope: "db", base.AuditFieldDatabase: dbName})
-			} else {
-				base.Audit(ctx, base.AuditIDAuditDisabled, base.AuditFields{base.AuditFieldAuditScope: "db", base.AuditFieldDatabase: dbName})
-			}
-		}
-
-	*/
-
 	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig)
 
 	contextOptions.UseViews = useViews
