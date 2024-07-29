@@ -746,8 +746,10 @@ func (h *handler) handleGetDbAuditConfig() error {
 		// grab runtime version of config, so that we can see what events would be enabled
 		if runtimeConfig.Logging != nil && runtimeConfig.Logging.Audit != nil {
 			dbAuditEnabled = base.BoolDefault(runtimeConfig.Logging.Audit.Enabled, false)
-			for _, event := range runtimeConfig.Logging.Audit.EnabledEvents {
-				enabledEvents[base.AuditID(event)] = struct{}{}
+			if runtimeConfig.Logging.Audit.EnabledEvents != nil {
+				for _, event := range *runtimeConfig.Logging.Audit.EnabledEvents {
+					enabledEvents[base.AuditID(event)] = struct{}{}
+				}
 			}
 			dbAuditDisabledUsers = runtimeConfig.Logging.Audit.DisabledUsers
 			dbAuditDisabledRoles = runtimeConfig.Logging.Audit.DisabledRoles
@@ -877,14 +879,14 @@ func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAu
 		existingAuditConfig.DisabledRoles = requestAuditConfig.DisabledRoles
 
 		// we don't need to do anything to "disable" events, other than not enable them
-		existingAuditConfig.EnabledEvents = func() []uint {
+		existingAuditConfig.EnabledEvents = func() *[]uint {
 			enabledEvents := make([]uint, 0)
 			for event, shouldEnable := range eventsToChange {
 				if shouldEnable {
 					enabledEvents = append(enabledEvents, uint(event))
 				}
 			}
-			return enabledEvents
+			return &enabledEvents
 		}()
 	} else {
 		if requestAuditConfig.Enabled != nil {
@@ -896,22 +898,29 @@ func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAu
 		if requestAuditConfig.DisabledRoles != nil {
 			existingAuditConfig.DisabledRoles = requestAuditConfig.DisabledRoles
 		}
-
-		for i, event := range existingAuditConfig.EnabledEvents {
-			if shouldEnable, ok := eventsToChange[base.AuditID(event)]; ok {
-				if shouldEnable {
-					// already enabled
-				} else {
-					// disable by removing
-					existingAuditConfig.EnabledEvents = append(existingAuditConfig.EnabledEvents[:i], existingAuditConfig.EnabledEvents[i+1:]...)
-				}
-				// drop from toChange so we don't duplicate IDs
-				delete(eventsToChange, base.AuditID(event))
+		if len(eventsToChange) > 0 {
+			if existingAuditConfig.EnabledEvents == nil {
+				// initialize to non-nil set of defaults before modifying from request
+				existingAuditConfig.EnabledEvents = &base.DefaultDbAuditEventIDs
 			}
-		}
-		for id, enabled := range eventsToChange {
-			if enabled {
-				existingAuditConfig.EnabledEvents = append(existingAuditConfig.EnabledEvents, uint(id))
+			if existingAuditConfig.EnabledEvents != nil {
+				for i, event := range *existingAuditConfig.EnabledEvents {
+					if shouldEnable, ok := eventsToChange[base.AuditID(event)]; ok {
+						if shouldEnable {
+							// already enabled
+						} else {
+							// disable by removing
+							*existingAuditConfig.EnabledEvents = append((*existingAuditConfig.EnabledEvents)[:i], (*existingAuditConfig.EnabledEvents)[i+1:]...)
+						}
+						// drop from toChange so we don't duplicate IDs
+						delete(eventsToChange, base.AuditID(event))
+					}
+				}
+				for id, enabled := range eventsToChange {
+					if enabled {
+						*existingAuditConfig.EnabledEvents = append(*existingAuditConfig.EnabledEvents, uint(id))
+					}
+				}
 			}
 		}
 	}
