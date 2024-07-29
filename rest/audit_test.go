@@ -27,10 +27,6 @@ import (
 )
 
 func TestAuditLoggingFields(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test can panic with gocb logging CBG-4076")
-	}
-
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Audit logging only works in EE")
 	}
@@ -56,9 +52,10 @@ func TestAuditLoggingFields(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled:                 true,
-		AdminInterfaceAuthentication: !base.UnitTestUrlIsWalrus(), // disable admin auth for walrus so we can get coverage of both subtests
-		PersistentConfig:             true,
+		GuestEnabled:                   true,
+		AdminInterfaceAuthentication:   !base.UnitTestUrlIsWalrus(), // disable admin auth for walrus so we can get coverage of both subtests
+		metricsInterfaceAuthentication: true,
+		PersistentConfig:               true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
 				RequestInfoHeaderName: base.StringPtr(requestInfoHeaderName),
@@ -147,6 +144,45 @@ func TestAuditLoggingFields(t *testing.T) {
 			name: "public silent request",
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendRequest(http.MethodGet, "/_ping", ""), http.StatusOK)
+			},
+		},
+		{
+			name: "admin silent request, admin authentication enabled",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/_expvar", ""), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "",
+				},
+			},
+		},
+		{
+			name: "admin silent request authenticated",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/_expvar", "", base.TestClusterUsername(), base.TestClusterPassword()), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDSyncGatewayStats: {
+					base.AuditFieldStatsFormat: "expvar",
+				},
+			},
+		},
+		{
+			name: "admin silent request bad creds",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/_expvar", "", "not a real user", base.TestClusterPassword()), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "not a real user",
+				},
 			},
 		},
 		{
@@ -247,7 +283,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 		},
 		{
-			name: "anon admin request",
+			name: "anon admin request, admin authentication disabled",
 			auditableAction: func(t testing.TB) {
 				if rt.AdminInterfaceAuthentication {
 					t.Skip("Skipping subtest that requires admin auth to be disabled")
@@ -265,6 +301,24 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 		},
 		{
+			name: "anon admin request, rejected",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db/", ""), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "",
+				},
+			},
+		},
+		{
 			name: "authed admin request",
 			auditableAction: func(t testing.TB) {
 				if !rt.AdminInterfaceAuthentication {
@@ -275,7 +329,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthenticated: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
-					//	base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
 				},
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
@@ -371,7 +425,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthenticated: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
-					//	base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": unfilteredAdminRoleUsername},
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": unfilteredAdminRoleUsername},
 				},
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
@@ -380,6 +434,51 @@ func TestAuditLoggingFields(t *testing.T) {
 				base.AuditIDAdminHTTPAPIRequest: {
 					base.AuditFieldHTTPMethod: http.MethodGet,
 					base.AuditFieldHTTPPath:   "/db/",
+				},
+			},
+		},
+		{
+			name: "metrics request authenticated",
+			auditableAction: func(t testing.TB) {
+				headers := map[string]string{
+					"Authorization": getBasicAuthHeader(base.TestClusterUsername(), base.TestClusterPassword()),
+				}
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDSyncGatewayStats: {
+					base.AuditFieldStatsFormat: "prometheus",
+				},
+			},
+		},
+		{
+			name: "metrics request no authentication",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", nil), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "",
+				},
+			},
+		},
+		{
+			name: "metrics request bad credentials",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				headers := map[string]string{
+					"Authorization": getBasicAuthHeader("notauser", base.TestClusterPassword()),
+				}
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "notauser",
 				},
 			},
 		},
@@ -413,8 +512,9 @@ func TestAuditLoggingFields(t *testing.T) {
 							}
 						}
 					}
+
 				}
-				assert.Truef(t, eventFound, "expected event %v not found in set of events", expectedAuditID)
+				assert.Truef(t, eventFound, "expected event %s:%v not found in set of events", base.AuditEvents[expectedAuditID].Name, expectedAuditID)
 			}
 
 		})
@@ -858,7 +958,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 	}{
 		{
 			name: "add attachment",
-			setupCode: func(t testing.TB, docID string) DocVersion {
+			setupCode: func(_ testing.TB, docID string) DocVersion {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
@@ -868,7 +968,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 		},
 		{
 			name: "add inline attachment",
-			setupCode: func(t testing.TB, docID string) DocVersion {
+			setupCode: func(_ testing.TB, docID string) DocVersion {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
@@ -910,7 +1010,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 		},
 		{
 			name: "all_docs attachment with rev",
-			setupCode: func(t testing.TB, docID string) DocVersion {
+			setupCode: func(_ testing.TB, docID string) DocVersion {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
@@ -1012,7 +1112,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 		},
 		{
 			name: "update doc",
-			setupCode: func(t testing.TB, docID string) DocVersion {
+			setupCode: func(_ testing.TB, docID string) DocVersion {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
