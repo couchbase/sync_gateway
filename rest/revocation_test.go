@@ -2264,7 +2264,7 @@ func TestRevocationMessage(t *testing.T) {
 		require.NoError(t, rt.WaitForPendingChanges())
 
 		// Start a pull since 5 to receive revocation and removal
-		err = btcRunner.StartPullSince(btc.id, "false", "5", "false")
+		err = btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: "5"})
 		assert.NoError(t, err)
 
 		// Wait for doc1 rev2 - This is the last rev we expect so we can be sure replication is complete here
@@ -2376,7 +2376,7 @@ func TestRevocationNoRev(t *testing.T) {
 		require.NoError(t, rt.WaitForPendingChanges())
 
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
-		err = btcRunner.StartPullSince(btc.id, "false", lastSeqStr, "false")
+		err = btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: lastSeqStr})
 		assert.NoError(t, err)
 
 		_ = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
@@ -2472,7 +2472,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		require.NoError(t, rt.WaitForPendingChanges())
 
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
-		err = btcRunner.StartPullSince(btc.id, "false", lastSeqStr, "false")
+		err = btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: lastSeqStr})
 		assert.NoError(t, err)
 
 		_ = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)

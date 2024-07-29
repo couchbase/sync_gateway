@@ -803,9 +803,9 @@ var AuditEvents = events{
 			AuditFieldSince: "since",
 		},
 		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
 			fieldGroupRequest,
-			fieldGroupAuthenticated,
 		},
 		OptionalFields: AuditFields{
 			AuditFieldFilter:      "filter",
