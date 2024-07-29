@@ -237,6 +237,26 @@ func IsDocNotFoundError(err error) bool {
 	}
 }
 
+// IsTemporaryKvError returns true if a kv operation has an error that is likely to be ephemeral. This represents
+// situations where Couchbase Server is under load and would be expected to return a success or failure in a future call.
+func IsTemporaryKvError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// define list of temporary errors
+	temporaryKVError := []error{ErrTimeout, gocb.ErrAmbiguousTimeout, gocb.ErrUnambiguousTimeout,
+		gocb.ErrOverload, gocb.ErrTemporaryFailure, gocb.ErrCircuitBreakerOpen}
+
+	// iterate through to check incoming error is one of them
+	for _, tempKVErr := range temporaryKVError {
+		if errors.Is(err, tempKVErr) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func IsXattrNotFoundError(err error) bool {
 	if unwrappedErr := pkgerrors.Cause(err); unwrappedErr == nil {
 		return false
