@@ -602,7 +602,7 @@ func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 func ResetGlobalTestLogging(t *testing.T) {
 	t.Cleanup(func() {
 		for _, logger := range getFileLoggers() {
-			logger.Close()
+			assert.NoError(t, logger.Close())
 		}
 		ctx := TestCtx(t)
 		initializeLoggers(ctx)
