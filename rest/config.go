@@ -279,7 +279,7 @@ type DbConsoleLoggingConfig struct {
 // DbAuditLoggingConfig are per-db options configurable for audit logging
 type DbAuditLoggingConfig struct {
 	Enabled       *bool                        `json:"enabled,omitempty"`        // Whether audit logging is enabled for this database
-	EnabledEvents []uint                       `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled
+	EnabledEvents *[]uint                      `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled - pointer to differentiate between empty slice and nil
 	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"` // List of users to disable audit logging for
 	DisabledRoles []base.AuditLoggingPrincipal `json:"disabled_roles,omitempty"` // List of roles to disable audit logging for
 }
@@ -1068,12 +1068,14 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 				base.WarnfCtx(ctx, eeOnlyWarningMsg, "logging.audit.enabled", *dbConfig.Logging.Audit.Enabled, false)
 				dbConfig.Logging.Audit.Enabled = nil
 			}
-			for _, id := range dbConfig.Logging.Audit.EnabledEvents {
-				id := base.AuditID(id)
-				if e, ok := base.AuditEvents[id]; !ok {
-					multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
-				} else if e.IsGlobalEvent {
-					multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", id))
+			if dbConfig.Logging.Audit.EnabledEvents != nil {
+				for _, id := range *dbConfig.Logging.Audit.EnabledEvents {
+					id := base.AuditID(id)
+					if e, ok := base.AuditEvents[id]; !ok {
+						multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
+					} else if e.IsGlobalEvent {
+						multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", id))
+					}
 				}
 			}
 		}
@@ -2272,12 +2274,12 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	var aud *base.DbAuditLogConfig
 	if l.Audit != nil {
 		// per-event configuration
-		enabledEvents := make(map[base.AuditID]struct{}, len(l.Audit.EnabledEvents))
 		events := l.Audit.EnabledEvents
 		if events == nil {
-			events = base.DefaultDbAuditEventIDs
+			events = &base.DefaultDbAuditEventIDs
 		}
-		for _, event := range events {
+		enabledEvents := make(map[base.AuditID]struct{}, len(*events))
+		for _, event := range *events {
 			enabledEvents[base.AuditID(event)] = struct{}{}
 		}
 

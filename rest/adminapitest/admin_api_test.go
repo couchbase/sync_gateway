@@ -4407,9 +4407,11 @@ func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, 
 		require.Zero(t, expectedCount)
 	}
 	actualCount := 0
-	for _, configID := range loggingConfig.Audit.EnabledEvents {
-		if configID == uint(auditID) {
-			actualCount++
+	if loggingConfig.Audit.EnabledEvents != nil {
+		for _, configID := range *loggingConfig.Audit.EnabledEvents {
+			if configID == uint(auditID) {
+				actualCount++
+			}
 		}
 	}
 	require.Equal(t, expectedCount, actualCount)
