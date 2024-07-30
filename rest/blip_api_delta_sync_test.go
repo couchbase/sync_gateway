@@ -121,8 +121,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		defer btc.Close()
 
 		btc.ClientDeltas = true
-		err := btcRunner.StartPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(btc.id)
 		const docID = "doc1"
 
 		// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
@@ -135,7 +134,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 
 		// Update the replicated doc at client by adding another attachment.
 		bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
-		version, err = btcRunner.PushRev(btc.id, docID, version, []byte(bodyText))
+		version, err := btcRunner.PushRev(btc.id, docID, version, []byte(bodyText))
 		require.NoError(t, err)
 
 		// Wait for the document to be replicated at SG
@@ -193,8 +192,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		defer client.Close()
 
 		client.ClientDeltas = true
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		version := rt.PutDoc(doc1ID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -292,8 +290,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		defer client.Close()
 
 		client.ClientDeltas = true
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -373,8 +370,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		client.rejectDeltasForSrcRev = docVersion1.RevID
 
 		client.ClientDeltas = true
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 		data := btcRunner.WaitForVersion(client.id, docID, docVersion1)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
@@ -439,8 +435,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		})
 		defer client.Close()
 
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-1513b53e2738671e634d9dd111f48de0
 		version := rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
@@ -514,8 +509,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		})
 		defer client.Close()
 
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 
 		const docID = "doc1"
 		// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
@@ -617,8 +611,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		})
 		defer client2.Close()
 
-		err := btcRunner.StartPull(client1.id)
-		require.NoError(t, err)
+		btcRunner.StartPull(client1.id)
 
 		// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
 		version := rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
@@ -628,8 +621,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// Have client2 get only rev-1 and then stop replicating
-		err = btcRunner.StartOneshotPull(client2.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(client2.id)
 		data = btcRunner.WaitForVersion(client2.id, docID, version)
 		assert.Contains(t, string(data), `"channels":["public"]`)
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
@@ -657,8 +649,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		}
 
 		// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
-		err = btcRunner.StartOneshotPull(client2.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(client2.id)
 		data = btcRunner.WaitForVersion(client2.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
 		msg = btcRunner.WaitForBlipRevMessage(client2.id, docID, version)
@@ -736,8 +727,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		defer client.Close()
 
 		client.ClientDeltas = true
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		version1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -750,8 +740,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		defer client2.Close()
 
 		client2.ClientDeltas = true
-		err = btcRunner.StartOneshotPull(client2.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(client2.id)
 		data = btcRunner.WaitForVersion(client2.id, docID, version1)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
@@ -775,8 +764,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 		// Run another one shot pull to get the 2nd revision - validate it comes as delta, and uses cached version
 		client2.ClientDeltas = true
-		err = btcRunner.StartOneshotPull(client2.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(client2.id)
 		msg2 := btcRunner.WaitForBlipRevMessage(client2.id, docID, version2)
 
 		// Check the request was sent with the correct deltaSrc property
@@ -822,8 +810,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		defer client.Close()
 		client.ClientDeltas = true
 
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -929,8 +916,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		defer client.Close()
 
 		client.ClientDeltas = false
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)

@@ -1220,7 +1220,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			{
 				name: "blip changes continuous",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					require.NoError(t, btcRunner.StartPull(btc.id))
+					btcRunner.StartPull(btc.id)
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
 					_, err := btcRunner.UnsubPullChanges(btc.id)
 					require.NoError(t, err)
@@ -1233,7 +1233,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			{
 				name: "blip changes one shot",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					require.NoError(t, btcRunner.StartOneshotPull(btc.id))
+					btcRunner.StartOneshotPull(btc.id)
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
 					_, err := btcRunner.UnsubPullChanges(btc.id)
 					require.NoError(t, err)
@@ -1246,7 +1246,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			{
 				name: "blip changes with channels",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					require.NoError(t, btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", Channels: "A,B"}))
+					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", Channels: "A,B"})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
 					_, err := btcRunner.UnsubPullChanges(btc.id)
 					require.NoError(t, err)
@@ -1261,7 +1261,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			{
 				name: "blip changes with docids",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					require.NoError(t, btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", DocIDs: []string{docID, "non_existent"}}))
+					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", DocIDs: []string{docID, "non_existent"}})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
 					_, err := btcRunner.UnsubPullChanges(btc.id)
 					require.NoError(t, err)
@@ -1277,7 +1277,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				// invalid specification, this would ignore channel filter and only use docids filter
 				name: "blip changes with docids and channels",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					require.NoError(t, btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", DocIDs: []string{docID, "non_existent"}, Channels: "A,B"}))
+					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", DocIDs: []string{docID, "non_existent"}, Channels: "A,B"})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
 					_, err := btcRunner.UnsubPullChanges(btc.id)
 					require.NoError(t, err)
@@ -1293,7 +1293,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			{
 				name: "blip changes with compound since",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					require.NoError(t, btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "1:10"}))
+					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "1:10"})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
 					_, err := btcRunner.UnsubPullChanges(btc.id)
 					require.NoError(t, err)
@@ -1308,8 +1308,8 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			rt.Run(testCase.name, func(t *testing.T) {
 				docID := strings.ReplaceAll(testCase.name, " ", "_")
 				docVersion := rt.PutDoc(docID, `{"channels": "A"}`)
-				// wait for changes before starting one shot changes feeds
-				require.NoError(t, rt.WaitForPendingChanges())
+				// the auditable code is using changes requests, which can fail if document isn't present yet
+				rt.WaitForPendingChanges()
 				output := base.AuditLogContents(t, func(t testing.TB) {
 					testCase.auditableCode(t, docID, docVersion)
 				})

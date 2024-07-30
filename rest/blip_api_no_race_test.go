@@ -74,7 +74,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 					lastPushRevErr.Store(err)
 				}
 			}
-			_ = rt.WaitForPendingChanges()
+			rt.WaitForPendingChanges()
 			wg.Done()
 		}()
 

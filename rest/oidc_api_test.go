@@ -1159,7 +1159,7 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	docSeq := restTester.GetDocumentSequence("doc1")
 
-	require.NoError(t, restTester.WaitForPendingChanges())
+	restTester.WaitForPendingChanges()
 
 	ctx := base.DatabaseLogCtx(base.TestCtx(t), restTester.GetDatabase().Name, nil)
 	u, err := restTester.GetDatabase().Authenticator(ctx).GetUser("foo_noah")

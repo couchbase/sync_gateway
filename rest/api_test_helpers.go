@@ -67,7 +67,7 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?new_edits=false", string(requestBytes))
 	RequireStatus(rt.TB(), resp, 201)
 
-	require.NoError(rt.TB(), rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	return DocVersionFromPutResponse(rt.TB(), resp)
 }

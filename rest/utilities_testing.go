@@ -584,14 +584,11 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 	return collection.WaitForSequence(ctx, seq)
 }
 
-func (rt *RestTester) WaitForPendingChanges() error {
+func (rt *RestTester) WaitForPendingChanges() {
+	ctx := rt.Context()
 	for _, collection := range rt.GetDbCollections() {
-		err := collection.WaitForPendingChanges(base.TestCtx(rt.TB()))
-		if err != nil {
-			return err
-		}
+		require.NoError(rt.TB(), collection.WaitForPendingChanges(ctx))
 	}
-	return nil
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {

@@ -40,7 +40,7 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	docSeq := rt.GetDocumentSequence("doc1")
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// add an unused sequence
 	unusedSeq, err := db.AllocateTestSequence(rt.GetDatabase())
