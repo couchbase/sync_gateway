@@ -2556,7 +2556,6 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 
 		// Track last sequence for next changes feed
 		var changes ChangesResults
-		changes.Last_Seq = "0"
 
 		for i, test := range testCases {
 			rt.Run(test.name, func(t *testing.T) {
@@ -3135,7 +3134,8 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				// Issue a changes request for the channel before updating the document, to ensure the valid revision is
 				// resident in the channel cache (query results may be unreliable in the case of the 'invalid json' update)
-				RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+testCase.channel, ""), 200)
+				changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+testCase.channel, "{}")
+				require.Len(t, changes.Results, 1)
 
 				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.updatedBody)
 				require.NoError(t, err)

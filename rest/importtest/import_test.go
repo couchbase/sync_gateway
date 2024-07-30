@@ -2264,8 +2264,7 @@ func TestImportRollback(t *testing.T) {
 			// wait for doc to be imported
 			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 			require.NoError(t, err)
-			lastSeq, ok := changes.Last_Seq.(string)
-			require.True(t, ok)
+			lastSeq := changes.Last_Seq.String()
 
 			// Close db while we mess with checkpoints
 			db := rt.GetDatabase()

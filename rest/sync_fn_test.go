@@ -888,15 +888,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	// Let everything catch up before opening changes feed
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	type ChangesResp struct {
-		Results []struct {
-			ID  string `json:"id"`
-			Seq int    `json:"seq"`
-		} `json:"results"`
-		LastSeq string `json:"last_seq"`
-	}
-
-	changesRespContains := func(changesResp ChangesResp, docid string) bool {
+	changesRespContains := func(changesResp ChangesResults, docid string) bool {
 		for _, resp := range changesResp.Results {
 			if resp.ID == docid {
 				return true
@@ -905,11 +897,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		return false
 	}
 
-	var changesResp ChangesResp
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "user1")
-	RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	require.NoError(t, err)
+	changesResp := rt.GetChanges("/{{.keyspace}}/_changes", "user1")
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
@@ -968,10 +956,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, "", "user1")
-	RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	require.NoError(t, err)
+	changesResp = rt.GetChanges("/{{.keyspace}}/_changes", "user1")
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))

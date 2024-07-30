@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -52,16 +51,13 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	requestFinished := make(chan struct{})
 	// make sure this request doesn't hang
 	go func() {
-		resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&request_plus=true", docSeq), "", username)
-		RequireStatus(t, resp, http.StatusOK)
-		close(requestFinished)
+		defer close(requestFinished)
+		changes := rt.GetChanges(fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&request_plus=true", docSeq), username)
+		require.Len(t, changes.Results, 0)
 	}()
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 	// the request should finish once the sequence is released
 	err = db.ReleaseTestSequence(base.TestCtx(t), rt.GetDatabase(), unusedSeq)
 	require.NoError(t, err)
 	<-requestFinished
-	var changesResp ChangesResults
-	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
-	require.Len(t, changesResp.Results, 0)
 }

@@ -821,7 +821,7 @@ func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 
 type ChangesResults struct {
 	Results  []db.ChangeEntry
-	Last_Seq interface{}
+	Last_Seq db.SequenceID
 }
 
 func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
@@ -2664,13 +2664,34 @@ func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username s
 	require.Len(t, changes, expectedChanges)
 }
 
-func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int, username string, changesCount int) *TestResponse {
-	changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.%s}}/_changes?since=%d", keyspace, since), "", username)
+// GetChanges returns the set of changes from a GET request for a given user.
+func (rt *RestTester) GetChanges(uri string, username string) ChangesResults {
+	changesResponse := rt.SendUserRequest(http.MethodGet, uri, "", username)
+	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
 	var changes ChangesResults
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, changesCount)
-	return changesResponse
+	assert.NoError(rt.TB(), err, "Error unmarshalling changes response")
+	return changes
+}
+
+// PostChanges issues a changes POST request for a given user.
+func (rt *RestTester) PostChanges(uri, body, username string) ChangesResults {
+	changesResponse := rt.SendUserRequest(http.MethodPost, uri, body, username)
+	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
+	var changes ChangesResults
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(rt.TB(), err, "Error unmarshalling changes response")
+	return changes
+}
+
+// PostChangesAdmin issues a changes POST request for a given user.
+func (rt *RestTester) PostChangesAdmin(uri, body string) ChangesResults {
+	changesResponse := rt.SendAdminRequest(http.MethodPost, uri, body)
+	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
+	var changes ChangesResults
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(rt.TB(), err, "Error unmarshalling changes response")
+	return changes
 }
 
 // NewDbConfig returns a DbConfig for the given RestTester. This sets up a config appropriate to collections, xattrs, import filter and sync function.

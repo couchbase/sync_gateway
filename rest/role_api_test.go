@@ -11,7 +11,6 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -353,27 +352,19 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
 
 	// Check the _changes feed:
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 
 	cacheWaiter.Wait()
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "alice")
-	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "alice")
 	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "_user/alice", changes.Results[0].ID)
 	assert.Equal(t, "g1", changes.Results[1].ID)
 	assert.Equal(t, "a1", changes.Results[2].ID)
 
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
-	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "zegpold")
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "_user/zegpold", changes.Results[0].ID)
 	assert.Equal(t, "b1", changes.Results[1].ID)
-	lastSeqPreGrant := changes.Last_Seq
+	lastSeqPreGrant := changes.Last_Seq.String()
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	cacheWaiter.Add(1)
@@ -401,22 +392,15 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	cacheWaiter.Wait()
-	changes.Results = nil
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
-	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	log.Printf("changes: %+v", changes.Results)
-	require.Equal(t, len(changes.Results), 3)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "zegpold")
+	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "_user/zegpold", changes.Results[0].ID)
 	assert.Equal(t, "b1", changes.Results[1].ID)
 	assert.Equal(t, "g1", changes.Results[2].ID)
 
 	// Changes feed with since=lastSeqPreGrant would ordinarily be empty, but zegpold got access to channel
 	// gamma after lastSeqPreGrant, so the pre-existing docs in that channel are included:
-	response = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", lastSeqPreGrant), "", "zegpold")
-	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
-	changes.Results = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?since="+lastSeqPreGrant, "zegpold")
 	require.Len(t, changes.Results, 1)
 	assert.Equal(t, "g1", changes.Results[0].ID)
 }

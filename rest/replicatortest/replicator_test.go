@@ -494,7 +494,7 @@ func TestPushReplicationAPI(t *testing.T) {
 	_ = rt2.PutDoc(docID2, `{"source":"rt1","channels":["alice"]}`)
 
 	// wait for doc2 to arrive at rt2
-	changesResults = rt2.RequireWaitChanges(1, changesResults.Last_Seq.(string))
+	changesResults = rt2.RequireWaitChanges(1, changesResults.Last_Seq.String())
 	assert.Equal(t, docID2, changesResults.Results[0].ID)
 
 	// Validate doc2 contents
@@ -537,7 +537,7 @@ func TestPullReplicationAPI(t *testing.T) {
 	_ = rt2.PutDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
 
 	// wait for new document to arrive at rt1
-	changesResults = rt1.RequireWaitChanges(1, changesResults.Last_Seq.(string))
+	changesResults = rt1.RequireWaitChanges(1, changesResults.Last_Seq.String())
 	changesResults.RequireDocIDs(t, []string{docID2})
 
 	// Validate doc2 contents
@@ -735,7 +735,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	_ = rt2.PutDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
 
 	// wait for new document to arrive at rt1
-	changesResults = rt1.RequireWaitChanges(1, changesResults.Last_Seq.(string))
+	changesResults = rt1.RequireWaitChanges(1, changesResults.Last_Seq.String())
 	changesResults.RequireDocIDs(t, []string{docID2})
 
 	// Validate doc2 contents
@@ -861,7 +861,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	_ = remoteRT.PutDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
 
 	// wait for new documents to arrive at activeRT
-	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
+	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.String())
 	changesResults.RequireDocIDs(t, []string{docABC2, docDEF2})
 
 	// Validate doc contents
@@ -966,7 +966,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	_ = activeRT.PutDoc(docDEF2, `{"source":"activeRT","channels":["DEF"]}`)
 
 	// wait for new documents to arrive at remote
-	changesResults = remoteRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
+	changesResults = remoteRT.RequireWaitChanges(2, changesResults.Last_Seq.String())
 	changesResults.RequireDocIDs(t, []string{docABC2, docDEF2})
 
 	// Validate doc contents
@@ -1789,7 +1789,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	_ = remoteRT.PutDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
 
 	// wait for new documents to arrive at activeRT
-	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
+	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.String())
 	changesResults.RequireDocIDs(t, []string{docABC2, docDEF2})
 
 	// Validate doc contents via both active nodes
@@ -1827,7 +1827,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	docDEF3 := t.Name() + "DEF3"
 	_ = remoteRT.PutDoc(docDEF3, `{"source":"remoteRT","channels":["DEF"]}`)
 
-	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
+	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.String())
 	changesResults.RequireDocIDs(t, []string{docABC3, docDEF3})
 
 	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
@@ -2828,7 +2828,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			lastSeq := changesResults.Last_Seq.(string)
+			lastSeq := changesResults.Last_Seq.String()
 
 			resp := rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/repl1?action=stop", "")
 			rest.RequireStatus(t, resp, http.StatusOK)
@@ -2842,7 +2842,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			require.NoError(t, err)
 			assert.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			lastSeq = changesResults.Last_Seq.(string)
+			lastSeq = changesResults.Last_Seq.String()
 
 			resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevID, test.remoteConflictingRevBody)
 			rest.RequireStatus(t, resp, http.StatusCreated)
@@ -2856,7 +2856,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			require.NoError(t, err)
 			assert.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			_ = changesResults.Last_Seq.(string)
+			_ = changesResults.Last_Seq.String()
 
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -5131,7 +5131,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
-	lastSeq := changesResults.Last_Seq.(string)
+	lastSeq := changesResults.Last_Seq.String()
 
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
