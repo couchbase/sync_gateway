@@ -1560,3 +1560,171 @@ func TestAuditBlipCRUD(t *testing.T) {
 		}
 	})
 }
+
+// TestDatabaseAuditChanges verifies that the expect events are raised when the audit configuration is changed.
+// Note: test cases are run sequentially, and depend on ordering, as events are only raised for changes in state
+func TestDatabaseAuditChanges(t *testing.T) {
+
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Audit logging only works in EE")
+	}
+
+	db.DisableSequenceWaitOnDbRestart(t)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	// Create full db config payloads with audit enabled/disabled, for PUT /_config test cases
+	auditEnabledFullConfig := rt.NewDbConfig()
+	auditEnabledFullConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.BoolPtr(true),
+		},
+	}
+	auditEnabledPutConfigPayload := base.MustJSONMarshal(t, auditEnabledFullConfig)
+	auditDisabledPutConfigPayload := base.MustJSONMarshal(t, rt.NewDbConfig())
+
+	type testCase struct {
+		name                     string
+		method                   string
+		path                     string
+		requestBody              string
+		expectedStatus           int
+		expectedEvents           []base.AuditID
+		expectedEnabledEventList []any
+	}
+	testCases := []testCase{
+		{
+			name:           "disable via _config POST, already disabled",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config",
+			requestBody:    `{"logging":{"audit":{"enabled":false}}}`,
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{},
+		},
+		{
+			name:           "enable via _config POST",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config",
+			requestBody:    `{"logging":{"audit":{"enabled":true}}}`,
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{base.AuditIDAuditEnabled},
+		},
+		{
+			name:           "enable via _config POST, already enabled",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config",
+			requestBody:    `{"logging":{"audit":{"enabled":true}}}`,
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{},
+		},
+		{
+			name:           "disable via _config POST",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config",
+			requestBody:    `{"logging":{"audit":{"enabled":false}}}`,
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:           "enable via _config PUT",
+			method:         http.MethodPut,
+			path:           "/{{.db}}/_config",
+			requestBody:    string(auditEnabledPutConfigPayload),
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{base.AuditIDAuditEnabled},
+		},
+		{
+			name:           "disable via _config PUT",
+			method:         http.MethodPut,
+			path:           "/{{.db}}/_config",
+			requestBody:    string(auditDisabledPutConfigPayload),
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:           "enable via _config/audit",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":true}`,
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{base.AuditIDAuditEnabled},
+		},
+		{
+			name:           "enable via _config/audit, already enabled",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":true}`,
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{},
+		},
+		{
+			name:           "disable via _config/audit",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":false}`,
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:           "disable via _config/audit, already disabled",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":false}`,
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{},
+		},
+		{
+			name:                     "enable via _config/audit with events PUT",
+			method:                   http.MethodPut,
+			path:                     "/{{.db}}/_config/audit",
+			requestBody:              `{"enabled":true, "events":{"53282":true}}`, // AuditIDPublicUserSessionCreated
+			expectedStatus:           http.StatusOK,
+			expectedEvents:           []base.AuditID{base.AuditIDAuditEnabled},
+			expectedEnabledEventList: []any{float64(base.AuditIDPublicUserSessionCreated)},
+		},
+		{
+			name:           "disable via _config/audit with events PUT",
+			method:         http.MethodPut,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":false, "events":{"53282":true}}`, // AuditIDPublicUserSessionCreated
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:                     "enable via _config/audit with events POST",
+			method:                   http.MethodPost,
+			path:                     "/{{.db}}/_config/audit",
+			requestBody:              `{"enabled":true, "events":{"53283":true}}`, // AuditIDPublicUserSessionDeleted
+			expectedStatus:           http.StatusOK,
+			expectedEvents:           []base.AuditID{base.AuditIDAuditEnabled},
+			expectedEnabledEventList: []any{float64(base.AuditIDPublicUserSessionCreated), float64(base.AuditIDPublicUserSessionDeleted)},
+		},
+	}
+	for _, testCase := range testCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				RequireStatus(t, rt.SendAdminRequestWithAuth(testCase.method, testCase.path, testCase.requestBody, base.TestClusterUsername(), base.TestClusterPassword()), testCase.expectedStatus)
+			})
+			events := jsonLines(t, output)
+			for _, expectedEventID := range testCase.expectedEvents {
+				found := false
+				for _, event := range events {
+					eventID := base.AuditID(event[base.AuditFieldID].(float64))
+					if eventID == expectedEventID {
+						require.Equal(rt.TB(), event[base.AuditFieldDatabase], "db")
+						if testCase.expectedEnabledEventList != nil {
+							require.Equal(rt.TB(), testCase.expectedEnabledEventList, event[base.AuditFieldEnabledEvents])
+						}
+						found = true
+					}
+				}
+				require.True(t, found, fmt.Sprintf("Expected event %v not present", expectedEventID))
+			}
+		})
+	}
+}
