@@ -366,6 +366,18 @@ func (d *invalidDatabaseConfigs) remove(dbname string) {
 	delete(d.dbNames, dbname)
 }
 
+// removeNonExistingConfigs will remove any configs from invalid config tracking map that aren't present in fetched configs
+func (d *invalidDatabaseConfigs) removeNonExistingConfigs(fetchedConfigs map[string]bool) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	for dbName := range d.dbNames {
+		if ok := fetchedConfigs[dbName]; !ok {
+			// this invalid db config was not found in config polling, so lets remove
+			delete(d.dbNames, dbName)
+		}
+	}
+}
+
 // inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
 func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 	if dbc.Username == "" {
@@ -1762,6 +1774,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 		return nil, err
 	}
 
+	allConfigsFound := make(map[string]bool)
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 	for _, bucket := range buckets {
 		ctx := base.BucketNameCtx(ctx, bucket)
@@ -1782,6 +1795,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			continue
 		}
 		for _, cnf := range configs {
+			allConfigsFound[cnf.Name] = true
 			// Handle invalid database registry entries. Either:
 			// - CBG-3292: Bucket in config doesn't match the actual bucket
 			// - CBG-3742: Registry entry marked invalid (due to rollback causing collection conflict)
@@ -1814,6 +1828,10 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			fetchedConfigs[cnf.Name] = *cnf
 		}
 	}
+
+	// remove any invalid databases from the tracking map if config poll above didn't
+	// pick up that configs from the bucket. This means the config is no longer present in the bucket.
+	sc.invalidDatabaseConfigTracking.removeNonExistingConfigs(allConfigsFound)
 
 	return fetchedConfigs, nil
 }
