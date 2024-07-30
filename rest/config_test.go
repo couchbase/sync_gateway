@@ -2938,9 +2938,6 @@ func makeScopesConfigWithDefault(scopeName string, collections []string) *Scopes
 //   - Delete the invalid db config form the bucket
 //   - Force config poll reload and assert the invalid db is cleared
 func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("test only works with CBS, requires bootstrap connection")
-	}
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
