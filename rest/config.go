@@ -2329,3 +2329,18 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 		Audit:   aud,
 	}
 }
+
+// IsAuditLoggingEnabled() checks whether audit logging is enabled for the db, independent of the global setting
+func (c *DbConfig) IsAuditLoggingEnabled() (enabled bool, events []uint) {
+
+	if c != nil && c.Logging != nil && c.Logging.Audit != nil && c.Logging.Audit.Enabled != nil {
+		enabled = *c.Logging.Audit.Enabled
+		if c.Logging.Audit.EnabledEvents != nil {
+			events = *c.Logging.Audit.EnabledEvents
+		}
+		return enabled, events
+	} else {
+		// Audit logging not defined in the config.  Use default value
+		return base.DefaultDbAuditEnabled, nil
+	}
+}

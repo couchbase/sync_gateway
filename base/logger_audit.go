@@ -225,6 +225,10 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 		return false
 	}
 
+	if !AuditEvents[id].FilteringPermitted {
+		return true
+	}
+
 	isGlobal := AuditEvents[id].IsGlobalEvent
 	if isGlobal {
 		if _, ok := al.enabledEvents[id]; !ok {
