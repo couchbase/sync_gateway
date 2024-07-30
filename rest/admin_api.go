@@ -618,12 +618,15 @@ func (h *handler) handlePutDbConfig() (err error) {
 	}
 
 	var updatedDbConfig *DatabaseConfig
+	var previousAuditEnabled, updatedAuditEnabled bool
+	var updatedAuditEvents []uint
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 		}
 		oldBucketDbConfig := bucketDbConfig.DbConfig
 		previousCollectionMap := bucketDbConfig.Scopes.CollectionMap()
+		previousAuditEnabled, _ = oldBucketDbConfig.IsAuditLoggingEnabled()
 
 		if h.rq.Method == http.MethodPost {
 			base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
@@ -676,8 +679,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err != nil {
 			return nil, err
 		}
+		updatedAuditEnabled, updatedAuditEvents = bucketDbConfig.IsAuditLoggingEnabled()
 		return bucketDbConfig, nil
 	})
+
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
@@ -687,6 +692,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 		return err
 	}
+	auditDbAuditEnabled(h.ctx(), dbName, previousAuditEnabled, updatedAuditEnabled, updatedAuditEvents)
 	// store the cas in the loaded config after a successful update
 	h.setEtag(updatedDbConfig.Version)
 	h.server.lock.Lock()
@@ -796,7 +802,10 @@ func (h *handler) handleGetDbAuditConfig() error {
 func (h *handler) handlePutDbAuditConfig() error {
 
 	var bodyRaw []byte
+	var previousAuditEnabled, updatedAuditEnabled bool
+	var updatedAuditEvents []uint
 	err := h.mutateDbConfig(func(config *DbConfig) error {
+		previousAuditEnabled, _ = config.IsAuditLoggingEnabled()
 		bodyRaw, err := h.readBody()
 		if err != nil {
 			return err
@@ -859,12 +868,14 @@ func (h *handler) handlePutDbAuditConfig() error {
 		}
 
 		mutateConfigFromDbAuditConfigBody(isReplace, config.Logging.Audit, &body, toChange)
-
+		updatedAuditEnabled, updatedAuditEvents = config.IsAuditLoggingEnabled()
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+
+	auditDbAuditEnabled(h.ctx(), h.db.Name, previousAuditEnabled, updatedAuditEnabled, updatedAuditEvents)
 	base.Audit(h.ctx(), base.AuditIDAuditConfigChanged, base.AuditFields{
 		base.AuditFieldAuditScope: "db",
 		base.AuditFieldPayload:    string(bodyRaw),
@@ -2234,4 +2245,27 @@ func checkUserAPIReadOnlyFields(newInfo auth.PrincipalConfig, user auth.User) (a
 		newInfo.JWTChannels = nil
 	}
 	return newInfo, true
+}
+
+// auditDbAuditEnabled writes any audit events for changes in whether db auditing is enabled
+func auditDbAuditEnabled(ctx context.Context, dbName string, previousEnabled, newEnabled bool, events []uint) {
+
+	if !base.IsAuditEnabled() {
+		return
+	}
+
+	auditFields := base.AuditFields{
+		base.AuditFieldAuditScope: "db",
+		base.AuditFieldDatabase:   dbName,
+	}
+
+	if previousEnabled != newEnabled {
+		if newEnabled {
+			auditFields[base.AuditFieldEnabledEvents] = events
+			base.Audit(ctx, base.AuditIDAuditEnabled, auditFields)
+		} else {
+			base.Audit(ctx, base.AuditIDAuditDisabled, auditFields)
+		}
+	}
+
 }
