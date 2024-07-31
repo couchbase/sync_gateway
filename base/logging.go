@@ -123,7 +123,6 @@ func initializeLoggers(ctx context.Context) {
 	initialCollationBufferSize := 0
 
 	consoleLogger.Store(mustInitConsoleLogger(context.Background(), &ConsoleLoggerConfig{LogKeys: []string{logKeyNames[KeyHTTP]}, FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}}))
-	auditLogger.Store(&AuditLogger{})
 	initExternalLoggers()
 }
 
@@ -186,9 +185,8 @@ func LogLevelCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format s
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
 // The content passed in is expected to be a JSON dictionary.
 func RecordStats(statsJson string) {
-	if statsLogger.Load() != nil {
-		statsLogger.Load().logf(statsJson)
-	}
+	// if statsLogger is nil, logf will no-op
+	statsLogger.Load().logf(statsJson)
 }
 
 // logTo is the "core" logging function. All other logging functions (like Debugf(), WarnfCtx(), etc.) end up here.

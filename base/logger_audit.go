@@ -121,7 +121,11 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	if IsDevMode() {
 		// NOTE: This check is expensive and indicates a dev-time mistake that needs addressing.
 		// Don't bother in production code, but also delay expandFields until we know we will log.
-		fields = expandFields(id, ctx, logger.globalFields, additionalData)
+		var globalFields AuditFields
+		if logger != nil {
+			globalFields = logger.globalFields
+		}
+		fields = expandFields(id, ctx, globalFields, additionalData)
 		id.MustValidateFields(fields)
 	}
 
@@ -143,7 +147,11 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 
 // IsAuditEnabled checks if auditing is enabled for the SG node
 func IsAuditEnabled() bool {
-	return auditLogger.Load().FileLogger.shouldLog(LevelNone)
+	logger := auditLogger.Load()
+	if logger == nil {
+		return false
+	}
+	return logger.FileLogger.shouldLog(LevelNone)
 }
 
 // AuditLogger is a file logger with audit-specific behaviour.
@@ -222,7 +230,9 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 }
 
 func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
-	if !al.FileLogger.shouldLog(LevelNone) {
+	if al == nil {
+		return false
+	} else if !al.FileLogger.shouldLog(LevelNone) {
 		return false
 	}
 

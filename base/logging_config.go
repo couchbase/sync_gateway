@@ -16,6 +16,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -81,7 +82,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 		debugLogger.Store(nil)
 		traceLogger.Store(nil)
 		statsLogger.Store(nil)
-		auditLogger.Store(&AuditLogger{})
+		auditLogger.Store(nil)
 
 		return nil
 	}
@@ -140,7 +141,12 @@ func InitLogging(ctx context.Context, logFilePath string,
 	}
 	statsLogger.Store(rawStatsLogger)
 
-	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, &auditLogger.Load().buffer, auditLogGlobalFields)
+	var auditLoggerBuffer *strings.Builder
+	prevAuditLogger := auditLogger.Load()
+	if prevAuditLogger != nil {
+		auditLoggerBuffer = &prevAuditLogger.buffer
+	}
+	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, auditLoggerBuffer, auditLogGlobalFields)
 	if err != nil {
 		return err
 	}
