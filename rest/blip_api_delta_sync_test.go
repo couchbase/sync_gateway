@@ -847,7 +847,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 			collection, ctx := rt.GetSingleTestDatabaseCollection()
 			// Validate that generation of a delta didn't mutate the revision body in the revision cache
-			docRev, cacheErr := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitDelta)
+			docRev, cacheErr := collection.GetRevisionCacheForTest().Get(ctx, "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitDelta)
 			assert.NoError(t, cacheErr)
 			assert.NotContains(t, docRev.BodyBytes, "bob")
 		} else {

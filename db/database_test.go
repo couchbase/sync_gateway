@@ -514,11 +514,9 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	_, rev1Digest := ParseRevID(ctx, rev1ID)
 	_, rev2Digest := ParseRevID(ctx, rev2ID)
 
-	var interfaceListChannels []interface{}
-	interfaceListChannels = append(interfaceListChannels, "ABC")
 	bodyExpected := Body{
 		"k2":       "v2",
-		"channels": interfaceListChannels,
+		"channels": []string{"ABC"},
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2Digest, rev1Digest},
@@ -3328,7 +3326,7 @@ func TestInject1xBodyProperties(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	rev1ID, _, err := collection.Put(ctx, "doc", Body{"test": "doc"})
 	require.NoError(t, err)

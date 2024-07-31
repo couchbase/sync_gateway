@@ -7487,7 +7487,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollection()
-	rev, err := passiveRTCollection.GetRevisionCacheForTest().GetActive(passiveRTCtx, "test", true)
+	rev, err := passiveRTCollection.GetRevisionCacheForTest().GetActive(passiveRTCtx, "test")
 	require.NoError(t, err)
 	// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
 	// Which should give a HTTP 422
