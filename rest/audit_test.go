@@ -62,15 +62,8 @@ func TestAuditLoggingFields(t *testing.T) {
 			config.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
 				RequestInfoHeaderName: base.StringPtr(requestInfoHeaderName),
 			}
-			config.Logging = base.LoggingConfig{
-				LogFilePath: tempdir,
-				Audit: &base.AuditLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.BoolPtr(true),
-					},
-					EnabledEvents: base.AllGlobalAuditeventIDs, // enable everything for testing
-				},
-			}
+			config.Logging = getAuditLoggingTestConfig(tempdir)
+			config.Logging.Audit.EnabledEvents = base.AllGlobalAuditeventIDs
 			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 		},
 	})
@@ -539,42 +532,7 @@ func jsonLines(t testing.TB, data []byte) []map[string]any {
 }
 
 func TestAuditDatabaseUpdate(t *testing.T) {
-	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
-	tempdir := t.TempDir()
-	base.ResetGlobalTestLogging(t)
-	base.InitializeMemoryLoggers()
-	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
-		MutateStartupConfig: func(config *StartupConfig) {
-			config.Logging = base.LoggingConfig{
-				LogFilePath: tempdir,
-				Audit: &base.AuditLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled:             base.BoolPtr(true),
-						CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
-					},
-				},
-				Console: &base.ConsoleLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.BoolPtr(true),
-					},
-				},
-				Info: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-				Debug: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-				Trace: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-			}
-			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
-		},
-	})
+	rt := createAuditLoggingRestTester(t)
 	defer rt.Close()
 
 	// initialize RestTester
@@ -742,14 +700,7 @@ func TestEffectiveUserID(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.EffectiveUserHeaderName = base.StringPtr("user_header")
-			config.Logging = base.LoggingConfig{
-				LogFilePath: tempdir,
-				Audit: &base.AuditLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.BoolPtr(true),
-					},
-				},
-			}
+			config.Logging = getAuditLoggingTestConfig(tempdir)
 			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 		},
 	})
@@ -1609,14 +1560,7 @@ func TestAuditLoggingGlobals(t *testing.T) {
 				require.NoError(t, os.Unsetenv(globalEnvVarName))
 			}
 			startupConfig := DefaultStartupConfig("")
-			startupConfig.Logging = base.LoggingConfig{
-				LogFilePath: t.TempDir(),
-				Audit: &base.AuditLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.BoolPtr(true),
-					},
-				},
-			}
+			startupConfig.Logging = getAuditLoggingTestConfig(t.TempDir())
 			if testCase.globalAuditEvents != nil {
 				startupConfig.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
 					GlobalInfoEnvVarName: base.StringPtr(globalEnvVarName),
@@ -1811,5 +1755,35 @@ func TestDatabaseAuditChanges(t *testing.T) {
 				require.True(t, found, fmt.Sprintf("Expected event %v not present", expectedEventID))
 			}
 		})
+	}
+}
+
+// getAuditLoggingTestConfig returns a logging config with audit enabled and other loggers configured without collation to avoid CBG-4129
+func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
+	return base.LoggingConfig{
+		LogFilePath: tempdir,
+		Audit: &base.AuditLoggerConfig{
+			FileLoggerConfig: base.FileLoggerConfig{
+				Enabled:             base.BoolPtr(true),
+				CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+			},
+		},
+		Console: &base.ConsoleLoggerConfig{
+			FileLoggerConfig: base.FileLoggerConfig{
+				Enabled: base.BoolPtr(true),
+			},
+		},
+		Info: &base.FileLoggerConfig{
+			Enabled:             base.BoolPtr(false),
+			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+		},
+		Debug: &base.FileLoggerConfig{
+			Enabled:             base.BoolPtr(false),
+			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+		},
+		Trace: &base.FileLoggerConfig{
+			Enabled:             base.BoolPtr(false),
+			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+		},
 	}
 }
