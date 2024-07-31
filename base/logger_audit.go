@@ -169,9 +169,8 @@ func (l *AuditLogger) getAuditLoggerConfig() *AuditLoggerConfig {
 	if l != nil {
 		// Copy config struct to avoid mutating running config
 		c = l.config
+		c.FileLoggerConfig = *l.getFileLoggerConfig()
 	}
-
-	c.FileLoggerConfig = *l.getFileLoggerConfig()
 
 	return &c
 }
