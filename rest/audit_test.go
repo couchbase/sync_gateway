@@ -29,10 +29,6 @@ import (
 )
 
 func TestAuditLoggingFields(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test can panic with gocb logging CBG-4076")
-	}
-
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Audit logging only works in EE")
 	}
@@ -58,9 +54,10 @@ func TestAuditLoggingFields(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled:                 true,
-		AdminInterfaceAuthentication: !base.UnitTestUrlIsWalrus(), // disable admin auth for walrus so we can get coverage of both subtests
-		PersistentConfig:             true,
+		GuestEnabled:                   true,
+		AdminInterfaceAuthentication:   !base.UnitTestUrlIsWalrus(), // disable admin auth for walrus so we can get coverage of both subtests
+		metricsInterfaceAuthentication: true,
+		PersistentConfig:               true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
 				RequestInfoHeaderName: base.StringPtr(requestInfoHeaderName),
@@ -85,7 +82,7 @@ func TestAuditLoggingFields(t *testing.T) {
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
 			Enabled:       base.BoolPtr(true),
-			EnabledEvents: base.AllDbAuditeventIDs, // enable everything for testing
+			EnabledEvents: &base.AllDbAuditeventIDs, // enable everything for testing
 			DisabledUsers: []base.AuditLoggingPrincipal{
 				{Name: filteredPublicUsername, Domain: string(base.UserDomainSyncGateway)},
 				{Name: filteredAdminUsername, Domain: string(base.UserDomainCBServer)},
@@ -149,6 +146,45 @@ func TestAuditLoggingFields(t *testing.T) {
 			name: "public silent request",
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendRequest(http.MethodGet, "/_ping", ""), http.StatusOK)
+			},
+		},
+		{
+			name: "admin silent request, admin authentication enabled",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/_expvar", ""), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "",
+				},
+			},
+		},
+		{
+			name: "admin silent request authenticated",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/_expvar", "", base.TestClusterUsername(), base.TestClusterPassword()), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDSyncGatewayStats: {
+					base.AuditFieldStatsFormat: "expvar",
+				},
+			},
+		},
+		{
+			name: "admin silent request bad creds",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/_expvar", "", "not a real user", base.TestClusterPassword()), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "not a real user",
+				},
 			},
 		},
 		{
@@ -249,7 +285,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 		},
 		{
-			name: "anon admin request",
+			name: "anon admin request, admin authentication disabled",
 			auditableAction: func(t testing.TB) {
 				if rt.AdminInterfaceAuthentication {
 					t.Skip("Skipping subtest that requires admin auth to be disabled")
@@ -267,6 +303,24 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 		},
 		{
+			name: "anon admin request, rejected",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db/", ""), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "",
+				},
+			},
+		},
+		{
 			name: "authed admin request",
 			auditableAction: func(t testing.TB) {
 				if !rt.AdminInterfaceAuthentication {
@@ -277,7 +331,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthenticated: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
-					//	base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
 				},
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
@@ -373,7 +427,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthenticated: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
-					//	base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": unfilteredAdminRoleUsername},
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": unfilteredAdminRoleUsername},
 				},
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
@@ -382,6 +436,51 @@ func TestAuditLoggingFields(t *testing.T) {
 				base.AuditIDAdminHTTPAPIRequest: {
 					base.AuditFieldHTTPMethod: http.MethodGet,
 					base.AuditFieldHTTPPath:   "/db/",
+				},
+			},
+		},
+		{
+			name: "metrics request authenticated",
+			auditableAction: func(t testing.TB) {
+				headers := map[string]string{
+					"Authorization": getBasicAuthHeader(base.TestClusterUsername(), base.TestClusterPassword()),
+				}
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDSyncGatewayStats: {
+					base.AuditFieldStatsFormat: "prometheus",
+				},
+			},
+		},
+		{
+			name: "metrics request no authentication",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", nil), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "",
+				},
+			},
+		},
+		{
+			name: "metrics request bad credentials",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be enabled")
+				}
+				headers := map[string]string{
+					"Authorization": getBasicAuthHeader("notauser", base.TestClusterPassword()),
+				}
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "notauser",
 				},
 			},
 		},
@@ -415,8 +514,9 @@ func TestAuditLoggingFields(t *testing.T) {
 							}
 						}
 					}
+
 				}
-				assert.Truef(t, eventFound, "expected event %v not found in set of events", expectedAuditID)
+				assert.Truef(t, eventFound, "expected event %s:%v not found in set of events", base.AuditEvents[expectedAuditID].Name, expectedAuditID)
 			}
 
 		})
@@ -860,7 +960,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 	}{
 		{
 			name: "add attachment",
-			setupCode: func(t testing.TB, docID string) DocVersion {
+			setupCode: func(_ testing.TB, docID string) DocVersion {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
@@ -870,7 +970,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 		},
 		{
 			name: "add inline attachment",
-			setupCode: func(t testing.TB, docID string) DocVersion {
+			setupCode: func(_ testing.TB, docID string) DocVersion {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
@@ -912,7 +1012,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 		},
 		{
 			name: "all_docs attachment with rev",
-			setupCode: func(t testing.TB, docID string) DocVersion {
+			setupCode: func(_ testing.TB, docID string) DocVersion {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
@@ -1014,7 +1114,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 		},
 		{
 			name: "update doc",
-			setupCode: func(t testing.TB, docID string) DocVersion {
+			setupCode: func(_ testing.TB, docID string) DocVersion {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
@@ -1465,9 +1565,6 @@ func TestAuditBlipCRUD(t *testing.T) {
 
 // TestAuditLoggingGlobals modifies all the global loggers
 func TestAuditLoggingGlobals(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test can panic with gocb logging CBG-4076")
-	}
 	globalFields := map[string]any{
 		"global":  "field",
 		"global2": "field2",
@@ -1547,4 +1644,172 @@ func TestAuditLoggingGlobals(t *testing.T) {
 		})
 	}
 
+}
+
+// TestDatabaseAuditChanges verifies that the expect events are raised when the audit configuration is changed.
+// Note: test cases are run sequentially, and depend on ordering, as events are only raised for changes in state
+func TestDatabaseAuditChanges(t *testing.T) {
+
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Audit logging only works in EE")
+	}
+
+	db.DisableSequenceWaitOnDbRestart(t)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	// Create full db config payloads with audit enabled/disabled, for PUT /_config test cases
+	auditEnabledFullConfig := rt.NewDbConfig()
+	auditEnabledFullConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.BoolPtr(true),
+		},
+	}
+	auditEnabledPutConfigPayload := base.MustJSONMarshal(t, auditEnabledFullConfig)
+	auditDisabledPutConfigPayload := base.MustJSONMarshal(t, rt.NewDbConfig())
+
+	type testCase struct {
+		name                     string
+		method                   string
+		path                     string
+		requestBody              string
+		expectedStatus           int
+		expectedEvents           []base.AuditID
+		expectedEnabledEventList []any
+	}
+	testCases := []testCase{
+		{
+			name:           "disable via _config POST, already disabled",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config",
+			requestBody:    `{"logging":{"audit":{"enabled":false}}}`,
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{},
+		},
+		{
+			name:           "enable via _config POST",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config",
+			requestBody:    `{"logging":{"audit":{"enabled":true}}}`,
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{base.AuditIDAuditEnabled},
+		},
+		{
+			name:           "enable via _config POST, already enabled",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config",
+			requestBody:    `{"logging":{"audit":{"enabled":true}}}`,
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{},
+		},
+		{
+			name:           "disable via _config POST",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config",
+			requestBody:    `{"logging":{"audit":{"enabled":false}}}`,
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:           "enable via _config PUT",
+			method:         http.MethodPut,
+			path:           "/{{.db}}/_config",
+			requestBody:    string(auditEnabledPutConfigPayload),
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{base.AuditIDAuditEnabled},
+		},
+		{
+			name:           "disable via _config PUT",
+			method:         http.MethodPut,
+			path:           "/{{.db}}/_config",
+			requestBody:    string(auditDisabledPutConfigPayload),
+			expectedStatus: http.StatusCreated,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:           "enable via _config/audit",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":true}`,
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{base.AuditIDAuditEnabled},
+		},
+		{
+			name:           "enable via _config/audit, already enabled",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":true}`,
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{},
+		},
+		{
+			name:           "disable via _config/audit",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":false}`,
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:           "disable via _config/audit, already disabled",
+			method:         http.MethodPost,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":false}`,
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{},
+		},
+		{
+			name:                     "enable via _config/audit with events PUT",
+			method:                   http.MethodPut,
+			path:                     "/{{.db}}/_config/audit",
+			requestBody:              `{"enabled":true, "events":{"53282":true}}`, // AuditIDPublicUserSessionCreated
+			expectedStatus:           http.StatusOK,
+			expectedEvents:           []base.AuditID{base.AuditIDAuditEnabled},
+			expectedEnabledEventList: []any{float64(base.AuditIDPublicUserSessionCreated)},
+		},
+		{
+			name:           "disable via _config/audit with events PUT",
+			method:         http.MethodPut,
+			path:           "/{{.db}}/_config/audit",
+			requestBody:    `{"enabled":false, "events":{"53282":true}}`, // AuditIDPublicUserSessionCreated
+			expectedStatus: http.StatusOK,
+			expectedEvents: []base.AuditID{base.AuditIDAuditDisabled},
+		},
+		{
+			name:                     "enable via _config/audit with events POST",
+			method:                   http.MethodPost,
+			path:                     "/{{.db}}/_config/audit",
+			requestBody:              `{"enabled":true, "events":{"53283":true}}`, // AuditIDPublicUserSessionDeleted
+			expectedStatus:           http.StatusOK,
+			expectedEvents:           []base.AuditID{base.AuditIDAuditEnabled},
+			expectedEnabledEventList: []any{float64(base.AuditIDPublicUserSessionCreated), float64(base.AuditIDPublicUserSessionDeleted)},
+		},
+	}
+	for _, testCase := range testCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				RequireStatus(t, rt.SendAdminRequestWithAuth(testCase.method, testCase.path, testCase.requestBody, base.TestClusterUsername(), base.TestClusterPassword()), testCase.expectedStatus)
+			})
+			events := jsonLines(t, output)
+			for _, expectedEventID := range testCase.expectedEvents {
+				found := false
+				for _, event := range events {
+					eventID := base.AuditID(event[base.AuditFieldID].(float64))
+					if eventID == expectedEventID {
+						require.Equal(rt.TB(), event[base.AuditFieldDatabase], "db")
+						if testCase.expectedEnabledEventList != nil {
+							require.Equal(rt.TB(), testCase.expectedEnabledEventList, event[base.AuditFieldEnabledEvents])
+						}
+						found = true
+					}
+				}
+				require.True(t, found, fmt.Sprintf("Expected event %v not present", expectedEventID))
+			}
+		})
+	}
 }

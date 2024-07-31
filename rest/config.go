@@ -279,7 +279,7 @@ type DbConsoleLoggingConfig struct {
 // DbAuditLoggingConfig are per-db options configurable for audit logging
 type DbAuditLoggingConfig struct {
 	Enabled       *bool                        `json:"enabled,omitempty"`        // Whether audit logging is enabled for this database
-	EnabledEvents []uint                       `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled
+	EnabledEvents *[]uint                      `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled - pointer to differentiate between empty slice and nil
 	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"` // List of users to disable audit logging for
 	DisabledRoles []base.AuditLoggingPrincipal `json:"disabled_roles,omitempty"` // List of roles to disable audit logging for
 }
@@ -397,6 +397,18 @@ func (d *invalidDatabaseConfigs) remove(dbname string) {
 	d.m.Lock()
 	defer d.m.Unlock()
 	delete(d.dbNames, dbname)
+}
+
+// removeNonExistingConfigs will remove any configs from invalid config tracking map that aren't present in fetched configs
+func (d *invalidDatabaseConfigs) removeNonExistingConfigs(fetchedConfigs map[string]bool) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	for dbName := range d.dbNames {
+		if ok := fetchedConfigs[dbName]; !ok {
+			// this invalid db config was not found in config polling, so lets remove
+			delete(d.dbNames, dbName)
+		}
+	}
 }
 
 // inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
@@ -1068,12 +1080,14 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 				base.WarnfCtx(ctx, eeOnlyWarningMsg, "logging.audit.enabled", *dbConfig.Logging.Audit.Enabled, false)
 				dbConfig.Logging.Audit.Enabled = nil
 			}
-			for _, id := range dbConfig.Logging.Audit.EnabledEvents {
-				id := base.AuditID(id)
-				if e, ok := base.AuditEvents[id]; !ok {
-					multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
-				} else if e.IsGlobalEvent {
-					multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", id))
+			if dbConfig.Logging.Audit.EnabledEvents != nil {
+				for _, id := range *dbConfig.Logging.Audit.EnabledEvents {
+					id := base.AuditID(id)
+					if e, ok := base.AuditEvents[id]; !ok {
+						multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
+					} else if e.IsGlobalEvent {
+						multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", id))
+					}
 				}
 			}
 		}
@@ -1900,6 +1914,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 		return nil, err
 	}
 
+	allConfigsFound := make(map[string]bool)
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 	for _, bucket := range buckets {
 		ctx := base.BucketNameCtx(ctx, bucket)
@@ -1920,6 +1935,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			continue
 		}
 		for _, cnf := range configs {
+			allConfigsFound[cnf.Name] = true
 			// Handle invalid database registry entries. Either:
 			// - CBG-3292: Bucket in config doesn't match the actual bucket
 			// - CBG-3742: Registry entry marked invalid (due to rollback causing collection conflict)
@@ -1952,6 +1968,10 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			fetchedConfigs[cnf.Name] = *cnf
 		}
 	}
+
+	// remove any invalid databases from the tracking map if config poll above didn't
+	// pick up that configs from the bucket. This means the config is no longer present in the bucket.
+	sc.invalidDatabaseConfigTracking.removeNonExistingConfigs(allConfigsFound)
 
 	return fetchedConfigs, nil
 }
@@ -2268,12 +2288,12 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	var aud *base.DbAuditLogConfig
 	if l.Audit != nil {
 		// per-event configuration
-		enabledEvents := make(map[base.AuditID]struct{}, len(l.Audit.EnabledEvents))
 		events := l.Audit.EnabledEvents
 		if events == nil {
-			events = base.DefaultDbAuditEventIDs
+			events = &base.DefaultDbAuditEventIDs
 		}
-		for _, event := range events {
+		enabledEvents := make(map[base.AuditID]struct{}, len(*events))
+		for _, event := range *events {
 			enabledEvents[base.AuditID(event)] = struct{}{}
 		}
 
@@ -2303,5 +2323,20 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	return &base.DbLogConfig{
 		Console: con,
 		Audit:   aud,
+	}
+}
+
+// IsAuditLoggingEnabled() checks whether audit logging is enabled for the db, independent of the global setting
+func (c *DbConfig) IsAuditLoggingEnabled() (enabled bool, events []uint) {
+
+	if c != nil && c.Logging != nil && c.Logging.Audit != nil && c.Logging.Audit.Enabled != nil {
+		enabled = *c.Logging.Audit.Enabled
+		if c.Logging.Audit.EnabledEvents != nil {
+			events = *c.Logging.Audit.EnabledEvents
+		}
+		return enabled, events
+	} else {
+		// Audit logging not defined in the config.  Use default value
+		return base.DefaultDbAuditEnabled, nil
 	}
 }

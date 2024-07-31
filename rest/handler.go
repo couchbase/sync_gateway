@@ -530,6 +530,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			if dbContext == nil || dbContext.Options.SendWWWAuthenticateHeader == nil || *dbContext.Options.SendWWWAuthenticateHeader {
 				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 			}
+			base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticationFailed, base.AuditFields{base.AuditFieldUserName: username})
 			return ErrLoginRequired
 		}
 
@@ -576,7 +577,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			base.Audit(h.ctx(), base.AuditIDAdminUserAuthorizationFailed, base.AuditFields{base.AuditFieldUserName: username})
 			return base.HTTPErrorf(statusCode, "")
 		}
-
 		// even though `checkAdminAuth` _can_ issue whoami to find user's roles, it doesn't always...
 		// to reduce code complexity, we'll potentially be making this whoami request twice if we need it for audit filtering
 		auditRoleNames := getCBUserRolesForAudit(dbContext, authScope, h.ctx(), httpClient, managementEndpoints, username, password)
@@ -584,8 +584,10 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer, auditRoleNames)
-		base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticated, base.AuditFields{})
-
+		// query auditRoleNames above even if this is a silent request can need "real_userid" on a ctx. Example: /_expvar should not log AuditIDAdminUserAuthenticated but it should log AuditIDSyncGatewayStats
+		if !h.isSilentRequest() {
+			base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticated, base.AuditFields{})
+		}
 		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
 		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
@@ -709,6 +711,11 @@ func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, confi
 	h.server.invalidDatabaseConfigTracking.remove(dbName)
 
 	return nil
+}
+
+// isSilentRequest returns true if the handler represents a request we should suppress http logging on.
+func (h *handler) isSilentRequest() bool {
+	return h.httpLogLevel != nil && *h.httpLogLevel == base.LevelDebug
 }
 
 func (h *handler) logRequestLine() {
