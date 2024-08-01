@@ -572,7 +572,7 @@ func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, confi
 	}
 	// remove the bad config from the bucket
 	err := h.server.BootstrapContext.DeleteConfig(ctx, bucket, configGroupID, dbName)
-	if err != nil {
+	if err != nil && !base.IsDocNotFoundError(err) {
 		return err
 	}
 	// delete the database name form the invalid database map on server context
