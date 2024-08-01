@@ -126,6 +126,9 @@ func (h *handler) handleCreateDB() error {
 		// if it used to be corrupt we need to remove it from the invalid database map on server context and remove the old corrupt config from the bucket
 		err = h.removeCorruptConfigIfExists(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
 		if err != nil {
+			// we cannot continue on with database creation with possibility of the corrupt database config in the bucket for this db
+			// thus we need to unload the requested database config to prevent the cluster being in an inconsistent state
+			h.server._removeDatabase(contextNoCancel.Ctx, dbName)
 			return err
 		}
 		cas, err := h.server.BootstrapContext.InsertConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, &persistedConfig)
