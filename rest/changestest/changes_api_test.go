@@ -1039,11 +1039,6 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 // subsequent requests for the current low sequence value don't return results (avoids loops for
 // longpoll as well as clients doing repeated one-off changes requests - see #1309)
 func TestChangesLoopingWhenLowSequence(t *testing.T) {
-
-	if base.TestUseXattrs() {
-		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
 	pendingMaxWait := uint32(5)
@@ -1070,9 +1065,9 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	rt.CreateUser("bernard", []string{"PBS"})
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
-	WriteDirect(t, []string{"PBS"}, 2, collection)
-	WriteDirect(t, []string{"PBS"}, 5, collection)
-	WriteDirect(t, []string{"PBS"}, 6, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 2)
+	db.WriteDirect(t, collection, []string{"PBS"}, 5)
+	db.WriteDirect(t, collection, []string{"PBS"}, 6)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 6))
 
 	// Check the _changes feed:
@@ -1097,7 +1092,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	require.Len(t, changes.Results, 0)
 
 	// Send a missing doc - low sequence should move to 3
-	WriteDirect(t, []string{"PBS"}, 3, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	require.NoError(t, rt.WaitForSequence(3))
 
 	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
@@ -1111,7 +1106,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	require.Len(t, changes.Results, 3)
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
-	WriteDirect(t, []string{"PBS"}, 7, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 7)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 7))
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
@@ -1158,10 +1153,10 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	rt.CreateUser("bernard", []string{"PBS"})
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
-	WriteDirect(t, []string{"PBS"}, 2, collection)
-	WriteDirect(t, []string{"PBS"}, 3, collection)
-	WriteDirect(t, []string{"PBS"}, 4, collection)
-	WriteDirect(t, []string{"PBS"}, 5, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 2)
+	db.WriteDirect(t, collection, []string{"PBS"}, 3)
+	db.WriteDirect(t, collection, []string{"PBS"}, 4)
+	db.WriteDirect(t, collection, []string{"PBS"}, 5)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
@@ -1178,10 +1173,10 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	assert.Equal(t, "5", changes.Last_Seq)
 
 	// Skip sequence 6, write docs 7-10
-	WriteDirect(t, []string{"PBS"}, 7, collection)
-	WriteDirect(t, []string{"PBS"}, 8, collection)
-	WriteDirect(t, []string{"PBS"}, 9, collection)
-	WriteDirect(t, []string{"PBS"}, 10, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 7)
+	db.WriteDirect(t, collection, []string{"PBS"}, 8)
+	db.WriteDirect(t, collection, []string{"PBS"}, 9)
+	db.WriteDirect(t, collection, []string{"PBS"}, 10)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1194,8 +1189,8 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	assert.Equal(t, "5::10", changes.Last_Seq)
 
 	// Write a few more docs
-	WriteDirect(t, []string{"PBS"}, 11, collection)
-	WriteDirect(t, []string{"PBS"}, 12, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 11)
+	db.WriteDirect(t, collection, []string{"PBS"}, 12)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1208,8 +1203,8 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	assert.Equal(t, "5::12", changes.Last_Seq)
 
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
-	WriteDirect(t, []string{"PBS"}, 13, collection)
-	WriteDirect(t, []string{"PBS"}, 6, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 13)
+	db.WriteDirect(t, collection, []string{"PBS"}, 6)
 	require.NoError(t, rt.WaitForSequence(13))
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1286,11 +1281,11 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
-	WriteDirect(t, []string{"PBS"}, 1, collection)
-	WriteDirect(t, []string{"PBS"}, 2, collection)
-	WriteDirect(t, []string{"PBS"}, 3, collection)
-	WriteDirect(t, []string{"PBS"}, 4, collection)
-	WriteDirect(t, []string{"PBS"}, 5, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 1)
+	db.WriteDirect(t, collection, []string{"PBS"}, 2)
+	db.WriteDirect(t, collection, []string{"PBS"}, 3)
+	db.WriteDirect(t, collection, []string{"PBS"}, 4)
+	db.WriteDirect(t, collection, []string{"PBS"}, 5)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 	// Check the _changes feed:
 	var changes struct {
@@ -1306,10 +1301,10 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	assert.Equal(t, "5", changes.Last_Seq)
 
 	// Skip sequence 6, write docs 7-10
-	WriteDirect(t, []string{"PBS"}, 7, collection)
-	WriteDirect(t, []string{"PBS"}, 8, collection)
-	WriteDirect(t, []string{"PBS"}, 9, collection)
-	WriteDirect(t, []string{"PBS"}, 10, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 7)
+	db.WriteDirect(t, collection, []string{"PBS"}, 8)
+	db.WriteDirect(t, collection, []string{"PBS"}, 9)
+	db.WriteDirect(t, collection, []string{"PBS"}, 10)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1322,8 +1317,8 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	assert.Equal(t, "5::10", changes.Last_Seq)
 
 	// Write a few more docs
-	WriteDirect(t, []string{"PBS"}, 11, collection)
-	WriteDirect(t, []string{"PBS"}, 12, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 11)
+	db.WriteDirect(t, collection, []string{"PBS"}, 12)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1336,8 +1331,8 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	assert.Equal(t, "5::12", changes.Last_Seq)
 
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
-	WriteDirect(t, []string{"PBS"}, 13, collection)
-	WriteDirect(t, []string{"PBS"}, 6, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 13)
+	db.WriteDirect(t, collection, []string{"PBS"}, 6)
 	require.NoError(t, rt.WaitForSequence(13))
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1418,10 +1413,10 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	rt.CreateUser("bernard", []string{"PBS"})
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
-	WriteDirect(t, []string{"PBS"}, 2, collection)
-	WriteDirect(t, []string{"PBS"}, 3, collection)
-	WriteDirect(t, []string{"PBS"}, 4, collection)
-	WriteDirect(t, []string{"PBS"}, 5, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 2)
+	db.WriteDirect(t, collection, []string{"PBS"}, 3)
+	db.WriteDirect(t, collection, []string{"PBS"}, 4)
+	db.WriteDirect(t, collection, []string{"PBS"}, 5)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
@@ -1438,10 +1433,10 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	assert.Equal(t, "5", changes.Last_Seq)
 
 	// Skip sequence 6, write docs 7-10
-	WriteDirect(t, []string{"PBS"}, 7, collection)
-	WriteDirect(t, []string{"PBS"}, 8, collection)
-	WriteDirect(t, []string{"PBS"}, 9, collection)
-	WriteDirect(t, []string{"PBS"}, 10, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 7)
+	db.WriteDirect(t, collection, []string{"PBS"}, 8)
+	db.WriteDirect(t, collection, []string{"PBS"}, 9)
+	db.WriteDirect(t, collection, []string{"PBS"}, 10)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1454,8 +1449,8 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	assert.Equal(t, "5::10", changes.Last_Seq)
 
 	// Write a few more docs
-	WriteDirect(t, []string{"PBS"}, 11, collection)
-	WriteDirect(t, []string{"PBS"}, 12, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 11)
+	db.WriteDirect(t, collection, []string{"PBS"}, 12)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1487,7 +1482,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Write the skipped doc, wait for longpoll to return
-	WriteDirect(t, []string{"PBS"}, 6, collection)
+	db.WriteDirect(t, collection, []string{"PBS"}, 6)
 	// WriteDirect(testDb, []string{"PBS"}, 13)
 	longpollWg.Wait()
 
@@ -4328,41 +4323,4 @@ func waitForCompactStopped(dbc *db.DatabaseContext) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 	return errors.New("waitForCompactStopped didn't stop")
-}
-
-// ////// HELPERS:
-
-func WriteDirect(t *testing.T, channelArray []string, sequence uint64, collection *db.DatabaseCollection) {
-	docId := fmt.Sprintf("doc-%v", sequence)
-	WriteDirectWithKey(t, docId, channelArray, sequence, collection)
-}
-
-func WriteDirectWithKey(t *testing.T, key string, channelArray []string, sequence uint64, collection *db.DatabaseCollection) {
-
-	if base.TestUseXattrs() {
-		panic(fmt.Sprintf("WriteDirectWithKey() cannot be used in tests that are xattr enabled"))
-	}
-
-	rev := "1-a"
-	chanMap := make(map[string]*channels.ChannelRemoval, 10)
-
-	for _, channel := range channelArray {
-		chanMap[channel] = nil
-	}
-	var syncData struct {
-		CurrentRev string              `json:"rev"`
-		Sequence   uint64              `json:"sequence,omitempty"`
-		Channels   channels.ChannelMap `json:"channels,omitempty"`
-		TimeSaved  time.Time           `json:"time_saved,omitempty"`
-	}
-	syncData.CurrentRev = rev
-	syncData.Sequence = sequence
-	syncData.Channels = chanMap
-	syncData.TimeSaved = time.Now()
-	// syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
-
-	dataStore := collection.GetCollectionDatastore()
-	_, err := dataStore.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
-	require.NoError(t, err)
-
 }
