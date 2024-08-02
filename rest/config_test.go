@@ -3054,7 +3054,7 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 
 	// delete the invalid db config to force the not found error
-	rt.DeleteDbConfigInBucket(dbConfig.Name, realBucketName)
+	rt.RemoveDbConfigFromBucket(dbConfig.Name, realBucketName)
 
 	// fix the bucket name and try fix corrupt db through create db endpoint
 	dbConfig.Bucket = &realBucketName
