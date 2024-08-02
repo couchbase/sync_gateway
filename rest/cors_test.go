@@ -539,3 +539,17 @@ func requireBlipHandshakeMatchingHost(rt *RestTester) {
 	_, err := createBlipTesterWithSpec(rt.TB(), spec, rt)
 	require.NoError(rt.TB(), err)
 }
+
+func TestBadCORSValuesConfig(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	// expect database to be created with bad CORS values, but do log a warning
+	dbConfig := rt.NewDbConfig()
+	dbConfig.CORS = &auth.CORSConfig{
+		Origin: []string{"http://example.com", "1http://example.com"},
+	}
+	base.AssertLogContains(t, "cors.origin contains values", func() {
+		rt.CreateDatabase("db", dbConfig)
+	})
+}

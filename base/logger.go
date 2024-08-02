@@ -25,18 +25,20 @@ var flushLogMutex sync.Mutex
 // getFileLoggers returns a slice of all non-nil file loggers.
 func getFileLoggers() []*FileLogger {
 	loggers := []*FileLogger{
-		traceLogger,
-		debugLogger,
-		infoLogger,
-		warnLogger,
-		errorLogger,
-		statsLogger,
+		traceLogger.Load(),
+		debugLogger.Load(),
+		infoLogger.Load(),
+		warnLogger.Load(),
+		errorLogger.Load(),
+		statsLogger.Load(),
 	}
-	if auditLogger != nil {
-		loggers = append(loggers, &auditLogger.FileLogger)
+	rawAuditLogger := auditLogger.Load()
+	if rawAuditLogger != nil {
+		loggers = append(loggers, &rawAuditLogger.FileLogger)
 	}
-	if consoleLogger != nil {
-		loggers = append(loggers, &consoleLogger.FileLogger)
+	rawConsoleLogger := consoleLogger.Load()
+	if rawConsoleLogger != nil {
+		loggers = append(loggers, &rawConsoleLogger.FileLogger)
 	}
 	return slices.DeleteFunc(loggers, func(l *FileLogger) bool { return l == nil })
 }
