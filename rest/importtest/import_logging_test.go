@@ -6,8 +6,6 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-//go:build !race
-
 package importtest
 
 import (
@@ -19,8 +17,6 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 )
-
-// AssertLogContains can hit the race detector due to swapping the global loggers
 
 func TestImportFilterLogging(t *testing.T) {
 	const errorMessage = `ImportFilterError`

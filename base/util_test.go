@@ -638,28 +638,28 @@ func TestSetTestLogging(t *testing.T) {
 	}
 
 	// Check default state of logging is as expected.
-	require.Equal(t, LevelInfo, *consoleLogger.LogLevel)
-	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
+	require.Equal(t, LevelInfo, *consoleLogger.Load().LogLevel)
+	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.Load().LogKeyMask)
 
 	cleanup := setTestLogging(LevelDebug, "", KeyDCP, KeySync)
-	assert.Equal(t, LevelDebug, *consoleLogger.LogLevel)
-	assert.Equal(t, *logKeyMask(KeyDCP, KeySync), *consoleLogger.LogKeyMask)
+	assert.Equal(t, LevelDebug, *consoleLogger.Load().LogLevel)
+	assert.Equal(t, *logKeyMask(KeyDCP, KeySync), *consoleLogger.Load().LogKeyMask)
 
 	cleanup()
-	assert.Equal(t, LevelInfo, *consoleLogger.LogLevel)
-	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
+	assert.Equal(t, LevelInfo, *consoleLogger.Load().LogLevel)
+	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.Load().LogKeyMask)
 
 	cleanup = setTestLogging(LevelNone, "", KeyNone)
-	assert.Equal(t, LevelNone, *consoleLogger.LogLevel)
-	assert.Equal(t, *logKeyMask(KeyNone), *consoleLogger.LogKeyMask)
+	assert.Equal(t, LevelNone, *consoleLogger.Load().LogLevel)
+	assert.Equal(t, *logKeyMask(KeyNone), *consoleLogger.Load().LogKeyMask)
 
 	cleanup()
-	assert.Equal(t, LevelInfo, *consoleLogger.LogLevel)
-	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
+	assert.Equal(t, LevelInfo, *consoleLogger.Load().LogLevel)
+	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.Load().LogKeyMask)
 
 	cleanup = setTestLogging(LevelDebug, "", KeyDCP, KeySync)
-	assert.Equal(t, LevelDebug, *consoleLogger.LogLevel)
-	assert.Equal(t, *logKeyMask(KeyDCP, KeySync), *consoleLogger.LogKeyMask)
+	assert.Equal(t, LevelDebug, *consoleLogger.Load().LogLevel)
+	assert.Equal(t, *logKeyMask(KeyDCP, KeySync), *consoleLogger.Load().LogKeyMask)
 
 	// Now we should panic because we forgot to call teardown!
 	assert.Panics(t, func() {

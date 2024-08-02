@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
 	// can't use defer because of os.Exit
 	teardownFuncs := make([]func(), 0)
-	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestLogging(ctx, m))
+	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestLogging(ctx))
 	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestProfiling(m))
 	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestMemoryWatermark(m, 128))
 

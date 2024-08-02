@@ -6,8 +6,6 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-//go:build !race
-
 package rest
 
 import (
@@ -18,7 +16,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// AssertLogContains can hit the race detector due to swapping the global loggers
 func TestHTTPLoggingRedaction(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
