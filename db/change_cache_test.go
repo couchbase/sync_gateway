@@ -332,9 +332,6 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 // channel cache associated with the late feed is compacted out of the cache
 func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
-	// FIXME : test doesn't work
-	t.Skip("Test doesn't work")
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	cacheOptions := shortWaitCache()
@@ -443,8 +440,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 func writeUserDirect(t *testing.T, db *Database, username string, sequence uint64) {
 	docId := db.MetadataKeys.UserKey(username)
-	collection, _ := GetSingleDatabaseCollectionWithUser(base.TestCtx(t), t, db)
-	_, err := collection.dataStore.Add(docId, 0, Body{"sequence": sequence, "name": username})
+	_, err := db.MetadataStore.Add(docId, 0, Body{"sequence": sequence, "name": username})
 	require.NoError(t, err)
 }
 
@@ -997,9 +993,6 @@ func TestChannelQueryCancellation(t *testing.T) {
 }
 
 func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
-	// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
-	t.Skip("WARNING: TEST DISABLED")
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
@@ -1045,9 +1038,10 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	assert.True(t, err == nil)
 	assert.Len(t, changes, 4)
 	assert.Equal(t, &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
-		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}}, changes[0])
+		Seq:          SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
+		ID:           "doc-1",
+		collectionID: dbCollection.GetCollectionID(),
+		Changes:      []ChangeRev{{"rev": "1-a"}}}, changes[0])
 
 	// Test backfill clear - sequence numbers go back to standard handling
 	WriteDirect(t, collection, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
@@ -1064,7 +1058,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(t, collection, []string{"ABC", "NBC"}, 8)
 	WriteDirect(t, collection, []string{"ABC", "PBS"}, 9)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 9, base.DefaultWaitForSequence))
-	require.NoError(t, appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequence))
+	require.NoError(t, appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequence))
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 }
@@ -1089,10 +1083,6 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 //	base.Infof(base.KeyChanges, "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
 //	time.Sleep(100 * time.Millisecond)
 func TestChannelRace(t *testing.T) {
-	// TODO: Test current fails intermittently on concurrent access to var changes.
-	// Disabling for now - should be refactored.
-	t.Skip("WARNING: TEST DISABLED")
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
@@ -1129,7 +1119,11 @@ func TestChannelRace(t *testing.T) {
 	feedClosed := false
 
 	// Go-routine to work the feed channel and write to an array for use by assertions
-	var changes = make([]*ChangeEntry, 0, 50)
+	var changes struct {
+		lock    sync.RWMutex
+		entries []*ChangeEntry
+	}
+	changes.entries = make([]*ChangeEntry, 0, 50)
 	go func() {
 		for feedClosed == false {
 			select {
@@ -1138,7 +1132,9 @@ func TestChannelRace(t *testing.T) {
 					// feed sends nil after each continuous iteration
 					if entry != nil {
 						log.Println("Changes entry:", entry.Seq)
-						changes = append(changes, entry)
+						changes.lock.Lock()
+						changes.entries = append(changes.entries, entry)
+						changes.lock.Unlock()
 					}
 				} else {
 					log.Println("Closing feed")
@@ -1151,7 +1147,9 @@ func TestChannelRace(t *testing.T) {
 	// Wait for processing of two channels (100 ms each)
 	time.Sleep(250 * time.Millisecond)
 	// Validate the initial sequences arrive as expected
-	assert.Len(t, changes, 3)
+	changes.lock.RLock()
+	assert.Len(t, changes.entries, 3)
+	changes.lock.RUnlock()
 
 	// Send update to trigger the start of the next changes iteration
 	WriteDirect(t, collection, []string{"Even"}, 4)
@@ -1169,12 +1167,14 @@ func TestChannelRace(t *testing.T) {
 	WriteDirect(t, collection, []string{"Even"}, 8)
 	WriteDirect(t, collection, []string{"Odd"}, 9)
 	time.Sleep(750 * time.Millisecond)
-	assert.Len(t, changes, 9)
-	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
+	changes.lock.RLock()
+	assert.Len(t, changes.entries, 9)
+	assert.True(t, verifyChangesFullSequences(changes.entries, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
 	changesString := ""
-	for _, change := range changes {
+	for _, change := range changes.entries {
 		changesString = fmt.Sprintf("%s%d, ", changesString, change.Seq.Seq)
 	}
+	changes.lock.RUnlock()
 	fmt.Println("changes: ", changesString)
 
 	changesCtxCancel()
