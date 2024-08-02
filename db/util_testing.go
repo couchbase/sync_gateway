@@ -22,6 +22,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -796,4 +797,36 @@ func DisableSequenceWaitOnDbRestart(tb testing.TB) {
 	tb.Cleanup(func() {
 		BypassReleasedSequenceWait.Store(false)
 	})
+}
+
+// WriteDirect will write a document named doc-{sequence} with a given set of channels. This is used to simulate out of order sequence writes by bypassing typical Sync Gateway CRUD functions.
+func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []string, sequence uint64) {
+	key := fmt.Sprintf("doc-%v", sequence)
+
+	rev := "1-a"
+	chanMap := make(map[string]*channels.ChannelRemoval, 10)
+
+	for _, channel := range channelArray {
+		chanMap[channel] = nil
+	}
+
+	syncData := &SyncData{
+		CurrentRev: rev,
+		Sequence:   sequence,
+		Channels:   chanMap,
+		TimeSaved:  time.Now(),
+	}
+	body := fmt.Sprintf(`{"key": "%s"}`, key)
+	if base.TestUseXattrs() {
+
+		opts := &sgbucket.MutateInOptions{
+			MacroExpansion: macroExpandSpec(base.SyncXattrName),
+		}
+		ctx := base.TestCtx(t)
+		_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
+		require.NoError(t, err)
+	} else {
+		_, err := collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+		require.NoError(t, err)
+	}
 }
