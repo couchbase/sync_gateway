@@ -68,7 +68,7 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 		cacheOptions = DefaultRevisionCacheOptions()
 	}
 
-	if cacheOptions.Size == 0 {
+	if cacheOptions.SizeByItems == 0 {
 		bypassStat := cacheStats.RevisionCacheBypass
 		return NewBypassRevisionCache(backingStores, bypassStat)
 	}
@@ -76,23 +76,25 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 	cacheHitStat := cacheStats.RevisionCacheHits
 	cacheMissStat := cacheStats.RevisionCacheMisses
 	cacheNumItemsStat := cacheStats.RevisionCacheNumItems
+	memoryStat := cacheStats.RevisionCacheTotalMemory
 
 	if cacheOptions.ShardCount > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
+		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.SizeByItems, cacheOptions.SizeInBytes, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
 	}
 
-	return NewLRURevisionCache(cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
+	return NewLRURevisionCache(cacheOptions.SizeByItems, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
 }
 
 type RevisionCacheOptions struct {
-	Size       uint32
-	ShardCount uint16
+	SizeByItems uint32
+	SizeInBytes int64
+	ShardCount  uint16
 }
 
 func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 	return &RevisionCacheOptions{
-		Size:       DefaultRevisionCacheSize,
-		ShardCount: DefaultRevisionCacheShardCount,
+		SizeByItems: DefaultRevisionCacheSize,
+		ShardCount:  DefaultRevisionCacheShardCount,
 	}
 }
 
@@ -164,6 +166,8 @@ type DocumentRevision struct {
 	Delta       *RevisionDelta
 	Deleted     bool
 	Removed     bool // True if the revision is a removal.
+
+	MemoryBytes int64 // storage of the doc rev bytes measurement
 }
 
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
@@ -317,55 +321,62 @@ type RevisionDelta struct {
 	ToChannels            base.Set                // Full list of channels for the to revision
 	RevisionHistory       []string                // Revision history from parent of ToRevID to source revID, in descending order
 	ToDeleted             bool                    // Flag if ToRevID is a tombstone
+
+	numDeltaBytes int64
 }
 
 func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
+	history, historyBytes := toRevision.History.parseAncestorRevisions(fromRevID)
+	numDeltaBytes := CalculateDocRevBytes(historyBytes, len(deltaBytes), toRevision.Channels)
 	return RevisionDelta{
 		ToRevID:               toRevision.RevID,
 		DeltaBytes:            deltaBytes,
 		AttachmentStorageMeta: toRevAttStorageMeta,
 		ToChannels:            toRevision.Channels,
-		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
+		RevisionHistory:       history,
 		ToDeleted:             deleted,
+		numDeltaBytes:         numDeltaBytes,
 	}
 }
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, totalBytes int64, err error) {
 	var doc *Document
 	if doc, err = backingStore.GetDocument(ctx, id.DocID, DocUnmarshalSync); doc == nil {
-		return bodyBytes, history, channels, removed, attachments, deleted, expiry, err
+		return bodyBytes, history, channels, removed, attachments, deleted, expiry, totalBytes, err
 	}
 
 	return revCacheLoaderForDocument(ctx, backingStore, doc, id.RevID)
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, totalBytes int64, err error) {
 	if bodyBytes, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal. If so, we want to store as removal in the revision cache
 		removalBodyBytes, removalHistory, activeChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(ctx, revid)
 		if isRemovalErr != nil {
-			return bodyBytes, history, channels, isRemoval, nil, isDelete, nil, isRemovalErr
+			return bodyBytes, history, channels, isRemoval, nil, isDelete, nil, totalBytes, isRemovalErr
 		}
 
 		if isRemoval {
-			return removalBodyBytes, removalHistory, activeChannels, isRemoval, nil, isDelete, nil, nil
+			return removalBodyBytes, removalHistory, activeChannels, isRemoval, nil, isDelete, nil, totalBytes, totalBytes, nil
 		} else {
 			// If this wasn't a removal, return the original error from getRevision
-			return bodyBytes, history, channels, removed, nil, isDelete, nil, err
+			return bodyBytes, history, channels, removed, nil, isDelete, nil, totalBytes, err
 		}
 	}
 	deleted = doc.History[revid].Deleted
 
-	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+	validatedHistory, historyBytes, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {
-		return bodyBytes, history, channels, removed, nil, deleted, nil, getHistoryErr
+		return bodyBytes, history, channels, removed, nil, deleted, nil, totalBytes, getHistoryErr
 	}
 	history = encodeRevisions(ctx, doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
 
-	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, err
+	totalBytes = CalculateDocRevBytes(historyBytes, len(bodyBytes), channels)
+
+	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, totalBytes, err
 }

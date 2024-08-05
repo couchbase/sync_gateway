@@ -41,7 +41,7 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, col
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, _, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -63,7 +63,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.CurrentRev)
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, _, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
