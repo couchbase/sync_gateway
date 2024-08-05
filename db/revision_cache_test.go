@@ -154,26 +154,32 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 	cacheStats := db.DbStats.Cache()
 
 	smallBody := Body{
-		"type": "test",
+		"channels": "_default", // add channel for default sync func in default collection test runs
 	}
 
-	var currMem, expValue int64
+	var currMem, expValue, revZeroSize int64
 	for i := 0; i < 10; i++ {
 		currMem = cacheStats.RevisionCacheTotalMemory.Value()
 		revSize, _ := createDocAndReturnSizeAndRev(t, ctx, fmt.Sprint(i), collection, smallBody)
+		if i == 0 {
+			revZeroSize = int64(revSize)
+		}
 		expValue = currMem + int64(revSize)
 		assert.Equal(t, expValue, cacheStats.RevisionCacheTotalMemory.Value())
 	}
 
-	// test eviction by number of items (adding new doc from createDocAndReturnSizeAndRev shouldn't take memory over threshold defined as 730 bytes
-	_, rev := createDocAndReturnSizeAndRev(t, ctx, fmt.Sprint(11), collection, smallBody)
+	// test eviction by number of items (adding new doc from createDocAndReturnSizeAndRev shouldn't take memory over threshold defined as 730 bytes)
+	expValue -= revZeroSize // for doc being evicted
+	docSize, rev := createDocAndReturnSizeAndRev(t, ctx, fmt.Sprint(11), collection, smallBody)
+	expValue += int64(docSize)
+	// assert doc 0 been evicted
 	docRev, ok := db.revisionCache.Peek(ctx, "0", rev, collection.GetCollectionID())
 	assert.False(t, ok)
 	assert.Nil(t, docRev.BodyBytes)
 
 	currMem = cacheStats.RevisionCacheTotalMemory.Value()
-	// assert total memory is as expected (10 docs all same size 66 bytes)
-	assert.Equal(t, int64(660), currMem)
+	// assert total memory is as expected
+	assert.Equal(t, expValue, currMem)
 
 	// remove doc "1" to give headroom for memory based eviction
 	db.revisionCache.Remove("1", rev, collection.GetCollectionID())
@@ -181,17 +187,19 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 	assert.False(t, ok)
 	assert.Nil(t, docRev.BodyBytes)
 
-	// assert current memory from rev cache decreases by 66 bytes
-	assert.Equal(t, currMem-66, cacheStats.RevisionCacheTotalMemory.Value())
+	// assert current memory from rev cache decreases by the doc size (all docs added thus far are same size)
+	afterRemoval := currMem - int64(docSize)
+	assert.Equal(t, afterRemoval, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// add new doc that will trigger eviction due to taking over memory size
 	largeBody := Body{
-		"type":   "test",
-		"doc":    "test",
-		"foo":    "bar",
-		"lets":   "test",
-		"larger": "document",
-		"for":    "eviction",
+		"type":     "test",
+		"doc":      "test",
+		"foo":      "bar",
+		"lets":     "test",
+		"larger":   "document",
+		"for":      "eviction",
+		"channels": "_default", // add channel for default sync func in default collection test runs
 	}
 	_, _, err := collection.Put(ctx, "12", largeBody)
 	require.NoError(t, err)
