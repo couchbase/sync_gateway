@@ -1201,6 +1201,16 @@ Database:
       additionalProperties:
         x-additionalPropertiesName: scopename
         $ref: '#/Scopes'
+      maxProperties: 1
+      example:
+        scopename1:
+          collections:
+            collectionname1:
+              sync: 'function(doc){channel("collection name");}'
+              import_filter: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
+            collectionname2:
+              sync: 'function(doc){channel("collection name");}'
+              import_filter: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
     name:
       description: The name of the database.
       type: string
