@@ -1203,7 +1203,7 @@ Database:
         $ref: '#/Scopes'
       maxProperties: 1
       example:
-        scopename1:
+        scopename:
           collections:
             collectionname1:
               sync: 'function(doc){channel("collection name");}'
