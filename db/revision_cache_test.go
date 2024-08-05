@@ -144,7 +144,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
-			SizeInBytes: 730,
+			SizeInBytes: 750,
 			SizeByItems: 10,
 		},
 	}
@@ -194,7 +194,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 	// add new doc that will trigger eviction due to taking over memory size
 	largeBody := Body{
 		"type":     "test",
-		"doc":      "test",
+		"doc":      "testDocument",
 		"foo":      "bar",
 		"lets":     "test",
 		"larger":   "document",
@@ -220,7 +220,7 @@ func TestBackingStoreMemoryCalculation(t *testing.T) {
 	cache := NewLRURevisionCache(10, 170, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &memoryBytesCounted)
 	ctx := base.TestCtx(t)
 
-	docRev, err := cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err := cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheOmitDelta)
 	require.NoError(t, err)
 	assert.Equal(t, "doc1", docRev.DocID)
 	assert.NotNil(t, docRev.History)
@@ -231,7 +231,7 @@ func TestBackingStoreMemoryCalculation(t *testing.T) {
 	assert.Equal(t, docRev.MemoryBytes, currMemStat)
 
 	// Test get active code pathway of a load from bucket
-	docRev, err = cache.GetActive(ctx, "doc", testCollectionID, true)
+	docRev, err = cache.GetActive(ctx, "doc", testCollectionID)
 	require.NoError(t, err)
 	assert.Equal(t, "doc", docRev.DocID)
 	assert.NotNil(t, docRev.History)
@@ -242,7 +242,7 @@ func TestBackingStoreMemoryCalculation(t *testing.T) {
 	assert.Equal(t, newMemStat, memoryBytesCounted.Value())
 
 	// test fail load event doesn't increment memory stat
-	docRev, err = cache.Get(ctx, "doc2", "1-abc", testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err = cache.Get(ctx, "doc2", "1-abc", testCollectionID, RevCacheOmitDelta)
 	assertHTTPError(t, err, 404)
 	assert.Nil(t, docRev.BodyBytes)
 	assert.Equal(t, newMemStat, memoryBytesCounted.Value())
@@ -252,7 +252,7 @@ func TestBackingStoreMemoryCalculation(t *testing.T) {
 
 	memStatBeforeThirdLoad := memoryBytesCounted.Value()
 	// test another load from bucket but doing so should trigger memory based eviction
-	docRev, err = cache.Get(ctx, "doc3", "1-abc", testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err = cache.Get(ctx, "doc3", "1-abc", testCollectionID, RevCacheOmitDelta)
 	require.NoError(t, err)
 	assert.Equal(t, "doc3", docRev.DocID)
 	assert.NotNil(t, docRev.History)
@@ -565,7 +565,7 @@ func TestUpdateDeltaRevCacheMemoryStat(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	// Trigger load into cache
-	docRev, err := cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheOmitBody, RevCacheIncludeDelta)
+	docRev, err := cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error adding to cache")
 
 	revCacheMem := memoryBytesCounted.Value()
@@ -610,7 +610,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	assert.Equal(t, int64(docSize), cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Get with item in the cache
-	docRev, err := db.revisionCache.Get(ctx, "doc1", revID, collctionID, RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err := db.revisionCache.Get(ctx, "doc1", revID, collctionID, RevCacheOmitDelta)
 	require.NoError(t, err)
 	assert.NotNil(t, docRev.BodyBytes)
 	assert.Equal(t, int64(docSize), cacheStats.RevisionCacheTotalMemory.Value())
@@ -620,7 +620,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	prevMemStat := cacheStats.RevisionCacheTotalMemory.Value()
 	revIDDoc2 := createThenRemoveFromRevCache(t, ctx, "doc2", db, collection)
 	// load from doc from bucket
-	docRev, err = db.revisionCache.Get(ctx, "doc2", docRev.RevID, collctionID, RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err = db.revisionCache.Get(ctx, "doc2", docRev.RevID, collctionID, RevCacheOmitDelta)
 	require.NoError(t, err)
 	assert.NotNil(t, docRev.BodyBytes)
 	assert.Equal(t, "doc2", docRev.DocID)
@@ -628,7 +628,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 
 	// Test Get active with item resident in cache
 	prevMemStat = cacheStats.RevisionCacheTotalMemory.Value()
-	docRev, err = db.revisionCache.GetActive(ctx, "doc2", collctionID, RevCacheOmitBody)
+	docRev, err = db.revisionCache.GetActive(ctx, "doc2", collctionID)
 	require.NoError(t, err)
 	assert.Equal(t, "doc2", docRev.DocID)
 	assert.Equal(t, prevMemStat, cacheStats.RevisionCacheTotalMemory.Value())
@@ -636,7 +636,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	// Test Get active with item to be loaded from bucket, need to first create and remove from rev cache due to CBG-4137
 	prevMemStat = cacheStats.RevisionCacheTotalMemory.Value()
 	revIDDoc3 := createThenRemoveFromRevCache(t, ctx, "doc3", db, collection)
-	docRev, err = db.revisionCache.GetActive(ctx, "doc3", collctionID, RevCacheOmitBody)
+	docRev, err = db.revisionCache.GetActive(ctx, "doc3", collctionID)
 	require.NoError(t, err)
 	assert.Equal(t, "doc3", docRev.DocID)
 	assert.Greater(t, cacheStats.RevisionCacheTotalMemory.Value(), prevMemStat)
@@ -1011,6 +1011,9 @@ func createThenRemoveFromRevCache(t *testing.T, ctx context.Context, docID strin
 // createDocAndReturnSizeAndRev creates a rev and measures its size based on rev cache measurements
 func createDocAndReturnSizeAndRev(t *testing.T, ctx context.Context, docID string, collection *DatabaseCollectionWithUser, body Body) (int, string) {
 
+	if docID == "9" {
+		fmt.Println("lol")
+	}
 	rev, doc, err := collection.Put(ctx, docID, body)
 	require.NoError(t, err)
 

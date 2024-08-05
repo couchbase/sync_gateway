@@ -361,7 +361,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 		}
 
 		if isRemoval {
-			return removalBodyBytes, removalHistory, activeChannels, isRemoval, nil, isDelete, nil, totalBytes, totalBytes, nil
+			return removalBodyBytes, removalHistory, activeChannels, isRemoval, nil, isDelete, nil, totalBytes, nil
 		} else {
 			// If this wasn't a removal, return the original error from getRevision
 			return bodyBytes, history, channels, removed, nil, isDelete, nil, totalBytes, err
