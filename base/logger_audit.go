@@ -104,7 +104,7 @@ func (f *AuditFields) merge(ctx context.Context, overwrites AuditFields) {
 	for k, v := range overwrites {
 		_, ok := (*f)[k]
 		if ok {
-			duplicateFields = append(duplicateFields, fmt.Sprintf("%q=%q", k, v))
+			duplicateFields = append(duplicateFields, fmt.Sprintf("%q='%v'", k, v))
 			continue
 		}
 		(*f)[k] = v
