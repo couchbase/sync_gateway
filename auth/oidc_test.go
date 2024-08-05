@@ -24,13 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coreos/go-oidc"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // oidcProviderForTest automatically stops the provider once the test has stopped.
@@ -453,10 +453,10 @@ func TestGetJWTIssuer(t *testing.T) {
 
 	claims := jwt.Claims{Issuer: wantIssuer, Audience: wantAudience}
 	builder := jwt.Signed(signer).Claims(claims)
-	token, err := builder.CompactSerialize()
+	token, err := builder.Serialize()
 	require.NoError(t, err, "Failed to serialize JSON Web Token")
 
-	jwt, err := jwt.ParseSigned(token)
+	jwt, err := jwt.ParseSigned(token, SupportedAlgorithmsSlice)
 	require.NoError(t, err, "Failed to decode raw JSON Web Token")
 	issuer, audiences, err := getIssuerWithAudience(jwt)
 	require.NoError(t, err)

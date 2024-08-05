@@ -11,9 +11,9 @@ package auth
 import (
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // These are not in jwt_test.go to allow use in tests from other packages.
@@ -37,7 +37,7 @@ func CreateTestJWT(t *testing.T, alg jose.SignatureAlgorithm, key interface{}, h
 	}, signerOpts)
 	require.NoError(t, err, "failed to create signer")
 
-	tok, err := jwt.Signed(signer).Claims(claims).CompactSerialize()
+	tok, err := jwt.Signed(signer).Claims(claims).Serialize()
 	require.NoError(t, err, "failed to serialize JWT")
 	return tok
 }

@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/go-oidc"
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-jose/go-jose/v4/jwt"
 
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"

@@ -5,7 +5,7 @@ go 1.22
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.6.1
-	github.com/coreos/go-oidc v2.2.1+incompatible
+	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/couchbase/cbgt v1.3.9
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20231212195435-3490e96d30e3
@@ -19,6 +19,7 @@ require (
 	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78
 	github.com/elastic/gosigar v0.14.3
 	github.com/felixge/fgprof v0.9.4
+	github.com/go-jose/go-jose/v4 v4.0.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/json-iterator/go v1.1.12
@@ -38,7 +39,6 @@ require (
 	golang.org/x/net v0.27.0
 	golang.org/x/oauth2 v0.21.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
 require (
@@ -79,7 +79,6 @@ require (
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/pquerna/cachecontrol v0.2.0 // indirect
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect

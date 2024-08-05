@@ -17,9 +17,9 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/go-jose/go-jose/v4/jwt"
 	pkgerrors "github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // Authenticator manages user authentication for a database.
@@ -780,7 +780,9 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 }
 
 func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProviders OIDCProviderMap, localJWT LocalJWTProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, PrincipalConfig, error) {
-	token, err := jwt.ParseSigned(rawToken)
+
+	// Parse using the full list of supported algorithms, algorithm checking done during verify
+	token, err := jwt.ParseSigned(rawToken, SupportedAlgorithmsSlice)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
 		return nil, PrincipalConfig{}, err
