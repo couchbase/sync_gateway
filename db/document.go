@@ -955,7 +955,7 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 	}
 
 	// Build revision history for revID
-	revHistory, err := doc.History.getHistory(revID)
+	revHistory, _, err := doc.History.getHistory(revID)
 	if err != nil {
 		return nil, nil, nil, false, false, err
 	}
