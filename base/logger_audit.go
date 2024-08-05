@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ const (
 func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
 	var fields AuditFields
 	if additionalData != nil {
-		fields = additionalData
+		fields = maps.Clone(additionalData)
 	} else {
 		fields = make(AuditFields)
 	}
