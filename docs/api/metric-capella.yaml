@@ -15,14 +15,14 @@ info:
     name: Business Source License 1.1 (BSL)
     url: 'https://github.com/couchbase/sync_gateway/blob/master/LICENSE'
 servers:
-  - url: 'https://{hostname}:4986'
+  - url: 'https://{hostname}:4988'
     description: Metrics API
     variables:
       hostname:
         description: The hostname to use
         default: localhost
 paths:
-  /_metrics:
+  /metrics:
     $ref: ./paths/metric/metrics.yaml
 tags:
   - name: Prometheus
