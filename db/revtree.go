@@ -736,7 +736,7 @@ func (tree RevTree) getHistory(revid string) ([]string, int, error) {
 		totalBytesForHistory += revBytes
 		history = append(history, revid)
 		if len(history) > maxHistory {
-			return history, 0, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
+			return history, totalBytesForHistory, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
 		}
 		revid = info.Parent
 	}
