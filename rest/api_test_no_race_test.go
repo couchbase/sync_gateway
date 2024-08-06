@@ -48,6 +48,8 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
+	// make sure docs are written to change cache
+	rt.WaitForPendingChanges()
 	caughtUpWaiter := rt.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
 	// Start longpoll changes request
 	var wg sync.WaitGroup
@@ -89,13 +91,6 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	userResponse := rt.SendAdminRequest("GET", "/db/_user/bernard", "")
 	RequireStatus(t, userResponse, 200)
 
-	/*
-		a := it.ServerContext().Database("db").Authenticator(base.TestCtx(t))
-		bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t,"ABC"))
-		goassert.True(t, err == nil)
-		a.Save(bernard)
-	*/
-
 	// Put several documents in channel PBS
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
@@ -103,6 +98,9 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
+
+	// make sure docs are written to change cache
+	rt.WaitForPendingChanges()
 
 	// Run an initial changes request to get the user doc, and update since based on last_seq:
 	changesJSON := `{"style":"all_docs",

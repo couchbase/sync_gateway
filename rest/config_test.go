@@ -1392,7 +1392,7 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			docID := "doc"
 			_ = rt.PutDoc(docID, `{"foo":"bar"}`)
 
-			require.NoError(t, rt.WaitForPendingChanges())
+			rt.WaitForPendingChanges()
 
 			// ensure doc is in expected channel and is not in the unexpected channels
 			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+test.expectedChannel, "", true)

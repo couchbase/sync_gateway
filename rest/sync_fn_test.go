@@ -886,7 +886,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Let everything catch up before opening changes feed
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	changesRespContains := func(changesResp ChangesResults, docid string) bool {
 		for _, resp := range changesResp.Results {

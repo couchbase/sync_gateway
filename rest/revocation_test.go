@@ -132,18 +132,13 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 	var changes ChangesResults
 
 	// Ensure any previous mutations have caught up before issuing changes request
-	err := tester.restTester.WaitForPendingChanges()
-	assert.NoError(tester.test, err)
+	tester.restTester.WaitForPendingChanges()
 
-	err = tester.restTester.WaitForCondition(func() bool {
+	err := tester.restTester.WaitForCondition(func() bool {
 		changes = tester.restTester.GetChanges(fmt.Sprintf("/{{.keyspace}}/_changes?since=%v&revocations=true", sinceSeq), "user")
 		return len(changes.Results) == expectedLength
 	})
 	require.NoError(tester.test, err, fmt.Sprintf("Unexpected: %d. Expected %d", len(changes.Results), expectedLength))
-
-	err = tester.restTester.WaitForPendingChanges()
-	assert.NoError(tester.test, err)
-
 	return changes
 }
 
@@ -838,8 +833,7 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 	// Skip to seq 19 and then update doc foo
 	revocationTester.fillToSeq(19)
 	_ = rt.UpdateDoc(docID, version, `{"channels": "A"}`)
-	err := rt.WaitForPendingChanges()
-	require.NoError(t, err)
+	rt.WaitForPendingChanges()
 
 	// Get changes and ensure doc is revoked through ID-only revocation
 	changes = revocationTester.getChanges(10, 1)
@@ -1198,6 +1192,7 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 
 	revocationTester.removeRole("user", "foo")
 
+	rt.WaitForPendingChanges()
 	waitForUserChangesWithLimit := func(sinceVal interface{}, limit int) ChangesResults {
 		var changesRes ChangesResults
 		err := rt.WaitForCondition(func() bool {
@@ -1246,7 +1241,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	assert.Len(t, changes.Results, 2)
 
 	revocationTester.removeRoleChannel("foo", "A")
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
 	require.True(t, ok)
@@ -1743,7 +1738,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	revocationTester.addRole(revocationTestUser, revocationTestRole)
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -1786,7 +1781,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	// Revoke C and ensure docC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A", "B"}))
 	RequireStatus(t, resp, http.StatusOK)
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docC", "")
@@ -1958,7 +1953,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	_ = rt2.PutDoc("docA", `{"channels": ["ABC"]}`)
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -2041,7 +2036,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
 	_ = rt2.PutDoc("docABC", `{"channels": ["A","B", "C"]}`)
 	_ = rt2.PutDoc("docC", `{"channels": ["C"]}`)
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -2235,11 +2230,9 @@ func TestRevocationMessage(t *testing.T) {
 		revocationTester.fillToSeq(4)
 		version := rt.PutDoc("doc", `{"channels": "A"}`)
 
-		require.NoError(t, rt.WaitForPendingChanges())
-
 		// Start pull
-		err := btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
+		rt.WaitForPendingChanges()
+		btcRunner.StartOneshotPull(btc.id)
 
 		// Wait for doc revision to come over
 		_ = btcRunner.WaitForBlipRevMessage(btc.id, "doc", version)
@@ -2253,11 +2246,9 @@ func TestRevocationMessage(t *testing.T) {
 		revocationTester.fillToSeq(10)
 		version = rt.UpdateDoc(doc1ID, version, "{}")
 
-		require.NoError(t, rt.WaitForPendingChanges())
-
 		// Start a pull since 5 to receive revocation and removal
-		err = btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: "5"})
-		assert.NoError(t, err)
+		rt.WaitForPendingChanges()
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: "5"})
 
 		// Wait for doc1 rev2 - This is the last rev we expect so we can be sure replication is complete here
 		_ = btcRunner.WaitForVersion(btc.id, doc1ID, version)
@@ -2287,7 +2278,7 @@ func TestRevocationMessage(t *testing.T) {
 				for _, msg := range messages {
 					if msg.Properties[db.BlipProfile] == db.MessageChanges {
 						var changesMessages [][]interface{}
-						err = msg.ReadJSONBody(&changesMessages)
+						err := msg.ReadJSONBody(&changesMessages)
 						if err != nil {
 							continue
 						}
@@ -2318,7 +2309,6 @@ func TestRevocationMessage(t *testing.T) {
 			})
 		}
 
-		assert.NoError(t, err)
 	})
 }
 
@@ -2349,13 +2339,11 @@ func TestRevocationNoRev(t *testing.T) {
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
 		version := rt.PutDoc(docID, `{"channels": "A"}`)
-
-		require.NoError(t, rt.WaitForPendingChanges())
 		firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
 		// OneShot pull to grab doc
-		err := btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
+		rt.WaitForPendingChanges()
+		btcRunner.StartOneshotPull(btc.id)
 
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
@@ -2365,11 +2353,9 @@ func TestRevocationNoRev(t *testing.T) {
 		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
 		waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
-		require.NoError(t, rt.WaitForPendingChanges())
-
+		rt.WaitForPendingChanges()
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
-		err = btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: lastSeqStr})
-		assert.NoError(t, err)
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: lastSeqStr})
 
 		_ = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
 
@@ -2390,7 +2376,7 @@ func TestRevocationNoRev(t *testing.T) {
 		}
 
 		var messageBody []interface{}
-		err = highestSeqMsg.ReadJSONBody(&messageBody)
+		err := highestSeqMsg.ReadJSONBody(&messageBody)
 		require.NoError(t, err)
 		require.Len(t, messageBody, 2)
 		require.Len(t, messageBody[0], 4)
@@ -2446,12 +2432,12 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		revocationTester.fillToSeq(4)
 		version := rt.PutDoc(docID, `{"channels": "A"}}`)
 
-		require.NoError(t, rt.WaitForPendingChanges())
+		// OneShot pull to grab doc
+		rt.WaitForPendingChanges()
+		btcRunner.StartOneshotPull(btc.id)
+
 		firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
-		// OneShot pull to grab doc
-		err := btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
 		throw = true
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
@@ -2461,11 +2447,10 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
 		waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
-		require.NoError(t, rt.WaitForPendingChanges())
 
+		rt.WaitForPendingChanges()
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
-		err = btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: lastSeqStr})
-		assert.NoError(t, err)
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: lastSeqStr})
 
 		_ = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
 	})
@@ -2507,7 +2492,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 		})
 		defer bt.Close()
 
-		require.NoError(t, btcRunner.StartPull(bt.id))
+		btcRunner.StartPull(bt.id)
 
 		// in the failing case we'll panic before hitting this
 		base.RequireWaitForStat(t, func() int64 {
@@ -2574,8 +2559,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
 	}
 
-	err = rt2.WaitForPendingChanges()
-	require.NoError(t, err)
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 
@@ -2597,8 +2581,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
 	}
 
-	err = rt2.WaitForPendingChanges()
-	assert.NoError(t, err)
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
@@ -2635,8 +2618,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
 	// Validate none of the documents are purged after flipping option
-	err = rt2.WaitForPendingChanges()
-	assert.NoError(t, err)
+	rt2.WaitForPendingChanges()
 
 	changesResults, err = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
 	assert.NoError(t, err)

@@ -111,7 +111,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// Check the _changes feed:
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "alice")
 	require.Len(t, changes.Results, 1)
 	since := changes.Results[0].Seq
@@ -124,7 +124,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/alpha?rev=%s", rev1), ""), 200)
 
 	// Get the updates from the _changes feed:
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 	changes = rt.GetChanges("/{{.keyspace}}/_changes?since="+since.String(), "alice")
 	require.Len(t, changes.Results, 1)
 
@@ -271,6 +271,9 @@ func TestPostChangesUserTiming(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
+	// make sure docs are written to change cache
+	rt.WaitForPendingChanges()
+
 	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
 	wg.Add(1)
@@ -320,7 +323,7 @@ func TestPostChangesWithQueryString(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	// Test basic properties
 	changesJSON := `{"heartbeat":50, "feed":"normal", "limit":1, "since":"3"}`
@@ -457,6 +460,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	cacheWaiter.AddAndWait(5)
 
 	// Issue simple changes request
+	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 1)
 
@@ -465,6 +469,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	rest.RequireStatus(t, response, 200)
 
 	// Issue a new changes request with since=last_seq ensure that user receives all records for channel PBS
+	rt.WaitForPendingChanges()
 	changes = rt.GetChanges(fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "bernard")
 	require.Len(t, changes.Results, 5) // 4 PBS docs, plus the updated user doc
 
@@ -477,6 +482,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	cacheWaiter.AddAndWait(2)
 
 	// Issue another changes request - ensure we don't backfill again
+	rt.WaitForPendingChanges()
 	changes = rt.GetChanges("/{{.keyspace}}/_changes?since="+changes.Last_Seq.String(), "bernard")
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -909,7 +915,7 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			if test.manualNotify {
 				resp = sendRequestFn(rt, test.username, http.MethodPut, "/{{.keyspace}}/doc2", `{"foo":"bar"}`)
 				rest.RequireStatus(t, resp, http.StatusCreated)
-				require.NoError(t, rt.WaitForPendingChanges())
+				rt.WaitForPendingChanges()
 			}
 
 			// wait for zero
@@ -954,6 +960,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 6))
 
 	// Check the _changes feed:
+	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 4)
 	since := changes.Results[0].Seq
@@ -1030,6 +1037,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
+	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 5)
 	since := changes.Results[0].Seq
@@ -1149,6 +1157,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 	// Check the _changes feed:
+	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", user)
 	require.Len(t, changes.Results, 5)
 	since := changes.Results[0].Seq
@@ -1269,6 +1278,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
+	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 5)
 	since := changes.Results[0].Seq
@@ -1377,14 +1387,14 @@ func _testConcurrentDelete(t *testing.T) {
 	}
 	wg.Wait()
 
-	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	require.NoError(t, rt.WaitForPendingChanges())
+	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, or fails test
+	rt.WaitForPendingChanges()
 
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channel":"PBS"}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Wait for writes to be processed and indexed
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 }
 
@@ -1416,14 +1426,14 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 	}
 	wg.Wait()
 
-	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	require.NoError(t, rt.WaitForPendingChanges())
+	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, or fails test
+	rt.WaitForPendingChanges()
 
 	// Write another doc, to validate sequences restart
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channel":"PBS"}`)
 	rest.RequireStatus(t, response, 201)
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 }
 
 func _testConcurrentUpdate(t *testing.T) {
@@ -1454,14 +1464,14 @@ func _testConcurrentUpdate(t *testing.T) {
 	}
 	wg.Wait()
 
-	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	require.NoError(t, rt.WaitForPendingChanges())
+	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, or fails test
+	rt.WaitForPendingChanges()
 
 	// Write another doc, to validate sequences restart
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channel":"PBS"}`)
 	rest.RequireStatus(t, response, 201)
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 }
 
 func _testConcurrentNewEditsFalseDelete(t *testing.T) {
@@ -1494,13 +1504,13 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 	}
 	wg.Wait()
 
-	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	require.NoError(t, rt.WaitForPendingChanges())
+	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, or fails test
+	rt.WaitForPendingChanges()
 
 	// Write another doc, to see where sequences are at
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channel":"PBS"}`)
 	rest.RequireStatus(t, response, 201)
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 }
 
@@ -1646,7 +1656,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/docC", `{"channels":["beta"]}`), 201)
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/docD", `{"channels":["beta"]}`), 201)
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// User has access to single channel
 	body := `{"filter":"_doc_ids", "doc_ids":["doc4", "doc1", "docA", "b0gus"]}`
@@ -1719,7 +1729,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	// Create a conflict revision on docC
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits":false, "docs": [{"_id": "docC","_rev": "2-b4afc58d8e61a6b03390e19a89d26643","foo": "bat", "channels":["beta"]}]}`), 201)
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "style":"all_docs"}`
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user3")
@@ -1840,7 +1850,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc_resolved_conflict?rev=2-conflicting_rev", "")
 	rest.RequireStatus(t, response, 200)
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
+	changes := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "user1")
 
 	expectedResults := make([]string, 10)
 	expectedResults[0] = `{"seq":1,"id":"_user/user1","changes":[]}`
@@ -1853,7 +1864,6 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[7] = `{"seq":19,"id":"doc_large_numbers","doc":{"_id":"doc_large_numbers","_rev":"1-2721633d9000e606e9c642e98f2f5ae7","channels":["alpha"],"largefloat":1234567890.1234,"largeint":1234567890,"type":"large_numbers"},"changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"}]}`
 	expectedResults[9] = `{"seq":26,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
-	changes := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "user1")
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -2825,6 +2835,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Normal changes
+	rt.WaitForPendingChanges()
 	changesJSON = `{"style":"all_docs"}`
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 10)
@@ -2966,6 +2977,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	cacheWaiter.AddAndWait(8)
 
 	// Normal changes
+	rt.WaitForPendingChanges()
 	changesJSON = `{"style":"all_docs"}`
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 10)
@@ -3209,9 +3221,7 @@ func TestChangesIncludeConflicts(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/conflictedDoc?new_edits=false", `{"_revisions":{"start":2, "ids":["conflictTwo", "82214a562e80c8fa7b2361719847bc73"]}, "value":"c2", "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	// Get changes
-	require.NoError(t, rt.WaitForPendingChanges())
-
+	rt.WaitForPendingChanges()
 	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?style=all_docs", "{}")
 	require.Len(t, changes.Results, 1)
 	require.Len(t, changes.Results[0].Changes, 2)
@@ -3253,8 +3263,7 @@ func TestChangesLargeSequences(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Get changes
-	require.NoError(t, rt.WaitForPendingChanges())
-
+	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}/_changes?since=9223372036854775800", user)
 	require.Len(t, changes.Results, 1)
 	assert.Equal(t, uint64(9223372036854775808), changes.Results[0].Seq.Seq)
@@ -3332,6 +3341,9 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-4", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
+
+	// make sure docs are written to change cache
+	rt.WaitForPendingChanges()
 
 	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
@@ -3606,15 +3618,16 @@ func TestOneShotGrantTiming(t *testing.T) {
 
 	// Issue normal one-shot changes request.  Expect no results as granting document hasn't been buffered (blocked by
 	// slowSequence)
+	// do not call WaitForPendingChanges() here due to slow sequence release
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 0)
 
 	// Release the slow sequence and wait for it to be processed over DCP
 	releaseErr := db.ReleaseTestSequence(base.DatabaseLogCtx(base.TestCtx(t), database.Name, nil), database, slowSequence)
 	require.NoError(t, releaseErr)
-	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Issue normal one-shot changes request.  Expect results as granting document buffering is unblocked
+	rt.WaitForPendingChanges()
 	changes = rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 4)
 }
@@ -3666,6 +3679,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 
 	caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 
+	// avoid calling WaitForPendingChanges() here due to slow sequence release
 	var oneShotComplete sync.WaitGroup
 	// Issue a GET requestPlus one-shot changes request in a separate goroutine.
 	oneShotComplete.Add(1)
@@ -3689,7 +3703,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	// Release the slow sequence and wait for it to be processed over DCP
 	releaseErr := db.ReleaseTestSequence(base.DatabaseLogCtx(base.TestCtx(t), database.Name, nil), database, slowSequence)
 	require.NoError(t, releaseErr)
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	oneShotComplete.Wait()
 }
@@ -3780,7 +3794,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	// Release the slow sequence and wait for it to be processed over DCP
 	releaseErr := db.ReleaseTestSequence(base.DatabaseLogCtx(base.TestCtx(t), database.Name, nil), database, slowSequence)
 	require.NoError(t, releaseErr)
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	oneShotComplete.Wait()
 }

@@ -993,7 +993,7 @@ function(doc, oldDoc) {
 	revsFinishedWg.Add(1)
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/grantDoc", `{"accessUser":"user1", "accessChannel":"ABC", "channels":["ABC"]}`)
 	RequireStatus(t, response, 201)
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// Wait until all expected changes are received by change handler
 	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
@@ -1773,7 +1773,8 @@ func TestGetRemovedDoc(t *testing.T) {
 	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	// wait for rev 2 to arrive to cache cache
+	rt.WaitForPendingChanges()
 
 	// Try to get rev 2 via BLIP API and assert that _removed == false
 	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
@@ -1794,7 +1795,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
 	rt.GetDatabase().FlushRevisionCacheForTest()
@@ -1947,8 +1948,8 @@ func TestSendReplacementRevision(t *testing.T) {
 				defer btc.Close()
 
 				// one shot or else we'll carry on to send rev 2-... normally, and we can't assert correctly on the final state of the client
-				err := btcRunner.StartOneshotPullFiltered(btc.id, replicationChannels)
-				require.NoError(t, err)
+				rt.WaitForPendingChanges()
+				btcRunner.StartOneshotPullFiltered(btc.id, replicationChannels)
 
 				// block until we've written the update and got the new version to use in assertions
 				version2 := <-updatedVersion
@@ -2019,8 +2020,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		defer client.Close()
 		client.ClientDeltas = true
 
-		err := btcRunner.StartPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(client.id)
 
 		const docID = "doc1"
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
@@ -2060,7 +2060,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 		version := rt.PutDoc(docID, `{"test":true}`)
 
 		// start an initial pull
-		require.NoError(t, btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0", ActiveOnly: true}))
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0", ActiveOnly: true})
 		rev := btcRunner.WaitForVersion(btc.id, docID, version)
 		assert.Equal(t, `{"test":true}`, string(rev))
 
@@ -2156,8 +2156,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
-		err = btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		version = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
@@ -2168,8 +2167,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
-		err = btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		version = rt.UpdateDoc(docID, version, `{"channels": []}`)
@@ -2188,8 +2186,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		assert.Equal(t, "1-999bcad4aab47f0a8a24bd9d3598060c", changes.Results[1].Changes[0]["rev"])
 		assert.False(t, changes.Results[1].Revoked)
 
-		err = btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docMarker, docMarkerVersion)
 
 		messages := btc.pullReplication.GetMessages()
@@ -2265,12 +2262,11 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
-		err = btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		version = rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
-		require.NoError(t, rt.WaitForPendingChanges())
+		rt.WaitForPendingChanges()
 		// At this point changes should send revocation, as document isn't in any of the user's channels
 		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		require.NoError(t, err)
@@ -2278,14 +2274,13 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
-		err = btcRunner.StartOneshotPullFiltered(btc.id, "A")
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPullFiltered(btc.id, "A")
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
 		markerID := "docmarker"
 		markerVersion := rt.PutDoc(markerID, `{"channels": ["A"]}`)
-		require.NoError(t, rt.WaitForPendingChanges())
+		rt.WaitForPendingChanges()
 
 		// Revocation should not be sent over blip, as document is now in user's channels - only marker document should be received
 		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
@@ -2294,8 +2289,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		assert.Equal(t, markerID, changes.Results[1].ID)
 
-		err = btcRunner.StartOneshotPullFiltered(btc.id, "A")
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPullFiltered(btc.id, "A")
 		_ = btcRunner.WaitForVersion(btc.id, markerID, markerVersion)
 
 		messages := btc.pullReplication.GetMessages()
@@ -2572,8 +2566,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Wait for rev to be received on RT
-				err = rt.WaitForPendingChanges()
-				require.NoError(t, err)
+				rt.WaitForPendingChanges()
 				changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 				require.NoError(t, err)
 
@@ -2633,8 +2626,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	assert.NoError(t, ar.Start(activeCtx))
 	defer func() { require.NoError(t, ar.Stop()) }()
 
-	err = activeRT.WaitForPendingChanges()
-	require.NoError(t, err)
+	activeRT.WaitForPendingChanges()
 	err = activeRT.WaitForVersion(docID, version)
 	require.NoError(t, err)
 
@@ -2762,8 +2754,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				// Flush cache so document has to be retrieved from the leaky bucket
 				rt.GetDatabase().FlushRevisionCacheForTest()
 
-				err := btcRunner.StartPull(btc.id)
-				require.NoError(t, err)
+				btcRunner.StartPull(btc.id)
 
 				// Wait 3 seconds for noRev to be received
 				select {
@@ -2810,8 +2801,7 @@ func TestUnsubChanges(t *testing.T) {
 		assert.Empty(t, response)
 
 		// Sub changes
-		err = btcRunner.StartPull(btc.id)
-		require.NoError(t, err)
+		btcRunner.StartPull(btc.id)
 
 		doc1Version := rt.PutDoc(doc1ID, `{"key":"val1"}`)
 		_ = btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
@@ -2840,8 +2830,7 @@ func TestUnsubChanges(t *testing.T) {
 		assert.Empty(t, response)
 
 		// Confirm the pull replication can be restarted and it syncs doc2
-		err = btcRunner.StartPull(btc.id)
-		require.NoError(t, err)
+		btcRunner.StartPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
 	})
 }
@@ -2888,8 +2877,7 @@ func TestRequestPlusPull(t *testing.T) {
 		caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 
 		// Start a regular one-shot pull
-		err := btcRunner.StartOneshotPullRequestPlus(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPullRequestPlus(client.id)
 
 		// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
 		require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
@@ -2952,8 +2940,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 		caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 
 		// Start a regular one-shot pull
-		err := btcRunner.StartOneshotPull(client.id)
-		assert.NoError(t, err)
+		btcRunner.StartOneshotPull(client.id)
 
 		// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
 		require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
@@ -3008,8 +2995,7 @@ func TestBlipRefreshUser(t *testing.T) {
 		version := rt.PutDoc(docID, `{"channels":["chan1"]}`)
 
 		// Start a regular one-shot pull
-		err := btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0"})
-		require.NoError(t, err)
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0"})
 
 		_ = btcRunner.WaitForDoc(btc.id, docID)
 
@@ -3020,14 +3006,14 @@ func TestBlipRefreshUser(t *testing.T) {
 		response := rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, "")
 		RequireStatus(t, response, http.StatusOK)
 
-		require.NoError(t, rt.WaitForPendingChanges())
+		rt.WaitForPendingChanges()
 
 		// further requests will 500, but shouldn't panic
 		unsubChangesRequest := blip.NewRequest()
 		unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
 		btc.addCollectionProperty(unsubChangesRequest)
 
-		err = btc.pullReplication.sendMsg(unsubChangesRequest)
+		err := btc.pullReplication.sendMsg(unsubChangesRequest)
 		require.NoError(t, err)
 
 		testResponse := unsubChangesRequest.Response()
@@ -3130,7 +3116,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				revID := rt.PutDoc(docID, validBody)
 
 				// Wait for initial revision to arrive over DCP before mutating
-				require.NoError(t, rt.WaitForPendingChanges())
+				rt.WaitForPendingChanges()
 
 				// Issue a changes request for the channel before updating the document, to ensure the valid revision is
 				// resident in the channel cache (query results may be unreliable in the case of the 'invalid json' update)
@@ -3142,7 +3128,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				markerDocBody := fmt.Sprintf(`{"channel":%q}`, testCase.channel)
 				_ = rt.PutDoc(markerDoc, markerDocBody)
-
+				rt.WaitForPendingChanges()
 				rt.GetDatabase().FlushRevisionCacheForTest()
 
 				btc2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
@@ -3152,7 +3138,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				})
 				defer btc2.Close()
 
-				require.NoError(t, btcRunner.StartOneshotPull(btc2.id))
+				btcRunner.StartOneshotPull(btc2.id)
 
 				btcRunner.WaitForDoc(btc2.id, markerDoc)
 

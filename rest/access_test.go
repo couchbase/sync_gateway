@@ -965,7 +965,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	RequireStatus(t, response, 201)
 	version := DocVersionFromPutResponse(t, response)
 
-	assert.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// Validate the user gets the doc on the _changes feed
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
@@ -980,7 +980,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	RequireStatus(t, response, 404)
 
 	// Wait for change caching to complete
-	assert.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// Check user access again:
 	changes = rt.GetChanges("/{{.keyspace}}/_changes", "bernard")

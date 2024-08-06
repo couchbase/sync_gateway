@@ -59,8 +59,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		err := btcRunner.StartPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(btc.id)
 
 		// Create doc revision with attachment on SG.
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
@@ -72,7 +71,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 
 		// Update the replicated doc at client along with keeping the same attachment stub.
 		bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-		version, err = btcRunner.PushRev(btc.id, docID, version, []byte(bodyText))
+		version, err := btcRunner.PushRev(btc.id, docID, version, []byte(bodyText))
 		require.NoError(t, err)
 
 		// Wait for the document to be replicated at SG
@@ -130,8 +129,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		err := btcRunner.StartPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(btc.id)
 
 		// Create doc revision with attachment on SG.
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
@@ -143,7 +141,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 		// Update the replicated doc at client along with keeping the same attachment stub.
 		bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-		version, err = btcRunner.PushRev(btc.id, docID, version, []byte(bodyText))
+		version, err := btcRunner.PushRev(btc.id, docID, version, []byte(bodyText))
 		require.NoError(t, err)
 
 		// Wait for the document to be replicated at SG
@@ -203,8 +201,7 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 		})
 		defer btc.Close()
 
-		err := btcRunner.StartPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(btc.id)
 
 		// Create two docs with the same attachment data on SG - v2 attachments intentionally result in two copies,
 		// CBL will still de-dupe attachments based on digest, so will still try proveAttachmnet for the 2nd.
@@ -300,12 +297,11 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		err := btcRunner.StartPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(btc.id)
 
 		// CBL creates revisions 1-abc,2-abc on the client, with an attachment associated with rev 2.
 		bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-		err = btcRunner.StoreRevOnClient(btc.id, docID, "2-abc", []byte(bodyText))
+		err := btcRunner.StoreRevOnClient(btc.id, docID, "2-abc", []byte(bodyText))
 		require.NoError(t, err)
 
 		bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
@@ -373,14 +369,13 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
-		err := btcRunner.StartPull(btc.id)
-		assert.NoError(t, err)
+		btcRunner.StartPull(btc.id)
 
 		// CBL creates revisions 1-abc, 2-abc, 3-abc, 4-abc on the client, with an attachment associated with rev 2.
 		// rev tree pruning on the CBL side, so 1-abc no longer exists.
 		// CBL replicates, sends to client as 4-abc history:[4-abc, 3-abc, 2-abc], attachment has revpos=2
 		bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-		err = btcRunner.StoreRevOnClient(btc.id, docID, "2-abc", []byte(bodyText))
+		err := btcRunner.StoreRevOnClient(btc.id, docID, "2-abc", []byte(bodyText))
 		require.NoError(t, err)
 
 		bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`

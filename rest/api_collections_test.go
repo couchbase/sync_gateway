@@ -252,7 +252,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	for _, ks := range rt.GetKeyspaces() {
 		_, err = rt.WaitForChanges(1, fmt.Sprintf("/%s/_changes", ks), "", true)

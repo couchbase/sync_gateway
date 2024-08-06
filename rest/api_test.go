@@ -1700,6 +1700,9 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// Put a document to increment the counter for the * channel
 	rt.PutDoc("lost", `{"channel":["ABC"]}`)
 
+	// make sure docs are written to change cache
+	rt.WaitForPendingChanges()
+
 	// Previous bug: changeWaiter was treating the implicit '*' wildcard in the _changes request as the '*' channel, so the wait counter
 	// was being initialized to 1 (the previous PUT).  Later the wildcard was resolved to actual channels (PBS, _sync:user:bernard), which
 	// has a wait counter of zero (no documents writted since the listener was restarted).
@@ -1821,7 +1824,7 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?rev="+docRevID2, `{"channels": ["B"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// Changes call, one user, one doc
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "jacques")
@@ -1851,8 +1854,7 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	rev2 := fmt.Sprint(responseBody["rev"])
 	RequireStatus(t, response, http.StatusCreated)
 
-	err = rt.WaitForPendingChanges()
-	assert.NoError(t, err)
+	rt.WaitForPendingChanges()
 
 	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "{}")
 	assert.Equal(t, 2, len(changes.Results))
@@ -1863,8 +1865,7 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	err = rt.WaitForPendingChanges()
-	assert.NoError(t, err)
+	rt.WaitForPendingChanges()
 
 	assert.Equal(t, 0, int(rt.GetDatabase().DbStats.Cache().ChannelCacheRevsActive.Value()))
 
@@ -2626,30 +2627,6 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 
 type ChannelsTemp struct {
 	Channels map[string][]string `json:"channels"`
-}
-
-func (rt *RestTester) CreateDocReturnRev(t *testing.T, docID string, revID string, bodyIn interface{}) string {
-	bodyJSON, err := base.JSONMarshal(bodyIn)
-	assert.NoError(t, err)
-
-	url := "/{{.keyspace}}/" + docID
-	if revID != "" {
-		url += "?rev=" + revID
-	}
-
-	resp := rt.SendAdminRequest("PUT", url, string(bodyJSON))
-	RequireStatus(t, resp, http.StatusCreated)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
-	assert.Equal(t, true, body["ok"])
-	revID = body["rev"].(string)
-	if revID == "" {
-		t.Fatalf("No revID in response for PUT doc")
-	}
-
-	require.NoError(t, rt.WaitForPendingChanges())
-	return revID
 }
 
 func TestMetricsHandler(t *testing.T) {

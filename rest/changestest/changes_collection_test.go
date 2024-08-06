@@ -38,7 +38,8 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	_ = rt.WaitForPendingChanges()
+	// requireAdminChangesCount will issue a changes request, wait for docs to be written
+	rt.WaitForPendingChanges()
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
 	requireAdminChangesCount(rt, "{{.keyspace1}}", 1)
@@ -49,7 +50,8 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	// requireAdminChangesCount will issue a changes request, wait for docs to be written
+	rt.WaitForPendingChanges()
 
 	requireAdminChangesCount(rt, "{{.keyspace1}}", 2)
 	requireAdminChangesCount(rt, "{{.keyspace2}}", 2)
@@ -69,7 +71,8 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	// requireAdminChangesCount will issue a changes request, wait for docs to be written
+	rt.WaitForPendingChanges()
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
 	requireAdminChangesCount(rt, "{{.keyspace1}}", 1)
@@ -80,7 +83,8 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	// requireAdminChangesCount will issue a changes request, wait for docs to be written
+	rt.WaitForPendingChanges()
 
 	requireAdminChangesCount(rt, "{{.keyspace1}}", 2)
 	requireAdminChangesCount(rt, "{{.keyspace2}}", 2)
@@ -107,9 +111,9 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
+	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace1}}/_changes", "bernard")
 	require.Len(t, changes.Results, 1)
 	changes = rt.GetChanges("/{{.keyspace2}}/_changes", "bernard")
@@ -120,7 +124,7 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	changes = rt.GetChanges("/{{.keyspace1}}/_changes", "bernard")
 	require.Len(t, changes.Results, 2)
@@ -160,7 +164,7 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr1_c1", `{"channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via queries
 	changes := rt.GetChanges("/{{.keyspace1}}/_changes", "bernard")
@@ -176,14 +180,14 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/chr2_c2", `{"value":1, "channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	changes = rt.GetChanges("/{{.keyspace1}}/_changes", "bernard")
 	require.Len(t, changes.Results, 2)
 
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn3_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	changes = rt.GetChanges("/{{.keyspace1}}/_changes", "charlie")
 	require.Len(t, changes.Results, 2)
@@ -197,7 +201,7 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr3_c1", `{"value":1, "channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	changes = rt.GetChanges("/{{.keyspace1}}/_changes", "bernard")
 	require.Len(t, changes.Results, 4)
@@ -241,7 +245,7 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
 	changes := rt.GetChanges("/{{.keyspace1}}/_changes", "bernard")
@@ -253,7 +257,7 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	// Grant user access to channel ABC in collection 1
 	err = rt.SetAdminChannels("bernard", rt.GetKeyspaces()[0], "ABC", "PBS")
 	require.NoError(t, err)
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// confirm that change from c1 is sent, along with user doc
 	changes = rt.GetChanges("/{{.keyspace1}}/_changes?since="+lastSeq, "bernard")
@@ -290,7 +294,7 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	// Issue changes request.  Will initialize cache for user channel (PBS), and return docs via query
 	changes := rt.GetChanges("/{{.keyspace1}}/_changes", "bernard")
@@ -319,7 +323,7 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	// Expect 4 documents in collection with ABC grant:
 	//  - backfill of 1 ABC doc written prior to lastSeq
@@ -383,7 +387,7 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/publicDoc", `{"value":1, "public":true}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	rt.WaitForPendingChanges()
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
 	changes := rt.GetChanges("/{{.keyspace1}}/_changes", "bernard")

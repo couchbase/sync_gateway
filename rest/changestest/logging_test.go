@@ -29,7 +29,7 @@ func TestDocChangedLogging(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusCreated)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/doc1", `{"foo":"bar"}`)
 	rest.RequireStatus(t, response, http.StatusCreated)
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	base.AssertLogContains(t, "Ignoring non-metadata mutation for doc", func() {
 		err := rt.GetDatabase().MetadataStore.Set("doc1", 0, nil, db.Body{"foo": "bar"})
@@ -38,6 +38,6 @@ func TestDocChangedLogging(t *testing.T) {
 		// no other way of synchronising this no-op as no stats to wait on
 		response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc2", `{"foo":"bar"}`)
 		rest.RequireStatus(t, response, http.StatusCreated)
-		require.NoError(t, rt.WaitForPendingChanges())
+		rt.WaitForPendingChanges()
 	})
 }

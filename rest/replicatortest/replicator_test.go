@@ -933,7 +933,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	_ = activeRT.PutDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
 
 	// This seems to fix the flaking. Wait until the change-cache has caught up with the latest writes to the database.
-	require.NoError(t, activeRT.WaitForPendingChanges())
+	activeRT.WaitForPendingChanges()
 
 	// Create push replications, verify running
 	activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
@@ -1037,7 +1037,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 		docIDs[i] = docID
 	}
 
-	require.NoError(t, remoteRT.WaitForPendingChanges())
+	remoteRT.WaitForPendingChanges()
 
 	// Create oneshot replication, verify running
 	replicationID := t.Name()
@@ -1988,7 +1988,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 			_ = rt1.PutDoc(docID, fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
 			lastDocID.Store(docID)
 		}
-		_ = rt1.WaitForPendingChanges()
+		rt1.WaitForPendingChanges()
 		wg.Done()
 	}()
 
@@ -2250,7 +2250,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID1, `{"source":"rt2","channels":["`+username+`"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start(ctx1))
@@ -2284,7 +2284,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID3, `{"source":"rt2","channels":["`+username+`"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start(ctx1))
@@ -2309,7 +2309,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	docID4 := docIDPrefix + "4"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID4, `{"source":"rt2","channels":["`+username+`"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 
@@ -3821,7 +3821,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, numRT1DocsInitial), `{"source":"rt1","channels":["alice"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	require.NoError(t, rt1.WaitForPendingChanges())
+	rt1.WaitForPendingChanges()
 
 	// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
 	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, nil, nil)
@@ -4747,7 +4747,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	assert.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -4920,7 +4920,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	assert.NoError(t, rt1.WaitForPendingChanges())
+	rt1.WaitForPendingChanges()
 
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5096,7 +5096,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	assert.NoError(t, rt1.WaitForPendingChanges())
+	rt1.WaitForPendingChanges()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := stats.DBReplicatorStats(t.Name())
@@ -5157,7 +5157,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"2", `{"source":"rt1","channels":["alice"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	assert.NoError(t, rt1.WaitForPendingChanges())
+	rt1.WaitForPendingChanges()
 
 	base.RequireWaitForStat(t, func() int64 {
 		return ar.Push.GetStats().SendRevCount.Value()
@@ -5294,7 +5294,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	docID := t.Name() + "rt1doc"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	assert.NoError(t, rt1.WaitForPendingChanges())
+	rt1.WaitForPendingChanges()
 
 	// wait for document originally written to rt1 to arrive at rt2
 	changesResults, err := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -5306,7 +5306,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	docID = t.Name() + "rt2doc"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	assert.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=1", "", true)
@@ -7265,11 +7265,11 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 
 	resp := rt2.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt2.WaitForPendingChanges()
 
 	resp = rt1.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"some_val": "val"}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	require.NoError(t, rt1.WaitForPendingChanges())
+	rt1.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 
@@ -7483,8 +7483,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Make 2nd revision
 	version2 := activeRT.UpdateDoc("test", version, `{"field1":"f1_2","field2":"f2_2"}`)
-	err = activeRT.WaitForPendingChanges()
-	require.NoError(t, err)
+	activeRT.WaitForPendingChanges()
 
 	passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollection()
 	rev, err := passiveRTCollection.GetRevisionCacheForTest().GetActive(passiveRTCtx, "test")
@@ -7637,8 +7636,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, changesResults.Results, 1)
 
-	err = passiveRT.WaitForPendingChanges()
-	require.NoError(t, err)
+	passiveRT.WaitForPendingChanges()
 
 	require.NoError(t, ar.Stop())
 
@@ -7665,8 +7663,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, changesResults.Results, 1)
 
-	err = passiveRT.WaitForPendingChanges()
-	require.NoError(t, err)
+	passiveRT.WaitForPendingChanges()
 
 	// Verify document replicated successfully
 	doc = passiveRT.GetDocBody(docID)
@@ -8130,8 +8127,7 @@ function (doc) {
 			resp := senderRT.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", bulkDocsBody)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
-			err := senderRT.WaitForPendingChanges()
-			require.NoError(t, err)
+			senderRT.WaitForPendingChanges()
 
 			// Replicate just alices docs
 			replConf := `
@@ -8151,7 +8147,7 @@ function (doc) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			activeCtx := activeRT.Context()
-			err = activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
+			err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 			require.NoError(t, err)
 			activeRT.WaitForReplicationStatus(replName, db.ReplicationStateRunning)
 
