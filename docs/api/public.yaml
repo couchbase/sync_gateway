@@ -103,6 +103,7 @@ tags:
     description: Create and manage document attachments
   - name: Replication
     description: Create and manage inter-Sync Gateway replications
+    x-capella: false
   - name: Unsupported
     description: Endpoints that are not supported by Sync Gateway
     x-capella: false

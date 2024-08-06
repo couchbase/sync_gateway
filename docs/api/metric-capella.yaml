@@ -8,8 +8,8 @@
 
 openapi: 3.0.3
 info:
-  title: Sync Gateway
-  description: Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server
+  title: App Services Metrics API
+  description: 'App Services manages access and synchronization between Couchbase Lite and Couchbase Capella'
   version: 3.3.0
   license:
     name: Business Source License 1.1 (BSL)

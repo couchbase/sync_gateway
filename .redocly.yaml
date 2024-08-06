@@ -17,6 +17,8 @@ apis:
     root: "./docs/api/admin.yaml"
   admin-capella:
     root: "./docs/api/admin-capella.yaml"
+    decorators:
+      remove-x-internal: on
   public:
     root: "./docs/api/public.yaml"
     decorators:
@@ -26,11 +28,14 @@ apis:
   public-capella:
     root: "./docs/api/public.yaml"
     decorators:
+      remove-x-internal: on
       filter-out:
         property: x-capella
         value: false
-      plugin/replace-servers-capella:
+      plugin/replace-server-capella:
         serverUrl: 'https://{hostname}:4984'
+      plugin/replace-info-capella:
+        title: "App Services Public API"
   metric:
     root: "./docs/api/metric.yaml"
     decorators:
@@ -39,6 +44,10 @@ apis:
     root: "./docs/api/metric.yaml"
   metric-capella:
     root: "./docs/api/metric-capella.yaml"
+    decorators:
+      plugin/excise-rbac-capella: on
+      plugin/replace-description-capella: on
+      remove-x-internal: on
   diagnostic:
     root: "./docs/api/diagnostic.yaml"
     decorators:
