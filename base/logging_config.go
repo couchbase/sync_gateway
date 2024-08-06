@@ -74,16 +74,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files disabled")
 		// Explicitly log this error to console
 		ConsolefCtx(ctx, LevelError, KeyNone, ErrUnsetLogFilePath.Error())
-
-		// nil out other loggers
-		errorLogger.Store(nil)
-		warnLogger.Store(nil)
-		infoLogger.Store(nil)
-		debugLogger.Store(nil)
-		traceLogger.Store(nil)
-		statsLogger.Store(nil)
-		auditLogger.Store(nil)
-
+		nilAllNonConsoleLoggers()
 		return nil
 	}
 
@@ -361,4 +352,15 @@ func validateLogFileOutput(logFileOutput string) error {
 	}
 
 	return file.Close()
+}
+
+// nilAllNonConsoleLoggers will nil out all loggers except the console logger.
+func nilAllNonConsoleLoggers() {
+	errorLogger.Store(nil)
+	warnLogger.Store(nil)
+	infoLogger.Store(nil)
+	debugLogger.Store(nil)
+	traceLogger.Store(nil)
+	statsLogger.Store(nil)
+	auditLogger.Store(nil)
 }

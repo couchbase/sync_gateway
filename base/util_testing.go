@@ -657,7 +657,9 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 		*logger.LogKeyMask != *initialLogKey {
 		panic(fmt.Sprintf("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?, LogLevel=%s, expected=%s; LogKeyMask=%s, expected=%s", logger.LogLevel, initialLogLevel, logger.LogKeyMask, initialLogKey))
 	}
-
+	if errorLogger.Load() != nil {
+		panic("Logging is in an expected state, an earlier test possibly needed to call ResetGlobalTestLogging")
+	}
 	logger.LogLevel.Set(logLevel)
 	logger.LogKeyMask.Set(logKeyMask(logKeys...))
 	updateExternalLoggers()

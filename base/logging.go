@@ -114,6 +114,7 @@ func init() {
 
 // initializeLoggers should be called once per program in init. This is also called to reset logging in a test context.
 func initializeLoggers(ctx context.Context) {
+	nilAllNonConsoleLoggers()
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
 	// This maintains consistent formatting (timestamps, levels, etc) in the output,
 	// and allows a single set of logging functions to be used, rather than fmt.Printf()
