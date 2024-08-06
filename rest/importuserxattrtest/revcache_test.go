@@ -73,6 +73,7 @@ func TestUserXattrRevCache(t *testing.T) {
 
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
+	rt.WaitForPendingChanges()
 
 	cas, err := rt.GetSingleDataStore().Get(docKey, nil)
 	require.NoError(t, err)
@@ -158,6 +159,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
+	rt.WaitForPendingChanges()
 
 	cas, err := rt.GetSingleDataStore().Get(docKey, nil)
 	require.NoError(t, err)

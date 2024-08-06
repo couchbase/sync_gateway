@@ -50,6 +50,8 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
+	rt.WaitForPendingChanges()
+
 	// Get current sync data
 	var syncData db.SyncData
 	xattrs, cas, err := dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})

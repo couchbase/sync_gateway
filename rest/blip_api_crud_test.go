@@ -2266,8 +2266,8 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		version = rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
-		// At this point changes should send revocation, as document isn't in any of the user's channels
 		rt.WaitForPendingChanges()
+		// At this point changes should send revocation, as document isn't in any of the user's channels
 		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, 1)

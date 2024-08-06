@@ -2339,13 +2339,13 @@ func TestRevocationNoRev(t *testing.T) {
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
 		version := rt.PutDoc(docID, `{"channels": "A"}`)
+		firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
 		// OneShot pull to grab doc
 		rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
 
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
-		firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")

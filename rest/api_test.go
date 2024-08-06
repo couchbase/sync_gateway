@@ -1824,8 +1824,9 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?rev="+docRevID2, `{"channels": ["B"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	// Changes call, one user, one doc
 	rt.WaitForPendingChanges()
+
+	// Changes call, one user, one doc
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "jacques")
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, changes.Results[1].Deleted, false)
@@ -1854,6 +1855,7 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	rt.WaitForPendingChanges()
+
 	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "{}")
 	assert.Equal(t, 2, len(changes.Results))
 

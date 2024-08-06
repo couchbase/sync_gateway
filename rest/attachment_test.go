@@ -2246,8 +2246,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	// Otherwise attachment will not be purged
 	_, _, err = dataStore.GetRaw(att2Key)
 	if base.TestUseXattrs() {
-		assert.Error(t, err)
-		assert.True(t, base.IsDocNotFoundError(err))
+		base.RequireDocNotFoundError(t, err)
 	} else {
 		assert.NoError(t, err)
 	}
@@ -2473,6 +2472,8 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	sent, _, _, err := bt.SendRev("doc1", "1-abc", []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentDataEncoded+`"}}}`), blip.Properties{})
 	require.True(t, sent)
 	require.NoError(t, err)
+
+	rt.WaitForPendingChanges()
 
 	// Should log:
 	// "Peer sent prove attachment error 404 attachment not found, falling back to getAttachment for proof in doc <ud>doc1</ud> (digest sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=)"
