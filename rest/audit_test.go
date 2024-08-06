@@ -762,6 +762,12 @@ func TestEffectiveUserID(t *testing.T) {
 	events := jsonLines(t, output)
 
 	for _, event := range events {
+		eventID := base.AuditID(event[base.AuditFieldID].(float64))
+		// ignore events that don't have user info ()
+		if eventID != base.AuditIDPublicUserAuthenticated && eventID != base.AuditIDReadDatabase {
+			continue
+		}
+
 		effective := event[base.AuditEffectiveUserID].(map[string]any)
 		assert.Equal(t, cnfDomain, effective[base.AuditFieldEffectiveUserIDDomain])
 		assert.Equal(t, cnfUser, effective[base.AuditFieldEffectiveUserIDUser])
