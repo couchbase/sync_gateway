@@ -174,36 +174,6 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 	return docRev, err
 }
 
-// In the event that a revision in invalid it needs to be replaced later and the revision cache value should not be
-// used. This function grabs the value directly from the bucket.
-func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, key IDAndRev, doc *Document, collectionID uint32, includeDelta bool) (DocumentRevision, error) {
-	var delta *RevisionDelta
-
-	value := revCacheValue{
-		key: key,
-	}
-
-	// If doc has been passed in use this to grab values. Otherwise run revCacheLoader which will grab the Document
-	// first
-	if doc != nil {
-		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, _, value.err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, key.RevID)
-	} else {
-		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, _, value.err = revCacheLoader(ctx, rc.backingStores[collectionID], key)
-	}
-
-	if includeDelta {
-		delta = value.delta
-	}
-
-	docRev, err := value.asDocumentRevision(delta)
-
-	// Classify operation as a cache miss
-	rc.statsRecorderFunc(false)
-
-	return docRev, err
-
-}
-
 // Attempts to retrieve the active revision for a document from the cache.  Requires retrieval
 // of the document from the bucket to guarantee the current active revision, but does minimal unmarshalling
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
@@ -505,7 +475,7 @@ func CalculateDocRevBytes(historyBytes, bodyBytes int, channels base.Set) int64 
 	}
 	totalBytes += historyBytes
 	totalBytes += bodyBytes
-	// for the size storage
+	// for the int64 size storage
 	totalBytes += 8
 	return int64(totalBytes)
 }
