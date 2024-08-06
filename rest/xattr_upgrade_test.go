@@ -225,9 +225,8 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	require.NoError(t, rt.WaitForSequence(1))
 
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
-	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes", "")
-	assert.Equal(t, 200, response.Code)
-	log.Printf("response:%s", response.Body.Bytes())
+	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes", "{}")
+	require.Len(t, changes.Results, 1)
 
 	// Validate non-xattr document doesn't get processed on attempted feed read
 	nonMobileKey := "TestUpgradeNoXattr"

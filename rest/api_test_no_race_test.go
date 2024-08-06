@@ -21,7 +21,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,14 +54,8 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var changes struct {
-			Results  []db.ChangeEntry
-			Last_Seq db.SequenceID
-		}
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err)
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 		assert.Len(t, changes.Results, 3)
 	}()
 
@@ -112,10 +105,6 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	RequireStatus(t, response, 201)
 
 	// Run an initial changes request to get the user doc, and update since based on last_seq:
-	var initialChanges struct {
-		Results  []db.ChangeEntry
-		Last_Seq db.SequenceID
-	}
 	changesJSON := `{"style":"all_docs",
 			 "heartbeat":300000,
 			 "feed":"longpoll",
@@ -124,9 +113,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 			 "filter":"` + base.ByChannelFilter + `",
 			 "channels":"ABC,PBS"}`
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", sinceZeroJSON, "bernard")
-	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &initialChanges)
-	assert.NoError(t, err, "Unexpected error unmarshalling initialChanges")
+	initialChanges := rt.PostChanges("/{{.keyspace}}/_changes", sinceZeroJSON, "bernard")
 	lastSeq := initialChanges.Last_Seq.String()
 	assert.Equal(t, "1", lastSeq)
 
@@ -137,13 +124,9 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var changes struct {
-			Results  []db.ChangeEntry
-			Last_Seq db.SequenceID
-		}
+
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", sinceLastJSON, "bernard")
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", sinceLastJSON, "bernard")
 		assert.Len(t, changes.Results, 1)
 	}()
 

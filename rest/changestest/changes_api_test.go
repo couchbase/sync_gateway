@@ -9,7 +9,6 @@
 package changestest
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -61,39 +60,21 @@ func TestReproduce2383(t *testing.T) {
 	collection, _ := rt.GetSingleTestDatabaseCollection()
 	assert.NoError(t, collection.FlushChannelCache(ctx))
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.True(t, ok)
 
 	// Force a partial error for the first ViewCustom call we make to initialize an invalid cache.
 	leakyDataStore.SetFirstTimeViewCustomPartialError(true)
 
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben")
 
 	// In the first changes request since cache flush, we're forcing a nil cache with no error. Thereforce we'd expect to see zero results.
 	require.Len(t, changes.Results, 0)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-
+	changes = rt.PostChanges("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben")
 	// Now we should expect 3 results, as the invalid cache was not persisted.
 	// The second call to ViewCustom will succeed and properly create the channel cache.
 	require.Len(t, changes.Results, 3)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 
 	// if we create another doc, the cache will get updated with the latest doc.
 	cacheWaiter.Add(1)
@@ -102,16 +83,8 @@ func TestReproduce2383(t *testing.T) {
 
 	cacheWaiter.Wait()
 
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-
+	changes = rt.PostChanges("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben")
 	require.Len(t, changes.Results, 4)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
-
 }
 
 func TestDocDeletionFromChannel(t *testing.T) {
@@ -139,12 +112,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 
 	// Check the _changes feed:
 	require.NoError(t, rt.WaitForPendingChanges())
-	var changes struct {
-		Results []db.ChangeEntry
-	}
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "alice")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "alice")
 	require.Len(t, changes.Results, 1)
 	since := changes.Results[0].Seq
 	assert.Equal(t, uint64(1), since.Seq)
@@ -157,11 +125,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 
 	// Get the updates from the _changes feed:
 	_ = rt.WaitForPendingChanges()
-	response = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", since),
-		"", "alice")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	changes.Results = nil
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?since="+since.String(), "alice")
 	require.Len(t, changes.Results, 1)
 
 	assert.Equal(t, "alpha", changes.Results[0].ID)
@@ -312,22 +276,8 @@ func TestPostChangesUserTiming(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var changes struct {
-			Results  []db.ChangeEntry
-			Last_Seq string
-		}
 		changesJSON := `{"style":"all_docs", "timeout":6000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-		// Validate that the user receives backfill plus the new doc
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
-
-		if len(changes.Results) != 3 {
-			log.Printf("len(changes.Results) != 3, dumping changes response for diagnosis")
-			log.Printf("changes: %+v", changes)
-			log.Printf("changesResponse status code: %v.  Headers: %+v", changesResponse.Code, changesResponse.Header())
-			log.Printf("changesResponse raw body: %s", changesResponse.Body.String())
-		}
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 		require.Len(t, changes.Results, 3)
 	}()
 
@@ -372,29 +322,14 @@ func TestPostChangesWithQueryString(t *testing.T) {
 
 	_ = rt.WaitForPendingChanges()
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq db.SequenceID
-	}
-
 	// Test basic properties
 	changesJSON := `{"heartbeat":50, "feed":"normal", "limit":1, "since":"3"}`
-	changesResponse := rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes?feed=longpoll&limit=10&since=0&heartbeat=50000", changesJSON)
-
-	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?feed=longpoll&limit=10&since=0&heartbeat=50000", changesJSON)
 	require.Len(t, changes.Results, 4)
 
 	// Test channel filter
-	var filteredChanges struct {
-		Results  []db.ChangeEntry
-		Last_Seq db.SequenceID
-	}
-	changesJSON = `{"feed":"longpoll"}`
-	changesResponse = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes?feed=longpoll&filter=sync_gateway/bychannel&channels=ABC", changesJSON)
-
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &filteredChanges)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changesJSON = `{"longpoll":true}`
+	filteredChanges := rt.PostChangesAdmin("/{{.keyspace}}/_changes?feed=longpoll&filter=sync_gateway/bychannel&channels=ABC", changesJSON)
 	require.Len(t, filteredChanges.Results, 1)
 }
 
@@ -417,16 +352,8 @@ func postChangesSince(t *testing.T, rt *rest.RestTester) {
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(5)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-
-	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	log.Printf("Changes:%s", changesResponse.Body.Bytes())
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
 
 	// Put several more documents, some to the same vbuckets
@@ -441,12 +368,8 @@ func postChangesSince(t *testing.T, rt *rest.RestTester) {
 	cacheWaiter.AddAndWait(4)
 
 	changesJSON = fmt.Sprintf(`{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"%s"}`, changes.Last_Seq)
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	log.Printf("Changes:%s", changesResponse.Body.Bytes())
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 3)
-
 }
 
 func TestPostChangesChannelFilterInteger(t *testing.T) {
@@ -483,16 +406,8 @@ func postChangesChannelFilter(t *testing.T, rt *rest.RestTester) {
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(5)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	changesJSON := `{"filter":"` + base.ByChannelFilter + `", "channels":"PBS"}`
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 4)
 
 	// Put several more documents, some to the same vbuckets
@@ -505,14 +420,8 @@ func postChangesChannelFilter(t *testing.T, rt *rest.RestTester) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs4", `{"value":4, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(4)
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	for _, result := range changes.Results {
-		log.Printf("changes result:%+v", result)
-	}
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 7)
-
 }
 
 func TestPostChangesAdminChannelGrant(t *testing.T) {
@@ -547,37 +456,16 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(5)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Issue simple changes request
-	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	rest.RequireStatus(t, changesResponse, 200)
-
-	log.Printf("Response:%+v", changesResponse.Body)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 1)
 
 	// Update the user doc to grant access to PBS
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "", "", rt.GetSingleDataStore(), []string{"ABC", "PBS"}, nil))
 	rest.RequireStatus(t, response, 200)
 
-	time.Sleep(500 * time.Millisecond)
-
 	// Issue a new changes request with since=last_seq ensure that user receives all records for channel PBS
-	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq),
-		"", "bernard")
-	rest.RequireStatus(t, changesResponse, 200)
-
-	log.Printf("Response:%+v", changesResponse.Body)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
+	changes = rt.GetChanges(fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "bernard")
 	require.Len(t, changes.Results, 5) // 4 PBS docs, plus the updated user doc
 
 	// Write a few more docs
@@ -589,12 +477,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	cacheWaiter.AddAndWait(2)
 
 	// Issue another changes request - ensure we don't backfill again
-	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq),
-		"", "bernard")
-	rest.RequireStatus(t, changesResponse, 200)
-	log.Printf("Response:%+v", changesResponse.Body)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?since="+changes.Last_Seq.String(), "bernard")
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 	}
@@ -1012,7 +895,7 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			c, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 			require.NoError(t, err)
 
-			lastSeq := c.Last_Seq.(string)
+			lastSeq := c.Last_Seq.String()
 
 			resp = sendRequestFn(rt, test.username, http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&feed=%s&timeout=100", lastSeq, test.feedType), "")
 			rest.RequireStatus(t, resp, http.StatusOK)
@@ -1071,13 +954,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 6))
 
 	// Check the _changes feed:
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq db.SequenceID
-	}
-	response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 4)
 	since := changes.Results[0].Seq
 	assert.Equal(t, uint64(1), since.Seq)
@@ -1086,9 +963,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	// Send another changes request before any changes, with the last_seq received from the last changes ("2::6")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 0)
 
 	// Send a missing doc - low sequence should move to 3
@@ -1100,9 +975,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 3)
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
@@ -1112,11 +985,8 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 1)
-
 }
 
 // Test low sequence handling of late arriving sequences to a one-shot changes feed, ensuring that
@@ -1160,17 +1030,11 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq string
-	}
-	response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	require.Len(t, changes.Results, 5) // Includes user doc
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
+	require.Len(t, changes.Results, 5)
 	since := changes.Results[0].Seq
 	assert.Equal(t, uint64(1), since.Seq)
-	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Equal(t, "5", changes.Last_Seq.String())
 
 	// Skip sequence 6, write docs 7-10
 	db.WriteDirect(t, collection, []string{"PBS"}, 7)
@@ -1182,11 +1046,9 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 4)
-	assert.Equal(t, "5::10", changes.Last_Seq)
+	assert.Equal(t, "5::10", changes.Last_Seq.String())
 
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
@@ -1196,11 +1058,9 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 2)
-	assert.Equal(t, "5::12", changes.Last_Seq)
+	assert.Equal(t, "5::12", changes.Last_Seq.String())
 
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	db.WriteDirect(t, collection, []string{"PBS"}, 13)
@@ -1209,9 +1069,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	log.Printf("_changes 4 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 
 	// Valid results here under race conditions should be:
 	//    receive sequences 6-13, last seq 13
@@ -1226,9 +1084,9 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	//    receives sequence 6, last seq 13
 	switch len(changes.Results) {
 	case 0:
-		assert.Equal(t, "5::12", changes.Last_Seq)
+		assert.Equal(t, "5::12", changes.Last_Seq.String())
 	case 1:
-		switch changes.Last_Seq {
+		switch changes.Last_Seq.String() {
 		case "5::13":
 			assert.Equal(t, uint64(13), changes.Results[0].Seq.Seq)
 		case "6":
@@ -1241,9 +1099,9 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 			t.Errorf("invalid response.  Last_Seq: %v  changes: %v", changes.Last_Seq, changes.Results[0])
 		}
 	case 7:
-		assert.Equal(t, "12", changes.Last_Seq)
+		assert.Equal(t, "12", changes.Last_Seq.String())
 	case 8:
-		assert.Equal(t, "13", changes.Last_Seq)
+		assert.Equal(t, "13", changes.Last_Seq.String())
 	default:
 		t.Errorf("Unexpected number of changes results.  Last_Seq: %v  len(changes): %v", changes.Last_Seq, len(changes.Results))
 	}
@@ -1278,6 +1136,9 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	const user = "alice"
+	rt.CreateUser(user, []string{"PBS"})
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
@@ -1288,17 +1149,11 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 	// Check the _changes feed:
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq string
-	}
-	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes", "")
-	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", user)
 	require.Len(t, changes.Results, 5)
 	since := changes.Results[0].Seq
 	assert.Equal(t, uint64(1), since.Seq)
-	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Equal(t, "5", changes.Last_Seq.String())
 
 	// Skip sequence 6, write docs 7-10
 	db.WriteDirect(t, collection, []string{"PBS"}, 7)
@@ -1310,11 +1165,9 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes", changesJSON)
-	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", changesJSON)
 	require.Len(t, changes.Results, 4)
-	assert.Equal(t, "5::10", changes.Last_Seq)
+	assert.Equal(t, "5::10", changes.Last_Seq.String())
 
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
@@ -1324,11 +1177,9 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes", changesJSON)
-	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", changesJSON)
 	require.Len(t, changes.Results, 2)
-	assert.Equal(t, "5::12", changes.Last_Seq)
+	assert.Equal(t, "5::12", changes.Last_Seq.String())
 
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	db.WriteDirect(t, collection, []string{"PBS"}, 13)
@@ -1337,9 +1188,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes", changesJSON)
-	log.Printf("_changes 4 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", changesJSON)
 
 	// Valid results here under race conditions should be:
 	//    receive sequences 6-13, last seq 13
@@ -1356,7 +1205,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	case 0:
 		assert.Equal(t, "5::12", changes.Last_Seq)
 	case 1:
-		switch changes.Last_Seq {
+		switch changes.Last_Seq.String() {
 		case "5::13":
 			assert.Equal(t, uint64(13), changes.Results[0].Seq.Seq)
 		case "6":
@@ -1369,9 +1218,9 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 			t.Errorf("invalid response.  Last_Seq: %v  changes: %v", changes.Last_Seq, changes.Results[0])
 		}
 	case 7:
-		assert.Equal(t, "12", changes.Last_Seq)
+		assert.Equal(t, "12", changes.Last_Seq.String())
 	case 8:
-		assert.Equal(t, "13", changes.Last_Seq)
+		assert.Equal(t, "13", changes.Last_Seq.String())
 	default:
 		t.Errorf("Unexpected number of changes results.  Last_Seq: %v  len(changes): %v", changes.Last_Seq, len(changes.Results))
 	}
@@ -1420,17 +1269,11 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq string
-	}
-	response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	require.Len(t, changes.Results, 5) // Includes user doc
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
+	require.Len(t, changes.Results, 5)
 	since := changes.Results[0].Seq
 	assert.Equal(t, uint64(1), since.Seq)
-	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Equal(t, "5", changes.Last_Seq.String())
 
 	// Skip sequence 6, write docs 7-10
 	db.WriteDirect(t, collection, []string{"PBS"}, 7)
@@ -1442,11 +1285,9 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 4)
-	assert.Equal(t, "5::10", changes.Last_Seq)
+	assert.Equal(t, "5::10", changes.Last_Seq.String())
 
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
@@ -1456,11 +1297,9 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 2)
-	assert.Equal(t, "5::12", changes.Last_Seq)
+	assert.Equal(t, "5::12", changes.Last_Seq.String())
 
 	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 	// Issue a longpoll changes request.  Will block.
@@ -1470,12 +1309,10 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		defer longpollWg.Done()
 		longpollChangesJSON := fmt.Sprintf(`{"since":"%s", "feed":"longpoll"}`, changes.Last_Seq)
 		log.Printf("starting longpoll changes w/ JSON: %s", longpollChangesJSON)
-		longPollResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", longpollChangesJSON, "bernard")
-		log.Printf("longpoll changes looks like: %s", longPollResponse.Body.Bytes())
-		assert.NoError(t, base.JSONUnmarshal(longPollResponse.Body.Bytes(), &changes))
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", longpollChangesJSON, "bernard")
 		// Expect to get 6 through 12
 		require.Len(t, changes.Results, 7)
-		assert.Equal(t, "12", changes.Last_Seq)
+		assert.Equal(t, "12", changes.Last_Seq.String())
 	}()
 
 	// Wait for longpoll to get into wait mode
@@ -1710,17 +1547,10 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictActive"}], "new_edits":false}`)
 	rest.RequireStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
 	err = rt.WaitForCondition(func() bool {
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 		return len(changes.Results) == 5
 	})
 	assert.NoError(t, err)
@@ -1739,10 +1569,9 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
+	var changes rest.ChangesResults
 	err = rt.WaitForCondition(func() bool {
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
+		changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 		return len(changes.Results) == 5
 	})
 	assert.NoError(t, err)
@@ -1755,13 +1584,11 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 
 	// Active only, POST
 	changesJSON = `{"style":"all_docs", "active_only":true}`
-	changes.Results = nil
 	err = rt.WaitForCondition(func() bool {
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
+		changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 		return len(changes.Results) == 3
 	})
+	require.NoError(t, err)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 		// validate conflicted handling
@@ -1771,13 +1598,11 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	}
 
 	// Active only, GET
-	changes.Results = nil
 	err = rt.WaitForCondition(func() bool {
-		changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true", "", "bernard")
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
+		changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true", "bernard")
 		return len(changes.Results) == 3
 	})
+	require.NoError(t, err)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 		if entry.ID == "conflictedDoc" {
@@ -1823,96 +1648,67 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	// Create struct to hold changes response
-	var changes struct {
-		Results []db.ChangeEntry
-	}
-
 	// User has access to single channel
 	body := `{"filter":"_doc_ids", "doc_ids":["doc4", "doc1", "docA", "b0gus"]}`
-	response := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user1")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", body, "user1")
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "doc4", changes.Results[1].ID)
 
 	// User has access to different single channel
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "docB", "docD", "doc1"]}`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user2")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user2")
 	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "docD", changes.Results[2].ID)
 
 	// User has access to multiple channels
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user3")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user3")
 	require.Len(t, changes.Results, 4)
 	assert.Equal(t, "docD", changes.Results[3].ID)
 
 	// User has no channel access
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user4")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user4")
 	require.Len(t, changes.Results, 0)
 
 	// User has "*" channel access
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user5")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user5")
 	require.Len(t, changes.Results, 5)
 
 	// User has "*" channel access, override POST with GET params
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
-	response = rt.SendUserRequest("POST", `/{{.keyspace}}/_changes?doc_ids=["docC","doc1"]`, body, "user5")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges(`/{{.keyspace}}/_changes?doc_ids=["docC","doc1"]`, body, "user5")
 	require.Len(t, changes.Results, 2)
 
 	// User has "*" channel access, use GET
-	response = rt.SendUserRequest("GET", `/{{.keyspace}}/_changes?filter=_doc_ids&doc_ids=["docC","doc1","docD"]`, "", "user5")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges(`/{{.keyspace}}/_changes?filter=_doc_ids&doc_ids=["docC","doc1","docD"]`, "user5")
 	require.Len(t, changes.Results, 3)
 
 	// User has "*" channel access, use GET with doc_ids plain comma separated list
-	response = rt.SendUserRequest("GET", `/{{.keyspace}}/_changes?filter=_doc_ids&doc_ids=docC,doc1,doc2,docD`, "", "user5")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges(`/{{.keyspace}}/_changes?filter=_doc_ids&doc_ids=docC,doc1,doc2,docD`, "user5")
 	require.Len(t, changes.Results, 4)
 
 	// Admin User
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "docA"]}`
-	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes", body)
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", body)
 	require.Len(t, changes.Results, 4)
 
 	// Use since value to restrict results
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6}`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user3")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user3")
 	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "docD", changes.Results[2].ID)
 
 	// Use since value and limit value to restrict results
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6, "limit":1}`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user3")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user3")
 	require.Len(t, changes.Results, 1)
 	assert.Equal(t, "doc4", changes.Results[0].ID)
 
 	// test parameter include_docs=true
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "include_docs":true }`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user3")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user3")
 	require.Len(t, changes.Results, 4)
 	assert.Equal(t, "docD", changes.Results[3].ID)
 	var docBody db.Body
@@ -1926,9 +1722,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "style":"all_docs"}`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user3")
-	rest.RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", body, "user3")
 	require.Len(t, changes.Results, 4)
 	assert.Equal(t, "docC", changes.Results[3].ID)
 	require.Len(t, changes.Results[3].Changes, 2)
@@ -2059,11 +1853,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[7] = `{"seq":19,"id":"doc_large_numbers","doc":{"_id":"doc_large_numbers","_rev":"1-2721633d9000e606e9c642e98f2f5ae7","channels":["alpha"],"largefloat":1234567890.1234,"largeint":1234567890,"type":"large_numbers"},"changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"}]}`
 	expectedResults[9] = `{"seq":26,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
-	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "", "user1")
-
-	var changes rest.ChangesResults
-	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
-	assert.Equal(t, len(expectedResults), len(changes.Results))
+	changes := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "user1")
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -2094,10 +1884,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	data := collection.GetCollectionDatastore()
 	assert.NoError(t, data.Delete(base.RevPrefix+"doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
 
-	postFlushChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "", "user1")
+	postFlushChanges := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "user1")
 
-	var postFlushChanges rest.ChangesResults
-	assert.NoError(t, base.JSONUnmarshal(postFlushChangesResponse.Body.Bytes(), &postFlushChanges))
 	assert.Equal(t, len(expectedResults), len(postFlushChanges.Results))
 
 	for index, result := range postFlushChanges.Results {
@@ -2136,24 +1924,16 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedStyleAllDocs[8] = `{"seq":22,"id":"doc_conflict","changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
 	expectedStyleAllDocs[9] = `{"seq":26,"id":"doc_resolved_conflict","changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"},{"rev":"3-f25ad98ef169791adec6c1d385717b84"}]}`
 
-	styleAllDocsChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs", "", "user1")
-	var allDocsChanges struct {
-		Results []*json.RawMessage
-	}
-	err = base.JSONUnmarshal(styleAllDocsChangesResponse.Body.Bytes(), &allDocsChanges)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	assert.Equal(t, len(expectedStyleAllDocs), len(allDocsChanges.Results))
+	allDocsChanges := rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs", "user1")
 	for index, result := range allDocsChanges.Results {
-		assert.Equal(t, expectedStyleAllDocs[index], fmt.Sprintf("%s", *result))
+		assert.Equal(t, expectedStyleAllDocs[index], fmt.Sprintf("%s", base.MustJSONMarshal(t, result)))
 	}
 
 	// Validate style=all_docs, include_docs=true permutations.  Only modified doc from include_docs test is doc_conflict (adds open revisions)
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
 	expectedResults[9] = `{"seq":26,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"},{"rev":"3-f25ad98ef169791adec6c1d385717b84"}]}`
 
-	combinedChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&include_docs=true", "", "user1")
-	var combinedChanges rest.ChangesResults
-	assert.NoError(t, base.JSONUnmarshal(combinedChangesResponse.Body.Bytes(), &combinedChanges))
+	combinedChanges := rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&include_docs=true", "user1")
 	assert.Equal(t, len(expectedResults), len(combinedChanges.Results))
 
 	for index, result := range combinedChanges.Results {
@@ -2218,37 +1998,20 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	// Flush the channel cache
 	assert.NoError(t, collection.FlushChannelCache(ctx))
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Initialize query count
 	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 
 	// Issue a since=0 changes request.  Validate that there is a view-based backfill
-	changes.Results = nil
 	changesJSON := `{"since":0, "limit":50}`
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 10)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there has been a view query
 	secondQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, queryCount+1, secondQueryCount)
 
 	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 10)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	thirdQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, secondQueryCount, thirdQueryCount)
 
@@ -2294,63 +2057,35 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// Issue a since=0 changes request, with limit less than the number of PBS documents
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 
 	// Issue a since=0, limit 5 changes request.  Results shouldn't be prepended to the cache, since they aren't
 	// contiguous with the cache's validFrom.
-	changes.Results = nil
 	changesJSON := `{"since":0, "limit":5}`
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 
 	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After initial changes request, query count is :%d", queryCount)
 
 	// Issue another since=0, limit 5 changes request.  Validate that there is another a view-based backfill
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there has been one more view query
 	secondQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, queryCount+1, secondQueryCount)
 
 	// Issue a since=20, limit 5 changes request.  Results should be prepended to the cache (seqs 23, 26, 29)
-	changes.Results = nil
 	changesJSON = `{"since":20, "limit":5}`
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 3)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there has been one more view query
 	thirdQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, secondQueryCount+1, thirdQueryCount)
 
 	// Issue a since=20, limit 5 changes request again.  Results should be served from the cache (seqs 23, 26, 29)
-	changes.Results = nil
 	changesJSON = `{"since":20, "limit":5}`
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 3)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there hasn't been another view query
 	fourthQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, thirdQueryCount, fourthQueryCount)
@@ -2396,46 +2131,24 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// Issue a since=n changes request, where n > 0 and is a non-PBS sequence.  Validate that there's a view-based backfill
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 	changesJSON := `{"since":15, "limit":50}`
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 
 	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After initial changes request, query count is :%d", queryCount)
 
 	// Issue a since=0 changes request.  Expect a second view query to retrieve the additional results
-	changes.Results = nil
 	changesJSON = `{"since":0, "limit":50}`
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 10)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there has been one more view query
 	secondQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, queryCount+1, secondQueryCount)
 
 	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 10)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there haven't been any more view queries
 	thirdQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, secondQueryCount, thirdQueryCount)
@@ -2497,33 +2210,17 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Issue a since=n changes request, where 0 < n < 30 (high sequence at cache init)Validate that there's a view-based backfill
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 	changesJSON := `{"since":15, "limit":50}`
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 6)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 
 	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After initial changes request, query count is :%d", queryCount)
 
 	// Issue the same changes request.  Validate that there is not another a view-based backfill
-	changes.Results = nil
 	changesJSON = `{"since":15, "limit":50}`
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 6)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there has been one more view query
 	secondQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, queryCount, secondQueryCount)
@@ -2573,31 +2270,15 @@ func TestChangesViewBackfill(t *testing.T) {
 	cacheWaiter.AddAndWait(2)
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 	changesJSON := `{"since":0, "limit":50}`
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After initial changes request, query count is: %d", queryCount)
 
 	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there haven't been any more view queries
 	assert.Equal(t, testDb.DbStats.Cache().ViewQueries.Value(), queryCount)
 
@@ -2647,14 +2328,8 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 	changesJSON := `{"since":0, "limit":50}`
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 5)
 	for index, entry := range changes.Results {
@@ -2666,10 +2341,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	log.Printf("After initial changes request, query count is: %d", queryCount)
 
 	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
 	for index, entry := range changes.Results {
 		// Expects docs in sequence order from 1-5
@@ -2827,15 +2499,8 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 			startQueryCount := testDb.GetChannelQueryCount()
 
 			// Issue a since=0 changes request.
-			var changes struct {
-				Results  []db.ChangeEntry
-				Last_Seq interface{}
-			}
 			changesJSON := fmt.Sprintf(`{"since":0, "limit":%d}`, test.requestLimit)
-			changes.Results = nil
-			changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, username)
-			err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-			assert.NoError(t, err, "Error unmarshalling changes response")
+			changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, username)
 			require.Equal(t, test.expectedResultCount, len(changes.Results))
 
 			// Validate expected number of queries
@@ -2891,15 +2556,8 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// 1. Issue a since=0 changes request, validate results
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 	changesJSON := fmt.Sprintf(`{"since":0}`)
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, username)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, username)
 	require.Len(t, changes.Results, 50)
 
 	// Verify results ordering
@@ -2909,12 +2567,8 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 
 	// 2. Same again, but with limit on the changes request
 	assert.NoError(t, collection.FlushChannelCache(ctx))
-	changes.Results = nil
 	changesJSON = fmt.Sprintf(`{"since":0, "limit":25}`)
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, username)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, username)
 	require.Len(t, changes.Results, 25)
 
 	// Verify results ordering
@@ -2960,15 +2614,8 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 	startQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 	changesJSON := `{"since":0, "limit":7}`
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Equal(t, len(changes.Results), 7)
 	finalQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, int64(2), finalQueryCount-startQueryCount)
@@ -3054,15 +2701,8 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	//   4. doc1 rev-1 is prepended to the cache
 	//   5. Returns 1 + 2 (doc 2, doc 1 rev-1).  This is correct (doc1 rev2 wasn't cached when the changes query was issued),
 	//      but now the cache has two versions of doc1.  Subsequent changes request will returns duplicates.
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 	changesJSON := `{"since":0, "limit":50}`
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 2)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3073,14 +2713,8 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	leakyDataStore.SetPostQueryCallback(nil)
 
 	// Issue another since=0 changes request - cache SHOULD only have a single rev for doc1
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 2)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
 	// Validate that there haven't been any more view queries
 	updatedQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After second changes request, query count is: %d", updatedQueryCount)
@@ -3149,16 +2783,9 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(1)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
 
 	// Delete
@@ -3199,9 +2826,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 10)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3212,10 +2837,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
 	// Active only NO Limit, POST
 	changesJSON = `{"style":"all_docs", "active_only":true}`
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 8)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3227,10 +2849,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
 	// Active only with Limit, POST
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":5}`
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3240,10 +2859,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 		}
 	}
 	// Active only with Limit, GET
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "bernard")
 	require.Len(t, changes.Results, 5)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3254,10 +2870,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
 	// Active only with Limit set higher than number of revisions, POST
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":15}`
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 8)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3321,16 +2934,9 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(1)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Get pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
 
 	// Delete
@@ -3361,9 +2967,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 10)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3377,10 +2981,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	changesJSON = `{"style":"all_docs", "active_only":true}`
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 8)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3393,10 +2994,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	// Active only with Limit, POST
 	assert.NoError(t, collection.FlushChannelCache(ctx))
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":5}`
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3408,10 +3006,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	// Active only with Limit, GET
 	assert.NoError(t, collection.FlushChannelCache(ctx))
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "bernard")
 	require.Len(t, changes.Results, 5)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3423,10 +3018,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	// Active only with Limit set higher than number of revisions, POST
 	assert.NoError(t, collection.FlushChannelCache(ctx))
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":15}`
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 8)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3438,10 +3030,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	// No limit active only, GET, followed by normal (https://github.com/couchbase/sync_gateway/issues/2955)
 	assert.NoError(t, collection.FlushChannelCache(ctx))
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true", "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true", "bernard")
 	require.Len(t, changes.Results, 8)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3450,15 +3039,8 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 		}
 	}
 
-	var updatedChanges struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &updatedChanges)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, updatedChanges.Results, 10)
-
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
+	require.Len(t, changes.Results, 10)
 }
 
 func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
@@ -3562,10 +3144,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 	// Active only NO Limit, POST
 	changesJSON := `{"style":"all_docs", "active_only":true}`
-	changes.Results = nil
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 8)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3577,10 +3156,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 	// Active only with Limit, POST
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":5}`
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3590,10 +3166,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 		}
 	}
 	// Active only with Limit, GET
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "bernard")
 	require.Len(t, changes.Results, 5)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3604,10 +3177,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 	// Active only with Limit set higher than number of revisions, POST
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":15}`
-	changes.Results = nil
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 8)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
@@ -3639,18 +3209,10 @@ func TestChangesIncludeConflicts(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/conflictedDoc?new_edits=false", `{"_revisions":{"start":2, "ids":["conflictTwo", "82214a562e80c8fa7b2361719847bc73"]}, "value":"c2", "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Get changes
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	changesResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?style=all_docs", "")
-	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	log.Printf("changes response: %s", changesResponse.Body.Bytes())
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?style=all_docs", "{}")
 	require.Len(t, changes.Results, 1)
 	require.Len(t, changes.Results[0].Changes, 2)
 
@@ -3682,35 +3244,28 @@ func TestChangesLargeSequences(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	const user = "alice"
+
+	rt.CreateUser(user, []string{"PBS"})
+
 	// Create document
 	response := rt.SendAdminRequest("PUT", "/db/largeSeqDocForChanges", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Get changes
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?since=9223372036854775800", "")
-	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.GetChanges("/{{.keyspace}/_changes?since=9223372036854775800", user)
 	require.Len(t, changes.Results, 1)
 	assert.Equal(t, uint64(9223372036854775808), changes.Results[0].Seq.Seq)
 	assert.Equal(t, "9223372036854775808", changes.Last_Seq)
 
 	// Validate incoming since value isn't being truncated
-	changesResponse = rt.SendAdminRequest("GET", "/db/_changes?since=9223372036854775808", "")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?since=9223372036854775808", user)
 	require.Len(t, changes.Results, 0)
 
 	// Validate incoming since value isn't being truncated
-	changesResponse = rt.SendAdminRequest("POST", "/db/_changes", `{"since":9223372036854775808}`)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", `{"since":9223372036854775808}`)
 	require.Len(t, changes.Results, 0)
 
 }
@@ -3741,28 +3296,15 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	cacheWaiter.AddAndWait(3)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Get as admin
-	changes.Results = nil
-	changesResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "")
-	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	log.Printf("admin response: %s", changesResponse.Body.Bytes())
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?include_docs=true", "{}")
 	// Expect three docs, no user docs
 	require.Len(t, changes.Results, 3)
 
 	// Get as user
-	changes.Results = nil
-	userChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "", "includeDocsUser")
-	err = base.JSONUnmarshal(userChangesResponse.Body.Bytes(), &changes)
-	log.Printf("userChangesResponse: %s", userChangesResponse.Body.Bytes())
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	userChanges := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "includeDocsUser")
 	// Expect three docs and the authenticated user's user doc
-	require.Len(t, changes.Results, 4)
+	require.Len(t, userChanges.Results, 4)
 
 }
 
@@ -3791,11 +3333,6 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-4", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
 	// Issue longpoll changes request
@@ -3804,9 +3341,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	go func() {
 		defer longpollWg.Done()
 		longpollChangesJSON := `{"since":0, "feed":"longpoll"}`
-		longPollResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", longpollChangesJSON, "bernard")
-		log.Printf("longpoll changes response looks like: %s", longPollResponse.Body.Bytes())
-		assert.NoError(t, base.JSONUnmarshal(longPollResponse.Body.Bytes(), &changes))
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", longpollChangesJSON, "bernard")
 		// Expect to get 4 docs plus user doc
 		require.Len(t, changes.Results, 5)
 	}()
@@ -3852,14 +3387,9 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 		longpollWg.Add(1)
 		go func(i int) {
 			defer longpollWg.Done()
-			var changes struct {
-				Results  []db.ChangeEntry
-				Last_Seq interface{}
-			}
 			channelName := fmt.Sprintf("chan_%d", i)
 			changesURL := fmt.Sprintf(changesURLPattern, channelName)
-			changesResponse := rt.SendAdminRequest("GET", changesURL, "")
-			assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
+			changes := rt.PostChangesAdmin(changesURL, "{}")
 			// Expect to get 1 doc
 			require.Len(t, changes.Results, 1)
 		}(i)
@@ -4065,11 +3595,6 @@ func TestOneShotGrantTiming(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-4", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
 	slowSequence, seqErr := db.AllocateTestSequence(database)
 	require.NoError(t, seqErr)
@@ -4081,13 +3606,7 @@ func TestOneShotGrantTiming(t *testing.T) {
 
 	// Issue normal one-shot changes request.  Expect no results as granting document hasn't been buffered (blocked by
 	// slowSequence)
-	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	rest.RequireStatus(t, changesResponse, 200)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 0)
 
 	// Release the slow sequence and wait for it to be processed over DCP
@@ -4096,15 +3615,8 @@ func TestOneShotGrantTiming(t *testing.T) {
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Issue normal one-shot changes request.  Expect results as granting document buffering is unblocked
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	rest.RequireStatus(t, changesResponse, 200)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 4)
-
 }
 
 // TestOneShotGrantRequestPlus simulates a one-shot changes feed being made before a previously issued grant has been
@@ -4159,14 +3671,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	oneShotComplete.Add(1)
 	go func() {
 		defer oneShotComplete.Done()
-		var changes rest.ChangesResults
-		changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?request_plus=true", "", "bernard")
-		rest.RequireStatus(t, changesResponse, 200)
-		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
-		for _, entry := range changes.Results {
-			log.Printf("Entry:%+v", entry)
-		}
+		changes := rt.GetChanges("/{{.keyspace}}/_changes?request_plus=true", "bernard")
 		require.Len(t, changes.Results, 4)
 	}()
 
@@ -4174,14 +3679,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	oneShotComplete.Add(1)
 	go func() {
 		defer oneShotComplete.Done()
-		var changes rest.ChangesResults
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", `{"request_plus":true}`, "bernard")
-		rest.RequireStatus(t, changesResponse, 200)
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
-		for _, entry := range changes.Results {
-			log.Printf("Entry:%+v", entry)
-		}
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", `{"request_plus":true}`, "bernard")
 		require.Len(t, changes.Results, 4)
 	}()
 
@@ -4249,25 +3747,12 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 
 	// Issue one-shot GET changes request explicitly setting request_plus=false (should override config value).
 	// Expect no results as granting document hasn't been buffered (blocked by slowSequence)
-	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?request_plus=false", "", "bernard")
-	rest.RequireStatus(t, changesResponse, 200)
-	var changes rest.ChangesResults
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
+	changes := rt.GetChanges("/{{.keyspace}}/_changes?request_plus=false", "bernard")
 	require.Len(t, changes.Results, 0)
 
 	// Issue one-shot POST changes request explicitly setting request_plus=false (should override config value).
 	// Expect no results as granting document hasn't been buffered (blocked by slowSequence)
-	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", `{"request_plus":false}`, "bernard")
-	rest.RequireStatus(t, changesResponse, 200)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", `{"request_plus":false}`, "bernard")
 	require.Len(t, changes.Results, 0)
 
 	caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
@@ -4277,14 +3762,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	oneShotComplete.Add(1)
 	go func() {
 		defer oneShotComplete.Done()
-		var changes rest.ChangesResults
-		changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-		rest.RequireStatus(t, changesResponse, 200)
-		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
-		for _, entry := range changes.Results {
-			log.Printf("Entry:%+v", entry)
-		}
+		changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 		require.Len(t, changes.Results, 4)
 	}()
 
@@ -4292,14 +3770,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	oneShotComplete.Add(1)
 	go func() {
 		defer oneShotComplete.Done()
-		var changes rest.ChangesResults
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", `{}`, "bernard")
-		rest.RequireStatus(t, changesResponse, 200)
-		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err, "Error unmarshalling changes response")
-		for _, entry := range changes.Results {
-			log.Printf("Entry:%+v", entry)
-		}
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", `{}`, "bernard")
 		require.Len(t, changes.Results, 4)
 	}()
 
