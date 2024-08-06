@@ -332,3 +332,14 @@ func BenchmarkAuditFieldwork(b *testing.B) {
 		})
 	}
 }
+
+func Test_expandFieldsAdditionalDataReadOnly(t *testing.T) {
+	additionalData := AuditFields{"foo": "bar"}
+	for i := 0; i < 5; i++ {
+		fields := expandFields(AuditIDDocumentRead, TestCtx(t), AuditFields{"global": true}, additionalData)
+		// id, name, description, timestamp, global, foo
+		assert.Len(t, fields, 6)
+	}
+	// additionalData should not be modified
+	assert.Len(t, additionalData, 1)
+}

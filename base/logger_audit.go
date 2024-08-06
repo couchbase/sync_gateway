@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ const (
 func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
 	var fields AuditFields
 	if additionalData != nil {
-		fields = additionalData
+		fields = maps.Clone(additionalData)
 	} else {
 		fields = make(AuditFields)
 	}
@@ -103,7 +104,7 @@ func (f *AuditFields) merge(ctx context.Context, overwrites AuditFields) {
 	for k, v := range overwrites {
 		_, ok := (*f)[k]
 		if ok {
-			duplicateFields = append(duplicateFields, fmt.Sprintf("%q=%q", k, v))
+			duplicateFields = append(duplicateFields, fmt.Sprintf("%q='%v'", k, v))
 			continue
 		}
 		(*f)[k] = v
@@ -186,6 +187,10 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 
 	if config.FileLoggerConfig.Enabled == nil {
 		config.FileLoggerConfig.Enabled = BoolPtr(defaultAuditEnabled)
+	}
+
+	if config.CollationBufferSize == nil {
+		config.CollationBufferSize = IntPtr(defaultFileLoggerCollateBufferSize)
 	}
 
 	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, buffer)
