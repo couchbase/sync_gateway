@@ -23,6 +23,14 @@ apis:
       remove-x-internal: on
   public-internal:
     root: "./docs/api/public.yaml"
+  public-capella:
+    root: "./docs/api/public.yaml"
+    decorators:
+      filter-out:
+        property: x-capella
+        value: false
+      plugin/replace-servers-capella:
+        serverUrl: 'https://{hostname}:4984'
   metric:
     root: "./docs/api/metric.yaml"
     decorators:
@@ -37,6 +45,9 @@ apis:
       remove-x-internal: on
   diagnostic-internal:
     root: "./docs/api/diagnostic.yaml"
+
+plugins:
+  - './docs/api/plugins/plugin.js'
 
 extends:
   - minimal

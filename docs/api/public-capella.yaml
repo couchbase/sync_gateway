@@ -50,10 +50,8 @@ paths:
     $ref: './paths/public/keyspace-_changes.yaml'
   '/{db}/_design/{ddoc}':
     $ref: './paths/public/db-_design-ddoc.yaml'
-    x-capella: false
   '/{db}/_design/{ddoc}/_view/{view}':
     $ref: './paths/public/db-_design-ddoc-_view-view.yaml'
-    x-capella: false
   '/{db}/_ensure_full_commit':
     $ref: './paths/public/db-_ensure_full_commit.yaml'
   '/{keyspace}/_revs_diff':
@@ -105,7 +103,6 @@ tags:
     description: Create and manage inter-Sync Gateway replications
   - name: Unsupported
     description: Endpoints that are not supported by Sync Gateway
-    x-capella: false
 externalDocs:
   description: Sync Gateway Quickstart | Couchbase Docs
   url: 'https://docs.couchbase.com/sync-gateway/current/index.html'

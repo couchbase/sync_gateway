@@ -24,7 +24,6 @@ servers:
 paths:
   '/{db}/_session':
     $ref: './paths/admin/db-_session.yaml'
-    x-capella: true
   '/{db}/_session/{sessionid}':
     $ref: './paths/admin/db-_session-sessionid.yaml'
   '/{db}/_user/{name}':
