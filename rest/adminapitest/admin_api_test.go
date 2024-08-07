@@ -4298,19 +4298,34 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
 	assert.Equal(t, true, responseBody["enabled"].(bool))
-	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should be disabled by default")
-	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should be enabled by default")
+	eventsMap, ok := responseBody["events"].(map[string]interface{})
+	require.True(t, ok)
+	assert.False(t, eventsMap[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should be disabled by default")
+	assert.True(t, eventsMap[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should be enabled by default")
 
-	// CBG-4111: Try to disable events on top of the default (nil) set... either PUT or POST where *all* of the given IDs are set to false. Bug results in a no-op.
-	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":false}}`, base.AuditIDPublicUserAuthenticated))
+	// use event IDs returned from GET response to disable all of them
+	for id := range eventsMap {
+		eventsMap[id] = false
+	}
+	eventsJSON, err := json.Marshal(eventsMap)
+	require.NoError(t, err)
+
+	// CBG-4111: Try to disable all events on top of the default (nil) set... either PUT or POST where *all* of the given IDs are set to false. Bug results in a no-op.
+	// CBG-????: Ensure ALL specified events were actually disabled. QE reported that some stay true!
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":%s}`, eventsJSON))
 	rest.RequireStatus(t, resp, http.StatusOK)
-	// check event we just tried to disable
+	// check all events were actually disabled
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/audit", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	resp.DumpBody()
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
-	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should be disabled")
+	eventsMap = nil
+	eventsMap, ok = responseBody["events"].(map[string]interface{})
+	require.True(t, ok)
+	for id, val := range eventsMap {
+		assert.False(t, val.(bool), "event %s should be disabled", id)
+	}
 
 	// do a PUT to completely replace the full config (events not declared here will be disabled)
 	// enable AuditEnabled event, but implicitly others
