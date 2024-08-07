@@ -917,25 +917,21 @@ func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAu
 				// initialize to non-nil set of defaults before modifying from request
 				existingAuditConfig.EnabledEvents = &base.DefaultDbAuditEventIDs
 			}
-			if existingAuditConfig.EnabledEvents != nil {
-				for i, event := range *existingAuditConfig.EnabledEvents {
-					if shouldEnable, ok := eventsToChange[base.AuditID(event)]; ok {
-						if shouldEnable {
-							// already enabled
-						} else {
-							// disable by removing
-							*existingAuditConfig.EnabledEvents = append((*existingAuditConfig.EnabledEvents)[:i], (*existingAuditConfig.EnabledEvents)[i+1:]...)
-						}
-						// drop from toChange so we don't duplicate IDs
-						delete(eventsToChange, base.AuditID(event))
-					}
-				}
-				for id, enabled := range eventsToChange {
-					if enabled {
-						*existingAuditConfig.EnabledEvents = append(*existingAuditConfig.EnabledEvents, uint(id))
-					}
+			// build EnabledEvents back up in temp based on request - avoids mutating slice in-place during iteration
+			// slice[:0] reuses underlying array to avoid alloc of a new slice
+			newEnabledEvents := (*existingAuditConfig.EnabledEvents)[:0]
+			for _, event := range *existingAuditConfig.EnabledEvents {
+				if _, ok := eventsToChange[base.AuditID(event)]; !ok {
+					// existing enabled event and not in request - don't change
+					newEnabledEvents = append(newEnabledEvents, event)
 				}
 			}
+			for id, enabled := range eventsToChange {
+				if enabled {
+					newEnabledEvents = append(newEnabledEvents, uint(id))
+				}
+			}
+			*existingAuditConfig.EnabledEvents = newEnabledEvents
 		}
 	}
 }
