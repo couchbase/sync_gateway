@@ -227,7 +227,7 @@ func TestRevTreeParentAccess(t *testing.T) {
 }
 
 func TestRevTreeGetHistory(t *testing.T) {
-	history, _, err := testmap.getHistory("3-three")
+	history, err := testmap.getHistory("3-three")
 	assert.True(t, err == nil)
 	assert.Equal(t, []string{"3-three", "2-two", "1-one"}, history)
 }
@@ -463,7 +463,7 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	assert.Len(t, tombstonedLeaves, 1)
 	tombstonedLeaf := tombstonedLeaves[0]
 
-	tombstonedBranch, _, err := revTree.getHistory(tombstonedLeaf)
+	tombstonedBranch, err := revTree.getHistory(tombstonedLeaf)
 	assert.True(t, err == nil)
 	assert.Equal(t, int(maxDepth), len(tombstonedBranch))
 
@@ -853,7 +853,7 @@ func TestRepairRevsHistoryWithCycles(t *testing.T) {
 		// This function will be called back for every leaf node in tree
 		leafProcessor := func(leaf *RevInfo) {
 
-			_, _, err := rawDoc.History.getHistory(leaf.ID)
+			_, err := rawDoc.History.getHistory(leaf.ID)
 			if err != nil {
 				t.Fatalf("GetHistory() returned error: %v", err)
 			}
@@ -951,7 +951,7 @@ func addAndGet(t *testing.T, revTree RevTree, revID string, parentRevID string, 
 		Deleted: isTombstone,
 	})
 	require.NoError(t, err)
-	history, _, err := revTree.getHistory(revID)
+	history, err := revTree.getHistory(revID)
 	log.Printf("addAndGet.  Tree length: %d.  History for new rev: %v", len(revTree), history)
 	return err
 }
@@ -1004,7 +1004,7 @@ func addPruneAndGet(ctx context.Context, revTree RevTree, revID string, parentRe
 	numPruned, _ = revTree.pruneRevisions(ctx, revsLimit, revID)
 
 	// Get history for new rev (checks for loops)
-	history, _, err := revTree.getHistory(revID)
+	history, err := revTree.getHistory(revID)
 	log.Printf("addPruneAndGet.  Tree length: %d.  Num pruned: %d.  History for new rev: %v", len(revTree), numPruned, history)
 	return numPruned, err
 
@@ -1016,7 +1016,7 @@ func getHistoryWithTimeout(rawDoc *Document, revId string, timeout time.Duration
 	errChannel := make(chan error)
 
 	go func() {
-		history, _, err := rawDoc.History.getHistory(revId)
+		history, err := rawDoc.History.getHistory(revId)
 		if err != nil {
 			errChannel <- err
 		} else {

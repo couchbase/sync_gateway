@@ -722,7 +722,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 	}
 
 	if listRevisions {
-		validatedHistory, _, getHistoryErr := doc.History.getHistory(revid)
+		validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 		if getHistoryErr != nil {
 			return nil, removed, getHistoryErr
 		}
@@ -2142,7 +2142,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	if doc.History[newRevID] != nil {
 		// Store the new revision in the cache
-		history, historyBytes, getHistoryErr := doc.History.getHistory(newRevID)
+		history, getHistoryErr := doc.History.getHistory(newRevID)
 		if getHistoryErr != nil {
 			return nil, "", getHistoryErr
 		}
@@ -2154,9 +2154,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		}
 
 		revChannels := doc.History[newRevID].Channels
-
-		totalBytes := CalculateDocRevBytes(historyBytes, len(storedDocBytes), revChannels)
-
 		documentRevision := DocumentRevision{
 			DocID:       docid,
 			RevID:       newRevID,
@@ -2166,7 +2163,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Attachments: doc.Attachments,
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
-			MemoryBytes: totalBytes,
 		}
 
 		if createNewRevIDSkipped {
