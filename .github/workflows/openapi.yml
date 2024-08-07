@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: fluximus-prime/redocly-cli-github-action@v1
         with:
-          args: 'bundle metrics --output metrics-bundle.yaml'
+          args: 'bundle metric --output metrics-bundle.yaml'
       - uses: fluximus-prime/redocly-cli-github-action@v1
         with:
           args: 'build-docs metrics-bundle.yaml --output redoc-metrics.yaml'
