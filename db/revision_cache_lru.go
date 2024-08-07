@@ -26,13 +26,13 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat *base.SgwIntStat) *ShardedLRURevisionCache {
 
 	caches := make([]*LRURevisionCache, shardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
 	perCacheCapacity := 1.1 * float32(capacity) / float32(shardCount)
 	for i := 0; i < int(shardCount); i++ {
-		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), backingStores, cacheHitStat, cacheMissStat)
+		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
 	}
 
 	return &ShardedLRURevisionCache{
@@ -80,6 +80,7 @@ type LRURevisionCache struct {
 	lruList       *list.List
 	cacheHits     *base.SgwIntStat
 	cacheMisses   *base.SgwIntStat
+	cacheNumItems *base.SgwIntStat
 	lock          sync.Mutex
 	capacity      uint32
 }
@@ -100,7 +101,7 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *LRURevisionCache {
+func NewLRURevisionCache(capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat *base.SgwIntStat) *LRURevisionCache {
 
 	return &LRURevisionCache{
 		cache:         map[IDAndRev]*list.Element{},
@@ -109,6 +110,7 @@ func NewLRURevisionCache(capacity uint32, backingStores map[uint32]RevisionCache
 		backingStores: backingStores,
 		cacheHits:     cacheHitStat,
 		cacheMisses:   cacheMissStat,
+		cacheNumItems: cacheNumItemsStat,
 	}
 }
 
@@ -250,6 +252,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	for len(rc.cache) > int(rc.capacity) {
 		rc.purgeOldest_()
 	}
+	rc.cacheNumItems.Set(int64(len(rc.cache)))
 	rc.lock.Unlock()
 
 	value.store(docRev)
@@ -271,6 +274,7 @@ func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, c
 		for len(rc.cache) > int(rc.capacity) {
 			rc.purgeOldest_()
 		}
+		rc.cacheNumItems.Set(int64(len(rc.cache)))
 	}
 	rc.lock.Unlock()
 	return
@@ -287,6 +291,7 @@ func (rc *LRURevisionCache) Remove(docID, revID string, collectionID uint32) {
 	}
 	rc.lruList.Remove(element)
 	delete(rc.cache, key)
+	rc.cacheNumItems.Add(-1)
 }
 
 // removeValue removes a value from the revision cache, if present and the value matches the the value. If there's an item in the revision cache with a matching docID and revID but the document is different, this item will not be removed from the rev cache.
@@ -295,6 +300,7 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 	if element := rc.cache[value.key]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
 		delete(rc.cache, value.key)
+		rc.cacheNumItems.Add(-1)
 	}
 	rc.lock.Unlock()
 }
