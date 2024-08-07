@@ -9,7 +9,9 @@
 package base
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"maps"
 	"testing"
 
@@ -276,6 +278,59 @@ func TestAuditFieldsMerge(t *testing.T) {
 		})
 	}
 
+}
+
+func BenchmarkAuditFieldwork(b *testing.B) {
+	originalLogger := auditLogger.Load()
+	b.Cleanup(func() {
+		auditLogger.Store(originalLogger)
+	})
+
+	// discard audits to benchmark field expansion only
+	buf := io.Discard
+	al, err := NewAuditLogger(TestCtx(b), &AuditLoggerConfig{
+		FileLoggerConfig: FileLoggerConfig{
+			Enabled: BoolPtr(true),
+			Output:  buf,
+		},
+	}, b.TempDir(), auditMinage, nil, map[string]any{"foo": "bar", "buzz": 1234})
+	require.NoError(b, err)
+	auditLogger.Store(al)
+
+	ctx := TestCtx(b)
+	ctx = CorrelationIDLogCtx(ctx, FormatBlipContextID("a0b1c2"))
+	ctx = CollectionLogCtx(ctx, "foo", "bar")
+
+	docID, revID := "docID", "revID"
+
+	type args struct {
+		ctx            context.Context
+		id             AuditID
+		additionalData AuditFields
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "additional fields",
+			args: args{
+				ctx: ctx,
+				id:  AuditIDDocumentRead,
+				additionalData: AuditFields{
+					AuditFieldDocID:      docID,
+					AuditFieldDocVersion: revID,
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		b.Run(test.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				Audit(test.args.ctx, test.args.id, test.args.additionalData)
+			}
+		})
+	}
 }
 
 func Test_expandFieldsAdditionalDataReadOnly(t *testing.T) {
