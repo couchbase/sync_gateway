@@ -84,7 +84,6 @@ func TestBodyUnmarshal(t *testing.T) {
 
 func TestParseRevisionsToAncestor(t *testing.T) {
 	revisions := Revisions{RevisionsStart: 5, RevisionsIds: []string{"five", "four", "three", "two", "one"}}
-	var revs []string
 
 	assert.Equal(t, []string{"4-four", "3-three"}, revisions.parseAncestorRevisions("3-three"))
 	assert.Equal(t, []string{"4-four"}, revisions.parseAncestorRevisions("4-four"))
