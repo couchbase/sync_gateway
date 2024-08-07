@@ -1641,13 +1641,13 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 			base.DebugfCtx(ctx, base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
 			continue
 		}
-		if base.IsRecoverableReadError(getConfigErr) {
+		if base.IsTemporaryKvError(getConfigErr) {
 			base.InfofCtx(ctx, base.KeyConfig, "Transient error fetching config for database %q to check whether we need to remove it, will not be removed: %v", base.MD(dbName), getConfigErr)
 			continue
 		}
 
 		if !found {
-			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
+			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database (%v)", base.MD(dbName), getConfigErr)
 			sc._removeDatabase(ctx, dbName)
 		}
 	}
@@ -1759,7 +1759,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket string, dbName string) (found bool, cnf DatabaseConfig, err error) {
 
 	cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
-	if err == base.ErrNotFound {
+	if errors.Is(err, base.ErrNotFound) {
 		base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 		return false, cnf, err
 	}
@@ -1806,9 +1806,10 @@ func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket st
 
 func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	var cnf DatabaseConfig
-	callback := func(bucket string) (exit bool, err error) {
-		found, cnf, err = sc._fetchDatabaseFromBucket(ctx, bucket, dbName)
-		return found, err
+	callback := func(bucket string) (exit bool, callbackErr error) {
+		var foundInBucket bool
+		foundInBucket, cnf, callbackErr = sc._fetchDatabaseFromBucket(ctx, bucket, dbName)
+		return foundInBucket, callbackErr
 	}
 
 	err = sc.findBucketWithCallback(callback)
