@@ -40,16 +40,6 @@ tags:
   - name: Prometheus
     description: Endpoints for use with Prometheus
 
-components:
-  securitySchemes:
-    RBAC:
-      type: oauth2
-      description: Couchbase Server RBAC roles
-      flows:
-        scopes:
-          architect: Sync Gateway Architect
-          devops: Sync Gateway Dev Ops
-          statsreader: External Stats Reader
 externalDocs:
   description: Sync Gateway Quickstart | Couchbase Docs
   url: 'https://docs.couchbase.com/sync-gateway/current/index.html'
