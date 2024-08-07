@@ -4320,7 +4320,6 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	resp.DumpBody()
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
-	eventsMap = nil
 	eventsMap, ok = responseBody["events"].(map[string]interface{})
 	require.True(t, ok)
 	for id, val := range eventsMap {
