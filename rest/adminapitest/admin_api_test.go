@@ -4310,8 +4310,8 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	eventsJSON, err := json.Marshal(eventsMap)
 	require.NoError(t, err)
 
-	// CBG-4111: Try to disable all events on top of the default (nil) set... either PUT or POST where *all* of the given IDs are set to false. Bug results in a no-op.
-	// CBG-????: Ensure ALL specified events were actually disabled. QE reported that some stay true!
+	// CBG-4111: Try to disable events on top of the default (nil) set... either PUT or POST where *all* of the given IDs are set to false. Bug results in a no-op.
+	// CBG-4157: Ensure ALL specified events were actually disabled. Bug results in some events remaining 'true', and sometimes panicking by going out-of-bounds in a slice.
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":%s}`, eventsJSON))
 	rest.RequireStatus(t, resp, http.StatusOK)
 	// check all events were actually disabled
