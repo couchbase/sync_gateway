@@ -10,7 +10,6 @@
 
 const ExciseRBACCapella = require("./decorators/excise-rbac-capella.js");
 const ReplaceDescriptionCapella = require("./decorators/replace-description-capella.js");
-const ReplaceInfoCapella = require("./decorators/replace-info-capella.js");
 const ReplaceServerCapella = require("./decorators/replace-server-capella.js");
 
 module.exports = {
@@ -18,7 +17,6 @@ module.exports = {
     oas3: {
       "excise-rbac-capella": ExciseRBACCapella,
       "replace-description-capella": ReplaceDescriptionCapella,
-      "replace-info-capella": ReplaceInfoCapella,
       "replace-server-capella": ReplaceServerCapella,
     },
   },

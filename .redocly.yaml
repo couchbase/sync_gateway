@@ -28,14 +28,15 @@ apis:
   public-capella:
     root: "./docs/api/public.yaml"
     decorators:
-      remove-x-internal: on
       filter-out:
         property: x-capella
         value: false
+      info-override:
+        description: "App Services manages access and synchronization between Couchbase Lite and Couchbase Capella"
+      plugin/replace-description-capella: on
       plugin/replace-server-capella:
         serverUrl: 'https://{hostname}:4984'
-      plugin/replace-info-capella:
-        title: "App Services Public API"
+      remove-x-internal: on
   metric:
     root: "./docs/api/metric.yaml"
     decorators:
