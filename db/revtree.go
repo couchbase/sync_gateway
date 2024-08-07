@@ -178,7 +178,7 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 func (tree RevTree) ContainsCycles() bool {
 	containsCycles := false
 	for _, leafRevision := range tree.GetLeaves() {
-		_, _, revHistoryErr := tree.getHistory(leafRevision)
+		_, revHistoryErr := tree.getHistory(leafRevision)
 		if revHistoryErr != nil {
 			containsCycles = true
 		}
@@ -721,8 +721,7 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 // Returns the history of a revid as an array of revids in reverse chronological order.
 // Returns error if detects cycle(s) in rev tree
-// Also returns measurement of revisions in bytes
-func (tree RevTree) getHistory(revid string) ([]string, int, error) {
+func (tree RevTree) getHistory(revid string) ([]string, error) {
 	maxHistory := len(tree)
 
 	var totalBytesForHistory int
@@ -736,11 +735,11 @@ func (tree RevTree) getHistory(revid string) ([]string, int, error) {
 		totalBytesForHistory += revBytes
 		history = append(history, revid)
 		if len(history) > maxHistory {
-			return history, totalBytesForHistory, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
+			return history, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
 		}
 		revid = info.Parent
 	}
-	return history, totalBytesForHistory, nil
+	return history, nil
 }
 
 // ////// ENCODED REVISION LISTS (_revisions):

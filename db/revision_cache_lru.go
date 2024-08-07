@@ -143,12 +143,11 @@ func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string
 	value := rc.getValue(docID, revID, collectionID, false)
 	if value != nil {
 		outGoingBytes := value.updateDelta(toDelta)
-		diff := toDelta.numDeltaBytes - outGoingBytes
-		if diff != 0 {
-			rc.memoryBytes.Add(diff)
+		if outGoingBytes != 0 {
+			rc.memoryBytes.Add(outGoingBytes)
 		}
-		// check for eviction
-		rc.revCacheEvictionWithLock()
+		// check for memory based eviction
+		rc.revCacheMemoryBasedEviction()
 	}
 }
 
@@ -164,8 +163,8 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 	if !statEvent && err == nil {
 		// cache miss so we had to load doc, increment memory count
 		rc.memoryBytes.Add(docRev.MemoryBytes)
-		// check for eviction
-		rc.revCacheEvictionWithLock()
+		// check for memory based eviction
+		rc.revCacheMemoryBasedEviction()
 	}
 
 	if err != nil {
@@ -199,9 +198,10 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 
 	if !statEvent && err == nil {
 		// cache miss so we had to load doc, increment memory count
+		//docRev.CalculateBytes()
 		rc.memoryBytes.Add(docRev.MemoryBytes)
-		// check for rev cache eviction
-		rc.revCacheEvictionWithLock()
+		// check for rev cache memory based eviction
+		rc.revCacheMemoryBasedEviction()
 	}
 
 	if err != nil {
@@ -227,9 +227,10 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 	}
 	value := rc.getValue(docRev.DocID, docRev.RevID, collectionID, true)
 	// increment incoming bytes
+	docRev.CalculateBytes()
 	rc.memoryBytes.Add(docRev.MemoryBytes)
-	// Purge oldest item if required
-	rc.revCacheEvictionWithLock()
+	// check for rev cache memory based eviction
+	rc.revCacheMemoryBasedEviction()
 	value.store(docRev)
 }
 
@@ -256,9 +257,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 		rc.cacheNumItems.Add(1)
 	}
 
-	// add new item bytes to overall count
-	rc.memoryBytes.Add(docRev.MemoryBytes)
-	// Purge oldest item if required
+	// Purge oldest item if over number capacity
 	var numItemsRemoved int
 	for len(rc.cache) > int(rc.capacity) {
 		rc.purgeOldest_()
@@ -267,6 +266,18 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	if numItemsRemoved > 0 {
 		rc.cacheNumItems.Add(int64(-numItemsRemoved))
 	}
+
+	docRev.CalculateBytes()
+	// add new item bytes to overall count
+	rc.memoryBytes.Add(docRev.MemoryBytes)
+
+	// check we aren't over memory capacity, if so perform eviction
+	if rc.memoryCapacity > 0 {
+		for rc.memoryBytes.Value() > rc.memoryCapacity {
+			rc.purgeOldest_()
+		}
+	}
+
 	rc.lock.Unlock()
 
 	value.store(docRev)
@@ -287,6 +298,7 @@ func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, c
 		rc.cache[key] = rc.lruList.PushFront(value)
 		rc.cacheNumItems.Add(1)
 
+		// evict if over number capacity
 		var numItemsRemoved int
 		for len(rc.cache) > int(rc.capacity) {
 			rc.purgeOldest_()
@@ -311,14 +323,8 @@ func (rc *LRURevisionCache) Remove(docID, revID string, collectionID uint32) {
 	}
 	rc.lruList.Remove(element)
 	// decrement the overall memory bytes count
-	var totalBytesToRemove int64
 	revItem := element.Value.(*revCacheValue)
-	revItem.lock.RLock()
-	if revItem.delta != nil {
-		totalBytesToRemove = revItem.delta.numDeltaBytes
-	}
-	totalBytesToRemove += revItem.itemBytes
-	revItem.lock.RUnlock()
+	totalBytesToRemove := revItem.getItemBytes()
 	rc.memoryBytes.Add(-totalBytesToRemove)
 	delete(rc.cache, key)
 	rc.cacheNumItems.Add(-1)
@@ -338,13 +344,7 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 func (rc *LRURevisionCache) purgeOldest_() {
 	value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
 	delete(rc.cache, value.key)
-	value.lock.RLock()
-	var totalBytesToRemove int64
-	if value.delta != nil {
-		totalBytesToRemove = value.delta.numDeltaBytes
-	}
-	totalBytesToRemove += value.itemBytes
-	value.lock.RUnlock()
+	totalBytesToRemove := value.getItemBytes()
 	// decrement memory overall size
 	rc.memoryBytes.Add(-totalBytesToRemove)
 }
@@ -378,15 +378,21 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		cacheHit = true
 	} else {
 		cacheHit = false
-		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.itemBytes, value.err = revCacheLoader(ctx, backingStore, value.key)
+		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, backingStore, value.key)
 	}
 
 	if includeDelta {
 		delta = value.delta
 	}
-	value.lock.Unlock()
 
 	docRev, err = value.asDocumentRevision(delta)
+	// if not cache hit, we loaded from bucket. Calculate doc rev size and assign to rev cache value
+	if !cacheHit {
+		docRev.CalculateBytes()
+		value.itemBytes = docRev.MemoryBytes
+	}
+	value.lock.Unlock()
+
 	return docRev, cacheHit, err
 }
 
@@ -430,10 +436,15 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		cacheHit = true
 	} else {
 		cacheHit = false
-		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.itemBytes, value.err = revCacheLoaderForDocument(ctx, backingStore, doc, value.key.RevID)
+		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(ctx, backingStore, doc, value.key.RevID)
+	}
+	docRev, err = value.asDocumentRevision(nil)
+	// if not cache hit, we loaded from bucket. Calculate doc rev size and assign to rev cache value
+	if !cacheHit {
+		docRev.CalculateBytes()
+		value.itemBytes = docRev.MemoryBytes
 	}
 	value.lock.Unlock()
-	docRev, err = value.asDocumentRevision(nil)
 	return docRev, cacheHit, err
 }
 
@@ -454,48 +465,77 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.lock.Unlock()
 }
 
-func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (deltaBytes int64) {
+func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int64) {
 	value.lock.Lock()
+	var previousDeltaBytes int64
 	if value.delta != nil {
 		// delta exists, need to pull this to update overall memory size correctly
-		deltaBytes = value.delta.numDeltaBytes
+		previousDeltaBytes = value.delta.totalDeltaBytes
 	}
+	diffInBytes = toDelta.totalDeltaBytes - previousDeltaBytes
 	value.delta = &toDelta
+	if diffInBytes != 0 {
+		value.itemBytes += diffInBytes
+	}
 	value.lock.Unlock()
-	return deltaBytes
+	return diffInBytes
 }
 
-// CalculateDocRevBytes will calculate the bytes from revisions in the document, body and channels on the document + a headroom
-// of 8 bytes for the storage of int64 for bytes measurement
-func CalculateDocRevBytes(historyBytes, bodyBytes int, channels base.Set) int64 {
+// getItemBytes retrieves the rev cache items overall memory footprint
+func (value *revCacheValue) getItemBytes() int64 {
+	value.lock.RLock()
+	defer value.lock.RUnlock()
+	return value.itemBytes
+}
+
+// CalculateBytes will calculate the bytes from revisions in the document, body and channels on the document
+func (rev *DocumentRevision) CalculateBytes() {
 	var totalBytes int
-	for v := range channels {
+	for v := range rev.Channels {
 		bytes := len([]byte(v))
 		totalBytes += bytes
 	}
+	// calculate history
+	digests, _ := GetStringArrayProperty(rev.History, RevisionsIds)
+	historyBytes := 32 * len(digests)
 	totalBytes += historyBytes
-	totalBytes += bodyBytes
-	// for the int64 size storage
-	totalBytes += 8
-	return int64(totalBytes)
+	// add body bytes into calculation
+	totalBytes += len(rev.BodyBytes)
+
+	// convert the int to int64 type and assign to document revision
+	rev.MemoryBytes = int64(totalBytes)
 }
 
-// revCacheEvictionWithLock checks for rev cache eviction but first acquiring rev cache lock
-func (rc *LRURevisionCache) revCacheEvictionWithLock() {
+// CalculateDeltaBytes will calculate bytes from delta channels, delta revisions and delta body
+func (delta *RevisionDelta) CalculateDeltaBytes() {
+	var totalBytes int
+	for v := range delta.ToChannels {
+		bytes := len([]byte(v))
+		totalBytes += bytes
+	}
+	// history calculation
+	historyBytes := 32 * len(delta.RevisionHistory)
+	totalBytes += historyBytes
+
+	// account for delta body
+	totalBytes += len(delta.DeltaBytes)
+
+	delta.totalDeltaBytes = int64(totalBytes)
+}
+
+// revCacheMemoryBasedEviction checks for rev cache eviction but first acquiring rev cache lock
+func (rc *LRURevisionCache) revCacheMemoryBasedEviction() {
+	// if memory capacity is not set, don't check for eviction this way
+	if rc.memoryCapacity > 0 && rc.memoryBytes.Value() > rc.memoryCapacity {
+		rc.performEviction()
+	}
+}
+
+// performEviction will evict the oldest items in the cache till we are below the memory threshold
+func (rc *LRURevisionCache) performEviction() {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
-	rc._revCacheEviction()
-}
-
-// _revCacheEviction will check the current number capacity and memory capacity against maximum and memory capacity
-func (rc *LRURevisionCache) _revCacheEviction() {
-	for len(rc.cache) > int(rc.capacity) {
+	for rc.memoryBytes.Value() > rc.memoryCapacity {
 		rc.purgeOldest_()
-	}
-	// if memory capacity is not set, don't check for eviction this way
-	if rc.memoryCapacity > 0 {
-		for rc.memoryBytes.Value() > rc.memoryCapacity {
-			rc.purgeOldest_()
-		}
 	}
 }

@@ -147,11 +147,10 @@ func (revisions Revisions) ParseRevisions() []string {
 }
 
 // Returns revisions as a slice of ancestor revids, from the parent to the target ancestor.
-// Also returns measurement of revisions in bytes.
-func (revisions Revisions) parseAncestorRevisions(toAncestorRevID string) ([]string, int) {
+func (revisions Revisions) parseAncestorRevisions(toAncestorRevID string) []string {
 	start, ids := splitRevisionList(revisions)
 	if ids == nil || len(ids) < 2 {
-		return nil, 0
+		return nil
 	}
 	result := make([]string, 0)
 	var revHistoryBytes int
@@ -167,7 +166,7 @@ func (revisions Revisions) parseAncestorRevisions(toAncestorRevID string) ([]str
 		}
 		start--
 	}
-	return result, revHistoryBytes
+	return result
 }
 
 func (attachments AttachmentsMeta) ShallowCopy() AttachmentsMeta {

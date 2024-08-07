@@ -144,7 +144,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
-			SizeInBytes: 750,
+			SizeInBytes: 725,
 			SizeByItems: 10,
 		},
 	}
@@ -217,7 +217,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 func TestBackingStoreMemoryCalculation(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{[]string{"doc2"}, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
-	cache := NewLRURevisionCache(10, 170, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &memoryBytesCounted)
+	cache := NewLRURevisionCache(10, 205, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &memoryBytesCounted)
 	ctx := base.TestCtx(t)
 
 	docRev, err := cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheOmitDelta)
@@ -557,7 +557,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 func TestUpdateDeltaRevCacheMemoryStat(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
-	cache := NewLRURevisionCache(10, 110, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &memoryBytesCounted)
+	cache := NewLRURevisionCache(10, 125, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &memoryBytesCounted)
 
 	firstDelta := []byte("delta")
 	secondDelta := []byte("modified delta")
@@ -572,16 +572,16 @@ func TestUpdateDeltaRevCacheMemoryStat(t *testing.T) {
 	revCacheDelta := newRevCacheDelta(firstDelta, "1-abc", docRev, false, nil)
 	cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta)
 	// assert that rev cache memory increases by expected amount
-	newMem := revCacheMem + revCacheDelta.numDeltaBytes
+	newMem := revCacheMem + revCacheDelta.totalDeltaBytes
 	assert.Equal(t, newMem, memoryBytesCounted.Value())
-	oldDeltaSize := revCacheDelta.numDeltaBytes
+	oldDeltaSize := revCacheDelta.totalDeltaBytes
 
 	newMem = memoryBytesCounted.Value()
 	revCacheDelta = newRevCacheDelta(secondDelta, "1-abc", docRev, false, nil)
 	cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta)
 
 	// assert the overall memory stat is correctly updated (by the diff between the old delta and the new delta)
-	newMem += revCacheDelta.numDeltaBytes - oldDeltaSize
+	newMem += revCacheDelta.totalDeltaBytes - oldDeltaSize
 	assert.Equal(t, newMem, memoryBytesCounted.Value())
 
 	revCacheDelta = newRevCacheDelta(thirdDelta, "1-abc", docRev, false, nil)
@@ -616,7 +616,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	assert.Equal(t, int64(docSize), cacheStats.RevisionCacheTotalMemory.Value())
 	revIDDoc1 := docRev.RevID
 
-	// Test Get operation with load from bucket, need to first create and remove from rev cache due to CBG-4137
+	// Test Get operation with load from bucket, need to first create and remove from rev cache
 	prevMemStat := cacheStats.RevisionCacheTotalMemory.Value()
 	revIDDoc2 := createThenRemoveFromRevCache(t, ctx, "doc2", db, collection)
 	// load from doc from bucket
@@ -633,7 +633,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	assert.Equal(t, "doc2", docRev.DocID)
 	assert.Equal(t, prevMemStat, cacheStats.RevisionCacheTotalMemory.Value())
 
-	// Test Get active with item to be loaded from bucket, need to first create and remove from rev cache due to CBG-4137
+	// Test Get active with item to be loaded from bucket, need to first create and remove from rev cache
 	prevMemStat = cacheStats.RevisionCacheTotalMemory.Value()
 	revIDDoc3 := createThenRemoveFromRevCache(t, ctx, "doc3", db, collection)
 	docRev, err = db.revisionCache.GetActive(ctx, "doc3", collctionID)
@@ -658,29 +658,27 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	doc3Size := docRev.MemoryBytes
 	expMem := cacheStats.RevisionCacheTotalMemory.Value() - doc3Size
 	newDocRev := DocumentRevision{
-		DocID:       "doc3",
-		RevID:       revIDDoc3,
-		BodyBytes:   []byte(`"some": "body"`),
-		MemoryBytes: 86,
+		DocID:     "doc3",
+		RevID:     revIDDoc3,
+		BodyBytes: []byte(`"some": "body"`),
 	}
-	expMem = expMem + newDocRev.MemoryBytes
+	expMem = expMem + 14 // size for above doc rev
 	db.revisionCache.Upsert(ctx, newDocRev, collctionID)
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Upsert with item not in cache, assert stat is as expected
 	newDocRev = DocumentRevision{
-		DocID:       "doc5",
-		RevID:       "1-abc",
-		BodyBytes:   []byte(`"some": "body"`),
-		MemoryBytes: 90,
+		DocID:     "doc5",
+		RevID:     "1-abc",
+		BodyBytes: []byte(`"some": "body"`),
 	}
-	expMem = cacheStats.RevisionCacheTotalMemory.Value() + newDocRev.MemoryBytes
+	expMem = cacheStats.RevisionCacheTotalMemory.Value() + 14 // size for above doc rev
 	db.revisionCache.Upsert(ctx, newDocRev, collctionID)
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Remove with something in cache, assert stat decrements by expected value
 	db.revisionCache.Remove("doc5", "1-abc", collctionID)
-	expMem -= newDocRev.MemoryBytes
+	expMem -= 14
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Remove with item not in cache, assert stat is unchanged
@@ -690,7 +688,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 
 	// Test Update Delta, assert stat increases as expected
 	revDelta := newRevCacheDelta([]byte(`"rev":"delta"`), "1-abc", newDocRev, false, nil)
-	expMem = prevMemStat + revDelta.numDeltaBytes
+	expMem = prevMemStat + revDelta.totalDeltaBytes
 	db.revisionCache.UpdateDelta(ctx, "doc3", revIDDoc3, collctionID, revDelta)
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
@@ -1011,16 +1009,14 @@ func createThenRemoveFromRevCache(t *testing.T, ctx context.Context, docID strin
 // createDocAndReturnSizeAndRev creates a rev and measures its size based on rev cache measurements
 func createDocAndReturnSizeAndRev(t *testing.T, ctx context.Context, docID string, collection *DatabaseCollectionWithUser, body Body) (int, string) {
 
-	if docID == "9" {
-		fmt.Println("lol")
-	}
 	rev, doc, err := collection.Put(ctx, docID, body)
 	require.NoError(t, err)
 
 	var expectedSize int
-	_, historyBytes, err := doc.SyncData.History.getHistory(rev)
+	his, err := doc.SyncData.History.getHistory(rev)
 	require.NoError(t, err)
 
+	historyBytes := 32 * len(his)
 	expectedSize += historyBytes
 	expectedSize += len(doc._rawBody)
 
@@ -1029,8 +1025,6 @@ func createDocAndReturnSizeAndRev(t *testing.T, ctx context.Context, docID strin
 	for _, v := range chanArray {
 		expectedSize += len([]byte(v))
 	}
-	// int64 storage on the rev cache value
-	expectedSize += 8
 
 	return expectedSize, rev
 }
