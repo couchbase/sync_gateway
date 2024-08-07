@@ -198,7 +198,6 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 
 	if !statEvent && err == nil {
 		// cache miss so we had to load doc, increment memory count
-		//docRev.CalculateBytes()
 		rc.memoryBytes.Add(docRev.MemoryBytes)
 		// check for rev cache memory based eviction
 		rc.revCacheMemoryBasedEviction()
@@ -523,7 +522,7 @@ func (delta *RevisionDelta) CalculateDeltaBytes() {
 	delta.totalDeltaBytes = int64(totalBytes)
 }
 
-// revCacheMemoryBasedEviction checks for rev cache eviction but first acquiring rev cache lock
+// revCacheMemoryBasedEviction checks for rev cache eviction, if required calls performEviction which will acquire lock to evict
 func (rc *LRURevisionCache) revCacheMemoryBasedEviction() {
 	// if memory capacity is not set, don't check for eviction this way
 	if rc.memoryCapacity > 0 && rc.memoryBytes.Value() > rc.memoryCapacity {
