@@ -86,22 +86,15 @@ func TestParseRevisionsToAncestor(t *testing.T) {
 	revisions := Revisions{RevisionsStart: 5, RevisionsIds: []string{"five", "four", "three", "two", "one"}}
 	var revs []string
 
-	revs = revisions.parseAncestorRevisions("3-three")
-	assert.Equal(t, []string{"4-four", "3-three"}, revs)
-	revs = revisions.parseAncestorRevisions("4-four")
-	assert.Equal(t, []string{"4-four"}, revs)
-	revs = revisions.parseAncestorRevisions("1-one")
-	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revs)
-	revs = revisions.parseAncestorRevisions("5-five")
-	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revs)
-	revs = revisions.parseAncestorRevisions("0-zero")
-	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revs)
-	revs = revisions.parseAncestorRevisions("3-threeve")
-	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revs)
+	assert.Equal(t, []string{"4-four", "3-three"}, revisions.parseAncestorRevisions("3-three"))
+	assert.Equal(t, []string{"4-four"}, revisions.parseAncestorRevisions("4-four"))
+	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revisions.parseAncestorRevisions("1-one"))
+	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revisions.parseAncestorRevisions("5-five"))
+	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revisions.parseAncestorRevisions("0-zero"))
+	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revisions.parseAncestorRevisions("3-threeve"))
 
 	shortRevisions := Revisions{RevisionsStart: 3, RevisionsIds: []string{"three"}}
-	revs = shortRevisions.parseAncestorRevisions("2-two")
-	assert.Equal(t, []string(nil), revs)
+	assert.Equal(t, []string(nil), shortRevisions.parseAncestorRevisions("2-two"))
 }
 
 // TestBackupOldRevision ensures that old revisions are kept around temporarily for in-flight requests and delta sync purposes.
