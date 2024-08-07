@@ -21,7 +21,6 @@ function ProcessRBAC() {
     Operation: {
       leave(Operation) {
         rbacRoles = Operation["x-rbac"];
-        console.log("rbacRoles: ", rbacRoles);
         if (rbacRoles) {
           extra = "\n\nRequired Sync Gateway RBAC roles:\n";
           for (roleIdx in rbacRoles) {
