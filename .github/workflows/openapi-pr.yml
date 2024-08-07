@@ -42,3 +42,17 @@ jobs:
             - [Metric API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/metric.yaml)
             - [Diagnostic API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/diagnostic.yaml)
           edit-mode: replace
+  redocly_output:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fluximus-prime/redocly-cli-github-action@v1
+        with:
+          args: 'bundle metric -output metric-bundle.yaml'
+      - uses: fluximus-prime/redocly-cli-github-action@v1
+        with:
+          args: 'build-docs metric-bundle.yaml -output redoc-metric.yaml'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metric-api
+          path: redoc-metric.yaml

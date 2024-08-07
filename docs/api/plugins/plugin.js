@@ -8,7 +8,7 @@
  * the file licenses/APL2.txt.
  */
 
-const ExciseRBACCapella = require("./decorators/excise-rbac-capella.js");
+const ProcessRBAC = require("./decorators/process-rbac.js");
 const ReplaceDescriptionCapella = require("./decorators/replace-description-capella.js");
 const ReplaceInfoCapella = require("./decorators/replace-info-capella.js");
 const ReplaceServerCapella = require("./decorators/replace-server-capella.js");
@@ -16,7 +16,7 @@ const ReplaceServerCapella = require("./decorators/replace-server-capella.js");
 module.exports = {
   decorators: {
     oas3: {
-      "excise-rbac-capella": ExciseRBACCapella,
+      "process-rbac": ProcessRBAC,
       "replace-description-capella": ReplaceDescriptionCapella,
       "replace-info-capella": ReplaceInfoCapella,
       "replace-server-capella": ReplaceServerCapella,

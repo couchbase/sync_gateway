@@ -13,18 +13,21 @@
  * @module ExciseRBACCapella
  */
 
-module.exports = ExciseRBACCapella;
-
-const re = new RegExp("Required Sync Gateway RBAC roles");
+module.exports = ProcessRBAC;
 
 /** @type {import('@redocly/cli').OasDecorator} */
-function ExciseRBACCapella() {
+function ProcessRBAC() {
   return {
     Operation: {
       leave(Operation) {
-        idx = Operation.description.search(re);
-        if (idx > 0) {
-          Operation.description = Operation.description.substr(0, idx);
+        rbacRoles = Operation["x-rbac"];
+        console.log("rbacRoles: ", rbacRoles);
+        if (rbacRoles) {
+          extra = "\n\nRequired Sync Gateway RBAC roles:\n";
+          for (roleIdx in rbacRoles) {
+            extra += `  * ${rbacRoles[roleIdx]}\n`;
+          }
+          Operation.description += extra;
         }
       },
     },

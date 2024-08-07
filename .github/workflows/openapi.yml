@@ -13,6 +13,7 @@ on:
     # Only run when we change an API spec
     paths:
       - 'docs/api/**'
+      - '.redocly.yaml'
     branches:
       - 'master'
       - 'main'
@@ -26,6 +27,7 @@ on:
     # Only run when we change an API spec
     paths:
       - 'docs/api/**'
+      - '.redocly.yaml'
     branches:
       - 'master'
       - 'main'
@@ -53,3 +55,17 @@ jobs:
       - uses: karancode/yamllint-github-action@master
         with:
           yamllint_file_or_dir: 'docs/api'
+  redocly_output:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fluximus-prime/redocly-cli-github-action@v1
+        with:
+          args: 'bundle metrics --output metrics-bundle.yaml'
+      - uses: fluximus-prime/redocly-cli-github-action@v1
+        with:
+          args: 'build-docs metrics-bundle.yaml --output redoc-metrics.yaml'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metrics-api
+          path: redoc-metrics.yaml

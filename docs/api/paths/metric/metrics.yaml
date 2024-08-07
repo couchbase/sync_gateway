@@ -10,11 +10,6 @@ get:
   description: |-
     Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
 
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Architect
-    * Sync Gateway Dev Ops
-    * External Stats Reader
   responses:
     '200':
       description: Successfully returned stats
@@ -24,4 +19,8 @@ get:
             type: string
   tags:
     - Prometheus
+  x-rbac:
+    - Sync Gateway Architect
+    - Sync Gateway Dev Ops
+    - External Stats Reader
   operationId: get_metrics

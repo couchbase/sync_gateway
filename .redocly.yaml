@@ -40,6 +40,7 @@ apis:
     root: "./docs/api/metric.yaml"
     decorators:
       remove-x-internal: on
+      plugin/process-rbac: on
   metric-internal:
     root: "./docs/api/metric.yaml"
   metric-capella:
