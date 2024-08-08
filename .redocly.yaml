@@ -18,6 +18,9 @@ apis:
   admin-capella:
     root: "./docs/api/admin-capella.yaml"
     decorators:
+      filter-out:
+        property: x-capella
+        value: false
       remove-x-internal: on
   public:
     root: "./docs/api/public.yaml"
@@ -46,6 +49,9 @@ apis:
   metric-capella:
     root: "./docs/api/metric-capella.yaml"
     decorators:
+      filter-out:
+        property: x-capella
+        value: false
       plugin/excise-rbac-capella: on
       plugin/replace-description-capella: on
       remove-x-internal: on
