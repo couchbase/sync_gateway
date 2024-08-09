@@ -53,6 +53,7 @@ func (tester *ChannelRevocationTester) addRole(user, role string) {
 
 	tester.roles.Roles[user] = append(tester.roles.Roles[user], fmt.Sprintf("role:%s", role))
 	tester.roleVersion = tester.restTester.UpdateDoc("userRoles", tester.roleVersion, string(base.MustJSONMarshal(tester.test, tester.roles)))
+	tester.restTester.WaitForPendingChanges()
 }
 
 func (tester *ChannelRevocationTester) removeRole(user, role string) {
@@ -66,6 +67,7 @@ func (tester *ChannelRevocationTester) removeRole(user, role string) {
 	}
 	tester.roles.Roles[revocationTestUser] = append(roles[:delIdx], roles[delIdx+1:]...)
 	tester.roleVersion = tester.restTester.UpdateDoc("userRoles", tester.roleVersion, string(base.MustJSONMarshal(tester.test, tester.roles)))
+	tester.restTester.WaitForPendingChanges()
 }
 
 // addRoleChannel grants a channel for the default collection to a role
@@ -78,6 +80,7 @@ func (tester *ChannelRevocationTester) addRoleChannel(role, channel string) {
 
 	tester.roleChannels.Channels[role] = append(tester.roleChannels.Channels[role], channel)
 	tester.roleChannelVersion = tester.restTester.UpdateDoc("roleChannels", tester.roleChannelVersion, string(base.MustJSONMarshal(tester.test, tester.roleChannels)))
+	tester.restTester.WaitForPendingChanges()
 }
 
 func (tester *ChannelRevocationTester) removeRoleChannel(role, channel string) {
@@ -92,6 +95,7 @@ func (tester *ChannelRevocationTester) removeRoleChannel(role, channel string) {
 	}
 	tester.roleChannels.Channels[role] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
 	tester.roleChannelVersion = tester.restTester.UpdateDoc("roleChannels", tester.roleChannelVersion, string(base.MustJSONMarshal(tester.test, tester.roleChannels)))
+	tester.restTester.WaitForPendingChanges()
 }
 
 func (tester *ChannelRevocationTester) addUserChannel(user, channel string) {
@@ -101,6 +105,7 @@ func (tester *ChannelRevocationTester) addUserChannel(user, channel string) {
 
 	tester.userChannels.Channels[user] = append(tester.userChannels.Channels[user], channel)
 	tester.userChannelVersion = tester.restTester.UpdateDoc("userChannels", tester.userChannelVersion, string(base.MustJSONMarshal(tester.test, tester.userChannels)))
+	tester.restTester.WaitForPendingChanges()
 }
 
 func (tester *ChannelRevocationTester) removeUserChannel(user string, channel string) {
@@ -114,6 +119,7 @@ func (tester *ChannelRevocationTester) removeUserChannel(user string, channel st
 	}
 	tester.userChannels.Channels[revocationTestUser] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
 	tester.userChannelVersion = tester.restTester.UpdateDoc("userChannels", tester.userChannelVersion, string(base.MustJSONMarshal(tester.test, tester.userChannels)))
+	tester.restTester.WaitForPendingChanges()
 }
 
 // fillToSeq writes filler documents (with empty bodies) for each sequence between the current db sequence and the requested sequence
@@ -1585,6 +1591,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 
 	const doc1ID = "doc1"
 	doc1Version := rt2.PutDoc(doc1ID, `{"channels": "chanA"}`)
+	rt2.WaitForPendingChanges()
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -1621,6 +1628,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	_ = rt2.UpdateDoc(doc1ID, doc1Version, `{"channels": "chanA", "mutate": "val"}`)
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
@@ -1656,6 +1664,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 
 	const doc1ID = "doc1"
 	doc1Version := rt2.PutDoc(doc1ID, `{"channels": ["chanA", "chanB"]}`)
+	rt2.WaitForPendingChanges()
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -1692,6 +1701,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	_ = rt2.UpdateDoc(doc1ID, doc1Version, `{"channels": ["chanA", "chanB"], "mutate": "val"}`)
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
@@ -1973,6 +1983,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	resp := rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2ds, []string{"ABC"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
 
+	rt2.WaitForPendingChanges()
 	require.NoError(t, ar.Start(ctx1))
 
 	defer func() {
@@ -2054,6 +2065,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", RestTesterDefaultUserPassword, "", rt2ds, []string{"*"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 
@@ -2147,6 +2159,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
 	_ = rt2.PutDoc("docA1", `{"channels": ["A"]}`)
 	_ = rt2.PutDoc("docA2", `{"channels": ["A"]}`)
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 
