@@ -2489,16 +2489,14 @@ func TestTotalSyncTimeStat(t *testing.T) {
 	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
 
 	// wait for active replication stat to pick up the replication connection
-	_, ok := base.WaitForStat(passiveRT.TB(), func() int64 {
+	base.RequireWaitForStat(passiveRT.TB(), func() int64 {
 		return passiveRT.GetDatabase().DbStats.DatabaseStats.NumReplicationsActive.Value()
 	}, 1)
-	require.True(t, ok)
 
 	// wait some time to wait for the stat to increment
-	_, ok = base.WaitForStat(passiveRT.TB(), func() int64 {
+	base.RequireWaitForStat(passiveRT.TB(), func() int64 {
 		return passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
 	}, 2)
-	require.True(t, ok)
 
 	syncTimeStat := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
 	// we can't be certain how long has passed since grabbing the stat so to avoid flake here just assert the stat has incremented
@@ -4127,7 +4125,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	_ = rt2.UpdateDoc(docID, version, `{"source":"rt2","channels":["bob"]}`)
 
 	// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed. But we can monitor the associated stat.
-	base.WaitForStat(t, func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		stats := ar.GetStatus(ctx1)
 		return stats.DocsPurged
 	}, 1)
@@ -4501,8 +4499,9 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start(ctx1))
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
-			base.WaitForStat(t, func() int64 {
-				return ar.GetStatus(ctx1).DocsWritten
+			base.RequireWaitForStat(t, func() int64 {
+				val := ar.GetStatus(ctx1).DocsWritten + ar.GetStatus(ctx1).DocWriteConflict
+				return val
 			}, 1)
 			log.Printf("========================Replication should be done, checking with changes")
 
@@ -7878,10 +7877,9 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, t.Name())
 	assert.True(t, ok)
 	pullCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
-	_, ok = base.WaitForStat(t, func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return pullCheckpointer.Stats().ProcessedSequenceCount
 	}, 1)
-	require.True(t, ok)
 
 	// stop active replicator explicitly
 	require.NoError(t, ar.Stop())

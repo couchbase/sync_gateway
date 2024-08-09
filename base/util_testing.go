@@ -736,22 +736,33 @@ func DirExists(filename string) bool {
 	return info.IsDir()
 }
 
-// WaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
-func WaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (int64, bool) {
+// _waitForStat is the internal implementation of AssertWaitForStat and RequireWaitForStat. Use those instead.
+func _waitForStat(t testing.TB, getStatFunc func() int64, expected int64) (int64, bool) {
 	workerFunc := func() (shouldRetry bool, err error, val interface{}) {
 		val = getStatFunc()
 		return val != expected, nil, val
 	}
 	// wait for up to 20 seconds for the stat to meet the expected value
 	err, val := RetryLoop(TestCtx(t), "waitForStat retry loop", workerFunc, CreateSleeperFunc(200, 100))
-	valInt64, ok := val.(int64)
+	require.NoError(t, err)
 
-	return valInt64, err == nil && ok
+	valInt64, ok := val.(int64)
+	require.True(t, ok)
+
+	return valInt64, expected == valInt64
+}
+
+// AssertWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
+func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+	val, ok := _waitForStat(t, getStatFunc, expected)
+	require.True(t, ok)
+	assert.Equal(t, expected, val)
+	return val
 }
 
 // RequireWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
 func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) {
-	val, ok := WaitForStat(t, getStatFunc, expected)
+	val, ok := _waitForStat(t, getStatFunc, expected)
 	require.True(t, ok)
 	require.Equal(t, expected, val)
 }

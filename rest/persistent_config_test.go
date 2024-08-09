@@ -1429,7 +1429,7 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
-	dbBucketMismatch, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
+	dbBucketMismatch = base.AssertWaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
 
 	// Move config docs from original bucket to b2 and force a fetch/load (simulate backup/restore or XDCR to different bucket)
 	base.MoveDocument(t, base.SGRegistryKey, b2.GetMetadataStore(), b1.GetMetadataStore())
@@ -1448,7 +1448,7 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
-	dbBucketMismatch, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
+	dbBucketMismatch = base.AssertWaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
 
 	// repair config
 	dbConfig.Bucket = &b2Name
@@ -1465,7 +1465,7 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
-	_, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
+	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
 }
 
 // startBootstrapServerWithoutConfigPolling starts a server with config polling disabled, and returns the server context.
