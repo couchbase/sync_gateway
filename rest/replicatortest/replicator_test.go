@@ -4138,6 +4138,106 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	assert.Nil(t, doc)
 }
 
+// TestActiveReplicatorPullPurgeOnRemovalWithAccessButChannelFilter:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a document on rt2 which can be pulled by the replicator running in rt1.
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
+//   - Drops the document out of the channel so the replicator in rt1 pulls a _removed revision.
+func TestActiveReplicatorPullPurgeOnRemovalWithAccessButChannelFilter(t *testing.T) {
+
+	base.LongRunningTest(t)
+
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyHTTP, base.KeySync, base.KeyReplicate)
+
+	// Passive
+	rt2 := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: channels.DocChannelsSyncFunction,
+		})
+	defer rt2.Close()
+
+	username := "alice"
+	rt2.CreateUser(username, []string{channels.AllChannelWildcard})
+
+	const replicatedChannel = "replicated"
+
+	docID := t.Name() + "rt2doc1"
+	version := rt2.PutDoc(docID, fmt.Sprintf(`{"source":"rt2","channels":["otherChannel", "%s"]}`, replicatedChannel))
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+
+	// Active
+	rt1 := rest.NewRestTester(t, nil)
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:    200,
+		Continuous:          true,
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		Filter:              base.ByChannelFilter,
+		FilterChannels:      []string{replicatedChannel},
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Stop()) }()
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start(ctx1))
+
+	// wait for the document originally written to rt2 to arrive at rt1
+	changesResults, err := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	requireDocumentVersion(t, version, doc)
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
+
+	_ = rt2.UpdateDoc(docID, version, `{"source":"rt2","channels":["otherChannel"]}`)
+
+	// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed. But we can monitor the associated stat.
+	base.RequireWaitForStat(t, func() int64 {
+		stats := ar.GetStatus(ctx1)
+		return stats.DocsPurged
+	}, 1)
+
+	doc, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err), "Error returned wasn't a DocNotFound error")
+	assert.Nil(t, doc)
+}
+
 // TestActiveReplicatorPullConflict:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Create the same document id with different content on rt1 and rt2

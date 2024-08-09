@@ -491,6 +491,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 					// If the user has access to the doc through another channel don't send change
+					// FIXME: TestActiveReplicatorPullPurgeOnRemovalWithAccessButChannelFilter fails when this check is performed
 					userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, changesDb, change.ID)
 					if err == nil && userHasAccessToDoc {
 						continue
