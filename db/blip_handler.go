@@ -721,6 +721,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			if err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)
 			}
+			bh.replicationStats.HandleRevDocsPurgedCount.Add(1)
 
 			// Fall into skip sending case
 			missing = nil
