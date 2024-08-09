@@ -76,6 +76,7 @@ type RestTesterConfig struct {
 	syncGatewayVersion              *base.ComparableBuildVersion // alternate version of Sync Gateway to use on startup
 	allowDbConfigEnvVars            *bool
 	maxConcurrentRevs               *int
+	UseXattrConfig                  bool
 }
 
 type collectionConfiguration uint8
@@ -234,6 +235,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
+	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
 	sc.Replicator.MaxConcurrentRevs = rt.RestTesterConfig.maxConcurrentRevs
 	if rt.serverless {
 		if !rt.PersistentConfig {

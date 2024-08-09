@@ -244,8 +244,12 @@ func IsTemporaryKvError(err error) bool {
 		return false
 	}
 	// define list of temporary errors
-	temporaryKVError := []error{ErrTimeout, gocb.ErrAmbiguousTimeout, gocb.ErrUnambiguousTimeout,
-		gocb.ErrOverload, gocb.ErrTemporaryFailure, gocb.ErrCircuitBreakerOpen}
+	temporaryKVError := []error{
+		ErrTimeout,                 // Sync Gateway client-side timeout
+		gocb.ErrTimeout,            // SDK op timeout.  Wrapped by gocb.ErrAmbiguousTimeout, gocb.ErrUnambiguousTimeout,
+		gocb.ErrOverload,           // SDK client-side pipeline queue full, request was not submitted to server
+		gocb.ErrTemporaryFailure,   // Couchbase Server returned temporary failure error
+		gocb.ErrCircuitBreakerOpen} // SDK client-side circuit breaker blocked request
 
 	// iterate through to check incoming error is one of them
 	for _, tempKVErr := range temporaryKVError {

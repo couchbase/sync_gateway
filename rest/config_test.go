@@ -2982,7 +2982,7 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// remove the invalid config from the bucket
-	rt.DeleteDbConfigInBucket(dbName, realBucketName)
+	rt.RemoveDbConfigFromBucket(dbName, realBucketName)
 
 	// force reload of configs from bucket
 	rt.ServerContext().ForceDbConfigsReload(t, ctx)
@@ -3054,7 +3054,7 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 
 	// delete the invalid db config to force the not found error
-	rt.DeleteDbConfigInBucket(dbConfig.Name, realBucketName)
+	rt.RemoveDbConfigFromBucket(dbConfig.Name, realBucketName)
 
 	// fix the bucket name and try fix corrupt db through create db endpoint
 	dbConfig.Bucket = &realBucketName
