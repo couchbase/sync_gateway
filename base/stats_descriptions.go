@@ -119,6 +119,8 @@ const (
 
 	PendingSeqLengthDesc = "The total number of pending sequences. These are out-of-sequence entries waiting to be cached."
 
+	RevCacheNumItemsDesc = "The total number of items in the revision cache."
+
 	RevCacheBypassDesc = "The total number of revision cache bypass operations performed."
 
 	RevCacheHitsDesc = "The total number of revision cache hits. This metric can be used to calculate the ratio of revision cache hits: " +

@@ -28,7 +28,6 @@ const (
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
 	// Get returns the given revision, and stores if not already cached.
-	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
 	Get(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (DocumentRevision, error)
 
@@ -77,12 +76,13 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 
 	cacheHitStat := cacheStats.RevisionCacheHits
 	cacheMissStat := cacheStats.RevisionCacheMisses
+	cacheNumItemsStat := cacheStats.RevisionCacheNumItems
 
 	if cacheOptions.ShardCount > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat)
+		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
 	}
 
-	return NewLRURevisionCache(cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat)
+	return NewLRURevisionCache(cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
 }
 
 type RevisionCacheOptions struct {
