@@ -761,56 +761,56 @@ func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, con
 //  4. The _default._default collection isn't already associated with a different metadata ID (syncInfo document is not present, or has a value of defaultMetadataID)
 func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *GatewayRegistry, config *DbConfig) string {
 
-	standardMetadataID := b.standardMetadataID(config.Name)
+	metadataID, source := func() (string, string) {
+		standardMetadataID := b.standardMetadataID(config.Name)
 
-	// If there's already a metadataID assigned to this database in the registry (including other config groups), use that
-	defaultMetadataIDInUse := false
-	for _, cg := range registry.ConfigGroups {
-		for dbName, db := range cg.Databases {
-			if dbName == config.Name {
-				return db.MetadataID
-			}
-			if db.MetadataID == defaultMetadataID {
-				defaultMetadataIDInUse = true
-			}
-		}
-	}
+		// If there's already a metadataID assigned to this database in the registry (including other config groups), use that
+		for _, cg := range registry.ConfigGroups {
+			for dbName, db := range cg.Databases {
+				if dbName == config.Name {
+					return db.MetadataID, fmt.Sprintf("Using metadata ID=%q from registry for db %q", db.MetadataID, dbName)
+				}
+				if db.MetadataID == defaultMetadataID {
+					// If the default metadata ID is already in use in the registry by a different database, use standard ID.
+					return standardMetadataID, fmt.Sprintf("Using metadata ID %q for db %q since db %q is using the default metadata ID", standardMetadataID, config.Name, dbName)
 
-	// If the default metadata ID is already in use in the registry by a different database, use standard ID.
-	if defaultMetadataIDInUse {
-		return standardMetadataID
-	}
-
-	// If the database config doesn't include _default._default, use standard ID
-	if config.Scopes != nil {
-		defaultFound := false
-		for scopeName, scope := range config.Scopes {
-			for collectionName := range scope.Collections {
-				if base.IsDefaultCollection(scopeName, collectionName) {
-					defaultFound = true
 				}
 			}
 		}
-		if !defaultFound {
-			return standardMetadataID
+
+		// If the database config doesn't include _default._default, use standard ID
+		if config.Scopes != nil {
+			defaultFound := false
+			for scopeName, scope := range config.Scopes {
+				for collectionName := range scope.Collections {
+					if base.IsDefaultCollection(scopeName, collectionName) {
+						defaultFound = true
+					}
+				}
+			}
+			if !defaultFound {
+				return standardMetadataID, fmt.Sprintf("Using metadata ID %q for db %q since _default._default collection is not a collection targeted by this db", standardMetadataID, config.Name)
+			}
 		}
-	}
 
-	// If _default._default is already associated with a non-default metadataID, use the standard ID
-	bucketName := config.GetBucketName()
-	var syncInfo base.SyncInfo
-	exists, err := b.Connection.GetDocument(ctx, bucketName, base.SGSyncInfo, &syncInfo)
-	if err != nil {
-		base.WarnfCtx(ctx, "Error checking syncInfo metadataID in default collection - using standard metadataID.  Error: %v", err)
-		return standardMetadataID
-	}
+		// If _default._default is already associated with a non-default metadataID, use the standard ID
+		bucketName := config.GetBucketName()
+		var syncInfo base.SyncInfo
+		exists, err := b.Connection.GetDocument(ctx, bucketName, base.SGSyncInfo, &syncInfo)
+		if err != nil {
+			msg := fmt.Sprintf("Error checking syncInfo metadataID in default collection - using standard metadataID.  Error: %v", err)
+			base.WarnfCtx(ctx, msg)
+			return standardMetadataID, msg
+		}
 
-	if exists && syncInfo.MetadataID != defaultMetadataID {
-		return standardMetadataID
-	}
+		if exists && syncInfo.MetadataID != defaultMetadataID {
+			return standardMetadataID, fmt.Sprintf("Using metadata ID %q for db %q since base.SGSyncInfo in _default._default specifies metadata ID %q", standardMetadataID, config.Name, syncInfo.MetadataID)
+		}
 
-	return defaultMetadataID
-
+		return defaultMetadataID, fmt.Sprintf("Using default metadata ID %q for db %q", defaultMetadataID, config.Name)
+	}()
+	base.DebugfCtx(ctx, base.KeyConfig, source)
+	return metadataID
 }
 
 // standardMetadataID returns either the dbName or a base64 encoded SHA256 hash of the dbName, whichever is shorter.
