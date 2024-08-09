@@ -257,6 +257,18 @@ func IsTemporaryKvError(err error) bool {
 	return false
 }
 
+func IsTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, gocb.ErrTimeout) || errors.Is(err, ErrTimeout) {
+		return true
+	}
+
+	return false
+}
+
 func IsXattrNotFoundError(err error) bool {
 	if unwrappedErr := pkgerrors.Cause(err); unwrappedErr == nil {
 		return false
