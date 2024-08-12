@@ -9,6 +9,7 @@
 package base
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -173,13 +174,21 @@ func mandatoryFieldsPresent(fields, mandatoryFields AuditFields, baseName string
 			me = me.Append(fmt.Errorf("missing mandatory field %s", baseName+k))
 			continue
 		}
-		if !matchingTypes(v, fields[k]) {
-			me = me.Append(fmt.Errorf("field value for %s%s must be of type %T but had %T", baseName, k, v, fields[k]))
+		val := fields[k]
+		if _, ok := fields[k].(json.RawMessage); ok {
+			// unmarshal for type check
+			if err := json.Unmarshal(fields[k].(json.RawMessage), &val); err != nil {
+				me = me.Append(fmt.Errorf("field value for %s%s could not be unmarshalled: %v", baseName, k, err))
+				continue
+			}
+		}
+		if !matchingTypes(v, val) {
+			me = me.Append(fmt.Errorf("field value for %s%s must be of type %T but had %T", baseName, k, v, val))
 			continue
 		}
 		// recurse if map
 		if vv, ok := v.(map[string]any); ok {
-			if pv, ok := fields[k].(map[string]any); ok {
+			if pv, ok := val.(map[string]any); ok {
 				me = me.Append(mandatoryFieldsPresent(pv, vv, baseName+k+"."))
 			}
 		}
