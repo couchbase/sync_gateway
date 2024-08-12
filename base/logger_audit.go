@@ -10,11 +10,14 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"net"
 	"strings"
 	"time"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 const (
@@ -25,13 +28,18 @@ const (
 	DefaultDbAuditEnabled = false
 )
 
+// expandFieldsNumItems is the number of items `expandFields` can add, plus the variable length inputs (global, request, additional).
+const expandFieldsNumItems = 11
+
 // expandFields populates data with information from the id, context and additionalData.
 func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
-	var fields AuditFields
+	logCtx := getLogCtx(ctx)
+
+	// pre-allocate fields to return, allocates once now for the copy but should be big enough for everything we'll add
+	expectedLen := expandFieldsNumItems + len(globalFields) + len(additionalData) + len(logCtx.RequestAdditionalAuditFields)
+	fields := make(AuditFields, expectedLen)
 	if additionalData != nil {
-		fields = maps.Clone(additionalData)
-	} else {
-		fields = make(AuditFields)
+		maps.Copy(fields, additionalData)
 	}
 
 	// static event data
@@ -40,7 +48,6 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	fields[AuditFieldDescription] = AuditEvents[id].Description
 
 	// context data
-	logCtx := getLogCtx(ctx)
 	if logCtx.Database != "" {
 		fields[AuditFieldDatabase] = logCtx.Database
 	}
@@ -53,28 +60,25 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	userDomain := logCtx.UserDomain
 	userName := logCtx.Username
 	if userDomain != "" || userName != "" {
-		fields[AuditFieldRealUserID] = map[string]any{
-			AuditFieldRealUserIDDomain: userDomain,
-			AuditFieldRealUserIDUser:   userName,
-		}
+		fields[AuditFieldRealUserID] = json.RawMessage(`{"` +
+			AuditFieldRealUserIDDomain + `":"` + string(userDomain) + `","` +
+			AuditFieldRealUserIDUser + `":"` + userName +
+			`"}`)
 	}
 	effectiveDomain := logCtx.EffectiveDomain
 	effectiveUser := logCtx.EffectiveUserID
 	if effectiveDomain != "" || effectiveUser != "" {
-		fields[AuditEffectiveUserID] = map[string]any{
-			AuditFieldEffectiveUserIDDomain: effectiveDomain,
-			AuditFieldEffectiveUserIDUser:   effectiveUser,
-		}
+		fields[AuditEffectiveUserID] = json.RawMessage(`{"` +
+			AuditFieldEffectiveUserIDDomain + `":"` + effectiveDomain + `","` +
+			AuditFieldEffectiveUserIDUser + `":"` + effectiveUser +
+			`"}`)
 	}
 	if logCtx.RequestHost != "" {
 		host, port, err := net.SplitHostPort(logCtx.RequestHost)
 		if err != nil {
 			AssertfCtx(ctx, "couldn't parse request host %q: %v", logCtx.RequestHost, err)
 		} else {
-			fields[AuditFieldLocal] = map[string]any{
-				"ip":   host,
-				"port": port,
-			}
+			fields[AuditFieldLocal] = json.RawMessage(`{"ip":"` + host + `","port":"` + port + `"}`)
 		}
 	}
 
@@ -83,35 +87,32 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 		if err != nil {
 			AssertfCtx(ctx, "couldn't parse request remote addr %q: %v", logCtx.RequestRemoteAddr, err)
 		} else {
-			fields[AuditFieldRemote] = map[string]any{
-				"ip":   host,
-				"port": port,
-			}
+			fields[AuditFieldRemote] = json.RawMessage(`{"ip":"` + host + `","port":"` + port + `"}`)
 		}
 	}
 
 	fields[AuditFieldTimestamp] = time.Now().Format(time.RFC3339)
 
-	fields.merge(ctx, globalFields)
-	fields.merge(ctx, logCtx.RequestAdditionalAuditFields)
+	fields = fields.merge(ctx, globalFields)
+	fields = fields.merge(ctx, logCtx.RequestAdditionalAuditFields)
 
 	return fields
 }
 
 // Merge will perform a shallow overwrite of the fields in the AuditFields. If there are conflicts, do not overwrite but log a warning. This will panic in dev mode.
-func (f *AuditFields) merge(ctx context.Context, overwrites AuditFields) {
+func (f AuditFields) merge(ctx context.Context, overwrites AuditFields) AuditFields {
 	var duplicateFields []string
-	for k, v := range overwrites {
-		_, ok := (*f)[k]
-		if ok {
-			duplicateFields = append(duplicateFields, fmt.Sprintf("%q='%v'", k, v))
+	for k := range overwrites {
+		if _, ok := f[k]; ok {
+			duplicateFields = append(duplicateFields, fmt.Sprintf("%q='%v'", k, overwrites[k]))
 			continue
 		}
-		(*f)[k] = v
+		f[k] = overwrites[k]
 	}
 	if duplicateFields != nil {
-		WarnfCtx(ctx, "audit fields %s already exist in base audit fields %+v, will not overwrite an audit event", strings.Join(duplicateFields, ","), *f)
+		WarnfCtx(ctx, "audit fields %s already exist in base audit fields %+v, will not overwrite an audit event", strings.Join(duplicateFields, ","), f)
 	}
+	return f
 }
 
 // Audit creates and logs an audit event for the given ID and a set of additional data associated with the request.
@@ -138,12 +139,14 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	if fields == nil {
 		fields = expandFields(id, ctx, logger.globalFields, additionalData)
 	}
-	fieldsJSON, err := JSONMarshalCanonical(fields)
+
+	fieldsJSON, err := jsoniter.MarshalToString(fields)
 	if err != nil {
 		AssertfCtx(ctx, "failed to marshal audit fields: %v", err)
 		return
 	}
-	logger.logf(string(fieldsJSON))
+
+	logger.logf(fieldsJSON)
 }
 
 // IsAuditEnabled checks if auditing is enabled for the SG node

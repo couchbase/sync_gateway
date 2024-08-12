@@ -281,6 +281,10 @@ func TestAuditFieldsMerge(t *testing.T) {
 }
 
 func BenchmarkAuditFieldwork(b *testing.B) {
+	if !IsEnterpriseEdition() {
+		b.Skip("Enterprise Edition only")
+	}
+
 	originalLogger := auditLogger.Load()
 	b.Cleanup(func() {
 		auditLogger.Store(originalLogger)
@@ -290,16 +294,24 @@ func BenchmarkAuditFieldwork(b *testing.B) {
 	buf := io.Discard
 	al, err := NewAuditLogger(TestCtx(b), &AuditLoggerConfig{
 		FileLoggerConfig: FileLoggerConfig{
-			Enabled: BoolPtr(true),
-			Output:  buf,
+			Enabled:             BoolPtr(true),
+			Output:              buf,
+			CollationBufferSize: IntPtr(0),
 		},
 	}, b.TempDir(), auditMinage, nil, map[string]any{"foo": "bar", "buzz": 1234})
 	require.NoError(b, err)
 	auditLogger.Store(al)
 
 	ctx := TestCtx(b)
+	ctx = DatabaseLogCtx(ctx, "db", nil)
+	ctx = KeyspaceLogCtx(ctx, "bucket", "scope", "collection")
 	ctx = CorrelationIDLogCtx(ctx, FormatBlipContextID("a0b1c2"))
-	ctx = CollectionLogCtx(ctx, "foo", "bar")
+	ctx = RequestLogCtx(ctx, RequestData{
+		CorrelationID:     "#1234",
+		RequestHost:       "1.2.3.4:4985",
+		RequestRemoteAddr: "9.8.7.6:12345",
+	})
+	ctx = UserLogCtx(ctx, "user", "domain", []string{"role1"})
 
 	docID, revID := "docID", "revID"
 
