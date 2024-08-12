@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"net"
@@ -57,28 +58,25 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	userDomain := logCtx.UserDomain
 	userName := logCtx.Username
 	if userDomain != "" || userName != "" {
-		fields[AuditFieldRealUserID] = map[string]any{
-			AuditFieldRealUserIDDomain: userDomain,
-			AuditFieldRealUserIDUser:   userName,
-		}
+		fields[AuditFieldRealUserID] = json.RawMessage(`{"` +
+			AuditFieldRealUserIDDomain + `":"` + string(userDomain) + `","` +
+			AuditFieldRealUserIDUser + `":"` + userName +
+			`"}`)
 	}
 	effectiveDomain := logCtx.EffectiveDomain
 	effectiveUser := logCtx.EffectiveUserID
 	if effectiveDomain != "" || effectiveUser != "" {
-		fields[AuditEffectiveUserID] = map[string]any{
-			AuditFieldEffectiveUserIDDomain: effectiveDomain,
-			AuditFieldEffectiveUserIDUser:   effectiveUser,
-		}
+		fields[AuditEffectiveUserID] = json.RawMessage(`{"` +
+			AuditFieldEffectiveUserIDDomain + `":"` + effectiveDomain + `","` +
+			AuditFieldEffectiveUserIDUser + `":"` + effectiveUser +
+			`"}`)
 	}
 	if logCtx.RequestHost != "" {
 		host, port, err := net.SplitHostPort(logCtx.RequestHost)
 		if err != nil {
 			AssertfCtx(ctx, "couldn't parse request host %q: %v", logCtx.RequestHost, err)
 		} else {
-			fields[AuditFieldLocal] = map[string]any{
-				"ip":   host,
-				"port": port,
-			}
+			fields[AuditFieldLocal] = json.RawMessage(`{"ip":"` + host + `","port":"` + port + `"}`)
 		}
 	}
 
@@ -87,10 +85,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 		if err != nil {
 			AssertfCtx(ctx, "couldn't parse request remote addr %q: %v", logCtx.RequestRemoteAddr, err)
 		} else {
-			fields[AuditFieldRemote] = map[string]any{
-				"ip":   host,
-				"port": port,
-			}
+			fields[AuditFieldRemote] = json.RawMessage(`{"ip":"` + host + `","port":"` + port + `"}`)
 		}
 	}
 
