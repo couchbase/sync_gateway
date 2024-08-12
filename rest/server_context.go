@@ -1031,7 +1031,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
 		// before going online
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
-		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName, dbcontext.Options.LoggingConfig)
+		nonCancelCtx := base.NewNonCancelCtxForDatabase(ctx)
 		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
 		return dbcontext, nil
 	}
