@@ -175,11 +175,20 @@ func (l *FileLogger) logf(format string, args ...interface{}) {
 	if l == nil {
 		return
 	}
+	doPrintf := len(args) > 0
 	if l.collateBuffer != nil {
 		l.collateBufferWg.Add(1)
-		l.collateBuffer <- fmt.Sprintf(format, args...)
+		if doPrintf {
+			l.collateBuffer <- fmt.Sprintf(format, args...)
+		} else {
+			l.collateBuffer <- format
+		}
 	} else {
-		l.logger.Printf(format, args...)
+		if doPrintf {
+			l.logger.Printf(format, args...)
+		} else {
+			l.logger.Print(format)
+		}
 	}
 }
 
