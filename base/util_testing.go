@@ -599,7 +599,7 @@ func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 }
 
 // ResetGlobalTestLogging will ensure that the loggers are replaced at the endof the the test. This is only safe to call with go:build !race since swapping the global loggers can trigger a race condition from background processes of the test harness.
-func ResetGlobalTestLogging(t *testing.T) {
+func ResetGlobalTestLogging(t testing.TB) {
 	oldErrorLogger := errorLogger
 	oldWarnLogger := warnLogger
 	oldInfoLogger := infoLogger
