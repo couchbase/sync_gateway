@@ -25,13 +25,18 @@ const (
 	DefaultDbAuditEnabled = false
 )
 
+// expandFieldsNumItems is the number of items `expandFields` can add, plus the variable length inputs (global, request, additional).
+const expandFieldsNumItems = 11
+
 // expandFields populates data with information from the id, context and additionalData.
 func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
-	var fields AuditFields
+	logCtx := getLogCtx(ctx)
+
+	// pre-allocate fields to return, allocates once now for the copy but should be big enough for everything we'll add
+	expectedLen := expandFieldsNumItems + len(globalFields) + len(additionalData) + len(logCtx.RequestAdditionalAuditFields)
+	fields := make(AuditFields, expectedLen)
 	if additionalData != nil {
-		fields = maps.Clone(additionalData)
-	} else {
-		fields = make(AuditFields)
+		maps.Copy(fields, additionalData)
 	}
 
 	// static event data
@@ -40,7 +45,6 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	fields[AuditFieldDescription] = AuditEvents[id].Description
 
 	// context data
-	logCtx := getLogCtx(ctx)
 	if logCtx.Database != "" {
 		fields[AuditFieldDatabase] = logCtx.Database
 	}
