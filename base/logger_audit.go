@@ -93,26 +93,26 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 
 	fields[AuditFieldTimestamp] = time.Now().Format(time.RFC3339)
 
-	fields.merge(ctx, globalFields)
-	fields.merge(ctx, logCtx.RequestAdditionalAuditFields)
+	fields = fields.merge(ctx, globalFields)
+	fields = fields.merge(ctx, logCtx.RequestAdditionalAuditFields)
 
 	return fields
 }
 
 // Merge will perform a shallow overwrite of the fields in the AuditFields. If there are conflicts, do not overwrite but log a warning. This will panic in dev mode.
-func (f *AuditFields) merge(ctx context.Context, overwrites AuditFields) {
+func (f AuditFields) merge(ctx context.Context, overwrites AuditFields) AuditFields {
 	var duplicateFields []string
-	for k, v := range overwrites {
-		_, ok := (*f)[k]
-		if ok {
-			duplicateFields = append(duplicateFields, fmt.Sprintf("%q='%v'", k, v))
+	for k := range overwrites {
+		if _, ok := f[k]; ok {
+			duplicateFields = append(duplicateFields, fmt.Sprintf("%q='%v'", k, overwrites[k]))
 			continue
 		}
-		(*f)[k] = v
+		f[k] = overwrites[k]
 	}
 	if duplicateFields != nil {
-		WarnfCtx(ctx, "audit fields %s already exist in base audit fields %+v, will not overwrite an audit event", strings.Join(duplicateFields, ","), *f)
+		WarnfCtx(ctx, "audit fields %s already exist in base audit fields %+v, will not overwrite an audit event", strings.Join(duplicateFields, ","), f)
 	}
+	return f
 }
 
 // Audit creates and logs an audit event for the given ID and a set of additional data associated with the request.
