@@ -692,6 +692,8 @@ func (op *OIDCProvider) startDiscoverySync(ctx context.Context, discoveryURL str
 		return err
 	}
 	go func() {
+		// use DbConsoleLogConfig as nil in 3.1 branch only. This is stored on database in >= 3.2
+		ctx := base.NewNonCancelCtxForDatabase(ctx, nil).Ctx
 		for {
 			select {
 			case <-time.After(duration):

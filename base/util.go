@@ -64,12 +64,14 @@ func NewNonCancelCtx() NonCancellableContext {
 }
 
 // NewNonCancelCtx creates a new background context struct for operations that require a fresh context, with database logging context added
-func NewNonCancelCtxForDatabase(dbName string, dbConsoleLogConfig *DbConsoleLogConfig) NonCancellableContext {
-	dbLogContext := DatabaseLogCtx(context.Background(), dbName, dbConsoleLogConfig)
-	ctxStruct := NonCancellableContext{
+func NewNonCancelCtxForDatabase(parentCtx context.Context, dbConsoleLogConfig *DbConsoleLogConfig) NonCancellableContext {
+	ctx := getLogCtx(parentCtx)
+
+	dbLogContext := DatabaseLogCtx(context.Background(), ctx.Database, dbConsoleLogConfig)
+
+	return NonCancellableContext{
 		Ctx: dbLogContext,
 	}
-	return ctxStruct
 }
 
 // RedactBasicAuthURLUserAndPassword returns the given string, with a redacted HTTP basic auth component.
