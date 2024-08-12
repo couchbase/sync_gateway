@@ -16,6 +16,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 const (
@@ -137,12 +139,14 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	if fields == nil {
 		fields = expandFields(id, ctx, logger.globalFields, additionalData)
 	}
-	fieldsJSON, err := JSONMarshalCanonical(fields)
+
+	fieldsJSON, err := jsoniter.MarshalToString(fields)
 	if err != nil {
 		AssertfCtx(ctx, "failed to marshal audit fields: %v", err)
 		return
 	}
-	logger.logf(string(fieldsJSON))
+
+	logger.logf(fieldsJSON)
 }
 
 // IsAuditEnabled checks if auditing is enabled for the SG node
