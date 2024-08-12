@@ -51,6 +51,7 @@ type FileLogger struct {
 	// collateBuffer is used to store log entries to batch up multiple logs.
 	collateBuffer    chan string
 	collateBufferWg  *sync.WaitGroup
+	closed           chan struct{}
 	flushChan        chan struct{}
 	level            LogLevel
 	name             string
@@ -87,11 +88,11 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		config = &FileLoggerConfig{}
 	}
 
-	rotationDoneChan := make(chan struct{})
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
 
 	// validate and set defaults
-	if err := config.init(cancelCtx, level, name, logFilePath, minAge, rotationDoneChan); err != nil {
+	rotationDoneChan, err := config.init(cancelCtx, level, name, logFilePath, minAge)
+	if err != nil {
 		cancelFunc()
 		return nil, err
 	}
@@ -103,6 +104,7 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		output:           config.Output,
 		logger:           log.New(config.Output, "", 0),
 		config:           *config,
+		closed:           make(chan struct{}),
 		cancelFunc:       cancelFunc,
 		rotationDoneChan: rotationDoneChan,
 	}
@@ -119,7 +121,7 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		logger.collateBufferWg = &sync.WaitGroup{}
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.closed, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
 	return logger, nil
@@ -152,13 +154,18 @@ func (l *FileLogger) Rotate() error {
 
 // Close cancels the log rotation rotation and the underlying file descriptor for the active log file.
 func (l *FileLogger) Close() error {
+	// cancelFunc will stop the log rotionation/deletion goroutine
+	// once all log rotation is done and log output is closed, shut down the logCollationWorker
+	defer close(l.closed)
 	// cancel the log rotation goroutine and wait for it to stop
 	if l.cancelFunc != nil {
 		l.cancelFunc()
 	}
+	// wait for the rotation goroutine to stop
 	if l.rotationDoneChan != nil {
 		<-l.rotationDoneChan
 	}
+
 	if c, ok := l.output.(io.Closer); ok {
 		return c.Close()
 	}
@@ -166,7 +173,7 @@ func (l *FileLogger) Close() error {
 }
 
 func (l *FileLogger) String() string {
-	return "FileLogger(" + l.level.String() + ")"
+	return "FileLogger(" + l.name + ")"
 }
 
 // logf will put the given message into the collation buffer if it exists,
@@ -210,9 +217,9 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	return &fileLoggerConfig
 }
 
-func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int, rotationDoneChan chan struct{}) error {
+func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int) (chan struct{}, error) {
 	if lfc == nil {
-		return errors.New("nil LogFileConfig")
+		return nil, errors.New("nil LogFileConfig")
 	}
 
 	if lfc.Enabled == nil {
@@ -221,18 +228,12 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 	}
 
 	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge); err != nil {
-		return err
+		return nil, err
 	}
 
-	var rotateableLogger *lumberjack.Logger
+	var rotationDoneChan chan struct{}
 	if lfc.Output == nil {
-		rotateableLogger = newLumberjackOutput(
-			filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"),
-			*lfc.Rotation.MaxSize,
-			*lfc.Rotation.MaxAge,
-			BoolDefault(lfc.Rotation.Compress, true),
-		)
-		lfc.Output = rotateableLogger
+		rotationDoneChan = lfc.initLumberjack(ctx, name, filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"))
 	}
 
 	if lfc.CollationBufferSize == nil {
@@ -244,9 +245,25 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		lfc.CollationBufferSize = &bufferSize
 	}
 
+	return rotationDoneChan, nil
+}
+
+// initLumberjack will create a new Lumberjack logger from the given config settings. Returns a doneChan which fires when the log rotation is stopped.
+func (lfc *FileLoggerConfig) initLumberjack(ctx context.Context, name string, lumberjackFilename string) chan struct{} {
+	rotationDoneChan := make(chan struct{})
+	dir, path := filepath.Split(lumberjackFilename)
+	prefix := path[0:strings.Index(path, ".")]
+	rotateableLogger := &lumberjack.Logger{
+		Filename: lumberjackFilename,
+		MaxSize:  *lfc.Rotation.MaxSize,
+		MaxAge:   *lfc.Rotation.MaxAge,
+		Compress: BoolDefault(lfc.Rotation.Compress, true),
+	}
+	lfc.Output = rotateableLogger
+
 	var rotationTicker *time.Ticker
 	var rotationTickerCh <-chan time.Time
-	if i := lfc.Rotation.RotationInterval.Value(); i > 0 && rotateableLogger != nil {
+	if i := lfc.Rotation.RotationInterval.Value(); i > 0 {
 		rotationTicker = time.NewTicker(i)
 		rotationTickerCh = rotationTicker.C
 	}
@@ -268,7 +285,7 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 				close(rotationDoneChan)
 				return
 			case <-logDeletionTicker.C:
-				err := runLogDeletion(ctx, logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
+				err := runLogDeletion(ctx, dir, prefix, int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
 					WarnfCtx(ctx, "%s", err)
 				}
@@ -281,10 +298,10 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 			}
 		}
 	}()
-
-	return nil
+	return rotationDoneChan
 }
 
+// initRotationConfig will validate the log rotation settings and set defaults where necessary.
 func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int) error {
 	if lfc.Rotation.MaxSize == nil {
 		lfc.Rotation.MaxSize = &defaultMaxSize
@@ -322,20 +339,10 @@ func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, min
 	return nil
 }
 
-func newLumberjackOutput(filename string, maxSize, maxAge int, compress bool) *lumberjack.Logger {
-	return &lumberjack.Logger{
-		Filename: filename,
-		MaxSize:  maxSize,
-		MaxAge:   maxAge,
-		Compress: compress,
-	}
-}
-
 // runLogDeletion will delete rotated logs for the supplied logLevel. It will only perform these deletions when the
 // cumulative size of the logs are above the supplied sizeLimitMB.
 // logDirectory is the supplied directory where the logs are stored.
-func runLogDeletion(ctx context.Context, logDirectory string, logLevel string, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
-
+func runLogDeletion(ctx context.Context, logDirectory string, logPrefix string, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
 	sizeLimitMBLowWatermark = sizeLimitMBLowWatermark * 1024 * 1024   // Convert MB input to bytes
 	sizeLimitMBHighWatermark = sizeLimitMBHighWatermark * 1024 * 1024 // Convert MB input to bytes
 
@@ -352,7 +359,7 @@ func runLogDeletion(ctx context.Context, logDirectory string, logLevel string, s
 	willDelete := false
 	for i := len(files) - 1; i >= 0; i-- {
 		file := files[i]
-		if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
+		if strings.HasPrefix(file.Name(), logPrefix) && strings.HasSuffix(file.Name(), ".gz") {
 			fi, err := file.Info()
 			if err != nil {
 				InfofCtx(ctx, KeyAll, "Couldn't get size of log file %q: %v - ignoring for cleanup calculation", file.Name(), err)
@@ -373,7 +380,7 @@ func runLogDeletion(ctx context.Context, logDirectory string, logLevel string, s
 	if willDelete {
 		for j := indexDeletePoint; j >= 0; j-- {
 			file := files[j]
-			if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
+			if strings.HasPrefix(file.Name(), logPrefix) && strings.HasSuffix(file.Name(), ".gz") {
 				err = os.Remove(filepath.Join(logDirectory, file.Name()))
 				if err != nil {
 					return errors.New(fmt.Sprintf("Error deleting stale log file: %v", err))
