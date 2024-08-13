@@ -422,6 +422,10 @@ func AuditLogContents(t testing.TB, f func(t testing.TB)) []byte {
 	// Temporarily override logger output
 	b := &bytes.Buffer{}
 	mw := io.MultiWriter(b, os.Stderr)
+
+	FlushLogBuffers()
+	auditLogger.FlushBufferToLog()
+
 	auditLogger.logger.SetOutput(mw)
 	defer func() { auditLogger.logger.SetOutput(os.Stderr) }()
 
