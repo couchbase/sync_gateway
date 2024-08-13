@@ -83,7 +83,7 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 	logger.Enabled.Set(*config.Enabled)
 
 	// Only create the collateBuffer channel and worker if required.
-	if *config.CollationBufferSize > 1 && !logger.isStderr {
+	if *config.CollationBufferSize > 1 {
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
 		logger.flushChan = make(chan struct{}, 1)
 		logger.collateBufferWg = &sync.WaitGroup{}
@@ -190,7 +190,7 @@ func (lcc *ConsoleLoggerConfig) init(ctx context.Context) (chan struct{}, error)
 		return nil, errors.New("nil LogConsoleConfig")
 	}
 
-	if err := lcc.initRotationConfig("console", 0, 0); err != nil {
+	if err := lcc.initRotationConfig("console", 0, 0, false); err != nil {
 		return nil, err
 	}
 

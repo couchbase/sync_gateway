@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -43,6 +44,8 @@ var (
 
 	belowMinValueFmt = "%s for %v was set to %v which is below the minimum of %v"
 	aboveMaxValueFmt = "%s for %v was set to %v which is above the maximum of %v"
+
+	lumberjackRotationMidfix = `-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}.\d{3}`
 )
 
 type FileLogger struct {
@@ -79,7 +82,7 @@ type logRotationConfig struct {
 	LocalTime            *bool           `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
 	RotatedLogsSizeLimit *int            `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
 	RotationInterval     *ConfigDuration `json:"rotation_interval,omitempty"`       // Interval at which logs are rotated
-	Compress             *bool           `json:"-"`                                 // Enable log compression - not exposed in config
+	compress             *bool           `json:"-"`                                 // Compress rotated logs, not exposed to users
 }
 
 // NewFileLogger returns a new FileLogger from a config.
@@ -227,7 +230,7 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		lfc.Enabled = BoolPtr(level < LevelDebug)
 	}
 
-	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge); err != nil {
+	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge, true); err != nil {
 		return nil, err
 	}
 
@@ -251,13 +254,12 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 // initLumberjack will create a new Lumberjack logger from the given config settings. Returns a doneChan which fires when the log rotation is stopped.
 func (lfc *FileLoggerConfig) initLumberjack(ctx context.Context, name string, lumberjackFilename string) chan struct{} {
 	rotationDoneChan := make(chan struct{})
-	dir, path := filepath.Split(lumberjackFilename)
-	prefix := path[0:strings.Index(path, ".")]
+	dir, logPattern := getDeletionDirAndRegexp(lumberjackFilename)
 	rotateableLogger := &lumberjack.Logger{
 		Filename: lumberjackFilename,
 		MaxSize:  *lfc.Rotation.MaxSize,
 		MaxAge:   *lfc.Rotation.MaxAge,
-		Compress: BoolDefault(lfc.Rotation.Compress, true),
+		Compress: *lfc.Rotation.compress,
 	}
 	lfc.Output = rotateableLogger
 
@@ -285,7 +287,7 @@ func (lfc *FileLoggerConfig) initLumberjack(ctx context.Context, name string, lu
 				close(rotationDoneChan)
 				return
 			case <-logDeletionTicker.C:
-				err := runLogDeletion(ctx, dir, prefix, int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
+				err := runLogDeletion(ctx, dir, logPattern, int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
 					WarnfCtx(ctx, "%s", err)
 				}
@@ -302,7 +304,7 @@ func (lfc *FileLoggerConfig) initLumberjack(ctx context.Context, name string, lu
 }
 
 // initRotationConfig will validate the log rotation settings and set defaults where necessary.
-func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int) error {
+func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int, compress bool) error {
 	if lfc.Rotation.MaxSize == nil {
 		lfc.Rotation.MaxSize = &defaultMaxSize
 	} else if *lfc.Rotation.MaxSize == 0 {
@@ -336,13 +338,16 @@ func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, min
 		}
 	}
 
+	if lfc.Rotation.compress == nil {
+		lfc.Rotation.compress = &compress
+	}
 	return nil
 }
 
 // runLogDeletion will delete rotated logs for the supplied logLevel. It will only perform these deletions when the
 // cumulative size of the logs are above the supplied sizeLimitMB.
 // logDirectory is the supplied directory where the logs are stored.
-func runLogDeletion(ctx context.Context, logDirectory string, logPrefix string, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
+func runLogDeletion(ctx context.Context, logDirectory string, logPattern *regexp.Regexp, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
 	sizeLimitMBLowWatermark = sizeLimitMBLowWatermark * 1024 * 1024   // Convert MB input to bytes
 	sizeLimitMBHighWatermark = sizeLimitMBHighWatermark * 1024 * 1024 // Convert MB input to bytes
 
@@ -359,7 +364,7 @@ func runLogDeletion(ctx context.Context, logDirectory string, logPrefix string, 
 	willDelete := false
 	for i := len(files) - 1; i >= 0; i-- {
 		file := files[i]
-		if strings.HasPrefix(file.Name(), logPrefix) && strings.HasSuffix(file.Name(), ".gz") {
+		if logPattern.Match([]byte(file.Name())) {
 			fi, err := file.Info()
 			if err != nil {
 				InfofCtx(ctx, KeyAll, "Couldn't get size of log file %q: %v - ignoring for cleanup calculation", file.Name(), err)
@@ -380,7 +385,7 @@ func runLogDeletion(ctx context.Context, logDirectory string, logPrefix string, 
 	if willDelete {
 		for j := indexDeletePoint; j >= 0; j-- {
 			file := files[j]
-			if strings.HasPrefix(file.Name(), logPrefix) && strings.HasSuffix(file.Name(), ".gz") {
+			if logPattern.Match([]byte(file.Name())) {
 				err = os.Remove(filepath.Join(logDirectory, file.Name()))
 				if err != nil {
 					return errors.New(fmt.Sprintf("Error deleting stale log file: %v", err))
@@ -390,4 +395,28 @@ func runLogDeletion(ctx context.Context, logDirectory string, logPrefix string, 
 	}
 
 	return nil
+}
+
+// getDeletionDirAndRegexp will return the directory and a regexp matching log file and rotated patterns.
+func getDeletionDirAndRegexp(filename string) (string, *regexp.Regexp) {
+	dir, path := filepath.Split(filename)
+	lastDot := strings.LastIndex(path, ".")
+	if lastDot == -1 {
+		// foo
+		// foo-2019-01-01T00-00-00.000
+		// foo-2019-01-01T00-00-00.000.gz
+		return dir, regexp.MustCompile(fmt.Sprintf(`(%s|%s%s(?:\.gz))?$`, regexp.QuoteMeta(path), regexp.QuoteMeta(path), lumberjackRotationMidfix))
+	}
+	prefix := path[:lastDot]
+	suffix := path[lastDot:]
+	// foo.log
+	// foo-2019-01-01T00-00-00.000.log
+	// foo-2019-01-01T00-00-00.000.log.gz
+	//
+	// or
+	//
+	// foo.bar.log
+	// foo.bar-2019-01-01T00-00-00.000.log
+	// foo.bar-2019-01-01T00-00-00.000.log.gz
+	return dir, regexp.MustCompile(fmt.Sprintf(`(%s|%s%s%s(?:\.gz)?)$`, regexp.QuoteMeta(path), regexp.QuoteMeta(prefix), lumberjackRotationMidfix, regexp.QuoteMeta(suffix)))
 }

@@ -72,34 +72,23 @@ func TestLogRotationInterval(t *testing.T) {
 		CollationBufferSize: IntPtr(0),
 		Rotation: logRotationConfig{
 			RotationInterval: NewConfigDuration(rotationInterval),
-			Compress:         BoolPtr(false),
+			compress:         BoolPtr(false),
 		},
 	}
 
-	// On Windows, cleanup of t.TempDir() fails due to open log file handle from Lumberjack. Cannot be fixed from SG.
-	// https://github.com/natefinch/lumberjack/issues/185
-	var logPath string
-	if runtime.GOOS == "windows" {
-		var err error
-		logPath, err = os.MkdirTemp("", t.Name())
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			if err := os.RemoveAll(logPath); err != nil {
-				// log instead of error because it's likely this is going to fail on Windows for this test.
-				t.Logf("couldn't remove temp dir: %v", err)
-			}
-		})
-	} else {
-		logPath = t.TempDir()
-	}
-
+	logPath := lumberjackTempDir(t)
 	countBefore := numFilesInDir(t, logPath, false)
 	t.Logf("countBefore: %d", countBefore)
 
 	ctx := TestCtx(t)
 	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil)
 	require.NoError(t, err)
-	defer func() { require.NoError(t, fl.Close()) }()
+	defer func() {
+		assert.NoError(t, fl.Close())
+		// Wait for Lumberjack to finish its async log compression work
+		// we have no way of waiting for this to finish, or even stopping the millRun() process inside Lumberjack.
+		time.Sleep(time.Second)
+	}()
 
 	fl.logf("test 1")
 	countAfter1 := numFilesInDir(t, logPath, false)
@@ -116,9 +105,6 @@ func TestLogRotationInterval(t *testing.T) {
 	t.Logf("countAfter2: %d", countAfter2)
 	assert.GreaterOrEqual(t, countAfter2, countAfterSleep)
 
-	// Wait for Lumberjack to finish its async log compression work
-	// we have no way of waiting for this to finish, or even stopping the millRun() process inside Lumberjack.
-	time.Sleep(time.Second)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
@@ -330,4 +316,22 @@ func BenchmarkGetCallersName(b *testing.B) {
 			}
 		})
 	}
+}
+
+// lumberjackTempDir returns a temporary directory like t.Tempdir() but safe for lumberjack logs
+func lumberjackTempDir(t *testing.T) string {
+	if runtime.GOOS != "windows" {
+		return t.TempDir()
+	}
+	// On Windows, cleanup of t.TempDir() fails due to open log file handle from Lumberjack. Cannot be fixed from SG.
+	// https://github.com/natefinch/lumberjack/issues/185
+	logPath, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := os.RemoveAll(logPath); err != nil {
+			// log instead of error because it's likely this is going to fail on Windows for this test.
+			t.Logf("couldn't remove temp dir: %v, files: %s", err, getDirFiles(t, logPath))
+		}
+	})
+	return logPath
 }
