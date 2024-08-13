@@ -768,7 +768,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	for _, cg := range registry.ConfigGroups {
 		for dbName, db := range cg.Databases {
 			if dbName == config.Name {
-				base.DebugfCtx(ctx, base.KeyConfig, "Using metadata ID=%q from registry for db %q", base.MD(db.MetadataID), base.MD(dbName))
+				base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID=%q from registry for db %q", base.MD(db.MetadataID), base.MD(dbName))
 				return db.MetadataID
 			}
 			if db.MetadataID == defaultMetadataID {
@@ -793,7 +793,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 			}
 		}
 		if !defaultFound {
-			base.DebugfCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q since _default._default collection is not a collection targeted by this db", base.MD(standardMetadataID), base.MD(config.Name))
+			base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q since _default._default collection is not a collection targeted by this db", base.MD(standardMetadataID), base.MD(config.Name))
 			return standardMetadataID
 		}
 	}
@@ -808,11 +808,11 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	}
 
 	if exists && syncInfo.MetadataID != defaultMetadataID {
-		base.DebugfCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q because db uses the default collection, and _sync:syncInfo in the default collection specifies the non-default metadata ID %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(syncInfo.MetadataID))
+		base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q because db uses the default collection, and _sync:syncInfo in the default collection specifies the non-default metadata ID %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(syncInfo.MetadataID))
 		return standardMetadataID
 	}
 
-	base.DebugfCtx(ctx, base.KeyConfig, "Using default metadata ID %q for db %q", base.MD(defaultMetadataID), base.MD(config.Name))
+	base.InfofCtx(ctx, base.KeyConfig, "Using default metadata ID %q for db %q", base.MD(defaultMetadataID), base.MD(config.Name))
 	return defaultMetadataID
 }
 
