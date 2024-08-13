@@ -418,7 +418,7 @@ func getJWTUsername(provider JWTConfigCommon, identity *Identity) (username stri
 	if provider.UsernameClaim != "" {
 		value, ok := identity.Claims[provider.UsernameClaim]
 		if !ok {
-			return "", base.RedactErrorf("jwt: specified claim %q not found in id_token, identity: %+v", base.UD(provider.UsernameClaim), base.UD(identity))
+			return "", base.RedactErrorf("jwt: specified claim %q not found in id_token, identity: %+v", provider.UsernameClaim, base.UD(identity))
 		}
 		if username, err = formatUsername(value); err != nil {
 			return "", err
