@@ -692,6 +692,7 @@ func (op *OIDCProvider) startDiscoverySync(ctx context.Context, discoveryURL str
 		return err
 	}
 	go func() {
+		ctx := base.NewNonCancelCtxForDatabase(ctx).Ctx
 		for {
 			select {
 			case <-time.After(duration):

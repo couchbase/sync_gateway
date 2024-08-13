@@ -948,7 +948,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// before going online
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
 		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
-		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName, dbcontext.Options.LoggingConfig.Console)
+		nonCancelCtx := base.NewNonCancelCtxForDatabase(ctx)
 		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
 		return dbcontext, nil
 	}
