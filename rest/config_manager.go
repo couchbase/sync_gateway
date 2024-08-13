@@ -763,23 +763,25 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	standardMetadataID := b.standardMetadataID(config.Name)
 
 	// If there's already a metadataID assigned to this database in the registry (including other config groups), use that
-	defaultMetadataIDInUse := false
+	defaultMetadataIDDb := ""
 	for _, cg := range registry.ConfigGroups {
 		for dbName, db := range cg.Databases {
 			if dbName == config.Name {
+				base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID=%q from registry for db %q", base.MD(db.MetadataID), base.MD(dbName))
 				return db.MetadataID
 			}
 			if db.MetadataID == defaultMetadataID {
-				defaultMetadataIDInUse = true
+				// do not return standardMetadataID here in case there was a different metadata ID assigned to this database
+				defaultMetadataIDDb = config.Name
 			}
 		}
 	}
 
 	// If the default metadata ID is already in use in the registry by a different database, use standard ID.
-	if defaultMetadataIDInUse {
+	if defaultMetadataIDDb != "" {
+		base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q since the default metadata ID is already in use by db %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(defaultMetadataIDDb))
 		return standardMetadataID
 	}
-
 	// If the database config doesn't include _default._default, use standard ID
 	if config.Scopes != nil {
 		defaultFound := false
@@ -791,6 +793,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 			}
 		}
 		if !defaultFound {
+			base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q since _default._default collection is not a collection targeted by this db", base.MD(standardMetadataID), base.MD(config.Name))
 			return standardMetadataID
 		}
 	}
@@ -805,11 +808,12 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	}
 
 	if exists && syncInfo.MetadataID != defaultMetadataID {
+		base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q because db uses the default collection, and _sync:syncInfo in the default collection specifies the non-default metadata ID %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(syncInfo.MetadataID))
 		return standardMetadataID
 	}
 
+	base.InfofCtx(ctx, base.KeyConfig, "Using default metadata ID %q for db %q", base.MD(defaultMetadataID), base.MD(config.Name))
 	return defaultMetadataID
-
 }
 
 // standardMetadataID returns either the dbName or a base64 encoded SHA256 hash of the dbName, whichever is shorter.
