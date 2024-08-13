@@ -3142,6 +3142,8 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				markerDocBody := fmt.Sprintf(`{"channel":%q}`, testCase.channel)
 				_ = rt.PutDoc(markerDoc, markerDocBody)
+				// Wait for changed doc to be in cache before one shot pull
+				require.NoError(t, rt.WaitForPendingChanges())
 
 				rt.GetDatabase().FlushRevisionCacheForTest()
 
