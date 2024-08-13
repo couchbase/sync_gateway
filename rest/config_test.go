@@ -30,6 +30,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/square/go-jose.v2"
@@ -2927,4 +2928,141 @@ func makeScopesConfigWithDefault(scopeName string, collections []string) *Scopes
 
 	scopesConfig := makeScopesConfig(scopeName, collections)
 	return &scopesConfig
+}
+
+// TestInvalidDbConfigNoLongerPresentInBucket:
+//   - Create rest tester with large config poll interval
+//   - Create valid db
+//   - Alter config in bucket to make it invalid
+//   - Force config poll, assert it is picked up as invalid db config
+//   - Delete the invalid db config form the bucket
+//   - Force config poll reload and assert the invalid db is cleared
+func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// configure the interval time to not run
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(10 * time.Minute)
+		},
+		DatabaseConfig: nil,
+	})
+	defer rt.Close()
+	realBucketName := rt.CustomTestBucket.GetName()
+	ctx := base.TestCtx(t)
+	const dbName = "db1"
+
+	// create db with correct config
+	dbConfig := rt.NewDbConfig()
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// wait for db to come online
+	require.NoError(t, rt.WaitForDBOnline())
+
+	// grab the persisted db config from the bucket
+	databaseConfig := DatabaseConfig{}
+	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), realBucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
+	require.NoError(t, err)
+
+	// update the persisted config to a fake bucket name
+	newBucketName := "fakeBucket"
+	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &newBucketName)
+	require.NoError(t, err)
+
+	// force reload of configs from bucket
+	rt.ServerContext().ForceDbConfigsReload(t, ctx)
+
+	// assert the config is picked as invalid db config
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 1, len(invalidDatabases))
+		assert.Equal(c, 0, len(rt.ServerContext().dbConfigs))
+	}, time.Second*10, time.Millisecond*100)
+
+	// remove the invalid config from the bucket
+	rt.RemoveDbConfigFromBucket(dbName, realBucketName)
+
+	// force reload of configs from bucket
+	rt.ServerContext().ForceDbConfigsReload(t, ctx)
+
+	// assert the config is removed from tracking
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 0, len(invalidDatabases))
+		assert.Equal(c, 0, len(rt.ServerContext().dbConfigs))
+	}, time.Second*10, time.Millisecond*100)
+
+	// create db again, should succeed
+	resp = rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+}
+
+// TestNotFoundOnInvalidDatabase:
+//   - Create rest tester with large config polling interval
+//   - Insert a bad dbConfig into the bucket
+//   - Manually fetch and load db from buckets
+//   - Assert that the bad config is tracked as invalid config
+//   - Delete the bad config manually and attempt to correct the db config through create db endpoint
+//   - Assert db is removed form invalid db's and is now a running database on server context
+func TestNotFoundOnInvalidDatabase(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// configure the interval time to not run
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(100 * time.Second)
+		},
+		DatabaseConfig: nil,
+	})
+	defer rt.Close()
+	realBucketName := rt.CustomTestBucket.GetName()
+
+	// create a new invalid db config and persist to bucket
+	badName := "badBucketName"
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = "db1"
+
+	version, err := GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
+	require.NoError(t, err)
+	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(t), &dbConfig)
+	require.NoError(t, metadataIDError)
+
+	// insert the db config with bad bucket name
+	dbConfig.Bucket = &badName
+	persistedConfig := DatabaseConfig{
+		Version:    version,
+		MetadataID: metadataID,
+		DbConfig:   dbConfig,
+		SGVersion:  base.ProductVersion.String(),
+	}
+	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
+
+	// manually fetch and load db configs from bucket
+	_, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
+	require.NoError(t, err)
+
+	// assert the config is picked as invalid db config
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 1, len(invalidDatabases))
+	}, time.Second*10, time.Millisecond*100)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/", "")
+	RequireStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
+
+	// delete the invalid db config to force the not found error
+	rt.RemoveDbConfigFromBucket(dbConfig.Name, realBucketName)
+
+	// fix the bucket name and try fix corrupt db through create db endpoint
+	dbConfig.Bucket = &realBucketName
+	RequireStatus(t, rt.CreateDatabase(dbConfig.Name, dbConfig), http.StatusCreated)
+
+	// assert the config is remove the invalid config and we have a running db
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 0, len(invalidDatabases))
+		assert.Equal(c, 1, len(rt.ServerContext().dbConfigs))
+	}, time.Second*10, time.Millisecond*100)
 }
