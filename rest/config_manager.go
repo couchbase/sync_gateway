@@ -764,7 +764,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	standardMetadataID := b.standardMetadataID(config.Name)
 
 	// If there's already a metadataID assigned to this database in the registry (including other config groups), use that
-	defaultMetadataIDInUse := false
+	defaultMetadataIDDb := ""
 	for _, cg := range registry.ConfigGroups {
 		for dbName, db := range cg.Databases {
 			if dbName == config.Name {
@@ -773,13 +773,14 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 			}
 			if db.MetadataID == defaultMetadataID {
 				// do not return standardMetadataID here in case there was a different metadata ID assigned to this database
-				defaultMetadataIDInUse = true
+				defaultMetadataIDDb = config.Name
 			}
 		}
 	}
 
 	// If the default metadata ID is already in use in the registry by a different database, use standard ID.
-	if defaultMetadataIDInUse {
+	if defaultMetadataIDDb != "" {
+		base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q since the default metadata ID is already in use by db %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(defaultMetadataIDDb))
 		return standardMetadataID
 	}
 	// If the database config doesn't include _default._default, use standard ID
