@@ -1361,6 +1361,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			rt.Run(testCase.name, func(t *testing.T) {
 				docID := strings.ReplaceAll(testCase.name, " ", "_")
 				docVersion := rt.PutDoc(docID, `{"channels": "A"}`)
+				require.NoError(t, rt.WaitForPendingChanges())
 				output := base.AuditLogContents(t, func(t testing.TB) {
 					testCase.auditableCode(t, docID, docVersion)
 				})
