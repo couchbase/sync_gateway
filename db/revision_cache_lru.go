@@ -239,20 +239,30 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID, CollectionID: collectionID}
 
 	rc.lock.Lock()
+	newItem := true
 	// If element exists remove from lrulist
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.Remove(elem)
+		newItem = false
 	}
 
 	// Add new value and overwrite existing cache key, pushing to front to maintain order
 	value := &revCacheValue{key: key}
 	rc.cache[key] = rc.lruList.PushFront(value)
+	// only increment if we are inserting new item to cache
+	if newItem {
+		rc.cacheNumItems.Add(1)
+	}
 
 	// Purge oldest item if required
+	var numItemsRemoved int
 	for len(rc.cache) > int(rc.capacity) {
 		rc.purgeOldest_()
+		numItemsRemoved++
 	}
-	rc.cacheNumItems.Set(int64(len(rc.cache)))
+	if numItemsRemoved > 0 {
+		rc.cacheNumItems.Add(int64(-numItemsRemoved))
+	}
 	rc.lock.Unlock()
 
 	value.store(docRev)
@@ -271,10 +281,16 @@ func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, c
 	} else if create {
 		value = &revCacheValue{key: key}
 		rc.cache[key] = rc.lruList.PushFront(value)
+		rc.cacheNumItems.Add(1)
+
+		var numItemsRemoved int
 		for len(rc.cache) > int(rc.capacity) {
 			rc.purgeOldest_()
+			numItemsRemoved++
 		}
-		rc.cacheNumItems.Set(int64(len(rc.cache)))
+		if numItemsRemoved > 0 {
+			rc.cacheNumItems.Add(int64(-numItemsRemoved))
+		}
 	}
 	rc.lock.Unlock()
 	return

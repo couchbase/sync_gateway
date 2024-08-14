@@ -610,7 +610,7 @@ func TestRevCacheHitMultiCollectionLoadFromBucket(t *testing.T) {
 
 func TestRevCacheCapacityStat(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, cacheNumItems := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{[]string{"badDoc"}, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
 	cache := NewLRURevisionCache(4, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems)
 	ctx := base.TestCtx(t)
 
@@ -619,6 +619,11 @@ func TestRevCacheCapacityStat(t *testing.T) {
 
 	// Create a new doc + asert num items increments
 	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
+	assert.Equal(t, int64(1), cacheNumItems.Value())
+	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
+
+	// test not found doc, assert that the stat isn't incremented
+	cache.Get(ctx, "badDoc", "1-abc", testCollectionID, false)
 	assert.Equal(t, int64(1), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
@@ -678,11 +683,16 @@ func TestRevCacheCapacityStat(t *testing.T) {
 	assert.Equal(t, int64(4), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
+	// test case of eviction for upsert
+	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"test":"12345"}`), DocID: "doc6", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
+	assert.Equal(t, int64(4), cacheNumItems.Value())
+	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
+
 	// Empty cache
 	cache.Remove("doc1", "1-abc", testCollectionID)
-	cache.Remove("doc3", "1-abc", testCollectionID)
 	cache.Remove("doc4", "1-abc", testCollectionID)
 	cache.Remove("doc5", "1-abc", testCollectionID)
+	cache.Remove("doc6", "1-abc", testCollectionID)
 
 	// Assert num items goes back to 0
 	assert.Equal(t, int64(0), cacheNumItems.Value())

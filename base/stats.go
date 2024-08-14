@@ -1323,7 +1323,7 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.RevisionCacheNumItems, err = NewIntStat(SubsystemCacheKey, "revision_cache_num_items", StatUnitNoUnits, RevCacheNumItemsDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.RevisionCacheNumItems, err = NewIntStat(SubsystemCacheKey, "revision_cache_num_items", StatUnitNoUnits, RevCacheNumItemsDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}

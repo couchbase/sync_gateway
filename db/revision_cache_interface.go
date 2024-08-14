@@ -32,7 +32,6 @@ type RevisionCache interface {
 	Get(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
-	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
