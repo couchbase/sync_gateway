@@ -9,7 +9,9 @@
 package db
 
 import (
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -585,4 +587,15 @@ func EncodeValue(value uint64) string {
 // EncodeValueStr converts a simplified number ("1") to a hex-encoded string
 func EncodeValueStr(value string) (string, error) {
 	return base.StringDecimalToLittleEndianHex(strings.TrimSpace(value))
+}
+
+// CreateEncodedSourceID will hash the bucket UUID and cluster UUID using md5 hash function then will base64 encode it
+func CreateEncodedSourceID(bucketUUID, clusterUUID string) (string, error) {
+	md5Hash := md5.Sum([]byte(bucketUUID + clusterUUID))
+	hexStr := hex.EncodeToString(md5Hash[:])
+	source, err := base.HexToBase64(hexStr)
+	if err != nil {
+		return "", err
+	}
+	return string(source), nil
 }
