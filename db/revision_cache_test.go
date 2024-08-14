@@ -623,12 +623,13 @@ func TestRevCacheCapacityStat(t *testing.T) {
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
 	// test not found doc, assert that the stat isn't incremented
-	cache.Get(ctx, "badDoc", "1-abc", testCollectionID, false)
+	docRev, err := cache.Get(ctx, "badDoc", "1-abc", testCollectionID, false)
+	require.Error(t, err)
 	assert.Equal(t, int64(1), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
 	// Get on a doc that doesn't exist in cache, assert num items increments
-	docRev, err := cache.Get(ctx, "doc2", "1-abc", testCollectionID, false)
+	docRev, err = cache.Get(ctx, "doc2", "1-abc", testCollectionID, false)
 	require.NoError(t, err)
 	assert.Equal(t, "doc2", docRev.DocID)
 	assert.Equal(t, int64(2), cacheNumItems.Value())
