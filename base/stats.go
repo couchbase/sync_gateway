@@ -85,6 +85,7 @@ const (
 	StatAddedVersion3dot1dot3dot1 = "3.1.3.1"
 	StatAddedVersion3dot1dot4     = "3.1.4"
 	StatAddedVersion3dot2dot0     = "3.2.0"
+	StatAddedVersion3dot2dot1     = "3.2.1"
 	StatAddedVersion3dot3dot0     = "3.3.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
@@ -425,6 +426,8 @@ type CacheStats struct {
 	NumSkippedSeqs *SgwIntStat `json:"num_skipped_seqs"`
 	// The total number of pending sequences. These are out-of-sequence entries waiting to be cached.
 	PendingSeqLen *SgwIntStat `json:"pending_seq_len"`
+	// Total number of items in the rev cache
+	RevisionCacheNumItems *SgwIntStat `json:"revision_cache_num_items"`
 	// The total number of revision cache bypass operations performed.
 	RevisionCacheBypass *SgwIntStat `json:"rev_cache_bypass"`
 	// The total number of revision cache hits.
@@ -1320,6 +1323,10 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.RevisionCacheNumItems, err = NewIntStat(SubsystemCacheKey, "revision_cache_num_items", StatUnitNoUnits, RevCacheNumItemsDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.RevisionCacheBypass, err = NewIntStat(SubsystemCacheKey, "rev_cache_bypass", StatUnitNoUnits, RevCacheBypassDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
@@ -1377,6 +1384,7 @@ func (d *DbStats) unregisterCacheStats() {
 	prometheus.Unregister(d.CacheStats.SkippedSeqCap)
 	prometheus.Unregister(d.CacheStats.NumCurrentSeqsSkipped)
 	prometheus.Unregister(d.CacheStats.PendingSeqLen)
+	prometheus.Unregister(d.CacheStats.RevisionCacheNumItems)
 	prometheus.Unregister(d.CacheStats.RevisionCacheBypass)
 	prometheus.Unregister(d.CacheStats.RevisionCacheHits)
 	prometheus.Unregister(d.CacheStats.RevisionCacheMisses)

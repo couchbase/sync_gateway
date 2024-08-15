@@ -26,13 +26,13 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat *base.SgwIntStat) *ShardedLRURevisionCache {
 
 	caches := make([]*LRURevisionCache, shardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
 	perCacheCapacity := 1.1 * float32(capacity) / float32(shardCount)
 	for i := 0; i < int(shardCount); i++ {
-		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), backingStores, cacheHitStat, cacheMissStat)
+		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
 	}
 
 	return &ShardedLRURevisionCache{
@@ -80,6 +80,7 @@ type LRURevisionCache struct {
 	lruList       *list.List
 	cacheHits     *base.SgwIntStat
 	cacheMisses   *base.SgwIntStat
+	cacheNumItems *base.SgwIntStat
 	lock          sync.Mutex
 	capacity      uint32
 }
@@ -100,7 +101,7 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *LRURevisionCache {
+func NewLRURevisionCache(capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat *base.SgwIntStat) *LRURevisionCache {
 
 	return &LRURevisionCache{
 		cache:         map[IDAndRev]*list.Element{},
@@ -109,6 +110,7 @@ func NewLRURevisionCache(capacity uint32, backingStores map[uint32]RevisionCache
 		backingStores: backingStores,
 		cacheHits:     cacheHitStat,
 		cacheMisses:   cacheMissStat,
+		cacheNumItems: cacheNumItemsStat,
 	}
 }
 
@@ -237,18 +239,29 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID, CollectionID: collectionID}
 
 	rc.lock.Lock()
+	newItem := true
 	// If element exists remove from lrulist
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.Remove(elem)
+		newItem = false
 	}
 
 	// Add new value and overwrite existing cache key, pushing to front to maintain order
 	value := &revCacheValue{key: key}
 	rc.cache[key] = rc.lruList.PushFront(value)
+	// only increment if we are inserting new item to cache
+	if newItem {
+		rc.cacheNumItems.Add(1)
+	}
 
 	// Purge oldest item if required
+	var numItemsRemoved int
 	for len(rc.cache) > int(rc.capacity) {
 		rc.purgeOldest_()
+		numItemsRemoved++
+	}
+	if numItemsRemoved > 0 {
+		rc.cacheNumItems.Add(int64(-numItemsRemoved))
 	}
 	rc.lock.Unlock()
 
@@ -268,8 +281,15 @@ func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, c
 	} else if create {
 		value = &revCacheValue{key: key}
 		rc.cache[key] = rc.lruList.PushFront(value)
+		rc.cacheNumItems.Add(1)
+
+		var numItemsRemoved int
 		for len(rc.cache) > int(rc.capacity) {
 			rc.purgeOldest_()
+			numItemsRemoved++
+		}
+		if numItemsRemoved > 0 {
+			rc.cacheNumItems.Add(int64(-numItemsRemoved))
 		}
 	}
 	rc.lock.Unlock()
@@ -287,6 +307,7 @@ func (rc *LRURevisionCache) Remove(docID, revID string, collectionID uint32) {
 	}
 	rc.lruList.Remove(element)
 	delete(rc.cache, key)
+	rc.cacheNumItems.Add(-1)
 }
 
 // removeValue removes a value from the revision cache, if present and the value matches the the value. If there's an item in the revision cache with a matching docID and revID but the document is different, this item will not be removed from the rev cache.
@@ -295,6 +316,7 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 	if element := rc.cache[value.key]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
 		delete(rc.cache, value.key)
+		rc.cacheNumItems.Add(-1)
 	}
 	rc.lock.Unlock()
 }
