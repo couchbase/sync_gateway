@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"testing"
 	"time"
@@ -325,7 +326,10 @@ func lumberjackTempDir(t *testing.T) string {
 	}
 	// On Windows, cleanup of t.TempDir() fails due to open log file handle from Lumberjack. Cannot be fixed from SG.
 	// https://github.com/natefinch/lumberjack/issues/185
-	logPath, err := os.MkdirTemp("", t.Name())
+
+	// windows requires no slashes in the path name
+	pathRegex := regexp.MustCompile(`/|\\`)
+	logPath, err := os.MkdirTemp("", string(pathRegex.ReplaceAll([]byte(t.Name()), []byte("_"))))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if err := os.RemoveAll(logPath); err != nil {
