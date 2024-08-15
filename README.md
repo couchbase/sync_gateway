@@ -3,13 +3,18 @@
 [![Sync Gateway Documentation](https://img.shields.io/badge/documentation-current-blue.svg)][SG_DOCS]
 [![GoDoc](https://godoc.org/github.com/couchbase/sync_gateway?status.svg)](https://godoc.org/github.com/couchbase/sync_gateway)
 [![Go Report Card](https://goreportcard.com/badge/github.com/couchbase/sync_gateway)](https://goreportcard.com/report/github.com/couchbase/sync_gateway)
-![Code Coverage](https://jenkins.sgwdev.com/buildStatus/icon?job=MasterIntegration&subject=coverage&status=${lineCoverage}&color=${colorLineCoverage})
+[![Code Coverage](https://jenkins.sgwdev.com/buildStatus/icon?job=MasterIntegration&subject=coverage&status=${lineCoverage}&color=${colorLineCoverage})](https://jenkins.sgwdev.com/job/MasterIntegration/lastBuild/coverage/)
 [![License](https://img.shields.io/badge/license-BSL%201.1-lightgrey)](https://github.com/couchbase/sync_gateway/blob/main/LICENSE)
 
 Sync Gateway is a horizontally scalable web server that securely manages the access control and
 synchronization of data between [Couchbase Lite][CB_LITE] and [Couchbase Server][CB_SERVER].
 
-## Download
+## Couchbase Capella DBaaS
+
+Couchbase's cloud database platform is the easiest and fastest way to begin with Couchbase and eliminate ongoing database management efforts.
+Try for free at [Couchbase Capella][CB_CAPELLA].
+
+## Self-Managed and On-Prem
 
 Download Sync Gateway and other Couchbase packages for Linux, Windows and macOS at [Couchbase Downloads][CB_DOWNLOAD].
 
@@ -19,21 +24,19 @@ Download Sync Gateway and other Couchbase packages for Linux, Windows and macOS 
 
 To build Sync Gateway from source, you must have the following installed:
 
-* Go 1.19 or later.
-* Building the Enterprise Edition requires access to private repos, and is intended for internal use only.
+* Go 1.21 or later ([Installing Go](https://golang.org/doc/install))
+* Building the Enterprise Edition requires access to private code, and cannot be built by third-parties.
 
-**Install Go**
+### Build Instructions 
 
-See [Installing Go](https://golang.org/doc/install)
-
-### Build instructions
-
-See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pinning via the `repo` multi-repository tool.
+```shell
+$ go build
+```
 
 ## Resources
 
 - [Sync Gateway Documentation][SG_DOCS]
-- [Sync Gateway Issue Tracker][SG_ISSUES]
+- [Couchbase Forums][CB_FORUM]
 - Couchbase Products:
     - [Sync Gateway][CB_GATEWAY]
     - [Lite][CB_LITE]
@@ -41,8 +44,7 @@ See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pi
     - [Server][CB_SERVER]
     - [Developer SDKs][CB_SDK]
 - [Couchbase Downloads][CB_DOWNLOAD]
-- [Couchbase Discussion Forum][CB_FORUM]
-- [Couchbase Mobile Mailing List][MAILING_LIST]
+- [Sync Gateway Issue Tracker][SG_ISSUES]
 
 ## License
 
@@ -55,7 +57,6 @@ See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pi
 [CB_SDK]: https://www.couchbase.com/products/developer-sdk
 [CB_DOWNLOAD]: https://www.couchbase.com/downloads
 [CB_FORUM]: http://forums.couchbase.com
-[SG_REPO]: https://github.com/couchbase/sync_gateway
 [SG_DOCS]: https://docs.couchbase.com/sync-gateway/current/introduction.html
 [SG_ISSUES]: https://github.com/couchbase/sync_gateway/issues?q=is%3Aissue+is%3Aopen
-[MAILING_LIST]: https://groups.google.com/forum/?fromgroups#!forum/mobile-couchbase
+[CB_CAPELLA]: https://cloud.couchbase.com/sign-up?ref=github-sgw
