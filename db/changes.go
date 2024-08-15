@@ -219,6 +219,11 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 		//   3. An error is returned when calling singleChannelCache.GetChanges
 		//   4. An error is returned when calling wasDocInChannelPriorToRevocation
 		for {
+			if options.ChangesCtx.Err() != nil {
+				base.DebugfCtx(ctx, base.KeyChanges, "Terminating revocation channel feed %s", base.UD(to))
+				return
+			}
+
 			if requestLimit == 0 {
 				paginationOptions.Limit = queryLimit
 			} else {
@@ -241,6 +246,11 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 			sentChanges := 0
 			for _, logEntry := range changes {
+				if options.ChangesCtx.Err() != nil {
+					base.DebugfCtx(ctx, base.KeyChanges, "Terminating revocation channel feed %s", base.UD(to))
+					return
+				}
+
 				seqID := SequenceID{
 					Seq:         logEntry.Sequence,
 					TriggeredBy: revokedAt,
@@ -409,6 +419,10 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 		//   2. A limit is specified on the incoming ChangesOptions, and that limit is reached
 		//   3. An error is returned when calling singleChannelCache.GetChanges
 		for {
+			if options.ChangesCtx.Err() != nil {
+				base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
+				return
+			}
 			// Calculate limit for this iteration
 			if requestLimit == 0 {
 				paginationOptions.Limit = queryLimit
@@ -432,6 +446,10 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 			// Now write each log entry to the 'feed' channel in turn:
 			sentChanges := 0
 			for _, logEntry := range changes {
+				if options.ChangesCtx.Err() != nil {
+					base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
+					return
+				}
 				if logEntry.Sequence >= options.Since.TriggeredBy {
 					options.Since.TriggeredBy = 0
 				}
@@ -758,7 +776,10 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				if err != nil {
 					base.WarnfCtx(ctx, "Unable to obtain channel cache for %s, terminating feed", base.UD(chanName))
 					change := makeErrorEntry("Channel cache unavailable, terminating feed")
-					output <- &change
+					select {
+					case output <- &change:
+					case <-options.ChangesCtx.Done():
+					}
 					return
 				}
 
@@ -769,7 +790,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				if useLateSequenceFeeds {
 					lateSequenceFeedHandler := lateSequenceFeeds[chanID]
 					if lateSequenceFeedHandler != nil {
-						latefeed, err := col.getLateFeed(lateSequenceFeedHandler, singleChannelCache)
+						latefeed, err := col.getLateFeed(ctx, lateSequenceFeedHandler, singleChannelCache)
 						if err != nil {
 							base.WarnfCtx(ctx, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(chanName), lastSentLowSeq)
 							chanOpts.Since.LowSeq = lastSentLowSeq
@@ -889,7 +910,10 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 							// On feed error, send the error and exit changes processing
 							if current[i].Err == base.ErrChannelFeed {
 								base.WarnfCtx(ctx, "MultiChangesFeed got error reading changes feed: %v", current[i].Err)
-								output <- current[i]
+								select {
+								case <-ctx.Done():
+								case output <- current[i]:
+								}
 								return
 							}
 						}
@@ -967,6 +991,9 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				// Send the entry, and repeat the loop:
 				base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed sending %+v %s", base.UD(minEntry), base.UD(to))
 
+				if options.ChangesCtx.Err() != nil {
+					return
+				}
 				select {
 				case <-options.ChangesCtx.Done():
 					return
@@ -1001,7 +1028,11 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
 			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
-			output <- nil
+			select {
+			case <-ctx.Done():
+				return
+			case output <- nil:
+			}
 
 			// If this is an initial replication using CBL 2.x (active only), flip activeOnly now the client has caught up.
 			if options.clientType == clientTypeCBL2 && options.ActiveOnly {
@@ -1029,20 +1060,10 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 				if waitResponse == WaiterClosed {
 					break outer
+				} else if options.ChangesCtx.Err() != nil {
+					return
 				} else if waitResponse == WaiterHasChanges {
-					select {
-					case <-options.ChangesCtx.Done():
-						return
-					default:
-						break waitForChanges
-					}
-				} else if waitResponse == WaiterCheckTerminated {
-					// Check whether I was terminated while waiting for a change.  If not, resume wait.
-					select {
-					case <-options.ChangesCtx.Done():
-						return
-					default:
-					}
+					break waitForChanges
 				}
 			}
 			// Update the current max cached sequence for the next changes iteration
@@ -1054,7 +1075,10 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.DebugfCtx(ctx, base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
-				output <- &change
+				select {
+				case <-ctx.Done():
+				case output <- &change:
+				}
 				return
 			}
 			if userChanged && col.user != nil {
@@ -1177,7 +1201,7 @@ func (db *DatabaseCollectionWithUser) newLateSequenceFeed(singleChannelCache Sin
 
 // Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.  Error indicates
 // previous position in late sequence feed isn't available, and caller should reset to low sequence.
-func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache) (<-chan *ChangeEntry, error) {
+func (db *DatabaseCollectionWithUser) getLateFeed(ctx context.Context, feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache) (<-chan *ChangeEntry, error) {
 
 	if !singleChannelCache.SupportsLateFeed() {
 		return nil, errors.New("Cache doesn't support late feeds")
@@ -1217,7 +1241,12 @@ func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed,
 				Seq: logEntry.Sequence,
 			}
 			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
-			feed <- &change
+			select {
+			case <-ctx.Done():
+				return
+
+			case feed <- &change:
+			}
 		}
 	}()
 
