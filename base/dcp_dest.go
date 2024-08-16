@@ -92,7 +92,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 	if !dcpKeyFilter(key, d.metaKeys) {
 		return nil
 	}
-	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpMutation)
+	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpMutation)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -116,7 +116,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpMutation)
+		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, dcpExtras.RevNo, sgbucket.FeedOpMutation)
 
 	}
 
@@ -131,7 +131,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 		return nil
 	}
 
-	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpDeletion)
+	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpDeletion)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -154,7 +154,7 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpDeletion)
+		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, dcpExtras.RevNo, sgbucket.FeedOpDeletion)
 
 	}
 	d.dataUpdate(seq, event)
@@ -247,8 +247,8 @@ func collectionIDFromExtras(extras []byte) uint32 {
 	return binary.LittleEndian.Uint32(extras[4:])
 }
 
-func makeFeedEventForDest(key []byte, val []byte, cas uint64, vbNo uint16, collectionID uint32, expiry uint32, dataType uint8, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
-	return makeFeedEvent(key, val, dataType, cas, expiry, vbNo, collectionID, opcode)
+func makeFeedEventForDest(key []byte, val []byte, cas uint64, vbNo uint16, collectionID uint32, expiry uint32, dataType uint8, revNo uint64, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
+	return makeFeedEvent(key, val, dataType, cas, expiry, vbNo, collectionID, revNo, opcode)
 }
 
 // DCPLoggingDest wraps DCPDest to provide per-callback logging
