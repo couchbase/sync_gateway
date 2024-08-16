@@ -243,7 +243,7 @@ func TestSessionLogin(t *testing.T) {
 
 	// invalid cookie (no username available)
 	headers = map[string]string{
-		"Cookie": "invalidcookie",
+		"Cookie": "SyncGatewaySession=123456abcdef; Path=/db; Expires=Sat, 17 Aug 2024 15:20:52 GMT",
 	}
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/", "", headers, "", "")
 	RequireStatus(t, resp, http.StatusUnauthorized)
