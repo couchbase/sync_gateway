@@ -522,12 +522,13 @@ func dcpKeyFilter(key []byte, metaKeys *MetadataKeys) bool {
 }
 
 // Makes a feedEvent that can be passed to a FeedEventCallbackFunc implementation
-func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry uint32, vbNo uint16, collectionID uint32, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
+func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry uint32, vbNo uint16, collectionID uint32, revNo uint64, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
 
 	// not currently doing rq.Extras handling (as in gocouchbase/upr_feed, makeUprEvent) as SG doesn't use
 	// expiry/flags information, and snapshot handling is done by cbdatasource and sent as
 	// SnapshotStart, SnapshotEnd
 	event := sgbucket.FeedEvent{
+		RevNo:        revNo,
 		Opcode:       opcode,
 		Key:          key,
 		Value:        value,
