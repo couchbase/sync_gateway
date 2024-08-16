@@ -84,10 +84,18 @@ func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 		return nil, err
 	}
 
-	if user != nil && !user.Authenticate(params.Password) {
-		user = nil
+	if user == nil {
+		base.WarnfCtx(h.ctx(), "Couldn't create session for user %q: not found", base.UD(params.Name))
+		return nil, nil
 	}
-	return user, err
+
+	authenticated, reason := user.AuthenticateWithReason(params.Password)
+	if !authenticated {
+		base.WarnfCtx(h.ctx(), "Couldn't create session for user %q: %s", base.UD(params.Name), reason)
+		return nil, nil
+	}
+
+	return user, nil
 }
 
 // DELETE /_session logs out the current session
