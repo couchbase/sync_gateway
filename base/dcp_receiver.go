@@ -26,7 +26,7 @@ const MemcachedDataTypeRaw = 0
 
 // Make a feed event for a gomemcached request.  Extracts expiry from extras
 func makeFeedEventForMCRequest(rq *gomemcached.MCRequest, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
-	return makeFeedEvent(rq.Key, rq.Body, rq.DataType, rq.Cas, ExtractExpiryFromDCPMutation(rq), rq.VBucket, 0, opcode)
+	return makeFeedEvent(rq.Key, rq.Body, rq.DataType, rq.Cas, ExtractExpiryFromDCPMutation(rq), rq.VBucket, 0, 0, opcode)
 }
 
 // ShardedImportDCPMetadata is an internal struct that is exposed to enable json marshaling, used by sharded import feed. It differs from DCPMetadata because it must match the private struct used by cbgt.metadata.
