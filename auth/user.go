@@ -495,26 +495,32 @@ func (user *userImpl) CollectionChannelGrantedPeriods(scope, collection, chanNam
 
 // Returns true if the given password is correct for this user, and the account isn't disabled.
 func (user *userImpl) Authenticate(password string) bool {
+	ok, _ := user.AuthenticateWithReason(password)
+	return ok
+}
+
+func (user *userImpl) AuthenticateWithReason(password string) (ok bool, reason string) {
 	if user == nil {
-		return false
+		return false, "User not found"
 	}
 
 	// exit early for disabled user accounts
 	if user.Disabled_ {
-		return false
+		return false, "Account disabled"
 	}
 
 	// exit early if old hash is present
 	if user.OldPasswordHash_ != nil {
+		// Password must be reset to use new (bcrypt) password hash
 		base.WarnfCtx(user.auth.LogCtx, "User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
-		return false // Password must be reset to use new (bcrypt) password hash
+		return false, "User account still has pre-beta password hash; need to reset password"
 	}
 
 	// bcrypt hash present
 	if user.PasswordHash_ != nil {
 		if !compareHashAndPassword(cachedHashes, user.PasswordHash_, []byte(password)) {
 			// incorrect password
-			return false
+			return false, "Incorrect password"
 		}
 
 		// password was correct, we'll rehash the password if required
@@ -526,11 +532,11 @@ func (user *userImpl) Authenticate(password string) bool {
 	} else {
 		// no hash, but (incorrect) password provided
 		if password != "" {
-			return false
+			return false, "Incorrect password"
 		}
 	}
 
-	return true
+	return true, ""
 }
 
 // GetSessionUUID returns the UUID that a session to match to be a valid session.

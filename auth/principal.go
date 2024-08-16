@@ -85,6 +85,9 @@ type User interface {
 	// Authenticates the user's password.
 	Authenticate(password string) bool
 
+	// AuthenticateWithReason is the same as Authenticate, except it provides the reason for failure.
+	AuthenticateWithReason(password string) (bool, string)
+
 	// GetSessionUUID returns the UUID that a session to match to be a valid session.
 	GetSessionUUID() string
 
