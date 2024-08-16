@@ -40,7 +40,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	_, err := auth.datastore.Get(auth.DocIDForSession(cookie.Value), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
-			base.WarnfCtx(auth.LogCtx, "Session not found: %s", base.UD(cookie.Value))
+			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session not found: %s", base.UD(cookie.Value))
 			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 		}
 		return nil, err
@@ -73,7 +73,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 
 	if session.SessionUUID != user.GetSessionUUID() {
-		base.WarnfCtx(auth.LogCtx, "Session no longer valid for user %s", base.UD(session.Username))
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
 	}
 	return user, err

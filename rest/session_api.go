@@ -85,13 +85,13 @@ func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 	}
 
 	if user == nil {
-		base.WarnfCtx(h.ctx(), "Couldn't create session for user %q: not found", base.UD(params.Name))
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: not found", base.UD(params.Name))
 		return nil, nil
 	}
 
 	authenticated, reason := user.AuthenticateWithReason(params.Password)
 	if !authenticated {
-		base.WarnfCtx(h.ctx(), "Couldn't create session for user %q: %s", base.UD(params.Name), reason)
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: %s", base.UD(params.Name), reason)
 		return nil, nil
 	}
 
