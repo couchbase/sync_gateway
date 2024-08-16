@@ -1631,3 +1631,22 @@ func TestDeletedRoleChanHistory(t *testing.T) {
 	}
 
 }
+
+// TestDisabledUser ensures that a disabled (non-guest) user cannot authenticate to make requests.
+func TestDisabledUser(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	const username = "alice"
+	rt.CreateUser(username, nil)
+
+	response := rt.SendUserRequest("GET", "/{{.db}}/", "", username)
+	RequireStatus(t, response, http.StatusOK)
+
+	// disable user
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/"+username, `{"disabled":true}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendUserRequest("GET", "/{{.db}}/", "", username)
+	RequireStatus(t, response, http.StatusUnauthorized)
+}
