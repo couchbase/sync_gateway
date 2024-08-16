@@ -774,13 +774,13 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 	}
 
 	if user == nil {
-		base.WarnfCtx(auth.LogCtx, "Authentication failed for username %q: user not found", base.UD(username))
+		base.WarnfCtx(auth.LogCtx, "HTTP auth failed for username=%q: user not found", base.UD(username))
 		return nil, nil
 	}
 
 	authenticated, reason := user.AuthenticateWithReason(password)
 	if !authenticated {
-		base.WarnfCtx(auth.LogCtx, "Authentication failed for username %q: %s", base.UD(username), reason)
+		base.WarnfCtx(auth.LogCtx, "HTTP auth failed for username=%q: %s", base.UD(username), reason)
 		return nil, nil
 	}
 
