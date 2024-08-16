@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -1017,6 +1018,16 @@ func HexCasToUint64(cas string) uint64 {
 	}
 
 	return binary.LittleEndian.Uint64(casBytes[0:8])
+}
+
+func HexToBase64(s string) ([]byte, error) {
+	decoded := make([]byte, hex.DecodedLen(len(s)))
+	if _, err := hex.Decode(decoded, []byte(s)); err != nil {
+		return nil, err
+	}
+	encoded := make([]byte, base64.RawStdEncoding.EncodedLen(len(decoded)))
+	base64.RawStdEncoding.Encode(encoded, decoded)
+	return encoded, nil
 }
 
 func CasToString(cas uint64) string {
