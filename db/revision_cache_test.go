@@ -1581,7 +1581,7 @@ func TestGetActive(t *testing.T) {
 	syncCAS := string(base.Uint64CASToLittleEndianHex(doc.Cas))
 
 	expectedCV := Version{
-		SourceID: db.EncodedBucketUUID,
+		SourceID: db.EncodedSourceID,
 		Value:    syncCAS,
 	}
 
