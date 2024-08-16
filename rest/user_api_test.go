@@ -1640,13 +1640,16 @@ func TestDisabledUser(t *testing.T) {
 	const username = "alice"
 	rt.CreateUser(username, nil)
 
-	response := rt.SendUserRequest("GET", "/{{.db}}/", "", username)
+	response := rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", username)
 	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", nil, username, "incorrectpassword")
+	RequireStatus(t, response, http.StatusUnauthorized)
 
 	// disable user
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/"+username, `{"disabled":true}`)
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":true}`)
 	RequireStatus(t, response, http.StatusOK)
 
-	response = rt.SendUserRequest("GET", "/{{.db}}/", "", username)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", username)
 	RequireStatus(t, response, http.StatusUnauthorized)
 }
