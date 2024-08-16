@@ -210,35 +210,45 @@ func TestSessionFail(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 }
 
-func TestLogin(t *testing.T) {
-	rt := NewRestTester(t, nil)
+func TestSessionLogin(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: false})
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
-	user, err := a.GetUser("")
-	assert.NoError(t, err)
-	user.SetDisabled(true)
-	err = a.Save(user)
-	assert.NoError(t, err)
+	// ensure guest is actually disabled
+	resp := rt.SendRequest(http.MethodPut, "/db/doc", `{"hi": "there"}`)
+	RequireStatus(t, resp, http.StatusUnauthorized)
 
-	user, err = a.GetUser("")
-	assert.NoError(t, err)
-	assert.True(t, user.Disabled())
+	rt.CreateUser("pupshaw", []string{"*"})
 
-	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
-	RequireStatus(t, response, 401)
+	resp = rt.SendRequest(http.MethodGet, "/db/_session", "")
+	RequireStatus(t, resp, http.StatusOK)
 
-	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
-	require.NoError(t, err)
-	assert.NoError(t, a.Save(user))
+	resp = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"pupshaw", "password":"letmein"}`)
+	RequireStatus(t, resp, http.StatusOK)
+	cookie := resp.Header().Get("Set-Cookie")
+	require.NotEmptyf(t, cookie, "Set-Cookie header not found in response: %v", resp)
+	t.Logf("Set-Cookie: %s", cookie)
 
-	RequireStatus(t, rt.SendRequest("GET", "/db/_session", ""), 200)
+	headers := map[string]string{
+		"Cookie": cookie,
+	}
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/", "", headers, "", "")
+	RequireStatus(t, resp, http.StatusOK)
 
-	response = rt.SendRequest("POST", "/db/_session", `{"name":"pupshaw", "password":"letmein"}`)
-	RequireStatus(t, response, 200)
-	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))
-	assert.True(t, response.Header().Get("Set-Cookie") != "")
+	// invalid password
+	resp = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"pupshaw", "password":"incorrectpassword"}`)
+	RequireStatus(t, resp, http.StatusUnauthorized)
+	t.Logf("Set-Cookie: %s", resp.Header().Get("Set-Cookie"))
+	require.Emptyf(t, resp.Header().Get("Set-Cookie"), "Set-Cookie header should not be set in response: %v", resp)
+
+	// invalid cookie (no username available)
+	headers = map[string]string{
+		"Cookie": "invalidcookie",
+	}
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/", "", headers, "", "")
+	RequireStatus(t, resp, http.StatusUnauthorized)
 }
+
 func TestCustomCookieName(t *testing.T) {
 
 	customCookieName := "TestCustomCookieName"
