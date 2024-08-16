@@ -969,7 +969,6 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 				return err
 			}
 			if h.user == nil {
-				base.InfofCtx(h.ctx(), base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
 				auditFields["username"] = userName
 				if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 					h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
