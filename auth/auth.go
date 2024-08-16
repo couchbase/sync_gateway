@@ -873,7 +873,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
 		return nil, PrincipalConfig{}, time.Time{}, err
 	}
-	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
+	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Got username %q from JWT", base.UD(username))
 
 	var jwtRoles, jwtChannels base.Set
 	if provider.RolesClaim != "" {
@@ -899,18 +899,6 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 
-	// Auto-registration. This will normally be done when token is originally returned
-	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
-	if user == nil && provider.Register {
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
-		var err error
-		user, err = auth.RegisterNewUser(username, identity.Email)
-		if err != nil && !base.IsCasMismatch(err) {
-			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
-			return nil, PrincipalConfig{}, time.Time{}, err
-		}
-	}
-
 	if user != nil {
 		updates = PrincipalConfig{
 			Name:        base.StringPtr(user.Name()),
@@ -919,9 +907,24 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 			JWTRoles:    jwtRoles,
 			JWTChannels: jwtChannels,
 		}
+		return user, updates, identity.Expiry, nil
 	}
 
-	return user, updates, identity.Expiry, nil
+	// Auto-registration. This will normally be done when token is originally returned
+	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
+	if provider.Register {
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
+		var err error
+		user, err = auth.RegisterNewUser(username, identity.Email)
+		if err != nil && !base.IsCasMismatch(err) {
+			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
+			return nil, PrincipalConfig{}, time.Time{}, err
+		}
+	} else {
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "User not found for OIDC username: %v", base.UD(username))
+	}
+
+	return nil, PrincipalConfig{}, time.Time{}, nil
 }
 
 // Registers a new user account based on the given verified username and optional email address.
