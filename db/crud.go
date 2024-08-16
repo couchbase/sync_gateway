@@ -901,7 +901,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		} else {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
-			newVVEntry.SourceID = db.dbCtx.EncodedBucketUUID
+			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
 			newVVEntry.Value = hlvExpandMacroCASValue
 			err := d.SyncData.HLV.AddVersion(newVVEntry)
 			if err != nil {
@@ -914,7 +914,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := Version{}
-		newVVEntry.SourceID = db.dbCtx.EncodedBucketUUID
+		newVVEntry.SourceID = db.dbCtx.EncodedSourceID
 		newVVEntry.Value = hlvExpandMacroCASValue
 		err := d.SyncData.HLV.AddVersion(newVVEntry)
 		if err != nil {

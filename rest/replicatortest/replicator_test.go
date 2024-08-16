@@ -8590,8 +8590,8 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	defer teardown()
 
 	// Grab the bucket UUIDs for both rest testers
-	activeBucketUUID := activeRT.GetDatabase().EncodedBucketUUID
-	passiveBucketUUID := passiveRT.GetDatabase().EncodedBucketUUID
+	activeBucketUUID := activeRT.GetDatabase().EncodedSourceID
+	passiveBucketUUID := passiveRT.GetDatabase().EncodedSourceID
 
 	const rep = "replication"
 

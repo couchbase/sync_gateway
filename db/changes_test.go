@@ -290,7 +290,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionID := collection.GetCollectionID()
-	bucketUUID := db.EncodedBucketUUID
+	bucketUUID := db.EncodedSourceID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -581,7 +581,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionID := collection.GetCollectionID()
-	bucketUUID := db.EncodedBucketUUID
+	bucketUUID := db.EncodedSourceID
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Make channel active
