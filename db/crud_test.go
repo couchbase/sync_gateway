@@ -1778,7 +1778,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	bucketUUID := db.EncodedBucketUUID
+	bucketUUID := db.EncodedSourceID
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// create a new doc
@@ -1879,7 +1879,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	bucketUUID := db.EncodedBucketUUID
+	bucketUUID := db.EncodedSourceID
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// create a new doc
