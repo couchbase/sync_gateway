@@ -899,14 +899,15 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 
+	updates = PrincipalConfig{
+		Name:        base.StringPtr(username),
+		Email:       &identity.Email,
+		JWTIssuer:   &provider.Issuer,
+		JWTRoles:    jwtRoles,
+		JWTChannels: jwtChannels,
+	}
+
 	if user != nil {
-		updates = PrincipalConfig{
-			Name:        base.StringPtr(user.Name()),
-			Email:       &identity.Email,
-			JWTIssuer:   &provider.Issuer,
-			JWTRoles:    jwtRoles,
-			JWTChannels: jwtChannels,
-		}
 		return user, updates, identity.Expiry, nil
 	}
 
@@ -914,16 +915,15 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if provider.Register {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
-		var err error
-		user, err = auth.RegisterNewUser(username, identity.Email)
+		user, err := auth.RegisterNewUser(username, identity.Email)
 		if err != nil && !base.IsCasMismatch(err) {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
 			return nil, PrincipalConfig{}, time.Time{}, err
 		}
-	} else {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "User not found for OIDC username: %v", base.UD(username))
+		return user, updates, identity.Expiry, nil
 	}
 
+	base.InfofCtx(auth.LogCtx, base.KeyAuth, "User not found for OIDC username: %v", base.UD(username))
 	return nil, PrincipalConfig{}, time.Time{}, nil
 }
 
