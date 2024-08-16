@@ -271,7 +271,7 @@ func TestHLVImport(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	localSource := db.EncodedBucketUUID
+	localSource := db.EncodedSourceID
 
 	// 1. Test standard import of an SDK write
 	standardImportKey := "standardImport_" + t.Name()
