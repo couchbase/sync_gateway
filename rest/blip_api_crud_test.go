@@ -1971,8 +1971,8 @@ func TestSendReplacementRevision(t *testing.T) {
 					require.True(t, ok)
 					assert.Equal(t, msg1, msg2)
 
-					base.WaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().ReplacementRevSendCount.Value, 1)
-					base.WaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 0)
+					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().ReplacementRevSendCount.Value, 1)
+					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 0)
 				} else {
 					// requested revision (or any alternative) did not get replicated
 					data := btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version1)
@@ -1987,8 +1987,8 @@ func TestSendReplacementRevision(t *testing.T) {
 					require.True(t, ok)
 					assert.Equal(t, db.MessageNoRev, msg.Profile())
 
-					base.WaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 1)
-					base.WaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().ReplacementRevSendCount.Value, 0)
+					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 1)
+					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().ReplacementRevSendCount.Value, 0)
 				}
 			})
 		}
