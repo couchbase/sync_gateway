@@ -15,24 +15,55 @@ apis:
       remove-x-internal: on
   admin-internal:
     root: "./docs/api/admin.yaml"
+  admin-capella:
+    root: "./docs/api/admin-capella.yaml"
+    decorators:
+      filter-out:
+        property: x-capella
+        value: false
+      remove-x-internal: on
   public:
     root: "./docs/api/public.yaml"
     decorators:
       remove-x-internal: on
   public-internal:
     root: "./docs/api/public.yaml"
+  public-capella:
+    root: "./docs/api/public.yaml"
+    decorators:
+      filter-out:
+        property: x-capella
+        value: false
+      info-override:
+        description: "App Services manages access and synchronization between Couchbase Lite and Couchbase Capella"
+      plugin/replace-description-capella: on
+      plugin/replace-server-capella:
+        serverUrl: 'https://{hostname}:4984'
+      remove-x-internal: on
   metric:
     root: "./docs/api/metric.yaml"
     decorators:
       remove-x-internal: on
   metric-internal:
     root: "./docs/api/metric.yaml"
+  metric-capella:
+    root: "./docs/api/metric-capella.yaml"
+    decorators:
+      filter-out:
+        property: x-capella
+        value: false
+      plugin/excise-rbac-capella: on
+      plugin/replace-description-capella: on
+      remove-x-internal: on
   diagnostic:
     root: "./docs/api/diagnostic.yaml"
     decorators:
       remove-x-internal: on
   diagnostic-internal:
     root: "./docs/api/diagnostic.yaml"
+
+plugins:
+  - './docs/api/plugins/plugin.js'
 
 extends:
   - minimal
