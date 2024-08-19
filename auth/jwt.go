@@ -22,6 +22,7 @@ import (
 type jwtAuthenticator interface {
 	verifyToken(ctx context.Context, token string, callbackURLFunc OIDCCallbackURLFunc) (*Identity, error)
 	common() JWTConfigCommon
+	GetName() string
 }
 
 // SupportedAlgorithms is list of signing algorithms explicitly supported
@@ -188,6 +189,10 @@ type LocalJWTAuthProvider struct {
 	name string
 	// keySet has the keys for this config, either in-memory or from oidc.NewRemoteKeySet.
 	keySet oidc.KeySet
+}
+
+func (l *LocalJWTAuthProvider) GetName() string {
+	return l.name
 }
 
 func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ OIDCCallbackURLFunc) (*Identity, error) {
