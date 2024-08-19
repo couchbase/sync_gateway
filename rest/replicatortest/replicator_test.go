@@ -57,7 +57,7 @@ func TestReplicationAPI(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 	var configResponse db.ReplicationConfig
 	err := json.Unmarshal(response.BodyBytes(), &configResponse)
-	log.Printf("configResponse direction type: %T", configResponse.Direction)
+	t.Logf("configResponse direction type: %T", configResponse.Direction)
 	require.NoError(t, err)
 	assert.Equal(t, "replication1", configResponse.ID)
 	assert.Equal(t, "http://remote:4984/db", configResponse.Remote)
@@ -83,7 +83,7 @@ func TestReplicationAPI(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.db}}/_replication/", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 	var replicationsResponse map[string]db.ReplicationConfig
-	log.Printf("response: %s", response.BodyBytes())
+	t.Logf("response: %s", response.BodyBytes())
 	err = json.Unmarshal(response.BodyBytes(), &replicationsResponse)
 	require.NoError(t, err)
 	assert.Len(t, replicationsResponse, 2)
@@ -280,7 +280,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
 	require.Equal(t, len(allStatusResponse), 2)
-	log.Printf("All status response: %v", allStatusResponse)
+	t.Logf("All status response: %v", allStatusResponse)
 
 	// PUT _replicationStatus to stop non-adhoc replication
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
@@ -852,7 +852,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	activeRT.WaitForAssignedReplications(1)
 	activeRT2.WaitForAssignedReplications(1)
 
-	log.Printf("==============replication rebalance is done================")
+	t.Logf("==============replication rebalance is done================")
 
 	// Create additional docs on remoteRT
 	docABC2 := t.Name() + "ABC2"
@@ -1115,14 +1115,14 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	assert.NoError(t, activeRT.WaitForCondition(func() bool {
 		abcStatus := activeRT.GetReplicationStatus("rep_ABC")
 		if abcStatus.DocsCheckedPush != 2 {
-			log.Printf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
-			log.Printf("abcStatus=%+v", abcStatus)
+			t.Logf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
+			t.Logf("abcStatus=%+v", abcStatus)
 			return false
 		}
 		defStatus := activeRT.GetReplicationStatus("rep_DEF")
 		if defStatus.DocsCheckedPush != 2 {
-			log.Printf("defStatus.DocsCheckedPush not 2, is %v", defStatus.DocsCheckedPush)
-			log.Printf("defStatus=%+v", defStatus)
+			t.Logf("defStatus.DocsCheckedPush not 2, is %v", defStatus.DocsCheckedPush)
+			t.Logf("defStatus=%+v", defStatus)
 			return false
 		}
 
@@ -1132,7 +1132,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 		// for both replications
 		totalDocsWritten := abcStatus.DocsWritten + defStatus.DocsWritten
 		if totalDocsWritten < 2 || totalDocsWritten > 4 {
-			log.Printf("Total docs written is not between 2 and 4, is abc=%v, def=%v", abcStatus.DocsWritten, defStatus.DocsWritten)
+			t.Logf("Total docs written is not between 2 and 4, is abc=%v, def=%v", abcStatus.DocsWritten, defStatus.DocsWritten)
 			return false
 		}
 		return true
@@ -1203,7 +1203,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	// Check whether auth are credentials redacted from all replications response
 	response = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/", "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	log.Printf("response: %s", response.BodyBytes())
+	t.Logf("response: %s", response.BodyBytes())
 
 	var replicationsResponse map[string]db.ReplicationConfig
 	err = json.Unmarshal(response.BodyBytes(), &replicationsResponse)
@@ -4283,7 +4283,10 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start(ctx1))
 
-			rest.WaitAndRequireCondition(t, func() bool { return ar.GetStatus(ctx1).DocsRead == 1 }, "Expecting DocsRead == 1")
+			require.EventuallyWithTf(t, func(c *assert.CollectT) {
+				assert.Equal(c, 1, int(ar.GetStatus(ctx1).DocsRead))
+			}, 10*time.Second, 100*time.Millisecond, "Expecting DocsRead == 1: %+v", ar.GetStatus(ctx1))
+
 			switch test.expectedResolutionType {
 			case db.ConflictResolutionLocal:
 				assert.Equal(t, 1, int(replicationStats.ConflictResolvedLocalCount.Value()))
@@ -4309,7 +4312,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			rest.RequireChangeRevVersion(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0])
-			log.Printf("Changes response is %+v", changesResults)
+			t.Logf("Changes response is %+v", changesResults)
 
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -4321,9 +4324,9 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			if !test.skipBodyAssertion {
 				requireBodyEqual(t, test.expectedLocalBody, doc)
 			}
-			log.Printf("Doc %s is %+v", docID, doc)
+			t.Logf("Doc %s is %+v", docID, doc)
 			for revID, revInfo := range doc.SyncData.History {
-				log.Printf("doc revision [%s]: %+v", revID, revInfo)
+				t.Logf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
 			if !test.skipActiveLeafAssertion {
@@ -4360,26 +4363,27 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 	// scenarios
 	conflictResolutionTests := []struct {
-		name                      string
-		localRevisionBody         string
-		localVersion              rest.DocVersion
-		remoteRevisionBody        string
-		remoteVersion             rest.DocVersion
-		commonAncestorVersion     rest.DocVersion
-		conflictResolver          string
-		expectedBody              string
-		expectedVersion           rest.DocVersion
-		expectedTombstonedVersion string
+		name                  string
+		localRevisionBody     string
+		localVersion          rest.DocVersion
+		remoteRevisionBody    string
+		remoteVersion         rest.DocVersion
+		commonAncestorVersion rest.DocVersion
+		conflictResolver      string
+		expectedBody          string
+		expectedVersion       rest.DocVersion
+		expectedPushResolved  bool
 	}{
 		{
-			name:               "remoteWins",
-			localRevisionBody:  `{"source": "local"}`,
-			localVersion:       rest.NewDocVersionFromFakeRev("1-a"),
-			remoteRevisionBody: `{"source": "remote"}`,
-			remoteVersion:      rest.NewDocVersionFromFakeRev("1-b"),
-			conflictResolver:   `function(conflict) {return conflict.RemoteDocument;}`,
-			expectedBody:       `{"source": "remote"}`,
-			expectedVersion:    rest.NewDocVersionFromFakeRev("1-b"),
+			name:                 "remoteWins",
+			localRevisionBody:    `{"source": "local"}`,
+			localVersion:         rest.NewDocVersionFromFakeRev("1-a"),
+			remoteRevisionBody:   `{"source": "remote"}`,
+			remoteVersion:        rest.NewDocVersionFromFakeRev("1-b"),
+			conflictResolver:     `function(conflict) {return conflict.RemoteDocument;}`,
+			expectedBody:         `{"source": "remote"}`,
+			expectedVersion:      rest.NewDocVersionFromFakeRev("1-b"),
+			expectedPushResolved: false,
 		},
 		{
 			name:               "merge",
@@ -4392,18 +4396,20 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 							mergedDoc.source = "merged";
 							return mergedDoc;
 						}`,
-			expectedBody:    `{"source": "merged"}`,
-			expectedVersion: rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`))), // rev for merged body, with parent 1-b
+			expectedBody:         `{"source": "merged"}`,
+			expectedVersion:      rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`))), // rev for merged body, with parent 1-b
+			expectedPushResolved: true,
 		},
 		{
-			name:               "localWins",
-			localRevisionBody:  `{"source": "local"}`,
-			localVersion:       rest.NewDocVersionFromFakeRev("1-a"),
-			remoteRevisionBody: `{"source": "remote"}`,
-			remoteVersion:      rest.NewDocVersionFromFakeRev("1-b"),
-			conflictResolver:   `function(conflict) {return conflict.LocalDocument;}`,
-			expectedBody:       `{"source": "local"}`,
-			expectedVersion:    rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 1-b
+			name:                 "localWins",
+			localRevisionBody:    `{"source": "local"}`,
+			localVersion:         rest.NewDocVersionFromFakeRev("1-a"),
+			remoteRevisionBody:   `{"source": "remote"}`,
+			remoteVersion:        rest.NewDocVersionFromFakeRev("1-b"),
+			conflictResolver:     `function(conflict) {return conflict.LocalDocument;}`,
+			expectedBody:         `{"source": "local"}`,
+			expectedVersion:      rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 1-b
+			expectedPushResolved: true,
 		},
 		{
 			name:                  "localWinsRemoteTombstone",
@@ -4415,13 +4421,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			conflictResolver:      `function(conflict) {return conflict.LocalDocument;}`,
 			expectedBody:          `{"source": "local"}`,
 			expectedVersion:       rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 2-b
+			expectedPushResolved:  true,
 		},
 	}
 
 	for _, test := range conflictResolutionTests {
 		t.Run(test.name, func(t *testing.T) {
 			base.RequireNumTestBuckets(t, 2)
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
+			base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCRUD)
 
 			// Passive
 			rt2 := rest.NewRestTester(t, nil)
@@ -4433,10 +4440,12 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			docID := test.name
 
 			if !test.commonAncestorVersion.Equal(rest.EmptyDocVersion()) {
+				t.Logf("Creating common ancestor revision on rt2")
 				rt2Version := rt2.PutNewEditsFalse(docID, test.commonAncestorVersion, rest.EmptyDocVersion(), test.remoteRevisionBody)
 				rest.RequireDocVersionEqual(t, test.commonAncestorVersion, rt2Version)
 			}
 
+			t.Logf("Creating remote revision on rt2")
 			rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, test.commonAncestorVersion, test.remoteRevisionBody)
 			rest.RequireDocVersionEqual(t, test.remoteVersion, rt2Version)
 
@@ -4461,10 +4470,12 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			// Create revision on rt1 (local)
 			if !test.commonAncestorVersion.Equal(rest.EmptyDocVersion()) {
+				t.Logf("Creating common ancestor revision on rt1")
 				rt1version := rt1.PutNewEditsFalse(docID, test.commonAncestorVersion, rest.EmptyDocVersion(), test.localRevisionBody)
 				rest.RequireDocVersionEqual(t, test.commonAncestorVersion, rt1version)
 			}
 
+			t.Logf("Creating local revision on rt1")
 			rt1Version := rt1.PutNewEditsFalse(docID, test.localVersion, test.commonAncestorVersion, test.localRevisionBody)
 			rest.RequireDocVersionEqual(t, test.localVersion, rt1Version)
 
@@ -4497,13 +4508,23 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			defer func() { assert.NoError(t, ar.Stop()) }()
 
 			// Start the replicator (implicit connect)
+			t.Logf("Starting replicator")
 			assert.NoError(t, ar.Start(ctx1))
-			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
-			base.RequireWaitForStat(t, func() int64 {
-				val := ar.GetStatus(ctx1).DocsWritten + ar.GetStatus(ctx1).DocWriteConflict
-				return val
-			}, 1)
-			log.Printf("========================Replication should be done, checking with changes")
+			t.Logf("Replicator started")
+
+			// wait for both push and pull to complete:
+			// - the document originally written to rt2 to arrive at rt1
+			// - the document originally written to rt1 to get a conflict on push
+			// - if applicable: the resolved rev to be pushed up to rt2
+			require.EventuallyWithTf(t, func(c *assert.CollectT) {
+				status := ar.GetStatus(ctx1)
+				assert.Equal(c, 1, int(status.PullReplicationStatus.DocsRead))
+				assert.Equal(c, 1, int(status.PushReplicationStatus.DocWriteConflict))
+				if test.expectedPushResolved {
+					assert.Equal(c, 1, int(status.PushReplicationStatus.DocsWritten))
+				}
+			}, 10*time.Second, 100*time.Millisecond, "Expected both push and pull to be completed: %+v", ar.GetStatus(ctx1))
+			t.Logf("========================Replication should be done, checking with changes")
 
 			// Validate results on the local (rt1)
 			changesResults, err := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", localDoc.Sequence), "", true)
@@ -4511,22 +4532,22 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			rest.RequireChangeRevVersion(t, test.expectedVersion, changesResults.Results[0].Changes[0])
-			log.Printf("Changes response is %+v", changesResults)
+			t.Logf("Changes response is %+v", changesResults)
 
 			rawDocResponse := rt1.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, "")
-			log.Printf("Raw response: %s", rawDocResponse.Body.Bytes())
+			t.Logf("Raw response: %s", rawDocResponse.Body.Bytes())
 
 			docResponse := rt1.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
-			log.Printf("Non-raw response: %s", docResponse.Body.Bytes())
+			t.Logf("Non-raw response: %s", docResponse.Body.Bytes())
 
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			requireDocumentVersion(t, test.expectedVersion, doc)
 			requireBodyEqual(t, test.expectedBody, doc)
-			log.Printf("Doc %s is %+v", docID, doc)
-			log.Printf("Doc %s attachments are %+v", docID, doc.Attachments)
+			t.Logf("Doc %s is %+v", docID, doc)
+			t.Logf("Doc %s attachments are %+v", docID, doc.Attachments)
 			for revID, revInfo := range doc.SyncData.History {
-				log.Printf("doc revision [%s]: %+v", revID, revInfo)
+				t.Logf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
 			// Validate only one active leaf node remains after conflict resolution, and that all parents
@@ -4557,16 +4578,16 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			rest.RequireChangeRevVersion(t, test.expectedVersion, changesResults.Results[0].Changes[0])
-			log.Printf("Changes response is %+v", changesResults)
+			t.Logf("Changes response is %+v", changesResults)
 
 			doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			requireDocumentVersion(t, test.expectedVersion, doc)
 			requireBodyEqual(t, test.expectedBody, doc)
-			log.Printf("Remote Doc %s is %+v", docID, doc)
-			log.Printf("Remote Doc %s attachments are %+v", docID, doc.Attachments)
+			t.Logf("Remote Doc %s is %+v", docID, doc)
+			t.Logf("Remote Doc %s attachments are %+v", docID, doc.Attachments)
 			for revID, revInfo := range doc.SyncData.History {
-				log.Printf("doc revision [%s]: %+v", revID, revInfo)
+				t.Logf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
 			// Validate only one active leaf node remains after conflict resolution, and that all parents
@@ -5730,15 +5751,15 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 					if timeoutVal > 0 {
 						// wait for an arbitrary number of reconnect attempts
-						rest.WaitAndRequireCondition(t, func() bool {
-							return ar.Push.GetStats().NumConnectAttempts.Value() > 2
-						}, "Expecting NumConnectAttempts > 2")
+						require.EventuallyWithT(t, func(c *assert.CollectT) {
+							assert.Greaterf(c, ar.Push.GetStats().NumConnectAttempts.Value(), int64(2), "Expecting NumConnectAttempts > 2")
+						}, time.Second*5, timeoutVal+time.Millisecond*100)
 
 						time.Sleep(timeoutVal + time.Millisecond*250)
 						// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
-						rest.WaitAndRequireCondition(t, func() bool {
-							return ar.Push.GetStats().NumReconnectsAborted.Value() > 0
-						}, "Expecting NumReconnectsAborted > 0")
+						require.EventuallyWithT(t, func(c *assert.CollectT) {
+							assert.Greaterf(c, ar.Push.GetStats().NumReconnectsAborted.Value(), int64(0), "Expecting NumReconnectsAborted > 0")
+						}, time.Second*5, timeoutVal+time.Millisecond*100)
 					}
 				})
 			}
@@ -5812,20 +5833,20 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), msg401))
 
 	// wait for an arbitrary number of reconnect attempts
-	rest.WaitAndRequireCondition(t, func() bool {
-		return ar.Push.GetStats().NumConnectAttempts.Value() > 3
-	}, "Expecting NumConnectAttempts > 3")
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Greaterf(c, ar.Push.GetStats().NumConnectAttempts.Value(), int64(3), "Expecting NumConnectAttempts > 3")
+	}, time.Second*5, time.Millisecond*100)
 
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password":"pass"}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	rest.WaitAndRequireCondition(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		state, errMsg := ar.State(ctx1)
 		if strings.TrimSpace(errMsg) != "" && !strings.Contains(errMsg, msg401) {
 			log.Println("unexpected replicator error:", errMsg)
 		}
-		return state == db.ReplicationStateRunning
-	}, "Expecting replication state to be running")
+		assert.Equal(c, db.ReplicationStateRunning, state, "Expecting replication state to be running")
+	}, time.Second*5, time.Millisecond*100)
 }
 
 // TestActiveReplicatorReconnectSendActions ensures ActiveReplicator reconnect retry loops exit when the replicator is stopped
@@ -6153,7 +6174,9 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start(ctx1))
-			rest.WaitAndRequireCondition(t, func() bool { return ar.GetStatus(ctx1).DocsRead == 1 })
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Equal(c, 1, int(ar.GetStatus(ctx1).DocsRead))
+			}, time.Second*5, time.Millisecond*100)
 			assert.Equal(t, 1, int(replicationStats.ConflictResolvedMergedCount.Value()))
 
 			// Wait for the document originally written to rt2 to arrive at rt1.
@@ -6163,18 +6186,18 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			rest.RequireChangeRevVersion(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0])
-			log.Printf("Changes response is %+v", changesResults)
+			t.Logf("Changes response is %+v", changesResults)
 
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			requireDocumentVersion(t, test.expectedLocalVersion, doc)
 			ctx := base.TestCtx(t)
-			log.Printf("doc.Body(): %v", doc.Body(ctx))
+			t.Logf("doc.Body(): %v", doc.Body(ctx))
 			assert.Equal(t, test.expectedLocalBody, doc.Body(ctx))
-			log.Printf("Doc %s is %+v", docID, doc)
+			t.Logf("Doc %s is %+v", docID, doc)
 			for revID, revInfo := range doc.SyncData.History {
-				log.Printf("doc revision [%s]: %+v", revID, revInfo)
+				t.Logf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
 			// Validate only one active leaf node remains after conflict resolution, and that all parents
@@ -6962,9 +6985,9 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 			rawResponse := activeRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
-			log.Printf("-- local raw pre-update: %s", rawResponse.Body.Bytes())
+			t.Logf("-- local raw pre-update: %s", rawResponse.Body.Bytes())
 			rawResponse = remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
-			log.Printf("-- remote raw pre-update: %s", rawResponse.Body.Bytes())
+			t.Logf("-- remote raw pre-update: %s", rawResponse.Body.Bytes())
 
 			// Update local and remote revisions
 			localParentVersion := newVersion
@@ -7004,9 +7027,9 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			}
 
 			rawResponse = activeRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
-			log.Printf("-- local raw pre-replication: %s", rawResponse.Body.Bytes())
+			t.Logf("-- local raw pre-replication: %s", rawResponse.Body.Bytes())
 			rawResponse = remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
-			log.Printf("-- remote raw pre-replication: %s", rawResponse.Body.Bytes())
+			t.Logf("-- remote raw pre-replication: %s", rawResponse.Body.Bytes())
 
 			// Restart the replication
 			response = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
@@ -7018,7 +7041,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				rawResponse := remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 				require.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &remoteDoc))
 				prop, ok := remoteDoc["prop"].(string)
-				log.Printf("-- Waiting for property: %v, got property: %v", test.expectedResult.propertyValue, prop)
+				t.Logf("-- Waiting for property: %v, got property: %v", test.expectedResult.propertyValue, prop)
 				return ok && prop == test.expectedResult.propertyValue
 			})
 			require.NoError(t, waitErr)
@@ -7038,10 +7061,10 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			assert.Equal(t, test.expectedResult.attachmentRevPos, remoteRevpos) // validate expected revpos
 
 			rawResponse = activeRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
-			log.Printf("-- local raw post-replication: %s", rawResponse.Body.Bytes())
+			t.Logf("-- local raw post-replication: %s", rawResponse.Body.Bytes())
 
 			rawResponse = remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
-			log.Printf("-- remote raw post-replication: %s", rawResponse.Body.Bytes())
+			t.Logf("-- remote raw post-replication: %s", rawResponse.Body.Bytes())
 		})
 	}
 }
