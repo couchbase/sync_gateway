@@ -45,7 +45,10 @@ var (
 	belowMinValueFmt = "%s for %v was set to %v which is below the minimum of %v"
 	aboveMaxValueFmt = "%s for %v was set to %v which is above the maximum of %v"
 
+	// lumberjack backupTimeFormat = "2006-01-02T15-04-05.000"
 	lumberjackRotationMidfix = `-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}.\d{3}`
+	// lumberjack compressSuffix = ".gz"
+	optionalCompressSuffix = `(\.gz)?`
 )
 
 type FileLogger struct {
@@ -398,25 +401,29 @@ func runLogDeletion(ctx context.Context, logDirectory string, logPattern *regexp
 }
 
 // getDeletionDirAndRegexp will return the directory and a regexp matching log file and rotated patterns.
-func getDeletionDirAndRegexp(filename string) (string, *regexp.Regexp) {
-	dir, path := filepath.Split(filename)
-	lastDot := strings.LastIndex(path, ".")
-	if lastDot == -1 {
-		// foo
-		// foo-2019-01-01T00-00-00.000
-		// foo-2019-01-01T00-00-00.000.gz
-		return dir, regexp.MustCompile(fmt.Sprintf(`(%s|%s%s(?:\.gz))?$`, regexp.QuoteMeta(path), regexp.QuoteMeta(path), lumberjackRotationMidfix))
+func getDeletionDirAndRegexp(path string) (string, *regexp.Regexp) {
+	dir, filename := filepath.Split(path)
+
+	// foo
+	// foo-2019-01-01T00-00-00.000
+	// foo-2019-01-01T00-00-00.000.gz
+	filenamePattern := regexp.QuoteMeta(filename)
+	rotatedPattern := filenamePattern + lumberjackRotationMidfix + optionalCompressSuffix
+
+	if lastDot := strings.LastIndex(filename, "."); lastDot != -1 {
+		// foo.log
+		// foo-2019-01-01T00-00-00.000.log
+		// foo-2019-01-01T00-00-00.000.log.gz
+		//
+		// or
+		//
+		// foo.bar.log
+		// foo.bar-2019-01-01T00-00-00.000.log
+		// foo.bar-2019-01-01T00-00-00.000.log.gz
+		prefix := filename[:lastDot]
+		suffix := filename[lastDot:]
+		rotatedPattern = regexp.QuoteMeta(prefix) + lumberjackRotationMidfix + regexp.QuoteMeta(suffix) + optionalCompressSuffix
 	}
-	prefix := path[:lastDot]
-	suffix := path[lastDot:]
-	// foo.log
-	// foo-2019-01-01T00-00-00.000.log
-	// foo-2019-01-01T00-00-00.000.log.gz
-	//
-	// or
-	//
-	// foo.bar.log
-	// foo.bar-2019-01-01T00-00-00.000.log
-	// foo.bar-2019-01-01T00-00-00.000.log.gz
-	return dir, regexp.MustCompile(fmt.Sprintf(`(%s|%s%s%s(?:\.gz)?)$`, regexp.QuoteMeta(path), regexp.QuoteMeta(prefix), lumberjackRotationMidfix, regexp.QuoteMeta(suffix)))
+
+	return dir, regexp.MustCompile(`^(` + filenamePattern + `|` + rotatedPattern + `)$`)
 }
