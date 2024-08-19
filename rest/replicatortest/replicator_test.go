@@ -5753,13 +5753,14 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 						// wait for an arbitrary number of reconnect attempts
 						require.EventuallyWithT(t, func(c *assert.CollectT) {
 							assert.Greaterf(c, ar.Push.GetStats().NumConnectAttempts.Value(), int64(2), "Expecting NumConnectAttempts > 2")
-						}, time.Second*5, timeoutVal+time.Millisecond*100)
+						}, time.Second*5, time.Millisecond*100)
 
 						time.Sleep(timeoutVal + time.Millisecond*250)
+
 						// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
 						require.EventuallyWithT(t, func(c *assert.CollectT) {
 							assert.Greaterf(c, ar.Push.GetStats().NumReconnectsAborted.Value(), int64(0), "Expecting NumReconnectsAborted > 0")
-						}, time.Second*5, timeoutVal+time.Millisecond*100)
+						}, time.Second*5, time.Millisecond*100)
 					}
 				})
 			}
