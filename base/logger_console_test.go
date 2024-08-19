@@ -367,15 +367,32 @@ func TestConsoleIrregularLogPaths(t *testing.T) {
 					}
 				}
 			}()
-			var filenames []string
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				filenames = getDirFiles(t, tempdir)
+				filenames := getDirFiles(t, tempdir)
 				assert.Contains(c, filenames, test.logPath)
 				assert.Greater(c, len(filenames), 2)
 			}, time.Second, 10*time.Millisecond)
+
+			// add a few non-matching files to the directory for negative testing
+			nonMatchingFileNames := []string{
+				"console.log",
+				"consoellog",
+				"console.log.txt",
+				".console",
+				"consolelog-2021-01-01T00-00-00.000",
+				"console-2021-01-01T00-00-00.000.log",
+			}
+			for _, name := range nonMatchingFileNames {
+				require.NoError(t, makeTestFile(1, name, tempdir))
+			}
+
 			_, pattern := getDeletionDirAndRegexp(filepath.Join(tempdir, test.logPath))
-			for _, filename := range filenames {
-				require.Regexp(t, pattern, filename)
+			for _, filename := range getDirFiles(t, tempdir) {
+				if slices.Contains(nonMatchingFileNames, filename) {
+					require.NotRegexp(t, pattern, filename)
+				} else {
+					require.Regexp(t, pattern, filename)
+				}
 			}
 		})
 	}
