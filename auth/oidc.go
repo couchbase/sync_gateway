@@ -239,6 +239,10 @@ func (opm OIDCProviderMap) Stop() {
 	}
 }
 
+func (op *OIDCProvider) GetName() string {
+	return op.Name
+}
+
 // GetClient initializes the client on first successful request.
 func (op *OIDCProvider) GetClient(ctx context.Context, buildCallbackURLFunc OIDCCallbackURLFunc) (*OIDCClient, error) {
 	// If the callback URL isn't defined for the provider, uses buildCallbackURLFunc to construct (based on current request)

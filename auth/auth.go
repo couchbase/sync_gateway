@@ -807,18 +807,18 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 		authenticator = single
 	}
 	if authenticator == nil {
-		for _, provider := range oidcProviders {
+		for providerName, provider := range oidcProviders {
 			if provider.ValidFor(auth.LogCtx, issuer, audiences) {
-				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using OIDC provider %v", base.UD(provider.Issuer))
+				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using OIDC provider %q", providerName)
 				authenticator = provider
 				break
 			}
 		}
 	}
 	if authenticator == nil {
-		for _, provider := range localJWT {
+		for providerName, provider := range localJWT {
 			if provider.ValidFor(auth.LogCtx, issuer, audiences) {
-				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using local JWT provider %v", base.UD(provider.Issuer))
+				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using local JWT provider %q", providerName)
 				authenticator = provider
 				break
 			}
@@ -832,11 +832,11 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 	var identity *Identity
 	identity, err = authenticator.verifyToken(auth.LogCtx, rawToken, callbackURLFunc)
 	if err != nil {
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT invalid: %v", err)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT invalid for provider %q: %v", err, authenticator.GetName())
 		return nil, PrincipalConfig{}, base.HTTPErrorf(http.StatusUnauthorized, "Invalid JWT")
 	}
 
-	user, updates, _, err := auth.authenticateJWTIdentity(identity, authenticator.common())
+	user, updates, _, err := auth.authenticateJWTIdentity(identity, authenticator)
 	return user, updates, err
 }
 
@@ -864,36 +864,37 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 		}
 	}
 
-	return auth.authenticateJWTIdentity(identity, provider.JWTConfigCommon)
+	return auth.authenticateJWTIdentity(identity, provider)
 }
 
 // authenticateOIDCIdentity obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
 // TODO: possibly move this function to oidc.go
-func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider JWTConfigCommon) (user User, updates PrincipalConfig, tokenExpiry time.Time, err error) {
+func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider jwtAuthenticator) (user User, updates PrincipalConfig, tokenExpiry time.Time, err error) {
 	// Note: any errors returned from this function will be converted to 403s with a generic message, so we need to
 	// separately log them to ensure they're preserved for debugging.
 	if identity == nil || identity.Subject == "" {
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, PrincipalConfig{}, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
-	username, err := getJWTUsername(provider, identity)
+	common := provider.common()
+	username, err := getJWTUsername(common, identity)
 	if err != nil {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername for provider %q: %v", provider.GetName(), err)
 		return nil, PrincipalConfig{}, time.Time{}, err
 	}
-	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
+	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Got username %q from JWT for provider %q", base.UD(username), provider.GetName())
 
 	var jwtRoles, jwtChannels base.Set
-	if provider.RolesClaim != "" {
-		jwtRoles, err = getJWTClaimAsSet(identity, provider.RolesClaim)
+	if common.RolesClaim != "" {
+		jwtRoles, err = getJWTClaimAsSet(identity, common.RolesClaim)
 		if err != nil {
 			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find JWT roles: %w", err)
 		}
 	} else {
 		jwtRoles = base.Set{}
 	}
-	if provider.ChannelsClaim != "" {
-		jwtChannels, err = getJWTClaimAsSet(identity, provider.ChannelsClaim)
+	if common.ChannelsClaim != "" {
+		jwtChannels, err = getJWTClaimAsSet(identity, common.ChannelsClaim)
 		if err != nil {
 			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find JWT channels: %w", err)
 		}
@@ -907,29 +908,32 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 
+	updates = PrincipalConfig{
+		Name:        base.StringPtr(username),
+		Email:       &identity.Email,
+		JWTIssuer:   &common.Issuer,
+		JWTRoles:    jwtRoles,
+		JWTChannels: jwtChannels,
+	}
+
+	if user != nil {
+		return user, updates, identity.Expiry, nil
+	}
+
 	// Auto-registration. This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
-	if user == nil && provider.Register {
+	if common.Register {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
-		var err error
-		user, err = auth.RegisterNewUser(username, identity.Email)
+		user, err := auth.RegisterNewUser(username, identity.Email)
 		if err != nil && !base.IsCasMismatch(err) {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
 			return nil, PrincipalConfig{}, time.Time{}, err
 		}
+		return user, updates, identity.Expiry, nil
 	}
 
-	if user != nil {
-		updates = PrincipalConfig{
-			Name:        base.StringPtr(user.Name()),
-			Email:       &identity.Email,
-			JWTIssuer:   &provider.Issuer,
-			JWTRoles:    jwtRoles,
-			JWTChannels: jwtChannels,
-		}
-	}
-
-	return user, updates, identity.Expiry, nil
+	base.InfofCtx(auth.LogCtx, base.KeyAuth, "User %q not found and provider %q does not have Register enabled", base.UD(username), provider.GetName())
+	return nil, PrincipalConfig{}, time.Time{}, nil
 }
 
 // Registers a new user account based on the given verified username and optional email address.
