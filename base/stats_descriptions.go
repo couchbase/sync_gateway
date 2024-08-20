@@ -77,9 +77,9 @@ const (
 
 // audit stat
 const (
-	NumAuditsLoggedDesc         = "TODO"
-	NumAuditsFilteredByUserDesc = "TODO"
-	NumAuditsFilteredByRoleDesc = "TODO"
+	NumAuditsLoggedDesc         = "The total number of audit events logged."
+	NumAuditsFilteredByUserDesc = "The total number of audit events filtered by user."
+	NumAuditsFilteredByRoleDesc = "The total number of audit events filtered by role."
 )
 
 // cache stats descriptions
