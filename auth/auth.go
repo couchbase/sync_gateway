@@ -773,9 +773,17 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 		return nil, err
 	}
 
-	if user == nil || !user.Authenticate(password) {
+	if user == nil {
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "HTTP auth failed for username=%q: user not found", base.UD(username))
 		return nil, nil
 	}
+
+	authenticated, reason := user.AuthenticateWithReason(password)
+	if !authenticated {
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "HTTP auth failed for username=%q: %s", base.UD(username), reason)
+		return nil, nil
+	}
+
 	return user, nil
 }
 
