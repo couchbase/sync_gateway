@@ -499,6 +499,7 @@ func (user *userImpl) Authenticate(password string) bool {
 	return ok
 }
 
+// AuthenticateWithReason returns true if the user exists, is not disabled, and has a valid password. If authentication fails, a user readable string for logging will be returned.
 func (user *userImpl) AuthenticateWithReason(password string) (ok bool, reason string) {
 	if user == nil {
 		return false, "User not found"
