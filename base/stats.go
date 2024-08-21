@@ -32,6 +32,7 @@ const (
 	NamespaceKey                 = "sgw"
 	ResourceUtilizationSubsystem = "resource_utilization"
 	ConfigSubsystem              = "config"
+	AuditSubsystem               = "audit"
 
 	SubsystemCacheKey           = "cache"
 	SubsystemDatabaseKey        = "database"
@@ -167,6 +168,7 @@ func (s *SgwStats) String() string {
 type GlobalStat struct {
 	ResourceUtilization *ResourceUtilization `json:"resource_utilization"`
 	ConfigStat          *ConfigStat          `json:"config"`
+	AuditStat           *AuditStat           `json:"audit"`
 }
 
 func newGlobalStat() (*GlobalStat, error) {
@@ -176,6 +178,10 @@ func newGlobalStat() (*GlobalStat, error) {
 		return nil, err
 	}
 	err = g.initConfigStats()
+	if err != nil {
+		return nil, err
+	}
+	err = g.initAuditStats()
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +200,25 @@ func (g *GlobalStat) initConfigStats() error {
 		return err
 	}
 	g.ConfigStat = configStat
+	return nil
+}
+
+func (g *GlobalStat) initAuditStats() error {
+	auditStat := &AuditStat{}
+	var err error
+	auditStat.NumAuditsLogged, err = NewIntStat(AuditSubsystem, "num_audits_logged", StatUnitNoUnits, NumAuditsLoggedDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	auditStat.NumAuditsFilteredByUser, err = NewIntStat(AuditSubsystem, "num_audits_filtered_by_user", StatUnitNoUnits, NumAuditsFilteredByUserDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	auditStat.NumAuditsFilteredByRole, err = NewIntStat(AuditSubsystem, "num_audits_filtered_by_role", StatUnitNoUnits, NumAuditsFilteredByRoleDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	g.AuditStat = auditStat
 	return nil
 }
 
@@ -362,6 +387,15 @@ type ConfigStat struct {
 	DatabaseBucketMismatches *SgwIntStat `json:"database_config_bucket_mismatches"`
 	// The number of times the config was rolled back to an invalid state (conflicting collections)
 	DatabaseRollbackCollectionCollisions *SgwIntStat `json:"database_config_rollback_collection_collisions"`
+}
+
+type AuditStat struct {
+	// The number of times an audit event was created/emitted/logged.
+	NumAuditsLogged *SgwIntStat `json:"num_audits_logged"`
+	// The number of times an audit event was filtered by username.
+	NumAuditsFilteredByUser *SgwIntStat `json:"num_audits_filtered_by_user"`
+	// The number of times an audit event was filtered by role.
+	NumAuditsFilteredByRole *SgwIntStat `json:"num_audits_filtered_by_role"`
 }
 
 type DbStats struct {
