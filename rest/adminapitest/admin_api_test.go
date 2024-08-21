@@ -2547,7 +2547,7 @@ func TestHandleDBConfig(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.CacheConfig = &rest.CacheConfig{
 		RevCacheConfig: &rest.RevCacheConfig{
-			Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
+			MaxItemCount: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
 		},
 	}
 

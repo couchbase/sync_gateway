@@ -246,8 +246,9 @@ type DeprecatedCacheConfig struct {
 }
 
 type RevCacheConfig struct {
-	Size       *uint32 `json:"size,omitempty"`        // Maximum number of revisions to store in the revision cache
-	ShardCount *uint16 `json:"shard_count,omitempty"` // Number of shards the rev cache should be split into
+	MaxItemCount     *uint32 `json:"max_item_count,omitempty"` // Maximum number of revisions to store in the revision cache
+	MaxMemoryCountMB *uint32 `json:"max_memory_count_mb"`      // Maximum amount of memory the rev cache should consume in MB
+	ShardCount       *uint16 `json:"shard_count,omitempty"`    // Number of shards the rev cache should be split into
 }
 
 type ChannelCacheConfig struct {
@@ -814,10 +815,15 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 
 		if dbConfig.CacheConfig.RevCacheConfig != nil {
 			// EE: disable revcache
-			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
+			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.MaxItemCount
 			if !isEnterpriseEdition && revCacheSize != nil && *revCacheSize == 0 {
-				base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
-				dbConfig.CacheConfig.RevCacheConfig.Size = nil
+				base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.rev_cache.max_item_count", *revCacheSize, db.DefaultRevisionCacheSize)
+				dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = nil
+			}
+			revCacheMemoryLimit := dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB
+			if !isEnterpriseEdition && revCacheMemoryLimit != nil && *revCacheMemoryLimit != 0 {
+				base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.rev_cache.max_memory_count_mb", *revCacheMemoryLimit, "no memory limit")
+				dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB = nil
 			}
 
 			if dbConfig.CacheConfig.RevCacheConfig.ShardCount != nil {
@@ -1116,8 +1122,8 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 	}
 
 	if dbConfig.DeprecatedRevCacheSize != nil {
-		if dbConfig.CacheConfig.RevCacheConfig.Size == nil {
-			dbConfig.CacheConfig.RevCacheConfig.Size = dbConfig.DeprecatedRevCacheSize
+		if dbConfig.CacheConfig.RevCacheConfig.MaxItemCount == nil {
+			dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = dbConfig.DeprecatedRevCacheSize
 		}
 		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "rev_cache_size", "cache.rev_cache.size"))
 	}

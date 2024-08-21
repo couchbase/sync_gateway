@@ -18,6 +18,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -190,11 +191,11 @@ func TestConfigValidationCache(t *testing.T) {
 
 	require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig)
 	if base.IsEnterpriseEdition() {
-		require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
-		assert.Equal(t, 0, int(*config.Databases["db"].CacheConfig.RevCacheConfig.Size))
+		require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig.MaxItemCount)
+		assert.Equal(t, 0, int(*config.Databases["db"].CacheConfig.RevCacheConfig.MaxItemCount))
 	} else {
 		// CE disallowed - should be nil
-		assert.Nil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
+		assert.Nil(t, config.Databases["db"].CacheConfig.RevCacheConfig.MaxItemCount)
 	}
 
 	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig)
@@ -488,7 +489,7 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	require.Len(t, warnings, 8)
 
 	// Check that the deprecated values have correctly been propagated upto the new config values
-	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.Size, uint32(10))
+	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount, uint32(10))
 	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds, 10)
 	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MinLength, 10)
 	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MaxLength, 10)
@@ -507,7 +508,7 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 
 	// Set A Couple Deprecated Values AND Their New Counterparts
 	dbConfig.DeprecatedRevCacheSize = base.Uint32Ptr(10)
-	dbConfig.CacheConfig.RevCacheConfig.Size = base.Uint32Ptr(20)
+	dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Uint32Ptr(20)
 	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.BoolPtr(false)
 	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.BoolPtr(true)
 
@@ -518,7 +519,7 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	require.Len(t, warnings, 2)
 
 	// Check that the deprecated value has been ignored as the new value is the priority
-	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.Size, uint32(20))
+	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount, uint32(20))
 	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel, true)
 }
 
@@ -3066,4 +3067,41 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 		assert.Equal(c, 0, len(invalidDatabases))
 		assert.Equal(c, 1, len(rt.ServerContext().dbConfigs))
 	}, time.Second*10, time.Millisecond*100)
+}
+
+func TestRevCacheMemoryLimitConfig(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfig))
+	assert.Nil(t, dbConfig.CacheConfig)
+
+	dbConfig.CacheConfig = &CacheConfig{}
+	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
+		MaxItemCount:     base.Uint32Ptr(100),
+		MaxMemoryCountMB: base.Uint32Ptr(4),
+	}
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfig))
+	assert.NotNil(t, dbConfig.CacheConfig)
+
+	assert.Equal(t, uint32(100), *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount)
+	if base.IsEnterpriseEdition() {
+		assert.Equal(t, uint32(4), *dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
+	} else {
+		assert.Nil(t, dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
+	}
 }
