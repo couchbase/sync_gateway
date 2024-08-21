@@ -75,6 +75,13 @@ const (
 	DatabaseCollectionConflictDesc = "The total number of times a database config is rolled back to an invalid state (collection conflicts)."
 )
 
+// audit stat
+const (
+	NumAuditsLoggedDesc         = "The total number of audit events logged."
+	NumAuditsFilteredByUserDesc = "The total number of audit events filtered by user."
+	NumAuditsFilteredByRoleDesc = "The total number of audit events filtered by role."
+)
+
 // cache stats descriptions
 const (
 	AbandonedSequencesDesc = "The total number of skipped sequences that were not found after 60 minutes and were abandoned."

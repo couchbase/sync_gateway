@@ -132,7 +132,9 @@ func TestAuditLoggingFields(t *testing.T) {
 		// auditableAction is a function that performs an action that should've been audited
 		auditableAction func(t testing.TB)
 		// expectedAuditEvents is a list of expected audit events and their fields for the given action... can be more than one event produced for a given action
-		expectedAuditEventFields map[base.AuditID]base.AuditFields
+		expectedAuditEventFields                 map[base.AuditID]base.AuditFields
+		expectedStatNumAuditEventsFilteredByUser int64
+		expectedStatNumAuditEventsFilteredByRole int64
 	}{
 
 		{
@@ -377,12 +379,14 @@ func TestAuditLoggingFields(t *testing.T) {
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/db/", "", filteredPublicUsername), http.StatusOK)
 			},
+			expectedStatNumAuditEventsFilteredByUser: 3, // http, auth, read db
 		},
 		{
 			name: "filtered public role request",
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/db/", "", filteredPublicRoleUsername), http.StatusOK)
 			},
+			expectedStatNumAuditEventsFilteredByRole: 3, // http, auth, read db
 		},
 		{
 			name: "filtered admin request",
@@ -395,6 +399,7 @@ func TestAuditLoggingFields(t *testing.T) {
 				}
 				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminUsername, RestTesterDefaultUserPassword), http.StatusOK)
 			},
+			expectedStatNumAuditEventsFilteredByUser: 3, // http, auth, read db
 		},
 		{
 			name: "filtered admin role request",
@@ -407,6 +412,7 @@ func TestAuditLoggingFields(t *testing.T) {
 				}
 				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminRoleUsername, RestTesterDefaultUserPassword), http.StatusOK)
 			},
+			expectedStatNumAuditEventsFilteredByRole: 3, // http, auth, read db
 		},
 		{
 			name: "authed admin request role filtered on different bucket",
@@ -480,7 +486,23 @@ func TestAuditLoggingFields(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		rt.Run(testCase.name, func(t *testing.T) {
+			numAuditEventsStatBefore := base.SyncGatewayStats.GlobalStats.AuditStat.NumAuditsLogged.Value()
+			numAuditEventsFilteredByUserStatBefore := base.SyncGatewayStats.GlobalStats.AuditStat.NumAuditsFilteredByUser.Value()
+			numAuditEventsFilteredByRoleStatBefore := base.SyncGatewayStats.GlobalStats.AuditStat.NumAuditsFilteredByRole.Value()
+
 			output := base.AuditLogContents(t, testCase.auditableAction)
+
+			numAuditEventsStatAfter := base.SyncGatewayStats.GlobalStats.AuditStat.NumAuditsLogged.Value()
+			numAuditEventsFilteredByUserStatAfter := base.SyncGatewayStats.GlobalStats.AuditStat.NumAuditsFilteredByUser.Value()
+			numAuditEventsFilteredByRoleStatAfter := base.SyncGatewayStats.GlobalStats.AuditStat.NumAuditsFilteredByRole.Value()
+
+			numAuditEventsStat := numAuditEventsStatAfter - numAuditEventsStatBefore
+			assert.Equal(t, int64(len(testCase.expectedAuditEventFields)), numAuditEventsStat)
+			numAuditEventsFilteredByUserStat := numAuditEventsFilteredByUserStatAfter - numAuditEventsFilteredByUserStatBefore
+			assert.Equal(t, testCase.expectedStatNumAuditEventsFilteredByUser, numAuditEventsFilteredByUserStat)
+			numAuditEventsFilteredByRoleStat := numAuditEventsFilteredByRoleStatAfter - numAuditEventsFilteredByRoleStatBefore
+			assert.Equal(t, testCase.expectedStatNumAuditEventsFilteredByRole, numAuditEventsFilteredByRoleStat)
+
 			events := jsonLines(t, output)
 
 			assert.Equalf(t, len(testCase.expectedAuditEventFields), len(events), "expected exactly %d audit events, got %d", len(testCase.expectedAuditEventFields), len(events))
