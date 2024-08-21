@@ -46,7 +46,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	// upsert 1 config field
 	resp = BootstrapAdminRequest(t, sc, http.MethodPost, "/db1/_config",
-		`{"cache": {"rev_cache":{"size":1234}}}`,
+		`{"cache": {"rev_cache":{"max_item_count":1234}}}`,
 	)
 	resp.RequireStatus(http.StatusCreated)
 

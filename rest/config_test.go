@@ -177,7 +177,7 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 }
 
 func TestConfigValidationCache(t *testing.T) {
-	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
+	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"max_item_count": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
 	ctx := base.TestCtx(t)
 	buf := bytes.NewBufferString(jsonConfig)
 	config, err := readLegacyServerConfig(ctx, buf)
