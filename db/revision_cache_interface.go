@@ -76,13 +76,13 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 	cacheHitStat := cacheStats.RevisionCacheHits
 	cacheMissStat := cacheStats.RevisionCacheMisses
 	cacheNumItemsStat := cacheStats.RevisionCacheNumItems
-	memoryStat := cacheStats.RevisionCacheTotalMemory
+	cacheMemoryStat := cacheStats.RevisionCacheTotalMemory
 
 	if cacheOptions.ShardCount > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.SizeByItems, cacheOptions.SizeInBytes, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
+		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.SizeByItems, cacheOptions.SizeInBytes, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 	}
 
-	return NewLRURevisionCache(cacheOptions.SizeByItems, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
+	return NewLRURevisionCache(cacheOptions.SizeByItems, cacheOptions.SizeInBytes, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 }
 
 type RevisionCacheOptions struct {

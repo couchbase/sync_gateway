@@ -26,14 +26,14 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat *base.SgwIntStat, cacheMemoryStat *base.SgwIntStat) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, memoryCapacity int64, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat *base.SgwIntStat) *ShardedLRURevisionCache {
 
 	caches := make([]*LRURevisionCache, shardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
 	perCacheCapacity := 1.1 * float32(capacity) / float32(shardCount)
 	perCacheMemoryCapacity := 1.1 * float32(memoryCapacity) / float32(shardCount)
 	for i := 0; i < int(shardCount); i++ {
-		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), int64(perCacheMemoryCapacity+0.5), backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
+		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), int64(perCacheMemoryCapacity+0.5), backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 	}
 
 	return &ShardedLRURevisionCache{
@@ -105,17 +105,18 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(numCapacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat *base.SgwIntStat, revCacheMemoryStat *base.SgwIntStat) *LRURevisionCache {
+func NewLRURevisionCache(numCapacity uint32, memoryCapacity int64, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat, revCacheMemoryStat *base.SgwIntStat) *LRURevisionCache {
 
 	return &LRURevisionCache{
-		cache:         map[IDAndRev]*list.Element{},
-		lruList:       list.New(),
-		capacity:      numCapacity,
-		backingStores: backingStores,
-		cacheHits:     cacheHitStat,
-		cacheMisses:   cacheMissStat,
-		cacheNumItems: cacheNumItemsStat,
-		memoryBytes:   revCacheMemoryStat,
+		cache:          map[IDAndRev]*list.Element{},
+		lruList:        list.New(),
+		capacity:       numCapacity,
+		backingStores:  backingStores,
+		cacheHits:      cacheHitStat,
+		cacheMisses:    cacheMissStat,
+		cacheNumItems:  cacheNumItemsStat,
+		memoryBytes:    revCacheMemoryStat,
+		memoryCapacity: memoryCapacity,
 	}
 }
 
