@@ -26,19 +26,25 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, memoryCapacity int64, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat *base.SgwIntStat) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat *base.SgwIntStat) *ShardedLRURevisionCache {
 
-	caches := make([]*LRURevisionCache, shardCount)
+	caches := make([]*LRURevisionCache, revCacheOptions.ShardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
-	perCacheCapacity := 1.1 * float32(capacity) / float32(shardCount)
-	perCacheMemoryCapacity := 1.1 * float32(memoryCapacity) / float32(shardCount)
-	for i := 0; i < int(shardCount); i++ {
-		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), int64(perCacheMemoryCapacity+0.5), backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
+	perCacheCapacity := 1.1 * float32(revCacheOptions.MaxItemCount) / float32(revCacheOptions.ShardCount)
+	revCacheOptions.MaxItemCount = uint32(perCacheCapacity)
+	var perCacheMemoryCapacity float32
+	if revCacheOptions.MaxBytes > 0 {
+		perCacheMemoryCapacity = 1.1 * float32(revCacheOptions.MaxBytes) / float32(revCacheOptions.ShardCount)
+		revCacheOptions.MaxBytes = int64(perCacheMemoryCapacity)
+	}
+
+	for i := 0; i < int(revCacheOptions.ShardCount); i++ {
+		caches[i] = NewLRURevisionCache(revCacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 	}
 
 	return &ShardedLRURevisionCache{
 		caches:    caches,
-		numShards: shardCount,
+		numShards: revCacheOptions.ShardCount,
 	}
 }
 
@@ -76,16 +82,16 @@ func (sc *ShardedLRURevisionCache) Remove(docID, revID string, collectionID uint
 
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
-	backingStores  map[uint32]RevisionCacheBackingStore
-	cache          map[IDAndRev]*list.Element
-	lruList        *list.List
-	cacheHits      *base.SgwIntStat
-	cacheMisses    *base.SgwIntStat
-	cacheNumItems  *base.SgwIntStat
-	lock           sync.Mutex
-	capacity       uint32
-	memoryCapacity int64
-	memoryBytes    *base.SgwIntStat
+	backingStores    map[uint32]RevisionCacheBackingStore
+	cache            map[IDAndRev]*list.Element
+	lruList          *list.List
+	cacheHits        *base.SgwIntStat
+	cacheMisses      *base.SgwIntStat
+	cacheNumItems    *base.SgwIntStat
+	lock             sync.Mutex
+	capacity         uint32
+	memoryCapacity   int64
+	cacheMemoryBytes *base.SgwIntStat
 }
 
 // The cache payload data. Stored as the Value of a list Element.
@@ -105,18 +111,18 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(numCapacity uint32, memoryCapacity int64, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat, revCacheMemoryStat *base.SgwIntStat) *LRURevisionCache {
+func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat *base.SgwIntStat, cacheMissStat *base.SgwIntStat, cacheNumItemsStat *base.SgwIntStat, revCacheMemoryStat *base.SgwIntStat) *LRURevisionCache {
 
 	return &LRURevisionCache{
-		cache:          map[IDAndRev]*list.Element{},
-		lruList:        list.New(),
-		capacity:       numCapacity,
-		backingStores:  backingStores,
-		cacheHits:      cacheHitStat,
-		cacheMisses:    cacheMissStat,
-		cacheNumItems:  cacheNumItemsStat,
-		memoryBytes:    revCacheMemoryStat,
-		memoryCapacity: memoryCapacity,
+		cache:            map[IDAndRev]*list.Element{},
+		lruList:          list.New(),
+		capacity:         revCacheOptions.MaxItemCount,
+		backingStores:    backingStores,
+		cacheHits:        cacheHitStat,
+		cacheMisses:      cacheMissStat,
+		cacheNumItems:    cacheNumItemsStat,
+		cacheMemoryBytes: revCacheMemoryStat,
+		memoryCapacity:   revCacheOptions.MaxBytes,
 	}
 }
 
@@ -145,7 +151,7 @@ func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string
 	if value != nil {
 		outGoingBytes := value.updateDelta(toDelta)
 		if outGoingBytes != 0 {
-			rc.memoryBytes.Add(outGoingBytes)
+			rc.cacheMemoryBytes.Add(outGoingBytes)
 		}
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction()
@@ -163,7 +169,7 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 
 	if !statEvent && err == nil {
 		// cache miss so we had to load doc, increment memory count
-		rc.memoryBytes.Add(docRev.MemoryBytes)
+		rc.cacheMemoryBytes.Add(value.getItemBytes())
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction()
 	}
@@ -199,7 +205,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 
 	if !statEvent && err == nil {
 		// cache miss so we had to load doc, increment memory count
-		rc.memoryBytes.Add(docRev.MemoryBytes)
+		rc.cacheMemoryBytes.Add(value.getItemBytes())
 		// check for rev cache memory based eviction
 		rc.revCacheMemoryBasedEviction()
 	}
@@ -228,7 +234,7 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 	value := rc.getValue(docRev.DocID, docRev.RevID, collectionID, true)
 	// increment incoming bytes
 	docRev.CalculateBytes()
-	rc.memoryBytes.Add(docRev.MemoryBytes)
+	rc.cacheMemoryBytes.Add(docRev.MemoryBytes)
 	// check for rev cache memory based eviction
 	rc.revCacheMemoryBasedEviction()
 	value.store(docRev)
@@ -244,7 +250,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	if elem := rc.cache[key]; elem != nil {
 		revItem := elem.Value.(*revCacheValue)
 		// decrement item bytes by the removed item
-		rc.memoryBytes.Add(-revItem.itemBytes)
+		rc.cacheMemoryBytes.Add(-revItem.getItemBytes())
 		rc.lruList.Remove(elem)
 		newItem = false
 	}
@@ -269,11 +275,11 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 
 	docRev.CalculateBytes()
 	// add new item bytes to overall count
-	rc.memoryBytes.Add(docRev.MemoryBytes)
+	rc.cacheMemoryBytes.Add(docRev.MemoryBytes)
 
 	// check we aren't over memory capacity, if so perform eviction
 	if rc.memoryCapacity > 0 {
-		for rc.memoryBytes.Value() > rc.memoryCapacity {
+		for rc.cacheMemoryBytes.Value() > rc.memoryCapacity {
 			rc.purgeOldest_()
 		}
 	}
@@ -324,8 +330,7 @@ func (rc *LRURevisionCache) Remove(docID, revID string, collectionID uint32) {
 	rc.lruList.Remove(element)
 	// decrement the overall memory bytes count
 	revItem := element.Value.(*revCacheValue)
-	totalBytesToRemove := revItem.getItemBytes()
-	rc.memoryBytes.Add(-totalBytesToRemove)
+	rc.cacheMemoryBytes.Add(-revItem.getItemBytes())
 	delete(rc.cache, key)
 	rc.cacheNumItems.Add(-1)
 }
@@ -344,9 +349,8 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 func (rc *LRURevisionCache) purgeOldest_() {
 	value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
 	delete(rc.cache, value.key)
-	totalBytesToRemove := value.getItemBytes()
 	// decrement memory overall size
-	rc.memoryBytes.Add(-totalBytesToRemove)
+	rc.cacheMemoryBytes.Add(-value.getItemBytes())
 }
 
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
@@ -410,7 +414,6 @@ func (value *revCacheValue) asDocumentRevision(delta *RevisionDelta) (DocumentRe
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
-		MemoryBytes: value.itemBytes,
 	}
 	docRev.Delta = delta
 
@@ -481,7 +484,7 @@ func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int6
 	return diffInBytes
 }
 
-// getItemBytes retrieves the rev cache items overall memory footprint
+// getItemBytes acquires read lock and retrieves the rev cache items overall memory footprint
 func (value *revCacheValue) getItemBytes() int64 {
 	value.lock.RLock()
 	defer value.lock.RUnlock()
@@ -526,7 +529,7 @@ func (delta *RevisionDelta) CalculateDeltaBytes() {
 // revCacheMemoryBasedEviction checks for rev cache eviction, if required calls performEviction which will acquire lock to evict
 func (rc *LRURevisionCache) revCacheMemoryBasedEviction() {
 	// if memory capacity is not set, don't check for eviction this way
-	if rc.memoryCapacity > 0 && rc.memoryBytes.Value() > rc.memoryCapacity {
+	if rc.memoryCapacity > 0 && rc.cacheMemoryBytes.Value() > rc.memoryCapacity {
 		rc.performEviction()
 	}
 }
@@ -535,7 +538,7 @@ func (rc *LRURevisionCache) revCacheMemoryBasedEviction() {
 func (rc *LRURevisionCache) performEviction() {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
-	for rc.memoryBytes.Value() > rc.memoryCapacity {
+	for rc.cacheMemoryBytes.Value() > rc.memoryCapacity {
 		rc.purgeOldest_()
 	}
 }

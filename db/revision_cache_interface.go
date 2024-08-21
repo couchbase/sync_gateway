@@ -68,7 +68,7 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 		cacheOptions = DefaultRevisionCacheOptions()
 	}
 
-	if cacheOptions.SizeByItems == 0 {
+	if cacheOptions.MaxItemCount == 0 {
 		bypassStat := cacheStats.RevisionCacheBypass
 		return NewBypassRevisionCache(backingStores, bypassStat)
 	}
@@ -79,22 +79,22 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 	cacheMemoryStat := cacheStats.RevisionCacheTotalMemory
 
 	if cacheOptions.ShardCount > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.SizeByItems, cacheOptions.SizeInBytes, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
+		return NewShardedLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 	}
 
-	return NewLRURevisionCache(cacheOptions.SizeByItems, cacheOptions.SizeInBytes, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
+	return NewLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 }
 
 type RevisionCacheOptions struct {
-	SizeByItems uint32
-	SizeInBytes int64
-	ShardCount  uint16
+	MaxItemCount uint32
+	MaxBytes     int64
+	ShardCount   uint16
 }
 
 func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 	return &RevisionCacheOptions{
-		SizeByItems: DefaultRevisionCacheSize,
-		ShardCount:  DefaultRevisionCacheShardCount,
+		MaxItemCount: DefaultRevisionCacheSize,
+		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 }
 

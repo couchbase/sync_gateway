@@ -153,14 +153,12 @@ func (revisions Revisions) parseAncestorRevisions(toAncestorRevID string) []stri
 		return nil
 	}
 	result := make([]string, 0)
-	var revHistoryBytes int
 
 	// Start at the parent, end at toAncestorRevID
 	start = start - 1
 	for i := 1; i < len(ids); i++ {
 		revID := fmt.Sprintf("%d-%s", start, ids[i])
 		result = append(result, revID)
-		revHistoryBytes += len([]byte(revID))
 		if revID == toAncestorRevID {
 			break
 		}
