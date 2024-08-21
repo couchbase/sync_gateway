@@ -59,17 +59,10 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 
 		apr.blipSyncContext.fatalErrorCallback = func(err error) {
 			if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
-				err = ErrUseProposeChanges
 				_ = apr.setError(PreHydrogenTargetAllowConflictsError)
-				err = apr.stopAndDisconnect()
-				if err != nil {
-					base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
-				}
+				apr.stopAndDisconnect()
 			} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
-				err = apr.reconnect()
-				if err != nil {
-					base.ErrorfCtx(apr.ctx, "Failed to reconnect replication: %v", err)
-				}
+				apr.reconnect()
 			}
 			// No special handling for error
 		}

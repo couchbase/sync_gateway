@@ -48,7 +48,7 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 		return fmt.Errorf("ActivePushReplicator already running")
 	}
 
-	apr.setState(ReplicationStateStarting)
+	apr._setState(ReplicationStateStarting)
 	logCtx := base.CorrelationIDLogCtx(ctx,
 		apr.config.ID+"-"+string(ActiveReplicatorTypePush))
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
@@ -98,7 +98,7 @@ func (apr *ActivePushReplicator) _connect() error {
 		return err
 	}
 
-	apr.setState(ReplicationStateRunning)
+	apr._setState(ReplicationStateRunning)
 	return nil
 }
 
@@ -121,18 +121,10 @@ func (apr *ActivePushReplicator) Complete() {
 		return nil
 	})
 
-	apr._stop()
-
-	stopErr := apr._disconnect()
-	if stopErr != nil {
-		base.InfofCtx(apr.ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
-	}
-	apr.setState(ReplicationStateStopped)
+	apr.stopAndDisconnect()
 
 	// unlock the replication before triggering callback, in case callback attempts to re-acquire the lock
 	onCompleteCallback := apr.onReplicatorComplete
-	apr._publishStatus()
-	apr.lock.Unlock()
 
 	if onCompleteCallback != nil {
 		onCompleteCallback()
@@ -263,15 +255,12 @@ func (apr *ActivePushReplicator) _waitForPendingChangesResponse() error {
 }
 
 // Stop stops the push replication and waits for the send changes goroutine to finish.
-func (apr *ActivePushReplicator) Stop() error {
-	if err := apr.stopAndDisconnect(); err != nil {
-		return err
-	}
+func (apr *ActivePushReplicator) Stop() {
+	apr.stopAndDisconnect()
 	teardownStart := time.Now()
 	for apr.activeSendChanges.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	return nil
 }
 
 func (apr *ActivePushReplicator) _startPushNonCollection() error {
@@ -305,17 +294,9 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 
 	apr.blipSyncContext.fatalErrorCallback = func(err error) {
 		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
-			err = ErrUseProposeChanges
 			_ = apr.setError(PreHydrogenTargetAllowConflictsError)
-			err = apr.stopAndDisconnect()
-			if err != nil {
-				base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
-			}
 		} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
-			err = apr.reconnect()
-			if err != nil {
-				base.ErrorfCtx(apr.ctx, "Failed to reconnect replication: %v", err)
-			}
+			apr.reconnect()
 		}
 		// No special handling for error
 	}

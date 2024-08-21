@@ -96,22 +96,11 @@ func (ar *ActiveReplicator) Stop() error {
 		return fmt.Errorf("Attempted to stop activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
 	}
 
-	var pushErr error
 	if ar.Push != nil {
-		pushErr = ar.Push.Stop()
+		ar.Push.Stop()
 	}
-
-	var pullErr error
 	if ar.Pull != nil {
-		pullErr = ar.Pull.Stop()
-	}
-
-	if pushErr != nil {
-		return pushErr
-	}
-
-	if pullErr != nil {
-		return pullErr
+		ar.Pull.Stop()
 	}
 
 	if base.BoolDefault(ar.config.reportHandlerPanicsOnStop, true) {

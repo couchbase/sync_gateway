@@ -173,14 +173,11 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		a.lock.Lock()
 
 		// preserve lastError from the previous connect attempt
-		a.setState(ReplicationStateReconnecting)
+		a._setState(ReplicationStateReconnecting)
 
 		// disconnect no-ops if nothing is active, but will close any checkpointer processes, blip contexts, etc, if active.
 		base.TracefCtx(a.ctx, base.KeyReplicate, "calling disconnect from reconnectLoop")
-		err = a._disconnect()
-		if err != nil {
-			base.InfofCtx(a.ctx, base.KeyReplicate, "error stopping replicator on reconnect: %v", err)
-		}
+		a._disconnect()
 
 		// set lastError, but don't set an error state inside the reconnect loop
 		err = a.replicatorConnectFn()
@@ -201,28 +198,33 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		deadlineCancel()
 	}
 	if err != nil {
-		a.replicationStats.NumReconnectsAborted.Add(1)
 		base.WarnfCtx(ctx, "couldn't reconnect replicator: %v", err)
+		a.replicationStats.NumReconnectsAborted.Add(1)
+		a.stopAndMarkState(ReplicationStateError)
 	}
 }
 
 // reconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
-func (a *activeReplicatorCommon) reconnect() error {
+func (a *activeReplicatorCommon) reconnect() {
 	a.lock.Lock()
 	base.TracefCtx(a.ctx, base.KeyReplicate, "Calling disconnect from reconnect()")
-	err := a._disconnect()
+	a._disconnect()
 	a._publishStatus()
 	a.lock.Unlock()
-	return err
 }
 
 // stopAndDisconnect runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
-func (a *activeReplicatorCommon) stopAndDisconnect() error {
+func (a *activeReplicatorCommon) stopAndDisconnect() {
+	base.TracefCtx(a.ctx, base.KeyReplicate, "Calling _stop and _disconnect from stopAndDisconnect()")
+	a.stopAndMarkState(ReplicationStateStopped)
+}
+
+// stopAndMarkState stops any of the active connections on the replicator and waits for up to 10s for the reconnect loop to terminate.
+func (a *activeReplicatorCommon) stopAndMarkState(state string) {
 	a.lock.Lock()
 	a._stop()
-	base.TracefCtx(a.ctx, base.KeyReplicate, "Calling _stop and _disconnect from stopAndDisconnect()")
-	err := a._disconnect()
-	a.setState(ReplicationStateStopped)
+	a._disconnect()
+	a._setState(state)
 	a._publishStatus()
 	a.lock.Unlock()
 
@@ -231,14 +233,18 @@ func (a *activeReplicatorCommon) stopAndDisconnect() error {
 	for a.reconnectActive.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	return err
+
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a._setState(state)
+	a._publishStatus()
 }
 
 // _disconnect aborts any replicator processes used during a connected/running replication (checkpointing, blip contexts, etc.)
-func (a *activeReplicatorCommon) _disconnect() error {
+func (a *activeReplicatorCommon) _disconnect() {
 	if a == nil {
 		// noop
-		return nil
+		return
 	}
 
 	if a.checkpointerCtx != nil {
@@ -263,8 +269,6 @@ func (a *activeReplicatorCommon) _disconnect() error {
 		a.blipSyncContext.Close()
 		a.blipSyncContext = nil
 	}
-
-	return nil
 }
 
 // _stop aborts any replicator processes that run outside of a running replication (e.g: async reconnect handling)
@@ -295,9 +299,9 @@ func (a *activeReplicatorCommon) setLastError(err error) {
 	a.stateErrorLock.Unlock()
 }
 
-// setState updates replicator state and resets lastError to nil.  Expects callers
+// _setState updates replicator state and resets lastError to nil.  Expects callers
 // to be holding a.lock
-func (a *activeReplicatorCommon) setState(state string) {
+func (a *activeReplicatorCommon) _setState(state string) {
 	a.stateErrorLock.Lock()
 	a.state = state
 	if state == ReplicationStateRunning {

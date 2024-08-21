@@ -44,7 +44,7 @@ func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 		return fmt.Errorf("ActivePullReplicator already running")
 	}
 
-	apr.setState(ReplicationStateStarting)
+	apr._setState(ReplicationStateStarting)
 	logCtx := base.CorrelationIDLogCtx(ctx, apr.config.ID+"-"+string(ActiveReplicatorTypePull))
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
@@ -95,7 +95,7 @@ func (apr *ActivePullReplicator) _connect() error {
 		return err
 	}
 
-	apr.setState(ReplicationStateRunning)
+	apr._setState(ReplicationStateRunning)
 
 	return nil
 }
@@ -162,21 +162,12 @@ func (apr *ActivePullReplicator) Complete() {
 		return nil
 	})
 
-	apr._stop()
-
 	base.TracefCtx(apr.ctx, base.KeyReplicate, "Calling disconnect from Complete() in active replicator pull")
-	stopErr := apr._disconnect()
-	if stopErr != nil {
-		base.InfofCtx(apr.ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
-	}
-	apr.setState(ReplicationStateStopped)
+	apr.stopAndDisconnect()
 
 	// unlock the replication before triggering callback, in case callback attempts to access replication information
 	// from the replicator
 	onCompleteCallback := apr.onReplicatorComplete
-
-	apr._publishStatus()
-	apr.lock.Unlock()
 
 	if onCompleteCallback != nil {
 		onCompleteCallback()
@@ -297,9 +288,6 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicat
 }
 
 // Stop stops the pull replication and waits for the sub changes goroutine to finish.
-func (apr *ActivePullReplicator) Stop() error {
-	if err := apr.stopAndDisconnect(); err != nil {
-		return err
-	}
-	return nil
+func (apr *ActivePullReplicator) Stop() {
+	apr.stopAndDisconnect()
 }
