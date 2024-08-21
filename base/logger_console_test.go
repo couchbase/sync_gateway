@@ -13,9 +13,14 @@ package base
 import (
 	"fmt"
 	"io"
+	"path/filepath"
+	"slices"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var consoleShouldLogTests = []struct {
@@ -284,6 +289,112 @@ func TestConsoleLogDefaults(t *testing.T) {
 			assert.Equal(tt, *test.expected.LogKeyMask, *logger.LogKeyMask)
 			assert.Equal(tt, test.expected.isStderr, logger.isStderr)
 			assert.Equal(tt, test.expected.config.LogKeys, logger.config.LogKeys)
+		})
+	}
+}
+
+func TestConsoleIrregularLogPaths(t *testing.T) {
+	// override min rotation interval for testing
+	originalMinRotationInterval := minLogRotationInterval
+	minLogRotationInterval = time.Millisecond * 10
+	defer func() { minLogRotationInterval = originalMinRotationInterval }()
+
+	testCases := []struct {
+		name    string
+		logPath string
+	}{
+		{
+			name:    ".log extension",
+			logPath: "foo.log",
+			// take foo-2021-01-01T00-00-00.000.log
+		},
+		{
+			name:    "no extension",
+			logPath: "foo",
+			// foo-2021-01-01T00-00-00.000
+		},
+		{
+			name:    "multiple dots",
+			logPath: "two.ext.log",
+			// two.ext-2021-01-01T00-00-00.000.log
+		},
+		{
+			name:    "start with .",
+			logPath: ".hidden.log",
+			// .hidden-2021-01-01T00-00-00.000.log
+		},
+		{
+			name:    "start with ., no ext",
+			logPath: ".hidden",
+			// -2021-01-01T00-00-00.000.hidden
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			tempdir := lumberjackTempDir(t)
+			config := &ConsoleLoggerConfig{
+				LogLevel:   logLevelPtr(LevelDebug),
+				LogKeys:    []string{"HTTP"},
+				FileOutput: filepath.Join(tempdir, test.logPath),
+				FileLoggerConfig: FileLoggerConfig{
+					Enabled:             BoolPtr(true),
+					CollationBufferSize: IntPtr(0),
+					Rotation: logRotationConfig{
+						RotationInterval: NewConfigDuration(10 * time.Millisecond),
+					},
+				}}
+
+			ctx := TestCtx(t)
+			logger, err := NewConsoleLogger(ctx, false, config)
+			require.NoError(t, err)
+
+			// ensure logging is done before closing the logger
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			doneChan := make(chan struct{})
+			defer func() {
+				close(doneChan)
+				wg.Wait()
+				assert.NoError(t, logger.Close())
+			}()
+			go func() {
+				for {
+					select {
+					case <-doneChan:
+						wg.Done()
+						return
+					default:
+						logger.logf("some text")
+					}
+				}
+			}()
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				filenames := getDirFiles(t, tempdir)
+				assert.Contains(c, filenames, test.logPath)
+				assert.Greater(c, len(filenames), 2)
+			}, time.Second, 10*time.Millisecond)
+
+			// add a few non-matching files to the directory for negative testing
+			nonMatchingFileNames := []string{
+				"console.log",
+				"consoellog",
+				"console.log.txt",
+				".console",
+				"consolelog-2021-01-01T00-00-00.000",
+				"console-2021-01-01T00-00-00.000.log",
+			}
+			for _, name := range nonMatchingFileNames {
+				require.NoError(t, makeTestFile(1, name, tempdir))
+			}
+
+			_, pattern := getDeletionDirAndRegexp(filepath.Join(tempdir, test.logPath))
+			for _, filename := range getDirFiles(t, tempdir) {
+				if slices.Contains(nonMatchingFileNames, filename) {
+					require.NotRegexp(t, pattern, filename)
+				} else {
+					require.Regexp(t, pattern, filename)
+				}
+			}
 		})
 	}
 }

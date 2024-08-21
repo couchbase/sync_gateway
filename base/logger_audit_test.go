@@ -132,13 +132,13 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			ResetGlobalTestLogging(t)
 			ctx := TestCtx(t)
 			if testCase.contextFields != nil {
 				ctx = AuditLogCtx(ctx, testCase.contextFields)
 			}
 			logger, err := NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
-			defer assert.NoError(t, logger.Close())
 			auditLogger.Store(logger)
 
 			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()

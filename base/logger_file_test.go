@@ -109,126 +109,147 @@ func BenchmarkFileShouldLog(b *testing.B) {
 }
 
 func TestRotatedLogDeletion(t *testing.T) {
-	var dirContents []os.DirEntry
-
-	// Regular Test With multiple files above high and low watermark
-	dir := t.TempDir()
-
-	err := makeTestFile(2, logFilePrefix+"error-2019-02-01T12-00-00.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(2, logFilePrefix+"error-2019-02-01T12-10-00.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(2, logFilePrefix+"error-2019-02-01T12-20-00.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(2, logFilePrefix+"info-2019-02-01T12-00-00.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(2, logFilePrefix+"info-2019-02-01T12-01-00.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(2, logFilePrefix+"info-2019-02-02T12-00-00.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(2, logFilePrefix+"info-2019-02-02T12-10-00.log.gz", dir)
-	assert.NoError(t, err)
-	ctx := TestCtx(t)
-	err = runLogDeletion(ctx, dir, "error", 3, 5)
-	assert.NoError(t, err)
-	err = runLogDeletion(ctx, dir, "info", 5, 7)
-	assert.NoError(t, err)
-	dirContents, err = os.ReadDir(dir)
-	require.NoError(t, err)
-	require.Len(t, dirContents, 3)
-
-	var fileNames = []string{}
-
-	for fileIndex := range dirContents {
-		fileNames = append(fileNames, dirContents[fileIndex].Name())
+	type logFile struct {
+		name string
+		size int
 	}
-
-	assert.Contains(t, fileNames, logFilePrefix+"error-2019-02-01T12-20-00.log.gz")
-	assert.Contains(t, fileNames, logFilePrefix+"info-2019-02-02T12-00-00.log.gz")
-	assert.Contains(t, fileNames, logFilePrefix+"info-2019-02-02T12-10-00.log.gz")
-
-	assert.NoError(t, os.RemoveAll(dir))
-
-	// Hit low watermark but not high watermark
-	dir = t.TempDir()
-	err = makeTestFile(3, logFilePrefix+"error.log.gz", dir)
-	assert.NoError(t, err)
-	err = runLogDeletion(ctx, dir, "error", 2, 4)
-	assert.NoError(t, err)
-	dirContents, err = os.ReadDir(dir)
-	require.NoError(t, err)
-	require.Len(t, dirContents, 1)
-	assert.NoError(t, os.RemoveAll(dir))
-
-	// Single file hitting low and high watermark
-	dir = t.TempDir()
-	err = makeTestFile(5, logFilePrefix+"error.log.gz", dir)
-	assert.NoError(t, err)
-	err = runLogDeletion(ctx, dir, "error", 2, 4)
-	assert.NoError(t, err)
-	dirContents, err = os.ReadDir(dir)
-	require.NoError(t, err)
-	assert.Empty(t, dirContents)
-	assert.NoError(t, os.RemoveAll(dir))
-
-	// Not hitting low or high therefore no deletion
-	dir = t.TempDir()
-	err = makeTestFile(1, logFilePrefix+"error.log.gz", dir)
-	assert.NoError(t, err)
-	err = runLogDeletion(ctx, dir, "error", 2, 4)
-	assert.NoError(t, err)
-	dirContents, err = os.ReadDir(dir)
-	require.NoError(t, err)
-	require.Len(t, dirContents, 1)
-	assert.NoError(t, os.RemoveAll(dir))
-
-	// Test deletion with files at the end of date boundaries
-	dir = t.TempDir()
-	err = makeTestFile(1, logFilePrefix+"error-2018-12-31T23-59-59.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(1, logFilePrefix+"error-2019-01-01T00-00-00.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(1, logFilePrefix+"error-2019-01-31T23-59-59.log.gz", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(1, logFilePrefix+"error-2019-01-01T12-00-00.log.gz", dir)
-	assert.NoError(t, err)
-	err = runLogDeletion(ctx, dir, "error", 2, 3)
-	assert.NoError(t, err)
-
-	dirContents, err = os.ReadDir(dir)
-	require.NoError(t, err)
-	require.Len(t, dirContents, 2)
-
-	fileNames = []string{}
-	for fileIndex := range dirContents {
-		fileNames = append(fileNames, dirContents[fileIndex].Name())
+	testCases := []struct {
+		name              string
+		preFiles          []logFile
+		postFileNames     []string
+		logDeletionPrefix string
+		lowWatermark      int
+		highWatermark     int
+	}{
+		{
+			name: "error-deletion",
+			preFiles: []logFile{
+				logFile{size: 2, name: "error-2019-02-01T12-00-00.000.log.gz"},
+				logFile{size: 2, name: "error-2019-02-01T12-10-00.000.log.gz"},
+				logFile{size: 2, name: "error-2019-02-01T12-20-00.000.log.gz"},
+				logFile{size: 2, name: "info-2019-02-01T12-00-00.000.log.gz"},
+				logFile{size: 2, name: "info-2019-02-01T12-01-00.000.log.gz"},
+				logFile{size: 2, name: "info-2019-02-02T12-00-00.000.log.gz"},
+				logFile{size: 2, name: "info-2019-02-02T12-10-00.000.log.gz"},
+			},
+			logDeletionPrefix: "error.log",
+			lowWatermark:      3,
+			highWatermark:     5,
+			postFileNames: []string{
+				"error-2019-02-01T12-20-00.000.log.gz",
+				"info-2019-02-01T12-00-00.000.log.gz",
+				"info-2019-02-01T12-01-00.000.log.gz",
+				"info-2019-02-02T12-00-00.000.log.gz",
+				"info-2019-02-02T12-10-00.000.log.gz",
+			},
+		},
+		{
+			name: "info-deletion",
+			preFiles: []logFile{
+				logFile{size: 2, name: "error-2019-02-01T12-00-00.000.log.gz"},
+				logFile{size: 2, name: "error-2019-02-01T12-10-00.000.log.gz"},
+				logFile{size: 2, name: "error-2019-02-01T12-20-00.000.log.gz"},
+				logFile{size: 2, name: "info-2019-02-01T12-00-00.000.log.gz"},
+				logFile{size: 2, name: "info-2019-02-01T12-01-00.000.log.gz"},
+				logFile{size: 2, name: "info-2019-02-02T12-00-00.000.log.gz"},
+				logFile{size: 2, name: "info-2019-02-02T12-10-00.000.log.gz"},
+			},
+			logDeletionPrefix: "info.log",
+			lowWatermark:      5,
+			highWatermark:     7,
+			postFileNames: []string{
+				"error-2019-02-01T12-00-00.000.log.gz",
+				"error-2019-02-01T12-10-00.000.log.gz",
+				"error-2019-02-01T12-20-00.000.log.gz",
+				"info-2019-02-02T12-00-00.000.log.gz",
+				"info-2019-02-02T12-10-00.000.log.gz",
+			},
+		},
+		{
+			name: "low but not high watermark",
+			preFiles: []logFile{
+				logFile{size: 3, name: "error"},
+			},
+			logDeletionPrefix: "error",
+			lowWatermark:      2,
+			highWatermark:     4,
+			postFileNames: []string{
+				"error",
+			},
+		},
+		{
+			name: "high and low watermark",
+			preFiles: []logFile{
+				logFile{size: 5, name: "error"},
+			},
+			logDeletionPrefix: "error",
+			lowWatermark:      2,
+			highWatermark:     4,
+			postFileNames:     []string{},
+		},
+		{
+			name: "date boundary deletion",
+			preFiles: []logFile{
+				logFile{size: 1, name: "error-2018-12-31T23-59-59.000.log.gz"},
+				logFile{size: 1, name: "error-2019-01-01T00-00-00.000.log.gz"},
+				logFile{size: 1, name: "error-2019-01-31T23-59-59.000.log.gz"},
+				logFile{size: 1, name: "error-2019-01-01T12-00-00.000.log.gz"},
+			},
+			logDeletionPrefix: "error.log",
+			lowWatermark:      2,
+			highWatermark:     3,
+			postFileNames: []string{
+				"error-2019-01-01T12-00-00.000.log.gz",
+				"error-2019-01-31T23-59-59.000.log.gz",
+			},
+		},
+		{
+			name: "base .log and .gz logs",
+			preFiles: []logFile{
+				logFile{size: 1, name: "error.log"},
+				logFile{size: 4, name: "error-2019-01-01T00-00-00.000.log.gz"},
+			},
+			logDeletionPrefix: "error.log",
+			lowWatermark:      2,
+			highWatermark:     3,
+			postFileNames: []string{
+				"error.log",
+			},
+		},
+		{
+			name: "base .log, gunzipped file and .gz logs",
+			preFiles: []logFile{
+				logFile{size: 1, name: "error.log"},
+				logFile{size: 4, name: "error-2019-01-01T00-00-00.000.log"},
+				logFile{size: 4, name: "error-2019-01-02T00-00-00.000.log.gz"},
+			},
+			logDeletionPrefix: "error.log",
+			lowWatermark:      2,
+			highWatermark:     3,
+			postFileNames: []string{
+				"error.log",
+			},
+		},
 	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 
-	assert.Contains(t, fileNames, logFilePrefix+"error-2019-01-01T12-00-00.log.gz")
-	assert.Contains(t, fileNames, logFilePrefix+"error-2019-01-31T23-59-59.log.gz")
+			dir := t.TempDir()
 
-	assert.NoError(t, os.RemoveAll(dir))
+			for _, f := range tc.preFiles {
+				require.NoError(t, makeTestFile(f.size, f.name, dir))
+			}
 
-	// Test deletion with no .gz files to ensure nothing is deleted
-	dir = t.TempDir()
-	err = makeTestFile(1, logFilePrefix+"error", dir)
-	assert.NoError(t, err)
-	err = makeTestFile(1, logFilePrefix+"info", dir)
-	assert.NoError(t, err)
+			ctx := TestCtx(t)
+			logFilePath := filepath.Join(dir, tc.logDeletionPrefix)
+			foundDir, logPattern := getDeletionDirAndRegexp(logFilePath)
+			require.Equal(t, filepath.Clean(dir), filepath.Clean(foundDir))
 
-	dirContents, err = os.ReadDir(dir)
-	require.NoError(t, err)
-	require.Len(t, dirContents, 2)
+			require.NoError(t, runLogDeletion(ctx, dir, logPattern, tc.lowWatermark, tc.highWatermark))
+			require.ElementsMatch(t, tc.postFileNames, getDirFiles(t, dir))
 
-	fileNames = []string{}
-	for fileIndex := range dirContents {
-		fileNames = append(fileNames, dirContents[fileIndex].Name())
+		})
 	}
-
-	assert.Contains(t, fileNames, logFilePrefix+"error")
-	assert.Contains(t, fileNames, logFilePrefix+"info")
-
-	assert.NoError(t, os.RemoveAll(dir))
 }
 
 func makeTestFile(sizeMB int, name string, dir string) (err error) {
@@ -243,4 +264,15 @@ func makeTestFile(sizeMB int, name string, dir string) (err error) {
 		return err
 	}
 	return nil
+}
+
+func getDirFiles(t *testing.T, dir string) []string {
+	dirContents, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	var fileNames []string
+	for _, file := range dirContents {
+		fileNames = append(fileNames, file.Name())
+	}
+	return fileNames
 }
