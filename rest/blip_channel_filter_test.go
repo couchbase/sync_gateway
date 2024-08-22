@@ -1,3 +1,11 @@
+// Copyright 2024-Present Couchbase, Inc.
+//
+// Use of this software is governed by the Business Source License included
+// in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+// in that file, in accordance with the Business Source License, use of this
+// software will be governed by the Apache License, Version 2.0, included in
+// the file licenses/APL2.txt.
+
 package rest
 
 import (
@@ -40,7 +48,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 
 			const docID = "doc1"
 			revID1 := rt.PutDoc("doc1", `{"channels":["A"]}`).Rev
-			rt.WaitForPendingChanges()
+			require.NoError(t, rt.WaitForPendingChanges())
 
 			response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=0&channels=A&include_docs=true", "", "alice")
 			RequireStatus(t, response, http.StatusOK)
@@ -68,7 +76,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 
 			// remove channel A from doc1
 			revID2 := rt.UpdateDoc(docID, revID1, `{"channels":["B"]}`).Rev
-			rt.WaitForPendingChanges()
+			require.NoError(t, rt.WaitForPendingChanges())
 
 			// alice will see doc1 rev2 with body
 			response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=2&channels=A&include_docs=true", "", "alice")
