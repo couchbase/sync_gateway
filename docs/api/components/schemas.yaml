@@ -2499,8 +2499,8 @@ Audit-logging-config:
             - type: object
               properties:
                 max_age:
-                  description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
-                  default: 0
+                  description: The maximum number of days to retain old log files.
+                  default: 6
                   type: integer
   type: object
   properties:
