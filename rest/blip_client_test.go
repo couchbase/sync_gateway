@@ -32,6 +32,7 @@ import (
 type BlipTesterClientOpts struct {
 	ClientDeltas                  bool // Support deltas on the client side
 	Username                      string
+	Password                      *string
 	Channels                      []string
 	SendRevocations               bool
 	SupportedBLIPProtocols        []string
@@ -551,8 +552,13 @@ func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (revID
 }
 
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) (*BlipTesterReplicator, error) {
+	password := "test"
+	if btc.Password != nil {
+		password = *btc.Password
+	}
+
 	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
-		connectingPassword:            "test",
+		connectingPassword:            password,
 		connectingUsername:            btc.Username,
 		connectingUserChannelGrants:   btc.Channels,
 		blipProtocols:                 btc.SupportedBLIPProtocols,
@@ -1027,6 +1033,25 @@ func (btc *BlipTesterCollectionClient) WaitForRev(docID, revID string) (data []b
 	}
 }
 
+// RequireRevNotExpected waits for 10s and fails is the given revID does show up.
+func (btc *BlipTesterCollectionClient) RequireRevNotExpected(docID, revID string) {
+	if _, found := btc.GetRev(docID, revID); found {
+		btc.parent.rt.TB.Fatalf("BlipTesterClient found unexpected doc ID: %v rev ID: %v", docID, revID)
+	}
+	ticker := time.NewTicker(50 * time.Millisecond)
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			return
+		case <-ticker.C:
+			if _, found := btc.GetRev(docID, revID); found {
+				btc.parent.rt.TB.Fatalf("BlipTesterClient found unexpected doc ID: %v rev ID: %v", docID, revID)
+			}
+		}
+	}
+}
+
 // GetDoc returns a rev stored in the Client under the given docID.  (if multiple revs are present, rev body returned is non-deterministic)
 func (btc *BlipTesterCollectionClient) GetDoc(docID string) (data []byte, found bool) {
 	btc.docsLock.RLock()
@@ -1148,6 +1173,11 @@ func (btc *BlipTesterClient) StartPull() error {
 
 func (btc *BlipTesterClient) WaitForRev(docID string, revID string) ([]byte, bool) {
 	return btc.SingleCollection().WaitForRev(docID, revID)
+}
+
+// RequireRevNotExpected waits for 10s and fails is the given revID does show up.
+func (btc *BlipTesterClient) RequireRevNotExpected(docID string, revID string) {
+	btc.SingleCollection().RequireRevNotExpected(docID, revID)
 }
 
 func (btc *BlipTesterClient) WaitForDoc(docID string) ([]byte, bool) {
