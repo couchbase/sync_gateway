@@ -2218,37 +2218,7 @@ Startup-config:
     logging:
       description: The configuration settings for modifying Sync Gateway logging.
       type: object
-      properties:
-        log_file_path:
-          description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
-          type: string
-          readOnly: true
-        redaction_level:
-          description: Redaction level to apply to log output.
-          type: string
-          default: partial
-          enum:
-            - none
-            - partial
-            - full
-            - unset
-          readOnly: true
-        console:
-          $ref: '#/Console-logging-config'
-        error:
-          $ref: '#/File-logging-config'
-        warn:
-          $ref: '#/File-logging-config'
-        info:
-          $ref: '#/File-logging-config'
-        debug:
-          $ref: '#/File-logging-config'
-        trace:
-          $ref: '#/File-logging-config'
-        stats:
-          $ref: '#/File-logging-config'
-        audit:
-          $ref: '#/Audit-logging-config'
+      $ref: '#/Logging-config'
     auth:
       type: object
       properties:
@@ -2369,65 +2339,171 @@ Runtime-config:
   type: object
   properties:
     logging:
-      description: The configuration settings for modifying Sync Gateway logging.
-      type: object
-      properties:
-        log_file_path:
-          description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
-          type: string
-          readOnly: true
-        redaction_level:
-          description: Redaction level to apply to log output.
-          type: string
-          default: partial
-          enum:
-            - none
-            - partial
-            - full
-            - unset
-          readOnly: true
-        console:
-          $ref: '#/Console-logging-config'
-        error:
-          $ref: '#/File-logging-config'
-        warn:
-          $ref: '#/File-logging-config'
-        info:
-          $ref: '#/File-logging-config'
-        debug:
-          $ref: '#/File-logging-config'
-        trace:
-          $ref: '#/File-logging-config'
-        stats:
-          $ref: '#/File-logging-config'
-        audit:
-          $ref: '#/Audit-logging-config'
+      $ref: "#/Logging-config"
     max_concurrent_replications:
       description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
       type: integer
       default: 0
   title: Runtime-config
-File-logging-config:
+Logging-config:
+  type: object
+  properties:
+    log_file_path:
+      description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
+      type: string
+      readOnly: true
+    redaction_level:
+      description: Redaction level to apply to log output.
+      type: string
+      default: partial
+      enum:
+        - none
+        - partial
+        - full
+        - unset
+      readOnly: true
+    console:
+      $ref: '#/Console-logging-config'
+    error:
+      allOf:
+        - $ref: '#/File-logging-config-base'
+        - type: object
+          properties:
+            rotation:
+              allOf:
+                - $ref: '#/Log-rotation-base'
+                - type: object
+                  properties:
+                    max_age:
+                      description: The maximum number of days to retain old log files.
+                      default: 360
+                      type: integer
+            collation_buffer_size:
+              description: The size of the log collation buffer.
+              default: 10
+              type: integer
+              readOnly: true
+    warn:
+      allOf:
+        - $ref: '#/File-logging-config-base'
+        - type: object
+          properties:
+            rotation:
+              allOf:
+                - $ref: '#/Log-rotation-base'
+                - type: object
+                  properties:
+                    max_age:
+                      description: The maximum number of days to retain old log files.
+                      default: 180
+                      type: integer
+            collation_buffer_size:
+              description: The size of the log collation buffer
+              default: 1000
+              type: integer
+              readOnly: true
+    info:
+      allOf:
+        - $ref: '#/File-logging-config-base'
+        - type: object
+          properties:
+            rotation:
+              allOf:
+                - $ref: '#/Log-rotation-base'
+                - type: object
+                  properties:
+                    max_age:
+                      description: The maximum number of days to retain old log files.
+                      default: 6
+                      type: integer
+            collation_buffer_size:
+              description: The size of the log collation buffer
+              default: 1000
+              type: integer
+              readOnly: true
+    debug:
+      allOf:
+        - $ref: '#/File-logging-config-base'
+        - type: object
+          properties:
+            rotation:
+              allOf:
+                - $ref: '#/Log-rotation-base'
+                - type: object
+                  properties:
+                    max_age:
+                      description: The maximum number of days to retain old log files.
+                      default: 2
+                      type: integer
+            collation_buffer_size:
+              description: The size of the log collation buffer
+              default: 0
+              type: integer
+              readOnly: true
+    trace:
+      allOf:
+        - $ref: '#/File-logging-config-base'
+        - type: object
+          properties:
+            rotation:
+              allOf:
+                - $ref: '#/Log-rotation-base'
+                - type: object
+                  properties:
+                    max_age:
+                      description: The maximum number of days to retain old log files.
+                      default: 2
+                      type: integer
+            collation_buffer_size:
+              description: The size of the log collation buffer
+              default: 0
+              type: integer
+              readOnly: true
+    stats:
+      allOf:
+        - $ref: '#/File-logging-config-base'
+        - type: object
+          properties:
+            rotation:
+              allOf:
+                - $ref: '#/Log-rotation-base'
+                - type: object
+                  properties:
+                    max_age:
+                      description: The maximum number of days to retain old log files.
+                      default: 6
+                      type: integer
+            collation_buffer_size:
+              description: The size of the log collation buffer
+              default: 0
+              type: integer
+              readOnly: true
+    audit:
+      $ref: '#/Audit-logging-config'
+File-logging-config-base:
   type: object
   properties:
     enabled:
       description: Toggle for this log output
       type: boolean
-    rotation:
-      $ref: '#/Log-rotation-config-readonly'
-    collation_buffer_size:
-      description: The size of the log collation buffer
-      type: integer
-      readOnly: true
+      default: false
   title: File-logging-config
 Audit-logging-config:
+  allOf:
+    - $ref: '#/File-logging-config-base'
+    - type: object
+      properties:
+        rotation:
+          allOf:
+            - $ref: '#/Log-rotation-base'
+            - type: object
+              properties:
+                max_age:
+                  description: The maximum number of days to retain old log files.
+                  default: 6
+                  type: integer
   type: object
   properties:
-    enabled:
-      description: Toggle for this log output
-      type: boolean
-    rotation:
-      $ref: '#/Log-rotation-config-readonly'
     audit_log_file_path:
       description: The path to write audit log files to
       type: string
@@ -2439,21 +2515,14 @@ Audit-logging-config:
         type: number
       example: [1234, 5678]
       readOnly: true
-    collation_buffer_size:
-      description: The size of the log collation buffer
-      type: integer
-      readOnly: true
   title: Audit-logging-config
-Log-rotation-config-readonly:
+Log-rotation-base:
   type: object
   properties:
     max_size:
       description: The maximum size in MB of the log file before it gets rotated.
       type: integer
       default: 100
-    max_age:
-      description: The maximum number of days to retain old log files. The defaults for this value are 360 days for error, 180 days for warn, 6 days for info, 2 days for debug, and 2 days for trace logs.
-      type: integer
     localtime:
       description: 'If true, it uses the computer''s local time to format the backup timestamp.'
       type: boolean
@@ -2471,13 +2540,16 @@ Log-rotation-config-readonly:
       default: 0
   readOnly: true
   title: Log-rotation-config
+Log-rotation-config:
+  allOf:
+    - $ref: '#/Log-rotation-base'
 Console-logging-config:
   type: object
   properties:
     log_level:
       description: Log Level for the console output
       type: string
-      default: none
+      default: info
       enum:
         - none
         - error
@@ -2493,6 +2565,7 @@ Console-logging-config:
     color_enabled:
       description: Log with color for the console output
       type: boolean
+      default: false
       readOnly: true
     file_output:
       description: 'Override the default stderr output, and write to the file specified instead'
@@ -2501,12 +2574,21 @@ Console-logging-config:
     enabled:
       description: Toggle for this log output
       type: boolean
+      default: false
       readOnly: true
     rotation:
-      $ref: '#/Log-rotation-config-readonly'
+      allOf:
+        - $ref: '#/Log-rotation-base'
+        - type: object
+          properties:
+            max_age:
+              description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
+              default: 0
+              type: integer
     collation_buffer_size:
-      description: The size of the log collation buffer.
+      description: The size of the log collation buffer. The default is 10 if the output is stderr, or 1000 if to a file.
       type: integer
+      default: 10
       readOnly: true
   title: Console-logging-config
 Log-update-enabled:

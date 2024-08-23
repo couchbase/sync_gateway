@@ -155,6 +155,7 @@ func NewMemoryLogger(level LogLevel) *FileLogger {
 		Enabled: AtomicBool{1},
 		level:   level,
 		name:    level.String(),
+		closed:  make(chan struct{}),
 	}
 	logger.output = &logger.buffer
 	logger.logger = log.New(&logger.buffer, "", 0)
