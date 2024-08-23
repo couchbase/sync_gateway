@@ -716,7 +716,7 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	options TestBucketPoolOptions) {
 	// can't use defer because of os.Exit
 	teardownFuncs := make([]func(), 0)
-	teardownFuncs = append(teardownFuncs, SetUpGlobalTestLogging(ctx, m))
+	teardownFuncs = append(teardownFuncs, SetUpGlobalTestLogging(ctx))
 	teardownFuncs = append(teardownFuncs, SetUpGlobalTestProfiling(m))
 	teardownFuncs = append(teardownFuncs, SetUpGlobalTestMemoryWatermark(m, options.MemWatermarkThresholdMB))
 

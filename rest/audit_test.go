@@ -13,8 +13,10 @@ package rest
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -60,15 +62,8 @@ func TestAuditLoggingFields(t *testing.T) {
 			config.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
 				RequestInfoHeaderName: base.StringPtr(requestInfoHeaderName),
 			}
-			config.Logging = base.LoggingConfig{
-				LogFilePath: tempdir,
-				Audit: &base.AuditLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.BoolPtr(true),
-					},
-					EnabledEvents: base.AllGlobalAuditeventIDs, // enable everything for testing
-				},
-			}
+			config.Logging = getAuditLoggingTestConfig(tempdir)
+			config.Logging.Audit.EnabledEvents = base.AllGlobalAuditeventIDs
 			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 		},
 	})
@@ -537,42 +532,7 @@ func jsonLines(t testing.TB, data []byte) []map[string]any {
 }
 
 func TestAuditDatabaseUpdate(t *testing.T) {
-	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
-	tempdir := t.TempDir()
-	base.ResetGlobalTestLogging(t)
-	base.InitializeMemoryLoggers()
-	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
-		MutateStartupConfig: func(config *StartupConfig) {
-			config.Logging = base.LoggingConfig{
-				LogFilePath: tempdir,
-				Audit: &base.AuditLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled:             base.BoolPtr(true),
-						CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
-					},
-				},
-				Console: &base.ConsoleLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.BoolPtr(true),
-					},
-				},
-				Info: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-				Debug: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-				Trace: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-			}
-			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
-		},
-	})
+	rt := createAuditLoggingRestTester(t)
 	defer rt.Close()
 
 	// initialize RestTester
@@ -740,14 +700,7 @@ func TestEffectiveUserID(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.EffectiveUserHeaderName = base.StringPtr("user_header")
-			config.Logging = base.LoggingConfig{
-				LogFilePath: tempdir,
-				Audit: &base.AuditLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.BoolPtr(true),
-					},
-				},
-			}
+			config.Logging = getAuditLoggingTestConfig(tempdir)
 			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 		},
 	})
@@ -1568,6 +1521,82 @@ func TestAuditBlipCRUD(t *testing.T) {
 	})
 }
 
+// TestAuditLoggingGlobals modifies all the global loggers
+func TestAuditLoggingGlobals(t *testing.T) {
+	globalFields := map[string]any{
+		"global":  "field",
+		"global2": "field2",
+	}
+
+	globalEnvVarName := "SG_TEST_GLOBAL_AUDIT_LOGGING"
+
+	testCases := []struct {
+		name              string
+		globalAuditEvents *string
+		startupErrorMsg   string
+	}{
+		{
+			name: "no global fields",
+		},
+		{
+			name:              "with global fields",
+			globalAuditEvents: base.StringPtr(string(base.MustJSONMarshal(t, globalFields))),
+		},
+		{
+			name:              "invalid json",
+			globalAuditEvents: base.StringPtr(`notjson`),
+			startupErrorMsg:   "Unable to unmarshal",
+		},
+		{
+			name:              "empty env var",
+			globalAuditEvents: base.StringPtr(""),
+			startupErrorMsg:   "Unable to unmarshal",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			base.ResetGlobalTestLogging(t)
+			base.InitializeMemoryLoggers()
+			ctx := base.TestCtx(t)
+			if testCase.globalAuditEvents != nil {
+				require.NoError(t, os.Setenv(globalEnvVarName, *testCase.globalAuditEvents))
+				defer func() {
+					require.NoError(t, os.Unsetenv(globalEnvVarName))
+				}()
+			} else {
+				require.NoError(t, os.Unsetenv(globalEnvVarName))
+			}
+			startupConfig := DefaultStartupConfig("")
+			startupConfig.Logging = getAuditLoggingTestConfig(t.TempDir())
+			if testCase.globalAuditEvents != nil {
+				startupConfig.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
+					GlobalInfoEnvVarName: base.StringPtr(globalEnvVarName),
+				}
+			}
+			err := startupConfig.SetupAndValidateLogging(ctx)
+			if testCase.startupErrorMsg != "" {
+				require.ErrorContains(t, err, testCase.startupErrorMsg)
+				return
+			}
+			require.NoError(t, err)
+			output := base.AuditLogContents(t, func(tb testing.TB) {
+				base.Audit(ctx, base.AuditIDPublicUserAuthenticated, map[string]any{base.AuditFieldAuthMethod: "basic"})
+			})
+			var event map[string]any
+			require.NoError(t, json.Unmarshal(output, &event))
+			require.Contains(t, event, base.AuditFieldAuthMethod)
+			for k, v := range globalFields {
+				if testCase.globalAuditEvents != nil {
+					require.Equal(t, v, event[k])
+				} else {
+					require.NotContains(t, event, k)
+				}
+			}
+		})
+	}
+
+}
+
 // TestDatabaseAuditChanges verifies that the expect events are raised when the audit configuration is changed.
 // Note: test cases are run sequentially, and depend on ordering, as events are only raised for changes in state
 func TestDatabaseAuditChanges(t *testing.T) {
@@ -1733,5 +1762,35 @@ func TestDatabaseAuditChanges(t *testing.T) {
 				require.True(t, found, fmt.Sprintf("Expected event %v not present", expectedEventID))
 			}
 		})
+	}
+}
+
+// getAuditLoggingTestConfig returns a logging config with audit enabled and other loggers configured without collation to avoid CBG-4129
+func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
+	return base.LoggingConfig{
+		LogFilePath: tempdir,
+		Audit: &base.AuditLoggerConfig{
+			FileLoggerConfig: base.FileLoggerConfig{
+				Enabled:             base.BoolPtr(true),
+				CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+			},
+		},
+		Console: &base.ConsoleLoggerConfig{
+			FileLoggerConfig: base.FileLoggerConfig{
+				Enabled: base.BoolPtr(true),
+			},
+		},
+		Info: &base.FileLoggerConfig{
+			Enabled:             base.BoolPtr(false),
+			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+		},
+		Debug: &base.FileLoggerConfig{
+			Enabled:             base.BoolPtr(false),
+			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+		},
+		Trace: &base.FileLoggerConfig{
+			Enabled:             base.BoolPtr(false),
+			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+		},
 	}
 }

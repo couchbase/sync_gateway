@@ -136,9 +136,11 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			if testCase.contextFields != nil {
 				ctx = AuditLogCtx(ctx, testCase.contextFields)
 			}
-			var err error
-			auditLogger, err = NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
+			logger, err := NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
+			defer assert.NoError(t, logger.Close())
+			auditLogger.Store(logger)
+
 			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 			output := AuditLogContents(t, func(tb testing.TB) {
 				// Test basic audit event
@@ -296,7 +298,7 @@ func BenchmarkAuditFieldwork(b *testing.B) {
 		},
 	}, b.TempDir(), auditMinage, nil, map[string]any{"foo": "bar", "buzz": 1234})
 	require.NoError(b, err)
-	auditLogger = al
+	auditLogger.Store(al)
 
 	ctx := TestCtx(b)
 	ctx = DatabaseLogCtx(ctx, "db", nil)

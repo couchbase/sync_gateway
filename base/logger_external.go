@@ -47,7 +47,8 @@ func initExternalLoggers() {
 
 func updateExternalLoggers() {
 	// use context.Background() since this is called from init or to reset test logging
-	if consoleLogger != nil && consoleLogger.shouldLog(context.Background(), LevelDebug, KeyWalrus) {
+	logger := consoleLogger.Load()
+	if logger.shouldLog(context.Background(), LevelDebug, KeyWalrus) {
 		rosmar.SetLogLevel(rosmar.LevelDebug)
 	} else {
 		rosmar.SetLogLevel(rosmar.LevelInfo)
@@ -170,10 +171,11 @@ func (CBGoUtilsLogger) SetLevel(l logging.Level) {
 // CBGoUtilsLogger.Level returns a compatible go-couchbase/golog Log Level for
 // the given logging config LogLevel
 func (CBGoUtilsLogger) Level() logging.Level {
-	if consoleLogger == nil || consoleLogger.LogLevel == nil {
+	logger := consoleLogger.Load()
+	if logger == nil || logger.LogLevel == nil {
 		return logging.INFO
 	}
-	switch *consoleLogger.LogLevel {
+	switch *logger.LogLevel {
 	case LevelTrace:
 		return logging.TRACE
 	case LevelDebug:

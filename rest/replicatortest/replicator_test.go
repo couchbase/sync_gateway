@@ -7908,9 +7908,6 @@ func TestGroupIDReplications(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Requires EE to use GroupID")
 	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBG-3713 temporarily skip until -race condition is worked out")
-	}
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)

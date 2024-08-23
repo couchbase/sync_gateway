@@ -119,20 +119,25 @@ func (f AuditFields) merge(ctx context.Context, overwrites AuditFields) AuditFie
 func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	var fields AuditFields
 
+	logger := auditLogger.Load()
 	if IsDevMode() {
 		// NOTE: This check is expensive and indicates a dev-time mistake that needs addressing.
 		// Don't bother in production code, but also delay expandFields until we know we will log.
-		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
+		var globalFields AuditFields
+		if logger != nil {
+			globalFields = logger.globalFields
+		}
+		fields = expandFields(id, ctx, globalFields, additionalData)
 		id.MustValidateFields(fields)
 	}
 
-	if !auditLogger.shouldLog(id, ctx) {
+	if !logger.shouldLog(id, ctx) {
 		return
 	}
 
 	// delayed expansion until after enabled checks in non-dev mode
 	if fields == nil {
-		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
+		fields = expandFields(id, ctx, logger.globalFields, additionalData)
 	}
 
 	fieldsJSON, err := jsoniter.MarshalToString(fields)
@@ -141,12 +146,16 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 		return
 	}
 
-	auditLogger.logf(fieldsJSON)
+	logger.logf(fieldsJSON)
 }
 
 // IsAuditEnabled checks if auditing is enabled for the SG node
 func IsAuditEnabled() bool {
-	return auditLogger.FileLogger.shouldLog(LevelNone)
+	logger := auditLogger.Load()
+	if logger == nil {
+		return false
+	}
+	return logger.FileLogger.shouldLog(LevelNone)
 }
 
 // AuditLogger is a file logger with audit-specific behaviour.
@@ -164,9 +173,8 @@ func (l *AuditLogger) getAuditLoggerConfig() *AuditLoggerConfig {
 	if l != nil {
 		// Copy config struct to avoid mutating running config
 		c = l.config
+		c.FileLoggerConfig = *l.getFileLoggerConfig()
 	}
-
-	c.FileLoggerConfig = *l.getFileLoggerConfig()
 
 	return &c
 }
@@ -229,7 +237,9 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 }
 
 func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
-	if !auditLogger.FileLogger.shouldLog(LevelNone) {
+	if al == nil {
+		return false
+	} else if !al.FileLogger.shouldLog(LevelNone) {
 		return false
 	}
 
