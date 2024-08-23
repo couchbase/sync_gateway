@@ -461,7 +461,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				// If change is a removal and we're running with protocol V3 and change change is not a tombstone
 				// fall into 3.0 removal handling.
 				// Changes with change.Revoked=true have already evaluated UserHasDocAccess in changes.go, don't check again.
-				if change.allRemoved && bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 && !change.Deleted && !change.Revoked && !bh.db.Options.UnsupportedOptions.BlipSendDocsWithChannelRemoval {
+				if change.allRemoved && bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 && !change.Deleted && !change.Revoked && !bh.db.Options.UnsupportedOptions.SendChannelFilterRemovals {
 					// If client doesn't want removals / revocations, don't send change
 					if !opts.revocations {
 						continue

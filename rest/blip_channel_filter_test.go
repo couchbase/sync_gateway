@@ -31,7 +31,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 
 			dbConfig := rt.NewDbConfig()
 			dbConfig.Unsupported = &db.UnsupportedOptions{
-				BlipSendDocsWithChannelRemoval: sendDocWithChannelRemoval,
+				SendChannelFilterRemovals: sendDocWithChannelRemoval,
 			}
 			rt.CreateDatabase("db", dbConfig)
 			rt.CreateUser("alice", []string{"*"})
