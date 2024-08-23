@@ -13,6 +13,7 @@ package base
 import (
 	"log"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,27 +22,34 @@ import (
 var flushLogBuffersWaitGroup sync.WaitGroup
 var flushLogMutex sync.Mutex
 
+// getFileLoggers returns a slice of all non-nil file loggers.
+func getFileLoggers() []*FileLogger {
+	loggers := []*FileLogger{
+		traceLogger.Load(),
+		debugLogger.Load(),
+		infoLogger.Load(),
+		warnLogger.Load(),
+		errorLogger.Load(),
+		statsLogger.Load(),
+	}
+	rawAuditLogger := auditLogger.Load()
+	if rawAuditLogger != nil {
+		loggers = append(loggers, &rawAuditLogger.FileLogger)
+	}
+	rawConsoleLogger := consoleLogger.Load()
+	if rawConsoleLogger != nil {
+		loggers = append(loggers, &rawConsoleLogger.FileLogger)
+	}
+	return slices.DeleteFunc(loggers, func(l *FileLogger) bool { return l == nil })
+}
+
 // FlushLogBuffers will cause all log collation buffers to be flushed to the output before returning.
 func FlushLogBuffers() {
 	flushLogMutex.Lock()
 	defer flushLogMutex.Unlock()
 
-	loggers := []*FileLogger{
-		traceLogger,
-		debugLogger,
-		infoLogger,
-		warnLogger,
-		errorLogger,
-		statsLogger,
-		&consoleLogger.FileLogger,
-	}
-
-	if auditLogger != nil {
-		loggers = append(loggers, &auditLogger.FileLogger)
-	}
-
-	for _, logger := range loggers {
-		if logger != nil && cap(logger.collateBuffer) > 1 {
+	for _, logger := range getFileLoggers() {
+		if cap(logger.collateBuffer) > 1 {
 			logger.collateBufferWg.Wait()
 			flushLogBuffersWaitGroup.Add(1)
 			logger.flushChan <- struct{}{}

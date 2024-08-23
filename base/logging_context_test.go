@@ -26,13 +26,14 @@ func requireLogIs(t testing.TB, s string, f func()) {
 
 	timestampLength := len(time.Now().Format(ISO8601Format) + " ")
 
+	logger := consoleLogger.Load()
 	// Temporarily override logger output for the given function call
-	originalColor := consoleLogger.ColorEnabled
-	consoleLogger.ColorEnabled = false
-	consoleLogger.logger.SetOutput(&b)
+	originalColor := logger.ColorEnabled
+	logger.ColorEnabled = false
+	logger.logger.SetOutput(&b)
 	defer func() {
-		consoleLogger.ColorEnabled = originalColor
-		consoleLogger.logger.SetOutput(os.Stderr)
+		logger.ColorEnabled = originalColor
+		logger.logger.SetOutput(os.Stderr)
 	}()
 
 	f()

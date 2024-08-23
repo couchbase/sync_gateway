@@ -174,10 +174,10 @@ func BenchmarkLogRotation(b *testing.B) {
 }
 
 func TestLogColor(t *testing.T) {
-	origColor := consoleLogger.ColorEnabled
-	defer func() { consoleLogger.ColorEnabled = origColor }()
+	origColor := consoleLogger.Load().ColorEnabled
+	defer func() { consoleLogger.Load().ColorEnabled = origColor }()
 
-	consoleLogger.ColorEnabled = true
+	consoleLogger.Load().ColorEnabled = true
 	if colorEnabled() {
 		assert.Equal(t, "\x1b[0;36mFormat\x1b[0m", color("Format", LevelDebug))
 		assert.Equal(t, "\x1b[1;34mFormat\x1b[0m", color("Format", LevelInfo))
@@ -187,7 +187,7 @@ func TestLogColor(t *testing.T) {
 		assert.Equal(t, "\x1b[0mFormat\x1b[0m", color("Format", LevelNone))
 	}
 
-	consoleLogger.ColorEnabled = false
+	consoleLogger.Load().ColorEnabled = false
 	assert.Equal(t, "Format", color("Format", LevelDebug))
 	assert.Equal(t, "Format", color("Format", LevelInfo))
 	assert.Equal(t, "Format", color("Format", LevelWarn))
@@ -202,7 +202,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	}
 
 	b.Run("enabled", func(b *testing.B) {
-		consoleLogger.ColorEnabled = true
+		consoleLogger.Load().ColorEnabled = true
 		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
 
 		b.ResetTimer()
@@ -212,7 +212,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	})
 
 	b.Run("disabled console color", func(b *testing.B) {
-		consoleLogger.ColorEnabled = false
+		consoleLogger.Load().ColorEnabled = false
 		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
 
 		b.ResetTimer()
@@ -222,7 +222,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	})
 
 	b.Run("disabled term color", func(b *testing.B) {
-		consoleLogger.ColorEnabled = true
+		consoleLogger.Load().ColorEnabled = true
 		require.NoError(b, os.Setenv("TERM", "dumb"))
 
 		b.ResetTimer()
@@ -259,12 +259,12 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 
 	for i := LevelNone; i < levelCount; i++ {
 		t.Run(i.String(), func(t *testing.T) {
-			consoleLogger.LogLevel.Set(i)
+			consoleLogger.Load().LogLevel.Set(i)
 			out := CaptureConsolefLogOutput(func() { LogSyncGatewayVersion(TestCtx(t)) })
 			assert.Contains(t, out, LongVersionString)
 		})
 	}
-	consoleLogger.LogLevel.Set(LevelInfo)
+	consoleLogger.Load().LogLevel.Set(LevelInfo)
 }
 
 func CaptureConsolefLogOutput(f func()) string {

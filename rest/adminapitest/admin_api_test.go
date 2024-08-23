@@ -163,6 +163,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 }
 
 func TestLoggingKeys(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
 	if base.GlobalTestLoggingSet.IsTrue() {
 		t.Skip("Test does not work when a global test log level is set")
 	}
@@ -2924,6 +2925,7 @@ func TestConfigEndpoint(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
+			base.ResetGlobalTestLogging(t)
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			base.InitializeMemoryLoggers()
@@ -3025,6 +3027,7 @@ func TestInitialStartupConfig(t *testing.T) {
 }
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	base.InitializeMemoryLoggers()
@@ -3275,6 +3278,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 

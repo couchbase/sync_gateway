@@ -568,7 +568,7 @@ var GlobalTestLoggingSet = AtomicBool{}
 
 // SetUpGlobalTestLogging sets a global log level at runtime by using the SG_TEST_LOG_LEVEL environment variable.
 // This global level overrides any tests that specify their own test log level with SetUpTestLogging.
-func SetUpGlobalTestLogging(ctx context.Context, m *testing.M) (teardownFn func()) {
+func SetUpGlobalTestLogging(ctx context.Context) (teardownFn func()) {
 	if logLevel := os.Getenv(TestEnvGlobalLogLevel); logLevel != "" {
 		var l LogLevel
 		err := l.UnmarshalText([]byte(logLevel))
@@ -598,49 +598,16 @@ func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 	tb.Cleanup(cleanup)
 }
 
-// ResetGlobalTestLogging will ensure that the loggers are replaced at the endof the the test. This is only safe to call with go:build !race since swapping the global loggers can trigger a race condition from background processes of the test harness.
+// ResetGlobalTestLogging will ensure that the loggers are replaced at the end of the the test.
 func ResetGlobalTestLogging(t testing.TB) {
-	oldErrorLogger := errorLogger
-	oldWarnLogger := warnLogger
-	oldInfoLogger := infoLogger
-	oldDebugLogger := debugLogger
-	oldTraceLogger := traceLogger
-	oldStatsLogger := statsLogger
-	oldAuditLogger := auditLogger
-	oldConsoleLogger := consoleLogger
 	t.Cleanup(func() {
-		if errorLogger != nil {
-			assert.NoError(t, errorLogger.Close())
+		for _, logger := range getFileLoggers() {
+			assert.NoError(t, logger.Close())
 		}
-		errorLogger = oldErrorLogger
-		if warnLogger != nil {
-			assert.NoError(t, warnLogger.Close())
-		}
-		warnLogger = oldWarnLogger
-		if infoLogger != nil {
-			assert.NoError(t, infoLogger.Close())
-		}
-		infoLogger = oldInfoLogger
-		if debugLogger != nil {
-			assert.NoError(t, debugLogger.Close())
-		}
-		debugLogger = oldDebugLogger
-		if traceLogger != nil {
-			assert.NoError(t, traceLogger.Close())
-		}
-		traceLogger = oldTraceLogger
-		if statsLogger != nil {
-			assert.NoError(t, statsLogger.Close())
-		}
-		statsLogger = oldStatsLogger
-		if auditLogger != nil {
-			assert.NoError(t, auditLogger.Close())
-		}
-		auditLogger = oldAuditLogger
-		if consoleLogger != nil {
-			assert.NoError(t, consoleLogger.Close())
-		}
-		consoleLogger = oldConsoleLogger
+		ctx := TestCtx(t)
+		initializeLoggers(ctx)
+		SetUpGlobalTestLogging(ctx)
+
 	})
 }
 
@@ -658,13 +625,14 @@ func SetUpBenchmarkLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) 
 	teardownFnOrig := setTestLogging(logLevel, "", logKeys...)
 
 	// discard all logging output for benchmarking (but still execute logging as normal)
-	consoleLogger.logger.SetOutput(io.Discard)
+	consoleLogger.Load().logger.SetOutput(io.Discard)
 	tb.Cleanup(func() {
+		logger := consoleLogger.Load()
 		// revert back to original output
-		if consoleLogger != nil && consoleLogger.output != nil {
-			consoleLogger.logger.SetOutput(consoleLogger.output)
+		if logger != nil && logger.output != nil {
+			logger.logger.SetOutput(logger.output)
 		} else {
-			consoleLogger.logger.SetOutput(os.Stderr)
+			logger.logger.SetOutput(os.Stderr)
 		}
 		teardownFnOrig()
 	})
@@ -680,23 +648,27 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 		}
 	}
 
+	logger := consoleLogger.Load()
 	initialLogLevel := LevelInfo
 	initialLogKey := logKeyMask(KeyHTTP)
 
 	// Check that a previous invocation has not forgotten to call teardownFn
-	if *consoleLogger.LogLevel != initialLogLevel ||
-		*consoleLogger.LogKeyMask != *initialLogKey {
-		panic("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?")
+	if *logger.LogLevel != initialLogLevel ||
+		*logger.LogKeyMask != *initialLogKey {
+		panic(fmt.Sprintf("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?, LogLevel=%s, expected=%s; LogKeyMask=%s, expected=%s", logger.LogLevel, initialLogLevel, logger.LogKeyMask, initialLogKey))
 	}
-
-	consoleLogger.LogLevel.Set(logLevel)
-	consoleLogger.LogKeyMask.Set(logKeyMask(logKeys...))
+	if errorLogger.Load() != nil {
+		panic("Logging is in an expected state, an earlier test possibly needed to call ResetGlobalTestLogging")
+	}
+	logger.LogLevel.Set(logLevel)
+	logger.LogKeyMask.Set(logKeyMask(logKeys...))
 	updateExternalLoggers()
 
 	return func() {
+		logger := consoleLogger.Load()
 		// Return logging to a default state
-		consoleLogger.LogLevel.Set(initialLogLevel)
-		consoleLogger.LogKeyMask.Set(initialLogKey)
+		logger.LogLevel.Set(initialLogLevel)
+		logger.LogKeyMask.Set(initialLogKey)
 		updateExternalLoggers()
 		if caller != "" {
 			InfofCtx(context.Background(), KeyAll, "%v: Reset logging", caller)
