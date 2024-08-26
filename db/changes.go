@@ -790,7 +790,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				if useLateSequenceFeeds {
 					lateSequenceFeedHandler := lateSequenceFeeds[chanID]
 					if lateSequenceFeedHandler != nil {
-						latefeed, err := col.getLateFeed(ctx, lateSequenceFeedHandler, singleChannelCache)
+						latefeed, err := col.getLateFeed(options.ChangesCtx, lateSequenceFeedHandler, singleChannelCache)
 						if err != nil {
 							base.WarnfCtx(ctx, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(chanName), lastSentLowSeq)
 							chanOpts.Since.LowSeq = lastSentLowSeq
@@ -1058,10 +1058,10 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				waitResponse := changeWaiter.Wait(ctx)
 				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
 
-				if waitResponse == WaiterClosed {
-					break outer
-				} else if options.ChangesCtx.Err() != nil {
+				if options.ChangesCtx.Err() != nil {
 					return
+				} else if waitResponse == WaiterClosed {
+					break outer
 				} else if waitResponse == WaiterHasChanges {
 					break waitForChanges
 				}
@@ -1386,7 +1386,7 @@ func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWi
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose = GenerateChanges(ctx, options.ChangesCtx, database, inChannels, options, docIDFilter, send)
+	err, forceClose = GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
 
 	if _, ok := err.(*ChangesSendErr); ok {
 		return nil, forceClose // error is probably because the client closed the connection
@@ -1405,7 +1405,7 @@ type ChangesSendErr struct{ error }
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
 // method on `handler`.
-func GenerateChanges(ctx context.Context, cancelCtx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
+func GenerateChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -1536,7 +1536,7 @@ loop:
 		case <-database.exitChanges():
 			forceClose = true
 			break loop
-		case <-cancelCtx.Done():
+		case <-options.ChangesCtx.Done():
 			forceClose = true
 			break loop
 		}
