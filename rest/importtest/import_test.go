@@ -2378,3 +2378,57 @@ func TestImportUpdateExpiry(t *testing.T) {
 		})
 	}
 }
+
+func TestRevNoAndDocSeqPopulationImportFeed(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+	ctx := base.TestCtx(t)
+
+	// Create doc via the SDK
+	mobileKey := t.Name()
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	assert.NoError(t, err, "Error writing SDK doc")
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
+	})
+	require.NoError(t, err)
+
+	err = dataStore.SetRaw(mobileKey, 0, nil, []byte(`{"test":"update"}`))
+	require.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 2
+	})
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+mobileKey, "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	xattrs, _, err := dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName})
+	if rt.GetDatabase().UseMou() {
+		var mou *db.MetadataOnlyUpdate
+		require.NoError(t, err)
+		mouXattr, mouOk := xattrs[base.MouXattrName]
+		require.True(t, mouOk)
+		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+		fmt.Println(*mou)
+	} else {
+		// Expect not found fetching mou xattr
+		require.Error(t, err)
+	}
+
+}

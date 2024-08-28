@@ -3128,7 +3128,7 @@ func Test_resyncDocument(t *testing.T) {
 	_, err = collection.UpdateSyncFun(ctx, syncFn)
 	require.NoError(t, err)
 
-	_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+	_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10}, 0)
 	require.NoError(t, err)
 	err = collection.WaitForPendingChanges(ctx)
 	require.NoError(t, err)

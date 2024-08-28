@@ -32,7 +32,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrs map[string][]byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrs map[string][]byte, isDelete bool, cas uint64, expiry *uint32, revNo uint64, mode ImportMode) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -58,7 +58,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 		Cas:    cas,
 	}
 
-	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, body, expiry, isDelete, revNo, existingBucketDoc, mode)
 }
 
 // Import a document, given the existing state of the doc in *document format.
@@ -98,7 +98,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		return nil, err
 	}
 
-	return db.importDoc(ctx, docid, existingDoc.Body(ctx), expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, existingDoc.Body(ctx), expiry, isDelete, 0, existingBucketDoc, mode)
 }
 
 // Import document
@@ -108,7 +108,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 //	isDelete - whether the document to be imported is a delete
 //	existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
 //	mode - ImportMode - ImportFromFeed or ImportOnDemand
-func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, revNo uint64, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
@@ -330,7 +330,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
 		if metadataOnlyUpdate && db.useMou() {
-			newDoc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+			newDoc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo, doc.Sequence, doc.metadataOnlyUpdate)
 		}
 
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil

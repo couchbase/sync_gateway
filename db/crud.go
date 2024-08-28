@@ -245,7 +245,7 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
 	var importErr error
 
-	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand)
+	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, 0, ImportOnDemand)
 
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as 404 not imported

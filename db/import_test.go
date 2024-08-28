@@ -369,7 +369,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
-			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, existingBucketDoc, ImportOnDemand)
+			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, 0, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
@@ -520,7 +520,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			runOnce = true
 
 			// Trigger import
-			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
+			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, 0, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, err)
 
 			// Check document has the rev and new body
@@ -591,7 +591,7 @@ func TestImportNullDoc(t *testing.T) {
 	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
 	// Import a null document
-	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, 0, existingDoc, ImportOnDemand)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -609,7 +609,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	xattrs := map[string][]byte{
 		base.SyncXattrName: []byte("{}"),
 	}
-	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, ImportFromFeed)
+	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, "", ImportFromFeed)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -709,7 +709,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	existingDoc := &sgbucket.BucketDocument{Body: bodyBytes, Cas: cas}
 
-	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, 0, existingDoc, ImportOnDemand)
 	require.NoError(t, err)
 	if assert.NotNil(t, importedDoc) {
 		require.Len(t, importedDoc.ClusterUUID, 32)

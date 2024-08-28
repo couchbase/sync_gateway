@@ -204,7 +204,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		default:
 		}
 
-		_, err := collection.ImportDocRaw(ctx, docID, rawBody, rawXattrs, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
+		_, err := collection.ImportDocRaw(ctx, docID, rawBody, rawXattrs, isDelete, event.Cas, &event.Expiry, event.RevNo, ImportFromFeed)
 		if err != nil {
 			if err == base.ErrImportCasFailure {
 				base.DebugfCtx(ctx, base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))
