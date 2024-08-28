@@ -21,8 +21,233 @@ import (
 )
 
 func TestChannelFilterRemovalFromChannel(t *testing.T) {
-	for _, sendDocWithChannelRemoval := range []bool{true, false} {
-		t.Run(fmt.Sprintf("sendDocWithChannelRemoval=%v", sendDocWithChannelRemoval), func(t *testing.T) {
+	const (
+		username = "user1"
+		body1    = `{"channels":["A"]}`
+		body2    = `{"channels":["B"]}`
+	)
+	tests := []struct {
+		name                      string
+		channelGrant              []string
+		sendDocWithChannelRemoval bool
+		sendRevocations           bool
+		// changes after adding a single doc
+		expectedChanges1 func(revID1 string) string
+		expectedChanges2 func(revID2 string) string
+		expectedBlipBody *string
+	}{
+		{
+			name:                      "sendDocWithChannelRemoval=true, sendRevocations=true,channelGrant=*",
+			channelGrant:              []string{"*"},
+			sendDocWithChannelRemoval: true,
+			sendRevocations:           true,
+			expectedChanges1: func(revID1 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":1, "id": "_user/user1", "changes":[]},
+		{"seq":2, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "2"
+}`, revID1, revID1)
+			},
+			expectedChanges2: func(revID2 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["B"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "3"
+}`, revID2, revID2)
+			},
+			expectedBlipBody: base.StringPtr(body2),
+		},
+		{
+			name:                      "sendDocWithChannelRemoval=true, sendRevocations=false,channelGrant=*",
+			channelGrant:              []string{"*"},
+			sendDocWithChannelRemoval: true,
+			sendRevocations:           false,
+			expectedChanges1: func(revID1 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":1, "id": "_user/user1", "changes":[]},
+		{"seq":2, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "2"
+}`, revID1, revID1)
+			},
+			expectedChanges2: func(revID2 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["B"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "3"
+}`, revID2, revID2)
+			},
+			expectedBlipBody: base.StringPtr(body2),
+		},
+		{
+			name:                      "sendDocWithChannelRemoval=false, sendRevocations=true,channelGrant=*",
+			channelGrant:              []string{"*"},
+			sendDocWithChannelRemoval: false,
+			sendRevocations:           true,
+			expectedChanges1: func(revID1 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":1, "id": "_user/user1", "changes":[]},
+		{"seq":2, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "2"
+}`, revID1, revID1)
+			},
+			expectedChanges2: func(revID2 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["B"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "3"
+}`, revID2, revID2)
+			},
+			expectedBlipBody: nil, // no body expected
+		},
+		{
+			name:                      "sendDocWithChannelRemoval=false, sendRevocations=false,channelGrant=*",
+			channelGrant:              []string{"*"},
+			sendDocWithChannelRemoval: false,
+			sendRevocations:           false,
+			expectedChanges1: func(revID1 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":1, "id": "_user/user1", "changes":[]},
+		{"seq":2, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "2"
+}`, revID1, revID1)
+			},
+			expectedChanges2: func(revID2 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["B"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "3"
+}`, revID2, revID2)
+			},
+			expectedBlipBody: nil, // no body expected
+		},
+		// channelGrant=A
+		{
+			name:                      "sendDocWithChannelRemoval=true, sendRevocations=true,channelGrant=A",
+			channelGrant:              []string{"A"},
+			sendDocWithChannelRemoval: true,
+			sendRevocations:           true,
+			expectedChanges1: func(revID1 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":1, "id": "_user/user1", "changes":[]},
+		{"seq":2, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "2"
+}`, revID1, revID1)
+			},
+			expectedChanges2: func(revID2 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_removed":true,"_rev":"%s"}, "removed": ["A"], "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "3"
+}`, revID2, revID2)
+			},
+			expectedBlipBody: base.StringPtr(`{"_removed":true}`),
+		},
+		{
+			name:                      "sendDocWithChannelRemoval=true, sendRevocations=false,channelGrant=A",
+			channelGrant:              []string{"A"},
+			sendDocWithChannelRemoval: true,
+			sendRevocations:           false,
+			expectedChanges1: func(revID1 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":1, "id": "_user/user1", "changes":[]},
+		{"seq":2, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "2"
+}`, revID1, revID1)
+			},
+			expectedChanges2: func(revID2 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_removed":true,"_rev":"%s"}, "removed": ["A"], "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "3"
+}`, revID2, revID2)
+			},
+			expectedBlipBody: base.StringPtr(`{"_removed":true}`), // TOR: this is the line that seems wrong
+		},
+		{
+			name:                      "sendDocWithChannelRemoval=false, sendRevocations=true,channelGrant=A",
+			channelGrant:              []string{"A"},
+			sendDocWithChannelRemoval: false,
+			sendRevocations:           true,
+			expectedChanges1: func(revID1 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":1, "id": "_user/user1", "changes":[]},
+		{"seq":2, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "2"
+}`, revID1, revID1)
+			},
+			expectedChanges2: func(revID2 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_removed":true,"_rev":"%s"}, "removed": ["A"], "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "3"
+}`, revID2, revID2)
+			},
+			expectedBlipBody: base.StringPtr(`{"_removed":true}`),
+		},
+		{
+			name:                      "sendDocWithChannelRemoval=false, sendRevocations=false,channelGrant=A",
+			channelGrant:              []string{"A"},
+			sendDocWithChannelRemoval: false,
+			sendRevocations:           false,
+			expectedChanges1: func(revID1 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":1, "id": "_user/user1", "changes":[]},
+		{"seq":2, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "2"
+}`, revID1, revID1)
+			},
+			expectedChanges2: func(revID2 string) string {
+				return fmt.Sprintf(`
+{
+	"results": [
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_removed":true,"_rev":"%s"}, "removed": ["A"], "changes": [{"rev":"%s"}]}
+	],
+	"last_seq": "3"
+}`, revID2, revID2)
+			},
+			expectedBlipBody: nil, // no body, revocations
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			rt := NewRestTester(t, &RestTesterConfig{
 				SyncFn:           channels.DocChannelsSyncFunction,
 				PersistentConfig: true,
@@ -31,17 +256,17 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 
 			dbConfig := rt.NewDbConfig()
 			dbConfig.Unsupported = &db.UnsupportedOptions{
-				SendChannelFilterRemovals: sendDocWithChannelRemoval,
+				SendChannelFilterRemovals: test.sendDocWithChannelRemoval,
 			}
 			rt.CreateDatabase("db", dbConfig)
-			rt.CreateUser("alice", []string{"*"})
-			rt.CreateUser("bob", []string{"A"})
+			const username = "user1"
+			rt.CreateUser(username, test.channelGrant)
 
 			btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
-				Username:        "alice",
+				Username:        username,
 				Password:        base.StringPtr(RestTesterDefaultUserPassword),
 				Channels:        []string{"A"},
-				SendRevocations: false,
+				SendRevocations: test.sendRevocations,
 			})
 			require.NoError(t, err)
 			defer btc.Close()
@@ -50,19 +275,11 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 			revID1 := rt.PutDoc("doc1", `{"channels":["A"]}`).Rev
 			require.NoError(t, rt.WaitForPendingChanges())
 
-			response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=0&channels=A&include_docs=true", "", "alice")
+			response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=0&channels=A&include_docs=true", "", username)
 			RequireStatus(t, response, http.StatusOK)
 
-			log.Printf("response: %s", response.BodyBytes())
-			expectedChanges1 := fmt.Sprintf(`
-{
-	"results": [
-		{"seq":1, "id": "_user/alice", "changes":[]},
-		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
-	],
-	"last_seq": "3"
-}`, revID1, revID1)
-			require.JSONEq(t, expectedChanges1, string(response.BodyBytes()))
+			log.Printf("_changes?since=0&channels=A&include_docs=true: %s", response.BodyBytes())
+			require.JSONEq(t, test.expectedChanges1(revID1), string(response.BodyBytes()))
 
 			continuous := "false"
 			since := "0"
@@ -79,42 +296,23 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 			require.NoError(t, rt.WaitForPendingChanges())
 
 			// alice will see doc1 rev2 with body
-			response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=2&channels=A&include_docs=true", "", "alice")
+			response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=2&channels=A&include_docs=true", "", username)
 			RequireStatus(t, response, http.StatusOK)
+			log.Printf("_changes?since=2&channels=A&include_docs=true: %s", response.BodyBytes())
+			log.Printf("expected: %s", test.expectedChanges2(revID2))
 
-			aliceExpectedChanges2 := fmt.Sprintf(`
-{
-	"results": [
-		{"seq":4, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["B"]}, "changes": [{"rev":"%s"}]}
-	],
-	"last_seq": "4"
-}`, revID2, revID2)
-			require.JSONEq(t, aliceExpectedChanges2, string(response.BodyBytes()))
+			require.JSONEq(t, test.expectedChanges2(revID2), string(response.BodyBytes()))
 
 			err = btc.StartFilteredPullSince(continuous, since, activeOnly, channels)
 			require.NoError(t, err)
 
-			if sendDocWithChannelRemoval {
+			if test.expectedBlipBody == nil {
+				btc.RequireRevNotExpected(docID, revID2)
+			} else {
 				data, ok := btc.WaitForRev(docID, revID2)
 				require.True(t, ok)
-				require.Equal(t, `{"channels":["B"]}`, string(data))
-			} else {
-				btc.RequireRevNotExpected(docID, revID2)
+				require.Equal(t, *test.expectedBlipBody, string(data))
 			}
-
-			// bob will not see doc1
-			response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=2&channels=A&include_docs=true", "", "bob")
-			RequireStatus(t, response, http.StatusOK)
-
-			log.Printf("response: %s", response.BodyBytes())
-			bobExpectedChanges2 := fmt.Sprintf(`
-{
-	"results": [
-		{"seq":4, "id": "doc1", "removed":["A"], "doc": {"_id": "doc1", "_rev":"%s", "_removed": true}, "changes": [{"rev":"%s"}]}
-	],
-	"last_seq": "4"
-}`, revID2, revID2)
-			require.JSONEq(t, bobExpectedChanges2, string(response.BodyBytes()))
 		})
 	}
 }
