@@ -724,12 +724,15 @@ func (tree RevTree) RenderGraphvizDot() string {
 func (tree RevTree) getHistory(revid string) ([]string, error) {
 	maxHistory := len(tree)
 
+	var totalBytesForHistory int
 	history := make([]string, 0, 5)
 	for revid != "" {
 		info, err := tree.getInfo(revid)
 		if err != nil {
 			break
 		}
+		revBytes := len([]byte(revid))
+		totalBytesForHistory += revBytes
 		history = append(history, revid)
 		if len(history) > maxHistory {
 			return history, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
