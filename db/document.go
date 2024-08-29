@@ -1292,7 +1292,7 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 	return data, syncXattr, vvXattr, mouXattr, globalXattr, nil
 }
 
-// ConstructXattrFromHlv will build a persisted hlv from teh in memory hlv. Converting the pv and mv maps to deltas
+// ConstructXattrFromHlv will build a persisted hlv from the in memory hlv. Converting the pv and mv maps to deltas
 func ConstructXattrFromHlv(hlv *HybridLogicalVector) ([]byte, error) {
 	var persistedHLV PersistedHLV
 
