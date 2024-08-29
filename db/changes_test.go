@@ -13,6 +13,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -515,5 +517,29 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 		changesCtxCancel()
 
 	}
+
+}
+
+func TestChangesOptionsStringer(t *testing.T) {
+	opts := ChangesOptions{}
+	var stringerFields []string
+	for _, key := range strings.Split(opts.String()[1:len(opts.String())-1], ",") {
+		fieldName, _, found := strings.Cut(strings.Trim(key, `" ,`), ":")
+		require.True(t, found, "Expected , in %s", key)
+		stringerFields = append(stringerFields, fieldName)
+	}
+	ignoredFields := map[string]struct{}{
+		"ChangesCtx": {},
+		"clientType": {},
+	}
+	var expectedFields []string
+	for _, field := range reflect.VisibleFields(reflect.TypeOf(ChangesOptions{})) {
+		// some field names are not in stringer
+		if _, ok := ignoredFields[field.Name]; ok {
+			continue
+		}
+		expectedFields = append(expectedFields, field.Name)
+	}
+	require.ElementsMatch(t, expectedFields, stringerFields)
 
 }
