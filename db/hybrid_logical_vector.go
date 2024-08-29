@@ -87,8 +87,8 @@ func VersionsToDeltas(m map[string]string) []string {
 	return vrsList
 }
 
-// PersistedVVtoDeltas converts the list of deltas in pv or mv from the bucket back from deltas into full versions in map format
-func PersistedVVtoDeltas(vvList []string) (map[string]string, error) {
+// PersistedDeltasToMap converts the list of deltas in pv or mv from the bucket back from deltas into full versions in map format
+func PersistedDeltasToMap(vvList []string) (map[string]string, error) {
 	vv := make(map[string]string)
 	if len(vvList) == 0 {
 		return vv, nil
@@ -169,7 +169,7 @@ type BucketVector struct {
 	PreviousVersions  map[string]string `json:"pv,omitempty"`
 }
 
-// PersistedHLV is teh version of the version vector that is persisted to teh bucket, pv and mv will be lists of source version pairs in the bucket
+// PersistedHLV is the version of the version vector that is persisted to the bucket, pv and mv will be lists of source version pairs in the bucket
 type PersistedHLV struct {
 	CurrentVersionCAS string   `json:"cvCas,omitempty"`     // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
 	ImportCAS         string   `json:"importCAS,omitempty"` // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)

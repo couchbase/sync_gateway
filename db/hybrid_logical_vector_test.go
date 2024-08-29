@@ -486,7 +486,7 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	v4 := base.CasToString(uint64(timeNow - rand.Int64N(1000000000000)))
 	v5 := base.CasToString(uint64(timeNow - rand.Int64N(1000000000000)))
 
-	// make of source to delta
+	// make map of source to version
 	pvMap := make(map[string]string)
 	pvMap[src1] = v1
 	pvMap[src2] = v2

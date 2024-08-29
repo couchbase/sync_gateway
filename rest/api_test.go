@@ -138,19 +138,6 @@ func TestPublicRESTStatCount(t *testing.T) {
 	}, 2)
 }
 
-func TestGreg(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	rt.PutDoc("doc", `{"greg":"test"}`)
-	fmt.Println("here")
-
-	rt.GetDatabase().FlushRevisionCacheForTest()
-
-	_, bod := rt.GetDoc("doc")
-	fmt.Println(bod)
-}
-
 func TestDBRoot(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
@@ -2819,7 +2806,7 @@ func TestCreateDBWithXattrsDisbaled(t *testing.T) {
 //   - Force import of this doc, then update this doc via rest tester source
 //   - Assert that the document hlv is as expected
 //   - Update the doc from a new hlv aware peer and force the import of this new write
-//   - Asser that the new hlv is as expected, testing that the hlv went through transformation to the persisted delta
+//   - Assert that the new hlv is as expected, testing that the hlv went through transformation to the persisted delta
 //     version and back to the in memory version as expected
 func TestPvDeltaReadAndWrite(t *testing.T) {
 	rt := NewRestTester(t, nil)

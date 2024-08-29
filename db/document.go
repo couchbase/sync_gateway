@@ -1325,11 +1325,11 @@ func ParseHLVFields(xattr []byte) (*HybridLogicalVector, error) {
 		return nil, err
 	}
 
-	pvMap, deltaErr := PersistedVVtoDeltas(persistedHLV.PreviousVersions)
+	pvMap, deltaErr := PersistedDeltasToMap(persistedHLV.PreviousVersions)
 	if deltaErr != nil {
-		return nil, fmt.Errorf("error converting pv to deltas: %v", deltaErr)
+		return nil, fmt.Errorf("error converting pv to map: %v", deltaErr)
 	}
-	mvMap, deltaErr := PersistedVVtoDeltas(persistedHLV.MergeVersions)
+	mvMap, deltaErr := PersistedDeltasToMap(persistedHLV.MergeVersions)
 	if deltaErr != nil {
 		return nil, fmt.Errorf("error converting mv to map: %v", deltaErr)
 	}
