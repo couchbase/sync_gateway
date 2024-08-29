@@ -48,6 +48,8 @@ const (
 	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
 )
 
+var MaxDecodedLength = len(Uint64CASToLittleEndianHex(math.MaxUint64))
+
 // NonCancellableContext is here to stroe a context that is not cancellable. Used to explicitly state when a change from
 // a cancellable context to a context withoutr contex is required
 type NonCancellableContext struct {
@@ -1016,6 +1018,43 @@ func HexCasToUint64(cas string) uint64 {
 	}
 
 	return binary.LittleEndian.Uint64(casBytes[0:8])
+}
+
+// HexCasToUint64ForDelta will convert hex cas to uint64 accounting for any stripped zeros in delta calculation
+func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
+	if len(casByte) <= 2 {
+		return 0, fmt.Errorf("hex value is too short.")
+	}
+	if casByte[0] != '0' || casByte[1] != 'x' {
+		return 0, fmt.Errorf("incorrect hex value, leading 0x is expected")
+	}
+
+	// as we strip any zeros iff the end of the hex value for deltas, the input delta could be odd length
+	if len(casByte)%2 != 0 {
+		evenHexLen := make([]byte, len(casByte), len(casByte)+1)
+		copy(evenHexLen, casByte)
+		evenHexLen = append(evenHexLen, '0')
+		casByte = evenHexLen
+	}
+
+	decoded := make([]byte, MaxDecodedLength)
+	_, err := hex.Decode(decoded, casByte[2:])
+	if err != nil {
+		return 0, err
+	}
+	res := binary.LittleEndian.Uint64(decoded)
+	return res, nil
+}
+
+// Uint64ToLittleEndianHexAndStripZeros will convert a uin64 type to little endian hex, stripping any zeros off the end
+func Uint64ToLittleEndianHexAndStripZeros(cas uint64) string {
+	hexCas := Uint64CASToLittleEndianHex(cas)
+
+	i := len(hexCas) - 1
+	for i > 2 && hexCas[i] == '0' {
+		i--
+	}
+	return string(hexCas[:i+1])
 }
 
 func HexToBase64(s string) ([]byte, error) {

@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,86 @@ type Version struct {
 	SourceID string `json:"source_id"`
 	// Value is a Hybrid Logical Clock value (In Couchbase Server, CAS is a HLC)
 	Value uint64 `json:"version"`
+}
+
+// VersionsDeltas will be sorted by version, first entry will be fill version then after that will be calculated deltas
+type VersionsDeltas []DecodedVersion
+
+func (vde VersionsDeltas) Len() int { return len(vde) }
+
+func (vde VersionsDeltas) Swap(i, j int) {
+	vde[i], vde[j] = vde[j], vde[i]
+}
+
+func (vde VersionsDeltas) Less(i, j int) bool {
+	if vde[i].Value == vde[j].Value {
+		return vde[i].SourceID < vde[j].SourceID
+	}
+	return vde[i].Value < vde[j].Value
+}
+
+// VersionDeltas calculate the deltas of input map
+func VersionDeltas(versions map[string]string) VersionsDeltas {
+	if versions == nil {
+		return nil
+	}
+
+	vdm := make(VersionsDeltas, 0, len(versions))
+	for src, vrs := range versions {
+		vdm = append(vdm, CreateDecodedVersion(src, base.HexCasToUint64(vrs)))
+	}
+
+	// sort the list
+	sort.Sort(vdm)
+
+	// traverse in reverse order and calculate delta between versions, leaving the first element as is
+	for i := len(vdm) - 1; i >= 1; i-- {
+		vdm[i].Value = vdm[i].Value - vdm[i-1].Value
+	}
+	return vdm
+}
+
+// VersionsToDeltas will calculate deltas from the input map (pv or mv). Then will return the deltas in persisted format
+func VersionsToDeltas(m map[string]string) []string {
+	if len(m) == 0 {
+		return nil
+	}
+
+	var vrsList []string
+	deltas := VersionDeltas(m)
+	for _, delta := range deltas {
+		key := delta.SourceID
+		val := delta.Value
+		encodedVal := base.Uint64ToLittleEndianHexAndStripZeros(val)
+		vrs := Version{SourceID: key, Value: encodedVal}
+		vrsList = append(vrsList, vrs.String())
+	}
+
+	return vrsList
+}
+
+// PersistedVVtoDeltas converts the list of deltas in pv or mv from the bucket back from deltas into full versions in map format
+func PersistedVVtoDeltas(vvList []string) (map[string]string, error) {
+	vv := make(map[string]string)
+	if len(vvList) == 0 {
+		return vv, nil
+	}
+
+	var lastEntryVersion uint64
+	for _, v := range vvList {
+		vrs, err := ParseVersion(v)
+		if err != nil {
+			return nil, err
+		}
+		ver, err := base.HexCasToUint64ForDelta([]byte(vrs.Value))
+		if err != nil {
+			return nil, err
+		}
+		lastEntryVersion = ver + lastEntryVersion
+		calcVer := base.CasToString(lastEntryVersion)
+		vv[vrs.SourceID] = calcVer
+	}
+	return vv, nil
 }
 
 // CreateVersion creates an encoded sourceID and version pair
@@ -86,6 +167,16 @@ type BucketVector struct {
 	Version           string            `json:"ver"`
 	MergeVersions     map[string]string `json:"mv,omitempty"`
 	PreviousVersions  map[string]string `json:"pv,omitempty"`
+}
+
+// PersistedHLV is teh version of the version vector that is persisted to teh bucket, pv and mv will be lists of source version pairs in the bucket
+type PersistedHLV struct {
+	CurrentVersionCAS string   `json:"cvCas,omitempty"`     // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
+	ImportCAS         string   `json:"importCAS,omitempty"` // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
+	SourceID          string   `json:"src"`                 // source bucket uuid in (base64 encoded format) of where this entry originated from
+	Version           string   `json:"ver"`                 // current cas in little endian hex format of the current version on the version vector
+	MergeVersions     []string `json:"mv,omitempty"`        // list of merge versions in delta order. First elem will be full hex version, rest of items will be deltas calculated from the item above it
+	PreviousVersions  []string `json:"pv,omitempty"`        // list of previous versions in delta order. First elem will be full hex version, rest of items will be deltas calculated from the item above it
 }
 
 // NewHybridLogicalVector returns an initialised HybridLogicalVector.

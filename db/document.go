@@ -484,10 +484,11 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 		syncXattr, ok := xattrValues[base.SyncXattrName]
 
 		if vvXattr, ok := xattrValues[base.VvXattrName]; ok {
-			err = base.JSONUnmarshal(vvXattr, &hlv)
+			docHLV, err := ParseHLVFields(vvXattr)
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("error unmarshalling HLV: %w", err)
 			}
+			hlv = docHLV
 		}
 
 		if ok && len(syncXattr) > 0 {
@@ -1117,10 +1118,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			}
 		}
 		if hlvXattrData != nil {
-			err := base.JSONUnmarshal(hlvXattrData, &doc.SyncData.HLV)
+			// parse the raw bytes of the hlv and convert deltas back to full values in memory
+			docHLV, err := ParseHLVFields(hlvXattrData)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
+			doc.HLV = docHLV
 		}
 		if virtualXattr != nil {
 			var revSeqNo string
@@ -1157,10 +1160,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			}
 		}
 		if hlvXattrData != nil {
-			err := base.JSONUnmarshal(hlvXattrData, &doc.SyncData.HLV)
+			// parse the raw bytes of the hlv and convert deltas back to full values in memory
+			docHLV, err := ParseHLVFields(hlvXattrData)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), err))
 			}
+			doc.HLV = docHLV
 		}
 		if len(globalSyncData) > 0 {
 			if err := base.JSONUnmarshal(globalSyncData, &doc.GlobalSyncData); err != nil {
@@ -1251,7 +1256,8 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 		}
 	}
 	if doc.SyncData.HLV != nil {
-		vvXattr, err = base.JSONMarshal(&doc.SyncData.HLV)
+		// convert in memory hlv into persisted version, converting maps to deltas
+		vvXattr, err = ConstructXattrFromHlv(doc.HLV)
 		if err != nil {
 			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
@@ -1284,6 +1290,59 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 	}
 
 	return data, syncXattr, vvXattr, mouXattr, globalXattr, nil
+}
+
+// ConstructXattrFromHlv will build a persisted hlv from teh in memory hlv. Converting the pv and mv maps to deltas
+func ConstructXattrFromHlv(hlv *HybridLogicalVector) ([]byte, error) {
+	var persistedHLV PersistedHLV
+
+	persistedHLV.SourceID = hlv.SourceID
+	persistedHLV.Version = hlv.Version
+	persistedHLV.ImportCAS = hlv.ImportCAS
+	persistedHLV.CurrentVersionCAS = hlv.CurrentVersionCAS
+	if len(hlv.PreviousVersions) > 0 {
+		persistedHLV.PreviousVersions = make([]string, len(hlv.PreviousVersions))
+		persistedHLV.PreviousVersions = VersionsToDeltas(hlv.PreviousVersions)
+	}
+	if len(hlv.MergeVersions) > 0 {
+		persistedHLV.MergeVersions = make([]string, len(hlv.MergeVersions))
+		persistedHLV.MergeVersions = VersionsToDeltas(hlv.MergeVersions)
+	}
+
+	hlvData, err := base.JSONMarshal(&persistedHLV)
+	if err != nil {
+		return nil, err
+	}
+	return hlvData, nil
+}
+
+// ParseHLVFields will parse raw bytes of the hlv xattr from persisted version to in memory version, converting the
+// deltas in pv and mv back into in memory format
+func ParseHLVFields(xattr []byte) (*HybridLogicalVector, error) {
+	var persistedHLV PersistedHLV
+	err := base.JSONUnmarshal(xattr, &persistedHLV)
+	if err != nil {
+		return nil, err
+	}
+
+	pvMap, deltaErr := PersistedVVtoDeltas(persistedHLV.PreviousVersions)
+	if deltaErr != nil {
+		return nil, fmt.Errorf("error converting pv to deltas: %v", deltaErr)
+	}
+	mvMap, deltaErr := PersistedVVtoDeltas(persistedHLV.MergeVersions)
+	if deltaErr != nil {
+		return nil, fmt.Errorf("error converting mv to map: %v", deltaErr)
+	}
+
+	newHLV := NewHybridLogicalVector()
+	newHLV.SourceID = persistedHLV.SourceID
+	newHLV.Version = persistedHLV.Version
+	newHLV.CurrentVersionCAS = persistedHLV.CurrentVersionCAS
+	newHLV.ImportCAS = persistedHLV.ImportCAS
+	newHLV.PreviousVersions = pvMap
+	newHLV.MergeVersions = mvMap
+
+	return &newHLV, nil
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate

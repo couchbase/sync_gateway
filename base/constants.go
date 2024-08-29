@@ -185,6 +185,16 @@ const (
 )
 
 const (
+	HLV_CVCAS_FIELD = "cvCas" // This stores the version of the HLV
+	// These are the fields in the HLV
+	HLV_SRC_FIELD  = "src"       // source id for HLV
+	HLV_VER_FIELD  = "ver"       // ver field in HLV
+	HLV_MV_FIELD   = "mv"        // the MV field in HLV
+	HLV_PV_FIELD   = "pv"        // The PV field HLV
+	HLV_IMPORT_CAS = "importCAS" // import cas field
+)
+
+const (
 	// EmptyDocument denotes an empty document in JSON form.
 	EmptyDocument = `{}`
 )
