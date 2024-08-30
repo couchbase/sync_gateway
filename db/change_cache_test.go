@@ -2055,6 +2055,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 	// add cache entry that is higher than expected
 	highEntry := &LogEntry{
 		Sequence:     20,
+		EndSequence:  20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2129,6 +2130,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 	// add cache entry that is higher than expected
 	highEntry := &LogEntry{
 		Sequence:     20,
+		EndSequence:  20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2152,9 +2154,10 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 	numSeqsInList := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
 	for j := 0; j < len(arrivingSeqs); j++ {
 		newEntry := &LogEntry{
-			DocID:    fmt.Sprintf("doc_%d", arrivingSeqs),
-			RevID:    "1-abcdefabcdefabcdef",
-			Sequence: arrivingSeqs[j],
+			DocID:       fmt.Sprintf("doc_%d", arrivingSeqs),
+			RevID:       "1-abcdefabcdefabcdef",
+			Sequence:    arrivingSeqs[j],
+			EndSequence: arrivingSeqs[j],
 		}
 
 		_ = testChangeCache.processEntry(ctx, newEntry)
@@ -2265,6 +2268,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	// add cache entry that is higher than expected
 	highEntry := &LogEntry{
 		Sequence:     20,
+		EndSequence:  20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2332,6 +2336,7 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 	// add cache entry
 	entry := &LogEntry{
 		Sequence:     1,
+		EndSequence:  1,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2401,6 +2406,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 	// add cache entry to unblock pending
 	entry := &LogEntry{
 		Sequence:     1,
+		EndSequence:  1,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2467,6 +2473,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	// add cache entry that will be pushed to pending
 	entry := &LogEntry{
 		Sequence:     30,
+		EndSequence:  30,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2491,6 +2498,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	// add a new contiguous sequence
 	entry = &LogEntry{
 		Sequence:     26,
+		EndSequence:  26,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2643,6 +2651,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	// process change that should push pending and subsequently be cached
 	entry := &LogEntry{
 		Sequence:     20,
+		EndSequence:  20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2713,6 +2722,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	// process change that should push pending and subsequently be cached
 	entry := &LogEntry{
 		Sequence:     20,
+		EndSequence:  20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2785,6 +2795,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInPending(t *testing.T) 
 	// push two entries that will be pushed to pending
 	entry := &LogEntry{
 		Sequence:     14,
+		EndSequence:  14,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2794,7 +2805,8 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInPending(t *testing.T) 
 
 	entry = &LogEntry{
 		Sequence:     18,
-		DocID:        fmt.Sprintf("doc_%d", 50),
+		EndSequence:  18,
+		DocID:        fmt.Sprintf("doc_%d", 40),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
 		TimeSaved:    time.Now(),
@@ -2817,7 +2829,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInPending(t *testing.T) 
 	}, time.Second*10, time.Millisecond*100)
 
 	// Verify expected pending entries
-	expectedPending := []sequenceRange{{10, 13}, {14, 0}, {15, 17}, {18, 0}, {19, 20}}
+	expectedPending := []sequenceRange{{10, 13}, {14, 14}, {15, 17}, {18, 18}, {19, 20}}
 	AssertPendingLogs(t, testChangeCache.pendingLogs, expectedPending)
 
 	// unblock pending and assert items are processed correct
@@ -2875,6 +2887,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	// push two entries that will be pushed to pending and subsequently skipped will be filled with sequence gaps
 	entry := &LogEntry{
 		Sequence:     14,
+		EndSequence:  14,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2884,6 +2897,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 
 	entry = &LogEntry{
 		Sequence:     18,
+		EndSequence:  18,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2934,6 +2948,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	// assert a new contiguous sequence is processed correctly
 	entry = &LogEntry{
 		Sequence:     19,
+		EndSequence:  19,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: time.Now(),
@@ -2980,9 +2995,14 @@ func TestReleasedSequenceRangeOverlapUnusedSequenceRange(t *testing.T) {
 			expected: []sequenceRange{{2, 4}},
 		},
 		{
-			// range overlaps single, single arrives first
+			// single arrives then range overlaps single both sides
 			incoming: []sequenceRange{{3, 3}, {2, 4}},
-			expected: []sequenceRange{{2, 2}, {3, 0}, {4, 4}},
+			expected: []sequenceRange{{2, 2}, {3, 3}, {4, 4}},
+		},
+		{
+			// range arrives then another that completely covers range in the pending list
+			incoming: []sequenceRange{{4, 8}, {2, 10}},
+			expected: []sequenceRange{{2, 3}, {4, 8}, {9, 10}},
 		},
 		{
 			// non overlapping ranges, arrive in sequence order
@@ -3000,7 +3020,32 @@ func TestReleasedSequenceRangeOverlapUnusedSequenceRange(t *testing.T) {
 			expected: []sequenceRange{{4, 8}, {9, 10}},
 		},
 		{
-			// overlapping ranges, low range arrives first
+			// completely overlapping ranges, larger range arrives first
+			incoming: []sequenceRange{{4, 8}, {6, 8}},
+			expected: []sequenceRange{{4, 8}},
+		},
+		{
+			// range arrives then partly overlapping range arrives
+			incoming: []sequenceRange{{4, 8}, {6, 10}},
+			expected: []sequenceRange{{4, 8}, {9, 10}},
+		},
+		{
+			// range arrives, partly overlapping range arrives the single overlapping range
+			incoming: []sequenceRange{{4, 8}, {8, 10}, {9, 9}},
+			expected: []sequenceRange{{4, 8}, {9, 10}},
+		},
+		{
+			// single range arrives, left side overlapping range arrives
+			incoming: []sequenceRange{{4, 4}, {2, 4}},
+			expected: []sequenceRange{{2, 3}, {4, 4}},
+		},
+		{
+			// single range arrives, right side overlapping range arrives
+			incoming: []sequenceRange{{4, 4}, {4, 5}},
+			expected: []sequenceRange{{4, 4}, {5, 5}},
+		},
+		{
+			// range arrives, lower end overlapping range arrives
 			incoming: []sequenceRange{{6, 10}, {4, 8}},
 			expected: []sequenceRange{{4, 5}, {6, 10}},
 		},

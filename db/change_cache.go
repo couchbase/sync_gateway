@@ -452,6 +452,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		base.InfofCtx(ctx, base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
+			EndSequence:  seq,
 			TimeReceived: event.TimeReceived,
 			CollectionID: event.CollectionID,
 		}
@@ -476,6 +477,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
+					EndSequence:  seq,
 					TimeReceived: event.TimeReceived,
 					CollectionID: event.CollectionID,
 				}
@@ -500,6 +502,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 	change := &LogEntry{
 		Sequence:     syncData.Sequence,
+		EndSequence:  syncData.Sequence,
 		DocID:        docID,
 		RevID:        syncData.CurrentRev,
 		Flags:        syncData.Flags,
@@ -560,6 +563,7 @@ func (c *changeCache) processUnusedSequence(ctx context.Context, docID string, t
 func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64, timeReceived time.Time) {
 	change := &LogEntry{
 		Sequence:     sequence,
+		EndSequence:  sequence,
 		TimeReceived: timeReceived,
 	}
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d (unused sequence)", sequence)
@@ -592,6 +596,7 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 	if fromSequence == toSequence {
 		change := &LogEntry{
 			Sequence:     toSequence,
+			EndSequence:  toSequence,
 			TimeReceived: timeReceived,
 		}
 		changedChannels := c.processEntry(ctx, change)
@@ -629,6 +634,7 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		changedChannels := c._addPendingLogs(ctx)
 		allChangedChannels = allChangedChannels.Update(changedChannels)
 		c.internalStats.pendingSeqLen = len(c.pendingLogs)
+		// should we be setting internal stat of high seq here too??
 	} else {
 		// An unused sequence range than includes c.nextSequence in the middle of the range
 		// isn't possible under normal processing - unused sequence ranges will normally be moved
@@ -658,40 +664,100 @@ func (c *changeCache) _pushRangeToPending(ctx context.Context, startSeq, endSeq 
 	// check for duplicate sequences between range and pending logs
 	// loop till we have processed unused sequence range (or until we
 	// have range of sequences that aren't present in pending list)
-	for startSeq <= endSeq {
-		i, found := sort.Find(c.pendingLogs.Len(), func(i int) int {
-			value := c.pendingLogs[i]
-			if value.Sequence > endSeq {
-				// range is less than current pending entry
-				return -1
+	i, found := sort.Find(c.pendingLogs.Len(), func(i int) int {
+		value := c.pendingLogs[i]
+		if value.Sequence > endSeq {
+			// range is less than current pending entry
+			return -1
+		}
+		if startSeq <= value.Sequence && endSeq >= value.Sequence {
+			// found pending entry that has duplicate entry between itself and unused range
+			return 0
+		}
+		if startSeq >= value.Sequence && startSeq <= value.EndSequence {
+			// found overalpping rnage
+			return 0
+		}
+		if endSeq >= value.Sequence && endSeq <= value.EndSequence {
+			return 0
+		}
+		// range is larger then current element
+		return 1
+	})
+	if found {
+		// grab pending entry at that index and process unused range between startSeq and pending entry.Sequence - 1
+		pendingEntry := c.pendingLogs[i]
+		// if incoming range is inside the pending entry range, ignore as duplicate
+		if startSeq >= pendingEntry.Sequence && endSeq <= pendingEntry.EndSequence {
+			// test case for single entry here
+			base.DebugfCtx(ctx, base.KeyCache, "Ignoring duplicate sequence range of #%d to #%d (unusedSequenceRange)", startSeq, endSeq)
+			return
+		}
+		l := startSeq
+		j := endSeq
+		if startSeq >= pendingEntry.Sequence {
+			// we need to increment l till l is above the overlapping pending range
+			for l <= pendingEntry.EndSequence {
+				l++
 			}
-			if startSeq <= value.Sequence && endSeq >= value.Sequence {
-				// found pending entry that has duplicate entry between itself and unused range
-				return 0
+			// push from l to end seq
+			entry := &LogEntry{
+				TimeReceived: timeReceived,
+				Sequence:     l,
+				EndSequence:  endSeq,
 			}
-			// range is larger then current element
-			return 1
-		})
-		if found {
-			// grab pending entry at that index and process unused range between startSeq and pending entry.Sequence - 1
-			pendingEntry := c.pendingLogs[i]
-			base.DebugfCtx(ctx, base.KeyCache, "Ignoring duplicate of #%d (unusedSequence)", pendingEntry.Sequence)
+			heap.Push(&c.pendingLogs, entry)
+			base.DebugfCtx(ctx, base.KeyCache, "Ignoring duplicate sequence range of #%d to #%d (unusedSequenceRange)", startSeq, l-1)
+		} else if endSeq <= pendingEntry.EndSequence {
+			// we need to decrement j till j is below the overlapping range
+			for j > pendingEntry.Sequence-1 {
+				j--
+			}
+			// push from startSeq to j
 			entry := &LogEntry{
 				TimeReceived: timeReceived,
 				Sequence:     startSeq,
-				EndSequence:  pendingEntry.Sequence - 1,
+				EndSequence:  j,
 			}
 			heap.Push(&c.pendingLogs, entry)
-			// update start seq on range
-			startSeq = pendingEntry.Sequence + 1
+			base.DebugfCtx(ctx, base.KeyCache, "Ignoring duplicate sequence range of #%d to #%d (unusedSequenceRange)", j+1, endSeq)
 		} else {
-			// if range not found in pending then break from loop early
-			break
-		}
-	}
+			// we have a range where startSeq and endSeq cover the whole pending entry
+			// need to add from startSeq to pending start seq, then from pending end seq to endSeq
+			for l < pendingEntry.Sequence-1 {
+				l++
+			}
+			// push start seq to l
+			entry := &LogEntry{
+				TimeReceived: timeReceived,
+				Sequence:     startSeq,
+				EndSequence:  l,
+			}
+			heap.Push(&c.pendingLogs, entry)
 
-	// push what's left of seq range
-	if startSeq <= endSeq {
+			// if pending entry is single entry, have j set to single entry +1
+			// return early if this creates negative range entry
+			if pendingEntry.EndSequence == pendingEntry.Sequence {
+				j = pendingEntry.Sequence + 1
+				if j > endSeq {
+					base.DebugfCtx(ctx, base.KeyCache, "Ignoring duplicate sequence range of #%d to #%d (unusedSequenceRange)", l+1, endSeq)
+					return
+				}
+			} else {
+				for j > pendingEntry.EndSequence+1 {
+					j--
+				}
+			}
+			entry = &LogEntry{
+				TimeReceived: timeReceived,
+				Sequence:     j,
+				EndSequence:  endSeq,
+			}
+			heap.Push(&c.pendingLogs, entry)
+			base.DebugfCtx(ctx, base.KeyCache, "Ignoring duplicate sequence range of #%d to #%d (unusedSequenceRange)", pendingEntry.Sequence, pendingEntry.EndSequence)
+		}
+	} else {
+		// no overlap on incoming range
 		entry := &LogEntry{
 			TimeReceived: timeReceived,
 			Sequence:     startSeq,
@@ -743,6 +809,7 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 	// Now add the (somewhat fictitious) entry:
 	change := &LogEntry{
 		Sequence:     sequence,
+		EndSequence:  sequence,
 		TimeReceived: timeReceived,
 		IsPrincipal:  true,
 	}
@@ -758,6 +825,26 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(ctx, changedChannels)
 	}
+}
+
+func (c *changeCache) checkForDuplicatePendingSeq(ctx context.Context, sequence uint64) bool {
+	if _, found := c.receivedSeqs[sequence]; found {
+		return true
+	}
+	_, found := sort.Find(c.pendingLogs.Len(), func(i int) int {
+		value := c.pendingLogs[i]
+		if value.Sequence > sequence {
+			// range is less than current pending entry
+			return -1
+		}
+		if sequence >= value.Sequence && sequence <= value.EndSequence {
+			// duplicate found
+			return 0
+		}
+		// range is larger then current element
+		return 1
+	})
+	return found
 }
 
 // Handles a newly-arrived LogEntry.
@@ -784,7 +871,11 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	}
 
 	// Check if this is a duplicate of a pending sequence
-	if _, found := c.receivedSeqs[sequence]; found {
+	//if _, found := c.receivedSeqs[sequence]; found {
+	//	base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
+	//	return nil
+	//}
+	if c.checkForDuplicatePendingSeq(ctx, sequence) {
 		base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
@@ -841,10 +932,6 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []channels.ID {
 
 	if change.Sequence >= c.nextSequence {
-		c.nextSequence = change.Sequence + 1
-	}
-	// check if change is unused sequence range
-	if change.EndSequence != 0 {
 		c.nextSequence = change.EndSequence + 1
 	}
 	delete(c.receivedSeqs, change.Sequence)
@@ -891,10 +978,7 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			//  Skip all sequences up to the oldest Pending
 			c.PushSkipped(ctx, c.nextSequence, oldestPending.Sequence-1)
-			// disallow c.nextSequence decreasing
-			if c.nextSequence < oldestPending.Sequence {
-				c.nextSequence = oldestPending.Sequence
-			}
+			c.nextSequence = oldestPending.Sequence
 		} else {
 			break
 		}
