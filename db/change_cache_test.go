@@ -9,6 +9,7 @@
 package db
 
 import (
+	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -2804,7 +2805,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInPending(t *testing.T) 
 	// Pending should contain: (10-13), 14, (15-17) 18, (19-20)
 	testChangeCache.releaseUnusedSequenceRange(ctx, 10, 20, time.Now())
 
-	// assert pending has 4 elements
+	// assert pending has 5 elements
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(5), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
@@ -2814,6 +2815,10 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInPending(t *testing.T) 
 		dbContext.UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
+
+	// Verify expected pending entries
+	expectedPending := []sequenceRange{{10, 13}, {14, 0}, {15, 17}, {18, 0}, {19, 20}}
+	AssertPendingLogs(t, testChangeCache.pendingLogs, expectedPending)
 
 	// unblock pending and assert items are processed correct
 	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 10, time.Now())
@@ -2946,4 +2951,129 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		dbContext.UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
+}
+
+// TestReleasedSequenceRangeOverlapUnusedSequenceRange:
+//   - Test release of single sequence range that overlaps with already existing sequence range in pending logs
+func TestReleasedSequenceRangeOverlapUnusedSequenceRange(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		incoming []sequenceRange // test simulates adding these to pending in the order found in the slice
+		expected []sequenceRange // expected contents of cache pendingLogs after all sequences have been added
+	}{
+		{
+			// range overlaps single, range arrives first
+			incoming: []sequenceRange{{2, 4}, {3, 3}},
+			expected: []sequenceRange{{2, 4}},
+		},
+		{
+			// range overlaps single, single arrives first
+			incoming: []sequenceRange{{3, 3}, {2, 4}},
+			expected: []sequenceRange{{2, 2}, {3, 0}, {4, 4}},
+		},
+		{
+			// non overlapping ranges, arrive in sequence order
+			incoming: []sequenceRange{{2, 4}, {5, 8}},
+			expected: []sequenceRange{{2, 4}, {5, 8}},
+		},
+		{
+			// non overlapping ranges, arrive out of sequence order
+			incoming: []sequenceRange{{5, 8}, {2, 4}},
+			expected: []sequenceRange{{2, 4}, {5, 8}},
+		},
+		{
+			// overlapping ranges, low range arrives first
+			incoming: []sequenceRange{{4, 8}, {6, 10}},
+			expected: []sequenceRange{{4, 8}, {9, 10}},
+		},
+		{
+			// overlapping ranges, low range arrives first
+			incoming: []sequenceRange{{6, 10}, {4, 8}},
+			expected: []sequenceRange{{4, 5}, {6, 10}},
+		},
+	}
+	for index, testCase := range testCases {
+		t.Run(fmt.Sprintf("case_%d", index), func(t *testing.T) {
+			testChangeCache := &changeCache{}
+			if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+				CachePendingSeqMaxWait: 20 * time.Minute,
+				CacheSkippedSeqMaxWait: 20 * time.Minute,
+				CachePendingSeqMaxNum:  10,
+			}, dbContext.MetadataKeys); err != nil {
+				log.Printf("Init failed for testChangeCache: %v", err)
+				t.Fail()
+			}
+
+			if err := testChangeCache.Start(0); err != nil {
+				log.Printf("Start error for testChangeCache: %v", err)
+				t.Fail()
+			}
+			defer testChangeCache.Stop(ctx)
+			require.NoError(t, err)
+
+			// process overlapping unused sequence ranges that should end up going to pending without duplicates
+			for _, incomingRange := range testCase.incoming {
+				testChangeCache.releaseUnusedSequenceRange(ctx, incomingRange.start, incomingRange.end, time.Now())
+			}
+
+			// Verify expected pending entries
+			AssertPendingLogs(t, testChangeCache.pendingLogs, testCase.expected)
+		})
+	}
+
+}
+
+type sequenceRange struct {
+	start uint64
+	end   uint64
+}
+
+func ExpectedRange(start, end uint64) sequenceRange {
+	return sequenceRange{
+		start: start,
+		end:   end,
+	}
+}
+
+// AssertPendingLogs validates the ordering of the provided LogPriorityQueue against the ordered expectedPending slice.
+// We don't want to modify the incoming LogPriorityQueue, so makes a copy and then performs heap removal
+func AssertPendingLogs(t *testing.T, pendingLogs LogPriorityQueue, expectedPending []sequenceRange) {
+
+	pendingCopy := make(LogPriorityQueue, len(pendingLogs))
+	_ = copy(pendingCopy, pendingLogs)
+	if len(pendingCopy) != len(expectedPending) {
+		t.Errorf("Mismatch between length of pendingLogs and expectedPending.  pendingLogs: %s, expectedPending: %v", pendingLogsAsString(pendingCopy), expectedPending)
+		return
+	}
+
+	for i, expectedEntry := range expectedPending {
+		pendingEntry := heap.Pop(&pendingCopy).(*LogEntry)
+		assert.True(t, expectedEntry.start == pendingEntry.Sequence && expectedEntry.end == pendingEntry.EndSequence, "entry #%d, expected [%d,%d], got [%d,%d]", i, expectedEntry.start, expectedEntry.end, pendingEntry.Sequence, pendingEntry.EndSequence)
+	}
+}
+
+func pendingLogsAsString(pendingLogs LogPriorityQueue) string {
+	count := len(pendingLogs)
+	result := "{"
+	delimiter := ""
+	for i := 0; i < count; i++ {
+		pendingEntry := heap.Pop(&pendingLogs).(*LogEntry)
+		result += fmt.Sprintf("%s[%d, %d]", delimiter, pendingEntry.Sequence, pendingEntry.EndSequence)
+		delimiter = ","
+	}
+	result += "}"
+	return result
 }
