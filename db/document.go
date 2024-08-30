@@ -63,10 +63,9 @@ type ChannelSetEntry struct {
 }
 
 type MetadataOnlyUpdate struct {
-	CAS            string `json:"cas,omitempty"`
-	PreviousCAS    string `json:"pCas,omitempty"`
-	PreviousRevID  uint64 `json:"pRev,omitempty"`
-	PreviousDocSeq uint64 `json:"prevSeq"`
+	CAS           string `json:"cas,omitempty"`
+	PreviousCAS   string `json:"pCas,omitempty"`
+	PreviousRevID uint64 `json:"pRev,omitempty"`
 }
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
@@ -1241,7 +1240,7 @@ func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr, vvXattr, mouXa
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate
-func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, prevDocSeq uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
+func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
 	var prevCas string
 	currentCasString := base.CasToString(currentCas)
 	if currentMou != nil && currentCasString == currentMou.CAS {
@@ -1257,10 +1256,9 @@ func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, prevDocSeq uint6
 	}
 
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
-		CAS:            expandMacroCASValue, // when non-empty, this is replaced with cas macro expansion
-		PreviousCAS:    prevCas,
-		PreviousRevID:  prevRevID,
-		PreviousDocSeq: prevDocSeq,
+		CAS:           expandMacroCASValue, // when non-empty, this is replaced with cas macro expansion
+		PreviousCAS:   prevCas,
+		PreviousRevID: prevRevID,
 	}
 	return metadataOnlyUpdate
 }

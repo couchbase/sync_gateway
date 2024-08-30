@@ -2379,8 +2379,11 @@ func TestImportUpdateExpiry(t *testing.T) {
 	}
 }
 
-func TestRevNoAndDocSeqPopulationImportFeed(t *testing.T) {
+func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skipf("test requires CBS for previous rev no assertion")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rtConfig := rest.RestTesterConfig{
@@ -2407,7 +2410,21 @@ func TestRevNoAndDocSeqPopulationImportFeed(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = dataStore.SetRaw(mobileKey, 0, nil, []byte(`{"test":"update"}`))
+	xattrs, _, err := dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName})
+	require.NoError(t, err)
+	if rt.GetDatabase().UseMou() {
+		var mou *db.MetadataOnlyUpdate
+		mouXattr, ok := xattrs[base.MouXattrName]
+		require.True(t, ok)
+		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+		// curr rev no should be 2, so prev rev is 1
+		assert.Equal(t, uint64(1), mou.PreviousRevID)
+	} else {
+		// if mou not enabled expect and error
+		require.Error(t, err)
+	}
+
+	err = dataStore.Set(mobileKey, 0, nil, []byte(`{"test":"update"}`))
 	require.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -2415,19 +2432,17 @@ func TestRevNoAndDocSeqPopulationImportFeed(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+mobileKey, "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	xattrs, _, err := dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName})
+	xattrs, _, err = dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName})
+	require.NoError(t, err)
 	if rt.GetDatabase().UseMou() {
 		var mou *db.MetadataOnlyUpdate
-		require.NoError(t, err)
-		mouXattr, mouOk := xattrs[base.MouXattrName]
-		require.True(t, mouOk)
+		mouXattr, ok := xattrs[base.MouXattrName]
+		require.True(t, ok)
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-		fmt.Println(*mou)
+		// curr rev no should be 4, so prev rev is 3
+		assert.Equal(t, uint64(3), mou.PreviousRevID)
 	} else {
-		// Expect not found fetching mou xattr
+		// if mou not enabled expect and error
 		require.Error(t, err)
 	}
 
