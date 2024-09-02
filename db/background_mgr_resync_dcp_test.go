@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -520,18 +521,41 @@ function sync(doc, oldDoc){
 	stats := getResyncStats(resyncMgr.Process)
 	assert.Equal(t, int64(2), stats.DocsChanged)
 
+	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, "sgWrite", []string{"$document"})
+	require.NoError(t, err)
+
+	var retrievedVxattr map[string]interface{}
+	require.NoError(t, json.Unmarshal(xattrs["$document"], &retrievedVxattr))
+
+	rev, ok := retrievedVxattr["revid"].(string)
+	assert.True(t, ok, "Unable to retrieve virtual xattr crc32c as string")
+	fmt.Println(rev)
+
+	revNo, err := strconv.ParseUint(rev, 10, 64)
+	require.NoError(t, err)
+
 	syncData, mou, _ = getSyncAndMou(t, collection, "sgWrite")
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
 	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
-	require.Equal(t, uint64(1), mou.PreviousRevID)
+	require.Equal(t, revNo-1, mou.PreviousRevID)
+
+	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, "sdkWrite", []string{"$document"})
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(xattrs["$document"], &retrievedVxattr))
+
+	rev, ok = retrievedVxattr["revid"].(string)
+	assert.True(t, ok, "Unable to retrieve virtual xattr crc32c as string")
+
+	revNo, err = strconv.ParseUint(rev, 10, 64)
+	require.NoError(t, err)
 
 	syncData, mou, _ = getSyncAndMou(t, collection, "sdkWrite")
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
 	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
 	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
-	require.Equal(t, uint64(2), mou.PreviousRevID)
+	require.Equal(t, revNo-1, mou.PreviousRevID)
 }
 
 // helper function to Unmarshal BackgroundProcess state into ResyncManagerResponseDCP
