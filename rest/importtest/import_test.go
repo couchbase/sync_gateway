@@ -2384,7 +2384,6 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skipf("test requires CBS for previous rev no assertion")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rtConfig := rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
