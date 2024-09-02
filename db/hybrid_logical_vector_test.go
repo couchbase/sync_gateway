@@ -164,7 +164,6 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 
 	// first element will be current version and source pair
 	currentVersionPair := strings.Split(inputList[0], "@")
-	// this needs changing
 	hlvOutput.SourceID = base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))
 	value, err := strconv.ParseUint(currentVersionPair[1], 10, 64)
 	require.NoError(tb, err)
