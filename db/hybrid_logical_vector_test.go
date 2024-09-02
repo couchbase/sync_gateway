@@ -279,7 +279,7 @@ func TestHLVImport(t *testing.T) {
 	standardImportBody := []byte(`{"prop":"value"}`)
 	cas, err := collection.dataStore.WriteCas(standardImportKey, 0, 0, standardImportBody, sgbucket.Raw)
 	require.NoError(t, err, "write error")
-	_, err = collection.ImportDocRaw(ctx, standardImportKey, standardImportBody, nil, false, cas, nil, "", ImportFromFeed)
+	_, err = collection.ImportDocRaw(ctx, standardImportKey, standardImportBody, nil, false, cas, nil, 0, ImportFromFeed)
 	require.NoError(t, err, "import error")
 
 	importedDoc, _, err := collection.GetDocWithXattrs(ctx, standardImportKey, DocUnmarshalAll)
@@ -301,7 +301,7 @@ func TestHLVImport(t *testing.T) {
 	require.NoError(t, err)
 	encodedCAS = EncodeValue(cas)
 
-	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, false, cas, nil, "", ImportFromFeed)
+	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, false, cas, nil, 0, ImportFromFeed)
 	require.NoError(t, err, "import error")
 
 	importedDoc, _, err = collection.GetDocWithXattrs(ctx, existingHLVKey, DocUnmarshalAll)

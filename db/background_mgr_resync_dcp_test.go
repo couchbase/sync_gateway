@@ -524,12 +524,14 @@ function sync(doc, oldDoc){
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
 	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
+	require.Equal(t, uint64(1), mou.PreviousRevID)
 
 	syncData, mou, _ = getSyncAndMou(t, collection, "sdkWrite")
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
 	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
 	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
+	require.Equal(t, uint64(2), mou.PreviousRevID)
 }
 
 // helper function to Unmarshal BackgroundProcess state into ResyncManagerResponseDCP

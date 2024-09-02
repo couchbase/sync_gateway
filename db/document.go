@@ -1248,17 +1248,11 @@ func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *Meta
 	} else {
 		prevCas = currentCasString
 	}
-	var prevRevID uint64
-	if revNo == 0 && currentMou != nil {
-		prevRevID = currentMou.PreviousRevID
-	} else {
-		prevRevID = revNo
-	}
 
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
 		CAS:           expandMacroCASValue, // when non-empty, this is replaced with cas macro expansion
 		PreviousCAS:   prevCas,
-		PreviousRevID: prevRevID,
+		PreviousRevID: revNo,
 	}
 	return metadataOnlyUpdate
 }

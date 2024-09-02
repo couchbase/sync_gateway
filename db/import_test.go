@@ -609,7 +609,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	xattrs := map[string][]byte{
 		base.SyncXattrName: []byte("{}"),
 	}
-	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, "", ImportFromFeed)
+	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, 0, ImportFromFeed)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
