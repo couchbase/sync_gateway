@@ -171,10 +171,6 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 }
 
 func TestResyncInvalidatePrincipals(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
-
 	initialSyncFn := `
 	function(doc) {
 		access(doc.userName, "channelABC");

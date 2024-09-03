@@ -145,9 +145,6 @@ func TestResyncDCPInit(t *testing.T) {
 }
 
 func TestResyncManagerDCPStopInMidWay(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
 	base.LongRunningTest(t)
 
 	docsToCreate := 1000
@@ -203,9 +200,6 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 func TestResyncManagerDCPStart(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
 
 	t.Run("Resync without updating sync function", func(t *testing.T) {
 		docsToCreate := 100
@@ -280,12 +274,12 @@ func TestResyncManagerDCPStart(t *testing.T) {
 }
 
 func TestResyncManagerDCPRunTwice(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
 	base.LongRunningTest(t)
 
 	docsToCreate := 1000
+	if base.UnitTestUrlIsWalrus() {
+		docsToCreate *= 10
+	}
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 	defer db.Close(ctx)
 
@@ -337,10 +331,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	wg.Wait()
 }
 
-func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
+func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	base.LongRunningTest(t)
 
 	docsToCreate := 5000
@@ -447,10 +438,6 @@ function sync(doc, oldDoc){
 
 // TestResyncMou ensures that resync updates create mou, and preserve pcas in mou in the case where resync is reprocessing an import
 func TestResyncMou(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)

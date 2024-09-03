@@ -144,11 +144,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		return true
 	}
 
-	bucket, err := base.AsGocbV2Bucket(db.Bucket)
-	if err != nil {
-		return err
-	}
-
 	// Get collectionIds
 	collectionIDs, hasAllCollections, collectionNames, err := getCollectionIdsAndNames(db, resyncCollections)
 	if err != nil {
@@ -162,16 +157,23 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getResyncDCPClientOptions(collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	dcpOptions := backgroundManagerDcpClientOptions{
+		ID:                GenerateResyncDCPStreamName(r.ResyncID),
+		FailOnRollback:    false,
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           db.Options.GroupID,
+		CollectionIDs:     collectionIDs,
+		Scopes:            collectionNames,
+		Callback:          callback,
+	}
 
-	dcpFeedKey := GenerateResyncDCPStreamName(r.ResyncID)
-	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
+	dcpClient, err := NewBackgroundManagerDcpClient(ctx, db.Bucket, dcpOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 		return err
 	}
 
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
+	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpOptions.ID)
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
@@ -389,7 +391,7 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 }
 
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getResyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
+func getResyncDCPClientOptions(collectionNames map[string]string, collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,

@@ -597,10 +597,6 @@ func TestDBGetConfigCustomLogging(t *testing.T) {
 }
 
 func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test requires gocb buckets")
-	}
-
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -637,9 +633,6 @@ func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 }
 
 func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -692,9 +685,6 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 }
 
 func TestDCPResyncCollectionsStatus(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
 	base.TestRequiresCollections(t)
 
 	testCases := []struct {
@@ -747,9 +737,6 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 }
 
 func TestQueryResyncCollectionsStatus(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
 	base.TestRequiresCollections(t)
 
 	testCases := []struct {
@@ -915,9 +902,6 @@ func TestResyncQueryBased(t *testing.T) {
 }
 
 func TestResyncUsingDCPStream(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
 	base.LongRunningTest(t)
 
 	testCases := []struct {
@@ -999,9 +983,6 @@ func TestResyncUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncUsingDCPStreamReset(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
 	base.LongRunningTest(t)
 
 	syncFn := `
@@ -1062,9 +1043,6 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 }
 
 func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
-	}
 	base.TestRequiresCollections(t)
 
 	numCollections := 2
@@ -1230,10 +1208,6 @@ func TestResyncErrorScenarios(t *testing.T) {
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
-
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -1310,12 +1284,6 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncStop(t *testing.T) {
-
-	if !base.UnitTestUrlIsWalrus() {
-		// Limitation of setting LeakyBucket on RestTester
-		t.Skip("This test only works with walrus")
-	}
-
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -1863,11 +1831,6 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		// This test requires a gocb bucket
-		t.Skip("This test doesn't works with walrus")
-	}
-
 	syncFn := `
 	function(doc) {
 		channel("x")
