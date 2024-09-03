@@ -1847,69 +1847,78 @@ Database:
               example: ["CRUD", "HTTP", "Query"]
         audit:
           description: Audit logging configuration.
-          type: object
-          properties:
-            enabled:
-              description: Whether audit logging is enabled.
-              type: boolean
-              default: false
-            enabled_events:
-              description: List of enabled audit events for this database.
-              type: array
-              items:
-                type: number
-              example: [1234, 5678]
-            disabled_users:
-              description: List of users for which audit logging is disabled
-              type: array
-              items:
-                type: object
-                properties:
-                  domain:
-                    description: The domain of the user for which audit logging is disabled.
-                    type: string
-                  name:
-                    description: The name of the user for which audit logging is disabled.
-                    type: string
-            disabled_roles:
-              description: List of roles for which audit logging is disabled
-              type: array
-              items:
-                type: object
-                properties:
-                  domain:
-                    description: The domain of the role for which audit logging is disabled.
-                    type: string
-                  name:
-                    description: The name of the role for which audit logging is disabled.
-                    type: string
+          allOf:
+            - type: object
+              properties:
+                enabled:
+                  description: Whether audit logging is enabled.
+                  type: boolean
+                  default: false
+                enabled_events:
+                  description: List of enabled audit events for this database.
+                  type: array
+                  items:
+                    type: number
+                  example: [1234, 5678]
+            - $ref: '#/Disabled-users-and-roles'
   title: Database-config
+Disabled-users-and-roles:
+  type: object
+  properties:
+    disabled_users:
+      description: List of users for which audit logging is disabled.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the user for which audit logging is disabled. Either cbs or sgw.
+            type: string
+          name:
+            description: The name of the user for which audit logging is disabled.
+            type: string
+    disabled_roles:
+      description: List of roles for which audit logging is disabled. Either cbs or sgw.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the role for which audit logging is disabled.
+            type: string
+          name:
+            description: The name of the role for which audit logging is disabled.
+            type: string
 Database-audit:
-  title: Database-audit
+  title: Simple
   description: A map of audit events and whether they are enabled or not.
-  type: object
-  properties:
-    enabled:
-      type: boolean
-    events:
-      type: object
-      additionalProperties:
-        x-additionalPropertiesName: audit_id
-        description: The audit event ID and whether it is enabled or not.
-        type: boolean
+  allOf:
+    - type: object
+      properties:
+        enabled:
+          type: boolean
+        events:
+          type: object
+          additionalProperties:
+            x-additionalPropertiesName: audit_id
+            description: The audit event ID and whether it is enabled or not.
+            type: boolean
+    - $ref: '#/Disabled-users-and-roles'
 Database-audit-verbose:
-  title: Database-audit-verbose
+  title: Verbose
   description: A map of detailed audit events.
-  type: object
-  properties:
-    enabled:
-      type: boolean
-    events:
-      type: object
-      additionalProperties:
-        x-additionalPropertiesName: audit_id
-        description: The audit event ID and whether it is enabled or not.
-        $ref: '#/AuditEventVerbose'
+  allOf:
+    - type: object
+      properties:
+        enabled:
+          type: boolean
+        events:
+          type: object
+          additionalProperties:
+            x-additionalPropertiesName: audit_id
+            description: The audit event ID and whether it is enabled or not.
+            $ref: '#/AuditEventVerbose'
+    - $ref: '#/Disabled-users-and-roles'
 AuditEventVerbose:
   title: audit-event-verbose
   description: Detailed information about an audit event.
@@ -2390,7 +2399,7 @@ Logging-config:
                       type: integer
             collation_buffer_size:
               description: The size of the log collation buffer.
-              default: 10
+              default: 0
               type: integer
               readOnly: true
     warn:
@@ -2409,7 +2418,7 @@ Logging-config:
                       type: integer
             collation_buffer_size:
               description: The size of the log collation buffer
-              default: 1000
+              default: 0
               type: integer
               readOnly: true
     info:
@@ -2428,7 +2437,7 @@ Logging-config:
                       type: integer
             collation_buffer_size:
               description: The size of the log collation buffer
-              default: 1000
+              default: 0
               type: integer
               readOnly: true
     debug:
@@ -2447,7 +2456,7 @@ Logging-config:
                       type: integer
             collation_buffer_size:
               description: The size of the log collation buffer
-              default: 0
+              default: 1000
               type: integer
               readOnly: true
     trace:
@@ -2466,7 +2475,7 @@ Logging-config:
                       type: integer
             collation_buffer_size:
               description: The size of the log collation buffer
-              default: 0
+              default: 1000
               type: integer
               readOnly: true
     stats:
