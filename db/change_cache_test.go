@@ -2430,7 +2430,7 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(2), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(25), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 
@@ -2536,7 +2536,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	defer testChangeCache.Stop(ctx)
 	require.NoError(t, err)
 
-	// process unused sequence range
+	// process unused sequence range, will be sent to pending.  Triggers seq 1 being sent to skipped
 	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 25, time.Now())
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2647,7 +2647,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(1), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// process change that should overload pending and push sequence 1 to skipped
