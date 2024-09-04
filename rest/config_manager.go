@@ -519,9 +519,10 @@ func (b *bootstrapContext) waitForConfigDelete(ctx context.Context, bucketName, 
 		timeout = b.configRetryTimeout
 	}
 
+	dbConfigName := PersistentConfigKey(ctx, groupID, dbName)
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
 		config := &DatabaseConfig{}
-		cas, getErr := b.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), config)
+		cas, getErr := b.Connection.GetMetadataDocument(ctx, bucketName, dbConfigName, config)
 		// Success case - delete has been completed
 		if base.IsDocNotFoundError(getErr) {
 			return false, nil, nil
@@ -541,7 +542,7 @@ func (b *bootstrapContext) waitForConfigDelete(ctx context.Context, bucketName, 
 	// Kick off the retry loop
 	err, retryResult := base.RetryLoop(
 		ctx,
-		"Wait for config version match",
+		base.RedactSprintf("Wait for %q to be deleted in %q", base.MD(dbConfigName), base.MD(bucketName)),
 		retryWorker,
 		base.CreateDoublingSleeperDurationFunc(50, timeout),
 	)
