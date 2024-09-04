@@ -37,7 +37,7 @@
           "enable_star_channel":true
         },
         "rev_cache":{
-          "max_item_count":5000,
+          "size":5000,
           "shard_count":8
         }
       }

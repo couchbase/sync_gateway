@@ -2567,7 +2567,7 @@ func TestHandleDBConfig(t *testing.T) {
 
 	gotRevcache, ok := gotcache["rev_cache"].(map[string]interface{})
 	require.True(t, ok)
-	gotRevcacheSize, ok := gotRevcache["max_item_count"].(json.Number)
+	gotRevcacheSize, ok := gotRevcache["size"].(json.Number)
 	require.True(t, ok)
 	gotRevcacheSizeInt, err := gotRevcacheSize.Int64()
 	require.NoError(t, err)

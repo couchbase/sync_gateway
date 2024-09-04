@@ -246,9 +246,9 @@ type DeprecatedCacheConfig struct {
 }
 
 type RevCacheConfig struct {
-	MaxItemCount     *uint32 `json:"max_item_count,omitempty"` // Maximum number of revisions to store in the revision cache
-	MaxMemoryCountMB *uint32 `json:"max_memory_count_mb"`      // Maximum amount of memory the rev cache should consume in MB
-	ShardCount       *uint16 `json:"shard_count,omitempty"`    // Number of shards the rev cache should be split into
+	MaxItemCount     *uint32 `json:"size,omitempty"`                // Maximum number of revisions to store in the revision cache
+	MaxMemoryCountMB *uint32 `json:"max_memory_count_mb,omitempty"` // Maximum amount of memory the rev cache should consume in MB, when configured it will work in tandem with max items
+	ShardCount       *uint16 `json:"shard_count,omitempty"`         // Number of shards the rev cache should be split into
 }
 
 type ChannelCacheConfig struct {
@@ -817,7 +817,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			// EE: disable revcache
 			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.MaxItemCount
 			if !isEnterpriseEdition && revCacheSize != nil && *revCacheSize == 0 {
-				base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.rev_cache.max_item_count", *revCacheSize, db.DefaultRevisionCacheSize)
+				base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
 				dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = nil
 			}
 			revCacheMemoryLimit := dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB
