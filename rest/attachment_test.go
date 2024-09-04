@@ -2758,3 +2758,32 @@ func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersio
 	require.True(rt.TB(), body["ok"].(bool))
 	return DocVersionFromPutResponse(rt.TB(), response)
 }
+
+func TestLegacyAttachmentMigrationToGlobalXattrOnRead(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	docID := "foo16"
+	attBody := []byte(`hi`)
+	digest := db.Sha1DigestKey(attBody)
+	attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+	rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+	// Create a document with legacy attachment.
+	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+
+	// perform read of doc, will move attachment to global sync xattr
+	_, _ = rt.GetDoc(docID)
+
+	// get global xattr and assert the attachment is there
+	xattrs, _, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.GlobalXattrName)
+	var globalXattr db.GlobalSyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
+	hi := globalXattr.GlobalAttachments["hi.txt"].(map[string]interface{})
+
+	assert.Len(t, globalXattr.GlobalAttachments, 1)
+	assert.Equal(t, float64(2), hi["length"])
+}

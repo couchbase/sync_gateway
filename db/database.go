@@ -1859,7 +1859,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.metadataOnlyUpdate)
 			}
 
-			_, rawSyncXattr, rawVvXattr, rawMouXattr, err := updatedDoc.MarshalWithXattrs()
+			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
@@ -1870,6 +1870,9 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			}
 			if db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
+			}
+			if rawGlobalXattr != nil {
+				updatedDoc.Xattrs[base.GlobalXattrName] = rawGlobalXattr
 			}
 			return updatedDoc, err
 		}
