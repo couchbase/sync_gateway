@@ -3095,6 +3095,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	RequireStatus(t, resp, http.StatusOK)
 
+	// empty db config struct
+	dbConfig = DbConfig{}
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfig))
 	assert.NotNil(t, dbConfig.CacheConfig)
 
