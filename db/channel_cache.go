@@ -193,7 +193,11 @@ func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
 
 // Add unused Sequence notifies the cache of an unused sequence update. Updates the cache's high sequence
 func (c *channelCacheImpl) AddUnusedSequence(change *LogEntry) {
-	c.updateHighCacheSequence(change.Sequence)
+	if change.EndSequence > 0 {
+		c.updateHighCacheSequence(change.EndSequence)
+	} else {
+		c.updateHighCacheSequence(change.Sequence)
+	}
 }
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
