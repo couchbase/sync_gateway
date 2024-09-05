@@ -1847,20 +1847,42 @@ Database:
               example: ["CRUD", "HTTP", "Query"]
         audit:
           description: Audit logging configuration.
-          allOf:
-            - type: object
-              properties:
-                enabled:
-                  description: Whether audit logging is enabled.
-                  type: boolean
-                  default: false
-                enabled_events:
-                  description: List of enabled audit events for this database.
-                  type: array
-                  items:
-                    type: number
-                  example: [1234, 5678]
-            - $ref: '#/Disabled-users-and-roles'
+          type: object
+          properties:
+            enabled:
+              description: Whether audit logging is enabled.
+              type: boolean
+              default: false
+            enabled_events:
+              description: List of enabled audit events for this database.
+              type: array
+              items:
+                type: number
+                example: [1234, 5678]
+            disabled_users:
+              description: List of users for which audit logging is disabled.
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    description: The domain of the user for which audit logging is disabled. Either cbs or sgw.
+                    type: string
+                  name:
+                    description: The name of the user for which audit logging is disabled.
+                    type: string
+            disabled_roles:
+              description: List of roles for which audit logging is disabled. Either cbs or sgw.
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    description: The domain of the role for which audit logging is disabled.
+                    type: string
+                  name:
+                    description: The name of the role for which audit logging is disabled.
+                    type: string
   title: Database-config
 Disabled-users-and-roles:
   type: object
@@ -1892,33 +1914,76 @@ Disabled-users-and-roles:
 Database-audit:
   title: Simple
   description: A map of audit events and whether they are enabled or not.
-  allOf:
-    - type: object
-      properties:
-        enabled:
-          type: boolean
-        events:
-          type: object
-          additionalProperties:
-            x-additionalPropertiesName: audit_id
-            description: The audit event ID and whether it is enabled or not.
-            type: boolean
-    - $ref: '#/Disabled-users-and-roles'
+  properties:
+    enabled:
+      type: boolean
+    events:
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: audit_id
+        description: The audit event ID and whether it is enabled or not.
+        type: boolean
+    disabled_users:
+      description: List of users for which audit logging is disabled.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the user for which audit logging is disabled. Either cbs or sgw.
+            type: string
+          name:
+            description: The name of the user for which audit logging is disabled.
+            type: string
+    disabled_roles:
+      description: List of roles for which audit logging is disabled. Either cbs or sgw.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the role for which audit logging is disabled.
+            type: string
+          name:
+            description: The name of the role for which audit logging is disabled.
+            type: string
 Database-audit-verbose:
   title: Verbose
   description: A map of detailed audit events.
-  allOf:
-    - type: object
-      properties:
-        enabled:
-          type: boolean
-        events:
-          type: object
-          additionalProperties:
-            x-additionalPropertiesName: audit_id
-            description: The audit event ID and whether it is enabled or not.
-            $ref: '#/AuditEventVerbose'
-    - $ref: '#/Disabled-users-and-roles'
+  properties:
+    enabled:
+      type: boolean
+    events:
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: audit_id
+        description: The audit event ID and whether it is enabled or not.
+        $ref: '#/AuditEventVerbose'
+    disabled_users:
+      description: List of users for which audit logging is disabled.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the user for which audit logging is disabled. Either cbs or sgw.
+            type: string
+          name:
+            description: The name of the user for which audit logging is disabled.
+            type: string
+    disabled_roles:
+      description: List of roles for which audit logging is disabled. Either cbs or sgw.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the role for which audit logging is disabled.
+            type: string
+          name:
+            description: The name of the role for which audit logging is disabled.
+            type: string
+
 AuditEventVerbose:
   title: audit-event-verbose
   description: Detailed information about an audit event.
@@ -2384,119 +2449,245 @@ Logging-config:
     console:
       $ref: '#/Console-logging-config'
     error:
-      allOf:
-        - $ref: '#/File-logging-config-base'
-        - type: object
+      type: object
+      description: Error logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: true
+        rotation:
+          type: object
+          readOnly: true
           properties:
-            rotation:
-              allOf:
-                - $ref: '#/Log-rotation-base'
-                - type: object
-                  properties:
-                    max_age:
-                      description: The maximum number of days to retain old log files.
-                      default: 360
-                      type: integer
-            collation_buffer_size:
-              description: The size of the log collation buffer.
-              default: 0
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
               type: integer
-              readOnly: true
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 360
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer.
+          default: 0
+          type: integer
+          readOnly: true
     warn:
-      allOf:
-        - $ref: '#/File-logging-config-base'
-        - type: object
+      type: object
+      description: Warning logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: true
+        rotation:
+          type: object
+          readOnly: true
           properties:
-            rotation:
-              allOf:
-                - $ref: '#/Log-rotation-base'
-                - type: object
-                  properties:
-                    max_age:
-                      description: The maximum number of days to retain old log files.
-                      default: 180
-                      type: integer
-            collation_buffer_size:
-              description: The size of the log collation buffer
-              default: 0
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
               type: integer
-              readOnly: true
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 180
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 0
+          type: integer
+          readOnly: true
     info:
-      allOf:
-        - $ref: '#/File-logging-config-base'
-        - type: object
+      type: object
+      description: Info logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: true
+        rotation:
+          type: object
+          readOnly: true
           properties:
-            rotation:
-              allOf:
-                - $ref: '#/Log-rotation-base'
-                - type: object
-                  properties:
-                    max_age:
-                      description: The maximum number of days to retain old log files.
-                      default: 6
-                      type: integer
-            collation_buffer_size:
-              description: The size of the log collation buffer
-              default: 0
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
               type: integer
-              readOnly: true
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 6
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 0
+          type: integer
+          readOnly: true
     debug:
-      allOf:
-        - $ref: '#/File-logging-config-base'
-        - type: object
+      type: object
+      description: Debug logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: false
+        rotation:
+          type: object
+          readOnly: true
           properties:
-            rotation:
-              allOf:
-                - $ref: '#/Log-rotation-base'
-                - type: object
-                  properties:
-                    max_age:
-                      description: The maximum number of days to retain old log files.
-                      default: 2
-                      type: integer
-            collation_buffer_size:
-              description: The size of the log collation buffer
-              default: 1000
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
               type: integer
-              readOnly: true
-    trace:
-      allOf:
-        - $ref: '#/File-logging-config-base'
-        - type: object
-          properties:
-            rotation:
-              allOf:
-                - $ref: '#/Log-rotation-base'
-                - type: object
-                  properties:
-                    max_age:
-                      description: The maximum number of days to retain old log files.
-                      default: 2
-                      type: integer
-            collation_buffer_size:
-              description: The size of the log collation buffer
-              default: 1000
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
               type: integer
-              readOnly: true
-    stats:
-      allOf:
-        - $ref: '#/File-logging-config-base'
-        - type: object
-          properties:
-            rotation:
-              allOf:
-                - $ref: '#/Log-rotation-base'
-                - type: object
-                  properties:
-                    max_age:
-                      description: The maximum number of days to retain old log files.
-                      default: 6
-                      type: integer
-            collation_buffer_size:
-              description: The size of the log collation buffer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
               default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 2
               type: integer
-              readOnly: true
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 1000
+          type: integer
+          readOnly: true
+    trace:
+      type: object
+      description: Trace logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: false
+        rotation:
+          type: object
+          readOnly: true
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 2
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 1000
+          type: integer
+          readOnly: true
+    stats:
+      type: object
+      description: Trace logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: true
+        rotation:
+          type: object
+          readOnly: true
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 6
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 0
+          type: integer
+          readOnly: true
     audit:
       $ref: '#/Audit-logging-config'
 File-logging-config-base:
@@ -2508,21 +2699,40 @@ File-logging-config-base:
       default: false
   title: File-logging-config
 Audit-logging-config:
-  allOf:
-    - $ref: '#/File-logging-config-base'
-    - type: object
-      properties:
-        rotation:
-          allOf:
-            - $ref: '#/Log-rotation-base'
-            - type: object
-              properties:
-                max_age:
-                  description: The maximum number of days to retain old log files.
-                  default: 6
-                  type: integer
   type: object
+  title: "Audit logging config"
   properties:
+    enabled:
+      description: Toggle for this log output
+      type: boolean
+      default: false
+    rotation:
+      type: object
+      readOnly: true
+      properties:
+        max_size:
+          description: The maximum size in MB of the log file before it gets rotated.
+          type: integer
+          default: 100
+        localtime:
+          description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+          type: boolean
+          default: false
+        rotated_logs_size_limit:
+          description: Max Size (in mb) of log files before deletion
+          type: integer
+          default: 1024
+        rotation_interval:
+          description: |-
+            If set, the interval at which log files are rotated, even if max_size is not reached.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 0
+        max_age:
+          description: The maximum number of days to retain old log files.
+          default: 6
+          type: integer
     audit_log_file_path:
       description: The path to write audit log files to
       type: string
@@ -2534,34 +2744,6 @@ Audit-logging-config:
         type: number
       example: [1234, 5678]
       readOnly: true
-  title: Audit-logging-config
-Log-rotation-base:
-  type: object
-  properties:
-    max_size:
-      description: The maximum size in MB of the log file before it gets rotated.
-      type: integer
-      default: 100
-    localtime:
-      description: 'If true, it uses the computer''s local time to format the backup timestamp.'
-      type: boolean
-      default: false
-    rotated_logs_size_limit:
-      description: Max Size (in mb) of log files before deletion
-      type: integer
-      default: 1024
-    rotation_interval:
-      description: |-
-        If set, the interval at which log files are rotated, even if max_size is not reached.
-
-        This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
-      type: string
-      default: 0
-  readOnly: true
-  title: Log-rotation-config
-Log-rotation-config:
-  allOf:
-    - $ref: '#/Log-rotation-base'
 Console-logging-config:
   type: object
   properties:
@@ -2596,14 +2778,33 @@ Console-logging-config:
       default: false
       readOnly: true
     rotation:
-      allOf:
-        - $ref: '#/Log-rotation-base'
-        - type: object
-          properties:
-            max_age:
-              description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
-              default: 0
-              type: integer
+      type: object
+      readOnly: true
+      title: Log-rotation-config
+      properties:
+        max_size:
+          description: The maximum size in MB of the log file before it gets rotated.
+          type: integer
+          default: 100
+        localtime:
+          description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+          type: boolean
+          default: false
+        rotated_logs_size_limit:
+          description: Max Size (in mb) of log files before deletion
+          type: integer
+          default: 1024
+        rotation_interval:
+          description: |-
+            If set, the interval at which log files are rotated, even if max_size is not reached.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 0
+        max_age:
+          description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
+          default: 0
+          type: integer
     collation_buffer_size:
       description: The size of the log collation buffer. The default is 10 if the output is stderr, or 1000 if to a file.
       type: integer
