@@ -515,7 +515,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						pendingChanges = append(pendingChanges, changeRow)
 					}
 				} else {
-					changeRow := bh.buildChangesRow(change, change.CurrentVersion.String())
+					changeRow := bh.buildChangesRow(change, change.CurrentVersion.BlipString())
 					pendingChanges = append(pendingChanges, changeRow)
 				}
 

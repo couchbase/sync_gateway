@@ -240,8 +240,8 @@ const doc_meta_no_vv = `{
   }`
 
 const doc_meta_vv = `{"cvCas":"0x40e2010000000000","src":"cb06dc003846116d9b66d2ab23887a96","ver":"0x40e2010000000000",
-	"mv":["0xc0ff05d7ac059a16@s_LhRPsa7CpjEvP5zeXTXEBA","0x1c008cd6@s_NqiIe0LekFPLeX4JvTO6Iw"],
-	"pv":["0xf0ff44d6ac059a16@s_YZvBpEaztom9z5V/hDoeIw"]
+	"mv":["s_LhRPsa7CpjEvP5zeXTXEBA@0xc0ff05d7ac059a16","s_NqiIe0LekFPLeX4JvTO6Iw@0x1c008cd6"],
+	"pv":["s_YZvBpEaztom9z5V/hDoeIw@0xf0ff44d6ac059a16"]
 }`
 
 func TestParseVersionVectorSyncData(t *testing.T) {

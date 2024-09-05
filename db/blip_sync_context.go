@@ -631,7 +631,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		docRev, originalErr = handleChangesResponseCollection.GetRev(ctx, docID, revID, true, nil)
 	} else {
 		// extract CV string rev representation
-		version, vrsErr := ParseVersion(revID)
+		version, vrsErr := ParseBlipVersion(revID)
 		if vrsErr != nil {
 			return vrsErr
 		}

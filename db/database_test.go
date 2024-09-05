@@ -391,7 +391,7 @@ func TestCheckProposedVersion(t *testing.T) {
 			newVersion:      Version{"other", incrementCas(cvValue, -100)},
 			previousVersion: &Version{cvSource, incrementCas(cvValue, -50)},
 			expectedStatus:  ProposedRev_Conflict,
-			expectedRev:     Version{cvSource, cvValue}.String(),
+			expectedRev:     Version{cvSource, cvValue}.BlipString(),
 		},
 		{
 			// conflict - previous version is older than CV
@@ -399,7 +399,7 @@ func TestCheckProposedVersion(t *testing.T) {
 			newVersion:      Version{"other", incrementCas(cvValue, 100)},
 			previousVersion: &Version{"other", incrementCas(cvValue, -50)},
 			expectedStatus:  ProposedRev_Conflict,
-			expectedRev:     Version{cvSource, cvValue}.String(),
+			expectedRev:     Version{cvSource, cvValue}.BlipString(),
 		},
 	}
 
@@ -407,9 +407,9 @@ func TestCheckProposedVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			previousVersionStr := ""
 			if tc.previousVersion != nil {
-				previousVersionStr = tc.previousVersion.String()
+				previousVersionStr = tc.previousVersion.BlipString()
 			}
-			status, rev := collection.CheckProposedVersion(ctx, "doc1", tc.newVersion.String(), previousVersionStr)
+			status, rev := collection.CheckProposedVersion(ctx, "doc1", tc.newVersion.BlipString(), previousVersionStr)
 			assert.Equal(t, tc.expectedStatus, status)
 			assert.Equal(t, tc.expectedRev, rev)
 		})
