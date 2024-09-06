@@ -628,6 +628,10 @@ func (rt *RestTester) Close() {
 		rt.RestTesterServerContext.Close(ctx)
 	}
 	if rt.TestBucket != nil {
+		_, ok := base.AsLeakyBucket(rt.TestBucket)
+		if !ok {
+			panic("TestBucket is not a leaky bucket")
+		}
 		rt.TestBucket.Close(ctx)
 		rt.TestBucket = nil
 	}
@@ -1387,6 +1391,7 @@ type BlipTester struct {
 func (bt BlipTester) Close() {
 	bt.sender.Close()
 	if !bt.avoidRestTesterClose {
+		fmt.Printf("Closing restTester %+v", bt)
 		bt.restTester.Close()
 	}
 }

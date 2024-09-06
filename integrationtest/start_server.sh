@@ -7,6 +7,7 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
+# This script starts a Couchbase Server instance in a Docker container from either Linux or MacOS.
 set -eux -o pipefail
 
 function usage() {
