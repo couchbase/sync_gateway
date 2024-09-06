@@ -1894,6 +1894,33 @@ Database:
                     description: The name of the role for which audit logging is disabled.
                     type: string
   title: Database-config
+Disabled-users-and-roles:
+  type: object
+  properties:
+    disabled_users:
+      description: List of users for which audit logging is disabled.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the user for which audit logging is disabled. Either cbs or sgw.
+            type: string
+          name:
+            description: The name of the user for which audit logging is disabled.
+            type: string
+    disabled_roles:
+      description: List of roles for which audit logging is disabled. Either cbs or sgw.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the role for which audit logging is disabled.
+            type: string
+          name:
+            description: The name of the role for which audit logging is disabled.
+            type: string
 Database-audit:
   title: Simple
   description: A map of audit events and whether they are enabled or not.
@@ -1986,7 +2013,6 @@ Database-audit-verbose:
           name:
             description: The name of the role for which audit logging is disabled.
             type: string
-
 AuditEventVerbose:
   title: audit-event-verbose
   description: Detailed information about an audit event.
