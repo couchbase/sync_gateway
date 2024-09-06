@@ -646,6 +646,7 @@ func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUU
 	return entry.VbUUID
 }
 
+// GetMetadataKeyPrefix returns the dcp metadata key prefix
 func (dc *DCPClient) GetMetadataKeyPrefix() string {
 	return dc.metadata.GetKeyPrefix()
 }
