@@ -1670,7 +1670,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 			key := realDocID(docid)
 			queryRowCount++
 			docsProcessed++
-			_, unusedSequences, err = db.resyncDocument(ctx, docid, key, regenerateSequences, unusedSequences, 0)
+			_, unusedSequences, err = db.resyncDocument(ctx, docid, key, regenerateSequences, unusedSequences)
 			if err == nil {
 				docsChanged++
 			} else if err != base.ErrUpdateCancel {
@@ -1826,7 +1826,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	return doc, shouldUpdate, updatedExpiry, doc.Sequence, updatedUnusedSequences, nil
 }
 
-func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64, revNo uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
 	var updatedDoc *Document
 	var shouldUpdate bool
 	var updatedExpiry *uint32
