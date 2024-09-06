@@ -313,7 +313,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					Size: base.Uint32Ptr(0),
+					MaxItemCount: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
 					MaxNumber: base.IntPtr(0),
