@@ -1304,6 +1304,13 @@ Database:
               description: The maximum number of revisions that can be stored in the revision cache.
               type: string
               default: 5000
+            max_memory_count_mb:
+              description: |-
+                The maximum amount of memory the revision cache should take up in MB, setting to 0 will disable any eviction based on memory at rev cache.
+                When set this memory limit will work in in hand with revision cache size parameter. So you will potentially get eviction at revision cache both based off memory footprint and number of items in the cache.
+                **This is an enterprise-edition feature only**
+              type: integer
+              default: 0
             shard_count:
               description: The number of shards the revision cache should be split into.
               type: string
