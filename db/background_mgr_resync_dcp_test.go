@@ -438,6 +438,10 @@ function sync(doc, oldDoc){
 
 // TestResyncMou ensures that resync updates create mou, and preserve pcas in mou in the case where resync is reprocessing an import
 func TestResyncMou(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("test needs xattrs enabled for mou")
+	}
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
