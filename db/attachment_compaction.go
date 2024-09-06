@@ -131,24 +131,31 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	if err != nil {
+		return 0, nil, "", err
+	}
 
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
 
 	dcpFeedKey := GenerateCompactionDCPStreamName(compactionID, MarkPhase)
-	clientOptions.ID = dcpFeedKey
-	clientOptions.Callback = callback
 
-	backgroundDCPClient, err := NewBackgroundManagerDcpClient(ctx, db.Bucket, clientOptions)
+	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
 		return 0, nil, "", err
 	}
-	metadataKeyPrefix := backgroundDCPClient.GetMetadataKeyPrefix()
 
-	doneChan, err := backgroundDCPClient.Start()
+	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
+	if err != nil {
+		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
+		return 0, nil, "", err
+	}
+	metadataKeyPrefix := dcpClient.GetMetadataKeyPrefix()
+
+	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
-		_ = backgroundDCPClient.Close()
+		_ = dcpClient.Close()
 		return 0, nil, metadataKeyPrefix, err
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP feed started.", compactionLoggingID)
@@ -156,29 +163,29 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	select {
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Mark phase of attachment compaction completed. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
-		err = backgroundDCPClient.Close()
+		err = dcpClient.Close()
 		if markProcessFailureErr != nil {
 			return markedAttachmentCount.Value(), nil, metadataKeyPrefix, markProcessFailureErr
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Stopping mark phase.", compactionLoggingID)
-		err = backgroundDCPClient.Close()
+		err = dcpClient.Close()
 		if markProcessFailureErr != nil {
 			return markedAttachmentCount.Value(), nil, metadataKeyPrefix, markProcessFailureErr
 		}
 		if err != nil {
-			return markedAttachmentCount.Value(), base.GetVBUUIDs(backgroundDCPClient.GetMetadata()), metadataKeyPrefix, err
+			return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), metadataKeyPrefix, err
 		}
 
 		err = <-doneChan
 		if err != nil {
-			return markedAttachmentCount.Value(), base.GetVBUUIDs(backgroundDCPClient.GetMetadata()), metadataKeyPrefix, err
+			return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), metadataKeyPrefix, err
 		}
 
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Mark phase of attachment compaction was terminated. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 	}
 
-	return markedAttachmentCount.Value(), base.GetVBUUIDs(backgroundDCPClient.GetMetadata()), metadataKeyPrefix, err
+	return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), metadataKeyPrefix, err
 }
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
@@ -350,23 +357,30 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	if err != nil {
+		return 0, err
+	}
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 
 	dcpFeedKey := GenerateCompactionDCPStreamName(compactionID, SweepPhase)
-	clientOptions.ID = dcpFeedKey
-	clientOptions.Callback = callback
 
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
-	backgroundDCPClient, err := NewBackgroundManagerDcpClient(ctx, db.Bucket, clientOptions)
+	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
 		return 0, err
 	}
 
-	doneChan, err := backgroundDCPClient.Start()
+	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
+	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
+	if err != nil {
+		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
+		return 0, err
+	}
+
+	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
-		_ = backgroundDCPClient.Close()
+		_ = dcpClient.Close()
 		return 0, err
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", compactionLoggingID)
@@ -374,10 +388,10 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 	select {
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
-		err = backgroundDCPClient.Close()
+		err = dcpClient.Close()
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending sweep phase.", compactionLoggingID)
-		err = backgroundDCPClient.Close()
+		err = dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
 			return purgedAttachmentCount.Value(), err
@@ -479,26 +493,33 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	if err != nil {
+		return "", err
+	}
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
-	clientOptions.Callback = callback
 
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
 
 	dcpFeedKey := GenerateCompactionDCPStreamName(compactionID, CleanupPhase)
-	clientOptions.ID = dcpFeedKey
 
-	backgroundDCPClient, err := NewBackgroundManagerDcpClient(ctx, db.Bucket, clientOptions)
+	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
 		return "", err
 	}
-	metadataKeyPrefix := backgroundDCPClient.GetMetadataKeyPrefix()
 
-	doneChan, err := backgroundDCPClient.Start()
+	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
+	if err != nil {
+		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
+		return "", err
+	}
+	metadataKeyPrefix := dcpClient.GetMetadataKeyPrefix()
+
+	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		// simplify close in CBG-2234
-		_ = backgroundDCPClient.Close()
+		_ = dcpClient.Close()
 		return metadataKeyPrefix, err
 	}
 
@@ -506,10 +527,10 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction completed", compactionLoggingID)
 		// simplify close in CBG-2234
-		err = backgroundDCPClient.Close()
+		err = dcpClient.Close()
 	case <-terminator.Done():
 		// simplify close in CBG-2234
-		err = backgroundDCPClient.Close()
+		err = dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
 			return metadataKeyPrefix, err
@@ -533,8 +554,8 @@ func getCompactionIDSubDocPath(compactionID string) string {
 }
 
 // getCompactionDCPClientOptions returns the default set of DCPClientOptions suitable for attachment compaction
-func getCompactionDCPClientOptions(collectionID uint32, groupID string, prefix string) backgroundManagerDcpClientOptions {
-	clientOptions := backgroundManagerDcpClientOptions{
+func getCompactionDCPClientOptions(collectionID uint32, groupID string, prefix string) (*base.DCPClientOptions, error) {
+	clientOptions := &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    true,
 		MetadataStoreType: base.DCPMetadataStoreCS,
@@ -542,7 +563,7 @@ func getCompactionDCPClientOptions(collectionID uint32, groupID string, prefix s
 		CollectionIDs:     []uint32{collectionID},
 		CheckpointPrefix:  prefix,
 	}
-	return clientOptions
+	return clientOptions, nil
 
 }
 

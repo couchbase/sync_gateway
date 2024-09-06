@@ -19,15 +19,15 @@ import (
 )
 
 type backgroundMgrDcpClient interface {
+	// Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
 	Start() (doneChan chan error, err error)
 	// Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
 	Close() error
 	// GetMetadata returns metadata for all vbuckets
 	GetMetadata() []base.DCPMetadata
-	// GetMetadataKeyPrefix returns the dcp metadata key prefix
-	GetMetadataKeyPrefix() string
 }
 
+// backgroundManagerDcpClientOptions are the dcp client options needed for creation of a background task dcp client
 type backgroundManagerDcpClientOptions struct {
 	Callback sgbucket.FeedEventCallbackFunc
 	// only used by rosmar
@@ -37,21 +37,23 @@ type backgroundManagerDcpClientOptions struct {
 	FailOnRollback    bool                      // When true, the DCP client will terminate on DCP rollback
 	MetadataStoreType base.DCPMetadataStoreType // define storage type for DCPMetadata
 	GroupID           string                    // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
-	CheckpointPrefix  string
-	CollectionIDs     []uint32 // CollectionIDs used by gocbcore, if empty, uses default collections
-	OneShot           bool     // Whether the dcp feed will be continuous or not
-	InitialMetadata   []base.DCPMetadata
+	CheckpointPrefix  string                    // Prefix used by
+	CollectionIDs     []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
+	OneShot           bool                      // Whether the dcp feed will be continuous or not
 }
 
+// NewBackgroundManagerDcpClient create a new DCP client for background tasks. From the bucket you pass in it will either
+// create a rosmar dcp client or a gocb dcp client
 func NewBackgroundManagerDcpClient(ctx context.Context, bucket base.Bucket, options backgroundManagerDcpClientOptions) (backgroundMgrDcpClient, error) {
 	gocbBucket, err := base.AsGocbV2Bucket(bucket)
 	if err == nil {
 		clientOptions := &base.DCPClientOptions{
+			OneShot:           options.OneShot,
 			FailOnRollback:    options.FailOnRollback,
 			MetadataStoreType: options.MetadataStoreType,
 			GroupID:           options.GroupID,
 			CheckpointPrefix:  options.CheckpointPrefix,
-			InitialMetadata:   options.InitialMetadata,
+			CollectionIDs:     options.CollectionIDs,
 		}
 		return base.NewDCPClient(ctx, options.ID, options.Callback, *clientOptions, gocbBucket)
 	}
@@ -82,6 +84,7 @@ type rosmarDcpClient struct {
 	doneChan chan error
 }
 
+// Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
 func (r *rosmarDcpClient) Start() (doneChan chan error, err error) {
 	err = r.bucket.StartDCPFeed(r.ctx, r.feedArgs, r.callback, nil)
 	go func() {
@@ -95,6 +98,7 @@ func (r *rosmarDcpClient) Start() (doneChan chan error, err error) {
 	return r.doneChan, err
 }
 
+// Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
 func (r *rosmarDcpClient) Close() error {
 	close(r.feedArgs.Terminator)
 	return nil
@@ -103,9 +107,4 @@ func (r *rosmarDcpClient) Close() error {
 // GetMetadata returns metadata for all vbuckets
 func (dc *rosmarDcpClient) GetMetadata() []base.DCPMetadata {
 	return nil
-}
-
-// GetMetadataKeyPrefix returns the dcp metadata key prefix
-func (dc *rosmarDcpClient) GetMetadataKeyPrefix() string {
-	return ""
 }

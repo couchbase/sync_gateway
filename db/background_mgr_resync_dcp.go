@@ -165,6 +165,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		CollectionIDs:     collectionIDs,
 		Scopes:            collectionNames,
 		Callback:          callback,
+		CheckpointPrefix:  db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
+		OneShot:           true,
 	}
 
 	dcpClient, err := NewBackgroundManagerDcpClient(ctx, db.Bucket, dcpOptions)
@@ -388,18 +390,6 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 	}
 
 	return InitializeIndexes(ctx, n1qlStore, options)
-}
-
-// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getResyncDCPClientOptions(collectionNames map[string]string, collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
-	return &base.DCPClientOptions{
-		OneShot:           true,
-		FailOnRollback:    false,
-		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
-		CollectionIDs:     collectionIDs,
-		CheckpointPrefix:  prefix,
-	}
 }
 
 // GenerateResyncDCPStreamName returns the DCP stream name for a resync.
