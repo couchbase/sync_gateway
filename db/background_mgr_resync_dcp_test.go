@@ -521,15 +521,14 @@ function sync(doc, oldDoc){
 	stats := getResyncStats(resyncMgr.Process)
 	assert.Equal(t, int64(2), stats.DocsChanged)
 
-	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, "sgWrite", []string{"$document"})
+	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, "sgWrite", []string{base.DocumentXattrKey})
 	require.NoError(t, err)
 
 	var retrievedVxattr map[string]interface{}
-	require.NoError(t, json.Unmarshal(xattrs["$document"], &retrievedVxattr))
+	require.NoError(t, json.Unmarshal(xattrs[base.DocumentXattrKey], &retrievedVxattr))
 
 	rev, ok := retrievedVxattr["revid"].(string)
-	assert.True(t, ok, "Unable to retrieve virtual xattr crc32c as string")
-	fmt.Println(rev)
+	require.True(t, ok, "Unable to obtain revSeqNo as string")
 
 	revNo, err := strconv.ParseUint(rev, 10, 64)
 	require.NoError(t, err)
@@ -538,14 +537,16 @@ function sync(doc, oldDoc){
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
 	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
-	require.Equal(t, revNo-1, mou.PreviousRevID)
+	require.Equal(t, revNo-1, mou.PreviousRevSeqNo)
 
-	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, "sdkWrite", []string{"$document"})
+	// reset retrieved xattr
+	retrievedVxattr = nil
+	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, "sdkWrite", []string{base.DocumentXattrKey})
 	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(xattrs["$document"], &retrievedVxattr))
+	require.NoError(t, json.Unmarshal(xattrs[base.DocumentXattrKey], &retrievedVxattr))
 
 	rev, ok = retrievedVxattr["revid"].(string)
-	assert.True(t, ok, "Unable to retrieve virtual xattr crc32c as string")
+	require.True(t, ok, "Unable to obtain revSeqNo as string")
 
 	revNo, err = strconv.ParseUint(rev, 10, 64)
 	require.NoError(t, err)
@@ -555,7 +556,7 @@ function sync(doc, oldDoc){
 	require.NotNil(t, mou)
 	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
 	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
-	require.Equal(t, revNo-1, mou.PreviousRevID)
+	require.Equal(t, revNo-1, mou.PreviousRevSeqNo)
 }
 
 // helper function to Unmarshal BackgroundProcess state into ResyncManagerResponseDCP

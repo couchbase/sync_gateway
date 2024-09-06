@@ -279,7 +279,13 @@ func TestHLVImport(t *testing.T) {
 	standardImportBody := []byte(`{"prop":"value"}`)
 	cas, err := collection.dataStore.WriteCas(standardImportKey, 0, 0, standardImportBody, sgbucket.Raw)
 	require.NoError(t, err, "write error")
-	_, err = collection.ImportDocRaw(ctx, standardImportKey, standardImportBody, nil, false, cas, nil, 0, ImportFromFeed)
+	importOpts := importDocOptions{
+		isDelete: false,
+		expiry:   nil,
+		mode:     ImportFromFeed,
+		revSeqNo: 1,
+	}
+	_, err = collection.ImportDocRaw(ctx, standardImportKey, standardImportBody, nil, importOpts, cas)
 	require.NoError(t, err, "import error")
 
 	importedDoc, _, err := collection.GetDocWithXattrs(ctx, standardImportKey, DocUnmarshalAll)
@@ -297,11 +303,21 @@ func TestHLVImport(t *testing.T) {
 	existingHLVKey := "existingHLV_" + t.Name()
 	_ = hlvHelper.InsertWithHLV(ctx, existingHLVKey)
 
-	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName, base.VvXattrName})
+	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName, base.VvXattrName, base.DocumentXattrKey})
 	require.NoError(t, err)
 	encodedCAS = EncodeValue(cas)
 
-	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, false, cas, nil, 0, ImportFromFeed)
+	docxattr, ok := existingXattrs[base.DocumentXattrKey]
+	require.True(t, ok)
+	revSeqNo := RetrieveDocRevSeNo(t, docxattr)
+
+	importOpts = importDocOptions{
+		isDelete: false,
+		expiry:   nil,
+		mode:     ImportFromFeed,
+		revSeqNo: revSeqNo,
+	}
+	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, importOpts, cas)
 	require.NoError(t, err, "import error")
 
 	importedDoc, _, err = collection.GetDocWithXattrs(ctx, existingHLVKey, DocUnmarshalAll)

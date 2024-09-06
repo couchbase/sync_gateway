@@ -249,7 +249,7 @@ func (c *DatabaseCollection) syncAndUserXattrKeys() []string {
 
 // syncMouAndUserXattrKeys returns the xattr keys for the user, mou and sync xattrs.
 func (c *DatabaseCollection) syncMouAndUserXattrKeys() []string {
-	xattrKeys := []string{base.SyncXattrName, base.VvXattrName}
+	xattrKeys := []string{base.SyncXattrName, base.VvXattrName, base.DocumentXattrKey}
 	if c.useMou() {
 		xattrKeys = append(xattrKeys, base.MouXattrName)
 	}

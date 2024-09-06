@@ -591,7 +591,7 @@ func TestImportNullDoc(t *testing.T) {
 	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
 	// Import a null document
-	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, 0, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, 1, existingDoc, ImportOnDemand)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -609,7 +609,13 @@ func TestImportNullDocRaw(t *testing.T) {
 	xattrs := map[string][]byte{
 		base.SyncXattrName: []byte("{}"),
 	}
-	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, 0, ImportFromFeed)
+	importOpts := importDocOptions{
+		isDelete: false,
+		expiry:   &exp,
+		revSeqNo: 1,
+		mode:     ImportFromFeed,
+	}
+	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, importOpts, 1)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -702,6 +708,12 @@ func TestImportStampClusterUUID(t *testing.T) {
 	_, cas, err := collection.dataStore.GetRaw(key)
 	require.NoError(t, err)
 
+	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.DocumentXattrKey})
+	require.NoError(t, err)
+	docXattr, ok := xattrs[base.DocumentXattrKey]
+	require.True(t, ok)
+	revSeqNo := RetrieveDocRevSeNo(t, docXattr)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
 
 	body := Body{}
@@ -709,13 +721,13 @@ func TestImportStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	existingDoc := &sgbucket.BucketDocument{Body: bodyBytes, Cas: cas}
 
-	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, 0, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, revSeqNo, existingDoc, ImportOnDemand)
 	require.NoError(t, err)
 	if assert.NotNil(t, importedDoc) {
 		require.Len(t, importedDoc.ClusterUUID, 32)
 	}
 
-	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
+	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	require.Contains(t, xattrs, base.SyncXattrName)
 	var xattr map[string]any

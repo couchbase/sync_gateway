@@ -2409,20 +2409,22 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait for import
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
-	})
-	require.NoError(t, err)
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
 
-	xattrs, _, err := dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName})
+	xattrs, _, err := dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.DocumentXattrKey})
 	require.NoError(t, err)
 	if rt.GetDatabase().UseMou() {
 		var mou *db.MetadataOnlyUpdate
 		mouXattr, ok := xattrs[base.MouXattrName]
 		require.True(t, ok)
+		docxattr, ok := xattrs[base.DocumentXattrKey]
+		require.True(t, ok)
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+		revNo := db.RetrieveDocRevSeNo(t, docxattr)
 		// curr rev no should be 2, so prev rev is 1
-		assert.Equal(t, uint64(1), mou.PreviousRevID)
+		assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
 	} else {
 		// if mou not enabled expect and error
 		require.Error(t, err)
@@ -2431,20 +2433,22 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	err = dataStore.Set(mobileKey, 0, nil, []byte(`{"test":"update"}`))
 	require.NoError(t, err)
 
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 2
-	})
-	require.NoError(t, err)
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 2)
 
-	xattrs, _, err = dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName})
+	xattrs, _, err = dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.DocumentXattrKey})
 	require.NoError(t, err)
 	if rt.GetDatabase().UseMou() {
 		var mou *db.MetadataOnlyUpdate
 		mouXattr, ok := xattrs[base.MouXattrName]
 		require.True(t, ok)
+		docxattr, ok := xattrs[base.DocumentXattrKey]
+		require.True(t, ok)
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+		revNo := db.RetrieveDocRevSeNo(t, docxattr)
 		// curr rev no should be 4, so prev rev is 3
-		assert.Equal(t, uint64(3), mou.PreviousRevID)
+		assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
 	} else {
 		// if mou not enabled expect and error
 		require.Error(t, err)

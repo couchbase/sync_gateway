@@ -144,6 +144,8 @@ const (
 	// Intended to be used in Meta Map and related tests
 	MetaMapXattrsKey = "xattrs"
 
+	DocumentXattrKey = "$document"
+
 	// Prefix for transaction metadata documents
 	TxnPrefix = "_txn:"
 

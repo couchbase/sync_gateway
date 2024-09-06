@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -63,9 +64,9 @@ type ChannelSetEntry struct {
 }
 
 type MetadataOnlyUpdate struct {
-	CAS           string `json:"cas,omitempty"`
-	PreviousCAS   string `json:"pCas,omitempty"`
-	PreviousRevID uint64 `json:"pRev,omitempty"`
+	CAS              string `json:"cas,omitempty"`
+	PreviousCAS      string `json:"pCas,omitempty"`
+	PreviousRevSeqNo uint64 `json:"pRev,omitempty"`
 }
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
@@ -199,6 +200,7 @@ type Document struct {
 	RevID          string
 	DocAttachments AttachmentsMeta
 	inlineSyncData bool
+	RevSeqNo       uint64 // Server rev seq no for a document
 }
 
 type historyOnlySyncData struct {
@@ -213,6 +215,10 @@ type revOnlySyncData struct {
 
 type casOnlySyncData struct {
 	Cas string `json:"cas"`
+}
+
+type ServerRevSeqNoXattr struct {
+	RevSeqNo string `json:"revid"`
 }
 
 func (doc *Document) UpdateBodyBytes(bodyBytes []byte) {
@@ -408,14 +414,14 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	return doc, nil
 }
 
-func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, syncXattrData, hlvXattrData, mouXattrData, userXattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data, syncXattrData, hlvXattrData, mouXattrData, userXattrData, documentXattr []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 
 	if len(syncXattrData) == 0 && len(hlvXattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
 	} else {
 		doc = NewDocument(docid)
-		err = doc.UnmarshalWithXattrs(ctx, data, syncXattrData, hlvXattrData, unmarshalLevel)
+		err = doc.UnmarshalWithXattrs(ctx, data, syncXattrData, hlvXattrData, documentXattr, unmarshalLevel)
 	}
 	if err != nil {
 		return nil, err
@@ -530,7 +536,7 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 	if err != nil {
 		return nil, err
 	}
-	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], cas, DocUnmarshalAll)
+	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.DocumentXattrKey], cas, DocUnmarshalAll)
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
@@ -1093,7 +1099,7 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 // unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
 // lazy unmarshalling as needed.
 // Must handle cases where document body and hlvXattrData are present without syncXattrData for all DocumentUnmarshalLevel
-func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrData, hlvXattrData []byte, unmarshalLevel DocumentUnmarshalLevel) error {
+func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrData, hlvXattrData, documentXattr []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
 		base.WarnfCtx(ctx, "Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
@@ -1113,6 +1119,20 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			err := base.JSONUnmarshal(hlvXattrData, &doc.SyncData.HLV)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
+			}
+		}
+		if documentXattr != nil {
+			var docXattr ServerRevSeqNoXattr
+			err := base.JSONUnmarshal(documentXattr, &docXattr)
+			if err != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal doc xattr during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
+			}
+			if docXattr.RevSeqNo != "" {
+				revNo, err := strconv.ParseUint(docXattr.RevSeqNo, 10, 64)
+				if err != nil {
+					return pkgerrors.WithStack(base.RedactErrorf("Failed convert rev seq number during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
+				}
+				doc.RevSeqNo = revNo
 			}
 		}
 		doc._rawBody = data
@@ -1250,9 +1270,9 @@ func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *Meta
 	}
 
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
-		CAS:           expandMacroCASValue, // when non-empty, this is replaced with cas macro expansion
-		PreviousCAS:   prevCas,
-		PreviousRevID: revNo,
+		CAS:              expandMacroCASValue, // when non-empty, this is replaced with cas macro expansion
+		PreviousCAS:      prevCas,
+		PreviousRevSeqNo: revNo,
 	}
 	return metadataOnlyUpdate
 }
