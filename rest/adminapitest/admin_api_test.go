@@ -1284,6 +1284,11 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncStop(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		// Limitation of setting LeakyBucket on RestTester
+		t.Skip("This test only works with walrus")
+	}
+
 	syncFn := `
 	function(doc) {
 		channel("x")
