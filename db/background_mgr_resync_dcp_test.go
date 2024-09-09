@@ -168,16 +168,16 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = WaitForConditionWithOptions(t, func() bool {
+		docsProcessedErr := WaitForConditionWithOptions(t, func() bool {
 			stats := getResyncStats(resycMgr.Process)
 			if stats.DocsProcessed > 300 {
-				err = resycMgr.Stop()
-				require.NoError(t, err)
+				stopErr := resycMgr.Stop()
+				require.NoError(t, stopErr)
 				return true
 			}
 			return false
 		}, 200, 100)
-		require.NoError(t, err)
+		require.NoError(t, docsProcessedErr)
 	}()
 
 	err = WaitForConditionWithOptions(t, func() bool {
