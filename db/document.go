@@ -217,10 +217,6 @@ type casOnlySyncData struct {
 	Cas string `json:"cas"`
 }
 
-type ServerRevSeqNoXattr struct {
-	RevSeqNo string `json:"revid"`
-}
-
 func (doc *Document) UpdateBodyBytes(bodyBytes []byte) {
 	doc._rawBody = bodyBytes
 	doc._body = nil
@@ -536,7 +532,7 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 	if err != nil {
 		return nil, err
 	}
-	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.DocumentXattrKey], cas, DocUnmarshalAll)
+	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], cas, DocUnmarshalAll)
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
@@ -1122,15 +1118,15 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			}
 		}
 		if documentXattr != nil {
-			var docXattr ServerRevSeqNoXattr
-			err := base.JSONUnmarshal(documentXattr, &docXattr)
+			var revSeqNo string
+			err := base.JSONUnmarshal(documentXattr, &revSeqNo)
 			if err != nil {
-				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal doc xattr during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal doc virtual revSeqNo xattr during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
-			if docXattr.RevSeqNo != "" {
-				revNo, err := strconv.ParseUint(docXattr.RevSeqNo, 10, 64)
+			if revSeqNo != "" {
+				revNo, err := strconv.ParseUint(revSeqNo, 10, 64)
 				if err != nil {
-					return pkgerrors.WithStack(base.RedactErrorf("Failed convert rev seq number during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
+					return pkgerrors.WithStack(base.RedactErrorf("Failed convert rev seq number %q during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", revSeqNo, base.UD(doc.ID), err))
 				}
 				doc.RevSeqNo = revNo
 			}

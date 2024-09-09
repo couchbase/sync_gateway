@@ -521,16 +521,13 @@ function sync(doc, oldDoc){
 	stats := getResyncStats(resyncMgr.Process)
 	assert.Equal(t, int64(2), stats.DocsChanged)
 
-	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, "sgWrite", []string{base.DocumentXattrKey})
+	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, "sgWrite", []string{base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
 
-	var retrievedVxattr map[string]interface{}
-	require.NoError(t, json.Unmarshal(xattrs[base.DocumentXattrKey], &retrievedVxattr))
+	var retrievedVRevIDxattr string
+	require.NoError(t, json.Unmarshal(xattrs[base.VirtualXattrRevSeqNo], &retrievedVRevIDxattr))
 
-	rev, ok := retrievedVxattr["revid"].(string)
-	require.True(t, ok, "Unable to obtain revSeqNo as string")
-
-	revNo, err := strconv.ParseUint(rev, 10, 64)
+	revNo, err := strconv.ParseUint(retrievedVRevIDxattr, 10, 64)
 	require.NoError(t, err)
 
 	syncData, mou, _ = getSyncAndMou(t, collection, "sgWrite")
@@ -540,15 +537,12 @@ function sync(doc, oldDoc){
 	require.Equal(t, revNo-1, mou.PreviousRevSeqNo)
 
 	// reset retrieved xattr
-	retrievedVxattr = nil
-	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, "sdkWrite", []string{base.DocumentXattrKey})
+	retrievedVRevIDxattr = ""
+	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, "sdkWrite", []string{base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(xattrs[base.DocumentXattrKey], &retrievedVxattr))
+	require.NoError(t, json.Unmarshal(xattrs[base.VirtualXattrRevSeqNo], &retrievedVRevIDxattr))
 
-	rev, ok = retrievedVxattr["revid"].(string)
-	require.True(t, ok, "Unable to obtain revSeqNo as string")
-
-	revNo, err = strconv.ParseUint(rev, 10, 64)
+	revNo, err = strconv.ParseUint(retrievedVRevIDxattr, 10, 64)
 	require.NoError(t, err)
 
 	syncData, mou, _ = getSyncAndMou(t, collection, "sdkWrite")

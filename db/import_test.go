@@ -708,11 +708,11 @@ func TestImportStampClusterUUID(t *testing.T) {
 	_, cas, err := collection.dataStore.GetRaw(key)
 	require.NoError(t, err)
 
-	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.DocumentXattrKey})
+	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
-	docXattr, ok := xattrs[base.DocumentXattrKey]
+	docXattr, ok := xattrs[base.VirtualXattrRevSeqNo]
 	require.True(t, ok)
-	revSeqNo := RetrieveDocRevSeNo(t, docXattr)
+	revSeqNo := RetrieveDocRevSeqNo(t, docXattr)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
 

@@ -880,19 +880,15 @@ func (c *DatabaseCollection) GetDocumentCurrentVersion(t testing.TB, key string)
 }
 
 // retrieveDocRevSeNo will take the $document xattr and return the revSeqNo defined in that xattr
-func RetrieveDocRevSeNo(t *testing.T, docxattr []byte) uint64 {
-	var retrievedDocumentXattr map[string]interface{}
-	require.NoError(t, base.JSONUnmarshal(docxattr, &retrievedDocumentXattr))
-
-	rev, ok := retrievedDocumentXattr["revid"].(string)
-	if !base.UnitTestUrlIsWalrus() {
-		require.True(t, ok, "Unable to obtain revSeqNo as string")
-	} else {
-		// rev seq no is not supported in rosmar, return 0
+func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
+	// virtual xattr not implemented for rosmar
+	if base.UnitTestUrlIsWalrus() {
 		return 0
 	}
+	var retrievedDocumentRevNo string
+	require.NoError(t, base.JSONUnmarshal(docxattr, &retrievedDocumentRevNo))
 
-	revNo, err := strconv.ParseUint(rev, 10, 64)
+	revNo, err := strconv.ParseUint(retrievedDocumentRevNo, 10, 64)
 	require.NoError(t, err)
 	return revNo
 }

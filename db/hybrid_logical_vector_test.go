@@ -303,13 +303,13 @@ func TestHLVImport(t *testing.T) {
 	existingHLVKey := "existingHLV_" + t.Name()
 	_ = hlvHelper.InsertWithHLV(ctx, existingHLVKey)
 
-	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName, base.VvXattrName, base.DocumentXattrKey})
+	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName, base.VvXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
 	encodedCAS = EncodeValue(cas)
 
-	docxattr, ok := existingXattrs[base.DocumentXattrKey]
+	docxattr, ok := existingXattrs[base.VirtualXattrRevSeqNo]
 	require.True(t, ok)
-	revSeqNo := RetrieveDocRevSeNo(t, docxattr)
+	revSeqNo := RetrieveDocRevSeqNo(t, docxattr)
 
 	importOpts = importDocOptions{
 		isDelete: false,
