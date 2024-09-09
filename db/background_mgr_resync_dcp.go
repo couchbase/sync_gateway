@@ -129,17 +129,17 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 		r.DocsProcessed.Add(1)
 		databaseCollection := db.CollectionByID[event.CollectionID]
-		ctx = databaseCollection.AddCollectionContext(ctx)
+		colCtx := databaseCollection.AddCollectionContext(ctx)
 		_, unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
-		}).resyncDocument(ctx, docID, key, regenerateSequences, []uint64{})
+		}).resyncDocument(colCtx, docID, key, regenerateSequences, []uint64{})
 
-		databaseCollection.releaseSequences(ctx, unusedSequences)
+		databaseCollection.releaseSequences(colCtx, unusedSequences)
 
 		if err == nil {
 			r.DocsChanged.Add(1)
 		} else if err != base.ErrUpdateCancel {
-			base.WarnfCtx(ctx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
+			base.WarnfCtx(colCtx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
 		}
 		return true
 	}
@@ -184,7 +184,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
 
-	r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
+	r.SetVBUUIDs(dcpClient.GetMetadata())
 
 	select {
 	case <-doneChan:
@@ -329,6 +329,12 @@ func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames map[string][]stri
 	defer r.lock.Unlock()
 
 	r.ResyncedCollections = collectionNames
+}
+
+func (r *ResyncManagerDCP) SetVBUUIDs(meta []base.DCPMetadata) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.VBUUIDs = base.GetVBUUIDs(meta)
 }
 
 type ResyncManagerResponseDCP struct {
