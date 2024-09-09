@@ -885,6 +885,7 @@ func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
 	if base.UnitTestUrlIsWalrus() {
 		return 0
 	}
+	require.NotNil(t, docxattr)
 	var retrievedDocumentRevNo string
 	require.NoError(t, base.JSONUnmarshal(docxattr, &retrievedDocumentRevNo))
 

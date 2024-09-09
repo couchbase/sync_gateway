@@ -414,14 +414,17 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	assert.Equal(t, Crc32cHashString(valBytes), macroBodyHashString)
 
 	// Validate against $document.value_crc32c
-	_, xattrs, _, err = dataStore.GetWithXattrs(ctx, key, []string{VirtualXattrCrc32c})
+	_, xattrs, _, err = dataStore.GetWithXattrs(ctx, key, []string{VirtualDocumentXattr})
 	require.NoError(t, err)
 
-	var retrievedVCrc32 string
-	require.NoError(t, json.Unmarshal(xattrs[VirtualXattrCrc32c], &retrievedVCrc32))
+	var retrievedVxattr map[string]interface{}
+	require.NoError(t, json.Unmarshal(xattrs[VirtualDocumentXattr], &retrievedVxattr))
 
-	assert.Equal(t, Crc32cHashString(valBytes), retrievedVCrc32)
-	assert.Equal(t, macroBodyHashString, retrievedVCrc32)
+	vxattrCrc32c, ok := retrievedVxattr["value_crc32c"].(string)
+	assert.True(t, ok, "Unable to retrieve virtual xattr crc32c as string")
+
+	assert.Equal(t, Crc32cHashString(valBytes), vxattrCrc32c)
+	assert.Equal(t, macroBodyHashString, vxattrCrc32c)
 
 }
 

@@ -146,8 +146,8 @@ const (
 
 	// VirtualXattrRevSeqNo is used to fetch rev seq no from documents virtual xattr
 	VirtualXattrRevSeqNo = "$document.revid"
-	// VirtualXattrCrc32c is used to fetch crc32c from documents virtual xattr
-	VirtualXattrCrc32c = "$document.value_crc32c"
+	// VirtualDocumentXattr is used to fetch the documents virtual xattr
+	VirtualDocumentXattr = "$document"
 
 	// Prefix for transaction metadata documents
 	TxnPrefix = "_txn:"

@@ -307,8 +307,7 @@ func TestHLVImport(t *testing.T) {
 	require.NoError(t, err)
 	encodedCAS = EncodeValue(cas)
 
-	docxattr, ok := existingXattrs[base.VirtualXattrRevSeqNo]
-	require.True(t, ok)
+	docxattr, _ := existingXattrs[base.VirtualXattrRevSeqNo]
 	revSeqNo := RetrieveDocRevSeqNo(t, docxattr)
 
 	importOpts = importDocOptions{
