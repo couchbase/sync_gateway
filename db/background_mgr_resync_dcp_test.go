@@ -359,8 +359,8 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 		for {
 			stats := getResyncStats(resycMgr.Process)
 			if stats.DocsProcessed >= 2000 {
-				err = resycMgr.Stop()
-				require.NoError(t, err)
+				stopErr := resycMgr.Stop()
+				require.NoError(t, stopErr)
 				break
 			}
 			time.Sleep(1 * time.Microsecond)
