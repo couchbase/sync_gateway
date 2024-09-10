@@ -2383,7 +2383,7 @@ func TestImportUpdateExpiry(t *testing.T) {
 func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	if base.UnitTestUrlIsWalrus() {
-		t.Skipf("test requires CBS for previous rev no assertion")
+		t.Skipf("test requires CBS for previous rev no assertion, CBG-4233")
 	}
 
 	rtConfig := rest.RestTesterConfig{
