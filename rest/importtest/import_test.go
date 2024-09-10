@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -2377,4 +2378,72 @@ func TestImportUpdateExpiry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPrevRevNoPopulationImportFeed(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skipf("test requires CBS for previous rev no assertion, CBG-4233")
+	}
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+	ctx := base.TestCtx(t)
+
+	if !rt.Bucket().IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
+	}
+
+	// Create doc via the SDK
+	mobileKey := t.Name()
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	assert.NoError(t, err, "Error writing SDK doc")
+
+	// Wait for import
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
+
+	xattrs, _, err := dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+
+	var mou *db.MetadataOnlyUpdate
+	mouXattr, ok := xattrs[base.MouXattrName]
+	require.True(t, ok)
+	docxattr, ok := xattrs[base.VirtualXattrRevSeqNo]
+	require.True(t, ok)
+	require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+	revNo := db.RetrieveDocRevSeqNo(t, docxattr)
+	// curr rev no should be 2, so prev rev is 1
+	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
+
+	err = dataStore.Set(mobileKey, 0, nil, []byte(`{"test":"update"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 2)
+
+	xattrs, _, err = dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+
+	mou = nil
+	mouXattr, ok = xattrs[base.MouXattrName]
+	require.True(t, ok)
+	docxattr, ok = xattrs[base.VirtualXattrRevSeqNo]
+	require.True(t, ok)
+	require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+	revNo = db.RetrieveDocRevSeqNo(t, docxattr)
+	// curr rev no should be 4, so prev rev is 3
+	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
+
 }
