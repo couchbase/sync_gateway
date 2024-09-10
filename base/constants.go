@@ -144,6 +144,11 @@ const (
 	// Intended to be used in Meta Map and related tests
 	MetaMapXattrsKey = "xattrs"
 
+	// VirtualXattrRevSeqNo is used to fetch rev seq no from documents virtual xattr
+	VirtualXattrRevSeqNo = "$document.revid"
+	// VirtualDocumentXattr is used to fetch the documents virtual xattr
+	VirtualDocumentXattr = "$document"
+
 	// Prefix for transaction metadata documents
 	TxnPrefix = "_txn:"
 
