@@ -55,12 +55,6 @@ apis:
       plugin/excise-rbac-capella: on
       plugin/replace-description-capella: on
       remove-x-internal: on
-  diagnostic:
-    root: "./docs/api/diagnostic.yaml"
-    decorators:
-      remove-x-internal: on
-  diagnostic-internal:
-    root: "./docs/api/diagnostic.yaml"
 
 plugins:
   - './docs/api/plugins/plugin.js'

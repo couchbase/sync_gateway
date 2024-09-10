@@ -1304,13 +1304,6 @@ Database:
               description: The maximum number of revisions that can be stored in the revision cache.
               type: string
               default: 5000
-            max_memory_count_mb:
-              description: |-
-                The maximum amount of memory the revision cache should take up in MB, setting to 0 will disable any eviction based on memory at rev cache.
-                When set this memory limit will work in in hand with revision cache size parameter. So you will potentially get eviction at revision cache both based off memory footprint and number of items in the cache.
-                **This is an enterprise-edition feature only**
-              type: integer
-              default: 0
             shard_count:
               description: The number of shards the revision cache should be split into.
               type: string
@@ -1852,194 +1845,7 @@ Database:
               items:
                 type: string
               example: ["CRUD", "HTTP", "Query"]
-        audit:
-          description: Audit logging configuration.
-          type: object
-          properties:
-            enabled:
-              description: Whether audit logging is enabled.
-              type: boolean
-              default: false
-            enabled_events:
-              description: List of enabled audit events for this database.
-              type: array
-              items:
-                type: number
-                example: [1234, 5678]
-            disabled_users:
-              description: List of users for which audit logging is disabled.
-              type: array
-              items:
-                type: object
-                properties:
-                  domain:
-                    description: >
-                      The domain of the user for which audit logging is disabled.
-
-                       * `cbs` - Couchbase Server User
-                       * `sgw` - Sync Gateway User
-                    type: string
-                    enum: [cbs, sgw]
-                  name:
-                    description: The name of the user for which audit logging is disabled.
-                    type: string
-            disabled_roles:
-              description: List of roles for which audit logging is disabled. Either cbs or sgw.
-              type: array
-              items:
-                type: object
-                properties:
-                  domain:
-                    description: >
-                      The domain of the role for which audit logging is disabled.
-
-                       * `cbs` - Couchbase Server RBAC
-                       * `sgw` - Sync Gateway Role
-                    enum: [cbs, sgw]
-                    type: string
-                  name:
-                    description: The name of the role for which audit logging is disabled.
-                    type: string
   title: Database-config
-Disabled-users-and-roles:
-  type: object
-  properties:
-    disabled_users:
-      description: List of users for which audit logging is disabled.
-      type: array
-      items:
-        type: object
-        properties:
-          domain:
-            description: The domain of the user for which audit logging is disabled. Either cbs or sgw.
-            type: string
-          name:
-            description: The name of the user for which audit logging is disabled.
-            type: string
-    disabled_roles:
-      description: List of roles for which audit logging is disabled. Either cbs or sgw.
-      type: array
-      items:
-        type: object
-        properties:
-          domain:
-            description: The domain of the role for which audit logging is disabled.
-            type: string
-          name:
-            description: The name of the role for which audit logging is disabled.
-            type: string
-Database-audit:
-  title: Simple
-  description: A map of audit events and whether they are enabled or not.
-  properties:
-    enabled:
-      type: boolean
-    events:
-      type: object
-      additionalProperties:
-        x-additionalPropertiesName: audit_id
-        description: The audit event ID and whether it is enabled or not.
-        type: boolean
-    disabled_users:
-      description: List of users for which audit logging is disabled.
-      type: array
-      items:
-        type: object
-        properties:
-          domain:
-            description: >
-              The domain of the role for which audit logging is disabled.
-
-                * `cbs` - Couchbase Server User
-                * `sgw` - Sync Gateway User
-            enum: [cbs, sgw]
-            type: string
-          name:
-            description: The name of the user for which audit logging is disabled.
-            type: string
-    disabled_roles:
-      description: List of roles for which audit logging is disabled. Either cbs or sgw.
-      type: array
-      items:
-        type: object
-        properties:
-          domain:
-            description: >
-              The domain of the role for which audit logging is disabled.
-
-               * `cbs` - Couchbase Server RBAC
-               * `sgw` - Sync Gateway Role
-            enum: [cbs, sgw]
-            type: string
-          name:
-            description: The name of the role for which audit logging is disabled.
-            type: string
-Database-audit-verbose:
-  title: Verbose
-  description: A map of detailed audit events.
-  properties:
-    enabled:
-      type: boolean
-    events:
-      type: object
-      additionalProperties:
-        x-additionalPropertiesName: audit_id
-        description: The audit event ID and whether it is enabled or not.
-        $ref: '#/AuditEventVerbose'
-    disabled_users:
-      description: List of users for which audit logging is disabled.
-      type: array
-      items:
-        type: object
-        properties:
-          domain:
-            description: >
-              The domain of the role for which audit logging is disabled.
-
-               * `cbs` - Couchbase Server User
-               * `sgw` - Sync Gateway User
-            enum: [cbs, sgw]
-            type: string
-          name:
-            description: The name of the user for which audit logging is disabled.
-            type: string
-    disabled_roles:
-      description: List of roles for which audit logging is disabled. Either cbs or sgw.
-      type: array
-      items:
-        type: object
-        properties:
-          domain:
-            description: >
-              The domain of the role for which audit logging is disabled.
-
-               * `cbs` - Couchbase Server RBAC
-               * `sgw` - Sync Gateway Role
-            enum: [cbs, sgw]
-            type: string
-          name:
-            description: The name of the role for which audit logging is disabled.
-            type: string
-AuditEventVerbose:
-  title: audit-event-verbose
-  description: Detailed information about an audit event.
-  type: object
-  properties:
-    name:
-      type: string
-      description: "The name of the audit event."
-      readOnly: true
-    description:
-      type: string
-      description: "The description of the audit event."
-      readOnly: true
-    enabled:
-      type: boolean
-      description: "Whether this audit event is currently enabled or not."
-    filterable:
-      type: boolean
-      description: "Whether this audit event can be disabled. Some audit events are always on."
-      readOnly: true
 Event-config:
   type: object
   properties:
@@ -2411,13 +2217,6 @@ Startup-config:
           description: Can be set to false to skip environment variable expansion in database configs
           type: boolean
           default: true
-        diagnostic_interface:
-          description: |-
-            Network interface to bind diagnotic API to.
-
-            By default, this API will not be run unless this string is specified.
-          type: string
-          default: ""
       readOnly: true
     database_credentials:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
@@ -2724,8 +2523,6 @@ Logging-config:
           default: 0
           type: integer
           readOnly: true
-    audit:
-      $ref: '#/Audit-logging-config'
 File-logging-config-base:
   type: object
   properties:
@@ -2734,52 +2531,6 @@ File-logging-config-base:
       type: boolean
       default: false
   title: File-logging-config
-Audit-logging-config:
-  type: object
-  title: "Audit logging config"
-  properties:
-    enabled:
-      description: Toggle for this log output
-      type: boolean
-      default: false
-    rotation:
-      type: object
-      readOnly: true
-      properties:
-        max_size:
-          description: The maximum size in MB of the log file before it gets rotated.
-          type: integer
-          default: 100
-        localtime:
-          description: 'If true, it uses the computer''s local time to format the backup timestamp.'
-          type: boolean
-          default: false
-        rotated_logs_size_limit:
-          description: Max Size (in mb) of log files before deletion
-          type: integer
-          default: 1024
-        rotation_interval:
-          description: |-
-            If set, the interval at which log files are rotated, even if max_size is not reached.
-
-            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
-          type: string
-          default: 0
-        max_age:
-          description: The maximum number of days to retain old log files.
-          default: 6
-          type: integer
-    audit_log_file_path:
-      description: The path to write audit log files to
-      type: string
-      readOnly: true
-    enabled_events:
-      description: List of enabled global audit events.
-      type: array
-      items:
-        type: number
-      example: [1234, 5678]
-      readOnly: true
 Console-logging-config:
   type: object
   properties:
