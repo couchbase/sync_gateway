@@ -192,7 +192,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
 func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.userXattrKey()], cas, unmarshalLevel)
+	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.userXattrKey()], xattrs[base.VirtualXattrRevSeqNo], cas, unmarshalLevel)
 
 }
 
@@ -245,7 +245,15 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
 	var importErr error
 
-	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand)
+	importOpts := importDocOptions{
+		isDelete: isDelete,
+		mode:     ImportOnDemand,
+		revSeqNo: 0, // pending work in CBG-4203
+		expiry:   nil,
+	}
+
+	// RevSeqNo is 0 here pending work in CBG-4203
+	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, importOpts, cas)
 
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as 404 not imported
@@ -868,7 +876,13 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	// Use an admin-scoped database for import
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: db.DatabaseCollection, user: nil}
 
-	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, isDelete, nil, ImportOnDemand) // nolint:staticcheck
+	importOpts := importDocOptions{
+		expiry:   nil,
+		mode:     ImportOnDemand,
+		isDelete: isDelete,
+		revSeqNo: 0, // pending work in CBG-4203
+	}
+	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, importOpts) // nolint:staticcheck
 
 	if importErr == base.ErrImportCancelledFilter {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
@@ -2225,7 +2239,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if expiry != nil {
 			initialExpiry = *expiry
 		}
-		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouRevSeqNoAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll); err != nil {
 				return

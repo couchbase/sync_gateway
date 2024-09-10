@@ -247,11 +247,11 @@ func (c *DatabaseCollection) syncAndUserXattrKeys() []string {
 	return xattrKeys
 }
 
-// syncMouAndUserXattrKeys returns the xattr keys for the user, mou and sync xattrs.
-func (c *DatabaseCollection) syncMouAndUserXattrKeys() []string {
+// syncMouRevSeqNoAndUserXattrKeys returns the xattr keys for the user, mou, revSeqNo and sync xattrs.
+func (c *DatabaseCollection) syncMouRevSeqNoAndUserXattrKeys() []string {
 	xattrKeys := []string{base.SyncXattrName, base.VvXattrName}
 	if c.useMou() {
-		xattrKeys = append(xattrKeys, base.MouXattrName)
+		xattrKeys = append(xattrKeys, base.MouXattrName, base.VirtualXattrRevSeqNo)
 	}
 	userXattrKey := c.userXattrKey()
 	if userXattrKey != "" {

@@ -137,7 +137,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
 			for i := 0; i < b.N; i++ {
-				_, _ = unmarshalDocumentWithXattrs(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, nil, nil, 1, bm.unmarshalLevel)
+				_, _ = unmarshalDocumentWithXattrs(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, nil, nil, nil, 1, bm.unmarshalLevel)
 			}
 		})
 	}
@@ -263,7 +263,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 
 	sync_meta := []byte(doc_meta_no_vv)
 	vv_meta := []byte(doc_meta_vv)
-	doc, err := unmarshalDocumentWithXattrs(ctx, "doc_1k", nil, sync_meta, vv_meta, nil, nil, 1, DocUnmarshalNoHistory)
+	doc, err := unmarshalDocumentWithXattrs(ctx, "doc_1k", nil, sync_meta, vv_meta, nil, nil, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
@@ -274,7 +274,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
-	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, 1, DocUnmarshalAll)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, 1, DocUnmarshalAll)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
@@ -284,7 +284,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
-	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, 1, DocUnmarshalNoHistory)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
@@ -362,7 +362,7 @@ func TestRevAndVersion(t *testing.T) {
 			require.NoError(t, err)
 
 			newDocument := NewDocument("docID")
-			err = newDocument.UnmarshalWithXattrs(ctx, marshalledDoc, marshalledXattr, marshalledVvXattr, DocUnmarshalAll)
+			err = newDocument.UnmarshalWithXattrs(ctx, marshalledDoc, marshalledXattr, marshalledVvXattr, nil, DocUnmarshalAll)
 			require.NoError(t, err)
 			require.Equal(t, test.revTreeID, newDocument.CurrentRev)
 			require.Equal(t, expectedSequence, newDocument.Sequence)
