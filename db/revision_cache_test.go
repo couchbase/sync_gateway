@@ -695,6 +695,31 @@ func TestImmediateRevCacheItemBasedEviction(t *testing.T) {
 	assert.Equal(t, int64(1), cacheNumItems.Value())
 }
 
+func TestResetRevCache(t *testing.T) {
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxBytes:     100,
+			MaxItemCount: 10,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	cacheStats := db.DbStats.Cache()
+
+	// add a doc
+	docSize, _ := createDocAndReturnSizeAndRev(t, ctx, "doc1", collection, Body{"test": "doc"})
+	assert.Equal(t, int64(docSize), cacheStats.RevisionCacheTotalMemory.Value())
+	assert.Equal(t, int64(1), cacheStats.RevisionCacheNumItems.Value())
+
+	// re create rev cache
+	db.FlushRevisionCacheForTest()
+
+	// assert rev cache is reset as expected
+	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
+	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
+}
+
 func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{

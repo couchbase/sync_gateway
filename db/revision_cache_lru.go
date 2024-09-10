@@ -540,10 +540,10 @@ func (rc *LRURevisionCache) revCacheMemoryBasedEviction() {
 func (rc *LRURevisionCache) performEviction() {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
-	var numItemsRemoved int
+	var numItemsRemoved int64
 	for rc.cacheMemoryBytes.Value() > rc.memoryCapacity {
 		rc.purgeOldest_()
 		numItemsRemoved++
 	}
-	rc.cacheNumItems.Add(int64(-numItemsRemoved))
+	rc.cacheNumItems.Add(-numItemsRemoved)
 }
