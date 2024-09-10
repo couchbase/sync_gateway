@@ -77,6 +77,12 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 	cacheMissStat := cacheStats.RevisionCacheMisses
 	cacheNumItemsStat := cacheStats.RevisionCacheNumItems
 	cacheMemoryStat := cacheStats.RevisionCacheTotalMemory
+	if cacheNumItemsStat.Value() != 0 {
+		cacheNumItemsStat.Set(0)
+	}
+	if cacheMemoryStat.Value() != 0 {
+		cacheMemoryStat.Set(0)
+	}
 
 	if cacheOptions.ShardCount > 1 {
 		return NewShardedLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)

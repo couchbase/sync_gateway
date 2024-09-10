@@ -235,9 +235,9 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 	// increment incoming bytes
 	docRev.CalculateBytes()
 	rc.cacheMemoryBytes.Add(docRev.MemoryBytes)
+	value.store(docRev)
 	// check for rev cache memory based eviction
 	rc.revCacheMemoryBasedEviction()
-	value.store(docRev)
 }
 
 // Upsert a revision in the cache.
@@ -276,17 +276,19 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	docRev.CalculateBytes()
 	// add new item bytes to overall count
 	rc.cacheMemoryBytes.Add(docRev.MemoryBytes)
+	value.store(docRev)
 
 	// check we aren't over memory capacity, if so perform eviction
+	numItemsRemoved = 0
 	if rc.memoryCapacity > 0 {
 		for rc.cacheMemoryBytes.Value() > rc.memoryCapacity {
 			rc.purgeOldest_()
+			numItemsRemoved++
 		}
+		rc.cacheNumItems.Add(int64(-numItemsRemoved))
 	}
 
 	rc.lock.Unlock()
-
-	value.store(docRev)
 }
 
 func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, create bool) (value *revCacheValue) {
@@ -538,7 +540,10 @@ func (rc *LRURevisionCache) revCacheMemoryBasedEviction() {
 func (rc *LRURevisionCache) performEviction() {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
+	var numItemsRemoved int
 	for rc.cacheMemoryBytes.Value() > rc.memoryCapacity {
 		rc.purgeOldest_()
+		numItemsRemoved++
 	}
+	rc.cacheNumItems.Add(int64(-numItemsRemoved))
 }
