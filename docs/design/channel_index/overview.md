@@ -11,7 +11,7 @@
  * [Index Storage](index_storage.md)
     * What is stored in the channel index, and how it is stored
  * [Clocks and Consistency](clock_handling.md)
-    * How the channel index will manage consistency 
+    * How the channel index will manage consistency
  * [Channel Index Writes](index_writes.md)
     * Design for writing to the channel index
  * [Channel Index Reads](index_reads.md)
@@ -63,11 +63,11 @@
 ####Feed Partitioning
  * Auto-assignment of vbucket ranges to SG nodes on startup, based on interaction with shared config document in bucket
  * Potentially leverage cbft's infrastructure
- 
-####Cluster Administration
- * SG node failover handling.  Detect failure, and reassign partitions to other Sync Gateway nodes.  
 
-####Index Writes 
+####Cluster Administration
+ * SG node failover handling.  Detect failure, and reassign partitions to other Sync Gateway nodes.
+
+####Index Writes
  * Compact/prune channel index entries when revisions are pruned
 
 ####Index Reads

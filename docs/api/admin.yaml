@@ -10,7 +10,7 @@ openapi: 3.0.3
 info:
   title: Sync Gateway
   description: Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server
-  version: 3.1.0
+  version: '3.3'
   license:
     name: Business Source License 1.1 (BSL)
     url: 'https://github.com/couchbase/sync_gateway/blob/master/LICENSE'
@@ -96,6 +96,8 @@ paths:
     $ref: ./paths/admin/_post_upgrade.yaml
   '/{db}/_config':
     $ref: './paths/admin/db-_config.yaml'
+  '/{db}/_config/audit':
+    $ref: './paths/admin/db-_config-audit.yaml'
   '/{keyspace}/_config/sync':
     $ref: './paths/admin/keyspace-_config-sync.yaml'
   '/{keyspace}/_config/import_filter':

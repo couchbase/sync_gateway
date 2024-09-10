@@ -98,45 +98,72 @@ ExpVars:
               properties:
                 admin_net_bytes_recv:
                   type: integer
+                  description: "The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.admin_interface is bound."
                 admin_net_bytes_sent:
                   type: integer
+                  description: "The total number of bytes sent (since node start-up) on the network interface to which the Sync Gateway api.admin_interface is bound."
                 error_count:
                   type: integer
+                  description: "The total number of errors logged."
                 go_memstats_heapalloc:
                   type: integer
+                  description: "HeapAlloc is bytes of allocated heap objects. Allocated heap objects include all reachable objects, as well as unreachable objects that the garbage collector has not yet freed. Specifically, HeapAlloc increases as heap objects are allocated and decreases as the heap is swept and unreachable objects are freed. Sweeping occurs incrementally between GC cycles, so these two processes occur simultaneously, and as a result HeapAlloc tends to change smoothly (in contrast with the sawtooth that is typical of stop-the-world garbage collectors)."
                 go_memstats_heapidle:
                   type: integer
+                  description: "HeapIdle is bytes in idle (unused) spans. Idle spans have no objects in them. These spans could be (and may already have been) returned to the OS, or they can be reused for heap allocations, or they can be reused as stack memory. HeapIdle minus HeapReleased estimates the amount of memory that could be returned to the OS, but is being retained by the runtime so it can grow the heap without requesting more memory from the OS. If this difference is significantly larger than the heap size, it indicates there was a recent transient spike in live heap size."
                 go_memstats_heapinuse:
                   type: integer
+                  description: "HeapInuse is bytes in in-use spans. In-use spans have at least one object in them. These spans an only be used for other objects of roughly the same size. HeapInuse minus HeapAlloc estimates the amount of memory that has been dedicated to particular size classes, but is not currently being used. This is an upper bound on fragmentation, but in general this memory can be reused efficiently."
                 go_memstats_heapreleased:
                   type: integer
+                  description: "HeapReleased is bytes of physical memory returned to the OS. This counts heap memory from idle spans that was returned to the OS and has not yet been reacquired for the heap."
                 go_memstats_pausetotalns:
                   type: integer
+                  description: "PauseTotalNs is the cumulative nanoseconds in GC stop-the-world pauses since the program started. During a stop-the-world pause, all goroutines are paused and only the garbage collector can run."
                 go_memstats_stackinuse:
                   type: integer
+                  description: "StackInuse is bytes in stack spans. In-use stack spans have at least one stack in them. These spans can only be used for other stacks of the same size. There is no StackIdle because unused stack spans are returned to the heap (and hence counted toward HeapIdle)."
                 go_memstats_stacksys:
                   type: integer
+                  description: "StackSys is bytes of stack memory obtained from the OS. StackSys is StackInuse, plus any memory obtained directly from the OS for OS thread stacks (which should be minimal)."
                 go_memstats_sys:
                   type: integer
+                  description: "Sys is the total bytes of memory obtained from the OS. Sys is the sum of the XSys fields below. Sys measures the virtual address space reserved by the Go runtime for the heap, stacks, and other internal data structures. It's likely that not all of the virtual address space is backed by physical memory at any given moment, though in general it all was at some point."
                 goroutines_high_watermark:
                   type: integer
+                  description: "Peak number of go routines since process start."
                 num_goroutines:
                   type: integer
+                  description: "The total number of goroutines."
                 num_idle_kv_ops:
                   type: integer
                   description: "The total number of idle kv operations."
                 process_cpu_percent_utilization:
-                  type: integer
+                  type: number
+                  format: float
+                  description: "The CPU utilization as percentage value * 10. The extra 10 multiplier is a mistake left for backwards compatibility. Please consider using node_cpu_percent_utilization as of version 3.2. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait. The derivation means that the values of process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ."
+                node_cpu_percent_utilization:
+                  type: number
+                  format: float
+                  description: "The node CPU utilization as percentage value, since the last time this stat was called. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait."
                 process_memory_resident:
                   type: integer
+                  description: "The memory utilization (Resident Set Size) for the process, in bytes."
                 pub_net_bytes_recv:
                   type: integer
+                  description: "The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.public_interface is bound. By default, that is the number of bytes received on 127.0.0.1:4984 since node start-up"
                 pub_net_bytes_sent:
                   type: integer
+                  description: "The total number of bytes sent (since node start-up) on the network interface to which Sync Gateway api.public_interface is bound. By default, that is the number of bytes sent on 127.0.0.1:4984 since node start-up."
                 system_memory_total:
                   type: integer
+                  description: "The total memory available on the system in bytes."
                 warn_count:
                   type: integer
+                  description: "The total number of warnings logged."
+                uptime:
+                  type: integer
+                  description: "The total uptime."
         per_db:
           description: |-
             This array contains stats for all databases declared in the config file -- see the [Sync Gateway Statistics Schema](./../stats-monitoring.html) for more details on the metrics collected and reported by Sync Gateway.
@@ -451,7 +478,7 @@ Document:
       type: string
     _exp:
       description: |-
-        Expiry time after which the document will be purged. The expiration time is set and managed on the Couchbase Server document. The value can be specified in two ways; in ISO-8601 format, for example the 6th of July 2022 at 17:00 in the BST timezone would be `2016-07-06T17:00:00+01:00`; it can also be specified as a numeric Couchbase Server expiry value. Couchbase Server expiries are specified as Unix time, and if the desired TTL is below 30 days then it can also represent an interval in seconds from the current time (for example, a value of 5 will remove the document 5 seconds after it is written to Couchbase Server). The document expiration time is returned in the response of `GET /{db}/{doc} ` when `show_exp=true` is included in the query.
+        Expiry time after which the document will be purged. The expiration time is set and managed on the Couchbase Server document. The value can be specified in two ways; in ISO-8601 format, for example the 6th of July 2022 at 17:00 in the BST timezone would be `2016-07-06T17:00:00+01:00`; it can also be specified as a numeric Couchbase Server expiry value. Couchbase Server expiry values are specified as Unix time, and if the desired TTL is below 30 days then it can also represent an interval in seconds from the current time (for example, a value of 5 will remove the document 5 seconds after it is written to Couchbase Server). The document expiration time is returned in the response of `GET /{db}/{doc} ` when `show_exp=true` is included in the query.
 
         As with the existing explicit purge mechanism, this applies only to the local database; it has nothing to do with replication. This expiration time is not propagated when the document is replicated. The purge of the document does not cause it to be deleted on any other database.
       type: string
@@ -650,7 +677,7 @@ Retrieved-replication:
 
         **Behaviour**
         * *default* - In priority order, this will cause
-          - Deletes to always win (the delete with the logest revision history wins if both revisions are deletes)
+          - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
           - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
         * *localWins* - This will result in local revisions always being the winner in any conflict.
         * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
@@ -878,7 +905,7 @@ Replication:
 
         **Behaviour**
         * *default* - In priority order, this will cause
-          - Deletes to always win (the delete with the logest revision history wins if both revisions are deletes)
+          - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
           - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
         * *localWins* - This will result in local revisions always being the winner in any conflict.
         * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
@@ -1174,6 +1201,16 @@ Database:
       additionalProperties:
         x-additionalPropertiesName: scopename
         $ref: '#/Scopes'
+      maxProperties: 1
+      example:
+        scopename:
+          collections:
+            collectionname1:
+              sync: 'function(doc){channel("collection name");}'
+              import_filter: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
+            collectionname2:
+              sync: 'function(doc){channel("collection name");}'
+              import_filter: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
     name:
       description: The name of the database.
       type: string
@@ -1246,12 +1283,11 @@ Database:
         db_state_changed:
           $ref: '#/Event-config'
     feed_type:
-      description: The type of feed to use to communicate with Couchbase Server.
+      description: The type of feed to use to communicate with Couchbase Server. This will use DCP regardless of specification.
       type: string
       default: DCP
       enum:
         - DCP
-        - TAP
       deprecated: true
     allow_empty_password:
       description: This controls whether users that are created can have an empty password or not.
@@ -1268,6 +1304,13 @@ Database:
               description: The maximum number of revisions that can be stored in the revision cache.
               type: string
               default: 5000
+            max_memory_count_mb:
+              description: |-
+                The maximum amount of memory the revision cache should take up in MB, setting to 0 will disable any eviction based on memory at rev cache.
+                When set this memory limit will work in in hand with revision cache size parameter. So you will potentially get eviction at revision cache both based off memory footprint and number of items in the cache.
+                **This is an enterprise-edition feature only**
+              type: integer
+              default: 0
             shard_count:
               description: The number of shards the revision cache should be split into.
               type: string
@@ -1313,7 +1356,7 @@ Database:
             enable_star_channel:
               description: Used to control whether Sync Gateway should use the all documents (*) channel.
               type: boolean
-              default: false
+              default: true
             max_length:
               description: The maximum number of entries to maintain in the cache per channel.
               type: integer
@@ -1490,11 +1533,11 @@ Database:
                 kty:
                   type: string
                   description: The cryptographic algorithm family used with the key, such as "RSA" or "EC"
-                  enum: [ 'RSA', 'EC' ]
+                  enum: ['RSA', 'EC']
                 use:
                   type: string
                   description: The intended use of the public key. Only 'sig' is accepted.
-                  enum: [ 'sig' ]
+                  enum: ['sig']
                 alg:
                   type: string
                   description: The algorithm intended for use with the key.
@@ -1504,7 +1547,7 @@ Database:
                 crv:
                   type: string
                   description: For Elliptic Curve keys, the name of the curve to use.
-                  enum: [ 'P-256', 'P-384', 'P-521' ]
+                  enum: ['P-256', 'P-384', 'P-521']
                 x:
                   type: string
                   description: For Elliptic Curve keys, the X coordinate of the point, as a base64url string.
@@ -1526,19 +1569,19 @@ Database:
           username_claim:
             description: |-
               Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
-              
+
               The field name to use can be specified here.
             type: string
           roles_claim:
             description: |-
               If set, the value(s) of the given JSON Web Token claim will be added to the user's roles.
-              
+
               The value of this claim must be either a string or an array of strings, any other type will result in an error.
             type: string
           channels_claim:
             description: |-
               If set, the value(s) of the given JSON Web Token claim will be added to the user's channels.
-              
+
               The value of this claim must be either a string or an array of strings, any other type will result in an error.
             type: string
     oidc:
@@ -1568,7 +1611,7 @@ Database:
               callback_url:
                 description: |-
                   The URL that the OpenID Connect will redirect to after authentication.
-    
+
                   If not provided, a callback URL will be generated.
                 type: string
               disable_session:
@@ -1595,26 +1638,26 @@ Database:
               disable_callback_state:
                 description: |-
                   Controls whether to maintain state between the auth request and callback endpoints (`/_oidc` and `/_oidc_callback`).
-    
+
                   **This is not recommended as it would cause OpenID Connect authentication to be vulnerable to Cross-Site Request Forgery (CSRF, XSRF).**
                 type: boolean
                 default: false
               username_claim:
                 description: |-
                   Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
-    
+
                   The field name to use can be specified here.
                 type: string
               roles_claim:
                 description: |-
                   If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's roles.
-    
+
                   The value of this claim must be either a string or an array of strings, any other type will result in an error.
                 type: string
               channels_claim:
                 description: |-
                   If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's channels.
-    
+
                   The value of this claim must be either a string or an array of strings, any other type will result in an error.
                 type: string
               allow_unsigned_provider_tokens:
@@ -1675,7 +1718,7 @@ Database:
       description: Force the use of views instead of GSI.
       type: boolean
       default: false
-    send_www_authentice_header:
+    send_www_authenticate_header:
       description: Controls whether to send a `WWW-Authenticate` header in `401 Unauthorized` HTTP responses.
       type: boolean
       default: true
@@ -1760,8 +1803,8 @@ Database:
       default: 60
     suspendable:
       description: |-
-        Set to true to allow the database to be suspended. 
-        
+        Set to true to allow the database to be suspended.
+
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean
       default: false
@@ -1809,7 +1852,194 @@ Database:
               items:
                 type: string
               example: ["CRUD", "HTTP", "Query"]
+        audit:
+          description: Audit logging configuration.
+          type: object
+          properties:
+            enabled:
+              description: Whether audit logging is enabled.
+              type: boolean
+              default: false
+            enabled_events:
+              description: List of enabled audit events for this database.
+              type: array
+              items:
+                type: number
+                example: [1234, 5678]
+            disabled_users:
+              description: List of users for which audit logging is disabled.
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    description: >
+                      The domain of the user for which audit logging is disabled.
+
+                       * `cbs` - Couchbase Server User
+                       * `sgw` - Sync Gateway User
+                    type: string
+                    enum: [cbs, sgw]
+                  name:
+                    description: The name of the user for which audit logging is disabled.
+                    type: string
+            disabled_roles:
+              description: List of roles for which audit logging is disabled. Either cbs or sgw.
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    description: >
+                      The domain of the role for which audit logging is disabled.
+
+                       * `cbs` - Couchbase Server RBAC
+                       * `sgw` - Sync Gateway Role
+                    enum: [cbs, sgw]
+                    type: string
+                  name:
+                    description: The name of the role for which audit logging is disabled.
+                    type: string
   title: Database-config
+Disabled-users-and-roles:
+  type: object
+  properties:
+    disabled_users:
+      description: List of users for which audit logging is disabled.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the user for which audit logging is disabled. Either cbs or sgw.
+            type: string
+          name:
+            description: The name of the user for which audit logging is disabled.
+            type: string
+    disabled_roles:
+      description: List of roles for which audit logging is disabled. Either cbs or sgw.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: The domain of the role for which audit logging is disabled.
+            type: string
+          name:
+            description: The name of the role for which audit logging is disabled.
+            type: string
+Database-audit:
+  title: Simple
+  description: A map of audit events and whether they are enabled or not.
+  properties:
+    enabled:
+      type: boolean
+    events:
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: audit_id
+        description: The audit event ID and whether it is enabled or not.
+        type: boolean
+    disabled_users:
+      description: List of users for which audit logging is disabled.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: >
+              The domain of the role for which audit logging is disabled.
+
+                * `cbs` - Couchbase Server User
+                * `sgw` - Sync Gateway User
+            enum: [cbs, sgw]
+            type: string
+          name:
+            description: The name of the user for which audit logging is disabled.
+            type: string
+    disabled_roles:
+      description: List of roles for which audit logging is disabled. Either cbs or sgw.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: >
+              The domain of the role for which audit logging is disabled.
+
+               * `cbs` - Couchbase Server RBAC
+               * `sgw` - Sync Gateway Role
+            enum: [cbs, sgw]
+            type: string
+          name:
+            description: The name of the role for which audit logging is disabled.
+            type: string
+Database-audit-verbose:
+  title: Verbose
+  description: A map of detailed audit events.
+  properties:
+    enabled:
+      type: boolean
+    events:
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: audit_id
+        description: The audit event ID and whether it is enabled or not.
+        $ref: '#/AuditEventVerbose'
+    disabled_users:
+      description: List of users for which audit logging is disabled.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: >
+              The domain of the role for which audit logging is disabled.
+
+               * `cbs` - Couchbase Server User
+               * `sgw` - Sync Gateway User
+            enum: [cbs, sgw]
+            type: string
+          name:
+            description: The name of the user for which audit logging is disabled.
+            type: string
+    disabled_roles:
+      description: List of roles for which audit logging is disabled. Either cbs or sgw.
+      type: array
+      items:
+        type: object
+        properties:
+          domain:
+            description: >
+              The domain of the role for which audit logging is disabled.
+
+               * `cbs` - Couchbase Server RBAC
+               * `sgw` - Sync Gateway Role
+            enum: [cbs, sgw]
+            type: string
+          name:
+            description: The name of the role for which audit logging is disabled.
+            type: string
+AuditEventVerbose:
+  title: audit-event-verbose
+  description: Detailed information about an audit event.
+  type: object
+  properties:
+    name:
+      type: string
+      description: "The name of the audit event."
+      readOnly: true
+    description:
+      type: string
+      description: "The description of the audit event."
+      readOnly: true
+    enabled:
+      type: boolean
+      description: "Whether this audit event is currently enabled or not."
+    filterable:
+      type: boolean
+      description: "Whether this audit event can be disabled. Some audit events are always on."
+      readOnly: true
 Event-config:
   type: object
   properties:
@@ -1891,7 +2121,7 @@ Compact-status:
       description: |-
         **Applicable to attachment compaction only**
 
-        This is the number of references there are to legacy attachments. 
+        This is the number of references there are to legacy attachments.
       type: string
     purged_attachments:
       description: |-
@@ -1936,8 +2166,8 @@ Serverless:
       readOnly: true
     min_config_fetch_interval:
       description: |-
-        How long database configs should be kept for in Sync Gateway before refreshing. Set to 0 to fetch configs everytime. This is used for requested databases that SG does not know about. 
-        
+        How long database configs should be kept for in Sync Gateway before refreshing. Set to 0 to fetch configs everytime. This is used for requested databases that SG does not know about.
+
         This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
       type: string
       default: 1s
@@ -2005,7 +2235,7 @@ Startup-config:
             By default, this will only be accessible to the localhost.
           type: string
           default: '127.0.0.1:4985'
-        metric_interface:
+        metrics_interface:
           description: |-
             Network interface to bind metrics API to.
 
@@ -2031,13 +2261,13 @@ Startup-config:
           type: boolean
         server_read_timeout:
           description: |-
-            Maximum duration.Second before timing out read of the HTTP(S) request.
+            Maximum duration before timing out read of the HTTP(S) request.
 
             This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
           type: string
         server_write_timeout:
           description: |-
-            Maximum duration.Second before timing out write of the HTTP(S) response.
+            Maximum duration before timing out write of the HTTP(S) response.
 
             This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
           type: string
@@ -2056,8 +2286,9 @@ Startup-config:
           type: string
           default: 90s
         pretty:
-          description: Pretty-print JSON responses
+          description: Pretty-print JSON responses. This property is deprecated.
           type: boolean
+          deprecated: true
         max_connections:
           description: Max of incoming HTTP connections to accept
           type: number
@@ -2107,35 +2338,7 @@ Startup-config:
     logging:
       description: The configuration settings for modifying Sync Gateway logging.
       type: object
-      properties:
-        log_file_path:
-          description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
-          type: string
-          readOnly: true
-        redaction_level:
-          description: Redaction level to apply to log output.
-          type: string
-          default: partial
-          enum:
-            - none
-            - partial
-            - full
-            - unset
-          readOnly: true
-        console:
-          $ref: '#/Console-logging-config'
-        error:
-          $ref: '#/File-logging-config'
-        warn:
-          $ref: '#/File-logging-config'
-        info:
-          $ref: '#/File-logging-config'
-        debug:
-          $ref: '#/File-logging-config'
-        trace:
-          $ref: '#/File-logging-config'
-        stats:
-          $ref: '#/File-logging-config'
+      $ref: '#/Logging-config'
     auth:
       type: object
       properties:
@@ -2160,6 +2363,21 @@ Startup-config:
           type: integer
           maximum: 9
           minimum: 0
+        max_concurrent_replications:
+          description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
+          type: integer
+        max_concurrent_changes_batches:
+          description: Maximum number of changes batches to process concurrently per replication (1-5)"
+          type: integer
+          default: 2
+          minimum: 1
+          maximum: 5
+        max_concurrent_revs:
+          description: Maximum number of revs to process concurrently per replication (5-200)
+          type: integer
+          default: 5
+          minimum: 5
+          maximum: 200
       readOnly: true
     unsupported:
       description: Settings that are not officially supported. It is highly recommended these are **not** used.
@@ -2170,6 +2388,7 @@ Startup-config:
         use_xattr_config:
           description: Store database configurations in system xattrs
           type: boolean
+          default: false
         stats_log_frequency:
           description: |-
             How often should stats be written to stats logs.
@@ -2180,12 +2399,25 @@ Startup-config:
         use_stdlib_json:
           description: Bypass the jsoniter package and use Go's stdlib instead
           type: boolean
+          default: false
         http2:
           type: object
           properties:
             enabled:
               description: Whether HTTP2 support is enabled
               type: boolean
+              default: false
+        allow_dbconfig_env_vars:
+          description: Can be set to false to skip environment variable expansion in database configs
+          type: boolean
+          default: true
+        diagnostic_interface:
+          description: |-
+            Network interface to bind diagnotic API to.
+
+            By default, this API will not be run unless this string is specified.
+          type: string
+          default: ""
       readOnly: true
     database_credentials:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
@@ -2208,47 +2440,353 @@ Startup-config:
       minimum: 0
       readOnly: true
     couchbase_keepalive_interval:
-      description: TCP keep-alive interval between SG and Couchbase server
+      description: TCP keep-alive interval between SG and Couchbase server. This is unused.
       type: integer
+      deprecated: true
+      readOnly: true
+    heap_profile_collection_threshold:
+      description: Threshold in bytes for automatic collection of heap profiles. If not specified, defaults to 85% of the lesser of cgroup or system memory.
+      readOnly: true
+      type: integer
+      default: max memory
+    heap_profile_disable_collection:
+      description: Disables automatic heap profile collection.
+      default: false
+      type: boolean
       readOnly: true
   title: Startup-config
-File-logging-config:
+Runtime-config:
+  type: object
+  properties:
+    logging:
+      $ref: "#/Logging-config"
+    max_concurrent_replications:
+      description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
+      type: integer
+      default: 0
+  title: Runtime-config
+Logging-config:
+  type: object
+  properties:
+    log_file_path:
+      description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
+      type: string
+      readOnly: true
+    redaction_level:
+      description: Redaction level to apply to log output.
+      type: string
+      default: partial
+      enum:
+        - none
+        - partial
+        - full
+        - unset
+      readOnly: true
+    console:
+      $ref: '#/Console-logging-config'
+    error:
+      type: object
+      description: Error logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: true
+        rotation:
+          type: object
+          readOnly: true
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 360
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer.
+          default: 0
+          type: integer
+          readOnly: true
+    warn:
+      type: object
+      description: Warning logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: true
+        rotation:
+          type: object
+          readOnly: true
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 180
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 0
+          type: integer
+          readOnly: true
+    info:
+      type: object
+      description: Info logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: true
+        rotation:
+          type: object
+          readOnly: true
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 6
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 0
+          type: integer
+          readOnly: true
+    debug:
+      type: object
+      description: Debug logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: false
+        rotation:
+          type: object
+          readOnly: true
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 2
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 1000
+          type: integer
+          readOnly: true
+    trace:
+      type: object
+      description: Trace logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: false
+        rotation:
+          type: object
+          readOnly: true
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 2
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 1000
+          type: integer
+          readOnly: true
+    stats:
+      type: object
+      description: Trace logging configuration.
+      properties:
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: true
+        rotation:
+          type: object
+          readOnly: true
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files.
+              default: 6
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer
+          default: 0
+          type: integer
+          readOnly: true
+    audit:
+      $ref: '#/Audit-logging-config'
+File-logging-config-base:
   type: object
   properties:
     enabled:
       description: Toggle for this log output
       type: boolean
-    rotation:
-      $ref: '#/Log-rotation-config-readonly'
-    collation_buffer_size:
-      description: The size of the log collation buffer
-      type: integer
-      readOnly: true
+      default: false
   title: File-logging-config
-Log-rotation-config-readonly:
+Audit-logging-config:
   type: object
+  title: "Audit logging config"
   properties:
-    max_size:
-      description: The maximum size in MB of the log file before it gets rotated.
-      type: integer
-    max_age:
-      description: The maximum number of days to retain old log files.
-      type: integer
-    localtime:
-      description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+    enabled:
+      description: Toggle for this log output
       type: boolean
-    rotated_logs_size:
-      description: Max Size (in mb) of log files before deletion
-      type: integer
-  readOnly: true
-  title: Log-rotation-config
+      default: false
+    rotation:
+      type: object
+      readOnly: true
+      properties:
+        max_size:
+          description: The maximum size in MB of the log file before it gets rotated.
+          type: integer
+          default: 100
+        localtime:
+          description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+          type: boolean
+          default: false
+        rotated_logs_size_limit:
+          description: Max Size (in mb) of log files before deletion
+          type: integer
+          default: 1024
+        rotation_interval:
+          description: |-
+            If set, the interval at which log files are rotated, even if max_size is not reached.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 0
+        max_age:
+          description: The maximum number of days to retain old log files.
+          default: 6
+          type: integer
+    audit_log_file_path:
+      description: The path to write audit log files to
+      type: string
+      readOnly: true
+    enabled_events:
+      description: List of enabled global audit events.
+      type: array
+      items:
+        type: number
+      example: [1234, 5678]
+      readOnly: true
 Console-logging-config:
   type: object
   properties:
     log_level:
       description: Log Level for the console output
       type: string
-      default: none
+      default: info
       enum:
         - none
         - error
@@ -2264,6 +2802,7 @@ Console-logging-config:
     color_enabled:
       description: Log with color for the console output
       type: boolean
+      default: false
       readOnly: true
     file_output:
       description: 'Override the default stderr output, and write to the file specified instead'
@@ -2272,12 +2811,40 @@ Console-logging-config:
     enabled:
       description: Toggle for this log output
       type: boolean
+      default: false
       readOnly: true
     rotation:
-      $ref: '#/Log-rotation-config-readonly'
+      type: object
+      readOnly: true
+      title: Log-rotation-config
+      properties:
+        max_size:
+          description: The maximum size in MB of the log file before it gets rotated.
+          type: integer
+          default: 100
+        localtime:
+          description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+          type: boolean
+          default: false
+        rotated_logs_size_limit:
+          description: Max Size (in mb) of log files before deletion
+          type: integer
+          default: 1024
+        rotation_interval:
+          description: |-
+            If set, the interval at which log files are rotated, even if max_size is not reached.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 0
+        max_age:
+          description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
+          default: 0
+          type: integer
     collation_buffer_size:
-      description: The size of the log collation buffer.
+      description: The size of the log collation buffer. The default is 10 if the output is stderr, or 1000 if to a file.
       type: integer
+      default: 10
       readOnly: true
   title: Console-logging-config
 Log-update-enabled:
@@ -2444,3 +3011,45 @@ CollectionNames:
         description: Indicates whether database initialization is in progress.
         type: boolean
         example: true
+all_user_channels:
+  description: |-
+    All user channels split by how they were assigned to the user and by keyspace.
+  type: object
+  properties:
+    all_channels:
+      description: |-
+        All channels that the user has access to.
+      type: object
+      properties:
+        keyspace:
+          type: object
+          properties:
+            channel:
+              $ref: '#/channelEntry'
+channelEntry:
+  description: Channel name
+  type: object
+  properties:
+    entries:
+      type: array
+      description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
+    updated_at:
+      type: integer
+      description: Unix timestamp of last update
+doc_access_spans:
+  description: |-
+    Grant history entries for a user, showing which documents the user had access to, through which channels and for which sequence spans.
+  type: object
+  properties:
+    doc_id:
+      description: |-
+        Document names.
+      type: object
+      properties:
+        channel:
+          description: Channel name
+          type: object
+          properties:
+            entries:
+              type: array
+              description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
