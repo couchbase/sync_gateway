@@ -2777,7 +2777,7 @@ func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersio
 
 // TestLegacyAttachmentMigrationToGlobalXattrOnImport:
 //   - Create legacy attachment and perform a read to migrate the attachment to xattr
-//   - Assert that this migrated attachment is moved to gloabl xattr not sync data xattr
+//   - Assert that this migrated attachment is moved to global xattr not sync data xattr
 //   - Add new doc with legacy attachment but do not attempt to migrate after write
 //   - Trigger on demand import for write and assert that the attachment is moved ot global xattr
 func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
