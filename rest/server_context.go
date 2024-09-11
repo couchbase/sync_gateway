@@ -680,30 +680,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName := range scopeConfig.Collections {
 				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
-				var dataStore sgbucket.DataStore
-
-				var err error
-				if options.failFast {
-					dataStore, err = bucket.NamedDataStore(scName)
-				} else {
-					waitForCollection := func() (bool, error, interface{}) {
-						dataStore, err = bucket.NamedDataStore(scName)
-						return err != nil, err, nil
-					}
-
-					err, _ = base.RetryLoop(
-						ctx,
-						fmt.Sprintf("waiting for %s.%s.%s to exist", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collectionName)),
-						waitForCollection,
-						base.CreateMaxDoublingSleeperFunc(30, 10, 1000))
-				}
+				dataStore, err := base.GetAndWaitUntilDataStoreReady(ctx, bucket, scName, options.failFast)
 				if err != nil {
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
-				// Check if scope/collection specified is ready to use
-				if err := base.WaitUntilDataStoreReady(ctx, dataStore); err != nil {
-					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
-				}
+
 				metadataIndexOption := db.IndexesWithoutMetadata
 				if base.IsDefaultCollection(scopeName, collectionName) {
 					hasDefaultCollection = true
@@ -729,9 +710,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			}
 		}
 	} else {
+		// no scopes configured - init the default data store
 		scName := base.DefaultScopeAndCollectionName()
 		ds := bucket.DefaultDataStore()
-		// no scopes configured - init the default data store
 		resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
 		if err != nil {
 			return nil, err
