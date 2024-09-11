@@ -117,7 +117,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 func (c *DatabaseCollection) GetDocWithXattrs(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
+	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -143,7 +143,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 	if c.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
+		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -2239,7 +2239,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if expiry != nil {
 			initialExpiry = *expiry
 		}
-		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouRevSeqNoAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll); err != nil {
 				return

@@ -1879,7 +1879,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 		opts := &sgbucket.MutateInOptions{
 			MacroExpansion: macroExpandSpec(base.SyncXattrName),
 		}
-		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouRevSeqNoAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
+		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
 	} else {
 		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
