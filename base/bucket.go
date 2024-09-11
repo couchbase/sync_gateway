@@ -453,12 +453,14 @@ func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
 	return subdocStore, ok && ds.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations)
 }
 
-// WaitUntilDataStoreExists will try to perform an operation in the given DataStore until it can succeed.
+// WaitUntilDataStoreReady will try to perform a basic operation in the given DataStore until it can succeed.
+// It's not necessarily the case that a datastore that exists is ready to be used.
 //
-// There's no WaitForReady operation in GoCB for collections, only Buckets, so attempting to use Exists in this way this seems like our best option to check for availability.
-func WaitUntilDataStoreExists(ctx context.Context, ds DataStore) error {
+// There's no WaitForReady operation in GoCB for collections, only Buckets, so attempting to use Exists in this way this seems like our best option to check for usability.
+func WaitUntilDataStoreReady(ctx context.Context, ds DataStore) error {
 	return WaitForNoError(ctx, func() error {
-		_, err := ds.Exists("WaitUntilDataStoreExists")
+		// don't care whether the doc actually exists or not, just that we could perform the operation successfully
+		_, err := ds.Exists("WaitUntilDataStoreReady")
 		return err
 	})
 }

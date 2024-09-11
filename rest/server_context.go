@@ -698,8 +698,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if err != nil {
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
-				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
-				if err := base.WaitUntilDataStoreExists(ctx, dataStore); err != nil {
+				// Check if scope/collection specified is ready to use
+				if err := base.WaitUntilDataStoreReady(ctx, dataStore); err != nil {
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 				}
 				metadataIndexOption := db.IndexesWithoutMetadata
@@ -1400,7 +1400,7 @@ func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContex
 // validateMetadataStore will
 func validateMetadataStore(ctx context.Context, metadataStore base.DataStore) error {
 	// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
-	err := base.WaitUntilDataStoreExists(ctx, metadataStore)
+	err := base.WaitUntilDataStoreReady(ctx, metadataStore)
 	if err == nil {
 		return nil
 	}
