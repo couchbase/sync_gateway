@@ -587,6 +587,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if dbName == "" {
 		dbName = spec.BucketName
 	}
+
 	defer func() {
 		if returnedError == nil {
 			return
@@ -603,6 +604,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	}()
 
+	if err := db.ValidateDatabaseName(dbName); err != nil {
+		return nil, err
+	}
+
 	if spec.Server == "" {
 		spec.Server = sc.Config.Bootstrap.Server
 	}
@@ -615,10 +620,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 		return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
 			"Duplicate database name %q", dbName)
-	}
-
-	if err := db.ValidateDatabaseName(dbName); err != nil {
-		return nil, err
 	}
 
 	// Connect to bucket
