@@ -895,10 +895,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			if dbcontext.RevsLimit < db.DefaultRevsLimitConflicts {
 				base.WarnfCtx(ctx, "Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
 			}
-		} else {
-			if dbcontext.RevsLimit <= 0 {
-				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", dbcontext.RevsLimit)
-			}
+		} else if dbcontext.RevsLimit <= 0 {
+			return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", dbcontext.RevsLimit)
 		}
 	}
 
