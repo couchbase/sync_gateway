@@ -539,7 +539,7 @@ func getSingleXattrDCPBytes() []byte {
 	return dcpBody
 }
 
-const syncDataWithAttchment = `{
+const syncDataWithAttachment = `{
       "attachments": {
         "bye.txt": {
           "digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
@@ -619,7 +619,7 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	// unmarshal attachments on sync data
-	testSync := []byte(syncDataWithAttchment)
+	testSync := []byte(syncDataWithAttachment)
 	doc, err := unmarshalDocumentWithXattrs(ctx, "doc1", nil, testSync, nil, nil, nil, nil, nil, 1, DocUnmarshalSync)
 	require.NoError(t, err)
 
