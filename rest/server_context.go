@@ -982,14 +982,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "online", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 		return dbcontext, nil
-	} else {
-		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
-		// before going online
-		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
-		nonCancelCtx := base.NewNonCancelCtxForDatabase(ctx)
-		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
-		return dbcontext, nil
 	}
+
+	// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
+	// before going online
+	base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
+	nonCancelCtx := base.NewNonCancelCtxForDatabase(ctx)
+	go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
+	return dbcontext, nil
 }
 
 // asyncDatabaseOnline waits for async initialization to complete (based on doneChan).  On successful completion, brings the database online.
