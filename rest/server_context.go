@@ -678,15 +678,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 		hasDefaultCollection := false
 		for scopeName, scopeConfig := range config.Scopes {
-			for collectionName, _ := range scopeConfig.Collections {
+			for collectionName := range scopeConfig.Collections {
+				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 				var dataStore sgbucket.DataStore
 
 				var err error
 				if options.failFast {
-					dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+					dataStore, err = bucket.NamedDataStore(scName)
 				} else {
 					waitForCollection := func() (bool, error, interface{}) {
-						dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+						dataStore, err = bucket.NamedDataStore(scName)
 						return err != nil, err, nil
 					}
 
@@ -714,7 +715,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if err != nil {
 					return nil, err
 				}
-				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 				if resyncRequired {
 					collectionsRequiringResync = append(collectionsRequiringResync, scName)
 				}
@@ -729,15 +729,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			}
 		}
 	} else {
+		scName := base.DefaultScopeAndCollectionName()
+		ds := bucket.DefaultDataStore()
 		// no scopes configured - init the default data store
-		resyncRequired, err := base.InitSyncInfo(bucket.DefaultDataStore(), config.MetadataID)
+		resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
 		if err != nil {
 			return nil, err
 		}
 		if resyncRequired {
-			collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
+			collectionsRequiringResync = append(collectionsRequiringResync, scName)
 		}
-		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll, base.DefaultScopeAndCollectionName()); err != nil {
+		if err := initDataStore(ds, db.IndexesAll, scName); err != nil {
 			return nil, err
 		}
 	}
