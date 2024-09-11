@@ -787,52 +787,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	}
 
-	// Process unsupported config options or store runtime defaults if not set
-	if config.Unsupported == nil {
-		config.Unsupported = &db.UnsupportedOptions{}
-	}
-	if config.Unsupported.WarningThresholds == nil {
-		config.Unsupported.WarningThresholds = &db.WarningThresholds{}
-	}
-
-	if config.Unsupported.WarningThresholds.XattrSize == nil {
-		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
-	} else {
-		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
-		upperLimit := 1 * 1024 * 1024   // 1 MB
-		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
-			return nil, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
-		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
-			return nil, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
-		}
-	}
-
-	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
-		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
-	} else {
-		lowerLimit := 5
-		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
-			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
-		}
-	}
-
-	if config.Unsupported.WarningThresholds.ChannelsPerUser == nil {
-		config.Unsupported.WarningThresholds.ChannelsPerUser = &base.DefaultWarnThresholdChannelsPerUser
-	}
-
-	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
-		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
-	} else {
-		lowerLimit := 5
-		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
-			return nil, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
-		}
-	}
-
-	if config.Unsupported.WarningThresholds.ChannelNameSize == nil {
-		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
-	}
-
 	autoImport, err := config.AutoImportEnabled(ctx)
 	if err != nil {
 		return nil, err
@@ -1296,6 +1250,52 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 
 	if config.AllowConflicts != nil && *config.AllowConflicts {
 		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
+	}
+
+	// Process unsupported config options or store runtime defaults if not set
+	if config.Unsupported == nil {
+		config.Unsupported = &db.UnsupportedOptions{}
+	}
+	if config.Unsupported.WarningThresholds == nil {
+		config.Unsupported.WarningThresholds = &db.WarningThresholds{}
+	}
+
+	if config.Unsupported.WarningThresholds.XattrSize == nil {
+		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
+	} else {
+		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
+		upperLimit := 1 * 1024 * 1024   // 1 MB
+		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
+			return db.DatabaseContextOptions{}, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
+		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
+			return db.DatabaseContextOptions{}, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
+		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
+	} else {
+		lowerLimit := 5
+		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
+			return db.DatabaseContextOptions{}, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.ChannelsPerUser == nil {
+		config.Unsupported.WarningThresholds.ChannelsPerUser = &base.DefaultWarnThresholdChannelsPerUser
+	}
+
+	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
+		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
+	} else {
+		lowerLimit := 5
+		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
+			return db.DatabaseContextOptions{}, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.ChannelNameSize == nil {
+		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
 	}
 
 	if config.Unsupported.DisableCleanSkippedQuery {
