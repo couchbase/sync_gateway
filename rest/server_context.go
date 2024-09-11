@@ -611,10 +611,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if previousDatabase != nil {
 		if options.useExisting {
 			return previousDatabase, nil
-		} else {
-			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
-				"Duplicate database name %q", dbName)
 		}
+
+		return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
+			"Duplicate database name %q", dbName)
 	}
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
@@ -635,6 +635,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if err != nil {
 		return nil, err
 	}
+
 	// If using a walrus bucket, force use of views
 	useViews := base.BoolDefault(config.UseViews, false)
 	if !useViews && spec.IsWalrusBucket() {
