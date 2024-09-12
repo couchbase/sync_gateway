@@ -135,8 +135,9 @@ const (
 	// SyncPropertyName is used when storing sync data inline in a document.
 	SyncPropertyName = "_sync"
 	// SyncXattrName is used when storing sync data in a document's xattrs.
-	SyncXattrName = "_sync"
-	VvXattrName   = "_vv"
+	SyncXattrName   = "_sync"
+	VvXattrName     = "_vv"
+	GlobalXattrName = "_globalSync"
 
 	// MouXattrName is used when storing metadata-only update information in a document's xattrs.
 	MouXattrName = "_mou"
