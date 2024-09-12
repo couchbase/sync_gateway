@@ -1877,7 +1877,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.metadataOnlyUpdate)
 			}
 
-			_, rawSyncXattr, rawVvXattr, rawMouXattr, err := updatedDoc.MarshalWithXattrs()
+			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
@@ -1892,13 +1892,15 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
 				}
 			}
-
+			if rawGlobalXattr != nil {
+				updatedDoc.Xattrs[base.GlobalXattrName] = rawGlobalXattr
+			}
 			return updatedDoc, err
 		}
 		opts := &sgbucket.MutateInOptions{
 			MacroExpansion: macroExpandSpec(base.SyncXattrName),
 		}
-		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouRevSeqNoAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
+		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
 	} else {
 		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
