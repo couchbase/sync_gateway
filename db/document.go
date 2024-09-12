@@ -188,6 +188,7 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 // Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type Document struct {
 	SyncData                               // Sync metadata
+	GlobalSyncData                         // Global sync metadata, this will hold non cluster specific sync metadata to be copied by XDCR
 	_body              Body                // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
 	_rawBody           []byte              // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
 	ID                 string              `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
@@ -201,6 +202,10 @@ type Document struct {
 	DocAttachments AttachmentsMeta
 	inlineSyncData bool
 	RevSeqNo       uint64 // Server rev seq no for a document
+}
+
+type GlobalSyncData struct {
+	GlobalAttachments AttachmentsMeta `json:"attachments_meta,omitempty"`
 }
 
 type historyOnlySyncData struct {
@@ -410,14 +415,14 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	return doc, nil
 }
 
-func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data, syncXattrData, hlvXattrData, mouXattrData, userXattrData, documentXattr []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data, syncXattrData, hlvXattrData, mouXattrData, userXattrData, virtualXattr []byte, globalSyncData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 
 	if len(syncXattrData) == 0 && len(hlvXattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
 	} else {
 		doc = NewDocument(docid)
-		err = doc.UnmarshalWithXattrs(ctx, data, syncXattrData, hlvXattrData, documentXattr, unmarshalLevel)
+		err = doc.UnmarshalWithXattrs(ctx, data, syncXattrData, hlvXattrData, virtualXattr, globalSyncData, unmarshalLevel)
 	}
 	if err != nil {
 		return nil, err
@@ -466,7 +471,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	var xattrValues map[string][]byte
 	var hlv *HybridLogicalVector
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		xattrKeys := []string{base.SyncXattrName, base.MouXattrName, base.VvXattrName}
+		xattrKeys := []string{base.SyncXattrName, base.MouXattrName, base.VvXattrName, base.GlobalXattrName}
 		if userXattrKey != "" {
 			xattrKeys = append(xattrKeys, userXattrKey)
 		}
@@ -534,7 +539,7 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 	if err != nil {
 		return nil, err
 	}
-	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], cas, DocUnmarshalAll)
+	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], nil, cas, DocUnmarshalAll)
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
@@ -1097,7 +1102,7 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 // unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
 // lazy unmarshalling as needed.
 // Must handle cases where document body and hlvXattrData are present without syncXattrData for all DocumentUnmarshalLevel
-func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrData, hlvXattrData, documentXattr []byte, unmarshalLevel DocumentUnmarshalLevel) error {
+func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrData, hlvXattrData, virtualXattr []byte, globalSyncData []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
 		base.WarnfCtx(ctx, "Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
@@ -1119,9 +1124,9 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
 		}
-		if documentXattr != nil {
+		if virtualXattr != nil {
 			var revSeqNo string
-			err := base.JSONUnmarshal(documentXattr, &revSeqNo)
+			err := base.JSONUnmarshal(virtualXattr, &revSeqNo)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal doc virtual revSeqNo xattr during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
@@ -1132,6 +1137,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 				}
 				doc.RevSeqNo = revNo
 			}
+		}
+		if len(globalSyncData) > 0 {
+			if err := base.JSONUnmarshal(globalSyncData, &doc.GlobalSyncData); err != nil {
+				base.WarnfCtx(ctx, "Failed to unmarshal globalSync xattr for key %v, globalSync will be ignored. Err: %v globalSync:%s", base.UD(doc.ID), err, globalSyncData)
+			}
+			doc.SyncData.Attachments = doc.GlobalSyncData.GlobalAttachments
 		}
 		doc._rawBody = data
 		// Unmarshal body if requested and present
@@ -1152,6 +1163,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), err))
 			}
+		}
+		if len(globalSyncData) > 0 {
+			if err := base.JSONUnmarshal(globalSyncData, &doc.GlobalSyncData); err != nil {
+				base.WarnfCtx(ctx, "Failed to unmarshal globalSync xattr for key %v, globalSync will be ignored. Err: %v globalSync:%s", base.UD(doc.ID), err, globalSyncData)
+			}
+			doc.SyncData.Attachments = doc.GlobalSyncData.GlobalAttachments
 		}
 		doc._rawBody = data
 	case DocUnmarshalHistory:
@@ -1213,7 +1230,7 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 }
 
 // MarshalWithXattrs marshals the Document into body, and sync, vv and mou xattrs for persistence.
-func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr, vvXattr, mouXattr []byte, err error) {
+func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, globalXattr []byte, err error) {
 	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
 	if doc._rawBody != nil {
 		if !doc.IsDeleted() {
@@ -1230,7 +1247,7 @@ func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr, vvXattr, mouXa
 			if !deleted {
 				data, err = base.JSONMarshal(body)
 				if err != nil {
-					return nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
+					return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
 				}
 			}
 		}
@@ -1238,23 +1255,37 @@ func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr, vvXattr, mouXa
 	if doc.SyncData.HLV != nil {
 		vvXattr, err = base.JSONMarshal(&doc.SyncData.HLV)
 		if err != nil {
-			return nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
+			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
 	}
+	// assign any attachments we have stored in document sync data to global sync data
+	// then nil the sync data attachments to prevent marshalling of it
+	doc.GlobalSyncData.GlobalAttachments = doc.Attachments
+	doc.Attachments = nil
 
 	syncXattr, err = base.JSONMarshal(doc.SyncData)
 	if err != nil {
-		return nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
+		return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
 	if doc.metadataOnlyUpdate != nil {
 		mouXattr, err = base.JSONMarshal(doc.metadataOnlyUpdate)
 		if err != nil {
-			return nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc MouData with id: %s.  Error: %v", base.UD(doc.ID), err))
+			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc MouData with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
 	}
+	// marshal global xattrs if there are attachments defined
+	if len(doc.GlobalSyncData.GlobalAttachments) > 0 {
+		globalXattr, err = base.JSONMarshal(doc.GlobalSyncData)
+		if err != nil {
+			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc GlobalXattr with id: %s.  Error: %v", base.UD(doc.ID), err))
+		}
+		// restore attachment meta to sync data post global xattr construction
+		doc.Attachments = make(AttachmentsMeta)
+		doc.Attachments = doc.GlobalSyncData.GlobalAttachments
+	}
 
-	return data, syncXattr, vvXattr, mouXattr, nil
+	return data, syncXattr, vvXattr, mouXattr, globalXattr, nil
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate

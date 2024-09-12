@@ -1457,7 +1457,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	var doc1DCPBytes []byte
 	if base.TestUseXattrs() {
-		body, syncXattr, _, _, err := doc1.MarshalWithXattrs()
+		body, syncXattr, _, _, _, err := doc1.MarshalWithXattrs()
 		require.NoError(t, err)
 		doc1DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
 	} else {
@@ -1482,7 +1482,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	var dataType sgbucket.FeedDataType = base.MemcachedDataTypeJSON
 	if base.TestUseXattrs() {
 		dataType |= base.MemcachedDataTypeXattr
-		body, syncXattr, _, _, err := doc2.MarshalWithXattrs()
+		body, syncXattr, _, _, _, err := doc2.MarshalWithXattrs()
 		require.NoError(t, err)
 		doc2DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
 	} else {

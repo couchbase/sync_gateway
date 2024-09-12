@@ -137,7 +137,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
 			for i := 0; i < b.N; i++ {
-				_, _ = unmarshalDocumentWithXattrs(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, nil, nil, nil, 1, bm.unmarshalLevel)
+				_, _ = unmarshalDocumentWithXattrs(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, nil, nil, nil, nil, 1, bm.unmarshalLevel)
 			}
 		})
 	}
@@ -263,7 +263,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 
 	sync_meta := []byte(doc_meta_no_vv)
 	vv_meta := []byte(doc_meta_vv)
-	doc, err := unmarshalDocumentWithXattrs(ctx, "doc_1k", nil, sync_meta, vv_meta, nil, nil, nil, 1, DocUnmarshalNoHistory)
+	doc, err := unmarshalDocumentWithXattrs(ctx, "doc_1k", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
@@ -274,7 +274,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
-	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, 1, DocUnmarshalAll)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalAll)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
@@ -284,7 +284,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
-	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, 1, DocUnmarshalNoHistory)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
@@ -358,11 +358,11 @@ func TestRevAndVersion(t *testing.T) {
 				Version:  test.version,
 			}
 
-			marshalledDoc, marshalledXattr, marshalledVvXattr, _, err := document.MarshalWithXattrs()
+			marshalledDoc, marshalledXattr, marshalledVvXattr, _, _, err := document.MarshalWithXattrs()
 			require.NoError(t, err)
 
 			newDocument := NewDocument("docID")
-			err = newDocument.UnmarshalWithXattrs(ctx, marshalledDoc, marshalledXattr, marshalledVvXattr, nil, DocUnmarshalAll)
+			err = newDocument.UnmarshalWithXattrs(ctx, marshalledDoc, marshalledXattr, marshalledVvXattr, nil, nil, DocUnmarshalAll)
 			require.NoError(t, err)
 			require.Equal(t, test.revTreeID, newDocument.CurrentRev)
 			require.Equal(t, expectedSequence, newDocument.Sequence)
@@ -538,4 +538,129 @@ func getSingleXattrDCPBytes() []byte {
 	dcpBody = append(dcpBody, zeroByte)
 	dcpBody = append(dcpBody, body...)
 	return dcpBody
+}
+
+const syncDataWithAttachment = `{
+      "attachments": {
+        "bye.txt": {
+          "digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+          "length": 19,
+          "revpos": 1,
+          "stub": true,
+          "ver": 2
+        },
+        "hello.txt": {
+          "digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+          "length": 11,
+          "revpos": 1,
+          "stub": true,
+          "ver": 2
+        }
+      },
+      "cas": "0x0000d2ba4104f217",
+      "channel_set": [
+        {
+          "name": "sg_test_0",
+          "start": 1
+        }
+      ],
+      "channel_set_history": null,
+      "channels": {
+        "sg_test_0": null
+      },
+      "cluster_uuid": "6eca6cdd1ffcd7b2b7ea07039e68a774",
+      "history": {
+        "channels": [
+          [
+            "sg_test_0"
+          ]
+        ],
+        "parents": [
+          -1
+        ],
+        "revs": [
+          "1-ca9ad22802b66f662ff171f226211d5c"
+        ]
+      },
+      "recent_sequences": [
+        1
+      ],
+      "rev": {
+        "rev": "1-ca9ad22802b66f662ff171f226211d5c",
+        "src": "RS1pdSMRlrNr0Ns0oOfc8A",
+        "ver": "0x0000d2ba4104f217"
+      },
+      "sequence": 1,
+      "time_saved": "2024-09-04T11:38:05.093225+01:00",
+      "value_crc32c": "0x297bd0aa"
+    }`
+
+const globalXattr = `{
+      "attachments_meta": {
+        "bye.txt": {
+          "digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+          "length": 19,
+          "revpos": 1,
+          "stub": true,
+          "ver": 2
+        },
+        "hello.txt": {
+          "digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+          "length": 11,
+          "revpos": 1,
+          "stub": true,
+          "ver": 2
+        }
+      }
+    }`
+
+// TestAttachmentReadStoredInXattr tests reads legacy format for attachments being stored in sync data xattr as well as
+// testing the new location for attachments in global xattr
+func TestAttachmentReadStoredInXattr(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	// unmarshal attachments on sync data
+	testSync := []byte(syncDataWithAttachment)
+	doc, err := unmarshalDocumentWithXattrs(ctx, "doc1", nil, testSync, nil, nil, nil, nil, nil, 1, DocUnmarshalSync)
+	require.NoError(t, err)
+
+	// assert on attachments
+	atts := doc.Attachments
+	assert.Len(t, atts, 2)
+	hello := atts["hello.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, float64(11), hello["length"])
+	assert.Equal(t, float64(1), hello["revpos"])
+	assert.Equal(t, float64(2), hello["ver"])
+	assert.True(t, hello["stub"].(bool))
+
+	bye := atts["bye.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+	assert.Equal(t, float64(19), bye["length"])
+	assert.Equal(t, float64(1), bye["revpos"])
+	assert.Equal(t, float64(2), bye["ver"])
+	assert.True(t, bye["stub"].(bool))
+
+	// unmarshal attachments on global data
+	testGlobal := []byte(globalXattr)
+	sync_meta_no_attachments := []byte(doc_meta_no_vv)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta_no_attachments, nil, nil, nil, nil, testGlobal, 1, DocUnmarshalSync)
+	require.NoError(t, err)
+
+	// assert on attachments
+	atts = doc.Attachments
+	assert.Len(t, atts, 2)
+	hello = atts["hello.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, float64(11), hello["length"])
+	assert.Equal(t, float64(1), hello["revpos"])
+	assert.Equal(t, float64(2), hello["ver"])
+	assert.True(t, hello["stub"].(bool))
+
+	bye = atts["bye.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+	assert.Equal(t, float64(19), bye["length"])
+	assert.Equal(t, float64(1), bye["revpos"])
+	assert.Equal(t, float64(2), bye["ver"])
+	assert.True(t, bye["stub"].(bool))
 }
