@@ -49,7 +49,7 @@ put:
     content:
       application/json:
         schema:
-          $ref: ../../components/schemas.yaml#/Startup-config
+          $ref: ../../components/schemas.yaml#/Runtime-config
   responses:
     '200':
       description: Successfully set runtime options

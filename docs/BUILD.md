@@ -1,5 +1,5 @@
 
-Building with Go Modules 
+Building with Go Modules
 ------------------------
 
 Recent versions of Sync Gateway provide support for Go modules, which simplifies the process of building from source. Older versions will require building with pinned dependencies, see below.
@@ -45,7 +45,7 @@ $ ./bootstrap.sh
 
 After it's complete, you should see a message that says `Bootstrap complete!  Run ./build.sh to build and ./test.sh to run tests`
 
-*Note:* if you want to run the bootstrap initialization and start on a particular Sync Gateway commit, you can provide the `-c` flag, eg `./bootstrap.sh -c y0pl33g0r425`.  
+*Note:* if you want to run the bootstrap initialization and start on a particular Sync Gateway commit, you can provide the `-c` flag, eg `./bootstrap.sh -c y0pl33g0r425`.
 
 **Build and Test**
 

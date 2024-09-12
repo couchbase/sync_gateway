@@ -45,7 +45,7 @@ NOTE: you will get a lot of warnings from running this command.
 
 ```
 $ cd $GOPATH/src/github.com/couchbase/sync_gateway/
-$ go get -u 
+$ go get -u
 ```
 
 Running `go get` here will put your Sync Gateway back on the master branch, so you'll need to go *back* to the feature branch again:
