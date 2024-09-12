@@ -911,7 +911,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 							if current[i].Err == base.ErrChannelFeed {
 								base.WarnfCtx(ctx, "MultiChangesFeed got error reading changes feed: %v", current[i].Err)
 								select {
-								case <-ctx.Done():
+								case <-options.ChangesCtx.Done():
 								case output <- current[i]:
 								}
 								return
@@ -1029,7 +1029,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			// First notify the reader that we're waiting by sending a nil.
 			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
 			select {
-			case <-ctx.Done():
+			case <-options.ChangesCtx.Done():
 				return
 			case output <- nil:
 			}
@@ -1076,7 +1076,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.DebugfCtx(ctx, base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
 				select {
-				case <-ctx.Done():
+				case <-options.ChangesCtx.Done():
 				case output <- &change:
 				}
 				return
