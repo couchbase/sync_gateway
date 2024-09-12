@@ -48,8 +48,6 @@ const (
 	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
 )
 
-var MaxDecodedLength = len(Uint64CASToLittleEndianHex(math.MaxUint64))
-
 // NonCancellableContext is here to stroe a context that is not cancellable. Used to explicitly state when a change from
 // a cancellable context to a context withoutr contex is required
 type NonCancellableContext struct {
@@ -1037,7 +1035,7 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 		casByte = evenHexLen
 	}
 
-	decoded := make([]byte, MaxDecodedLength)
+	decoded := make([]byte, 8)
 	_, err := hex.Decode(decoded, casByte[2:])
 	if err != nil {
 		return 0, err
@@ -1046,7 +1044,7 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 	return res, nil
 }
 
-// Uint64ToLittleEndianHexAndStripZeros will convert a uin64 type to little endian hex, stripping any zeros off the end
+// Uint64ToLittleEndianHexAndStripZeros will convert a uint64 type to little endian hex, stripping any zeros off the end
 func Uint64ToLittleEndianHexAndStripZeros(cas uint64) string {
 	hexCas := Uint64CASToLittleEndianHex(cas)
 

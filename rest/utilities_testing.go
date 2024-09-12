@@ -2468,7 +2468,7 @@ func (v DocVersion) GetRev(useHLV bool) string {
 		if v.CV.SourceID == "" {
 			return ""
 		}
-		return v.CV.BlipString()
+		return v.CV.String()
 	} else {
 		return v.RevTreeID
 	}

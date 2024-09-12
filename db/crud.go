@@ -345,7 +345,7 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 	if revID != nil {
 		requestedVersion = *revID
 	} else if cv != nil {
-		requestedVersion = cv.BlipString()
+		requestedVersion = cv.String()
 	}
 
 	if revision.BodyBytes == nil {
@@ -3059,7 +3059,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 // CheckProposedVersion - given DocID and a version in string form, check whether it can be added without conflict.
 func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousVersionStr string) (status ProposedRevStatus, currentVersion string) {
 
-	proposedVersion, err := ParseBlipVersion(proposedVersionStr)
+	proposedVersion, err := ParseVersion(proposedVersionStr)
 	if err != nil {
 		base.WarnfCtx(ctx, "Couldn't parse proposed version for doc %q / %q: %v", base.UD(docid), proposedVersionStr, err)
 		return ProposedRev_Error, ""
@@ -3068,7 +3068,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	var previousVersion Version
 	if previousVersionStr != "" {
 		var err error
-		previousVersion, err = ParseBlipVersion(previousVersionStr)
+		previousVersion, err = ParseVersion(previousVersionStr)
 		if err != nil {
 			base.WarnfCtx(ctx, "Couldn't parse previous version for doc %q / %q: %v", base.UD(docid), previousVersionStr, err)
 			return ProposedRev_Error, ""
@@ -3100,7 +3100,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		// Conflict, return the current cv.  This may be a false positive conflict if the client has replicated
 		// the server cv via a different peer.  Client is responsible for performing this check based on the
 		// returned localDocCV
-		return ProposedRev_Conflict, localDocCV.BlipString()
+		return ProposedRev_Conflict, localDocCV.String()
 	}
 }
 

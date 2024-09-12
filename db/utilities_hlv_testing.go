@@ -150,7 +150,7 @@ func ParseTestHistory(t *testing.T, historyString string) (pv HLVVersions, mv HL
 
 	// pv
 	for _, versionStr := range strings.Split(pvString, ",") {
-		version, err := ParseBlipVersion(versionStr)
+		version, err := ParseVersion(versionStr)
 		require.NoError(t, err)
 		pv[EncodeSource(version.SourceID)] = version.Value
 	}
@@ -158,7 +158,7 @@ func ParseTestHistory(t *testing.T, historyString string) (pv HLVVersions, mv HL
 	// mv
 	if mvString != "" {
 		for _, versionStr := range strings.Split(mvString, ",") {
-			version, err := ParseBlipVersion(versionStr)
+			version, err := ParseVersion(versionStr)
 			require.NoError(t, err)
 			mv[EncodeSource(version.SourceID)] = version.Value
 		}
@@ -168,7 +168,7 @@ func ParseTestHistory(t *testing.T, historyString string) (pv HLVVersions, mv HL
 
 // Requires that the CV for the provided HLV matches the expected CV (sent in simplified test format)
 func RequireCVEqual(t *testing.T, hlv *HybridLogicalVector, expectedCV string) {
-	testVersion, err := ParseBlipVersion(expectedCV)
+	testVersion, err := ParseVersion(expectedCV)
 	require.NoError(t, err)
 	require.Equal(t, EncodeSource(testVersion.SourceID), hlv.SourceID)
 	require.Equal(t, testVersion.Value, hlv.Version)

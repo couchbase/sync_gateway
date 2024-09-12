@@ -513,7 +513,7 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	require.NoError(t, err)
 
 	// convert the bytes back to an in memory format of hlv
-	memHLV, err := ParseHLVFields(vvXattr)
+	memHLV, err := ParseHLVFields(nil, vvXattr)
 	require.NoError(t, err)
 
 	assert.Equal(t, pvMap[src1], memHLV.PreviousVersions[src1])
@@ -538,7 +538,7 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	vvXattr, err = ConstructXattrFromHlv(&hlv2)
 	require.NoError(t, err)
 	// convert the bytes back to an in memory format of hlv
-	memHLV, err = ParseHLVFields(vvXattr)
+	memHLV, err = ParseHLVFields(nil, vvXattr)
 	require.NoError(t, err)
 	// assert in memory hlv is as expected
 	assert.Equal(t, expSrc, memHLV.SourceID)

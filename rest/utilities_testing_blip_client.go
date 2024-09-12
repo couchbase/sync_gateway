@@ -175,7 +175,7 @@ func (btcr *BlipTesterCollectionClient) NewBlipTesterDoc(revID string, body []by
 }
 
 func VersionFromRevID(revID string) db.Version {
-	version, err := db.ParseBlipVersion(revID)
+	version, err := db.ParseVersion(revID)
 	if err != nil {
 		panic(err)
 	}
@@ -924,7 +924,7 @@ func (btc *BlipTesterCollectionClient) PushRev(docID string, parentVersion DocVe
 
 func (btc *BlipTesterCollectionClient) requireRevID(expected DocVersion, revID string) {
 	if btc.UseHLV() {
-		require.Equal(btc.parent.rt.TB(), expected.CV.BlipString(), revID)
+		require.Equal(btc.parent.rt.TB(), expected.CV.String(), revID)
 	} else {
 		require.Equal(btc.parent.rt.TB(), expected.RevTreeID, revID)
 	}
@@ -1193,7 +1193,7 @@ func (btc *BlipTesterClient) AssertOnBlipHistory(t *testing.T, msg *blip.Message
 	require.NoError(t, err)
 	if subProtocol >= db.CBMobileReplicationV4 { // history could be empty a lot of the time in HLV messages as updates from the same source won't populate previous versions
 		if msg.Properties[db.RevMessageHistory] != "" {
-			assert.Equal(t, docVersion.CV.BlipString(), msg.Properties[db.RevMessageHistory])
+			assert.Equal(t, docVersion.CV.String(), msg.Properties[db.RevMessageHistory])
 		}
 	} else {
 		assert.Equal(t, docVersion.RevTreeID, msg.Properties[db.RevMessageHistory])
@@ -1207,7 +1207,7 @@ func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVe
 
 	if doc, ok := btc.docs[docID]; ok {
 		if doc.revMode == revModeHLV {
-			if doc.getCurrentRevID() == docVersion.CV.BlipString() {
+			if doc.getCurrentRevID() == docVersion.CV.String() {
 				return doc.body, true
 			}
 		} else {
@@ -1306,7 +1306,7 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, version DocVersion) (msg *blip.Message) {
 	var revID string
 	if btc.UseHLV() {
-		revID = version.CV.BlipString()
+		revID = version.CV.String()
 	} else {
 		revID = version.RevTreeID
 	}

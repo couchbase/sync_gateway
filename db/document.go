@@ -463,7 +463,7 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 // Returns the raw body, in case it's needed for import.
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
-func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawXattrs map[string][]byte, err error) {
+func UnmarshalDocumentSyncDataFromFeed(ctx context.Context, data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawXattrs map[string][]byte, err error) {
 	var body []byte
 
 	// If xattr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
@@ -484,7 +484,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 		syncXattr, ok := xattrValues[base.SyncXattrName]
 
 		if vvXattr, ok := xattrValues[base.VvXattrName]; ok {
-			docHLV, err := ParseHLVFields(vvXattr)
+			docHLV, err := ParseHLVFields(ctx, vvXattr)
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("error unmarshalling HLV: %w", err)
 			}
@@ -1119,7 +1119,7 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 		}
 		if hlvXattrData != nil {
 			// parse the raw bytes of the hlv and convert deltas back to full values in memory
-			docHLV, err := ParseHLVFields(hlvXattrData)
+			docHLV, err := ParseHLVFields(ctx, hlvXattrData)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
@@ -1161,7 +1161,7 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 		}
 		if hlvXattrData != nil {
 			// parse the raw bytes of the hlv and convert deltas back to full values in memory
-			docHLV, err := ParseHLVFields(hlvXattrData)
+			docHLV, err := ParseHLVFields(ctx, hlvXattrData)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), err))
 			}
@@ -1318,7 +1318,7 @@ func ConstructXattrFromHlv(hlv *HybridLogicalVector) ([]byte, error) {
 
 // ParseHLVFields will parse raw bytes of the hlv xattr from persisted version to in memory version, converting the
 // deltas in pv and mv back into in memory format
-func ParseHLVFields(xattr []byte) (*HybridLogicalVector, error) {
+func ParseHLVFields(ctx context.Context, xattr []byte) (*HybridLogicalVector, error) {
 	var persistedHLV PersistedHLV
 	err := base.JSONUnmarshal(xattr, &persistedHLV)
 	if err != nil {
@@ -1327,11 +1327,11 @@ func ParseHLVFields(xattr []byte) (*HybridLogicalVector, error) {
 
 	pvMap, deltaErr := PersistedDeltasToMap(persistedHLV.PreviousVersions)
 	if deltaErr != nil {
-		return nil, fmt.Errorf("error converting pv to map: %v", deltaErr)
+		base.WarnfCtx(ctx, "Failed to convert persisted version deltas to full version values for previous versions. Falling back to constructing HLV without previous versions PV: %v, Error: %v", persistedHLV.PreviousVersions, deltaErr)
 	}
 	mvMap, deltaErr := PersistedDeltasToMap(persistedHLV.MergeVersions)
 	if deltaErr != nil {
-		return nil, fmt.Errorf("error converting mv to map: %v", deltaErr)
+		base.WarnfCtx(ctx, "Failed to convert persisted version deltas to full version values for merge versions. Falling back to constructing HLV without previous versions MV: %v, Error: %v", persistedHLV.MergeVersions, deltaErr)
 	}
 
 	newHLV := NewHybridLogicalVector()

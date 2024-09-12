@@ -81,7 +81,7 @@ func VersionsToDeltas(m map[string]string) []string {
 		val := delta.Value
 		encodedVal := base.Uint64ToLittleEndianHexAndStripZeros(val)
 		vrs := Version{SourceID: key, Value: encodedVal}
-		vrsList = append(vrsList, vrs.DeltaString())
+		vrsList = append(vrsList, vrs.String())
 	}
 
 	return vrsList
@@ -96,7 +96,7 @@ func PersistedDeltasToMap(vvList []string) (map[string]string, error) {
 
 	var lastEntryVersion uint64
 	for _, v := range vvList {
-		vrs, err := ParseDeltasVersion(v)
+		vrs, err := ParseVersion(v)
 		if err != nil {
 			return nil, err
 		}
@@ -119,8 +119,8 @@ func CreateVersion(source string, version uint64) Version {
 	}
 }
 
-// ParseBlipVersion will parse source version pair from blip format
-func ParseBlipVersion(versionString string) (version Version, err error) {
+// ParseVersion will parse source version pair from blip format
+func ParseVersion(versionString string) (version Version, err error) {
 	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
 	if !found {
 		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
@@ -141,11 +141,6 @@ func ParseBlipVersion(versionString string) (version Version, err error) {
 // String returns a version/sourceID pair in CBL string format
 func (v Version) String() string {
 	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
-}
-
-// DeltaString returns a pv or mv delta format string representation of version
-func (v Version) DeltaString() string {
-	return v.SourceID + "@" + v.Value
 }
 
 // ExtractCurrentVersionFromHLV will take the current version form the HLV struct and return it in the Version struct
@@ -207,7 +202,7 @@ func (hlv *HybridLogicalVector) GetCurrentVersionString() string {
 		SourceID: hlv.SourceID,
 		Value:    hlv.Version,
 	}
-	return version.BlipString()
+	return version.String()
 }
 
 // IsVersionKnown checks to see whether the HLV already contains a Version for the provided
@@ -390,7 +385,7 @@ func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 		itemNo := 1
 		for key, value := range hlv.MergeVersions {
 			vrs := Version{SourceID: key, Value: value}
-			s.WriteString(vrs.BlipString())
+			s.WriteString(vrs.String())
 			if itemNo < len(hlv.MergeVersions) {
 				s.WriteString(",")
 			}
@@ -406,7 +401,7 @@ func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 		}
 		for key, value := range hlv.PreviousVersions {
 			vrs := Version{SourceID: key, Value: value}
-			s.WriteString(vrs.BlipString())
+			s.WriteString(vrs.String())
 			if itemNo < len(hlv.PreviousVersions) {
 				s.WriteString(",")
 			}
@@ -511,7 +506,7 @@ func parseVectorValues(vectorStr string) (versions []Version, err error) {
 		if len(v) > 0 && v[0] == ' ' {
 			v = v[1:]
 		}
-		version, err := ParseBlipVersion(v)
+		version, err := ParseVersion(v)
 		if err != nil {
 			return nil, err
 		}

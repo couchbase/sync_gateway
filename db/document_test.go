@@ -240,8 +240,8 @@ const doc_meta_no_vv = `{
   }`
 
 const doc_meta_vv = `{"cvCas":"0x40e2010000000000","src":"cb06dc003846116d9b66d2ab23887a96","ver":"0x40e2010000000000",
-	"mv":["s_LhRPsa7CpjEvP5zeXTXEBA@0xc0ff05d7ac059a16","s_NqiIe0LekFPLeX4JvTO6Iw@0x1c008cd6"],
-	"pv":["s_YZvBpEaztom9z5V/hDoeIw@0xf0ff44d6ac059a16"]
+	"mv":["0xc0ff05d7ac059a16@s_LhRPsa7CpjEvP5zeXTXEBA","0x1c008cd6@s_NqiIe0LekFPLeX4JvTO6Iw"],
+	"pv":["0xf0ff44d6ac059a16@s_YZvBpEaztom9z5V/hDoeIw"]
 }`
 
 func TestParseVersionVectorSyncData(t *testing.T) {
@@ -285,6 +285,33 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+}
+
+const doc_meta_vv_corrupt = `{"cvCas":"0x40e2010000000000","src":"cb06dc003846116d9b66d2ab23887a96","ver":"0x40e2010000000000",
+	"mv":["0xc0ff05d7ac059a16@s_LhRPsa7CpjEvP5zeXTXEBA","1c008cd6@s_NqiIe0LekFPLeX4JvTO6Iw"],
+	"pv":["0xf0ff44d6ac059a16@s_YZvBpEaztom9z5V/hDoeIw"]
+}`
+
+func TestParseVersionVectorCorruptDelta(t *testing.T) {
+	pv := make(map[string]string)
+	pv["s_YZvBpEaztom9z5V/hDoeIw"] = "0xf0ff44d6ac059a16"
+
+	ctx := base.TestCtx(t)
+
+	sync_meta := []byte(doc_meta_no_vv)
+	vv_meta := []byte(doc_meta_vv_corrupt)
+	doc, err := unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, 1, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
+	// assert on doc version vector values
+	assert.Equal(t, strCAS, doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, strCAS, doc.SyncData.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
+	// Passing in corrupt merge versions so this should be nil
+	assert.Nil(t, doc.SyncData.HLV.MergeVersions)
+	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+
 }
 
 // TestRevAndVersion tests marshalling and unmarshalling rev and current version
@@ -478,7 +505,7 @@ func TestDCPDecodeValue(t *testing.T) {
 				require.Nil(t, xattrs)
 			}
 			// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-			result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
+			result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(nil, test.body, base.MemcachedDataTypeXattr, "", false)
 			require.ErrorIs(t, err, test.expectedErr)
 			if test.expectedSyncXattr != nil {
 				require.NotNil(t, result)
@@ -503,7 +530,7 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	require.Empty(t, xattrs)
 
 	// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-	result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
+	result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(nil, inputStream, base.MemcachedDataTypeXattr, "", false)
 	require.Error(t, err) // unexpected end of JSON input
 	require.Nil(t, result)
 	require.Equal(t, emptyBody, rawBody)
