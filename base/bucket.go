@@ -453,14 +453,49 @@ func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
 	return subdocStore, ok && ds.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations)
 }
 
-// WaitUntilDataStoreExists will try to perform an operation in the given DataStore until it can succeed.
+// WaitUntilDataStoreReady will try to perform a basic operation in the given DataStore until it can succeed.
+// It's not necessarily the case that a datastore that exists is ready to be used.
 //
-// There's no WaitForReady operation in GoCB for collections, only Buckets, so attempting to use Exists in this way this seems like our best option to check for availability.
-func WaitUntilDataStoreExists(ctx context.Context, ds DataStore) error {
+// There's no WaitForReady operation in GoCB for collections, only Buckets, so attempting to use Exists in this way this seems like our best option to check for usability.
+func WaitUntilDataStoreReady(ctx context.Context, ds DataStore) error {
 	return WaitForNoError(ctx, func() error {
-		_, err := ds.Exists("WaitUntilDataStoreExists")
+		// don't care whether the doc actually exists or not, just that we could perform the operation successfully
+		_, err := ds.Exists("WaitUntilDataStoreReady")
 		return err
 	})
+}
+
+// GetDataStoreWithRetry will attempt to get a named DataStore from the given bucket, retrying until it can succeed, if failFast is false.
+func GetDataStoreWithRetry(ctx context.Context, bucket Bucket, scName ScopeAndCollectionName, failFast bool) (DataStore, error) {
+	if failFast {
+		return bucket.NamedDataStore(scName)
+	}
+
+	err, dataStore := RetryLoop(
+		ctx,
+		fmt.Sprintf("waiting for %s.%s.%s to exist", MD(bucket.GetName()), MD(scName.ScopeName()), MD(scName.CollectionName())),
+		func() (bool, error, interface{}) {
+			dataStore, err := bucket.NamedDataStore(scName)
+			return err != nil, err, dataStore
+		},
+		CreateMaxDoublingSleeperFunc(30, 10, 1000))
+	ds, ok := dataStore.(DataStore)
+	if !ok && err == nil {
+		AssertfCtx(ctx, "datastore %s.%s.%s was not a DataStore type, got %T", bucket.GetName(), scName.ScopeName(), scName.CollectionName(), dataStore)
+	}
+	return ds, err
+}
+
+// GetAndWaitUntilDataStoreReady will attempt to get a named DataStore from the given bucket, and ensure it's ready for use.
+func GetAndWaitUntilDataStoreReady(ctx context.Context, bucket Bucket, scName ScopeAndCollectionName, failFast bool) (DataStore, error) {
+	dataStore, err := GetDataStoreWithRetry(ctx, bucket, scName, failFast)
+	if err != nil {
+		return nil, err
+	}
+	if err := WaitUntilDataStoreReady(ctx, dataStore); err != nil {
+		return nil, err
+	}
+	return dataStore, nil
 }
 
 // RequireNoBucketTTL ensures there is no MaxTTL set on the bucket (SG #3314)
