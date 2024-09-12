@@ -505,7 +505,7 @@ func TestDCPDecodeValue(t *testing.T) {
 				require.Nil(t, xattrs)
 			}
 			// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-			result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(nil, test.body, base.MemcachedDataTypeXattr, "", false)
+			result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(base.TestCtx(t), test.body, base.MemcachedDataTypeXattr, "", false)
 			require.ErrorIs(t, err, test.expectedErr)
 			if test.expectedSyncXattr != nil {
 				require.NotNil(t, result)
@@ -530,7 +530,7 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	require.Empty(t, xattrs)
 
 	// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-	result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(nil, inputStream, base.MemcachedDataTypeXattr, "", false)
+	result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(base.TestCtx(t), inputStream, base.MemcachedDataTypeXattr, "", false)
 	require.Error(t, err) // unexpected end of JSON input
 	require.Nil(t, result)
 	require.Equal(t, emptyBody, rawBody)

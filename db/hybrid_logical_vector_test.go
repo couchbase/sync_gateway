@@ -471,6 +471,7 @@ func TestParseCBLVersion(t *testing.T) {
 //     the corresponding element in the original pvMap
 //   - Do the same as above but for nil maps
 func TestVersionDeltaCalculation(t *testing.T) {
+	ctx := base.TestCtx(t)
 	src1 := "src1"
 	src2 := "src2"
 	src3 := "src3"
@@ -513,7 +514,7 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	require.NoError(t, err)
 
 	// convert the bytes back to an in memory format of hlv
-	memHLV, err := ParseHLVFields(nil, vvXattr)
+	memHLV, err := ParseHLVFields(ctx, vvXattr)
 	require.NoError(t, err)
 
 	assert.Equal(t, pvMap[src1], memHLV.PreviousVersions[src1])
@@ -538,7 +539,7 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	vvXattr, err = ConstructXattrFromHlv(&hlv2)
 	require.NoError(t, err)
 	// convert the bytes back to an in memory format of hlv
-	memHLV, err = ParseHLVFields(nil, vvXattr)
+	memHLV, err = ParseHLVFields(ctx, vvXattr)
 	require.NoError(t, err)
 	// assert in memory hlv is as expected
 	assert.Equal(t, expSrc, memHLV.SourceID)

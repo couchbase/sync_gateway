@@ -119,7 +119,7 @@ func CreateVersion(source string, version uint64) Version {
 	}
 }
 
-// ParseVersion will parse source version pair from blip format
+// ParseVersion will parse source version pair from string format
 func ParseVersion(versionString string) (version Version, err error) {
 	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
 	if !found {
