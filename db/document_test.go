@@ -300,7 +300,7 @@ func TestParseVersionVectorCorruptDelta(t *testing.T) {
 
 	sync_meta := []byte(doc_meta_no_vv)
 	vv_meta := []byte(doc_meta_vv_corrupt)
-	doc, err := unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, 1, DocUnmarshalAll)
+	doc, err := unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, 1, DocUnmarshalAll)
 	require.NoError(t, err)
 
 	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
