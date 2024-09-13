@@ -1020,14 +1020,15 @@ func HexCasToUint64(cas string) uint64 {
 
 // HexCasToUint64ForDelta will convert hex cas to uint64 accounting for any stripped zeros in delta calculation
 func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
+	var decoded []byte
 	if len(casByte) <= 2 {
-		return 0, fmt.Errorf("hex value is too short.")
+		return 0, fmt.Errorf("hex value is too short")
 	}
 	if casByte[0] != '0' || casByte[1] != 'x' {
 		return 0, fmt.Errorf("incorrect hex value, leading 0x is expected")
 	}
 
-	// as we strip any zeros iff the end of the hex value for deltas, the input delta could be odd length
+	// as we strip any zeros off the end of the hex value for deltas, the input delta could be odd length
 	if len(casByte)%2 != 0 {
 		evenHexLen := make([]byte, len(casByte), len(casByte)+1)
 		copy(evenHexLen, casByte)
@@ -1035,9 +1036,21 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 		casByte = evenHexLen
 	}
 
-	decoded := make([]byte, 8)
-	_, err := hex.Decode(decoded, casByte[2:])
-	if err != nil {
+	// create byte array for decoding into
+	decodedLen := hex.DecodedLen(len(casByte[2:]))
+	// binary.LittleEndian.Uint64 expects length 8 byte array, if larger we should error, if smaller
+	// (because of stripped 0's then we should make it length 8).
+	if decodedLen > 8 {
+		return 0, fmt.Errorf("corrupt hex value, decoded length larger than expected")
+	}
+	if decodedLen < 8 {
+		// can be less than 8 given we have stripped the 0's for some values, in this case we need to ensure large eniough
+		decoded = make([]byte, 8)
+	} else {
+		decoded = make([]byte, decodedLen)
+	}
+
+	if _, err := hex.Decode(decoded, casByte[2:]); err != nil {
 		return 0, err
 	}
 	res := binary.LittleEndian.Uint64(decoded)
