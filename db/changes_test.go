@@ -74,7 +74,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			collection.user, err = auth.GetUser("test")
 			require.NoError(t, err)
 
-			ch, err := collection.GetChanges(ctx, testCase.accessChans, getChangesOptionsWithZeroSeq(t))
+			ch := getChanges(t, collection, testCase.accessChans, getChangesOptionsWithZeroSeq(t))
 			require.NoError(t, err)
 			require.Len(t, ch, len(testCase.expectedDocsReturned))
 
@@ -125,9 +125,9 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Check the _changes feed:
-	collection.user, _ = authenticator.GetUser("naomi")
-	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
-	assert.NoError(t, err, "Couldn't GetChanges")
+	collection.user, err = authenticator.GetUser("naomi")
+	require.NoError(t, err)
+	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 	require.Len(t, changes, 3)
 
@@ -154,7 +154,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
+	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -163,8 +163,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.Equal(t, []ChangeRev{{"rev": revid}}, changes[0].Changes)
 
 	// validate from zero
-	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 
 }
@@ -224,9 +223,9 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
-	collection.user, _ = authenticator.GetUser("alice")
-	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
-	require.NoError(t, err, "Couldn't GetChanges")
+	collection.user, err = authenticator.GetUser("alice")
+	require.NoError(t, err)
+	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 	assert.Len(t, changes, 1)
 	collectionID := collection.GetCollectionID()
@@ -270,9 +269,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
-
-	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
+	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
 
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
@@ -310,9 +307,9 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
-	collection.user, _ = authenticator.GetUser("alice")
-	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
-	assert.NoError(t, err, "Couldn't GetChanges")
+	collection.user, err = authenticator.GetUser("alice")
+	require.NoError(t, err)
+	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 
 	collectionID := collection.GetCollectionID()
@@ -354,9 +351,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	// sequence 3 (the modified document) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
 
-	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
-
-	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
+	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
 
 	assert.Len(t, changes, 1)
 	require.Equal(t, &ChangeEntry{
@@ -404,8 +399,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	initQueryCount := db.DbStats.Cache().ViewQueries.Value()
 
 	// Get changes with active_only=true
-	activeChanges, err := collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
-	require.NoError(t, err, "Error getting changes with active_only true")
+	activeChanges := getChanges(t, collection, base.SetOf("*"), changesOptions)
 	require.Len(t, activeChanges, 5)
 
 	// Ensure the test is triggering a query, and not serving from DCP-generated cache
@@ -414,8 +408,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	// Get changes with active_only=false, validate that triggers a new query
 	changesOptions.ActiveOnly = false
-	allChanges, err := collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
-	require.NoError(t, err, "Error getting changes with active_only true")
+	allChanges := getChanges(t, collection, base.SetOf("*"), changesOptions)
 	require.Len(t, allChanges, 10)
 
 	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()
@@ -423,8 +416,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	// Get changes with active_only=false again, verify results are served from the cache
 	changesOptions.ActiveOnly = false
-	allChanges, err = collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
-	require.NoError(t, err, "Error getting changes with active_only true")
+	allChanges = getChanges(t, collection, base.SetOf("*"), changesOptions)
 	require.Len(t, allChanges, 10)
 
 	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()

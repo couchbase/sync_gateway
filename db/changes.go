@@ -1123,28 +1123,6 @@ func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, c
 	return false
 }
 
-// FOR TEST USE ONLY: Synchronous convenience function that returns all changes as a simple array,
-// Returns error if initial feed creation fails, or if an error is returned with the changes entries
-func (db *DatabaseCollectionWithUser) GetChanges(ctx context.Context, channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
-	if options.ChangesCtx == nil {
-		changesCtx, changesCtxCancel := context.WithCancel(context.Background())
-		options.ChangesCtx = changesCtx
-		defer changesCtxCancel()
-	}
-
-	var changes = make([]*ChangeEntry, 0, 50)
-	feed, err := db.MultiChangesFeed(ctx, channels, options)
-	if err == nil && feed != nil {
-		for entry := range feed {
-			if entry.Err != nil {
-				err = entry.Err
-			}
-			changes = append(changes, entry)
-		}
-	}
-	return changes, err
-}
-
 // Returns the set of cached log entries for a given channel
 func (c *DatabaseCollection) GetChangeLog(ctx context.Context, channel channels.ID, afterSeq uint64) (entries []*LogEntry, err error) {
 	return c.changeCache().getChannelCache().GetCachedChanges(ctx, channel)
@@ -1382,14 +1360,15 @@ func (options ChangesOptions) String() string {
 }
 
 // Used by BLIP connections for changes.  Supports both one-shot and continuous changes.
-func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
+func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (forceClose bool) {
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose = GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
+	err, forceClose := GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
 
 	if _, ok := err.(*ChangesSendErr); ok {
-		return nil, forceClose // error is probably because the client closed the connection
+		// If there was already an error in a send function, do not send last one shot changes message, since it probably will not work anyway.
+		return forceClose // error is probably because the client closed the connection
 	}
 
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
@@ -1397,7 +1376,7 @@ func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWi
 	if isOneShot {
 		_ = send(nil)
 	}
-	return err, forceClose
+	return forceClose
 }
 
 type ChangesSendErr struct{ error }

@@ -936,8 +936,7 @@ func TestAllDocsOnly(t *testing.T) {
 	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
-	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	require.Len(t, changes, 100)
 
 	for i, change := range changes {
@@ -964,8 +963,7 @@ func TestAllDocsOnly(t *testing.T) {
 	assert.True(t, sortedSeqAsc(changes), "Sequences should be ascending for all entries in the changes response")
 
 	options.IncludeDocs = true
-	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "KFJC"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes = getChanges(t, collection, channels.BaseSetOf(t, "KFJC"), options)
 	assert.Len(t, changes, 10)
 	for i, change := range changes {
 		assert.Equal(t, ids[10*i].DocID, change.ID)
@@ -1130,8 +1128,7 @@ func TestConflicts(t *testing.T) {
 		Conflicts:  true,
 		ChangesCtx: base.TestCtx(t),
 	}
-	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3},
@@ -1165,8 +1162,7 @@ func TestConflicts(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Verify the _changes feed:
-	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes = getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 4},
