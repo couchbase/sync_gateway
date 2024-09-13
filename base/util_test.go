@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
@@ -1734,4 +1735,13 @@ func TestCASToLittleEndianHex(t *testing.T) {
 	const expHexValue = "0x40e2010000000000"
 	littleEndianHex := Uint64CASToLittleEndianHex(casValue)
 	require.Equal(t, expHexValue, string(littleEndianHex))
+}
+
+func TestVbHashCheck(t *testing.T) {
+	maxVbNo := uint16(1024)
+	keys := []string{"75080822_09112024", "75080823_09112024"}
+	for _, key := range keys {
+		log.Printf("vbucket for %s: %v", key, sgbucket.VBHash(key, maxVbNo))
+	}
+
 }
