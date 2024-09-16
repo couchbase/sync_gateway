@@ -902,6 +902,7 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docI
 	docSync.Attachments = attachments
 
 	opts := &sgbucket.MutateInOptions{}
+	// this should be true for cases we want to move the attachment metadata without causing a new import feed event
 	if macroExpand {
 		spec := macroExpandSpec(base.SyncXattrName)
 		opts.MacroExpansion = spec
