@@ -893,3 +893,27 @@ func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
 	require.NoError(t, err)
 	return revNo
 }
+
+// MoveAttachmentXattrFromGlobalToSync is a test only function that will move any defined attachment metadata in global xattr to sync data xattr
+func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docID string, cas uint64, value, syncXattr []byte, attachments AttachmentsMeta, macroExpand bool, dataStore base.DataStore) {
+	var docSync SyncData
+	err := base.JSONUnmarshal(syncXattr, &docSync)
+	require.NoError(t, err)
+	docSync.Attachments = attachments
+
+	opts := &sgbucket.MutateInOptions{}
+	if macroExpand {
+		spec := macroExpandSpec(base.SyncXattrName)
+		opts.MacroExpansion = spec
+	} else {
+		opts = nil
+		docSync.Cas = ""
+	}
+
+	newSync, err := base.JSONMarshal(docSync)
+	require.NoError(t, err)
+
+	// change this to update xattr
+	_, err = dataStore.WriteWithXattrs(ctx, docID, 0, cas, value, map[string][]byte{base.SyncXattrName: newSync}, []string{base.GlobalXattrName}, opts)
+	require.NoError(t, err)
+}

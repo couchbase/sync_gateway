@@ -2447,3 +2447,235 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
 
 }
+
+// TestMigrationOfAttachmentsOnImport:
+//   - Create a doc and move the attachment metadata from global xattr to sync data xattr in a way that when the doc
+//     arrives over import feed it will be determined that it doesn't require import
+//   - Wait for the doc to arrive over import feed and assert even though the doc is not imported it will still get
+//     attachment metadata migrated from sync data to global xattr
+//   - Create a doc and move the attachment metadata from global xattr to sync data xattr in a way that when the doc
+//     arrives over import feed it will be determined that it does require import
+//   - Wait for the doc to arrive over the import feed and assert that once doc was imported the attachment metadata
+//     was migrated from sync data xattr to global xattr
+func TestMigrationOfAttachmentsOnImport(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+	ctx := base.TestCtx(t)
+
+	// add new doc to test a doc arriving import feed that doesn't need importing still has attachment migration take place
+	key := "doc1"
+	body := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	rt.PutDoc(key, body)
+
+	// grab defined attachment metadata to move to sync data
+	value, xattrs, cas, err := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok := xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok := xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	var attachs db.GlobalSyncData
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, true, dataStore)
+
+	// retry loop to wait for import event to arrive over dcp, as doc won't be 'imported' we can't wait for import stat
+	var retryXattrs map[string][]byte
+	err = rt.WaitForCondition(func() bool {
+		retryXattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+		require.NoError(t, err)
+		_, ok := retryXattrs[base.GlobalXattrName]
+		return ok
+	})
+	require.NoError(t, err)
+
+	syncXattr, ok = retryXattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = retryXattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// empty global sync,
+	attachs = db.GlobalSyncData{}
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	var syncData db.SyncData
+	err = base.JSONUnmarshal(syncXattr, &syncData)
+	require.NoError(t, err)
+
+	// assert that the attachment metadata has been moved
+	assert.NotNil(t, attachs.GlobalAttachments)
+	assert.Nil(t, syncData.Attachments)
+	att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.Equal(t, float64(11), att["length"])
+
+	// assert that no import took place
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 0)
+
+	// add new doc to test import of doc over feed moves attachments
+	key = "doc2"
+	body = `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	rt.PutDoc(key, body)
+
+	_, xattrs, cas, err = dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+	// grab defined attachment metadata to move to sync data
+	attachs = db.GlobalSyncData{}
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+
+	// change doc body to trigger import on feed
+	value = []byte(`{"test": "doc"}`)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+
+	// Wait for import
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
+
+	// grab the sync and global xattr from doc2
+	xattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	syncData = db.SyncData{}
+	err = base.JSONUnmarshal(syncXattr, &syncData)
+	require.NoError(t, err)
+
+	// assert that the attachment metadata has been moved
+	assert.NotNil(t, attachs.GlobalAttachments)
+	assert.Nil(t, syncData.Attachments)
+	att = attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.Equal(t, float64(11), att["length"])
+}
+
+// TestMigrationOfAttachmentsOnDemandImport:
+//   - Create a doc and move the attachment metadata from global xattr to sync data xattr
+//   - Trigger on demand import for get
+//   - Assert that the attachment metadata is migrated from sync data xattr to global sync xattr
+//   - Create a new doc and move the attachment metadata from global xattr to sync data xattr
+//   - Trigger an on demand import for write
+//   - Assert that the attachment metadata is migrated from sync data xattr to global sync xattr
+func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false, // avoid anything arriving over import feed for this test
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+	ctx := base.TestCtx(t)
+
+	key := "doc1"
+	body := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	rt.PutDoc(key, body)
+
+	_, xattrs, cas, err := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok := xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok := xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// grab defined attachment metadata to move to sync data
+	var attachs db.GlobalSyncData
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+
+	value := []byte(`{"update": "doc"}`)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+
+	// on demand import for get
+	_, _ = rt.GetDoc(key)
+
+	xattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// empty global sync,
+	attachs = db.GlobalSyncData{}
+
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	var syncData db.SyncData
+	err = base.JSONUnmarshal(syncXattr, &syncData)
+	require.NoError(t, err)
+
+	// assert that the attachment metadata has been moved
+	assert.NotNil(t, attachs.GlobalAttachments)
+	assert.Nil(t, syncData.Attachments)
+	att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.Equal(t, float64(11), att["length"])
+
+	key = "doc2"
+	body = `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	rt.PutDoc(key, body)
+
+	_, xattrs, cas, err = dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// grab defined attachment metadata to move to sync data
+	attachs = db.GlobalSyncData{}
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	value = []byte(`{"update": "doc"}`)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+
+	// trigger on demand import for write
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{}`)
+	rest.RequireStatus(t, resp, http.StatusConflict)
+
+	// assert that the attachments metadata is migrated
+	xattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// empty global sync,
+	attachs = db.GlobalSyncData{}
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	syncData = db.SyncData{}
+	err = base.JSONUnmarshal(syncXattr, &syncData)
+	require.NoError(t, err)
+
+	// assert that the attachment metadata has been moved
+	assert.NotNil(t, attachs.GlobalAttachments)
+	assert.Nil(t, syncData.Attachments)
+	att = attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.Equal(t, float64(11), att["length"])
+}

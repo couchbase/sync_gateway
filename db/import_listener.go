@@ -188,13 +188,13 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		}
 	}
 
+	docID := string(event.Key)
 	// If syncData is nil, or if this was not an SG write, attempt to import
 	if syncData == nil || !isSGWrite {
 		isDelete := event.Opcode == sgbucket.FeedOpDeletion
 		if isDelete {
 			rawBody = nil
 		}
-		docID := string(event.Key)
 
 		// last attempt to exit processing if the importListener has been closed before attempting to write to the bucket
 		select {
@@ -219,6 +219,14 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			} else {
 				base.DebugfCtx(ctx, base.KeyImport, "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
 			}
+		}
+	}
+	if syncData != nil && syncData.Attachments != nil {
+		base.DebugfCtx(ctx, base.KeyImport, "Attachment metadata found in sync data for doc with id %s, migrating attachment metadata", base.UD(docID))
+		// we have attachments to migrate
+		err := collection.MigrateAttachmentMetadata(ctx, docID, event.Cas, syncData)
+		if err != nil {
+			base.WarnfCtx(ctx, "error migrating attachment metadata from sync data to global sync for doc %s. Error: %v", base.UD(docID), err)
 		}
 	}
 }
