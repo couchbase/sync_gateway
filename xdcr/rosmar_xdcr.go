@@ -18,6 +18,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -27,6 +28,7 @@ type rosmarManager struct {
 	terminator          chan bool
 	toBucketCollections map[uint32]*rosmar.Collection
 	fromBucket          *rosmar.Bucket
+	fromBucketSourceID  string
 	toBucket            *rosmar.Bucket
 	replicationID       string
 	docsFiltered        atomic.Uint64
@@ -36,12 +38,17 @@ type rosmarManager struct {
 }
 
 // newRosmarManager creates an instance of XDCR backed by rosmar. This is not started until Start is called.
-func newRosmarManager(_ context.Context, fromBucket, toBucket *rosmar.Bucket, opts XDCROptions) (Manager, error) {
+func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, opts XDCROptions) (Manager, error) {
 	if opts.Mobile != MobileOn {
 		return nil, errors.New("Only sgbucket.XDCRMobileOn is supported in rosmar")
 	}
+	fromBucketSourceID, err := getSourceID(ctx, fromBucket)
+	if err != nil {
+		return nil, fmt.Errorf("Could not get source ID for %s: %w", fromBucket.GetName(), err)
+	}
 	return &rosmarManager{
 		fromBucket:          fromBucket,
+		fromBucketSourceID:  fromBucketSourceID,
 		toBucket:            toBucket,
 		replicationID:       fmt.Sprintf("%s-%s", fromBucket.GetName(), toBucket.GetName()),
 		toBucketCollections: make(map[uint32]*rosmar.Collection),
@@ -71,14 +78,15 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			return true
 		}
 
-		toCas, err := col.Get(docID, nil)
+		// Have to use GetWithXattrs to get a cas value back if there are no xattrs (GetWithXattrs will not return a cas if there are no xattrs)
+		_, toXattrs, toCas, err := col.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
 		if err != nil && !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "Skipping replicating doc %s, could not perform a kv op get doc in toBucket: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
 		}
 
-		/* full LWW conflict resolution is not implemented in rosmar yet
+		/* full LWW conflict resolution is not implemented in rosmar yet. There is no need to implement this since CAS will always be unique due to rosmar limitations.
 
 		CBS algorithm is:
 
@@ -115,7 +123,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			return true
 		}
 
-		err = opWithMeta(ctx, col, toCas, event)
+		err = opWithMeta(ctx, col, r.fromBucketSourceID, toCas, toXattrs, event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not write doc: %s", event.Key, err)
 			r.errorCount.Add(1)
@@ -167,7 +175,6 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 
 	args := sgbucket.FeedArguments{
 		ID:         "xdcr-" + r.replicationID,
-		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: r.terminator,
 		Scopes:     scopes,
 	}
@@ -186,30 +193,55 @@ func (r *rosmarManager) Stop(_ context.Context) error {
 	return nil
 }
 
-// opWithMeta writes a document to the target datastore given a type of Deletion or Mutation event with a specific cas.
-func opWithMeta(ctx context.Context, collection *rosmar.Collection, originalCas uint64, event sgbucket.FeedEvent) error {
-	var xattrs []byte
+// opWithMeta writes a document to the target datastore given a type of Deletion or Mutation event with a specific cas. The originalXattrs will contain only the _vv and _mou xattr.
+func opWithMeta(ctx context.Context, collection *rosmar.Collection, sourceID string, originalCas uint64, originalXattrs map[string][]byte, event sgbucket.FeedEvent) error {
+	var xattrs map[string][]byte
 	var body []byte
 	if event.DataType&sgbucket.FeedDataTypeXattr != 0 {
 		var err error
-		var dcpXattrs map[string][]byte
-		body, dcpXattrs, err = sgbucket.DecodeValueWithAllXattrs(event.Value)
-		if err != nil {
-			return err
-		}
-		xattrs, err = xattrToBytes(dcpXattrs)
+		body, xattrs, err = sgbucket.DecodeValueWithAllXattrs(event.Value)
 		if err != nil {
 			return err
 		}
 	} else {
+		xattrs = make(map[string][]byte, 1) // size one for _vv
 		body = event.Value
+	}
+	var vv *db.HybridLogicalVector
+	if bytes, ok := originalXattrs[base.VvXattrName]; ok {
+		err := json.Unmarshal(bytes, &vv)
+		if err != nil {
+			return fmt.Errorf("Could not unmarshal the existing vv xattr %s: %w", string(bytes), err)
+		}
+	} else {
+		newVv := db.NewHybridLogicalVector()
+		vv = &newVv
+	}
+	// TODO: read existing originalXattrs[base.VvXattrName] and update the pv CBG-4250
+
+	// TODO: clear _mou when appropriate CBG-4251
+
+	// update new cv with new source/cas
+	casBytes := string(base.Uint64CASToLittleEndianHex(event.Cas))
+	vv.SourceID = sourceID
+	vv.CurrentVersionCAS = casBytes
+	vv.Version = casBytes
+
+	var err error
+	xattrs[base.VvXattrName], err = json.Marshal(vv)
+	if err != nil {
+		return err
+	}
+	xattrBytes, err := xattrToBytes(xattrs)
+	if err != nil {
+		return err
 	}
 
 	if event.Opcode == sgbucket.FeedOpDeletion {
-		return collection.DeleteWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrs)
+		return collection.DeleteWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes)
 	}
 
-	return collection.SetWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrs, body, event.DataType)
+	return collection.SetWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes, body, event.DataType)
 
 }
 
