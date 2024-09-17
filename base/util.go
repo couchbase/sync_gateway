@@ -1024,9 +1024,6 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 	if len(casByte) <= 2 {
 		return 0, fmt.Errorf("hex value is too short")
 	}
-	if casByte[0] != '0' || casByte[1] != 'x' {
-		return 0, fmt.Errorf("incorrect hex value, leading 0x is expected")
-	}
 
 	// as we strip any zeros off the end of the hex value for deltas, the input delta could be odd length
 	if len(casByte)%2 != 0 {
@@ -1037,7 +1034,7 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 	}
 
 	// create byte array for decoding into
-	decodedLen := hex.DecodedLen(len(casByte[2:]))
+	decodedLen := hex.DecodedLen(len(casByte))
 	// binary.LittleEndian.Uint64 expects length 8 byte array, if larger we should error, if smaller
 	// (because of stripped 0's then we should make it length 8).
 	if decodedLen > 8 {
@@ -1050,7 +1047,7 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 		decoded = make([]byte, decodedLen)
 	}
 
-	if _, err := hex.Decode(decoded, casByte[2:]); err != nil {
+	if _, err := hex.Decode(decoded, casByte); err != nil {
 		return 0, err
 	}
 	res := binary.LittleEndian.Uint64(decoded)
@@ -1059,7 +1056,7 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 
 // Uint64ToLittleEndianHexAndStripZeros will convert a uint64 type to little endian hex, stripping any zeros off the end
 func Uint64ToLittleEndianHexAndStripZeros(cas uint64) string {
-	hexCas := Uint64CASToLittleEndianHex(cas)
+	hexCas := Uint64CASToLittleEndianHexNo0x(cas)
 
 	i := len(hexCas) - 1
 	for i > 2 && hexCas[i] == '0' {
@@ -1076,6 +1073,14 @@ func HexToBase64(s string) ([]byte, error) {
 	encoded := make([]byte, base64.RawStdEncoding.EncodedLen(len(decoded)))
 	base64.RawStdEncoding.Encode(encoded, decoded)
 	return encoded, nil
+}
+
+func Uint64CASToLittleEndianHexNo0x(cas uint64) []byte {
+	littleEndian := make([]byte, 8)
+	binary.LittleEndian.PutUint64(littleEndian, cas)
+	encodedArray := make([]byte, hex.EncodedLen(8))
+	_ = hex.Encode(encodedArray, littleEndian)
+	return encodedArray
 }
 
 func CasToString(cas uint64) string {
