@@ -229,7 +229,6 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionSy
 			return nil, err
 		}
 		if xattrs[base.GlobalXattrName] != nil && attachmentSyncData.Attachments == nil {
-			fmt.Println("inside global unmarshal ytihng ")
 			err = base.JSONUnmarshal(xattrs[base.GlobalXattrName], &attachmentGlobalSyncData)
 			if err != nil {
 				return nil, err
