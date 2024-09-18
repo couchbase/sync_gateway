@@ -150,8 +150,7 @@ func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 	return &currVersion
 }
 
-// PersistedHybridLogicalVector is the marshalled format of HybridLogicalVector.
-// This representation needs to be kept in sync with XDCR.
+// HybridLogicalVector is the in memory format for the hLv.
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64      // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
 	ImportCAS         uint64      // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
