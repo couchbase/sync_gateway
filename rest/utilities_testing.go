@@ -2381,20 +2381,6 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	return s
 }
 
-func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
-	t.Helper()
-	t.Log("starting waitAndRequireCondition")
-	for i := 0; i <= 20; i++ {
-		if i == 20 {
-			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			break
-		}
-		time.Sleep(time.Millisecond * 250)
-	}
-}
-
 func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...interface{}) {
 	t.Helper()
 	t.Log("starting WaitAndAssertCondition")

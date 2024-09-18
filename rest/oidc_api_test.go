@@ -1398,6 +1398,8 @@ func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response
 
 // E2E test that checks OpenID Connect Implicit Flow edge cases.
 func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAuth, base.KeyHTTP)
+
 	const emailClaim = "email"
 	var username = "foo_noah"
 	providers := auth.OIDCProviderMap{

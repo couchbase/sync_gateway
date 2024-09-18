@@ -736,24 +736,22 @@ func DirExists(filename string) bool {
 	return info.IsDir()
 }
 
-// WaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
-func WaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (int64, bool) {
-	workerFunc := func() (shouldRetry bool, err error, val interface{}) {
+// AssertWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
+func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		val = getStatFunc()
-		return val != expected, nil, val
-	}
-	// wait for up to 20 seconds for the stat to meet the expected value
-	err, val := RetryLoop(TestCtx(t), "waitForStat retry loop", workerFunc, CreateSleeperFunc(200, 100))
-	valInt64, ok := val.(int64)
-
-	return valInt64, err == nil && ok
+		assert.Equal(c, expected, val)
+	}, 20*time.Second, 100*time.Millisecond)
+	return val
 }
 
 // RequireWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
-func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) {
-	val, ok := WaitForStat(t, getStatFunc, expected)
-	require.True(t, ok)
-	require.Equal(t, expected, val)
+func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		val = getStatFunc()
+		assert.Equal(c, expected, val)
+	}, 20*time.Second, 100*time.Millisecond)
+	return val
 }
 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not

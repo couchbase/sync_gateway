@@ -68,7 +68,7 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 		cacheOptions = DefaultRevisionCacheOptions()
 	}
 
-	if cacheOptions.Size == 0 {
+	if cacheOptions.MaxItemCount == 0 {
 		bypassStat := cacheStats.RevisionCacheBypass
 		return NewBypassRevisionCache(backingStores, bypassStat)
 	}
@@ -76,23 +76,31 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 	cacheHitStat := cacheStats.RevisionCacheHits
 	cacheMissStat := cacheStats.RevisionCacheMisses
 	cacheNumItemsStat := cacheStats.RevisionCacheNumItems
-
-	if cacheOptions.ShardCount > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
+	cacheMemoryStat := cacheStats.RevisionCacheTotalMemory
+	if cacheNumItemsStat.Value() != 0 {
+		cacheNumItemsStat.Set(0)
+	}
+	if cacheMemoryStat.Value() != 0 {
+		cacheMemoryStat.Set(0)
 	}
 
-	return NewLRURevisionCache(cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat)
+	if cacheOptions.ShardCount > 1 {
+		return NewShardedLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
+	}
+
+	return NewLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 }
 
 type RevisionCacheOptions struct {
-	Size       uint32
-	ShardCount uint16
+	MaxItemCount uint32
+	MaxBytes     int64
+	ShardCount   uint16
 }
 
 func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 	return &RevisionCacheOptions{
-		Size:       DefaultRevisionCacheSize,
-		ShardCount: DefaultRevisionCacheShardCount,
+		MaxItemCount: DefaultRevisionCacheSize,
+		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 }
 
@@ -163,7 +171,8 @@ type DocumentRevision struct {
 	Attachments AttachmentsMeta
 	Delta       *RevisionDelta
 	Deleted     bool
-	Removed     bool // True if the revision is a removal.
+	Removed     bool  // True if the revision is a removal.
+	MemoryBytes int64 // storage of the doc rev bytes measurement, includes size of delta when present too
 }
 
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
@@ -317,10 +326,11 @@ type RevisionDelta struct {
 	ToChannels            base.Set                // Full list of channels for the to revision
 	RevisionHistory       []string                // Revision history from parent of ToRevID to source revID, in descending order
 	ToDeleted             bool                    // Flag if ToRevID is a tombstone
+	totalDeltaBytes       int64                   // totalDeltaBytes is the total bytes for channels, revisions and body on the delta itself
 }
 
 func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
-	return RevisionDelta{
+	revDelta := RevisionDelta{
 		ToRevID:               toRevision.RevID,
 		DeltaBytes:            deltaBytes,
 		AttachmentStorageMeta: toRevAttStorageMeta,
@@ -328,6 +338,8 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
 		ToDeleted:             deleted,
 	}
+	revDelta.CalculateDeltaBytes()
+	return revDelta
 }
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.

@@ -1087,7 +1087,7 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					Size: base.Uint32Ptr(0),
+					MaxItemCount: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
 					MaxNumber: base.IntPtr(0),
@@ -1176,7 +1176,7 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					Size: base.Uint32Ptr(0),
+					MaxItemCount: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
 					MaxNumber: base.IntPtr(0),
@@ -1227,7 +1227,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					Size: base.Uint32Ptr(0),
+					MaxItemCount: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
 					MaxNumber: base.IntPtr(0),

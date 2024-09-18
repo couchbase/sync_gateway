@@ -127,7 +127,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
 	// Get database handle
 	rtDatabase := rt.GetDatabase()
-	revCacheSize := rtDatabase.Options.RevisionCacheOptions.Size
+	revCacheSize := rtDatabase.Options.RevisionCacheOptions.MaxItemCount
 
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
 	numDocs := int(revCacheSize + 1)

@@ -147,26 +147,27 @@ type SubChangesParams struct {
 	_since               SequenceID    // Since value on the incoming request
 	_docIDs              []string      // Document ID filter specified on the incoming request
 	_sendReplacementRevs bool          // Whether to send a replacement rev in the event that we do not find the requested one.
+	_defaultRequestPlus  bool          // Default value for requestPlus, set on a database level
 }
 
 type SubChangesBody struct {
 	DocIDs []string `json:"docIDs"`
 }
 
-// Create a new subChanges helper
-func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq SequenceID, latestSeq LatestSequenceFunc, sequenceIDParser SequenceIDParser) (*SubChangesParams, error) {
-
+// NewSubChangesParams creates a SubChangesParam from a request. latestSeq represnts a function to determine the latest sequence for a database. defaultRequestPlus is the default value of request plus for a database.
+func NewSubChangesParams(logCtx context.Context, rq *blip.Message, latestSeq LatestSequenceFunc, defaultRequestPlus bool) (*SubChangesParams, error) {
 	params := &SubChangesParams{
-		rq: rq,
+		rq:                  rq,
+		_defaultRequestPlus: defaultRequestPlus,
 	}
 
 	// Determine incoming since and docIDs once, since there is some overhead associated with their calculation
-	sinceSequenceId := zeroSeq
+	sinceSequenceId := CreateZeroSinceValue()
 	var err error
 	if rq.Properties[SubChangesFuture] == trueProperty {
 		sinceSequenceId, err = latestSeq()
 	} else if sinceStr, found := rq.Properties[SubChangesSince]; found {
-		if sinceSequenceId, err = sequenceIDParser(sinceStr); err != nil {
+		if sinceSequenceId, err = ParseJSONSequenceID(sinceStr); err != nil {
 			base.InfofCtx(logCtx, base.KeySync, "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
 		}
 	}
@@ -240,10 +241,10 @@ func (s *SubChangesParams) activeOnly() bool {
 	return (s.rq.Properties[SubChangesActiveOnly] == trueProperty)
 }
 
-func (s *SubChangesParams) requestPlus(defaultValue bool) (value bool) {
+func (s *SubChangesParams) requestPlus() (value bool) {
 	propertyValue, isDefined := s.rq.Properties[SubChangesRequestPlus]
 	if !isDefined {
-		return defaultValue
+		return s._defaultRequestPlus
 	}
 	return propertyValue == trueProperty
 }
@@ -300,6 +301,14 @@ func (s *SubChangesParams) String() string {
 		buffer.WriteString(fmt.Sprintf("BatchSize:%v ", s.batchSize()))
 	}
 
+	requestPlus := s.requestPlus()
+	if requestPlus {
+		buffer.WriteString(fmt.Sprintf("RequestPlus:%v ", requestPlus))
+	}
+	future, ok := s.rq.Properties[SubChangesFuture]
+	if ok {
+		buffer.WriteString(fmt.Sprintf("Future:%v ", future))
+	}
 	if len(s.docIDs()) > 0 {
 		buffer.WriteString(fmt.Sprintf("DocIDs:%v ", s.docIDs()))
 	}
@@ -468,6 +477,10 @@ func (rm *RevMessage) String() string {
 		buffer.WriteString(fmt.Sprintf("Sequence:%v ", sequence))
 	}
 
+	noConflicts, ok := rm.Properties[RevMessageNoConflicts]
+	if ok {
+		buffer.WriteString(fmt.Sprintf("NoConflicts:%v ", noConflicts))
+	}
 	return buffer.String()
 
 }

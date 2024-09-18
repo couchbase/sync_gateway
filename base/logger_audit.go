@@ -147,6 +147,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	}
 
 	logger.logf(fieldsJSON)
+	SyncGatewayStats.GlobalStats.AuditStat.NumAuditsLogged.Add(1)
 }
 
 // IsAuditEnabled checks if auditing is enabled for the SG node
@@ -285,6 +286,7 @@ func shouldLogAuditEventForUserAndRole(logCtx *LogContext) bool {
 			Domain: string(logCtx.UserDomain),
 			Name:   logCtx.Username,
 		}]; isDisabled {
+			SyncGatewayStats.GlobalStats.AuditStat.NumAuditsFilteredByUser.Add(1)
 			return false
 		}
 	}
@@ -295,6 +297,7 @@ func shouldLogAuditEventForUserAndRole(logCtx *LogContext) bool {
 			Domain: string(logCtx.UserDomain),
 			Name:   role,
 		}]; isDisabled {
+			SyncGatewayStats.GlobalStats.AuditStat.NumAuditsFilteredByRole.Add(1)
 			return false
 		}
 	}

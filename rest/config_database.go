@@ -137,8 +137,8 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		AllowEmptyPassword: base.BoolPtr(false),
 		CacheConfig: &CacheConfig{
 			RevCacheConfig: &RevCacheConfig{
-				Size:       base.Uint32Ptr(db.DefaultRevisionCacheSize),
-				ShardCount: base.Uint16Ptr(db.DefaultRevisionCacheShardCount),
+				MaxItemCount: base.Uint32Ptr(db.DefaultRevisionCacheSize),
+				ShardCount:   base.Uint16Ptr(db.DefaultRevisionCacheShardCount),
 			},
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MaxNumber:            base.IntPtr(db.DefaultChannelCacheMaxNumber),

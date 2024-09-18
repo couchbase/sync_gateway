@@ -1345,7 +1345,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 func (options ChangesOptions) String() string {
 	return fmt.Sprintf(
-		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, RequestPlusSeq: %d}`,
+		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, Revocations: %t, RequestPlusSeq: %d}`,
 		options.Since,
 		options.Limit,
 		options.Conflicts,
@@ -1355,6 +1355,7 @@ func (options ChangesOptions) String() string {
 		options.HeartbeatMs,
 		options.TimeoutMs,
 		options.ActiveOnly,
+		options.Revocations,
 		options.RequestPlusSeq,
 	)
 }
