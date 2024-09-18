@@ -447,6 +447,10 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		}
 	}
 
+	// set forceClose here if the close was initiated by a ChangesEntry.Err message
+	if h.rq.Context().Err() != nil {
+		forceClose = true
+	}
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
 	_, _ = h.response.Write([]byte(s))
 	logStatus(http.StatusOK, message)

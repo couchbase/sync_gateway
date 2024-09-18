@@ -1525,5 +1525,10 @@ loop:
 		}
 	}
 
+	// if the ChangesCtx is done, the connection was force closed. This could actually happen and send a ChangeEntry.Err. Instead of checking each place in this function, set the forceClose flag here.
+	if options.ChangesCtx.Err() != nil {
+		forceClose = true
+	}
+
 	return nil, forceClose
 }
