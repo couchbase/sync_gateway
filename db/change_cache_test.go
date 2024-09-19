@@ -509,9 +509,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionWithUser.user, err = authenticator.GetUser("naomi")
 	require.NoError(t, err)
-	changes, err := collectionWithUser.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
-	assert.NoError(t, err, "Couldn't GetChanges")
-	assert.Len(t, changes, 4)
+	changes := getChanges(t, collectionWithUser, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 
 	collectionID := collection.GetCollectionID()
 
@@ -547,8 +545,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
 	// will be the late arriver (3) along with 5, 6)
-	changes, err = collectionWithUser.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
-	require.NoError(t, err)
+	changes = getChanges(t, collectionWithUser, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
 	assert.Len(t, changes, 3)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3, LowSeq: 3},
@@ -939,8 +936,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		options.Continuous = false
 		options.Wait = false
 		options.Limit = 2 // Avoid prepending results in cache, as we don't want second changes to serve results from cache
-		_, err := collection.GetChanges(ctx, base.SetOf("ABC"), options)
-		assert.NoError(t, err, "Expect no error for first changes request")
+		_ = getChanges(t, collection, base.SetOf("ABC"), options)
 	}()
 
 	// Wait for queryBlocked=true - ensures the first goroutine has acquired view lock
@@ -964,8 +960,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		options.Continuous = false
 		options.Limit = 2
 		options.Wait = false
-		_, err := collection.GetChanges(ctx, base.SetOf("ABC"), options)
-		assert.Error(t, err, "Expected error for second changes")
+		_ = getChanges(t, collection, base.SetOf("ABC"), options)
 	}()
 
 	// wait for second goroutine to be queued for the view lock (based on expvar)
@@ -1245,8 +1240,7 @@ func TestChannelCacheSize(t *testing.T) {
 	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionWithUser.user, err = authenticator.GetUser("naomi")
 	require.NoError(t, err)
-	changes, err := collectionWithUser.GetChanges(ctx, base.SetOf("ABC"), getChangesOptionsWithZeroSeq(t))
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes := getChanges(t, collectionWithUser, base.SetOf("ABC"), getChangesOptionsWithZeroSeq(t))
 	assert.Len(t, changes, 750)
 
 	// Validate that cache stores the expected number of values
@@ -1533,8 +1527,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	}
 
 	// Issue getChanges for empty channel
-	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes := getChanges(t, collection, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
 	changesCount := len(changes)
 	assert.Equal(t, 0, changesCount)
 
@@ -1551,10 +1544,8 @@ func TestInitializeEmptyCache(t *testing.T) {
 	cacheWaiter.Add(docCount)
 	cacheWaiter.Wait()
 
-	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
-	assert.NoError(t, err, "Couldn't GetChanges")
-	changesCount = len(changes)
-	assert.Equal(t, 10, changesCount)
+	changes = getChanges(t, collection, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
+	assert.Len(t, changes, 10)
 }
 
 // Trigger initialization of the channel cache under load via getChanges.  Ensures validFrom handling correctly
@@ -1598,8 +1589,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
-	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
-	require.NoError(t, err, "Couldn't GetChanges")
+	changes := getChanges(t, collection, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
 	if firstChangesCount > 0 {
@@ -1609,8 +1599,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for all writes to be cached, then getChanges again
 	cacheWaiter.Wait()
 
-	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(t, lastSeq))
-	require.NoError(t, err, "Couldn't GetChanges")
+	changes = getChanges(t, collection, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(t, lastSeq))
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
 
@@ -2861,6 +2850,20 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		dbContext.UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
+}
+
+// getChanges is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
+func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
+	require.NotNil(t, options.ChangesCtx)
+	feed, err := collection.MultiChangesFeed(options.ChangesCtx, channels, options)
+
+	require.NoError(t, err)
+	require.NotNil(t, feed)
+	var changes = make([]*ChangeEntry, 0, 50)
+	for entry := range feed {
+		changes = append(changes, entry)
+	}
+	return changes
 }
 
 // TestAddPendingLogs:

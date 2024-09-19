@@ -447,6 +447,10 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		}
 	}
 
+	// set forceClose here if the close was initiated by a ChangesEntry.Err message
+	if h.rq.Context().Err() != nil {
+		forceClose = true
+	}
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
 	_, _ = h.response.Write([]byte(s))
 	logStatus(http.StatusOK, message)
@@ -460,7 +464,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := db.GenerateChanges(h.ctx(), h.rq.Context(), h.collection, inChannels, options, nil, send)
+	err, forceClose := db.GenerateChanges(h.ctx(), h.collection, inChannels, options, nil, send)
 	if sendErr, ok := err.(*db.ChangesSendErr); ok {
 		h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", sendErr))
 		return nil, forceClose // error is probably because the client closed the connection
