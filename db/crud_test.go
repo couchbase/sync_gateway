@@ -1725,14 +1725,13 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 
 	// init channel cache, this will make changes call after timeout doc is written below fail pre changes made in CBG-4067,
 	// due to duplicate sequence at the cache with an unused sequence. See steps in ticket CBG-4067 as example.
-	_, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
-	require.NoError(t, err)
+	_ = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 
 	assert.Equal(t, int64(0), db.DbStats.Database().SequenceReleasedCount.Value())
 
 	// write doc that will return timeout but will actually be persisted successfully on server
 	// this mimics what was seen before
-	_, _, err = collection.Put(ctx, timeoutDoc, Body{"test": "doc"})
+	_, _, err := collection.Put(ctx, timeoutDoc, Body{"test": "doc"})
 	require.Error(t, err)
 
 	// wait for changes
@@ -1746,8 +1745,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// get cached changes + assert the document is present
-	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
-	require.NoError(t, err)
+	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	require.Len(t, changes, 1)
 	assert.Equal(t, timeoutDoc, changes[0].ID)
 
