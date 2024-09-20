@@ -80,7 +80,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 	}
 
 	// tests sg_users index
-	t.Run("testUserQueries", func(t *testing.T) {
+	rt.Run("testUserQueries", func(t *testing.T) {
 		users := []string{"alice", "bob"}
 
 		for _, user := range users {
@@ -96,7 +96,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 	})
 
 	// tests sg_roles index
-	t.Run("testRoleQueries", func(t *testing.T) {
+	rt.Run("testRoleQueries", func(t *testing.T) {
 		roles := []string{"roleA", "roleB"}
 
 		for _, role := range roles {

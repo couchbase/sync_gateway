@@ -588,6 +588,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		dbName = spec.BucketName
 	}
 
+	// Generate database context options from config and server context
+	contextOptions, err := dbcOptionsFromConfig(ctx, sc, &config.DbConfig, dbName)
+	if err != nil {
+		return nil, err
+	}
+	// set this early so we have dbName available in db-init related logging, before we have an actual database
+	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig)
+
 	defer func() {
 		if returnedError == nil {
 			return
@@ -776,14 +784,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if err != nil {
 		return nil, err
 	}
-
-	// Generate database context options from config and server context
-	contextOptions, err := dbcOptionsFromConfig(ctx, sc, &config.DbConfig, dbName)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig)
 
 	contextOptions.UseViews = useViews
 
