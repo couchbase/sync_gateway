@@ -487,7 +487,7 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	v5 := base.CasToString(uint64(timeNow - rand.Int64N(1000000000000)))
 
 	// make map of source to version
-	pvMap := make(map[string]string)
+	pvMap := make(HLVVersions)
 	pvMap[src1] = v1
 	pvMap[src2] = v2
 	pvMap[src3] = v3

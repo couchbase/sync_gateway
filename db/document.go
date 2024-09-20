@@ -1119,11 +1119,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 		}
 		if hlvXattrData != nil {
 			// parse the raw bytes of the hlv and convert deltas back to full values in memory
-			docHLV, err := ParseHLVFields(ctx, hlvXattrData)
+			//docHLV, err := ParseHLVFields(ctx, hlvXattrData)
+			err := base.JSONUnmarshal(hlvXattrData, &doc.HLV)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
-			doc.HLV = docHLV
+			//doc.HLV = docHLV
 		}
 		if virtualXattr != nil {
 			var revSeqNo string
@@ -1161,11 +1162,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 		}
 		if hlvXattrData != nil {
 			// parse the raw bytes of the hlv and convert deltas back to full values in memory
-			docHLV, err := ParseHLVFields(ctx, hlvXattrData)
+			//docHLV, err := ParseHLVFields(ctx, hlvXattrData)
+			err := base.JSONUnmarshal(hlvXattrData, &doc.HLV)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), err))
 			}
-			doc.HLV = docHLV
+			//doc.HLV = docHLV
 		}
 		if len(globalSyncData) > 0 {
 			if err := base.JSONUnmarshal(globalSyncData, &doc.GlobalSyncData); err != nil {
@@ -1256,11 +1258,16 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 		}
 	}
 	if doc.SyncData.HLV != nil {
-		// convert in memory hlv into persisted version, converting maps to deltas
-		vvXattr, err = ConstructXattrFromHlv(doc.HLV)
+		vvXattr, err = base.JSONMarshal(doc.SyncData.HLV)
+		//fmt.Println(syncXattr)
 		if err != nil {
 			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
+		// convert in memory hlv into persisted version, converting maps to deltas
+		//vvXattr, err = ConstructXattrFromHlv(doc.HLV)
+		//if err != nil {
+		//	return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
+		//}
 	}
 	// assign any attachments we have stored in document sync data to global sync data
 	// then nil the sync data attachments to prevent marshalling of it

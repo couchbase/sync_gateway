@@ -150,6 +150,65 @@ func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 	return &currVersion
 }
 
+type PrevVersions struct {
+	PreviousVersions HLVVersions `json:"pv,omitempty"`
+}
+
+type MVersions struct {
+	MergeVersions HLVVersions `json:"mv,omitempty"`
+}
+
+type HybridLogicalVectorJSON struct {
+	*HLVAlias
+}
+
+func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
+	var hlvJSON HybridLogicalVectorJSON
+	var alias HLVAlias
+	alias = (HLVAlias)(hlv)
+	hlvJSON.HLVAlias = &alias
+	return base.JSONMarshal(hlvJSON)
+}
+
+func (ver HLVVersions) MarshalJSON() ([]byte, error) {
+	fmt.Println("inside")
+	var verList []string
+	if len(ver) > 0 {
+		verList = make([]string, len(ver))
+		verList = VersionsToDeltas(ver)
+		return base.JSONMarshal(verList)
+	}
+	return nil, nil
+}
+
+func (ver *HLVVersions) UnmarshalJSON(inputjson []byte) error {
+
+	var verList []string
+	err := base.JSONUnmarshal(inputjson, &verList)
+	if err != nil {
+		return err
+	}
+	verMap, deltaErr := PersistedDeltasToMap(verList)
+	if deltaErr != nil {
+		return deltaErr // need typed erro to assert on
+	}
+	*ver = verMap
+	return nil
+}
+
+func (hlv *HybridLogicalVector) UnmarshalJSON(data []byte) error {
+
+	var hlvJSON *HybridLogicalVectorJSON
+	err := base.JSONUnmarshal(data, &hlvJSON)
+	if err != nil {
+		return err
+	}
+	if hlvJSON.HLVAlias != nil {
+		*hlv = HybridLogicalVector(*hlvJSON.HLVAlias)
+	}
+	return nil
+}
+
 // HybridLogicalVector is the in memory format for the hLv.
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64      // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication

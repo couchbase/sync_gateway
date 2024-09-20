@@ -293,24 +293,13 @@ const doc_meta_vv_corrupt = `{"cvCas":"0x40e2010000000000","src":"cb06dc00384611
 }`
 
 func TestParseVersionVectorCorruptDelta(t *testing.T) {
-	pv := make(map[string]string)
-	pv["s_YZvBpEaztom9z5V/hDoeIw"] = "0xf0ff44d6ac059a16"
 
 	ctx := base.TestCtx(t)
 
 	sync_meta := []byte(doc_meta_no_vv)
 	vv_meta := []byte(doc_meta_vv_corrupt)
-	doc, err := unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalAll)
-	require.NoError(t, err)
-
-	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
-	// assert on doc version vector values
-	assert.Equal(t, strCAS, doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, strCAS, doc.SyncData.HLV.Version)
-	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
-	// Passing in corrupt merge versions so this should be nil
-	assert.Nil(t, doc.SyncData.HLV.MergeVersions)
-	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+	_, err := unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalAll)
+	require.Error(t, err)
 
 }
 
