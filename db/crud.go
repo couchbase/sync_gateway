@@ -941,6 +941,32 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 	return d, nil
 }
 
+// MigrateAttachmentMetadata will move any attachment metadata defined in sync data to global sync xattr
+func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Context, docID string, cas uint64, syncData *SyncData) error {
+	globalData := GlobalSyncData{
+		GlobalAttachments: syncData.Attachments,
+	}
+	globalXattr, err := base.JSONMarshal(globalData)
+	if err != nil {
+		return base.RedactErrorf("Failed to Marshal global sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+	}
+	syncData.Attachments = nil
+	rawSyncXattr, err := base.JSONMarshal(*syncData)
+	if err != nil {
+		return base.RedactErrorf("Failed to Marshal sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+	}
+
+	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
+	opts := &sgbucket.MutateInOptions{}
+	spec := macroExpandSpec(base.SyncXattrName)
+	opts.MacroExpansion = spec
+	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
+
+	updatedXattr := map[string][]byte{base.SyncXattrName: rawSyncXattr, base.GlobalXattrName: globalXattr}
+	_, err = c.dataStore.UpdateXattrs(ctx, docID, 0, cas, updatedXattr, opts)
+	return err
+}
+
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
 func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, body Body) (newRevID string, doc *Document, err error) {
