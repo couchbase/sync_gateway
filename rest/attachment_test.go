@@ -2252,6 +2252,78 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	}
 
 }
+
+// TestUpdateViaBlipMigrateAttachment:
+//   - Tests document update through blip to a doc with attachment metadata deined in sync data
+//   - Assert that teh doc update this way will migrate the attachment metadata from sync data to global sync data
+func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
+	rtConfig := &RestTesterConfig{
+		GuestEnabled: true,
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol
+	const (
+		doc1ID = "doc1"
+	)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+		ds := rt.GetSingleDataStore()
+		ctx := base.TestCtx(t)
+
+		initialVersion := btc.rt.PutDoc(doc1ID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+		btc.rt.WaitForPendingChanges()
+		btcRunner.StartOneshotPull(btc.id)
+		btcRunner.WaitForVersion(btc.id, doc1ID, initialVersion)
+
+		value, xattrs, cas, err := ds.GetWithXattrs(ctx, doc1ID, []string{base.SyncXattrName, base.GlobalXattrName})
+		require.NoError(t, err)
+		syncXattr, ok := xattrs[base.SyncXattrName]
+		require.True(t, ok)
+		globalXattr, ok := xattrs[base.GlobalXattrName]
+		require.True(t, ok)
+
+		var attachs db.GlobalSyncData
+		err = base.JSONUnmarshal(globalXattr, &attachs)
+		require.NoError(t, err)
+
+		// move attachment metadata from global xattr to sync xattr
+		db.MoveAttachmentXattrFromGlobalToSync(t, ctx, doc1ID, cas, value, syncXattr, attachs.GlobalAttachments, true, ds)
+
+		// push revision from client
+		doc1Version, err := btcRunner.PushRev(btc.id, doc1ID, initialVersion, []byte(`{"new": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`))
+		require.NoError(t, err)
+		assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
+
+		// assert the pushed rev updates the doc in bucket and migrates attachment metadata in process
+		xattrs, _, err = ds.GetXattrs(ctx, doc1ID, []string{base.SyncXattrName, base.GlobalXattrName})
+		require.NoError(t, err)
+		syncXattr, ok = xattrs[base.SyncXattrName]
+		require.True(t, ok)
+		globalXattr, ok = xattrs[base.GlobalXattrName]
+		require.True(t, ok)
+
+		// empty global sync,
+		attachs = db.GlobalSyncData{}
+		err = base.JSONUnmarshal(globalXattr, &attachs)
+		require.NoError(t, err)
+		var syncData db.SyncData
+		err = base.JSONUnmarshal(syncXattr, &syncData)
+		require.NoError(t, err)
+
+		// assert that the attachment metadata has been moved
+		assert.NotNil(t, attachs.GlobalAttachments)
+		assert.Nil(t, syncData.Attachments)
+		att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+		assert.Equal(t, float64(11), att["length"])
+	})
+}
+
 func TestUpdateExistingAttachment(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
