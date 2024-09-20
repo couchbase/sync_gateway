@@ -149,7 +149,6 @@ type DatabaseContextOptions struct {
 	UnsupportedOptions            *UnsupportedOptions
 	OIDCOptions                   *auth.OIDCOptions
 	LocalJWTConfig                auth.LocalJWTConfig
-	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
 	EnableXattr                   bool             // Use xattr for _sync
 	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
@@ -353,10 +352,6 @@ func getServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
 	err, uuid := base.RetryLoop(ctx, "Getting ServerUUID", worker, getNewDatabaseSleeperFunc())
 	return uuid.(string), err
 }
-
-// Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
-// to come back online. A rest.ServerContext package cannot be passed since it would introduce a circular dependency
-type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
