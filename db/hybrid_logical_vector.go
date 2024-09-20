@@ -171,7 +171,7 @@ func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 }
 
 func (ver HLVVersions) MarshalJSON() ([]byte, error) {
-	var verList = make([]string, len(ver))
+	var verList []string
 	if len(ver) > 0 {
 		verList = VersionsToDeltas(ver)
 		return base.JSONMarshal(verList)
