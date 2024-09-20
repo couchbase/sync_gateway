@@ -2255,7 +2255,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 // TestUpdateViaBlipMigrateAttachment:
 //   - Tests document update through blip to a doc with attachment metadata deined in sync data
-//   - Assert that teh doc update this way will migrate the attachment metadata from sync data to global sync data
+//   - Assert that the c doc update this way will migrate the attachment metadata from sync data to global sync data
 func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
