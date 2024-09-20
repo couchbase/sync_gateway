@@ -1113,12 +1113,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		}
 	}
 
-	// Create a callback function that will be invoked if the database goes offline and comes
-	// back online again
-	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
-		sc.TakeDbOnline(base.NewNonCancelCtx(), dbContext)
-	}
-
 	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
 	if config.OldRevExpirySeconds != nil {
 		oldRevExpirySeconds = *config.OldRevExpirySeconds
@@ -1299,7 +1293,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		UnsupportedOptions:            config.Unsupported,
 		OIDCOptions:                   config.OIDCConfig,
 		LocalJWTConfig:                config.LocalJWTConfig,
-		DBOnlineCallback:              dbOnlineCallback,
 		ImportOptions:                 *importOptions,
 		EnableXattr:                   config.UseXattrs(),
 		SecureCookieOverride:          secureCookieOverride,
