@@ -58,7 +58,8 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 	base.InfofCtx(ctx, base.KeyAll, "Initializing database %s ...",
 		base.MD(dbConfig.Name))
 	dbInitWorker, ok := m.workers[dbConfig.Name]
-	collectionSet := m.buildCollectionIndexData(dbConfig)
+
+	collectionSet := buildCollectionIndexData(dbConfig)
 	if ok {
 		// If worker exists for the database and the collection sets match, add watcher to the existing worker
 		if dbInitWorker.collectionsEqual(collectionSet) {
@@ -156,27 +157,27 @@ func (m *DatabaseInitManager) Cancel(dbName string) {
 
 // buildCollectionIndexData determines the set of indexes required for each collection in the config, including
 // the metadata collection
-func (m *DatabaseInitManager) buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
-	collectionInitData := make(CollectionInitData, 0)
-	if len(config.Scopes) > 0 {
-		hasDefaultCollection := false
-		for scopeName, scopeConfig := range config.Scopes {
-			for collectionName, _ := range scopeConfig.Collections {
-				metadataIndexOption := db.IndexesWithoutMetadata
-				if base.IsDefaultCollection(scopeName, collectionName) {
-					hasDefaultCollection = true
-					metadataIndexOption = db.IndexesAll
-				}
-				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
-				collectionInitData[scName] = metadataIndexOption
-			}
-		}
-		if !hasDefaultCollection {
-			collectionInitData[base.DefaultScopeAndCollectionName()] = db.IndexesMetadataOnly
-		}
-	} else {
-		collectionInitData[base.DefaultScopeAndCollectionName()] = db.IndexesAll
+func buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
+	if len(config.Scopes) == 0 {
+		return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll}
 	}
+
+	defaultScopeAndCollectionMetadataIndexes := db.IndexesMetadataOnly
+
+	collectionInitData := make(CollectionInitData)
+	for scopeName, scopeConfig := range config.Scopes {
+		for collectionName := range scopeConfig.Collections {
+			scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
+			if scName.IsDefault() {
+				defaultScopeAndCollectionMetadataIndexes = db.IndexesAll
+				continue
+			}
+			collectionInitData[scName] = db.IndexesWithoutMetadata
+		}
+	}
+
+	collectionInitData[base.DefaultScopeAndCollectionName()] = defaultScopeAndCollectionMetadataIndexes
+
 	return collectionInitData
 }
 

@@ -151,17 +151,18 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) (filename string
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
 
 	sc := &ServerContext{
-		Config:             config,
-		persistentConfig:   persistentConfig,
-		dbRegistry:         map[string]struct{}{},
-		collectionRegistry: map[string]string{},
-		dbConfigs:          map[string]*RuntimeDatabaseConfig{},
-		databases_:         map[string]*db.DatabaseContext{},
-		HTTPClient:         http.DefaultClient,
-		statsContext:       &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
-		BootstrapContext:   &bootstrapContext{sgVersion: *base.ProductVersion},
-		hasStarted:         make(chan struct{}),
-		_httpServers:       map[serverType]*serverInfo{},
+		Config:              config,
+		persistentConfig:    persistentConfig,
+		dbRegistry:          map[string]struct{}{},
+		collectionRegistry:  map[string]string{},
+		dbConfigs:           map[string]*RuntimeDatabaseConfig{},
+		databases_:          map[string]*db.DatabaseContext{},
+		DatabaseInitManager: &DatabaseInitManager{},
+		HTTPClient:          http.DefaultClient,
+		statsContext:        &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
+		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion},
+		hasStarted:          make(chan struct{}),
+		_httpServers:        map[serverType]*serverInfo{},
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
 		dbNames: map[string]*invalidConfigInfo{},
@@ -177,10 +178,6 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	}
 	if config.Replicator.MaxConcurrentReplications != 0 {
 		sc.ActiveReplicationsCounter.activeReplicatorLimit = config.Replicator.MaxConcurrentReplications
-	}
-
-	if sc.persistentConfig {
-		sc.DatabaseInitManager = &DatabaseInitManager{}
 	}
 
 	if config.HeapProfileCollectionThreshold != nil {
@@ -652,52 +649,29 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
-	type indexInitData struct {
-		scopeAndCollection base.ScopeAndCollectionName
-		indexSet           db.CollectionIndexesType
-		datastore          base.DataStore
-	}
-
-	collectionsRequiringIndexes := make([]indexInitData, 0)
-
-	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType, name base.ScopeAndCollectionName) (err error) {
-		if useViews {
-			viewErr := db.InitializeViews(ctx, ds)
-			if viewErr != nil {
-				return viewErr
-			}
-			return nil
-		}
-
-		indexInit := indexInitData{
-			scopeAndCollection: name,
-			indexSet:           metadataIndexes,
-			datastore:          ds,
-		}
-		collectionsRequiringIndexes = append(collectionsRequiringIndexes, indexInit)
-		return nil
-	}
-
+	needDefaultCollectionInit := true
 	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
 		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 			return nil, errCollectionsUnsupported
 		}
 
-		hasDefaultCollection := false
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName := range scopeConfig.Collections {
 				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
+				if scName.IsDefault() {
+					needDefaultCollectionInit = false
+				}
+
 				dataStore, err := base.GetAndWaitUntilDataStoreReady(ctx, bucket, scName, options.failFast)
 				if err != nil {
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
 
-				metadataIndexOption := db.IndexesWithoutMetadata
-				if base.IsDefaultCollection(scopeName, collectionName) {
-					hasDefaultCollection = true
-					metadataIndexOption = db.IndexesAll
+				if useViews {
+					if err := db.InitializeViews(ctx, dataStore); err != nil {
+						return nil, err
+					}
 				}
 
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
@@ -708,18 +682,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if resyncRequired {
 					collectionsRequiringResync = append(collectionsRequiringResync, scName)
 				}
-				if err := initDataStore(dataStore, metadataIndexOption, scName); err != nil {
-					return nil, err
-				}
 			}
 		}
-		if !hasDefaultCollection {
-			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly, base.DefaultScopeAndCollectionName()); err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		// no scopes configured - init the default data store
+	}
+	// no scopes or the set of collections didn't include `_default` and we'll need to initialize it for metadata.
+	if needDefaultCollectionInit {
 		scName := base.DefaultScopeAndCollectionName()
 		ds := bucket.DefaultDataStore()
 		resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
@@ -729,53 +696,37 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if resyncRequired {
 			collectionsRequiringResync = append(collectionsRequiringResync, scName)
 		}
-		if err := initDataStore(ds, db.IndexesAll, scName); err != nil {
-			return nil, err
+		if useViews {
+			if err := db.InitializeViews(ctx, ds); err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	startOffline := base.BoolDefault(config.StartOffline, false)
 	var dbInitDoneChan chan error
-	// Initialize any required indexes
-	if len(collectionsRequiringIndexes) > 0 {
-		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
-		if !gsiSupported {
+	startOffline := base.BoolDefault(config.StartOffline, false)
+	if !useViews {
+		// Initialize any required indexes
+		if gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql); !gsiSupported {
 			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
-		// If database has been requested to start offline, or there's an active async initialization, use async initialization
-		// DatabaseInitManager will be nil if persistent config is not being used.
-		if sc.DatabaseInitManager != nil && (startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)) {
-			// Initialize indexes asynchronously using DatabaseInitManager.
-			dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			// Initialize indexes as a blocking, synchronous operation using per-collection N1QL store
-			numReplicas := DefaultNumIndexReplicas
-			if config.NumIndexReplicas != nil {
-				numReplicas = *config.NumIndexReplicas
-			}
+		if sc.DatabaseInitManager == nil {
+			base.AssertfCtx(ctx, "DatabaseInitManager should always be initialized")
+		}
 
-			for _, indexInfo := range collectionsRequiringIndexes {
-				ds := indexInfo.datastore
-				n1qlStore, ok := base.AsN1QLStore(ds)
-				if !ok {
-					return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
-				}
-				options := db.InitializeIndexOptions{
-					WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
-					NumReplicas:                numReplicas,
-					Serverless:                 sc.Config.IsServerless(),
-					MetadataIndexes:            indexInfo.indexSet,
-					UseXattrs:                  config.UseXattrs(),
-				}
-				ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), ds.ScopeName(), ds.CollectionName())
-				indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
-				if indexErr != nil {
-					return nil, indexErr
-				}
+		// If database has been requested to start offline, or there's an active async initialization, use async initialization
+		// Initialize indexes asynchronously using DatabaseInitManager.
+		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+		if err != nil {
+			return nil, err
+		}
+
+		isAsync := startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
+		if !isAsync {
+			// run as blocking synchronous operation
+			if err := <-dbInitDoneChan; err != nil {
+				return nil, err
 			}
 		}
 	}
