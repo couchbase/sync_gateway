@@ -344,9 +344,9 @@ func stripSyncProperty(row *sgbucket.ViewRow) {
 }
 
 func InitializeViews(ctx context.Context, ds sgbucket.DataStore) error {
-	collection, ok := ds.(*base.Collection)
-	if ok && !collection.IsDefaultScopeCollection() {
-		return fmt.Errorf("Can not initialize views on a non default collection")
+	collection, isCBServerCollection := ds.(*base.Collection)
+	if isCBServerCollection && !collection.IsDefaultScopeCollection() {
+		return fmt.Errorf("Can not initialize views on a non-default Couchbase Server collection")
 	}
 
 	viewStore, ok := ds.(sgbucket.ViewStore)
