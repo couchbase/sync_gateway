@@ -27,75 +27,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// WaitForPrimaryIndexEmpty waits for #primary to be empty.
-// Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
-func WaitForPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) error {
-
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		empty, err := isPrimaryIndexEmpty(ctx, store)
-		if err != nil {
-			return true, err, nil
-		}
-		return !empty, nil, empty
-	}
-
-	// Kick off the retry loop
-	err, _ := base.RetryLoop(
-		ctx,
-		"Wait for index to be empty",
-		retryWorker,
-		base.CreateMaxDoublingSleeperFunc(60, 500, 5000),
-	)
-	var retryError *base.RetryTimeoutError
-	if errors.As(err, &retryError) {
-		documents, err := getPrimaryIndexDocuments(ctx, store, true)
-		if err != nil {
-			return fmt.Errorf("Error getting documents from primary index: %w", err)
-		}
-		return fmt.Errorf("Documents left behind after waiting for primary index to be emptied: %s", documents)
-	}
-	return err
-}
-
-// isPrimaryIndexEmpty returns true if there are no documents in the primary index
-func isPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) (bool, error) {
-	// only look for a single doc to make query faster
-	docs, err := getPrimaryIndexDocuments(ctx, store, false)
-	if err != nil {
-		return false, err
-	}
-	return len(docs) == 0, err
-}
-
-// getPrimaryIndexDocuments returs true if there are no documents in the primary index and returns the documents. If allDocuments is false, only check for a single document.
-func getPrimaryIndexDocuments(ctx context.Context, store base.N1QLStore, allDocuments bool) ([]string, error) {
-	// Create the star channel query
-	statement := fmt.Sprintf("SELECT META().id FROM %s", base.KeyspaceQueryToken)
-	if !allDocuments {
-		statement += " LIMIT 1"
-	}
-	params := map[string]interface{}{}
-	params[QueryParamStartSeq] = 0
-	params[QueryParamEndSeq] = N1QLMaxInt64
-
-	// Execute the query
-	results, err := store.Query(ctx, statement, params, base.RequestPlus, true)
-
-	// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
-	// the index processes the bucket flush operation
-	if err != nil {
-		return nil, err
-	}
-
-	var documents []string
-	var queryRow map[string]string
-	for results.Next(ctx, &queryRow) {
-		documents = append(documents, queryRow["id"])
-	}
-	err = results.Close()
-	return documents, err
-}
-
 func (db *DatabaseContext) CacheCompactActive() bool {
 	channelCache := db.changeCache.getChannelCache()
 	compactingCache, ok := channelCache.(*channelCacheImpl)
@@ -205,21 +136,6 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 	return isChanged
 }
 
-// EmptyPrimaryIndex deletes all docs from primary index
-func EmptyPrimaryIndex(ctx context.Context, dataStore sgbucket.DataStore) error {
-	n1qlStore, ok := base.AsN1QLStore(dataStore)
-	if !ok {
-		return fmt.Errorf("bucket was not a n1ql store")
-	}
-
-	statement := `DELETE FROM ` + base.KeyspaceQueryToken
-	results, err := n1qlStore.Query(ctx, statement, nil, base.RequestPlus, true)
-	if err != nil {
-		return err
-	}
-	return results.Close()
-}
-
 // purgeWithDCPFeed purges all documents seen on a DCP feed with system xattrs, including tombstones which aren't found when emptying the primary index.
 func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) (numCompacted int, err error) {
 	purgeTimeout := 60 * time.Second
@@ -315,65 +231,6 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 	return int(purgedDocCount.Load()), purgeErrors.ErrorOrNil()
 }
 
-// emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty, including tombstones which aren't found when emptying the primary index.
-// nolint:unused
-func emptyAllDocsIndex(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) (numCompacted int, err error) {
-	purgedDocCount := 0
-	purgeBody := Body{"_purged": true}
-
-	n1qlStore, ok := base.AsN1QLStore(dataStore)
-	if !ok {
-		return 0, fmt.Errorf("bucket was not a n1ql store")
-	}
-
-	// A stripped down version of db.Compact() that works on AllDocs instead of tombstones
-	statement := `SELECT META(ks).id AS id
-FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)`
-	statement += " WHERE META(ks).xattrs._sync.`sequence` IS NOT MISSING"
-	statement += ` AND META(ks).id NOT LIKE '\\_sync:%'`
-	results, err := n1qlStore.Query(ctx, statement, nil, base.RequestPlus, true)
-	if err != nil {
-		return 0, err
-	}
-
-	var purgeErrors *base.MultiError
-	var row QueryIdRow
-	for results.Next(ctx, &row) {
-		// First, attempt to purge.
-		var purgeErr error
-		if base.TestUseXattrs() {
-			purgeErr = dataStore.DeleteWithXattrs(ctx, row.Id, []string{base.SyncXattrName})
-		} else {
-			purgeErr = dataStore.Delete(row.Id)
-		}
-		if base.IsDocNotFoundError(purgeErr) {
-			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := dataStore.Add(row.Id, 0, purgeBody)
-			if addErr != nil {
-				purgeErrors = purgeErrors.Append(addErr)
-				tbp.Logf(ctx, "Error adding key %s to force deletion. %v", row.Id, addErr)
-				continue
-			}
-
-			if delErr := dataStore.Delete(row.Id); delErr != nil {
-				purgeErrors = purgeErrors.Append(delErr)
-				tbp.Logf(ctx, "Error deleting key %s.  %v", row.Id, delErr)
-			}
-			purgedDocCount++
-		} else if purgeErr != nil {
-			purgeErrors = purgeErrors.Append(purgeErr)
-			tbp.Logf(ctx, "Error removing key %s (purge). %v", row.Id, purgeErr)
-		}
-	}
-	err = results.Close()
-	if err != nil {
-		return 0, err
-	}
-
-	tbp.Logf(ctx, "Finished emptying all docs index ... Total docs purged: %d", purgedDocCount)
-	return purgedDocCount, purgeErrors.ErrorOrNil()
-}
-
 // viewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
 var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
 	if base.TestsDisableGSI() {
@@ -385,11 +242,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return viewBucketReadier(ctx, b.DefaultDataStore(), tbp)
 	}
 
-	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
-	if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
-		return err
-	}
-
+	tbp.Logf(ctx, "emptying bucket via DCP purge")
 	dataStores, err := b.ListDataStores()
 	if err != nil {
 		return err
@@ -402,20 +255,6 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		if _, err := purgeWithDCPFeed(ctx, dataStore, tbp); err != nil {
 			return err
 		}
-		if err := EmptyPrimaryIndex(ctx, dataStore); err != nil {
-			return err
-		}
-		n1qlStore, ok := base.AsN1QLStore(dataStore)
-		if !ok {
-			return errors.New("attempting to empty indexes with non-N1QL store")
-		}
-		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dataStore.ScopeName(), dataStore.CollectionName())
-		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-		if err := WaitForPrimaryIndexEmpty(ctx, n1qlStore); err != nil {
-			tbp.Logf(ctx, "waitForPrimaryIndexEmpty returned an error: %v", err)
-			return err
-		}
-		tbp.Logf(ctx, "bucket indexes empty")
 	}
 	if len(dataStores) == 1 {
 		dataStoreName := dataStores[0]
@@ -424,6 +263,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 			if err != nil {
 				return err
 			}
+			tbp.Logf(ctx, "readying views for bucket")
 			if err := viewBucketReadier(ctx, dataStore, tbp); err != nil {
 				return err
 			}
@@ -516,10 +356,6 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 
-		err = n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
-		if err != nil {
-			return err
-		}
 		tbp.Logf(ctx, "finished creating SG bucket indexes")
 	}
 	return nil
