@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -567,13 +568,6 @@ func TestSyncOnline(t *testing.T) {
 	sc, closeFn := rest.StartBootstrapServer(t)
 	defer closeFn()
 
-	// Set testing callbacks for async initialization
-	collectionCount := int64(0)
-	collectionCompleteCallback := func(dbName, collectionName string) {
-		_ = atomic.AddInt64(&collectionCount, 1)
-	}
-	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
-
 	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -595,11 +589,10 @@ func TestSyncOnline(t *testing.T) {
 	// Verify online
 	waitAndRequireDBState(t, sc, dbName, db.DBOnline)
 
-	// Verify no collections were initialized asynchronously
-	// FIXME: Since DatabaseInitManager is now used for async and sync we can't rely on this callback to assert that async was used
-	totalCount := atomic.LoadInt64(&collectionCount)
-	require.Equal(t, int64(0), totalCount)
-
+	// Verify database was initialized synchronously
+	dbCtx, err := sc.GetDatabase(ctx, dbName)
+	require.NoError(t, err)
+	assert.True(t, dbCtx.WasInitializedSynchronously)
 }
 
 // TestAsyncInitConfigUpdates verifies that a database with in-progress async

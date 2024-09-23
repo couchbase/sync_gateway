@@ -135,6 +135,7 @@ type DatabaseContext struct {
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	CORS                         *auth.CORSConfig               // CORS configuration
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
+	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 }
 
 type Scope struct {

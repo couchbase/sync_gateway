@@ -901,6 +901,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	// If asyncOnline wasn't specified, block until db init is completed, then start online processes
 	if !options.asyncOnline || !isAsync {
+		dbcontext.WasInitializedSynchronously = true
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete...")
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
