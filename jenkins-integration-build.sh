@@ -107,9 +107,9 @@ fi
 
 if [ "${RUN_WALRUS}" == "true" ]; then
     # EE
-    go test -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ee.out.raw 2>&1 | true
+    go test -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode,cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ee.out.raw 2>&1 | true
     # CE
-    go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
+    go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
 fi
 
 # Run CBS
@@ -132,7 +132,9 @@ export SG_TEST_BUCKET_POOL_DEBUG=${SG_TEST_BUCKET_POOL_DEBUG}
 export SG_TEST_TLS_SKIP_VERIFY=${TLS_SKIP_VERIFY}
 
 if [ "${SG_EDITION}" == "EE" ]; then
-    GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_enterprise"
+    GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_devmode,cb_sg_enterprise"
+else
+    GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_devmode"
 fi
 
 go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'

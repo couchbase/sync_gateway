@@ -77,7 +77,8 @@ func requireDocumentVersion(t testing.TB, expected rest.DocVersion, doc *db.Docu
 // requireRevID asserts that the specified document version is written to the
 // underlying bucket backed by the given RestTester instance.
 func requireVersion(rt *rest.RestTester, docID string, version rest.DocVersion) {
-	doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(rt.Context(), docID, db.DocUnmarshalAll)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 	require.NoError(rt.TB(), err, "Error reading document from bucket")
 	requireDocumentVersion(rt.TB(), version, doc)
 }
@@ -90,10 +91,11 @@ func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
 // waitForTombstone waits until the specified tombstone revision is available
 // in the bucket backed by the specified RestTester instance.
 func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	require.NoError(t, rt.WaitForCondition(func() bool {
-		doc, _ := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-		return doc.IsDeleted() && len(doc.Body(base.TestCtx(t))) == 0
+		doc, _ := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		return doc.IsDeleted() && len(doc.Body(ctx)) == 0
 	}))
 }
 
@@ -101,7 +103,8 @@ func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 func createDoc(rt *rest.RestTester, docID string, bodyValue string) rest.DocVersion {
 	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
 	updatedVersion := rt.PutDoc(docID, body)
-	require.NoError(rt.TB(), rt.WaitForPendingChanges())
+	// make sure doc is available to changes feed
+	rt.WaitForPendingChanges()
 	return updatedVersion
 }
 
@@ -109,7 +112,8 @@ func createDoc(rt *rest.RestTester, docID string, bodyValue string) rest.DocVers
 func updateDoc(rt *rest.RestTester, docID string, version rest.DocVersion, bodyValue string) rest.DocVersion {
 	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
 	updatedVersion := rt.UpdateDoc(docID, version, body)
-	require.NoError(rt.TB(), rt.WaitForPendingChanges())
+	// make sure doc is available to changes feed
+	rt.WaitForPendingChanges()
 	return updatedVersion
 }
 

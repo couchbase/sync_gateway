@@ -146,7 +146,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		existingDoc.Expiry = *expiry
 	}
 
-	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, true, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, true, func(doc *Document) (resultDocument *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
@@ -344,6 +344,10 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		db.collectionStats.ImportCount.Add(1)
 		db.dbStats().SharedBucketImport().ImportHighSeq.Set(int64(docOut.SyncData.Sequence))
 		db.dbStats().SharedBucketImport().ImportProcessingTime.Add(time.Since(importStartTime).Nanoseconds())
+		base.Audit(ctx, base.AuditIDDocumentImport, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRev,
+		})
 		base.DebugfCtx(ctx, base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.

@@ -163,6 +163,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 }
 
 func TestLoggingKeys(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
 	if base.GlobalTestLoggingSet.IsTrue() {
 		t.Skip("Test does not work when a global test log level is set")
 	}
@@ -252,8 +253,7 @@ func TestServerlessChangesEndpointLimit(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/alice", rest.GetUserPayload(t, "alice", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
-	rest.RequireStatus(t, resp, 201)
+	rt.CreateUser("alice", []string{"ABC"})
 
 	// Put several documents in channel PBS
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)
@@ -562,7 +562,7 @@ func TestDBGetConfigNamesAndDefaultLogging(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	assert.Equal(t, len(rt.DatabaseConfig.Users), len(body.Users))
-	emptyCnf := &rest.DbLoggingConfig{}
+	emptyCnf := rest.DefaultPerDBLogging(rt.ServerContext().Config.Logging)
 	assert.Equal(t, body.Logging, emptyCnf)
 
 	for k, v := range body.Users {
@@ -1777,6 +1777,91 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 
 }
 
+// TestConfigPollingRemoveDatabase:
+//
+//	Validates db is removed when polling detects that the config is not found
+func TestConfigPollingRemoveDatabase(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
+	testCases := []struct {
+		useXattrConfig bool
+	}{
+		{
+			useXattrConfig: false,
+		},
+		{
+			useXattrConfig: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("xattrConfig_%v", testCase.useXattrConfig), func(t *testing.T) {
+
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				PersistentConfig: true,
+				MutateStartupConfig: func(config *rest.StartupConfig) {
+					// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
+					config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
+				},
+				DatabaseConfig: nil,
+				UseXattrConfig: testCase.useXattrConfig,
+			})
+			defer rt.Close()
+
+			ctx := base.TestCtx(t)
+			// create a new db
+			dbName := "db1"
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Name = dbName
+			dbConfig.BucketConfig.Bucket = base.StringPtr(rt.CustomTestBucket.GetName())
+			resp := rt.CreateDatabase(dbName, dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			// Validate that db is loaded
+			_, err := rt.ServerContext().GetDatabase(ctx, dbName)
+			require.NoError(t, err)
+
+			// Force timeouts - dev-time only test enhancement to validate CBG-3947, requires manual "leaky bootstrap" handling
+			// To enable:
+			//  - Add "var ForceTimeouts bool" to bootstrap.go
+			//  - In CouchbaseCluster.GetMetadataDocument, add the following after loadConfig:
+			//    	if ForceTimeouts {
+			//			return 0, gocb.ErrTimeout
+			//		}
+			//  - enable the code block below
+			/*
+				base.ForceTimeouts = true
+
+				// Wait to ensure database doesn't disappear
+				err = rt.WaitForConditionWithOptions(func() bool {
+					_, err := rt.ServerContext().GetActiveDatabase(dbName)
+					return errors.Is(err, base.ErrNotFound)
+
+				}, 200, 50)
+				require.Error(t, err)
+
+				base.ForceTimeouts = false
+			*/
+
+			// Delete the config directly
+			rt.RemoveDbConfigFromBucket("db1", rt.CustomTestBucket.GetName())
+
+			// assert that the database is unloaded
+			err = rt.WaitForConditionWithOptions(func() bool {
+				_, err := rt.ServerContext().GetActiveDatabase(dbName)
+				return errors.Is(err, base.ErrNotFound)
+
+			}, 200, 1000)
+			require.NoError(t, err)
+
+			// assert that a request to the database fails with correct error message
+			resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+			rest.RequireStatus(t, resp, http.StatusNotFound)
+			assert.Contains(t, resp.Body.String(), "no such database")
+		})
+	}
+}
+
 func TestResyncStopUsingDCPStream(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		// This test requires a gocb bucket
@@ -2462,7 +2547,7 @@ func TestHandleDBConfig(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.CacheConfig = &rest.CacheConfig{
 		RevCacheConfig: &rest.RevCacheConfig{
-			Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
+			MaxItemCount: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
 		},
 	}
 
@@ -2553,6 +2638,7 @@ func TestHandleGetConfig(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
+	require.NotEqual(t, 0, respBody.HeapProfileCollectionThreshold)
 }
 
 func TestHandleGetRevTree(t *testing.T) {
@@ -2924,6 +3010,7 @@ func TestConfigEndpoint(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
+			base.ResetGlobalTestLogging(t)
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			base.InitializeMemoryLoggers()
@@ -3025,6 +3112,7 @@ func TestInitialStartupConfig(t *testing.T) {
 }
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	base.InitializeMemoryLoggers()
@@ -3275,6 +3363,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
@@ -4261,4 +4350,172 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	// create db with config and assert it is successful
 	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/backticks/", string(input), rest.MobileSyncGatewayRole.RoleName, "password")
 	rest.RequireStatus(t, resp, http.StatusCreated)
+}
+
+func TestDatabaseConfigAuditAPI(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Audit logging is an EE-only feature")
+	}
+
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	// check default audit config - verbose to read event names, etc.
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/_config/audit?verbose=true", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp.DumpBody()
+	var responseBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, false, responseBody["enabled"].(bool))
+	// check we got the verbose output
+	assert.NotEmpty(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(map[string]interface{})["description"].(string), "expected verbose output (event description, etc.)")
+	// check that global event IDs were not present
+	assert.Nil(t, responseBody["events"].(map[string]interface{})[base.AuditIDSyncGatewayCollectInfoStart.String()], "expected global event ID to not be present")
+
+	// enable auditing on the database (upsert)
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"enabled":true}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// check audit config
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/audit", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp.DumpBody()
+	responseBody = nil
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, true, responseBody["enabled"].(bool))
+	eventsMap, ok := responseBody["events"].(map[string]interface{})
+	require.True(t, ok)
+	assert.False(t, eventsMap[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should be disabled by default")
+	assert.True(t, eventsMap[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should be enabled by default")
+
+	// use event IDs returned from GET response to disable all of them
+	for id := range eventsMap {
+		eventsMap[id] = false
+	}
+	eventsJSON, err := json.Marshal(eventsMap)
+	require.NoError(t, err)
+
+	// CBG-4111: Try to disable events on top of the default (nil) set... either PUT or POST where *all* of the given IDs are set to false. Bug results in a no-op.
+	// CBG-4157: Ensure ALL specified events were actually disabled. Bug results in some events remaining 'true', and sometimes panicking by going out-of-bounds in a slice.
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":%s}`, eventsJSON))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	// check all events were actually disabled
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/audit", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp.DumpBody()
+	responseBody = nil
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	eventsMap, ok = responseBody["events"].(map[string]interface{})
+	require.True(t, ok)
+	for id, val := range eventsMap {
+		assert.False(t, val.(bool), "event %s should be disabled", id)
+	}
+
+	// do a PUT to completely replace the full config (events not declared here will be disabled)
+	// enable AuditEnabled event, but implicitly others
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDISGRStatus))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// check audit config
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/audit", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp.DumpBody()
+	responseBody = nil
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, true, responseBody["enabled"].(bool))
+	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should've been enabled via PUT")
+	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should've been disabled via PUT")
+
+	// Verify the audit config on the database
+	runtimeConfig := rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDPublicUserAuthenticated, 0)
+
+	// Repeat the PUT for the same event, ensure the event isn't duplicated
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDISGRStatus))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Verify the audit config on the database hasn't changed
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDPublicUserAuthenticated, 0)
+
+	// Perform a POST for the same event, ensure it's not duplicated
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDISGRStatus))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDPublicUserAuthenticated, 0)
+
+	// Perform a POST for another event, ensure previous POST is retained
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 1)
+
+	// Perform a POST to disable an event
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":false}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 0)
+
+	// Duplicate the  POST to disable an event
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":false}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 0)
+
+	// Try disabling a non-filterable event
+	// We don't currently have a non-filterable database event, but this would be where we'd put one to test if we did!
+	if false { // nolint
+		resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled": true,"events":{"%s":false}}"`, base.AuditIDAuditEnabled))
+		rest.RequireStatus(t, resp, http.StatusBadRequest)
+		assert.Contains(t, resp.Body.String(), "couldn't update audit configuration")
+		assert.Contains(t, resp.Body.String(), fmt.Sprintf(`event \"%s\" is not filterable`, base.AuditIDAuditEnabled))
+	}
+
+	// Re-enable the event via PUT, should remove other events
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 0)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 1)
+
+	// Remove the only event via PUT
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":false}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 0)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 0)
+
+	// Set a non-existent audit ID
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"events":{"123":true}}`)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), `unknown audit event ID: \"123\"`)
+
+	// Set a global-only audit ID
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"events":{"%s":true}}`, base.AuditIDSyncGatewayCollectInfoStart))
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), fmt.Sprintf(`event \"%s\" is not configurable at the database level`, base.AuditIDSyncGatewayCollectInfoStart))
+}
+
+func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, auditID base.AuditID, expectedCount int) {
+	require.NotNil(t, runtimeConfig)
+
+	loggingConfig := runtimeConfig.DbConfig.Logging
+	if loggingConfig == nil || loggingConfig.Audit == nil {
+		require.Zero(t, expectedCount)
+	}
+	actualCount := 0
+	if loggingConfig.Audit.EnabledEvents != nil {
+		for _, configID := range *loggingConfig.Audit.EnabledEvents {
+			if configID == uint(auditID) {
+				actualCount++
+			}
+		}
+	}
+	require.Equal(t, expectedCount, actualCount)
 }

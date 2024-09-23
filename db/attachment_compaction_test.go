@@ -32,7 +32,7 @@ func TestAttachmentMark(t *testing.T) {
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
-	databaseCollection := GetSingleDatabaseCollectionWithUser(t, testDb)
+	databaseCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := databaseCollection.GetCollectionID()
 	dataStore := databaseCollection.dataStore
 
@@ -85,11 +85,8 @@ func TestAttachmentSweep(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test only works with default collection")
-	}
 
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
 	collectionID := GetSingleDatabaseCollection(t, testDb.DatabaseContext).GetCollectionID()
@@ -334,14 +331,10 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test only works with default collection")
-	}
-
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
-	collection := GetSingleDatabaseCollectionWithUser(t, testDb)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := collection.GetCollectionID()
 	attKeys := make([]string, 0, 15)
 	for i := 0; i < 10; i++ {
@@ -409,18 +402,14 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test only works with default collection")
-	}
-
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close(base.TestCtx(t))
 
-	testDB1, ctx1 := setupTestDBForBucket(t, b)
+	testDB1, ctx1 := setupTestDBForBucketDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
 	db1DataStore := testDB1.Bucket.DefaultDataStore()
 
-	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
+	testDB2, ctx2 := setupTestDBForBucketDefaultCollection(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -559,18 +548,14 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test only works with default collection")
-	}
-
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close(base.TestCtx(t))
 
-	testDB1, ctx1 := setupTestDBForBucket(t, b)
+	testDB1, ctx1 := setupTestDBForBucketDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
 	db1DataStore := testDB1.Bucket.DefaultDataStore()
 
-	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
+	testDB2, ctx2 := setupTestDBForBucketDefaultCollection(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -666,9 +651,6 @@ func TestAttachmentProcessError(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test only works against default collection (legacy attachment cleanup)")
-	}
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
 			return fmt.Errorf("some error")
@@ -676,10 +658,10 @@ func TestAttachmentProcessError(t *testing.T) {
 	})
 	defer b.Close(base.TestCtx(t))
 
-	testDB1, ctx1 := setupTestDBForBucket(t, b)
+	testDB1, ctx1 := setupTestDBForBucketDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, testDB1)
+	collection, ctx1 := GetSingleDatabaseCollectionWithUser(ctx1, t, testDB1)
 	CreateLegacyAttachmentDoc(t, ctx1, collection, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
@@ -962,21 +944,18 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	base.LongRunningTest(t)
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test only works against default collection (legacy attachment cleanup)")
-	}
 	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
 
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, testDb)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := collection.GetCollectionID()
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}

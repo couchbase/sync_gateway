@@ -94,7 +94,6 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -103,9 +102,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	guest.SetDisabled(false)
 	assert.NoError(t, a.Save(guest))
 
-	// Create user1
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil))
-	RequireStatus(t, response, 201)
+	rt.CreateUser("user1", []string{"alpha"})
 
 	// Create 100 docs
 	for i := 0; i < 100; i++ {
@@ -126,9 +123,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	require.Len(t, changesResults.Results, 50)
 	assert.Equal(t, "doc98", changesResults.Results[49].ID)
 
-	// Create user2
-	response = rt.SendAdminRequest("PUT", "/db/_user/user2", GetUserPayload(t, "user2", "letmein", "user2@couchbase.com", collection, []string{"alpha"}, nil))
-	RequireStatus(t, response, 201)
+	rt.CreateUser("user2", []string{"alpha"})
 
 	// Retrieve all changes for user2 with no limits
 	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/{{.keyspace}}/_changes"), "user2", false)
@@ -136,9 +131,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	require.Len(t, changesResults.Results, 101)
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
 
-	// Create user3
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", GetUserPayload(t, "user3", "letmein", "user3@couchbase.com", collection, []string{"alpha"}, nil))
-	RequireStatus(t, response, 201)
+	rt.CreateUser("user3", []string{"alpha"})
 
 	getUserResponse := rt.SendAdminRequest("GET", "/db/_user/user3", "")
 	RequireStatus(t, getUserResponse, 200)
@@ -162,9 +155,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	require.Len(t, changesResults.Results, 51)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
-	// Create user4
-	response = rt.SendAdminRequest("PUT", "/db/_user/user4", GetUserPayload(t, "user4", "letmein", "user4@couchbase.com", collection, []string{"alpha"}, nil))
-	RequireStatus(t, response, 201)
+	rt.CreateUser("user4", []string{"alpha"})
 	// Get the sequence from the user doc to validate against the triggered by value in the changes results
 	user4, _ := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user4")
 	user4Sequence := user4.Sequence()
@@ -283,6 +274,9 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 //   - Update this doc again, triggering unused sequence range release
 //   - Write another doc and assert that the changes feed returns all expected docs
 func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it writes directly to the xattr")
+	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -351,6 +345,10 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 //   - Update this doc again, triggering unused sequence range release
 //   - Write another doc and assert that the changes feed returns all expected docs
 func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it writes directly to the xattr")
+	}
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{

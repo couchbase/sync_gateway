@@ -28,8 +28,9 @@ import (
 type userImpl struct {
 	roleImpl // userImpl "inherits from" Role
 	userImplBody
-	auth  *Authenticator
-	roles []Role
+	auth         *Authenticator
+	roles        []Role
+	deletedRoles []Role // Roles that are granted to the user, but have been deleted
 
 	// warnChanThresholdOnce ensures that the check for channels
 	// per user threshold is only performed exactly once.
@@ -50,7 +51,7 @@ type userImplBody struct {
 	JWTLastUpdated_  time.Time       `json:"jwt_last_updated,omitempty"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
-	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
+	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of RebuildRoles.
 	SessionUUID_     string          `json:"session_uuid"`             // marker of when the user object changes, to match with session docs to determine if they are valid
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
@@ -96,11 +97,11 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 		return nil, err
 	}
 
-	if _, err := auth.rebuildChannels(user); err != nil {
+	if _, err := auth.RebuildChannels(user); err != nil {
 		return nil, err
 	}
 
-	if err := auth.rebuildRoles(user); err != nil {
+	if err := auth.RebuildRoles(user); err != nil {
 		return nil, err
 	}
 
@@ -125,11 +126,11 @@ func (auth *Authenticator) NewUserNoChannels(username string, password string) (
 	if err := user.initRole(username, nil, nil); err != nil {
 		return nil, err
 	}
-	if _, err := auth.rebuildChannels(user); err != nil {
+	if _, err := auth.RebuildChannels(user); err != nil {
 		return nil, err
 	}
 
-	if err := auth.rebuildRoles(user); err != nil {
+	if err := auth.RebuildRoles(user); err != nil {
 		return nil, err
 	}
 
@@ -384,7 +385,7 @@ func (user *userImpl) RevokedCollectionChannels(scope string, collection string,
 
 	// Iterate over current roles and revoke any revoked channels inside role provided that channel isn't accessible
 	// from another grant
-	for _, role := range user.GetRoles() {
+	for _, role := range user.GetRolesIncDeleted() {
 		revokeChannelHistoryProcessing(role)
 	}
 
@@ -494,26 +495,33 @@ func (user *userImpl) CollectionChannelGrantedPeriods(scope, collection, chanNam
 
 // Returns true if the given password is correct for this user, and the account isn't disabled.
 func (user *userImpl) Authenticate(password string) bool {
+	ok, _ := user.AuthenticateWithReason(password)
+	return ok
+}
+
+// AuthenticateWithReason returns true if the user exists, is not disabled, and has a valid password. If authentication fails, a user readable string for logging will be returned.
+func (user *userImpl) AuthenticateWithReason(password string) (ok bool, reason string) {
 	if user == nil {
-		return false
+		return false, "User not found"
 	}
 
 	// exit early for disabled user accounts
 	if user.Disabled_ {
-		return false
+		return false, "Account disabled"
 	}
 
 	// exit early if old hash is present
 	if user.OldPasswordHash_ != nil {
+		// Password must be reset to use new (bcrypt) password hash
 		base.WarnfCtx(user.auth.LogCtx, "User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
-		return false // Password must be reset to use new (bcrypt) password hash
+		return false, "User account still has pre-beta password hash; need to reset password"
 	}
 
 	// bcrypt hash present
 	if user.PasswordHash_ != nil {
 		if !compareHashAndPassword(cachedHashes, user.PasswordHash_, []byte(password)) {
 			// incorrect password
-			return false
+			return false, "Incorrect password"
 		}
 
 		// password was correct, we'll rehash the password if required
@@ -525,11 +533,11 @@ func (user *userImpl) Authenticate(password string) bool {
 	} else {
 		// no hash, but (incorrect) password provided
 		if password != "" {
-			return false
+			return false, "Incorrect password"
 		}
 	}
 
-	return true
+	return true, ""
 }
 
 // GetSessionUUID returns the UUID that a session to match to be a valid session.
@@ -562,18 +570,31 @@ func (user *userImpl) SetPassword(password string) error {
 func (user *userImpl) GetRoles() []Role {
 	if user.roles == nil {
 		roles := make([]Role, 0, len(user.RoleNames()))
+		deletedRoles := make([]Role, 0)
 		for name := range user.RoleNames() {
-			role, err := user.auth.GetRole(name)
+			role, err := user.auth.GetRoleIncDeleted(name)
 			// base.InfofCtx(user.auth.LogCtx, base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
 			if err != nil {
 				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
 			} else if role != nil {
-				roles = append(roles, role)
+				if role.IsDeleted() {
+					deletedRoles = append(deletedRoles, role)
+				} else {
+					roles = append(roles, role)
+				}
 			}
 		}
 		user.roles = roles
+		user.deletedRoles = deletedRoles
 	}
 	return user.roles
+}
+
+func (user *userImpl) GetRolesIncDeleted() []Role {
+	// Use GetRoles to retrieve active roles (will fetch roles if needed)
+	allRoles := user.GetRoles()
+	allRoles = append(allRoles, user.deletedRoles...)
+	return allRoles
 }
 
 func (user *userImpl) InitializeRoles() {

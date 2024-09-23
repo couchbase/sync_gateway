@@ -360,7 +360,8 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	// Assert the sync data has correct channels populated
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, docKey)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, docKey)
 	require.NoError(t, err)
 	assert.Equal(t, []string{userXattrChan}, syncData.Channels.KeySet())
 	assert.Len(t, syncData.Channels, 1)
@@ -382,7 +383,8 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	// Assert the sync data has correct channels populated
-	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, docKey2)
+	collection, ctx = rt.GetSingleTestDatabaseCollection()
+	syncData, err = collection.GetDocSyncData(ctx, docKey2)
 	require.NoError(t, err)
 	assert.Len(t, syncData.Channels, 2)
 }

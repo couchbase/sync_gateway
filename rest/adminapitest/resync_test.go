@@ -71,6 +71,10 @@ func TestResyncRollback(t *testing.T) {
 
 func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 	base.TestRequiresDCPResync(t)
+	if !base.TestsUseNamedCollections() {
+		t.Skip("Test requires named collections, performs default collection handling independently")
+	}
+
 	testCases := []struct {
 		name                  string
 		defaultCollectionOnly bool
@@ -127,7 +131,8 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 			require.NotEqual(t, 0, originalUserSeq)
 
 			rt.CreateTestDoc(standardDoc)
-			doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
+			collection, ctx := rt.GetSingleTestDatabaseCollection()
+			doc, err := collection.GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
 			require.NoError(t, err)
 			oldDocSeq := doc.Sequence
 			require.NotEqual(t, 0, oldDocSeq)
@@ -157,10 +162,96 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 			}
 
 			// regular doc will always change sequence
-			doc, err = rt.GetSingleTestDatabaseCollection().GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
+			doc, err = collection.GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
 			require.NoError(t, err)
 			require.NotEqual(t, 0, doc.Sequence)
 			require.NotEqual(t, oldDocSeq, doc.Sequence)
 		})
 	}
+}
+
+func TestResyncInvalidatePrincipals(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+
+	initialSyncFn := `
+	function(doc) {
+		access(doc.userName, "channelABC");
+		access("role:" + doc.roleName, "channelABC");
+		role(doc.userName, "role:roleABC");
+	}`
+
+	updatedSyncFn := `
+	function(doc) {
+		access(doc.userName, "channelDEF");
+		access("role:" + doc.roleName, "channelDEF");
+		role(doc.userName, "role:roleDEF");
+	}`
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+		SyncFn:           initialSyncFn,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	ds := rt.TestBucket.GetSingleDataStore()
+	scopeName := ds.ScopeName()
+	collectionName := ds.CollectionName()
+
+	rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	// Set up user and role
+	username := "alice"
+	rolename := "foo"
+	grantingDocID := "grantDoc"
+	grantingDocBody := `{
+		"userName":"alice",
+		"roleName":"foo"
+	}`
+	rt.CreateUser(username, nil)
+
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+rolename, rest.GetRolePayload(t, rolename, rt.GetSingleDataStore(), nil))
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	// Write doc to perform dynamic grants
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+grantingDocID, grantingDocBody)
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	ctx := rt.Context()
+	user, err := rt.GetDatabase().Authenticator(ctx).GetUser(username)
+	require.NoError(t, err)
+	channels := user.CollectionChannels(scopeName, collectionName)
+	_, ok := channels["channelABC"]
+	require.True(t, ok, "user should have channel channelABC")
+	roles := user.RoleNames()
+	_, ok = roles["roleABC"]
+	require.True(t, ok, "user should have role roleABC")
+
+	rt.TakeDbOffline()
+
+	// Update the sync function
+	rt.SyncFn = updatedSyncFn
+	updatedDbConfig := rt.NewDbConfig()
+	rt.UpsertDbConfig("db1", updatedDbConfig)
+	rt.TakeDbOffline()
+
+	// Run resync
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
+	// validate user channels and roles have been updated
+	user, err = rt.GetDatabase().Authenticator(ctx).GetUser(username)
+	require.NoError(t, err)
+	channels = user.CollectionChannels(scopeName, collectionName)
+	_, ok = channels["channelABC"]
+	require.False(t, ok, "user should not have channel channelABC")
+	_, ok = channels["channelDEF"]
+	require.True(t, ok, "user should have channel channelDEF")
+	roles = user.RoleNames()
+	_, ok = roles["roleABC"]
+	require.False(t, ok, "user should not have role roleABC")
+	_, ok = roles["roleDEF"]
+	require.True(t, ok, "user should have role roleDEF")
 }

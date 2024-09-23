@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -153,7 +154,11 @@ func (lds *LeakyDataStore) Update(k string, exp uint32, callback sgbucket.Update
 			lds.config.UpdateCallback(k)
 			return updated, expiry, isDelete, err
 		}
-		return lds.dataStore.Update(k, exp, wrapperCallback)
+		casOut, err = lds.dataStore.Update(k, exp, wrapperCallback)
+		if slices.Contains(lds.config.ForceTimeoutErrorOnUpdateKeys, k) {
+			return 0, ErrTimeout
+		}
+		return casOut, err
 	}
 
 	casOut, err = lds.dataStore.Update(k, exp, callback)
@@ -267,7 +272,11 @@ func (lds *LeakyDataStore) WriteUpdateWithXattrs(ctx context.Context, k string, 
 			lds.config.UpdateCallback(k)
 			return updatedDoc, err
 		}
-		return lds.dataStore.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, wrapperCallback)
+		casOut, err = lds.dataStore.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, wrapperCallback)
+		if slices.Contains(lds.config.ForceTimeoutErrorOnUpdateKeys, k) {
+			return 0, ErrTimeout
+		}
+		return casOut, err
 	}
 	return lds.dataStore.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, callback)
 }

@@ -568,7 +568,7 @@ var GlobalTestLoggingSet = AtomicBool{}
 
 // SetUpGlobalTestLogging sets a global log level at runtime by using the SG_TEST_LOG_LEVEL environment variable.
 // This global level overrides any tests that specify their own test log level with SetUpTestLogging.
-func SetUpGlobalTestLogging(ctx context.Context, m *testing.M) (teardownFn func()) {
+func SetUpGlobalTestLogging(ctx context.Context) (teardownFn func()) {
 	if logLevel := os.Getenv(TestEnvGlobalLogLevel); logLevel != "" {
 		var l LogLevel
 		err := l.UnmarshalText([]byte(logLevel))
@@ -598,6 +598,19 @@ func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 	tb.Cleanup(cleanup)
 }
 
+// ResetGlobalTestLogging will ensure that the loggers are replaced at the end of the the test.
+func ResetGlobalTestLogging(t *testing.T) {
+	t.Cleanup(func() {
+		for _, logger := range getFileLoggers() {
+			assert.NoError(t, logger.Close())
+		}
+		ctx := TestCtx(t)
+		initializeLoggers(ctx)
+		SetUpGlobalTestLogging(ctx)
+
+	})
+}
+
 // DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
 // This function will panic if called multiple times in the same test.
 func DisableTestLogging(tb testing.TB) {
@@ -612,13 +625,14 @@ func SetUpBenchmarkLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) 
 	teardownFnOrig := setTestLogging(logLevel, "", logKeys...)
 
 	// discard all logging output for benchmarking (but still execute logging as normal)
-	consoleLogger.logger.SetOutput(io.Discard)
+	consoleLogger.Load().logger.SetOutput(io.Discard)
 	tb.Cleanup(func() {
+		logger := consoleLogger.Load()
 		// revert back to original output
-		if consoleLogger != nil && consoleLogger.output != nil {
-			consoleLogger.logger.SetOutput(consoleLogger.output)
+		if logger != nil && logger.output != nil {
+			logger.logger.SetOutput(logger.output)
 		} else {
-			consoleLogger.logger.SetOutput(os.Stderr)
+			logger.logger.SetOutput(os.Stderr)
 		}
 		teardownFnOrig()
 	})
@@ -634,23 +648,27 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 		}
 	}
 
+	logger := consoleLogger.Load()
 	initialLogLevel := LevelInfo
 	initialLogKey := logKeyMask(KeyHTTP)
 
 	// Check that a previous invocation has not forgotten to call teardownFn
-	if *consoleLogger.LogLevel != initialLogLevel ||
-		*consoleLogger.LogKeyMask != *initialLogKey {
-		panic("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?")
+	if *logger.LogLevel != initialLogLevel ||
+		*logger.LogKeyMask != *initialLogKey {
+		panic(fmt.Sprintf("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?, LogLevel=%s, expected=%s; LogKeyMask=%s, expected=%s", logger.LogLevel, initialLogLevel, logger.LogKeyMask, initialLogKey))
 	}
-
-	consoleLogger.LogLevel.Set(logLevel)
-	consoleLogger.LogKeyMask.Set(logKeyMask(logKeys...))
+	if errorLogger.Load() != nil {
+		panic("Logging is in an expected state, an earlier test possibly needed to call ResetGlobalTestLogging")
+	}
+	logger.LogLevel.Set(logLevel)
+	logger.LogKeyMask.Set(logKeyMask(logKeys...))
 	updateExternalLoggers()
 
 	return func() {
+		logger := consoleLogger.Load()
 		// Return logging to a default state
-		consoleLogger.LogLevel.Set(initialLogLevel)
-		consoleLogger.LogKeyMask.Set(initialLogKey)
+		logger.LogLevel.Set(initialLogLevel)
+		logger.LogKeyMask.Set(initialLogKey)
 		updateExternalLoggers()
 		if caller != "" {
 			InfofCtx(context.Background(), KeyAll, "%v: Reset logging", caller)
@@ -718,24 +736,22 @@ func DirExists(filename string) bool {
 	return info.IsDir()
 }
 
-// WaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
-func WaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (int64, bool) {
-	workerFunc := func() (shouldRetry bool, err error, val interface{}) {
+// AssertWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
+func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		val = getStatFunc()
-		return val != expected, nil, val
-	}
-	// wait for up to 20 seconds for the stat to meet the expected value
-	err, val := RetryLoop(TestCtx(t), "waitForStat retry loop", workerFunc, CreateSleeperFunc(200, 100))
-	valInt64, ok := val.(int64)
-
-	return valInt64, err == nil && ok
+		assert.Equal(c, expected, val)
+	}, 20*time.Second, 100*time.Millisecond)
+	return val
 }
 
 // RequireWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
-func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) {
-	val, ok := WaitForStat(t, getStatFunc, expected)
-	require.True(t, ok)
-	require.Equal(t, expected, val)
+func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		val = getStatFunc()
+		assert.Equal(c, expected, val)
+	}, 20*time.Second, 100*time.Millisecond)
+	return val
 }
 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not

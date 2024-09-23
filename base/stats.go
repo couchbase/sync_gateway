@@ -32,6 +32,7 @@ const (
 	NamespaceKey                 = "sgw"
 	ResourceUtilizationSubsystem = "resource_utilization"
 	ConfigSubsystem              = "config"
+	AuditSubsystem               = "audit"
 
 	SubsystemCacheKey           = "cache"
 	SubsystemDatabaseKey        = "database"
@@ -85,6 +86,7 @@ const (
 	StatAddedVersion3dot1dot3dot1 = "3.1.3.1"
 	StatAddedVersion3dot1dot4     = "3.1.4"
 	StatAddedVersion3dot2dot0     = "3.2.0"
+	StatAddedVersion3dot2dot1     = "3.2.1"
 	StatAddedVersion3dot3dot0     = "3.3.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
@@ -167,6 +169,7 @@ func (s *SgwStats) String() string {
 type GlobalStat struct {
 	ResourceUtilization *ResourceUtilization `json:"resource_utilization"`
 	ConfigStat          *ConfigStat          `json:"config"`
+	AuditStat           *AuditStat           `json:"audit"`
 }
 
 func newGlobalStat() (*GlobalStat, error) {
@@ -176,6 +179,10 @@ func newGlobalStat() (*GlobalStat, error) {
 		return nil, err
 	}
 	err = g.initConfigStats()
+	if err != nil {
+		return nil, err
+	}
+	err = g.initAuditStats()
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +201,25 @@ func (g *GlobalStat) initConfigStats() error {
 		return err
 	}
 	g.ConfigStat = configStat
+	return nil
+}
+
+func (g *GlobalStat) initAuditStats() error {
+	auditStat := &AuditStat{}
+	var err error
+	auditStat.NumAuditsLogged, err = NewIntStat(AuditSubsystem, "num_audits_logged", StatUnitNoUnits, NumAuditsLoggedDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	auditStat.NumAuditsFilteredByUser, err = NewIntStat(AuditSubsystem, "num_audits_filtered_by_user", StatUnitNoUnits, NumAuditsFilteredByUserDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	auditStat.NumAuditsFilteredByRole, err = NewIntStat(AuditSubsystem, "num_audits_filtered_by_role", StatUnitNoUnits, NumAuditsFilteredByRoleDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	g.AuditStat = auditStat
 	return nil
 }
 
@@ -364,6 +390,15 @@ type ConfigStat struct {
 	DatabaseRollbackCollectionCollisions *SgwIntStat `json:"database_config_rollback_collection_collisions"`
 }
 
+type AuditStat struct {
+	// The number of times an audit event was created/emitted/logged.
+	NumAuditsLogged *SgwIntStat `json:"num_audits_logged"`
+	// The number of times an audit event was filtered by username.
+	NumAuditsFilteredByUser *SgwIntStat `json:"num_audits_filtered_by_user"`
+	// The number of times an audit event was filtered by role.
+	NumAuditsFilteredByRole *SgwIntStat `json:"num_audits_filtered_by_role"`
+}
+
 type DbStats struct {
 	dbName                  string
 	CacheStats              *CacheStats                   `json:"cache,omitempty"`
@@ -425,12 +460,16 @@ type CacheStats struct {
 	NumSkippedSeqs *SgwIntStat `json:"num_skipped_seqs"`
 	// The total number of pending sequences. These are out-of-sequence entries waiting to be cached.
 	PendingSeqLen *SgwIntStat `json:"pending_seq_len"`
+	// Total number of items in the rev cache
+	RevisionCacheNumItems *SgwIntStat `json:"revision_cache_num_items"`
 	// The total number of revision cache bypass operations performed.
 	RevisionCacheBypass *SgwIntStat `json:"rev_cache_bypass"`
 	// The total number of revision cache hits.
 	RevisionCacheHits *SgwIntStat `json:"rev_cache_hits"`
 	// The total number of revision cache misses.
 	RevisionCacheMisses *SgwIntStat `json:"rev_cache_misses"`
+	// Total memory used by the rev cache
+	RevisionCacheTotalMemory *SgwIntStat `json:"revision_cache_total_memory"`
 	// The current length of the pending skipped sequence slice.
 	SkippedSeqLen *SgwIntStat `json:"skipped_seq_len"`
 	// The current capacity of the skipped sequence slice
@@ -1320,6 +1359,10 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.RevisionCacheNumItems, err = NewIntStat(SubsystemCacheKey, "revision_cache_num_items", StatUnitNoUnits, RevCacheNumItemsDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.RevisionCacheBypass, err = NewIntStat(SubsystemCacheKey, "rev_cache_bypass", StatUnitNoUnits, RevCacheBypassDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
@@ -1329,6 +1372,10 @@ func (d *DbStats) initCacheStats() error {
 		return err
 	}
 	resUtil.RevisionCacheMisses, err = NewIntStat(SubsystemCacheKey, "rev_cache_misses", StatUnitNoUnits, RevCacheMissesDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.RevisionCacheTotalMemory, err = NewIntStat(SubsystemCacheKey, "revision_cache_total_memory", StatUnitNoUnits, RevCacheMemoryDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1377,9 +1424,11 @@ func (d *DbStats) unregisterCacheStats() {
 	prometheus.Unregister(d.CacheStats.SkippedSeqCap)
 	prometheus.Unregister(d.CacheStats.NumCurrentSeqsSkipped)
 	prometheus.Unregister(d.CacheStats.PendingSeqLen)
+	prometheus.Unregister(d.CacheStats.RevisionCacheNumItems)
 	prometheus.Unregister(d.CacheStats.RevisionCacheBypass)
 	prometheus.Unregister(d.CacheStats.RevisionCacheHits)
 	prometheus.Unregister(d.CacheStats.RevisionCacheMisses)
+	prometheus.Unregister(d.CacheStats.RevisionCacheTotalMemory)
 	prometheus.Unregister(d.CacheStats.SkippedSeqLen)
 	prometheus.Unregister(d.CacheStats.ViewQueries)
 }

@@ -43,7 +43,7 @@ func (h *handler) handleCreateDB() error {
 	contextNoCancel := base.NewNonCancelCtx()
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
-	config, err := h.readSanitizeDbConfigJSON()
+	rawBytes, config, err := h.readSanitizeDbConfigJSON()
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,8 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		if err := config.validate(h.ctx(), validateOIDC); err != nil {
+		validateReplications := true
+		if err := config.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -125,6 +126,9 @@ func (h *handler) handleCreateDB() error {
 		// if it used to be corrupt we need to remove it from the invalid database map on server context and remove the old corrupt config from the bucket
 		err = h.removeCorruptConfigIfExists(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
 		if err != nil {
+			// we cannot continue on with database creation with possibility of the corrupt database config in the bucket for this db
+			// thus we need to unload the requested database config to prevent the cluster being in an inconsistent state
+			h.server._removeDatabase(contextNoCancel.Ctx, dbName)
 			return err
 		}
 		cas, err := h.server.BootstrapContext.InsertConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, &persistedConfig)
@@ -161,6 +165,16 @@ func (h *handler) handleCreateDB() error {
 		}
 	}
 
+	configStr, err := redactConfigAsStr(h.ctx(), string(rawBytes))
+	if err != nil {
+		base.WarnfCtx(h.ctx(), "Error redacting config for audit logging: %v", err)
+	}
+	base.Audit(h.ctx(), base.AuditIDCreateDatabase,
+		base.AuditFields{
+			base.AuditFieldDatabase: dbName,
+			base.AuditFieldPayload:  configStr,
+		},
+	)
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
@@ -236,6 +250,7 @@ func (h *handler) handleDbOnline() error {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
 		h.server.TakeDbOnline(base.NewNonCancelCtx(), h.db.DatabaseContext)
 	}()
+	base.Audit(h.ctx(), base.AuditIDDatabaseOnline, nil)
 
 	return nil
 }
@@ -243,12 +258,12 @@ func (h *handler) handleDbOnline() error {
 // Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
-	var err error
-	if err = h.db.TakeDbOffline(base.NewNonCancelCtx(), "ADMIN Request"); err != nil {
+	if err := h.db.TakeDbOffline(base.NewNonCancelCtx(), "ADMIN Request"); err != nil {
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
+		return err
 	}
-
-	return err
+	base.Audit(h.ctx(), base.AuditIDDatabaseOffline, nil)
+	return nil
 }
 
 // Get admin database info
@@ -330,6 +345,7 @@ func (h *handler) handleGetDbConfig() error {
 		}
 	}
 
+	base.Audit(h.ctx(), base.AuditIDReadDatabaseConfig, nil)
 	h.writeJSON(responseConfig)
 	return nil
 }
@@ -393,7 +409,8 @@ func (h *handler) handleGetConfig() error {
 			}
 		}
 
-		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging.RedactionLevel, h.server.Config.Logging.LogFilePath)
+		// because loggers can be changed at runtime, we need to work backwards to get the config that would've created the actually running instances
+		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging)
 		cfg.Databases = databaseMap
 
 		h.writeJSON(cfg)
@@ -429,6 +446,7 @@ func (h *handler) handlePutConfig() error {
 			Debug   FileLoggerPutConfig     `json:"debug,omitempty"`
 			Trace   FileLoggerPutConfig     `json:"trace,omitempty"`
 			Stats   FileLoggerPutConfig     `json:"stats,omitempty"`
+			Audit   FileLoggerPutConfig     `json:"audit,omitempty"`
 		} `json:"logging"`
 		ReplicationLimit *int `json:"max_concurrent_replications,omitempty"`
 	}
@@ -482,6 +500,10 @@ func (h *handler) handlePutConfig() error {
 		base.EnableStatsLogger(*config.Logging.Stats.Enabled)
 	}
 
+	if config.Logging.Audit.Enabled != nil {
+		base.EnableAuditLogger(h.ctx(), *config.Logging.Audit.Enabled)
+	}
+
 	if config.ReplicationLimit != nil {
 		if *config.ReplicationLimit < 0 {
 			return base.HTTPErrorf(http.StatusBadRequest, "replication limit cannot be less than 0")
@@ -502,23 +524,36 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	var dbConfig *DbConfig
 
+	auditFields := base.AuditFields{}
 	if h.permissionsResults[PermUpdateDb.PermissionName] {
 		// user authorized to change all fields
-		dbConfig, err = h.readSanitizeDbConfigJSON()
+		var err error
+		var rawBytes []byte
+		rawBytes, dbConfig, err = h.readSanitizeDbConfigJSON()
 		if err != nil {
 			return err
 		}
+		configStr, err := redactConfigAsStr(h.ctx(), string(rawBytes))
+		if err != nil {
+			base.WarnfCtx(h.ctx(), "Error redacting config for audit logging: %v", err)
+		}
+		auditFields[base.AuditFieldPayload] = configStr
 	} else {
 		hasAuthPerm := h.permissionsResults[PermConfigureAuth.PermissionName]
 		hasSyncPerm := h.permissionsResults[PermConfigureSyncFn.PermissionName]
-
-		bodyContents, err := io.ReadAll(h.requestBody)
+		var rawBytes []byte
+		rawBytes, err := io.ReadAll(h.requestBody)
 		if err != nil {
 			return err
 		}
+		configStr, err := redactConfigAsStr(h.ctx(), string(rawBytes))
+		if err != nil {
+			base.WarnfCtx(h.ctx(), "Error redacting config for audit logging: %v", err)
+		}
+		auditFields[base.AuditFieldPayload] = configStr
 
 		var mapDbConfig map[string]interface{}
-		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(bodyContents)), &mapDbConfig)
+		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(rawBytes)), &mapDbConfig)
 		if err != nil {
 			return err
 		}
@@ -535,7 +570,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return base.HTTPErrorf(http.StatusForbidden, "not authorized to update field: %s", strings.Join(unknownFileKeys, ","))
 		}
 
-		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(bodyContents)), &dbConfig)
+		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(rawBytes)), &dbConfig)
 		if err != nil {
 			return err
 		}
@@ -559,12 +594,14 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
+	validateReplications := true
+	err = dbConfig.validate(h.ctx(), validateOIDC, validateReplications)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+	}
+
 	if !h.server.persistentConfig {
 		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
-		err := updatedDbConfig.validate(h.ctx(), validateOIDC)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
-		}
 		oldDBConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
 		err = updatedDbConfig.validateConfigUpdate(h.ctx(), oldDBConfig,
 			validateOIDC)
@@ -576,19 +613,23 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
 			return err
 		}
-		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *updatedDbConfig, false); err != nil {
+		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *updatedDbConfig); err != nil {
 			return err
 		}
+		base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 		return base.HTTPErrorf(http.StatusCreated, "updated")
 	}
 
 	var updatedDbConfig *DatabaseConfig
+	var previousAuditEnabled, updatedAuditEnabled bool
+	var updatedAuditEvents []uint
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 		}
 		oldBucketDbConfig := bucketDbConfig.DbConfig
 		previousCollectionMap := bucketDbConfig.Scopes.CollectionMap()
+		previousAuditEnabled, _ = oldBucketDbConfig.IsAuditLoggingEnabled()
 
 		if h.rq.Method == http.MethodPost {
 			base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
@@ -637,12 +678,14 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 
 		// Load the new dbConfig before we persist the update.
-		err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig, true)
+		err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig)
 		if err != nil {
 			return nil, err
 		}
+		updatedAuditEnabled, updatedAuditEvents = bucketDbConfig.IsAuditLoggingEnabled()
 		return bucketDbConfig, nil
 	})
+
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
@@ -652,14 +695,245 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 		return err
 	}
+	auditDbAuditEnabled(h.ctx(), dbName, previousAuditEnabled, updatedAuditEnabled, updatedAuditEvents)
 	// store the cas in the loaded config after a successful update
 	h.setEtag(updatedDbConfig.Version)
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
 	h.server.dbConfigs[dbName].cfgCas = cas
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 	return base.HTTPErrorf(http.StatusCreated, "updated")
+}
 
+type HandleDbAuditConfigBody struct {
+	Enabled       *bool                        `json:"enabled,omitempty"`
+	Events        map[string]any               `json:"events,omitempty"`
+	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"`
+	DisabledRoles []base.AuditLoggingPrincipal `json:"disabled_roles,omitempty"`
+}
+
+type HandleDbAuditConfigBodyVerboseEvent struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Filterable  *bool   `json:"filterable,omitempty"`
+}
+
+// GET audit config for database
+func (h *handler) handleGetDbAuditConfig() error {
+	h.assertAdminOnly()
+
+	showOnlyFilterable := h.getBoolQuery("filterable")
+	verbose := h.getBoolQuery("verbose")
+
+	var (
+		etagVersion          string
+		dbAuditEnabled       bool
+		dbAuditDisabledUsers []base.AuditLoggingPrincipal
+		dbAuditDisabledRoles []base.AuditLoggingPrincipal
+		enabledEvents        = make(map[base.AuditID]struct{})
+	)
+
+	if h.server.BootstrapContext.Connection != nil {
+		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
+		if err != nil {
+			return err
+		}
+
+		if !found {
+			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
+		}
+
+		etagVersion = dbConfig.Version
+
+		runtimeConfig, err := MergeDatabaseConfigWithDefaults(h.server.Config, &dbConfig.DbConfig)
+		if err != nil {
+			return err
+		}
+
+		// grab runtime version of config, so that we can see what events would be enabled
+		if runtimeConfig.Logging != nil && runtimeConfig.Logging.Audit != nil {
+			dbAuditEnabled = base.BoolDefault(runtimeConfig.Logging.Audit.Enabled, false)
+			if runtimeConfig.Logging.Audit.EnabledEvents != nil {
+				for _, event := range *runtimeConfig.Logging.Audit.EnabledEvents {
+					enabledEvents[base.AuditID(event)] = struct{}{}
+				}
+			}
+			dbAuditDisabledUsers = runtimeConfig.Logging.Audit.DisabledUsers
+			dbAuditDisabledRoles = runtimeConfig.Logging.Audit.DisabledRoles
+		}
+	} else {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "audit config not available in non-persistent mode")
+	}
+
+	events := make(map[string]any, len(base.AuditEvents))
+	for id, descriptor := range base.AuditEvents {
+		// skip global and non-filterable events
+		if descriptor.IsGlobalEvent || (showOnlyFilterable && !descriptor.FilteringPermitted) {
+			continue
+		}
+
+		idStr := id.String()
+		_, eventEnabled := enabledEvents[id]
+
+		if verbose {
+			events[idStr] = HandleDbAuditConfigBodyVerboseEvent{
+				Name:        stringPtrOrNil(descriptor.Name),
+				Description: stringPtrOrNil(descriptor.Description),
+				Enabled:     &eventEnabled,
+				Filterable:  base.BoolPtr(descriptor.FilteringPermitted),
+			}
+		} else {
+			events[idStr] = &eventEnabled
+		}
+	}
+
+	resp := HandleDbAuditConfigBody{
+		Enabled:       &dbAuditEnabled,
+		Events:        events,
+		DisabledUsers: dbAuditDisabledUsers,
+		DisabledRoles: dbAuditDisabledRoles,
+	}
+
+	h.setEtag(etagVersion)
+	h.writeJSON(resp)
+	return nil
+}
+
+// PUT/POST audit config for database
+func (h *handler) handlePutDbAuditConfig() error {
+
+	var bodyRaw []byte
+	var previousAuditEnabled, updatedAuditEnabled bool
+	var updatedAuditEvents []uint
+	err := h.mutateDbConfig(func(config *DbConfig) error {
+		previousAuditEnabled, _ = config.IsAuditLoggingEnabled()
+		bodyRaw, err := h.readBody()
+		if err != nil {
+			return err
+		}
+		var body HandleDbAuditConfigBody
+		if err := base.JSONUnmarshal(bodyRaw, &body); err != nil {
+			return err
+		}
+
+		// isReplace if the request is a PUT, and we want to overwrite existing config
+		isReplace := h.rq.Method == http.MethodPut
+
+		// This API endpoint takes audit config in a format that does not match the actual DbConfig stored, so translate the request here.
+		toChange := make(map[base.AuditID]bool, len(body.Events))
+		var multiError *base.MultiError
+		for id, val := range body.Events {
+			// find the event
+			auditID, err := base.ParseAuditID(id)
+			if err != nil {
+				multiError = multiError.Append(fmt.Errorf("invalid audit event ID: %q", id))
+				continue
+			}
+			_, ok := base.AuditEvents[auditID]
+			if !ok {
+				multiError = multiError.Append(fmt.Errorf("unknown audit event ID: %q", auditID))
+				continue
+			}
+
+			var eventEnabled bool
+			switch valT := val.(type) {
+			case bool:
+				eventEnabled = valT
+			case map[string]any:
+				// verbose format
+				eventEnabled = valT["enabled"].(bool)
+			}
+
+			// check if explicitly disabled events are allowed to be filtered
+			// we'll ensure that non-filterable events are always considered enabled at runtime instead of at config persistence time
+			// this will ensure we are able to add events in the future that are non-filterable and have them work correctly
+			if e, ok := base.AuditEvents[auditID]; !ok {
+				multiError = multiError.Append(fmt.Errorf("unknown audit event ID: %q", auditID))
+			} else if e.IsGlobalEvent {
+				multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", auditID))
+			} else if !e.FilteringPermitted && !eventEnabled {
+				multiError = multiError.Append(fmt.Errorf("event %q is not filterable and cannot be disabled", auditID))
+			} else {
+				toChange[auditID] = eventEnabled
+			}
+		}
+		if err := multiError.ErrorOrNil(); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "couldn't update audit configuration: %s", err)
+		}
+
+		if config.Logging == nil {
+			config.Logging = &DbLoggingConfig{}
+		}
+		if config.Logging.Audit == nil {
+			config.Logging.Audit = &DbAuditLoggingConfig{}
+		}
+
+		mutateConfigFromDbAuditConfigBody(isReplace, config.Logging.Audit, &body, toChange)
+		updatedAuditEnabled, updatedAuditEvents = config.IsAuditLoggingEnabled()
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	auditDbAuditEnabled(h.ctx(), h.db.Name, previousAuditEnabled, updatedAuditEnabled, updatedAuditEvents)
+	base.Audit(h.ctx(), base.AuditIDAuditConfigChanged, base.AuditFields{
+		base.AuditFieldAuditScope: "db",
+		base.AuditFieldPayload:    string(bodyRaw),
+	})
+	return nil
+}
+
+func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAuditLoggingConfig, requestAuditConfig *HandleDbAuditConfigBody, eventsToChange map[base.AuditID]bool) {
+	if isReplace {
+		existingAuditConfig.Enabled = requestAuditConfig.Enabled
+		existingAuditConfig.DisabledUsers = requestAuditConfig.DisabledUsers
+		existingAuditConfig.DisabledRoles = requestAuditConfig.DisabledRoles
+
+		// we don't need to do anything to "disable" events, other than not enable them
+		existingAuditConfig.EnabledEvents = func() *[]uint {
+			enabledEvents := make([]uint, 0)
+			for event, shouldEnable := range eventsToChange {
+				if shouldEnable {
+					enabledEvents = append(enabledEvents, uint(event))
+				}
+			}
+			return &enabledEvents
+		}()
+	} else {
+		if requestAuditConfig.Enabled != nil {
+			existingAuditConfig.Enabled = requestAuditConfig.Enabled
+		}
+		if requestAuditConfig.DisabledUsers != nil {
+			existingAuditConfig.DisabledUsers = requestAuditConfig.DisabledUsers
+		}
+		if requestAuditConfig.DisabledRoles != nil {
+			existingAuditConfig.DisabledRoles = requestAuditConfig.DisabledRoles
+		}
+		if len(eventsToChange) > 0 {
+			if existingAuditConfig.EnabledEvents == nil {
+				// initialize to non-nil set of defaults before modifying from request
+				existingAuditConfig.EnabledEvents = &base.DefaultDbAuditEventIDs
+			}
+			// build EnabledEvents back up in temp based on request - avoids mutating slice in-place during iteration
+			// slice[:0] reuses underlying array to avoid alloc of a new slice
+			newEnabledEvents := (*existingAuditConfig.EnabledEvents)[:0]
+			for _, event := range *existingAuditConfig.EnabledEvents {
+				if _, ok := eventsToChange[base.AuditID(event)]; !ok {
+					// existing enabled event and not in request - don't change
+					newEnabledEvents = append(newEnabledEvents, event)
+				}
+			}
+			for id, enabled := range eventsToChange {
+				if enabled {
+					newEnabledEvents = append(newEnabledEvents, uint(id))
+				}
+			}
+			*existingAuditConfig.EnabledEvents = newEnabledEvents
+		}
+	}
 }
 
 // GET collection config sync function
@@ -698,6 +972,7 @@ func (h *handler) handleGetCollectionConfigSync() error {
 
 	h.setEtag(etagVersion)
 	h.writeJavascript(syncFunction)
+	base.Audit(h.ctx(), base.AuditIDReadDatabaseConfig, nil)
 	return nil
 }
 
@@ -710,6 +985,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	}
 
 	bucket := h.db.Bucket.GetName()
+	var updatedConfigStr string
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, h.db.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
@@ -719,8 +995,10 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.SyncFn = nil
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "sync": null}}}}}`, h.collection.ScopeName, h.collection.Name)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.Sync = nil
+			updatedConfigStr = `{"sync": null}`
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -749,10 +1027,11 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: updatedConfigStr})
 	return base.HTTPErrorf(http.StatusOK, "sync function removed")
 }
 
@@ -771,6 +1050,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
 
+	var updatedConfigStr string
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
@@ -781,11 +1061,14 @@ func (h *handler) handlePutCollectionConfigSync() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.SyncFn = &js
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "sync": "%s"}}}}}`, h.collection.ScopeName, h.collection.Name, js)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.Sync = &js
+			updatedConfigStr = fmt.Sprintf(`{"sync": "%s"}`, js)
 		}
 
-		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
+		validateReplications := false
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications); err != nil {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -813,10 +1096,11 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: updatedConfigStr})
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
@@ -855,6 +1139,7 @@ func (h *handler) handleGetCollectionConfigImportFilter() error {
 
 	h.setEtag(etagVersion)
 	h.writeJavascript(importFilterFunction)
+	base.Audit(h.ctx(), base.AuditIDReadDatabaseConfig, nil)
 	return nil
 }
 
@@ -869,6 +1154,7 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
 
+	updatedConfigStr := ""
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
@@ -880,8 +1166,10 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.ImportFilter = nil
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "import_filter": null}}}}}`, h.collection.ScopeName, h.collection.Name)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.ImportFilter = nil
+			updatedConfigStr = `{"import_filter":null}`
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -908,10 +1196,11 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: updatedConfigStr})
 	return base.HTTPErrorf(http.StatusOK, "import filter removed")
 }
 
@@ -930,6 +1219,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
 
+	var updatedConfigStr string
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
@@ -941,11 +1231,14 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.ImportFilter = &js
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			updatedConfigStr = fmt.Sprintf(`{"scopes":{"%s":{"collections":{"%s":{"import_filter": "%s"}}}}}`, h.collection.ScopeName, h.collection.Name, js)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.ImportFilter = &js
+			updatedConfigStr = fmt.Sprintf(`{"import_filter":"%s"}`, js)
 		}
 
-		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
+		validateReplications := false
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications); err != nil {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -973,10 +1266,11 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: updatedConfigStr})
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
@@ -996,6 +1290,7 @@ func (h *handler) handleDeleteDB() error {
 		}
 		h.server.RemoveDatabase(h.ctx(), dbName) // unhandled 404 to allow broken config deletion (CBG-2420)
 		_, _ = h.response.Write([]byte("{}"))
+		base.Audit(h.ctx(), base.AuditIDDeleteDatabase, nil)
 		return nil
 	}
 
@@ -1003,6 +1298,7 @@ func (h *handler) handleDeleteDB() error {
 		return base.HTTPErrorf(http.StatusNotFound, "no such database %q", dbName)
 	}
 	_, _ = h.response.Write([]byte("{}"))
+	base.Audit(h.ctx(), base.AuditIDDeleteDatabase, nil)
 	return nil
 }
 
@@ -1068,7 +1364,15 @@ func (h *handler) handleGetRawDoc() error {
 			return err
 		}
 	}
-
+	base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
+		base.AuditFieldDocID: docid,
+	})
+	if includeDoc {
+		base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: doc.SyncData.CurrentRev,
+		})
+	}
 	h.writeRawJSON(rawBytes)
 	return nil
 }
@@ -1080,6 +1384,7 @@ func (h *handler) handleGetRevTree() error {
 
 	if doc != nil {
 		h.writeText([]byte(doc.History.RenderGraphvizDot()))
+		base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{base.AuditFieldDocID: docid})
 	}
 	return err
 }
@@ -1216,6 +1521,7 @@ func (h *handler) handleSGCollectStatus() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"`+status+`"}`))
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStatus, nil)
 	return nil
 }
 
@@ -1226,6 +1532,8 @@ func (h *handler) handleSGCollectCancel() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"cancelled"}`))
+
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStop, nil)
 	return nil
 }
 
@@ -1256,6 +1564,16 @@ func (h *handler) handleSGCollect() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"started"}`))
+
+	auditFields := base.AuditFields{
+		"output_dir":   params.OutputDirectory,
+		"upload_host":  params.UploadHost,
+		"customer":     params.Customer,
+		"ticket":       params.Ticket,
+		"keep_zip":     params.KeepZip,
+		"zip_filename": zipFilename,
+	}
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStart, auditFields)
 
 	return nil
 }
@@ -1345,6 +1663,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalConfig struct:
 	body, _ := h.readBody()
+
 	var newInfo auth.PrincipalConfig
 	var err error
 	if err = base.JSONUnmarshal(body, &newInfo); err != nil {
@@ -1382,15 +1701,69 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	newInfo.Name = &internalName
-	replaced, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, isUser, h.rq.Method != "POST")
+	replaced, princ, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
+		// update event
+		if isUser {
+			user := princ.(auth.User)
+			if user != nil {
+				base.Audit(h.ctx(), base.AuditIDUserUpdate, base.AuditFields{
+					"username": internalName,
+					"roles":    user.ExplicitRoles().AllKeys(),
+					"channels": getAuditEventAccess(h.db, princ),
+					"db":       h.db.Name,
+				})
+			}
+		} else {
+			base.Audit(h.ctx(), base.AuditIDRoleUpdate, base.AuditFields{
+				"role":           internalName,
+				"admin_channels": getAuditEventAccess(h.db, princ),
+				"db":             h.db.Name,
+			})
+		}
 		h.writeStatus(http.StatusOK, "OK")
 	} else {
+		// create event
+		if isUser {
+			user := princ.(auth.User)
+			if user != nil {
+				base.Audit(h.ctx(), base.AuditIDUserCreate, base.AuditFields{
+					"username": internalName,
+					"roles":    user.ExplicitRoles().AllKeys(),
+					"channels": getAuditEventAccess(h.db, princ),
+					"db":       h.db.Name,
+				})
+			}
+		} else {
+			base.Audit(h.ctx(), base.AuditIDRoleCreate, base.AuditFields{
+				"role":           internalName,
+				"admin_channels": getAuditEventAccess(h.db, princ),
+				"db":             h.db.Name,
+			})
+		}
 		h.writeStatus(http.StatusCreated, "Created")
 	}
 	return nil
+}
+
+func getAuditEventAccess(db *db.Database, princ auth.Principal) map[string]map[string][]string {
+	auditEventAccess := make(map[string]map[string][]string)
+	if db.OnlyDefaultCollection() {
+		collectionAccess := make(map[string][]string)
+		collectionAccess[base.DefaultCollection] = princ.ExplicitChannels().AllKeys()
+		auditEventAccess[base.DefaultScope] = collectionAccess
+	} else {
+		auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(princ.GetCollectionsAccess())
+		// we support specifying both collection access and legacy way for default collection, if there are some channels
+		// specified for default collection in legacy way, add them here
+		defaultChannels := princ.ExplicitChannels().AllKeys()
+		if db.HasDefaultCollection() && len(auditEventAccess[base.DefaultScope][base.DefaultCollection]) == 0 {
+			auditEventAccess[base.DefaultScope][base.DefaultCollection] = defaultChannels
+		}
+	}
+	return auditEventAccess
 }
 
 // Handles PUT or POST to /_user/*
@@ -1422,19 +1795,35 @@ func (h *handler) deleteUser() error {
 		}
 		return err
 	}
-	return h.db.Authenticator(h.ctx()).DeleteUser(user)
+	err = h.db.Authenticator(h.ctx()).DeleteUser(user)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDUserDelete, base.AuditFields{
+			"db":       h.db.Name,
+			"username": username,
+		})
+	}
+	return err
 }
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
 	purge := h.getBoolQuery("purge")
-	return h.db.DeleteRole(h.ctx(), mux.Vars(h.rq)["name"], purge)
+	roleName := mux.Vars(h.rq)["name"]
+	err := h.db.DeleteRole(h.ctx(), roleName, purge)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDRoleDelete, base.AuditFields{
+			"db":   h.db.Name,
+			"role": roleName,
+		})
+	}
+	return err
 
 }
 
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	username := internalUserName(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1462,13 +1851,20 @@ func (h *handler) getUserInfo() error {
 		}
 	}
 	bytes, err := base.JSONMarshal(info)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDUserRead, base.AuditFields{
+			"db":       h.db.Name,
+			"username": username,
+		})
+	}
 	h.writeRawJSON(bytes)
 	return err
 }
 
 func (h *handler) getRoleInfo() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator(h.ctx()).GetRole(mux.Vars(h.rq)["name"])
+	name := mux.Vars(h.rq)["name"]
+	role, err := h.db.Authenticator(h.ctx()).GetRole(name)
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1479,6 +1875,12 @@ func (h *handler) getRoleInfo() error {
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
 	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
 	bytes, err := base.JSONMarshal(info)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDRoleRead, base.AuditFields{
+			"db":   h.db.Name,
+			"role": name,
+		})
+	}
 	_, _ = h.response.Write(bytes)
 	return err
 }
@@ -1520,6 +1922,15 @@ func (h *handler) getUsers() error {
 	if marshalErr != nil {
 		return marshalErr
 	}
+
+	auditFields := base.AuditFields{
+		base.AuditFieldNameOnly: nameOnly,
+	}
+	if limit > 0 {
+		auditFields[base.AuditFieldLimit] = limit
+	}
+	base.Audit(h.ctx(), base.AuditIDUsersAll, auditFields)
+
 	h.writeRawJSON(bytes)
 	return nil
 }
@@ -1534,6 +1945,8 @@ func (h *handler) getRoles() error {
 	}
 
 	bytes, err := base.JSONMarshal(roles)
+
+	base.Audit(h.ctx(), base.AuditIDRolesAll, base.AuditFields{base.AuditFieldIncludeDeleted: includeDeleted})
 	h.writeRawJSON(bytes)
 	return err
 }
@@ -1576,7 +1989,7 @@ func (h *handler) handlePurge() error {
 			}
 
 			// Attempt to delete document, if successful add to response, otherwise log warning
-			err = h.collection.Purge(h.ctx(), key)
+			err = h.collection.Purge(h.ctx(), key, true)
 			if err == nil {
 
 				docIDs = append(docIDs, key)
@@ -1628,6 +2041,7 @@ func (h *handler) getReplications() error {
 		replication.ReplicationConfig = *replication.Redacted(h.ctx())
 	}
 
+	base.Audit(h.ctx(), base.AuditIDISGRAllRead, nil)
 	h.writeJSON(replications)
 	return nil
 }
@@ -1641,7 +2055,7 @@ func (h *handler) getReplication() error {
 		}
 		return err
 	}
-
+	base.Audit(h.ctx(), base.AuditIDISGRRead, base.AuditFields{base.AuditFieldReplicationID: replicationID})
 	h.writeJSON(replication.Redacted(h.ctx()))
 	return nil
 }
@@ -1661,6 +2075,7 @@ func (h *handler) putReplication() error {
 
 	if h.rq.Method == "PUT" {
 		replicationID := mux.Vars(h.rq)["replicationID"]
+
 		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
 			return base.HTTPErrorf(http.StatusBadRequest, "Replication ID in body %q does not match request URI", replicationConfig.ID)
 		}
@@ -1671,16 +2086,24 @@ func (h *handler) putReplication() error {
 	if err != nil {
 		return err
 	}
+	auditFields := base.AuditFields{base.AuditFieldReplicationID: replicationConfig.ID, base.AuditFieldPayload: string(body)}
 	if created {
 		h.writeStatus(http.StatusCreated, "Created")
+		base.Audit(h.ctx(), base.AuditIDISGRCreate, auditFields)
+	} else {
+		base.Audit(h.ctx(), base.AuditIDISGRUpdate, auditFields)
 	}
-
 	return nil
 }
 
 func (h *handler) deleteReplication() error {
 	replicationID := mux.Vars(h.rq)["replicationID"]
-	return h.db.SGReplicateMgr.DeleteReplication(replicationID)
+	err := h.db.SGReplicateMgr.DeleteReplication(replicationID)
+	if err != nil {
+		return err
+	}
+	base.Audit(h.ctx(), base.AuditIDISGRDelete, base.AuditFields{base.AuditFieldReplicationID: replicationID})
+	return nil
 }
 
 func (h *handler) getReplicationsStatus() error {
@@ -1688,6 +2111,7 @@ func (h *handler) getReplicationsStatus() error {
 	if err != nil {
 		return err
 	}
+	base.Audit(h.ctx(), base.AuditIDISGRAllStatus, nil)
 	h.writeJSON(replicationsStatus)
 	return nil
 }
@@ -1698,6 +2122,7 @@ func (h *handler) getReplicationStatus() error {
 	if err != nil {
 		return err
 	}
+	base.Audit(h.ctx(), base.AuditIDISGRStatus, base.AuditFields{base.AuditFieldReplicationID: replicationID})
 	h.writeJSON(status)
 	return nil
 }
@@ -1723,10 +2148,11 @@ func (h *handler) putReplicationStatus() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Query parameter 'action' must be specified")
 	}
 
-	updatedStatus, err := h.db.SGReplicateMgr.PutReplicationStatus(h.ctx(), replicationID, action)
+	updatedStatus, auditEventID, err := h.db.SGReplicateMgr.PutReplicationStatus(h.ctx(), replicationID, action)
 	if err != nil {
 		return err
 	}
+	base.Audit(h.ctx(), auditEventID, base.AuditFields{base.AuditFieldReplicationID: replicationID})
 	h.writeJSON(updatedStatus)
 	return nil
 }
@@ -1745,36 +2171,36 @@ type BucketInfo struct {
 // information (registry) for each
 func (h *handler) handleGetClusterInfo() error {
 
-	// If not using persistent config, returns legacy_config:true
-	if h.server.persistentConfig == false {
-		clusterInfo := ClusterInfo{
-			LegacyConfig: true,
-		}
-		h.writeJSON(clusterInfo)
-		return nil
-	}
-
 	clusterInfo := ClusterInfo{
-		Buckets: make(map[string]BucketInfo),
+		LegacyConfig: true,
 	}
 
-	bucketNames, err := h.server.GetBucketNames()
-	if err != nil {
-		return err
-	}
+	if h.server.persistentConfig {
 
-	for _, bucketName := range bucketNames {
-		registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
+		bucketNames, err := h.server.GetBucketNames()
 		if err != nil {
-			base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve registry for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
-			continue
+			return err
 		}
 
-		bucketInfo := BucketInfo{
-			Registry: *registry,
+		clusterInfo = ClusterInfo{
+			Buckets: make(map[string]BucketInfo, len(bucketNames)),
 		}
-		clusterInfo.Buckets[bucketName] = bucketInfo
+
+		for _, bucketName := range bucketNames {
+			registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
+			if err != nil {
+				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve registry for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
+				continue
+			}
+
+			bucketInfo := BucketInfo{
+				Registry: *registry,
+			}
+			clusterInfo.Buckets[bucketName] = bucketInfo
+		}
 	}
+
+	base.Audit(h.ctx(), base.AuditIDClusterInfoRead, nil)
 	h.writeJSON(clusterInfo)
 	return nil
 }
@@ -1818,4 +2244,27 @@ func checkUserAPIReadOnlyFields(newInfo auth.PrincipalConfig, user auth.User) (a
 		newInfo.JWTChannels = nil
 	}
 	return newInfo, true
+}
+
+// auditDbAuditEnabled writes any audit events for changes in whether db auditing is enabled
+func auditDbAuditEnabled(ctx context.Context, dbName string, previousEnabled, newEnabled bool, events []uint) {
+
+	if !base.IsAuditEnabled() {
+		return
+	}
+
+	auditFields := base.AuditFields{
+		base.AuditFieldAuditScope: "db",
+		base.AuditFieldDatabase:   dbName,
+	}
+
+	if previousEnabled != newEnabled {
+		if newEnabled {
+			auditFields[base.AuditFieldEnabledEvents] = events
+			base.Audit(ctx, base.AuditIDAuditEnabled, auditFields)
+		} else {
+			base.Audit(ctx, base.AuditIDAuditDisabled, auditFields)
+		}
+	}
+
 }

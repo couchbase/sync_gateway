@@ -115,8 +115,8 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, rt1.WaitForPendingChanges())
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt1.WaitForPendingChanges()
+	rt2.WaitForPendingChanges()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestAdminHandler())
@@ -234,8 +234,8 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
 
-	require.NoError(t, rt1.WaitForPendingChanges())
-	require.NoError(t, rt2.WaitForPendingChanges())
+	rt1.WaitForPendingChanges()
+	rt2.WaitForPendingChanges()
 
 	err = ar.Start(ctx1)
 	require.NoError(t, err)
@@ -357,7 +357,7 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
-	localCollection := activeRT.GetSingleTestDatabaseCollection().ScopeName + "." + activeRT.GetSingleTestDatabaseCollection().Name
+	localCollection := activeRT.GetSingleDataStore().ScopeName() + "." + activeRT.GetSingleDataStore().CollectionName()
 	localCollections := []string{localCollection}
 	remoteCollections := []string{"missing.collection"}
 
@@ -397,9 +397,9 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 	activeRT, passiveRT, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
-	localCollection := activeRT.GetSingleTestDatabaseCollection().ScopeName + ".invalid"
+	localCollection := activeRT.GetSingleDataStore().ScopeName() + ".invalid"
 	localCollections := []string{localCollection}
-	remoteCollection := passiveRT.GetSingleTestDatabaseCollection().ScopeName + "." + passiveRT.GetSingleTestDatabaseCollection().Name
+	remoteCollection := passiveRT.GetSingleDataStore().ScopeName() + "." + passiveRT.GetSingleDataStore().CollectionName()
 	remoteCollections := []string{remoteCollection}
 
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -488,7 +488,7 @@ func TestReplicatorMissingCollections(t *testing.T) {
 				rest.RequireStatus(t, resp, http.StatusCreated)
 
 			}
-			require.NoError(t, activeRT.WaitForPendingChanges())
+			activeRT.WaitForPendingChanges()
 			// use string since omitempty will occur for max_backoff_time, rendering test useless
 			replicationID := strings.ReplaceAll(t.Name(), "/", "_")
 			replicationConfig := `{

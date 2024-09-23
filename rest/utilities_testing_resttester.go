@@ -323,6 +323,11 @@ func (rt *RestTester) InsertDbConfigToBucket(config *DatabaseConfig, bucketName 
 	require.NoError(rt.TB(), insertErr)
 }
 
+func (rt *RestTester) RemoveDbConfigFromBucket(dbName string, bucketName string) {
+	deleteErr := rt.ServerContext().BootstrapContext.DeleteConfig(base.TestCtx(rt.TB()), bucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbName)
+	require.NoError(rt.TB(), deleteErr)
+}
+
 func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName string) {
 	version, err := GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
 	require.NoError(rt.TB(), err)
@@ -362,8 +367,7 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	passiveRT = NewRestTester(t, passiveRTConfig)
-	response := passiveRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "", RestTesterDefaultUserPassword, "", passiveRT.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
-	RequireStatus(t, response, http.StatusCreated)
+	passiveRT.CreateUser("alice", []string{"*"})
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(passiveRT.TestPublicHandler())

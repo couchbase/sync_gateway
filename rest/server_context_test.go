@@ -356,7 +356,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	sc, closeFn := StartBootstrapServer(t)
 	defer closeFn()
 
-	resp, err := http.Get("http://" + sc.getServerAddr(t, publicServer))
+	resp, err := http.Get("http://" + mustGetServerAddr(t, sc, publicServer))
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -829,7 +829,8 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	RequireStatus(t, resp, http.StatusServiceUnavailable)
 
 	// put doc2 bypassing offline checks (this step will begin to fail with Elixir - since we're making offline more comprehensive)
-	_, _, err = rt.GetSingleTestDatabaseCollectionWithUser().Put(base.TestCtx(t), "doc2", db.Body{"type": "doc2"})
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	_, _, err = collection.Put(ctx, "doc2", db.Body{"type": "doc2"})
 	require.NoError(t, err)
 
 	// wait long enough to be confident that import isn't running...
@@ -890,6 +891,48 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 			opts, err := dbcOptionsFromConfig(base.TestCtx(t), sc, config, "fakedb")
 			require.NoError(t, err)
 			require.Equal(t, int(test.expectedCompactIntervalSecs), int(opts.CompactInterval))
+		})
+	}
+}
+
+func TestHeapProfileValuesPopulated(t *testing.T) {
+	totalMemory := uint64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
+	testCases := []struct {
+		name                           string
+		startupConfig                  *StartupConfig
+		heapProfileCollectionThreshold uint64
+		heapProfileCollectionEnabled   bool
+	}{
+		{
+			name:                           "Default",
+			startupConfig:                  &StartupConfig{},
+			heapProfileCollectionThreshold: totalMemory,
+			heapProfileCollectionEnabled:   true,
+		},
+		{
+			name: "HeapProfileDisabled",
+			startupConfig: &StartupConfig{
+				HeapProfileDisableCollection: true,
+			},
+			heapProfileCollectionThreshold: totalMemory, // set but ignored
+			heapProfileCollectionEnabled:   false,
+		},
+		{
+			name: "HeapProfileCollectionThreshold",
+			startupConfig: &StartupConfig{
+				HeapProfileCollectionThreshold: base.Uint64Ptr(100),
+			},
+			heapProfileCollectionThreshold: 100,
+			heapProfileCollectionEnabled:   true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			sc := NewServerContext(ctx, test.startupConfig, false)
+			defer sc.Close(ctx)
+			require.Equal(t, test.heapProfileCollectionThreshold, sc.statsContext.heapProfileCollectionThreshold)
+			require.Equal(t, test.heapProfileCollectionEnabled, sc.statsContext.heapProfileEnabled)
 		})
 	}
 }

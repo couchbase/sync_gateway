@@ -26,13 +26,14 @@ func requireLogIs(t testing.TB, s string, f func()) {
 
 	timestampLength := len(time.Now().Format(ISO8601Format) + " ")
 
+	logger := consoleLogger.Load()
 	// Temporarily override logger output for the given function call
-	originalColor := consoleLogger.ColorEnabled
-	consoleLogger.ColorEnabled = false
-	consoleLogger.logger.SetOutput(&b)
+	originalColor := logger.ColorEnabled
+	logger.ColorEnabled = false
+	logger.logger.SetOutput(&b)
 	defer func() {
-		consoleLogger.ColorEnabled = originalColor
-		consoleLogger.logger.SetOutput(os.Stderr)
+		logger.ColorEnabled = originalColor
+		logger.logger.SetOutput(os.Stderr)
 	}()
 
 	f()
@@ -191,6 +192,31 @@ func TestLogFormat(t *testing.T) {
 			// only show collection because bucket and scope are implied by db
 			output: "[INF] t:aTest c:correlated db:dbName col:testCollection foobar\n",
 		},
+		{
+			name:   "testCtx",
+			ctx:    TestCtx(t),
+			output: "[INF] t:TestLogFormat foobar\n",
+		},
+		{
+			name:   "bucketNameCtx",
+			ctx:    BucketNameCtx(TestCtx(t), "testBucket"),
+			output: "[INF] t:TestLogFormat b:testBucket foobar\n",
+		},
+		{
+			name:   "collectionLogCtx",
+			ctx:    CollectionLogCtx(TestCtx(t), "testScope", "testCollection"),
+			output: "[INF] t:TestLogFormat col:testCollection foobar\n",
+		},
+		{
+			name:   "implicit default collection",
+			ctx:    ImplicitDefaultCollectionLogCtx(TestCtx(t)),
+			output: "[INF] t:TestLogFormat foobar\n",
+		},
+		{
+			name:   "implicit default collection with db",
+			ctx:    ImplicitDefaultCollectionLogCtx(DatabaseLogCtx(TestCtx(t), "dbname", nil)),
+			output: "[INF] t:TestLogFormat db:dbname foobar\n",
+		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
@@ -201,21 +227,7 @@ func TestLogFormat(t *testing.T) {
 	RequireLogMessage(t, context.Background(), "[INF] foobar\n", standardMessage)
 }
 
-func TestTestCtx(t *testing.T) {
-	RequireLogMessage(t, TestCtx(t), "[INF] t:TestTestCtx foobar\n", standardMessage)
-}
-
-func TestBucketNameCtx(t *testing.T) {
-	RequireLogMessage(t, BucketNameCtx(TestCtx(t), "fooBucket"), "[INF] t:TestBucketNameCtx b:fooBucket foobar\n", standardMessage)
-}
-
 // Tests the typical request workflow for a database request. Makes sure each level of context does not modify earlier levels.
-func TestCollectionLogCtx(t *testing.T) {
-	ctx := TestCtx(t)
-	collectionCtx := CollectionLogCtx(ctx, "fooCollection")
-	RequireLogMessage(t, collectionCtx, "[INF] t:TestCollectionLogCtx col:fooCollection foobar\n", standardMessage)
-}
-
 func TestCtxWorkflow(t *testing.T) {
 	ctx := TestCtx(t)
 	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)

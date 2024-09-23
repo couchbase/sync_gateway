@@ -384,6 +384,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 	deferredIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
 
+		// TODO CBG-2838: build list of indexes to create (with one GetIndexMeta call)
 		if !sgIndex.shouldCreate(options) {
 			base.DebugfCtx(ctx, base.KeyAll, "Skipping index: %s ...", sgIndex.simpleName)
 			continue

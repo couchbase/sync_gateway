@@ -34,7 +34,7 @@ func TestFeedImport(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	key := t.Name()
 	bodyBytes := []byte(`{"foo":"bar"}`)
@@ -95,7 +95,7 @@ func TestOnDemandImportMou(t *testing.T) {
 		body := Body{}
 		err := body.Unmarshal(bodyBytes)
 		assert.NoError(t, err, "Error unmarshalling body")
-		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		writeCas, err := collection.dataStore.WriteCas(getKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
 
@@ -120,7 +120,7 @@ func TestOnDemandImportMou(t *testing.T) {
 		body := Body{}
 		err := body.Unmarshal(bodyBytes)
 		assert.NoError(t, err, "Error unmarshalling body")
-		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		writeCas, err := collection.dataStore.WriteCas(writeKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
 
@@ -169,7 +169,7 @@ func TestMigrateMetadata(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	key := "TestMigrateMetadata"
 	bodyBytes := rawDocWithSyncMeta()
@@ -241,7 +241,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	type testcase struct {
 		docBody            []byte
@@ -369,7 +369,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				}
 			}`
 
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			cas, _ := collection.dataStore.Get(key, &body)
 			_, err := collection.dataStore.WriteCas(key, 0, cas, []byte(valStr), sgbucket.Raw)
 			assert.NoError(t, err)
@@ -409,7 +409,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				"time_saved": "2017-11-29T12:46:13.456631-08:00"
 			}`
 
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 			_, _, cas, _ := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
 			_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, cas, []byte(valStr), map[string][]byte{base.SyncXattrName: []byte(xattrStr)}, nil, DefaultMutateInOpts())
@@ -433,7 +433,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
 			defer db.Close(ctx)
 
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 			bodyBytes := rawDocWithSyncMeta()
 			body := Body{}
@@ -520,7 +520,7 @@ func TestImportNullDoc(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	key := "TestImportNullDoc"
 	var body Body
 	rawNull := []byte("null")
@@ -538,7 +538,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Feed import of null doc
 	exp := uint32(0)
@@ -628,7 +628,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	key := "doc1"
 	bodyBytes := rawDocNoMeta()
@@ -674,7 +674,7 @@ func TestImportNonZeroStart(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	base.RequireWaitForStat(t, func() int64 {
 		return collection.collectionStats.ImportCount.Value()
 	}, 1)
@@ -683,7 +683,7 @@ func TestImportNonZeroStart(t *testing.T) {
 		return db.DbStats.Database().DCPReceivedCount.Value()
 	}, 1)
 
-	doc, err := collection.GetDocument(base.TestCtx(t), doc1, DocUnmarshalAll)
+	doc, err := collection.GetDocument(ctx, doc1, DocUnmarshalAll)
 	require.NoError(t, err)
 	require.Equal(t, revID1, doc.SyncData.CurrentRev)
 }
@@ -843,7 +843,7 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
 	}
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	bodyBytes := []byte(`{"foo":"bar"}`)
 	body := Body{}
@@ -891,6 +891,118 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 
 	require.Nil(t, mou, "Mou should not be updated on SG write")
 
+}
+
+func TestImportResurrectionMou(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it relies on import")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := "mouResurrection"
+
+	firstBody := Body{"foo": "bar"}
+	_, _, err := collection.Put(ctx, docID, firstBody)
+	require.NoError(t, err)
+
+	syncData, mou, _ := getSyncAndMou(t, collection, docID)
+	require.NotNil(t, syncData)
+	require.Nil(t, mou)
+
+	// Update via SDK, expect mou to be created
+	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"foo": "baz"}`))
+	require.NoError(t, err)
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+	syncData, mou, _ = getSyncAndMou(t, collection, docID)
+	if db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		require.NotNil(t, mou)
+	} else {
+		require.Nil(t, mou)
+	}
+	require.NotNil(t, syncData)
+
+	// Delete via SDK, the mou will be updated by the import process
+	require.NoError(t, collection.dataStore.Delete(docID))
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+	syncData, mou, _ = getSyncAndMou(t, collection, docID)
+	if db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		require.NotNil(t, mou)
+	} else {
+		require.Nil(t, mou)
+	}
+	require.NotNil(t, syncData)
+
+	// replace initial doc, expect mou to be removed
+	_, _, err = collection.Put(ctx, docID, firstBody)
+	require.NoError(t, err)
+
+	syncData, mou, _ = getSyncAndMou(t, collection, docID)
+	require.Nil(t, mou)
+	require.NotNil(t, syncData)
+}
+
+// TestImportTombstoneWithConflict issues an SDK delete for a document with conflicting, non-tombstoned
+// branches, then attempt to fetch the document.  The resulting document should not be treated as a metadata-only
+// update, even though it originated with an SDK delete, because the existing non-winning revision body will be
+// promoted to winning.
+func TestImportConflictWithTombstone(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it relies on import")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := t.Name()
+
+	// Create rev 1 through SGW
+	body := Body{"foo": "bar"}
+	rev1ID, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err)
+
+	// Create rev 2 through SGW
+	body["foo"] = "abc"
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-abc", rev1ID}, false)
+	require.NoError(t, err)
+
+	// Create conflicting rev 2 through SGW
+	body["foo"] = "def"
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-def", rev1ID}, false)
+	require.NoError(t, err)
+
+	docRev, err := collection.GetRev(ctx, docID, "", false, nil)
+	require.NoError(t, err)
+	require.Equal(t, "2-def", docRev.RevID)
+
+	// Issue delete through SDK
+	err = collection.dataStore.Delete(docID)
+	require.NoError(t, err)
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+
+	// Verify that post-import, the document is not a tombstone, and 2-abc has been promoted (GetRev with revID = "" returns active rev)
+	docRev, err = collection.GetRev(ctx, docID, "", false, nil)
+	require.NoError(t, err)
+	require.Equal(t, "2-abc", docRev.RevID)
+	require.False(t, docRev.Deleted)
+
+	// Verify that mou was not populated for this import
+	syncData, mou, _ := getSyncAndMou(t, collection, docID)
+	require.Nil(t, mou)
+	require.NotNil(t, syncData)
 }
 
 func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key string) (syncData *SyncData, mou *MetadataOnlyUpdate, cas uint64) {

@@ -16,6 +16,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -25,9 +26,10 @@ const (
 	errorMinAge = 180
 	warnMinAge  = 90
 	infoMinAge  = 3
-	statsMinage = 3
 	debugMinAge = 1
 	traceMinAge = 1
+	statsMinage = 3
+	auditMinage = 3
 
 	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
 	// buffer and collate, before flushing the buffer to the output.
@@ -58,67 +60,88 @@ type LegacyLoggingConfig struct {
 
 func InitLogging(ctx context.Context, logFilePath string,
 	console *ConsoleLoggerConfig,
-	error, warn, info, debug, trace, stats *FileLoggerConfig) (err error) {
+	error, warn, info, debug, trace, stats *FileLoggerConfig,
+	audit *AuditLoggerConfig, auditLogGlobalFields map[string]any) (err error) {
 
-	consoleLogger, err = NewConsoleLogger(ctx, true, console)
+	rawConsoleLogger, err := NewConsoleLogger(ctx, true, console)
 	if err != nil {
 		return err
 	}
+	consoleLogger.Store(rawConsoleLogger)
 
 	// If there's nowhere to specified put log files, we'll log an error, but continue anyway.
 	if logFilePath == "" {
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files disabled")
 		// Explicitly log this error to console
 		ConsolefCtx(ctx, LevelError, KeyNone, ErrUnsetLogFilePath.Error())
-
-		// nil out other loggers
-		errorLogger = nil
-		warnLogger = nil
-		infoLogger = nil
-		debugLogger = nil
-		traceLogger = nil
-		statsLogger = nil
-
+		nilAllNonConsoleLoggers()
 		return nil
 	}
 
 	err = validateLogFilePath(logFilePath)
 	if err != nil {
 		return err
-	} else {
-		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
 	}
 
-	errorLogger, err = NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.buffer)
+	ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
+
+	auditLogFilePath := logFilePath
+	if audit != nil && audit.AuditLogFilePath != nil && BoolDefault(audit.Enabled, false) {
+		auditLogFilePath = *audit.AuditLogFilePath
+		err = validateLogFilePath(auditLogFilePath)
+		if err != nil {
+			return fmt.Errorf("error validating audit log file path: %w", err)
+		}
+		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Audit to %v", auditLogFilePath)
+	}
+
+	rawErrorlogger, err := NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
+	errorLogger.Store(rawErrorlogger)
 
-	warnLogger, err = NewFileLogger(ctx, warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, &warnLogger.buffer)
+	rawWarnLogger, err := NewFileLogger(ctx, warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, &warnLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
+	warnLogger.Store(rawWarnLogger)
 
-	infoLogger, err = NewFileLogger(ctx, info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, &infoLogger.buffer)
+	rawInfoLogger, err := NewFileLogger(ctx, info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, &infoLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
+	infoLogger.Store(rawInfoLogger)
 
-	debugLogger, err = NewFileLogger(ctx, debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, &debugLogger.buffer)
+	rawDebugLogger, err := NewFileLogger(ctx, debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, &debugLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
+	debugLogger.Store(rawDebugLogger)
 
-	traceLogger, err = NewFileLogger(ctx, trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, &traceLogger.buffer)
+	rawTraceLogger, err := NewFileLogger(ctx, trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, &traceLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
+	traceLogger.Store(rawTraceLogger)
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	statsLogger, err = NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinage, &statsLogger.buffer)
+	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinage, &statsLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
+	statsLogger.Store(rawStatsLogger)
+
+	var auditLoggerBuffer *strings.Builder
+	prevAuditLogger := auditLogger.Load()
+	if prevAuditLogger != nil {
+		auditLoggerBuffer = &prevAuditLogger.buffer
+	}
+	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, auditLoggerBuffer, auditLogGlobalFields)
+	if err != nil {
+		return err
+	}
+	auditLogger.Store(rawAuditLogger)
 
 	// Initialize external loggers too
 	initExternalLoggers()
@@ -132,6 +155,7 @@ func NewMemoryLogger(level LogLevel) *FileLogger {
 		Enabled: AtomicBool{1},
 		level:   level,
 		name:    level.String(),
+		closed:  make(chan struct{}),
 	}
 	logger.output = &logger.buffer
 	logger.logger = log.New(&logger.buffer, "", 0)
@@ -141,94 +165,105 @@ func NewMemoryLogger(level LogLevel) *FileLogger {
 
 // InitializeMemoryLoggers will set the global loggers to a in-memory logging buffer, to be flushed to configured outputs at a later time.
 func InitializeMemoryLoggers() {
-	errorLogger = NewMemoryLogger(LevelError)
-	warnLogger = NewMemoryLogger(LevelWarn)
-	infoLogger = NewMemoryLogger(LevelInfo)
-	debugLogger = NewMemoryLogger(LevelDebug)
-	traceLogger = NewMemoryLogger(LevelTrace)
-	statsLogger = NewMemoryLogger(LevelNone)
+	errorLogger.Store(NewMemoryLogger(LevelError))
+	warnLogger.Store(NewMemoryLogger(LevelWarn))
+	infoLogger.Store(NewMemoryLogger(LevelInfo))
+	debugLogger.Store(NewMemoryLogger(LevelDebug))
+	traceLogger.Store(NewMemoryLogger(LevelTrace))
+	statsLogger.Store(NewMemoryLogger(LevelNone))
 }
 
 func FlushLoggerBuffers() {
-	if errorLogger != nil {
-		errorLogger.FlushBufferToLog()
-	}
-	if warnLogger != nil {
-		warnLogger.FlushBufferToLog()
-	}
-	if infoLogger != nil {
-		infoLogger.FlushBufferToLog()
-	}
-	if debugLogger != nil {
-		debugLogger.FlushBufferToLog()
-	}
-	if traceLogger != nil {
-		traceLogger.FlushBufferToLog()
-	}
-	if statsLogger != nil {
-		statsLogger.FlushBufferToLog()
+	for _, logger := range getFileLoggers() {
+		logger.FlushBufferToLog()
 	}
 }
 
 func EnableErrorLogger(enabled bool) {
-	if errorLogger != nil {
-		errorLogger.Enabled.Set(enabled)
+	logger := errorLogger.Load()
+	if logger == nil {
+		return
 	}
+	logger.Enabled.Set(enabled)
 }
 
 func EnableWarnLogger(enabled bool) {
-	if warnLogger != nil {
-		warnLogger.Enabled.Set(enabled)
+	logger := warnLogger.Load()
+	if logger == nil {
+		return
 	}
+	logger.Enabled.Set(enabled)
 }
 
 func EnableInfoLogger(enabled bool) {
-	if infoLogger != nil {
-		infoLogger.Enabled.Set(enabled)
+	logger := infoLogger.Load()
+	if logger == nil {
+		return
 	}
+	logger.Enabled.Set(enabled)
 }
 
 func EnableDebugLogger(enabled bool) {
-	if debugLogger != nil {
-		debugLogger.Enabled.Set(enabled)
+	logger := debugLogger.Load()
+	if logger == nil {
+		return
 	}
+	logger.Enabled.Set(enabled)
 }
 
 func EnableTraceLogger(enabled bool) {
-	if traceLogger != nil {
-		traceLogger.Enabled.Set(enabled)
+	logger := traceLogger.Load()
+	if logger == nil {
+		return
 	}
+	logger.Enabled.Set(enabled)
 }
 
 func EnableStatsLogger(enabled bool) {
-	if statsLogger != nil {
-		statsLogger.Enabled.Set(enabled)
+	logger := statsLogger.Load()
+	if logger == nil {
+		return
+	}
+	logger.Enabled.Set(enabled)
+}
+
+func EnableAuditLogger(ctx context.Context, enabled bool) {
+	logger := auditLogger.Load()
+	if logger == nil {
+		return
+	}
+	if !enabled {
+		Audit(ctx, AuditIDAuditDisabled, AuditFields{AuditFieldAuditScope: "global"})
+	}
+	logger.Enabled.Set(enabled)
+	if enabled {
+		Audit(ctx, AuditIDAuditEnabled, AuditFields{AuditFieldAuditScope: "global"})
 	}
 }
 
 // === Used by tests only ===
 func ErrorLoggerIsEnabled() bool {
-	return errorLogger.Enabled.IsTrue()
+	return errorLogger.Load().Enabled.IsTrue()
 }
 
 func WarnLoggerIsEnabled() bool {
-	return warnLogger.Enabled.IsTrue()
+	return warnLogger.Load().Enabled.IsTrue()
 }
 
 func InfoLoggerIsEnabled() bool {
-	return infoLogger.Enabled.IsTrue()
+	return infoLogger.Load().Enabled.IsTrue()
 }
 
 func DebugLoggerIsEnabled() bool {
-	return debugLogger.Enabled.IsTrue()
+	return debugLogger.Load().Enabled.IsTrue()
 }
 
 func TraceLoggerIsEnabled() bool {
-	return traceLogger.Enabled.IsTrue()
+	return traceLogger.Load().Enabled.IsTrue()
 }
 
 func StatsLoggerIsEnabled() bool {
-	return statsLogger.Enabled.IsTrue()
+	return statsLogger.Load().Enabled.IsTrue()
 }
 
 type LoggingConfig struct {
@@ -241,21 +276,29 @@ type LoggingConfig struct {
 	Debug          *FileLoggerConfig    `json:"debug,omitempty"`
 	Trace          *FileLoggerConfig    `json:"trace,omitempty"`
 	Stats          *FileLoggerConfig    `json:"stats,omitempty"`
+	Audit          *AuditLoggerConfig   `json:"audit,omitempty"`
 }
 
-func BuildLoggingConfigFromLoggers(redactionLevel RedactionLevel, LogFilePath string) *LoggingConfig {
+type AuditLoggerConfig struct {
+	FileLoggerConfig
+	AuditLogFilePath *string `json:"audit_log_file_path,omitempty"` // If set, overrides the output path for the audit log files
+	EnabledEvents    []uint  `json:"enabled_events,omitempty"`
+}
+
+func BuildLoggingConfigFromLoggers(originalConfig LoggingConfig) *LoggingConfig {
 	config := LoggingConfig{
-		RedactionLevel: redactionLevel,
-		LogFilePath:    LogFilePath,
+		RedactionLevel: originalConfig.RedactionLevel,
+		LogFilePath:    originalConfig.LogFilePath,
 	}
 
-	config.Console = consoleLogger.getConsoleLoggerConfig()
-	config.Error = errorLogger.getFileLoggerConfig()
-	config.Warn = warnLogger.getFileLoggerConfig()
-	config.Info = infoLogger.getFileLoggerConfig()
-	config.Debug = debugLogger.getFileLoggerConfig()
-	config.Trace = traceLogger.getFileLoggerConfig()
-	config.Stats = statsLogger.getFileLoggerConfig()
+	config.Console = consoleLogger.Load().getConsoleLoggerConfig()
+	config.Error = errorLogger.Load().getFileLoggerConfig()
+	config.Warn = warnLogger.Load().getFileLoggerConfig()
+	config.Info = infoLogger.Load().getFileLoggerConfig()
+	config.Debug = debugLogger.Load().getFileLoggerConfig()
+	config.Trace = traceLogger.Load().getFileLoggerConfig()
+	config.Stats = statsLogger.Load().getFileLoggerConfig()
+	config.Audit = auditLogger.Load().getAuditLoggerConfig()
 
 	return &config
 }
@@ -310,4 +353,15 @@ func validateLogFileOutput(logFileOutput string) error {
 	}
 
 	return file.Close()
+}
+
+// nilAllNonConsoleLoggers will nil out all loggers except the console logger.
+func nilAllNonConsoleLoggers() {
+	errorLogger.Store(nil)
+	warnLogger.Store(nil)
+	infoLogger.Store(nil)
+	debugLogger.Store(nil)
+	traceLogger.Store(nil)
+	statsLogger.Store(nil)
+	auditLogger.Store(nil)
 }

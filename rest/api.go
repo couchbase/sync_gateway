@@ -35,6 +35,11 @@ const (
 	profileRunning
 )
 
+const (
+	compactionTypeTombstone  = "tombstone"
+	compactionTypeAttachment = "attachment"
+)
+
 type rootResponse struct {
 	Admin            bool   `json:"ADMIN,omitempty"`
 	CouchDB          string `json:"couchdb,omitempty"` // TODO: Lithium - remove couchdb welcome
@@ -51,7 +56,7 @@ type vendor struct {
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
 	resp := rootResponse{
-		Admin:   h.privs == adminPrivs,
+		Admin:   h.serverType == adminServer,
 		CouchDB: "Welcome",
 		Vendor: vendor{
 			Name: base.ProductNameString,
@@ -75,37 +80,51 @@ func (h *handler) handlePing() error {
 }
 
 func (h *handler) handleAllDbs() error {
-	if h.getBoolQuery("verbose") {
-		h.writeJSON(h.server.allDatabaseSummaries())
-		return nil
+	verbose := h.getBoolQuery("verbose")
+	var dbNames []string
+	if verbose {
+		summaries := h.server.allDatabaseSummaries()
+		for _, summary := range summaries {
+			dbNames = append(dbNames, summary.DBName)
+		}
+		h.writeJSON(summaries)
+	} else {
+		dbNames = h.server.AllDatabaseNames()
+		h.writeJSON(dbNames)
 	}
-	h.writeJSON(h.server.AllDatabaseNames())
+	base.Audit(h.ctx(), base.AuditIDDatabaseAllRead, base.AuditFields{base.AuditFieldDBNames: dbNames, "verbose": verbose})
 	return nil
 }
 
 func (h *handler) handleGetCompact() error {
 	compactionType := h.getQuery("type")
 	if compactionType == "" {
-		compactionType = "tombstone"
+		compactionType = compactionTypeTombstone
 	}
 
-	if compactionType != "tombstone" && compactionType != "attachment" {
+	if compactionType != compactionTypeTombstone && compactionType != compactionTypeAttachment {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'type'. Must be 'tombstone' or 'attachment'")
 	}
 
+	auditFields := base.AuditFields{base.AuditFieldCompactionType: compactionType}
 	var status []byte
 	var err error
-	if compactionType == "tombstone" {
+	if compactionType == compactionTypeTombstone {
 		status, err = h.db.TombstoneCompactionManager.GetStatus(h.ctx())
+		if err != nil {
+			return err
+		}
+		base.Audit(h.ctx(), base.AuditIDDatabaseCompactStatus, auditFields)
 	}
 
-	if compactionType == "attachment" {
+	if compactionType == compactionTypeAttachment {
 		status, err = h.db.AttachmentCompactionManager.GetStatus(h.ctx())
+		if err != nil {
+			return err
+		}
+		base.Audit(h.ctx(), base.AuditIDDatabaseCompactStatus, auditFields)
 	}
 
-	if err != nil {
-		return err
-	}
 	h.writeRawJSON(status)
 
 	return nil
@@ -123,14 +142,15 @@ func (h *handler) handleCompact() error {
 
 	compactionType := h.getQuery("type")
 	if compactionType == "" {
-		compactionType = "tombstone"
+		compactionType = compactionTypeTombstone
 	}
 
-	if compactionType != "tombstone" && compactionType != "attachment" {
+	if compactionType != compactionTypeTombstone && compactionType != compactionTypeAttachment {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'type'. Must be 'tombstone' or 'attachment'")
 	}
 
-	if compactionType == "tombstone" {
+	auditFields := base.AuditFields{base.AuditFieldCompactionType: compactionType}
+	if compactionType == compactionTypeTombstone {
 		if action == string(db.BackgroundProcessActionStart) {
 			if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
 				err := h.db.TombstoneCompactionManager.Start(h.ctx(), map[string]interface{}{
@@ -145,6 +165,7 @@ func (h *handler) handleCompact() error {
 					return err
 				}
 				h.writeRawJSON(status)
+				base.Audit(h.ctx(), base.AuditIDDatabaseCompactStart, auditFields)
 			} else {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database compact already in progress")
 
@@ -164,10 +185,11 @@ func (h *handler) handleCompact() error {
 				return err
 			}
 			h.writeRawJSON(status)
+			base.Audit(h.ctx(), base.AuditIDDatabaseCompactStop, auditFields)
 		}
 	}
 
-	if compactionType == "attachment" {
+	if compactionType == compactionTypeAttachment {
 		if action == string(db.BackgroundProcessActionStart) {
 			err := h.db.AttachmentCompactionManager.Start(h.ctx(), map[string]interface{}{
 				"database": h.db,
@@ -183,6 +205,9 @@ func (h *handler) handleCompact() error {
 				return err
 			}
 			h.writeRawJSON(status)
+			auditFields[base.AuditFieldCompactionReset] = h.getBoolQuery("reset")
+			auditFields[base.AuditFieldCompactionReset] = h.getBoolQuery("dry_run")
+			base.Audit(h.ctx(), base.AuditIDDatabaseCompactStart, auditFields)
 		} else if action == string(db.BackgroundProcessActionStop) {
 			err := h.db.AttachmentCompactionManager.Stop()
 			if err != nil {
@@ -194,6 +219,7 @@ func (h *handler) handleCompact() error {
 				return err
 			}
 			h.writeRawJSON(status)
+			base.Audit(h.ctx(), base.AuditIDDatabaseCompactStop, auditFields)
 		}
 	}
 
@@ -250,6 +276,7 @@ func (h *handler) handleFlush() error {
 		if err2 != nil {
 			return err2
 		}
+		base.Audit(h.ctx(), base.AuditIDDatabaseFlush, nil)
 
 	} else if bucket, ok := baseBucket.(sgbucket.DeleteableStore); ok {
 
@@ -260,11 +287,13 @@ func (h *handler) handleFlush() error {
 		h.server.RemoveDatabase(h.ctx(), name)
 		err := bucket.CloseAndDelete(h.ctx())
 		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), config.DatabaseConfig)
-		if err == nil {
-			err = err2
+		if err != nil {
+			return err
+		} else if err2 != nil {
+			return err2
 		}
-		return err
-
+		base.Audit(h.ctx(), base.AuditIDDatabaseFlush, nil)
+		return nil
 	} else {
 
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush or delete")
@@ -281,6 +310,7 @@ func (h *handler) handleGetResync() error {
 		return err
 	}
 	h.writeRawJSON(status)
+	base.Audit(h.ctx(), base.AuditIDDatabaseResyncStatus, nil)
 	return nil
 }
 
@@ -294,6 +324,8 @@ func (h *handler) handlePostResync() error {
 
 	action := h.getQuery("action")
 	regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
+	reset := h.getBoolQuery("reset")
+
 	body, err := h.readBody()
 	if err != nil {
 		return err
@@ -323,7 +355,7 @@ func (h *handler) handlePostResync() error {
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 				"collections":         resyncPostReqBody.Scope,
-				"reset":               h.getBoolQuery("reset"),
+				"reset":               reset,
 			})
 			if err != nil {
 				return err
@@ -334,6 +366,11 @@ func (h *handler) handlePostResync() error {
 				return err
 			}
 			h.writeRawJSON(status)
+			base.Audit(h.ctx(), base.AuditIDDatabaseResyncStart, base.AuditFields{
+				"collections":          resyncPostReqBody.Scope,
+				"regenerate_sequences": regenerateSequences,
+				"reset":                reset,
+			})
 		} else {
 			dbState := atomic.LoadUint32(&h.db.State)
 			if dbState == db.DBResyncing {
@@ -361,6 +398,9 @@ func (h *handler) handlePostResync() error {
 			return err
 		}
 		h.writeRawJSON(status)
+
+		base.Audit(h.ctx(), base.AuditIDDatabaseResyncStop, nil)
+
 	}
 
 	return nil
@@ -386,6 +426,7 @@ func (h *handler) handlePostUpgrade() error {
 	}
 
 	h.writeJSON(result)
+	base.Audit(h.ctx(), base.AuditIDPostUpgrade, base.AuditFields{base.AuditFieldPostUpgradePreview: preview})
 	return nil
 }
 
@@ -404,13 +445,15 @@ type DatabaseRoot struct {
 	State                         string   `json:"state"`
 	ServerUUID                    string   `json:"server_uuid,omitempty"`
 	RequireResync                 []string `json:"require_resync,omitempty"`
+	InitializationActive          bool     `json:"init_in_progress,omitempty"`
 }
 
 type DbSummary struct {
-	DBName string `json:"db_name"`
-	Bucket string `json:"bucket"`
-	State  string `json:"state"`
-	Reason string `json:"reason,omitempty"`
+	DBName               string `json:"db_name"`
+	Bucket               string `json:"bucket"`
+	State                string `json:"state"`
+	InitializationActive bool   `json:"init_in_progress,omitempty"`
+	RequireResync        bool   `json:"require_resync,omitempty"`
 }
 
 func (h *handler) handleGetDB() error {
@@ -436,8 +479,10 @@ func (h *handler) handleGetDB() error {
 		State:                         runState,
 		ServerUUID:                    h.db.DatabaseContext.ServerUUID,
 		RequireResync:                 h.db.RequireResync.ScopeAndCollectionNames(),
+		InitializationActive:          h.server.DatabaseInitManager.HasActiveInitialization(h.db.Name),
 	}
 
+	base.Audit(h.ctx(), base.AuditIDReadDatabase, nil)
 	h.writeJSON(response)
 	return nil
 }
@@ -461,7 +506,7 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 }
 
 // ADMIN API to turn Go CPU profiling on/off
-func (h *handler) handleProfiling() error {
+func (h *handler) handleProfiling() (err error) {
 	profileName := h.PathVar("profilename")
 	isCPUProfile := profileName == ""
 
@@ -483,7 +528,8 @@ func (h *handler) handleProfiling() error {
 		if isCPUProfile {
 			base.InfofCtx(h.ctx(), base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
-			h.server.CloseCpuPprofFile(h.ctx())
+			filename := h.server.CloseCpuPprofFile(h.ctx())
+			base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "cpu", base.AuditFieldFileName: filename})
 			return nil
 		}
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")
@@ -496,6 +542,7 @@ func (h *handler) handleProfiling() error {
 
 	if isCPUProfile {
 		base.InfofCtx(h.ctx(), base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
+		base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "cpu (start)", base.AuditFieldFileName: params.File})
 		if err = pprof.StartCPUProfile(f); err != nil {
 			if fileError := os.Remove(params.File); fileError != nil {
 				base.InfofCtx(h.ctx(), base.KeyAll, "Error removing file: %s", base.UD(params.File))
@@ -507,6 +554,7 @@ func (h *handler) handleProfiling() error {
 	} else if profile := pprof.Lookup(profileName); profile != nil {
 		base.InfofCtx(h.ctx(), base.KeyAll, "Writing %q profile to %s ...", profileName, base.UD(params.File))
 		err = profile.WriteTo(f, 0)
+		base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: profileName, base.AuditFieldFileName: params.File})
 	} else {
 		err = base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
 	}
@@ -532,6 +580,7 @@ func (h *handler) handleHeapProfiling() error {
 	}
 
 	base.InfofCtx(h.ctx(), base.KeyAll, "Dumping heap profile to %s ...", base.UD(params.File))
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "heap", base.AuditFieldFileName: params.File})
 	f, err := os.Create(params.File)
 	if err != nil {
 		return err
@@ -547,32 +596,38 @@ func (h *handler) handleHeapProfiling() error {
 
 func (h *handler) handlePprofGoroutine() error {
 	httpprof.Handler("goroutine").ServeHTTP(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "goroutine"})
 	return nil
 }
 
 // Go execution tracer
 func (h *handler) handlePprofTrace() error {
 	httpprof.Trace(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "trace"})
 	return nil
 }
 
 func (h *handler) handlePprofCmdline() error {
 	httpprof.Cmdline(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "cmdline"})
 	return nil
 }
 
 func (h *handler) handlePprofSymbol() error {
 	httpprof.Symbol(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "symbol"})
 	return nil
 }
 
 func (h *handler) handlePprofHeap() error {
 	httpprof.Handler("heap").ServeHTTP(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "heap"})
 	return nil
 }
 
 func (h *handler) handlePprofProfile() error {
 	httpprof.Profile(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "profile"})
 	return nil
 }
 
@@ -586,6 +641,8 @@ func (h *handler) handleFgprof() error {
 	case <-time.After(time.Duration(sec) * time.Second):
 	case <-h.rq.Context().Done():
 	}
+
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "fgprof"})
 	return stopFn()
 }
 
@@ -602,11 +659,13 @@ func (h *handler) handlePprofBlock() error {
 	httpprof.Handler("block").ServeHTTP(h.response, h.rq)
 	runtime.SetBlockProfileRate(0)
 	atomic.StoreUint32(&blockProfileRunning, profileStopped)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "block"})
 	return nil
 }
 
 func (h *handler) handlePprofThreadcreate() error {
 	httpprof.Handler("threadcreate").ServeHTTP(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "threadcreate"})
 	return nil
 }
 
@@ -623,6 +682,7 @@ func (h *handler) handlePprofMutex() error {
 	httpprof.Handler("mutex").ServeHTTP(h.response, h.rq)
 	runtime.SetMutexProfileFraction(0)
 	atomic.StoreUint32(&mutexProfileRunning, profileStopped)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{base.AuditFieldPprofProfileType: "mutex"})
 	return nil
 }
 
@@ -643,13 +703,14 @@ func sleep(rq *http.Request, d time.Duration) {
 func (h *handler) handleStats() error {
 	st := stats{}
 	runtime.ReadMemStats(&st.MemStats)
-
 	h.writeJSON(st)
+
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayStats, base.AuditFields{base.AuditFieldStatsFormat: "memstats"})
 	return nil
 }
 
 func (h *handler) handleMetrics() error {
 	promhttp.Handler().ServeHTTP(h.response, h.rq)
-
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayStats, base.AuditFields{base.AuditFieldStatsFormat: "prometheus"})
 	return nil
 }

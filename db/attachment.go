@@ -37,8 +37,15 @@ var (
 	ErrAttachmentMeta = base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
 )
 
-// AttachmentData holds the attachment key and value bytes.
-type AttachmentData map[string][]byte
+// updatedAttachment represents an attachment that has been modified by a create or update operation.
+type updatedAttachment struct {
+	body    []byte // The attachment data in bytes
+	created bool   // If true, this attachment is new on the document, otherwise it is an update.
+	name    string // The user facing attachment name
+}
+
+// updatedAttachments holds the user facing attachment name and raw contents
+type updatedAttachments map[string]updatedAttachment
 
 // A map of keys -> DocAttachments.
 type AttachmentMap map[string]*DocAttachment
@@ -63,19 +70,20 @@ const maxAttachmentSizeBytes = 20 * 1024 * 1024
 // Given Attachments Meta to be stored in the database, storeAttachments goes through the map, finds attachments with
 // inline bodies, copies the bodies into the Couchbase db, and replaces the bodies with the 'digest' attributes which
 // are the keys to retrieving them.
-func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
+func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (updatedAttachments, error) {
 	if len(newAttachmentsMeta) == 0 {
 		return nil, nil
 	}
 
 	var parentAttachments map[string]interface{}
-	newAttachmentData := make(AttachmentData, 0)
+	newAttachments := make(updatedAttachments, 0)
 	atts := newAttachmentsMeta
 	for name, value := range atts {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
 			return nil, base.HTTPErrorf(400, "Invalid _attachments")
 		}
+
 		data := meta["data"]
 		if data != nil {
 			// Attachment contains data, so store it in the db:
@@ -85,7 +93,12 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 			}
 			digest := Sha1DigestKey(attachment)
 			key := MakeAttachmentKey(AttVersion2, doc.ID, digest)
-			newAttachmentData[key] = attachment
+			_, updated := doc.SyncData.Attachments[name]
+			newAttachments[key] = updatedAttachment{
+				body:    attachment,
+				name:    name,
+				created: !updated,
+			}
 
 			newMeta := map[string]interface{}{
 				"stub":   true,
@@ -130,14 +143,15 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 			}
 		}
 	}
-	return newAttachmentData, nil
+
+	return newAttachments, nil
 }
 
-// retrieveV2AttachmentKeys returns the list of V2 attachment keys from the attachment metadata that can be used for
+// retrieveV2Attachments returns a map of attachment digests to attachment names. This attachment metadata that can be used for
 // identifying obsolete attachments and triggering subsequent removal of those attachments to reclaim the storage.
-func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (attachments map[string]struct{}, err error) {
-	attachments = make(map[string]struct{})
-	for _, value := range docAttachments {
+func retrieveV2Attachments(docID string, docAttachments AttachmentsMeta) (map[string][]string, error) {
+	attachments := make(map[string][]string)
+	for name, value := range docAttachments {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
 			return nil, ErrAttachmentMeta
@@ -151,7 +165,7 @@ func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (att
 			continue
 		}
 		key := MakeAttachmentKey(version, docID, digest)
-		attachments[key] = struct{}{}
+		attachments[key] = append(attachments[key], name)
 	}
 	return attachments, nil
 }
@@ -244,13 +258,13 @@ func (db *DatabaseCollectionWithUser) setAttachment(ctx context.Context, key str
 	return err
 }
 
-func (db *DatabaseCollectionWithUser) setAttachments(ctx context.Context, attachments AttachmentData) error {
-	for key, data := range attachments {
-		attachmentSize := int64(len(data))
+func (db *DatabaseCollectionWithUser) setAttachments(ctx context.Context, attachments updatedAttachments) error {
+	for key, attachment := range attachments {
+		attachmentSize := int64(len(attachment.body))
 		if attachmentSize > int64(maxAttachmentSizeBytes) {
 			return ErrAttachmentTooLarge
 		}
-		_, err := db.dataStore.AddRaw(key, 0, data)
+		_, err := db.dataStore.AddRaw(key, 0, attachment.body)
 		if err == nil {
 			base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 			db.dbStats().CBLReplicationPush().AttachmentPushCount.Add(1)
@@ -383,14 +397,15 @@ func AttachmentDigests(attachments AttachmentsMeta) []string {
 // the key for attachment storage and retrieval.
 type AttachmentStorageMeta struct {
 	digest  string
-	version int
+	name    string // user facing attachment name
+	version int    // AttVersion2 or AttVersion1
 }
 
 // ToAttachmentStorageMeta returns a slice of AttachmentStorageMeta, which is contains the
 // necessary metadata properties to build the key for attachment storage and retrieval.
 func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMeta {
 	meta := make([]AttachmentStorageMeta, 0, len(attachments))
-	for _, att := range attachments {
+	for name, att := range attachments {
 		if attMap, ok := att.(map[string]interface{}); ok {
 			if digest, ok := attMap["digest"]; ok {
 				if digestString, ok := digest.(string); ok {
@@ -398,6 +413,7 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 					m := AttachmentStorageMeta{
 						digest:  digestString,
 						version: version,
+						name:    name,
 					}
 					meta = append(meta, m)
 				}

@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -38,11 +39,12 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 			return true, err, nil
 		}
 		defer func() { assert.NoError(t, resp.Body.Close()) }()
+		var bodyResp []byte
 		if resp.StatusCode != http.StatusOK {
-			bodyResp, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err, "Failed to create user: %s", bodyResp)
+			bodyResp, err = io.ReadAll(resp.Body)
+			require.NoError(t, err, "Failed to create user: %s", bodyResp)
 		}
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equalf(t, http.StatusOK, resp.StatusCode, "Failed to create user: %s", bodyResp)
 		return false, err, nil
 	}
 
@@ -72,4 +74,8 @@ func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username strin
 	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
 
 	require.NoError(t, resp.(*http.Response).Body.Close(), "Error closing response body")
+}
+
+func getBasicAuthHeader(username, password string) string {
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
 }

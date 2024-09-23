@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -43,20 +44,28 @@ var (
 
 	belowMinValueFmt = "%s for %v was set to %v which is below the minimum of %v"
 	aboveMaxValueFmt = "%s for %v was set to %v which is above the maximum of %v"
+
+	// lumberjack backupTimeFormat = "2006-01-02T15-04-05.000"
+	lumberjackRotationMidfix = `-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}.\d{3}`
+	// lumberjack compressSuffix = ".gz"
+	optionalCompressSuffix = `(\.gz)?`
 )
 
 type FileLogger struct {
 	Enabled AtomicBool
 
 	// collateBuffer is used to store log entries to batch up multiple logs.
-	collateBuffer   chan string
-	collateBufferWg *sync.WaitGroup
-	flushChan       chan struct{}
-	level           LogLevel
-	name            string
-	output          io.Writer
-	logger          *log.Logger
-	buffer          strings.Builder
+	collateBuffer    chan string
+	collateBufferWg  *sync.WaitGroup
+	closed           chan struct{}
+	flushChan        chan struct{}
+	level            LogLevel
+	name             string
+	output           io.Writer
+	logger           *log.Logger
+	buffer           strings.Builder
+	cancelFunc       context.CancelFunc // cancelFunc is used to stop the log rotation goroutine
+	rotationDoneChan chan struct{}      // rotationDoneChan is used to signal when the log rotation goroutine has stopped
 
 	// FileLoggerConfig stores the initial config used to instantiate FileLogger
 	config FileLoggerConfig
@@ -76,28 +85,34 @@ type logRotationConfig struct {
 	LocalTime            *bool           `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
 	RotatedLogsSizeLimit *int            `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
 	RotationInterval     *ConfigDuration `json:"rotation_interval,omitempty"`       // Interval at which logs are rotated
-	Compress             *bool           `json:"-"`                                 // Enable log compression - not exposed in config
+	compress             *bool           `json:"-"`                                 // Compress rotated logs, not exposed to users
 }
 
 // NewFileLogger returns a new FileLogger from a config.
 func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
-
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}
 
+	cancelCtx, cancelFunc := context.WithCancel(ctx)
+
 	// validate and set defaults
-	if err := config.init(ctx, level, name, logFilePath, minAge); err != nil {
+	rotationDoneChan, err := config.init(cancelCtx, level, name, logFilePath, minAge)
+	if err != nil {
+		cancelFunc()
 		return nil, err
 	}
 
 	logger := &FileLogger{
-		Enabled: AtomicBool{},
-		level:   level,
-		name:    name,
-		output:  config.Output,
-		logger:  log.New(config.Output, "", 0),
-		config:  *config,
+		Enabled:          AtomicBool{},
+		level:            level,
+		name:             name,
+		output:           config.Output,
+		logger:           log.New(config.Output, "", 0),
+		config:           *config,
+		closed:           make(chan struct{}),
+		cancelFunc:       cancelFunc,
+		rotationDoneChan: rotationDoneChan,
 	}
 	logger.Enabled.Set(*config.Enabled)
 
@@ -112,7 +127,7 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		logger.collateBufferWg = &sync.WaitGroup{}
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.closed, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
 	return logger, nil
@@ -143,7 +158,20 @@ func (l *FileLogger) Rotate() error {
 	return errors.New("can't rotate non-lumberjack log output")
 }
 
+// Close cancels the log rotation rotation and the underlying file descriptor for the active log file.
 func (l *FileLogger) Close() error {
+	// cancelFunc will stop the log rotionation/deletion goroutine
+	// once all log rotation is done and log output is closed, shut down the logCollationWorker
+	defer close(l.closed)
+	// cancel the log rotation goroutine and wait for it to stop
+	if l.cancelFunc != nil {
+		l.cancelFunc()
+	}
+	// wait for the rotation goroutine to stop
+	if l.rotationDoneChan != nil {
+		<-l.rotationDoneChan
+	}
+
 	if c, ok := l.output.(io.Closer); ok {
 		return c.Close()
 	}
@@ -151,17 +179,36 @@ func (l *FileLogger) Close() error {
 }
 
 func (l *FileLogger) String() string {
-	return "FileLogger(" + l.level.String() + ")"
+	return "FileLogger(" + l.name + ")"
 }
 
 // logf will put the given message into the collation buffer if it exists,
 // otherwise will log the message directly.
 func (l *FileLogger) logf(format string, args ...interface{}) {
+	if l == nil {
+		return
+	}
+	doPrintf := len(args) > 0
 	if l.collateBuffer != nil {
 		l.collateBufferWg.Add(1)
-		l.collateBuffer <- fmt.Sprintf(format, args...)
+		if doPrintf {
+			l.collateBuffer <- fmt.Sprintf(format, args...)
+		} else {
+			l.collateBuffer <- format
+		}
 	} else {
-		l.logger.Printf(format, args...)
+		if doPrintf {
+			l.logger.Printf(format, args...)
+		} else {
+			l.logger.Print(format)
+		}
+	}
+}
+
+// conditionalPrintf will log the message if the log level is enabled.
+func (l *FileLogger) conditionalPrintf(logLevel LogLevel, format string, args ...interface{}) {
+	if l.shouldLog(logLevel) {
+		l.logf(format, args...)
 	}
 }
 
@@ -185,9 +232,9 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	return &fileLoggerConfig
 }
 
-func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int) error {
+func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int) (chan struct{}, error) {
 	if lfc == nil {
-		return errors.New("nil LogFileConfig")
+		return nil, errors.New("nil LogFileConfig")
 	}
 
 	if lfc.Enabled == nil {
@@ -195,19 +242,13 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		lfc.Enabled = BoolPtr(level < LevelDebug)
 	}
 
-	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge); err != nil {
-		return err
+	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge, true); err != nil {
+		return nil, err
 	}
 
-	var rotateableLogger *lumberjack.Logger
+	var rotationDoneChan chan struct{}
 	if lfc.Output == nil {
-		rotateableLogger = newLumberjackOutput(
-			filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"),
-			*lfc.Rotation.MaxSize,
-			*lfc.Rotation.MaxAge,
-			BoolDefault(lfc.Rotation.Compress, true),
-		)
-		lfc.Output = rotateableLogger
+		rotationDoneChan = lfc.initLumberjack(ctx, name, filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"))
 	}
 
 	if lfc.CollationBufferSize == nil {
@@ -219,9 +260,24 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		lfc.CollationBufferSize = &bufferSize
 	}
 
+	return rotationDoneChan, nil
+}
+
+// initLumberjack will create a new Lumberjack logger from the given config settings. Returns a doneChan which fires when the log rotation is stopped.
+func (lfc *FileLoggerConfig) initLumberjack(ctx context.Context, name string, lumberjackFilename string) chan struct{} {
+	rotationDoneChan := make(chan struct{})
+	dir, logPattern := getDeletionDirAndRegexp(lumberjackFilename)
+	rotateableLogger := &lumberjack.Logger{
+		Filename: lumberjackFilename,
+		MaxSize:  *lfc.Rotation.MaxSize,
+		MaxAge:   *lfc.Rotation.MaxAge,
+		Compress: *lfc.Rotation.compress,
+	}
+	lfc.Output = rotateableLogger
+
 	var rotationTicker *time.Ticker
 	var rotationTickerCh <-chan time.Time
-	if i := lfc.Rotation.RotationInterval.Value(); i > 0 && rotateableLogger != nil {
+	if i := lfc.Rotation.RotationInterval.Value(); i > 0 {
 		rotationTicker = time.NewTicker(i)
 		rotationTickerCh = rotationTicker.C
 	}
@@ -240,9 +296,10 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		for {
 			select {
 			case <-ctx.Done():
+				close(rotationDoneChan)
 				return
 			case <-logDeletionTicker.C:
-				err := runLogDeletion(ctx, logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
+				err := runLogDeletion(ctx, dir, logPattern, int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
 					WarnfCtx(ctx, "%s", err)
 				}
@@ -255,11 +312,11 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 			}
 		}
 	}()
-
-	return nil
+	return rotationDoneChan
 }
 
-func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int) error {
+// initRotationConfig will validate the log rotation settings and set defaults where necessary.
+func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int, compress bool) error {
 	if lfc.Rotation.MaxSize == nil {
 		lfc.Rotation.MaxSize = &defaultMaxSize
 	} else if *lfc.Rotation.MaxSize == 0 {
@@ -293,23 +350,16 @@ func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, min
 		}
 	}
 
-	return nil
-}
-
-func newLumberjackOutput(filename string, maxSize, maxAge int, compress bool) *lumberjack.Logger {
-	return &lumberjack.Logger{
-		Filename: filename,
-		MaxSize:  maxSize,
-		MaxAge:   maxAge,
-		Compress: compress,
+	if lfc.Rotation.compress == nil {
+		lfc.Rotation.compress = &compress
 	}
+	return nil
 }
 
 // runLogDeletion will delete rotated logs for the supplied logLevel. It will only perform these deletions when the
 // cumulative size of the logs are above the supplied sizeLimitMB.
 // logDirectory is the supplied directory where the logs are stored.
-func runLogDeletion(ctx context.Context, logDirectory string, logLevel string, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
-
+func runLogDeletion(ctx context.Context, logDirectory string, logPattern *regexp.Regexp, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
 	sizeLimitMBLowWatermark = sizeLimitMBLowWatermark * 1024 * 1024   // Convert MB input to bytes
 	sizeLimitMBHighWatermark = sizeLimitMBHighWatermark * 1024 * 1024 // Convert MB input to bytes
 
@@ -326,7 +376,7 @@ func runLogDeletion(ctx context.Context, logDirectory string, logLevel string, s
 	willDelete := false
 	for i := len(files) - 1; i >= 0; i-- {
 		file := files[i]
-		if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
+		if logPattern.Match([]byte(file.Name())) {
 			fi, err := file.Info()
 			if err != nil {
 				InfofCtx(ctx, KeyAll, "Couldn't get size of log file %q: %v - ignoring for cleanup calculation", file.Name(), err)
@@ -347,7 +397,7 @@ func runLogDeletion(ctx context.Context, logDirectory string, logLevel string, s
 	if willDelete {
 		for j := indexDeletePoint; j >= 0; j-- {
 			file := files[j]
-			if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
+			if logPattern.Match([]byte(file.Name())) {
 				err = os.Remove(filepath.Join(logDirectory, file.Name()))
 				if err != nil {
 					return errors.New(fmt.Sprintf("Error deleting stale log file: %v", err))
@@ -357,4 +407,32 @@ func runLogDeletion(ctx context.Context, logDirectory string, logLevel string, s
 	}
 
 	return nil
+}
+
+// getDeletionDirAndRegexp will return the directory and a regexp matching log file and rotated patterns.
+func getDeletionDirAndRegexp(path string) (string, *regexp.Regexp) {
+	dir, filename := filepath.Split(path)
+
+	// foo
+	// foo-2019-01-01T00-00-00.000
+	// foo-2019-01-01T00-00-00.000.gz
+	filenamePattern := regexp.QuoteMeta(filename)
+	rotatedPattern := filenamePattern + lumberjackRotationMidfix + optionalCompressSuffix
+
+	if lastDot := strings.LastIndex(filename, "."); lastDot != -1 {
+		// foo.log
+		// foo-2019-01-01T00-00-00.000.log
+		// foo-2019-01-01T00-00-00.000.log.gz
+		//
+		// or
+		//
+		// foo.bar.log
+		// foo.bar-2019-01-01T00-00-00.000.log
+		// foo.bar-2019-01-01T00-00-00.000.log.gz
+		prefix := filename[:lastDot]
+		suffix := filename[lastDot:]
+		rotatedPattern = regexp.QuoteMeta(prefix) + lumberjackRotationMidfix + regexp.QuoteMeta(suffix) + optionalCompressSuffix
+	}
+
+	return dir, regexp.MustCompile(`^(` + filenamePattern + `|` + rotatedPattern + `)$`)
 }

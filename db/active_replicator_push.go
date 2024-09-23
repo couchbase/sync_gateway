@@ -49,8 +49,8 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 	}
 
 	apr.setState(ReplicationStateStarting)
-	// intentionally reset the context from having db information on it?
-	logCtx := base.LogContextWith(ctx, &base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePush)})
+	logCtx := base.CorrelationIDLogCtx(ctx,
+		apr.config.ID+"-"+string(ActiveReplicatorTypePush))
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
 	err := apr._connect()
@@ -296,6 +296,7 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	}
 	bh := newBlipHandler(apr.ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
 	bh.collection = dbCollectionWithUser
+	bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 
 	var channels base.Set
 	if filteredChannels := apr.config.getFilteredChannels(nil); len(filteredChannels) > 0 {

@@ -66,6 +66,9 @@ get:
                 description: Unique server identifier.
                 type: string
                 example: 995618a6a6cc9ac79731bd13240e19b5
+              init_in_progress:
+                description: Indicates whether database initialization is in progress.
+                type: boolean
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:

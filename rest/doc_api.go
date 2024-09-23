@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"mime/multipart"
@@ -86,7 +87,8 @@ func (h *handler) handleGetDoc() error {
 			}
 			return kNotFoundError
 		}
-		h.setEtag(value[db.BodyRev].(string))
+		foundRev := value[db.BodyRev].(string)
+		h.setEtag(foundRev)
 
 		h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		hasBodies := attachmentsSince != nil && value[db.BodyAttachments] != nil
@@ -99,6 +101,10 @@ func (h *handler) handleGetDoc() error {
 		} else {
 			h.writeJSON(value)
 		}
+		base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: foundRev,
+		})
 	} else {
 		var revids []string
 		attachmentsSince = []string{}
@@ -129,6 +135,12 @@ func (h *handler) handleGetDoc() error {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
 					_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
+
+					base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+						base.AuditFieldDocID:      docid,
+						base.AuditFieldDocVersion: revid,
+					})
+
 					h.db.DbStats.Database().NumDocReadsRest.Add(1)
 				}
 				return nil
@@ -152,6 +164,10 @@ func (h *handler) handleGetDoc() error {
 				if err != nil {
 					return err
 				}
+				base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+					base.AuditFieldDocID:      docid,
+					base.AuditFieldDocVersion: revid,
+				})
 			}
 			_, _ = h.response.Write([]byte(`]`))
 			h.db.DbStats.Database().NumDocReadsRest.Add(1)
@@ -182,7 +198,10 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 	h.setHeader("Content-Type", "application/json")
 	_, _ = h.response.Write(bodyBytes)
 	h.db.DbStats.Database().NumDocReadsRest.Add(1)
-
+	base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      docid,
+		base.AuditFieldDocVersion: rev.RevID,
+	})
 	return nil
 }
 
@@ -284,6 +303,11 @@ func (h *handler) handleGetAttachment() error {
 	h.db.DbStats.CBLReplicationPull().AttachmentPullBytes.Add(int64(len(data)))
 	h.response.WriteHeader(status)
 	_, _ = h.response.Write(data)
+	base.Audit(h.ctx(), base.AuditIDAttachmentRead, base.AuditFields{
+		base.AuditFieldDocID:        docid,
+		base.AuditFieldDocVersion:   revid,
+		base.AuditFieldAttachmentID: attachmentName,
+	})
 	return nil
 
 }
@@ -408,7 +432,6 @@ func (h *handler) handleDeleteAttachment() error {
 	h.setEtag(newRev)
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
-
 	return nil
 }
 
@@ -617,6 +640,8 @@ func (h *handler) handleDeleteDoc() error {
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {
 	docid := h.PathVar("docid")
+	localDocID := db.LocalDocPrefix + docid
+
 	value, err := h.collection.GetSpecial(db.DocTypeLocal, docid)
 	if err != nil {
 		return err
@@ -624,7 +649,15 @@ func (h *handler) handleGetLocalDoc() error {
 	if value == nil {
 		return kNotFoundError
 	}
-	value[db.BodyId] = "_local/" + docid
+
+	value[db.BodyId] = localDocID
+	docVersion := value[db.BodyRev]
+
+	base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      localDocID,
+		base.AuditFieldDocVersion: docVersion,
+	})
+
 	h.writeJSON(value)
 	return nil
 }
@@ -632,21 +665,56 @@ func (h *handler) handleGetLocalDoc() error {
 // HTTP handler for a PUT of a _local document
 func (h *handler) handlePutLocalDoc() error {
 	docid := h.PathVar("docid")
+	localDocID := db.LocalDocPrefix + docid
+
 	body, err := h.readJSON()
-	if err == nil {
-		var revid string
-		revid, err = h.collection.PutSpecial(db.DocTypeLocal, docid, body)
-		if err == nil {
-			h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString("_local/"+docid)+`,"ok":true,"rev":"`+revid+`"}`))
-		}
+	if err != nil {
+		return err
 	}
-	return err
+
+	revid, isNewDoc, err := h.collection.PutSpecial(db.DocTypeLocal, docid, body)
+	if err != nil {
+		return err
+	}
+
+	auditEventForDocumentUpsert(h.ctx(), localDocID, revid, isNewDoc)
+
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(localDocID)+`,"ok":true,"rev":"`+revid+`"}`))
+	return nil
+}
+
+func auditEventForDocumentUpsert(ctx context.Context, docid string, revid string, isNewDoc bool) {
+	auditEvent := base.AuditIDDocumentUpdate
+	if isNewDoc {
+		auditEvent = base.AuditIDDocumentCreate
+	}
+	base.Audit(ctx, auditEvent, base.AuditFields{
+		base.AuditFieldDocID:      docid,
+		base.AuditFieldDocVersion: revid,
+	})
 }
 
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDelLocalDoc() error {
 	docid := h.PathVar("docid")
-	return h.collection.DeleteSpecial(db.DocTypeLocal, docid, h.getQuery("rev"))
+	rev := h.getQuery("rev")
+	localDocID := db.LocalDocPrefix + docid
+
+	if err := h.collection.DeleteSpecial(db.DocTypeLocal, docid, rev); err != nil {
+		return err
+	}
+
+	base.Audit(h.ctx(), base.AuditIDDocumentDelete, base.AuditFields{
+		base.AuditFieldDocID:      localDocID,
+		base.AuditFieldDocVersion: rev,
+	})
+
+	return nil
+}
+
+// isGuest returns true if the current user is a guest
+func (h *handler) isGuest() bool {
+	return h.user != nil && h.user.Name() == ""
 }
 
 // helper for read only check

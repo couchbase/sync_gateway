@@ -50,6 +50,15 @@ func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, con
 	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
 }
 
+func setupTestDBForBucketDefaultCollection(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &cacheOptions,
+		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
+	}
+	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
+}
+
 func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
@@ -65,13 +74,13 @@ func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbc
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, true, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	err = dbCtx.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
 func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, context.Context) {
@@ -117,6 +126,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	err = dbCtx.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
@@ -124,9 +134,8 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	atomic.StoreUint32(&dbCtx.State, DBOnline)
-	ctx = db.AddDatabaseLogContext(ctx)
 
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
@@ -143,6 +152,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 		testBucket.Close(ctx)
 		t.Fatalf("Unable to create database context: %v", err)
 	}
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	err = dbCtx.StartOnlineProcesses(ctx)
 	if err != nil {
 		dbCtx.Close(ctx)
@@ -153,22 +163,15 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 		dbCtx.Close(ctx)
 		t.Fatalf("Unable to create database: %v", err)
 	}
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
-// Sets up test db with the specified database context options using a named collection from the pool.  Note that environment variables can
-// override somedbcOptions properties.
-func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-
-	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
-}
-
-// Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
-// override somedbcOptions properties.
-func setupTestDefaultCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-
+func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
+		CacheOptions: &cacheOptions,
+	}
 	return SetupTestDBWithOptions(t, dbcOptions)
 }
 
@@ -185,7 +188,7 @@ func TestDatabase(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
@@ -311,7 +314,7 @@ func TestGetDeleted(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	body := Body{"key1": 1234}
 	rev1id, _, err := collection.Put(ctx, "doc1", body)
@@ -352,8 +355,9 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
 
 	rev1body := Body{
 		"key1":     1234,
@@ -398,8 +402,13 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses, db.DatabaseContext.DbStats.Cache().RevisionCacheNumItems, db.DatabaseContext.DbStats.Cache().RevisionCacheTotalMemory
+	cacheOptions := &RevisionCacheOptions{
+		MaxBytes:     0,
+		MaxItemCount: DefaultRevisionCacheSize,
+		ShardCount:   DefaultRevisionCacheShardCount,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -461,10 +470,8 @@ func TestIsServerless(t *testing.T) {
 func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
-	auth := db.Authenticator(base.TestCtx(t))
+	auth := db.Authenticator(ctx)
 
 	// Create a user who have access to both channel ABC and NBC.
 	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC", "NBC"))
@@ -473,6 +480,9 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Create a user who have access to channel NBC.
 	userBob, err := auth.NewUser("bob", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create the first revision of doc1.
 	rev1Body := Body{
@@ -509,9 +519,11 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	_, rev1Digest := ParseRevID(ctx, rev1ID)
 	_, rev2Digest := ParseRevID(ctx, rev2ID)
 
+	var interfaceListChannels []interface{}
+	interfaceListChannels = append(interfaceListChannels, "ABC")
 	bodyExpected := Body{
 		"k2":       "v2",
-		"channels": []string{"ABC"},
+		"channels": interfaceListChannels,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2Digest, rev1Digest},
@@ -537,7 +549,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	require.Equal(t, bodyExpected, body)
 
 	// Flush the revision cache and purge the old revision backup.
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
@@ -567,7 +579,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create the first revision of doc1.
 	rev1Body := Body{
@@ -597,7 +609,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	require.NotEmpty(t, rev3ID, "Error creating doc")
 
 	// Flush the revision cache and purge the old revision backup.
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
@@ -633,7 +645,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create the first revision of doc1.
@@ -664,7 +676,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	require.NotEmpty(t, rev3ID, "Error creating doc")
 
 	// Flush the revision cache and purge the old revision backup.
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
@@ -701,7 +713,8 @@ func TestGetRemoved(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
 
 	rev1body := Body{
 		"key1":     1234,
@@ -746,8 +759,13 @@ func TestGetRemoved(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses, db.DatabaseContext.DbStats.Cache().RevisionCacheNumItems, db.DatabaseContext.DbStats.Cache().RevisionCacheTotalMemory
+	cacheOptions := &RevisionCacheOptions{
+		MaxBytes:     0,
+		MaxItemCount: DefaultRevisionCacheSize,
+		ShardCount:   DefaultRevisionCacheShardCount,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -769,7 +787,8 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
 
 	rev1body := Body{
 		"key1":     1234,
@@ -814,8 +833,13 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStats := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses, db.DatabaseContext.DbStats.Cache().RevisionCacheNumItems, db.DatabaseContext.DbStats.Cache().RevisionCacheTotalMemory
+	cacheOptions := &RevisionCacheOptions{
+		MaxBytes:     0,
+		MaxItemCount: DefaultRevisionCacheSize,
+		ShardCount:   DefaultRevisionCacheShardCount,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStats)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -865,7 +889,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -927,8 +951,7 @@ func TestAllDocsOnly(t *testing.T) {
 	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
-	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	require.Len(t, changes, 100)
 
 	for i, change := range changes {
@@ -955,8 +978,7 @@ func TestAllDocsOnly(t *testing.T) {
 	assert.True(t, sortedSeqAsc(changes), "Sequences should be ascending for all entries in the changes response")
 
 	options.IncludeDocs = true
-	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "KFJC"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes = getChanges(t, collection, channels.BaseSetOf(t, "KFJC"), options)
 	assert.Len(t, changes, 10)
 	for i, change := range changes {
 		assert.Equal(t, ids[10*i].DocID, change.ID)
@@ -972,14 +994,10 @@ func TestAllDocsOnly(t *testing.T) {
 
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
-
-	if base.TestsUseNamedCollections() {
-		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-	db, ctx := setupTestDB(t)
+	// use default collection based on use of GetPrincipalForTest
+	db, ctx := setupTestDBDefaultCollection(t)
 	defer db.Close(ctx)
 
 	// Create a user with access to channel ABC
@@ -992,7 +1010,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	require.NoError(t, err)
 	userInfo.ExplicitChannels = base.SetOf("ABC")
-	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err := db.sequences.nextSequence(ctx)
@@ -1003,7 +1021,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	userInfo, err = db.GetPrincipalForTest(t, "naomi", true)
 	require.NoError(t, err)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err = db.sequences.nextSequence(ctx)
@@ -1016,7 +1034,7 @@ func TestRepeatedConflict(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -1053,7 +1071,7 @@ func TestConflicts(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -1125,8 +1143,7 @@ func TestConflicts(t *testing.T) {
 		Conflicts:  true,
 		ChangesCtx: base.TestCtx(t),
 	}
-	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3},
@@ -1160,8 +1177,7 @@ func TestConflicts(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Verify the _changes feed:
-	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	changes = getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 4},
@@ -1206,7 +1222,7 @@ func TestNoConflictsMode(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
 	db.Options.AllowConflicts = base.BoolPtr(false)
@@ -1284,7 +1300,7 @@ func TestNoConflictsMode(t *testing.T) {
 func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
@@ -1361,7 +1377,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
@@ -1430,7 +1446,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
@@ -1471,7 +1487,7 @@ func TestInvalidChannel(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -1484,7 +1500,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	_, err := collection.UpdateSyncFun(ctx, `function(doc){access(doc.users,doc.userChannels);}`)
 	require.NoError(t, err)
@@ -1518,17 +1534,17 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	authenticator := db.Authenticator(ctx)
-
-	_, err := collection.UpdateSyncFun(ctx, `function(doc){access(doc.users,doc.userChannels);}`)
-	require.NoError(t, err)
-
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	require.NoError(t, err)
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	_, err = collection.UpdateSyncFun(ctx, `function(doc){access(doc.users,doc.userChannels);}`)
+	require.NoError(t, err)
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
 	_, _, err = collection.Put(ctx, "doc1", body)
@@ -1590,11 +1606,7 @@ func TestDocIDs(t *testing.T) {
 
 func TestUpdateDesignDoc(t *testing.T) {
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("Design docs not supported for non-default collection")
-	}
-
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
 
 	mapFunction := `function (doc, meta) { emit(); }`
@@ -1626,7 +1638,7 @@ func TestPostWithExistingId(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
@@ -1662,7 +1674,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Test creating a document with null property key
 	customDocId := "customIdValue"
@@ -1678,7 +1690,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 func TestPostWithUserSpecialProperty(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
@@ -1712,7 +1724,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	seqTracker := uint64(0)
 
@@ -1796,6 +1808,7 @@ func TestChannelView(t *testing.T) {
 	defer db.Close(ctx)
 	collection, err := db.GetDefaultDatabaseCollectionWithUser()
 	require.NoError(t, err)
+	ctx = collection.AddCollectionContext(ctx)
 
 	// Create doc
 	log.Printf("Create doc 1...")
@@ -1830,12 +1843,12 @@ func TestChannelView(t *testing.T) {
 func TestConcurrentImport(t *testing.T) {
 
 	if !base.TestUseXattrs() {
-		t.Skip("Test only works with a Couchbase server and XATTRS")
+		t.Skip("Test only works with XATTRS")
 	}
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
@@ -1871,7 +1884,7 @@ func BenchmarkDatabase(b *testing.B) {
 			true)
 		dbCtx, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(dbCtx)
-		collection := GetSingleDatabaseCollectionWithUser(b, db)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 		body := Body{"key1": "value1", "key2": 1234}
 		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
@@ -1890,7 +1903,7 @@ func BenchmarkPut(b *testing.B) {
 		true)
 	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	db, _ := CreateDatabase(context)
-	collection := GetSingleDatabaseCollectionWithUser(b, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"key1": "value1", "key2": 1234}
 	b.ResetTimer()
@@ -2065,7 +2078,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		doc.key1 = "mutatedValue"
@@ -2102,7 +2115,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			body := Body{"name": "Bob", "age": 52}
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			revId, _, err := collection.Put(ctx, "doc1", body)
 			assert.NoError(t, err, "Couldn't create document")
 			assert.NotEmpty(t, revId)
@@ -2116,7 +2129,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	enableCallback = true
 
@@ -2144,7 +2157,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			body := Body{"name": "Emily", "age": 20}
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false)
 			assert.NoError(t, err, "Adding revision 3-b")
 		}
@@ -2157,7 +2170,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -2202,7 +2215,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			body := Body{"name": "Charlie", "age": 10, BodyDeleted: true}
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
 			assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
 		}
@@ -2215,7 +2228,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -2260,7 +2273,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			body := Body{"name": "Joshua", "age": 11}
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b1", "2-b", "1-a"}, false)
 			assert.NoError(t, err, "Couldn't add revision 3-b1")
 		}
@@ -2273,7 +2286,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -2331,7 +2344,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			// Write a doc
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-abc", revid}, true)
 			assert.NoError(t, err)
 		}
@@ -2339,7 +2352,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{UpdateCallback: writeUpdateCallback})
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	err := json.Unmarshal([]byte(`{"prop": "value"}`), &body)
 	assert.NoError(t, err)
@@ -2367,7 +2380,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 
 	db, ctx = setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	err := json.Unmarshal([]byte(`{"prop": "value"}`), &body)
 	require.NoError(t, err)
@@ -2428,7 +2441,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Ensure empty doc is imported correctly
 	added, err := collection.dataStore.Add("doc1", 0, map[string]interface{}{})
@@ -2469,7 +2482,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 	}`
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	_, err := collection.UpdateSyncFun(ctx, syncFn)
 	require.NoError(t, err)
@@ -2510,7 +2523,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		PurgeInterval: &zero,
 	})
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	for i := 0; i < 300; i++ {
 		docID := fmt.Sprintf("doc%d", i)
@@ -2728,7 +2741,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Greater(t, endSeq, uint64(0))
 
-	collection.invalidateAllPrincipalsCache(ctx, endSeq)
+	collection.invalidateAllPrincipals(ctx, endSeq)
 	err = collection.WaitForPendingChanges(ctx)
 	assert.NoError(t, err)
 
@@ -2812,7 +2825,7 @@ func Test_resyncDocument(t *testing.T) {
 
 			db.Options.EnableXattr = testCase.useXattr
 			db.Options.QueryPaginationLimit = 100
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 			syncFn := `
 	function sync(doc, oldDoc){
@@ -2881,7 +2894,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		doc, err := unmarshalDocument(docID, raw)
 		require.NoError(t, err)
 
-		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		_, _, _, _, _, err = collection.getResyncedDocument(ctx, doc, false, []uint64{})
 		assert.Equal(t, base.ErrUpdateCancel, err)
 	})
@@ -2890,8 +2903,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		db, ctx := setupTestDB(t)
 		defer db.Close(ctx)
 		db.Options.QueryPaginationLimit = 100
-		collection := GetSingleDatabaseCollectionWithUser(t, db)
-
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		syncFn := `
 	function sync(doc, oldDoc){
 		channel("channel." + "ABC");
@@ -2943,7 +2955,7 @@ func TestImportCompactPanic(t *testing.T) {
 		PurgeInterval:   &zero,
 	})
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create a document, then delete it, to create a tombstone
 	rev, doc, err := collection.Put(ctx, "test", Body{})
@@ -3315,8 +3327,67 @@ func TestBadDCPStart(t *testing.T) {
 			},
 		},
 	}
+
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	err = dbCtx.StartOnlineProcesses(ctx)
 	require.Error(t, err)
 
 	dbCtx.Close(ctx)
+}
+
+func TestInject1xBodyProperties(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	rev1ID, _, err := collection.Put(ctx, "doc", Body{"test": "doc"})
+	require.NoError(t, err)
+	var rev2Body Body
+	rev2Data := `{"key":"value", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
+	_, rev2ID, err := collection.PutExistingRevWithBody(ctx, "doc", rev2Body, []string{"2-abc", rev1ID}, true)
+	require.NoError(t, err)
+
+	docRev, err := collection.GetRev(ctx, "doc", rev2ID, true, nil)
+	require.NoError(t, err)
+
+	// mock expiry on doc
+	exp := time.Now()
+	docRev.Expiry = &exp
+
+	newDoc, err := docRev.Inject1xBodyProperties(ctx, collection, docRev.History, nil, true)
+	require.NoError(t, err)
+	var resBody Body
+	require.NoError(t, resBody.Unmarshal(newDoc))
+
+	// cast to map of interface given we have injected the properties runtime has no concept of the AttachmentMeta and Revisions types
+	revs := resBody[BodyRevisions].(map[string]interface{})
+	atts := resBody[BodyAttachments].(map[string]interface{})
+
+	assert.NotNil(t, atts)
+	assert.NotNil(t, revs)
+	assert.Equal(t, "doc", resBody[BodyId])
+	assert.Equal(t, "2-abc", resBody[BodyRev])
+	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal(t, "value", resBody["key"])
+
+	// mock doc deleted
+	docRev.Deleted = true
+
+	newDoc, err = docRev.Inject1xBodyProperties(ctx, collection, docRev.History, []string{"2-abc"}, true)
+	require.NoError(t, err)
+	require.NoError(t, resBody.Unmarshal(newDoc))
+
+	// cast to map of interface given we have injected the properties runtime has no concept of the AttachmentMeta and Revisions types
+	revs = resBody[BodyRevisions].(map[string]interface{})
+	atts = resBody[BodyAttachments].(map[string]interface{})
+
+	assert.NotNil(t, atts)
+	assert.NotNil(t, revs)
+	assert.Equal(t, "doc", resBody[BodyId])
+	assert.Equal(t, "2-abc", resBody[BodyRev])
+	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal(t, "value", resBody["key"])
+	assert.True(t, resBody[BodyDeleted].(bool))
 }

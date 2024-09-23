@@ -137,7 +137,7 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 }
 
 func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
-	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, RevCacheIncludeBody)
+	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil)
 	if err != nil {
 		return err
 	}
@@ -219,6 +219,11 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 		//   3. An error is returned when calling singleChannelCache.GetChanges
 		//   4. An error is returned when calling wasDocInChannelPriorToRevocation
 		for {
+			if options.ChangesCtx.Err() != nil {
+				base.DebugfCtx(ctx, base.KeyChanges, "Terminating revocation channel feed %s", base.UD(to))
+				return
+			}
+
 			if requestLimit == 0 {
 				paginationOptions.Limit = queryLimit
 			} else {
@@ -241,6 +246,11 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 			sentChanges := 0
 			for _, logEntry := range changes {
+				if options.ChangesCtx.Err() != nil {
+					base.DebugfCtx(ctx, base.KeyChanges, "Terminating revocation channel feed %s", base.UD(to))
+					return
+				}
+
 				seqID := SequenceID{
 					Seq:         logEntry.Sequence,
 					TriggeredBy: revokedAt,
@@ -299,6 +309,10 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 					return
 
 				case feed <- &change:
+					base.Audit(ctx, base.AuditIDDocumentRevoke, base.AuditFields{
+						base.AuditFieldDocID:      logEntry.DocID,
+						base.AuditFieldDocVersion: logEntry.RevID,
+					})
 					sentChanges++
 				}
 			}
@@ -321,7 +335,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 // UserHasDocAccess checks whether the user has access to the active revision of the document
 func UserHasDocAccess(ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (bool, error) {
-	currentRev, err := collection.revisionCache.GetActive(ctx, docID, false)
+	currentRev, err := collection.revisionCache.GetActive(ctx, docID)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return false, nil
@@ -405,6 +419,10 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 		//   2. A limit is specified on the incoming ChangesOptions, and that limit is reached
 		//   3. An error is returned when calling singleChannelCache.GetChanges
 		for {
+			if options.ChangesCtx.Err() != nil {
+				base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
+				return
+			}
 			// Calculate limit for this iteration
 			if requestLimit == 0 {
 				paginationOptions.Limit = queryLimit
@@ -428,6 +446,10 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 			// Now write each log entry to the 'feed' channel in turn:
 			sentChanges := 0
 			for _, logEntry := range changes {
+				if options.ChangesCtx.Err() != nil {
+					base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
+					return
+				}
 				if logEntry.Sequence >= options.Since.TriggeredBy {
 					options.Since.TriggeredBy = 0
 				}
@@ -493,6 +515,20 @@ func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channel cha
 	entry.Revoked = true
 
 	return entry
+}
+
+// AuditReadEvent issues a read event for this change entry. If there is no document body, there will be no event used.
+func (ce *ChangeEntry) AuditReadEvent(ctx context.Context) {
+	if ce.Err != nil {
+		return
+	}
+	if ce.Doc == nil {
+		return
+	}
+	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      ce.ID,
+		base.AuditFieldDocVersion: ce.Changes[0]["rev"],
+	})
 }
 
 func (ce *ChangeEntry) SetBranched(isBranched bool) {
@@ -740,7 +776,10 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				if err != nil {
 					base.WarnfCtx(ctx, "Unable to obtain channel cache for %s, terminating feed", base.UD(chanName))
 					change := makeErrorEntry("Channel cache unavailable, terminating feed")
-					output <- &change
+					select {
+					case output <- &change:
+					case <-options.ChangesCtx.Done():
+					}
 					return
 				}
 
@@ -751,7 +790,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				if useLateSequenceFeeds {
 					lateSequenceFeedHandler := lateSequenceFeeds[chanID]
 					if lateSequenceFeedHandler != nil {
-						latefeed, err := col.getLateFeed(lateSequenceFeedHandler, singleChannelCache)
+						latefeed, err := col.getLateFeed(options.ChangesCtx, lateSequenceFeedHandler, singleChannelCache)
 						if err != nil {
 							base.WarnfCtx(ctx, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(chanName), lastSentLowSeq)
 							chanOpts.Since.LowSeq = lastSentLowSeq
@@ -871,7 +910,10 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 							// On feed error, send the error and exit changes processing
 							if current[i].Err == base.ErrChannelFeed {
 								base.WarnfCtx(ctx, "MultiChangesFeed got error reading changes feed: %v", current[i].Err)
-								output <- current[i]
+								select {
+								case <-options.ChangesCtx.Done():
+								case output <- current[i]:
+								}
 								return
 							}
 						}
@@ -949,6 +991,9 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				// Send the entry, and repeat the loop:
 				base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed sending %+v %s", base.UD(minEntry), base.UD(to))
 
+				if options.ChangesCtx.Err() != nil {
+					return
+				}
 				select {
 				case <-options.ChangesCtx.Done():
 					return
@@ -983,7 +1028,11 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
 			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
-			output <- nil
+			select {
+			case <-options.ChangesCtx.Done():
+				return
+			case output <- nil:
+			}
 
 			// If this is an initial replication using CBL 2.x (active only), flip activeOnly now the client has caught up.
 			if options.clientType == clientTypeCBL2 && options.ActiveOnly {
@@ -1009,22 +1058,12 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				waitResponse := changeWaiter.Wait(ctx)
 				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
 
-				if waitResponse == WaiterClosed {
+				if options.ChangesCtx.Err() != nil {
+					return
+				} else if waitResponse == WaiterClosed {
 					break outer
 				} else if waitResponse == WaiterHasChanges {
-					select {
-					case <-options.ChangesCtx.Done():
-						return
-					default:
-						break waitForChanges
-					}
-				} else if waitResponse == WaiterCheckTerminated {
-					// Check whether I was terminated while waiting for a change.  If not, resume wait.
-					select {
-					case <-options.ChangesCtx.Done():
-						return
-					default:
-					}
+					break waitForChanges
 				}
 			}
 			// Update the current max cached sequence for the next changes iteration
@@ -1036,7 +1075,10 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.DebugfCtx(ctx, base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
-				output <- &change
+				select {
+				case <-options.ChangesCtx.Done():
+				case output <- &change:
+				}
 				return
 			}
 			if userChanged && col.user != nil {
@@ -1079,28 +1121,6 @@ func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, c
 		}
 	}
 	return false
-}
-
-// FOR TEST USE ONLY: Synchronous convenience function that returns all changes as a simple array,
-// Returns error if initial feed creation fails, or if an error is returned with the changes entries
-func (db *DatabaseCollectionWithUser) GetChanges(ctx context.Context, channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
-	if options.ChangesCtx == nil {
-		changesCtx, changesCtxCancel := context.WithCancel(context.Background())
-		options.ChangesCtx = changesCtx
-		defer changesCtxCancel()
-	}
-
-	var changes = make([]*ChangeEntry, 0, 50)
-	feed, err := db.MultiChangesFeed(ctx, channels, options)
-	if err == nil && feed != nil {
-		for entry := range feed {
-			if entry.Err != nil {
-				err = entry.Err
-			}
-			changes = append(changes, entry)
-		}
-	}
-	return changes, err
 }
 
 // Returns the set of cached log entries for a given channel
@@ -1159,7 +1179,7 @@ func (db *DatabaseCollectionWithUser) newLateSequenceFeed(singleChannelCache Sin
 
 // Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.  Error indicates
 // previous position in late sequence feed isn't available, and caller should reset to low sequence.
-func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache) (<-chan *ChangeEntry, error) {
+func (db *DatabaseCollectionWithUser) getLateFeed(ctx context.Context, feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache) (<-chan *ChangeEntry, error) {
 
 	if !singleChannelCache.SupportsLateFeed() {
 		return nil, errors.New("Cache doesn't support late feeds")
@@ -1199,7 +1219,12 @@ func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed,
 				Seq: logEntry.Sequence,
 			}
 			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
-			feed <- &change
+			select {
+			case <-ctx.Done():
+				return
+
+			case feed <- &change:
+			}
 		}
 	}()
 
@@ -1320,7 +1345,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 func (options ChangesOptions) String() string {
 	return fmt.Sprintf(
-		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, RequestPlusSeq: %d}`,
+		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, Revocations: %t, RequestPlusSeq: %d}`,
 		options.Since,
 		options.Limit,
 		options.Conflicts,
@@ -1330,19 +1355,21 @@ func (options ChangesOptions) String() string {
 		options.HeartbeatMs,
 		options.TimeoutMs,
 		options.ActiveOnly,
+		options.Revocations,
 		options.RequestPlusSeq,
 	)
 }
 
 // Used by BLIP connections for changes.  Supports both one-shot and continuous changes.
-func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
+func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (forceClose bool) {
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose = GenerateChanges(ctx, options.ChangesCtx, database, inChannels, options, docIDFilter, send)
+	err, forceClose := GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
 
 	if _, ok := err.(*ChangesSendErr); ok {
-		return nil, forceClose // error is probably because the client closed the connection
+		// If there was already an error in a send function, do not send last one shot changes message, since it probably will not work anyway.
+		return forceClose // error is probably because the client closed the connection
 	}
 
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
@@ -1350,7 +1377,7 @@ func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWi
 	if isOneShot {
 		_ = send(nil)
 	}
-	return err, forceClose
+	return forceClose
 }
 
 type ChangesSendErr struct{ error }
@@ -1358,7 +1385,7 @@ type ChangesSendErr struct{ error }
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
 // method on `handler`.
-func GenerateChanges(ctx context.Context, cancelCtx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
+func GenerateChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -1489,7 +1516,7 @@ loop:
 		case <-database.exitChanges():
 			forceClose = true
 			break loop
-		case <-cancelCtx.Done():
+		case <-options.ChangesCtx.Done():
 			forceClose = true
 			break loop
 		}
@@ -1497,6 +1524,11 @@ loop:
 			forceClose = true
 			return &ChangesSendErr{sendErr}, forceClose
 		}
+	}
+
+	// if the ChangesCtx is done, the connection was force closed. This could actually happen and send a ChangeEntry.Err. Instead of checking each place in this function, set the forceClose flag here.
+	if options.ChangesCtx.Err() != nil {
+		forceClose = true
 	}
 
 	return nil, forceClose

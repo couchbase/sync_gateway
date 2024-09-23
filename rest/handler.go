@@ -103,6 +103,7 @@ type handler struct {
 	authScopeFunc         authScopeFunc
 	httpLogLevel          *base.LogLevel // if set, always log HTTP information at this level, instead of the default
 	rqCtx                 context.Context
+	serverType            serverType
 }
 
 type authScopeFunc func(context.Context, *handler) (string, error)
@@ -121,7 +122,8 @@ type handlerMethod func(*handler) error
 // makeHandlerWithOptions creates an http.Handler that will run a handler with the given method handlerOptions
 func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, options handlerOptions) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, privs, r, rq, options)
+		serverType := getCtxServerType(rq.Context())
+		h := newHandler(server, privs, serverType, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		if !options.skipLogDuration {
@@ -176,7 +178,7 @@ type handlerOptions struct {
 	httpLogLevel      *base.LogLevel // if set, log HTTP requests to this handler at this level, instead of the usual info level
 }
 
-func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
+func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
 	h := &handler{
 		server:            server,
 		privs:             privs,
@@ -189,6 +191,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		allowNilDBContext: options.allowNilDBContext,
 		authScopeFunc:     options.authScopeFunc,
 		httpLogLevel:      options.httpLogLevel,
+		serverType:        serverType,
 	}
 
 	// initialize h.rqCtx
@@ -200,20 +203,33 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 // ctx returns the request-scoped context for logging/cancellation.
 func (h *handler) ctx() context.Context {
 	if h.rqCtx == nil {
-		h.rqCtx = base.CorrelationIDLogCtx(h.rq.Context(), h.formatSerialNumber())
+		serverAddr, err := h.getServerAddr()
+		if err != nil {
+			base.AssertfCtx(h.rq.Context(), "Error getting server address: %v", err)
+		}
+		ctx := base.RequestLogCtx(h.rq.Context(), base.RequestData{
+			CorrelationID:     h.formatSerialNumber(),
+			RequestHost:       serverAddr,
+			RequestRemoteAddr: h.rq.RemoteAddr,
+		})
+		h.rqCtx = ctx
 	}
 	return h.rqCtx
 }
 
-func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbConsoleLogConfig) {
+func (h *handler) getServerAddr() (string, error) {
+	return h.server.getServerAddr(h.serverType)
+}
+
+func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbLogConfig) {
 	if dbName != "" {
 		h.rqCtx = base.DatabaseLogCtx(h.ctx(), dbName, logConfig)
 	}
 }
 
-func (h *handler) addCollectionLogContext(collectionName string) {
-	if collectionName != "" {
-		h.rqCtx = base.CollectionLogCtx(h.ctx(), collectionName)
+func (h *handler) addCollectionLogContext(scopeName, collectionName string) {
+	if scopeName != "" && collectionName != "" {
+		h.rqCtx = base.CollectionLogCtx(h.ctx(), scopeName, collectionName)
 	}
 }
 
@@ -259,21 +275,38 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	}
 
 	err := h.validateAndWriteHeaders(method, accessPermissions, responsePermissions)
-
 	if err != nil {
 		return err
 	}
+
 	return method(h) // Call the actual handler code
 }
 
 // validateAndWriteHeaders sets up handler.db and validates the permission of the user and returns an error if there is not permission.
-func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
+func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) (err error) {
 	var isRequestLogged bool
 	defer func() {
 		if !isRequestLogged {
 			h.logRequestLine()
 		}
 		h.logRESTCount()
+
+		// Perform request logging unless it's a silent endpoint
+		if h.httpLogLevel == nil {
+			auditFields := base.AuditFields{
+				base.AuditFieldHTTPMethod: h.rq.Method,
+				base.AuditFieldHTTPPath:   h.rq.URL.Path,
+				base.AuditFieldHTTPStatus: h.status,
+			}
+			switch h.serverType {
+			case publicServer:
+				base.Audit(h.ctx(), base.AuditIDPublicHTTPAPIRequest, auditFields)
+			case adminServer:
+				base.Audit(h.ctx(), base.AuditIDAdminHTTPAPIRequest, auditFields)
+			case metricsServer:
+				base.Audit(h.ctx(), base.AuditIDMetricsHTTPAPIRequest, auditFields)
+			}
+		}
 	}()
 
 	defer func() {
@@ -288,6 +321,32 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}()
+
+	if h.server.Config.Unsupported.AuditInfoProvider != nil && h.server.Config.Unsupported.AuditInfoProvider.RequestInfoHeaderName != nil {
+		auditLoggingFields := h.rq.Header.Get(*h.server.Config.Unsupported.AuditInfoProvider.RequestInfoHeaderName)
+		if auditLoggingFields != "" {
+			var fields base.AuditFields
+			err := base.JSONUnmarshal([]byte(auditLoggingFields), &fields)
+			if err != nil {
+				base.WarnfCtx(h.ctx(), "Error unmarshalling audit logging fields: %v", err)
+			} else {
+				h.rqCtx = base.AuditLogCtx(h.ctx(), fields)
+			}
+		}
+	}
+
+	if h.server.Config.Unsupported.EffectiveUserHeaderName != nil {
+		effectiveUserFields := h.rq.Header.Get(*h.server.Config.Unsupported.EffectiveUserHeaderName)
+		if effectiveUserFields != "" {
+			var fields base.EffectiveUserPair
+			err := base.JSONUnmarshal([]byte(effectiveUserFields), &fields)
+			if err != nil {
+				base.WarnfCtx(h.ctx(), "Error unmarshalling effective user header fields: %v", err)
+			} else {
+				h.rqCtx = base.EffectiveUserIDLogCtx(h.ctx(), fields.Domain, fields.UserID)
+			}
+		}
+	}
 
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
@@ -316,19 +375,32 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	// user credentials
 	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.Config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.Config.API.MetricsInterfaceAuthentication)
 
+	// If admin/metrics endpoint but auth not enabled, set admin_noauth log ctx
+	if !shouldCheckAdminAuth && (h.serverType == adminServer || h.serverType == metricsServer) {
+		h.rqCtx = base.UserLogCtx(h.ctx(), base.UserSyncGatewayAdmin, base.UserDomainSyncGatewayAdmin, nil)
+	}
+
 	keyspaceDb := h.PathVar("db")
 	var keyspaceScope, keyspaceCollection *string
 
 	// If there is a "keyspace" path variable in the route, parse the keyspace:
 	ks := h.PathVar("keyspace")
+	explicitCollectionLogging := false
 	if ks != "" {
 		var err error
 		keyspaceDb, keyspaceScope, keyspaceCollection, err = ParseKeyspace(ks)
 		if err != nil {
 			return err
 		}
+		// If the collection is known, add it to the context before getting the db. If we do not know it, or don't know scope, we'll add this information later.
 		if keyspaceCollection != nil {
-			h.addCollectionLogContext(*keyspaceCollection)
+			explicitCollectionLogging = true
+			// /db.collectionName/foo is valid since Sync Gateway only has one scope
+			scope := ""
+			if keyspaceScope != nil {
+				scope = *keyspaceScope
+			}
+			h.addCollectionLogContext(scope, *keyspaceCollection)
 		}
 	}
 
@@ -380,7 +452,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// If this call is in the context of a DB make sure the DB is in a valid state
 	if dbContext != nil {
-		h.addDatabaseLogContext(keyspaceDb, dbContext.Options.LoggingConfig.Console)
+		h.addDatabaseLogContext(keyspaceDb, dbContext.Options.LoggingConfig)
 		if !h.runOffline {
 			// get a read lock on the dbContext
 			// When the lock is returned we know that the db state will not be changed by
@@ -408,7 +480,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	// Authenticate, if not on admin port:
 	if h.privs != adminPrivs {
 		var err error
-		if err = h.checkAuth(dbContext); err != nil {
+		if err = h.checkPublicAuth(dbContext); err != nil {
 			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to call GetBodyBytesCount to read
 			// the body to populate the bytes count on the CountedRequestReader struct
 			bytesCount := h.requestBody.GetBodyBytesCount()
@@ -428,12 +500,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	}
 
 	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
-	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
+	// Note: checkPublicAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
 	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
 	if h.user != nil && h.user.JWTIssuer() != "" {
 		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
 		if updates != nil {
-			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
+			_, _, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
 			if err != nil {
 				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
 			}
@@ -444,6 +516,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}
+
 	if shouldCheckAdminAuth {
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
@@ -457,6 +530,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			if dbContext == nil || dbContext.Options.SendWWWAuthenticateHeader == nil || *dbContext.Options.SendWWWAuthenticateHeader {
 				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 			}
+			base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticationFailed, base.AuditFields{base.AuditFieldUserName: username})
 			return ErrLoginRequired
 		}
 
@@ -497,14 +571,23 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		if statusCode != http.StatusOK {
 			base.InfofCtx(h.ctx(), base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
 			if statusCode == http.StatusUnauthorized {
+				base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticationFailed, base.AuditFields{base.AuditFieldUserName: username})
 				return ErrInvalidLogin
 			}
+			base.Audit(h.ctx(), base.AuditIDAdminUserAuthorizationFailed, base.AuditFields{base.AuditFieldUserName: username})
 			return base.HTTPErrorf(statusCode, "")
 		}
+		// even though `checkAdminAuth` _can_ issue whoami to find user's roles, it doesn't always...
+		// to reduce code complexity, we'll potentially be making this whoami request twice if we need it for audit filtering
+		auditRoleNames := getCBUserRolesForAudit(dbContext, authScope, h.ctx(), httpClient, managementEndpoints, username, password)
 
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
-
+		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer, auditRoleNames)
+		// query auditRoleNames above even if this is a silent request can need "real_userid" on a ctx. Example: /_expvar should not log AuditIDAdminUserAuthenticated but it should log AuditIDSyncGatewayStats
+		if !h.isSilentRequest() {
+			base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticated, base.AuditFields{})
+		}
 		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
 		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
@@ -555,6 +638,17 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			keyspaceScope = base.StringPtr(base.DefaultScope)
 			keyspaceCollection = base.StringPtr(base.DefaultCollection)
 		}
+		// explicitCollectionLogging is true if the collection was explicitly set in the keyspace string. When it is used, the log context will add a col:collection in log lines. If it is implicit, in the case of /db/doc, col: is omitted from the log information, but retained for audit logging purposes.
+		if explicitCollectionLogging {
+			// matches the following:
+			//  - /db.scopeName.collectionName/doc
+			//  - /db.collectionName/doc
+			//  - /db._default/doc
+			//  - /db._default._default/doc
+			h.addCollectionLogContext(*keyspaceScope, *keyspaceCollection)
+		} else {
+			h.rqCtx = base.ImplicitDefaultCollectionLogCtx(h.ctx())
+		}
 	}
 
 	h.logRequestLine()
@@ -580,6 +674,27 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	return nil
 }
 
+func getCBUserRolesForAudit(db *db.DatabaseContext, authScope string, ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string) []string {
+	if !needRolesForAudit(db, base.UserDomainCBServer) {
+		return nil
+	}
+
+	whoAmIResponse, whoAmIStatus, whoAmIErr := cbRBACWhoAmI(ctx, httpClient, managementEndpoints, username, password)
+	if whoAmIErr != nil || whoAmIStatus != http.StatusOK {
+		base.WarnfCtx(ctx, "An error occurred whilst fetching the user's roles for audit filtering - will not filter: %v", whoAmIErr)
+		return nil
+	}
+
+	var auditRoleNames []string
+	for _, role := range whoAmIResponse.Roles {
+		// only filter roles applied to this bucket or cluster-scope
+		if role.BucketName == "" || role.BucketName == authScope {
+			auditRoleNames = append(auditRoleNames, role.RoleName)
+		}
+	}
+	return auditRoleNames
+}
+
 // removeCorruptConfigIfExists will remove the config from the bucket and remove it from the map if it exists on the invalid database config map
 func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, configGroupID, dbName string) error {
 	_, ok := h.server.invalidDatabaseConfigTracking.exists(dbName)
@@ -589,7 +704,7 @@ func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, confi
 	}
 	// remove the bad config from the bucket
 	err := h.server.BootstrapContext.DeleteConfig(ctx, bucket, configGroupID, dbName)
-	if err != nil {
+	if err != nil && !base.IsDocNotFoundError(err) {
 		return err
 	}
 	// delete the database name form the invalid database map on server context
@@ -598,9 +713,20 @@ func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, confi
 	return nil
 }
 
+// isSilentRequest returns true if the handler represents a request we should suppress http logging on.
+func (h *handler) isSilentRequest() bool {
+	return h.httpLogLevel != nil && *h.httpLogLevel == base.LevelDebug
+}
+
 func (h *handler) logRequestLine() {
+
+	logLevel := base.LevelInfo
+	if h.httpLogLevel != nil {
+		logLevel = *h.httpLogLevel
+	}
+
 	// Check Log Level first, as SanitizeRequestURL is expensive to evaluate.
-	if !base.LogInfoEnabled(h.ctx(), base.KeyHTTP) {
+	if !base.LogLevelEnabled(h.ctx(), logLevel, base.KeyHTTP) {
 		return
 	}
 
@@ -611,11 +737,6 @@ func (h *handler) logRequestLine() {
 
 	queryValues := h.getQueryValues()
 
-	logLevel := base.LevelInfo
-	if h.httpLogLevel != nil {
-		logLevel = *h.httpLogLevel
-	}
-
 	base.LogLevelCtx(h.ctx(), logLevel, base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
 }
 
@@ -624,7 +745,7 @@ func (h *handler) shouldUpdateBytesTransferredStats() bool {
 	if h.db == nil {
 		return false
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
+	if h.serverType != publicServer {
 		return false
 	}
 	if h.isBlipSync() {
@@ -678,7 +799,7 @@ func (h *handler) logRESTCount() {
 	if h.db == nil {
 		return
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
+	if h.serverType != publicServer {
 		return
 	}
 	if h.isBlipSync() {
@@ -715,15 +836,60 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
-// checkAuth verifies that the current request is authenticated for the given database.
+func needRolesForAudit(db *db.DatabaseContext, domain base.UserIDDomain) bool {
+	// early returns when auditing is disabled
+	if db == nil ||
+		db.Options.LoggingConfig == nil ||
+		db.Options.LoggingConfig.Audit == nil ||
+		!db.Options.LoggingConfig.Audit.Enabled {
+		return false
+	}
+
+	// if we have any matching domains then we need the given roles
+	// this loop should be ~free for len(0)
+	for principal := range db.Options.LoggingConfig.Audit.DisabledRoles {
+		if principal.Domain == string(domain) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// getSGUserRolesForAudit returns a list of role names for the given user, if audit role filtering is enabled.
+func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) []string {
+	if user == nil {
+		return nil
+	}
+
+	if !needRolesForAudit(db, base.UserDomainSyncGateway) {
+		return nil
+	}
+
+	roles := user.GetRoles()
+	if len(roles) == 0 {
+		return nil
+	}
+
+	roleNames := make([]string, 0, len(roles))
+	for _, role := range roles {
+		roleNames = append(roleNames, role.Name())
+	}
+
+	return roleNames
+}
+
+// checkPublicAuth verifies that the current request is authenticated for the given database.
 //
-// NOTE: checkAuth is not used for the admin interface.
-func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
+// NOTE: checkPublicAuth is not used for the admin interface.
+func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 
 	h.user = nil
 	if dbCtx == nil {
 		return nil
 	}
+
+	var auditFields base.AuditFields
 
 	// Record Auth stats
 	defer func(t time.Time) {
@@ -731,24 +897,40 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		dbCtx.DbStats.Security().TotalAuthTime.Add(delta)
 		if err != nil {
 			dbCtx.DbStats.Security().AuthFailedCount.Add(1)
+			if errors.Is(err, ErrInvalidLogin) {
+				base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticationFailed, auditFields)
+			}
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
-		}
 
+			username := ""
+			if h.isGuest() {
+				username = base.GuestUsername
+			} else if h.user != nil {
+				username = h.user.Name()
+			}
+			roleNames := getSGUserRolesForAudit(dbCtx, h.user)
+			h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainSyncGateway, roleNames)
+			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
+		}
 	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
+			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "bearer"}
 			var updates auth.PrincipalConfig
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
 				return ErrInvalidLogin
 			}
+			if issuer := h.user.JWTIssuer(); issuer != "" {
+				auditFields["oidc_issuer"] = issuer
+			}
 			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
 				updates = updates.Merge(*changes)
 			}
-			_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+			_, _, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
 			if err != nil {
 				return fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
 			}
@@ -781,12 +963,13 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	// Check basic auth first
 	if !dbCtx.Options.DisablePasswordAuthentication {
 		if userName, password := h.getBasicAuth(); userName != "" {
+			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "basic"}
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 			if err != nil {
 				return err
 			}
 			if h.user == nil {
-				base.InfofCtx(h.ctx(), base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
+				auditFields["username"] = userName
 				if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 					h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 				}
@@ -797,6 +980,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// Check cookie
+	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "cookie"}
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
 	if err != nil && h.privs != publicPrivs {
 		return err
@@ -805,6 +989,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// No auth given -- check guest access
+	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "guest"}
 	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
 		return err
 	}
@@ -872,6 +1057,7 @@ func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
 	}
 
 	if statusCode == http.StatusUnauthorized {
+		base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticationFailed, base.AuditFields{base.AuditFieldUserName: username})
 		return false, nil
 	}
 
@@ -1063,23 +1249,23 @@ func (h *handler) readJSONInto(into interface{}) error {
 
 // readSanitizeJSONInto reads and sanitizes a JSON request body and returns DatabaseConfig.
 // Expands environment variables (if any) referenced in the config.
-func (h *handler) readSanitizeJSON(val interface{}) error {
+func (h *handler) readSanitizeJSON(val interface{}) ([]byte, error) {
 	// Performs the Content-Type validation and Content-Encoding check.
 	input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Read body bytes to sanitize the content and substitute environment variables.
 	defer func() { _ = input.Close() }()
-	content, err := io.ReadAll(input)
+	raw, err := io.ReadAll(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	content, err = sanitiseConfig(h.ctx(), content, h.server.Config.Unsupported.AllowDbConfigEnvVars)
+	content, err := sanitiseConfig(h.ctx(), raw, h.server.Config.Unsupported.AllowDbConfigEnvVars)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Decode the body bytes into target structure.
@@ -1094,7 +1280,7 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
 		}
 	}
-	return err
+	return raw, err
 }
 
 // readJavascript reads a javascript function from a request body.
@@ -1114,17 +1300,17 @@ func (h *handler) readJavascript() (string, error) {
 	return string(jsBytes), nil
 }
 
-// readSanitizeJSONInto reads and sanitizes a JSON request body and returns DbConfig.
+// readSanitizeJSONInto reads and sanitizes a JSON request body and returns raw bytes and DbConfig.
 // Expands environment variables (if any) referenced in the config.
-func (h *handler) readSanitizeDbConfigJSON() (*DbConfig, error) {
+func (h *handler) readSanitizeDbConfigJSON() ([]byte, *DbConfig, error) {
 	var config DbConfig
-	err := h.readSanitizeJSON(&config)
+	rawBytes, err := h.readSanitizeJSON(&config)
 	if err != nil {
 		if errors.Cause(base.WrapJSONUnknownFieldErr(err)) == base.ErrUnknownField {
 			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
 		}
 	}
-	return &config, err
+	return rawBytes, &config, err
 }
 
 // Reads & parses the request body, handling either JSON or multipart.
@@ -1221,7 +1407,7 @@ func (h *handler) taggedEffectiveUserName() string {
 		return base.UD(name).Redact()
 	}
 
-	return "GUEST"
+	return base.GuestUsername
 }
 
 // formattedEffectiveUserName formats an effective name for appending to logs.
@@ -1565,7 +1751,7 @@ func (h *handler) formatSerialNumber() string {
 // Admin requests can always see this, regardless of the HideProductVersion setting.
 func (h *handler) shouldShowProductVersion() bool {
 	hideProductVersion := base.BoolDefault(h.server.Config.API.HideProductVersion, false)
-	return h.privs == adminPrivs || !hideProductVersion
+	return h.serverType == adminServer || !hideProductVersion
 }
 
 func requiresWritePermission(accessPermissions []Permission) bool {

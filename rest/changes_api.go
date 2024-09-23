@@ -287,7 +287,7 @@ func (h *handler) handleChanges() error {
 			if len(userChannels) == 0 {
 				return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
 			}
-		} else if filter == "_doc_ids" {
+		} else if filter == base.DocIDsFilter {
 			if feed != "normal" {
 				return base.HTTPErrorf(http.StatusBadRequest, "Filter '_doc_ids' is only valid for feed=normal replications")
 			}
@@ -323,11 +323,12 @@ func (h *handler) handleChanges() error {
 
 	forceClose := false
 
-	var err error
+	h.auditChangesFeedStart(options, feed, filter, docIdsArray, channelsArray)
 
+	var err error
 	switch feed {
 	case feedTypeNormal:
-		if filter == "_doc_ids" {
+		if filter == base.DocIDsFilter {
 			err, forceClose = h.sendSimpleChanges(userChannels, options, docIdsArray)
 		} else {
 			err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
@@ -419,6 +420,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					}
 					_ = encoder.Encode(entry)
 					lastSeq = entry.Seq
+					entry.AuditReadEvent(h.ctx())
 				}
 
 			case <-heartbeat:
@@ -445,6 +447,10 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		}
 	}
 
+	// set forceClose here if the close was initiated by a ChangesEntry.Err message
+	if h.rq.Context().Err() != nil {
+		forceClose = true
+	}
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
 	_, _ = h.response.Write([]byte(s))
 	logStatus(http.StatusOK, message)
@@ -458,7 +464,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := db.GenerateChanges(h.ctx(), h.rq.Context(), h.collection, inChannels, options, nil, send)
+	err, forceClose := db.GenerateChanges(h.ctx(), h.collection, inChannels, options, nil, send)
 	if sendErr, ok := err.(*db.ChangesSendErr); ok {
 		h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", sendErr))
 		return nil, forceClose // error is probably because the client closed the connection
@@ -486,6 +492,8 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 				if _, err = h.response.Write([]byte("\n")); err != nil {
 					break
 				}
+
+				change.AuditReadEvent(h.ctx())
 			}
 		} else {
 			_, err = h.response.Write([]byte("\n"))
@@ -558,6 +566,12 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				conn.PayloadType = websocket.TextFrame
 			}
 			_, err := conn.Write(data)
+			if err != nil {
+				return err
+			}
+			for _, change := range changes {
+				change.AuditReadEvent(h.ctx())
+			}
 			return err
 		})
 
@@ -646,6 +660,26 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		}
 	}
 	return
+}
+
+func (h *handler) auditChangesFeedStart(options db.ChangesOptions, feedType string, filter string, docIDs, channels []string) {
+	auditFields := base.AuditFields{
+		base.AuditFieldSince:    options.Since.String(),
+		base.AuditFieldFeedType: feedType,
+	}
+	if filter != "" {
+		auditFields[base.AuditFieldFilter] = filter
+		if len(docIDs) > 0 {
+			auditFields[base.AuditFieldDocIDs] = docIDs
+		}
+		if len(channels) > 0 {
+			auditFields[base.AuditFieldChannels] = channels
+		}
+	}
+	if options.IncludeDocs {
+		auditFields[base.AuditFieldIncludeDocs] = true
+	}
+	base.Audit(h.ctx(), base.AuditIDChangesFeedStarted, auditFields)
 }
 
 // Helper function to read a complete message from a WebSocket

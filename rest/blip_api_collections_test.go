@@ -42,9 +42,9 @@ func TestBlipGetCollections(t *testing.T) {
 
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
-		collection := btc.rt.GetSingleTestDatabaseCollection()
+		collection, _ := btc.rt.GetSingleTestDatabaseCollection()
 		scopeAndCollection := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
-		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		revID, _, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 		require.NoError(t, err)
 		checkpoint1RevID := "0-1"
 		require.Equal(t, checkpoint1RevID, revID)
@@ -163,8 +163,8 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 		defer btc.Close()
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
-		collection := btc.rt.GetSingleTestDatabaseCollection()
-		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		collection, _ := btc.rt.GetSingleTestDatabaseCollection()
+		revID, _, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 		require.NoError(t, err)
 		checkpoint1RevID := "0-1"
 		require.Equal(t, checkpoint1RevID, revID)
@@ -196,8 +196,8 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
-		collection := btc.rt.GetSingleTestDatabaseCollection()
-		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		collection, _ := btc.rt.GetSingleTestDatabaseCollection()
+		revID, _, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 		require.NoError(t, err)
 		checkpoint1RevID := "0-1"
 		require.Equal(t, checkpoint1RevID, revID)
@@ -259,14 +259,11 @@ func TestCollectionsReplication(t *testing.T) {
 		defer btc.Close()
 
 		version := btc.rt.PutDoc(docID, "{}")
-		require.NoError(t, btc.rt.WaitForPendingChanges())
 
-		btcCollection := btcRunner.SingleCollection(btc.id)
+		btc.rt.WaitForPendingChanges()
+		btcRunner.StartOneshotPull(btc.id)
 
-		err := btcCollection.StartOneshotPull()
-		require.NoError(t, err)
-
-		btcCollection.WaitForVersion(docID, version)
+		btcRunner.WaitForVersion(btc.id, docID, version)
 	})
 }
 
@@ -292,11 +289,11 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 			RequireStatus(t, resp, http.StatusCreated)
 			versions = append(versions, DocVersionFromPutResponse(t, resp))
 		}
-		require.NoError(t, btc.rt.WaitForPendingChanges())
+		btc.rt.WaitForPendingChanges()
 
 		// start all the clients first
 		for _, collectionClient := range btc.collectionClients {
-			require.NoError(t, collectionClient.StartPull())
+			collectionClient.StartOneshotPull()
 		}
 
 		for i, collectionClient := range btc.collectionClients {
@@ -346,11 +343,11 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 				collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
 			}
 		}
-		require.NoError(t, btc.rt.WaitForPendingChanges())
+		btc.rt.WaitForPendingChanges()
 
 		// start all the clients first
 		for _, collectionClient := range btc.collectionClients {
-			require.NoError(t, collectionClient.StartOneshotPull())
+			collectionClient.StartOneshotPull()
 		}
 
 		for _, collectionClient := range btc.collectionClients {

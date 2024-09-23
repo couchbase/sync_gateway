@@ -22,6 +22,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -617,6 +618,21 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 	return
 }
 
+// FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
+func (db *DatabaseContext) FlushRevisionCacheForTest() {
+	backingStores := make(map[uint32]RevisionCacheBackingStore, len(db.CollectionByID))
+	for i, v := range db.CollectionByID {
+		backingStores[i] = v
+	}
+
+	db.revisionCache = NewRevisionCache(
+		db.Options.RevisionCacheOptions,
+		backingStores,
+		db.DbStats.Cache(),
+	)
+
+}
+
 // TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
 func TestBucketPoolWithIndexes(ctx context.Context, m *testing.M, tbpOptions base.TestBucketPoolOptions) {
 	base.TestBucketPoolMain(ctx, m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, tbpOptions)
@@ -687,14 +703,19 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	err = dbCtx.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
 
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
+}
+
+// addDatabaseAndTestUserContext adds a fake user to the context
+func addDatabaseAndTestUserContext(ctx context.Context, db *Database) context.Context {
+	return db.AddDatabaseLogContext(base.UserLogCtx(ctx, "gotest", base.UserDomainBuiltin, nil))
 }
 
 // GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_DEFAULT_COLLECTION and whether the backing store supports collections.
@@ -740,11 +761,12 @@ func GetScopesOptionsDefaultCollectionOnly(_ testing.TB) ScopesOptions {
 	}
 }
 
-func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *DatabaseCollectionWithUser {
-	return &DatabaseCollectionWithUser{
+func GetSingleDatabaseCollectionWithUser(ctx context.Context, tb testing.TB, database *Database) (*DatabaseCollectionWithUser, context.Context) {
+	c := &DatabaseCollectionWithUser{
 		DatabaseCollection: GetSingleDatabaseCollection(tb, database.DatabaseContext),
 		user:               database.user,
 	}
+	return c, c.AddCollectionContext(ctx)
 }
 
 func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *DatabaseCollection {
@@ -777,5 +799,66 @@ func (apr *ActivePullReplicator) GetBlipSender() *blip.Sender {
 func DefaultMutateInOpts() *sgbucket.MutateInOptions {
 	return &sgbucket.MutateInOptions{
 		MacroExpansion: macroExpandSpec(base.SyncXattrName),
+	}
+}
+
+func RawDocWithInlineSyncData(_ testing.TB) string {
+	return `
+{
+  "_sync": {
+    "rev": "1-ca9ad22802b66f662ff171f226211d5c",
+    "sequence": 1,
+    "recent_sequences": [1],
+    "history": {
+      "revs": ["1-ca9ad22802b66f662ff171f226211d5c"],
+      "parents": [-1],
+      "channels": [null]
+    },
+    "cas": "",
+    "time_saved": "2017-11-29T12:46:13.456631-08:00"
+  }
+}
+`
+}
+
+// DisableSequenceWaitOnDbStart disables the release sequence wait on db start.  Appropriate for tests
+// that make changes to database config after first startup, and don't assert/require on sequence correctness
+func DisableSequenceWaitOnDbRestart(tb testing.TB) {
+	//
+	BypassReleasedSequenceWait.Store(true)
+	tb.Cleanup(func() {
+		BypassReleasedSequenceWait.Store(false)
+	})
+}
+
+// WriteDirect will write a document named doc-{sequence} with a given set of channels. This is used to simulate out of order sequence writes by bypassing typical Sync Gateway CRUD functions.
+func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []string, sequence uint64) {
+	key := fmt.Sprintf("doc-%v", sequence)
+
+	rev := "1-a"
+	chanMap := make(map[string]*channels.ChannelRemoval, 10)
+
+	for _, channel := range channelArray {
+		chanMap[channel] = nil
+	}
+
+	syncData := &SyncData{
+		CurrentRev: rev,
+		Sequence:   sequence,
+		Channels:   chanMap,
+		TimeSaved:  time.Now(),
+	}
+	body := fmt.Sprintf(`{"key": "%s"}`, key)
+	if base.TestUseXattrs() {
+
+		opts := &sgbucket.MutateInOptions{
+			MacroExpansion: macroExpandSpec(base.SyncXattrName),
+		}
+		ctx := base.TestCtx(t)
+		_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
+		require.NoError(t, err)
+	} else {
+		_, err := collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+		require.NoError(t, err)
 	}
 }

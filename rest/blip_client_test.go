@@ -567,7 +567,7 @@ func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (revID
 
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) (*BlipTesterReplicator, error) {
 	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
-		connectingPassword:            "test",
+		connectingPassword:            RestTesterDefaultUserPassword,
 		connectingUsername:            btc.Username,
 		connectingUserChannelGrants:   btc.Channels,
 		blipProtocols:                 btc.SupportedBLIPProtocols,
@@ -751,35 +751,45 @@ func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionNam
 }
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
-func (btcc *BlipTesterCollectionClient) StartPull() (err error) {
-	return btcc.StartPullSince("true", "0", "false", "", "")
+func (btcc *BlipTesterCollectionClient) StartPull() {
+	btcc.StartPullSince(BlipTesterPullOptions{Continuous: true, Since: "0"})
 }
 
-func (btcc *BlipTesterCollectionClient) StartOneshotPull() (err error) {
-	return btcc.StartPullSince("false", "0", "false", "", "")
+func (btcc *BlipTesterCollectionClient) StartOneshotPull() {
+	btcc.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0"})
 }
 
-func (btcc *BlipTesterCollectionClient) StartOneshotPullFiltered(channels string) (err error) {
-	return btcc.StartPullSince("false", "0", "false", channels, "")
+func (btcc *BlipTesterCollectionClient) StartOneshotPullFiltered(channels string) {
+	btcc.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: channels})
 }
 
-func (btcc *BlipTesterCollectionClient) StartOneshotPullRequestPlus() (err error) {
-	return btcc.StartPullSince("false", "0", "false", "", "true")
+func (btcc *BlipTesterCollectionClient) StartOneshotPullRequestPlus() {
+	btcc.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", RequestPlus: true})
+}
+
+// BlipTesterPullOptions represents options passed to StartPull (SubChanges) functions
+type BlipTesterPullOptions struct {
+	ActiveOnly  bool
+	Channels    string
+	Continuous  bool
+	DocIDs      []string
+	RequestPlus bool
+	Since       string
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
-func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeOnly, channels, requestPlus string) (err error) {
+func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOptions) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile(db.MessageSubChanges)
-	subChangesRequest.Properties[db.SubChangesContinuous] = continuous
-	subChangesRequest.Properties[db.SubChangesSince] = since
-	subChangesRequest.Properties[db.SubChangesActiveOnly] = activeOnly
-	if channels != "" {
+	subChangesRequest.Properties[db.SubChangesContinuous] = fmt.Sprintf("%t", options.Continuous)
+	subChangesRequest.Properties[db.SubChangesSince] = options.Since
+	subChangesRequest.Properties[db.SubChangesActiveOnly] = fmt.Sprintf("%t", options.ActiveOnly)
+	if options.Channels != "" {
 		subChangesRequest.Properties[db.SubChangesFilter] = base.ByChannelFilter
-		subChangesRequest.Properties[db.SubChangesChannels] = channels
+		subChangesRequest.Properties[db.SubChangesChannels] = options.Channels
 	}
-	if requestPlus != "" {
-		subChangesRequest.Properties[db.SubChangesRequestPlus] = requestPlus
+	if options.RequestPlus {
+		subChangesRequest.Properties[db.SubChangesRequestPlus] = "true"
 	}
 	subChangesRequest.SetNoReply(true)
 
@@ -791,11 +801,14 @@ func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeO
 		subChangesRequest.Properties[db.SubChangesSendReplacementRevs] = "true"
 	}
 
-	if err := btc.sendPullMsg(subChangesRequest); err != nil {
-		return err
+	if len(options.DocIDs) > 0 {
+		subChangesRequest.SetBody(base.MustJSONMarshal(btc.TB(),
+			db.SubChangesBody{
+				DocIDs: options.DocIDs,
+			},
+		))
 	}
-
-	return nil
+	require.NoError(btc.TB(), btc.sendPullMsg(subChangesRequest))
 }
 
 func (btc *BlipTesterCollectionClient) UnsubPullChanges() (response []byte, err error) {
@@ -1163,8 +1176,8 @@ func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID, revID string) (m
 	return nil, false
 }
 
-func (btcRunner *BlipTestClientRunner) StartPull(clientID uint32) error {
-	return btcRunner.SingleCollection(clientID).StartPull()
+func (btcRunner *BlipTestClientRunner) StartPull(clientID uint32) {
+	btcRunner.SingleCollection(clientID).StartPull()
 }
 
 // WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found or fails test if document is not found after 10 seconds.
@@ -1182,28 +1195,24 @@ func (btcRunner *BlipTestClientRunner) WaitForBlipRevMessage(clientID uint32, do
 	return btcRunner.SingleCollection(clientID).WaitForBlipRevMessage(docID, docVersion)
 }
 
-func (btcRunner *BlipTestClientRunner) StartOneshotPull(clientID uint32) error {
-	return btcRunner.SingleCollection(clientID).StartOneshotPull()
+func (btcRunner *BlipTestClientRunner) StartOneshotPull(clientID uint32) {
+	btcRunner.SingleCollection(clientID).StartOneshotPull()
 }
 
-func (btcRunner *BlipTestClientRunner) StartOneshotPullFiltered(clientID uint32, channels string) error {
-	return btcRunner.SingleCollection(clientID).StartOneshotPullFiltered(channels)
+func (btcRunner *BlipTestClientRunner) StartOneshotPullFiltered(clientID uint32, channels string) {
+	btcRunner.SingleCollection(clientID).StartOneshotPullFiltered(channels)
 }
 
-func (btcRunner *BlipTestClientRunner) StartOneshotPullRequestPlus(clientID uint32) error {
-	return btcRunner.SingleCollection(clientID).StartOneshotPullRequestPlus()
+func (btcRunner *BlipTestClientRunner) StartOneshotPullRequestPlus(clientID uint32) {
+	btcRunner.SingleCollection(clientID).StartOneshotPullRequestPlus()
 }
 
 func (btcRunner *BlipTestClientRunner) PushRev(clientID uint32, docID string, version DocVersion, body []byte) (DocVersion, error) {
 	return btcRunner.SingleCollection(clientID).PushRev(docID, version, body)
 }
 
-func (btcRunner *BlipTestClientRunner) StartPullSince(clientID uint32, continuous, since, activeOnly string) error {
-	return btcRunner.SingleCollection(clientID).StartPullSince(continuous, since, activeOnly, "", "")
-}
-
-func (btcRunner *BlipTestClientRunner) StartFilteredPullSince(clientID uint32, continuous, since, activeOnly, channels string) error {
-	return btcRunner.SingleCollection(clientID).StartPullSince(continuous, since, activeOnly, channels, "")
+func (btcRunner *BlipTestClientRunner) StartPullSince(clientID uint32, options BlipTesterPullOptions) {
+	btcRunner.SingleCollection(clientID).StartPullSince(options)
 }
 
 func (btcRunner *BlipTestClientRunner) GetVersion(clientID uint32, docID string, docVersion DocVersion) ([]byte, bool) {

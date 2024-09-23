@@ -143,7 +143,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 		base.WarnfCtx(ctx, "Received import event for unrecognised collection 0x%x", event.CollectionID)
 		return true
 	}
-	ctx = base.CollectionLogCtx(ctx, collection.Name)
+	ctx = collection.AddCollectionContext(ctx)
 
 	// Ignore internal documents
 	if strings.HasPrefix(docID, base.SyncDocPrefix) {

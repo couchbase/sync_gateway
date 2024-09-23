@@ -71,6 +71,10 @@ var (
 	DefaultQueryPaginationLimit = 5000
 )
 
+var (
+	BypassReleasedSequenceWait atomic.Bool // Used to optimize single-node testing, see DisableSequenceWaitOnDbRestart
+)
+
 const (
 	CompactIntervalMinDays = float32(0.04) // ~1 Hour in days
 	CompactIntervalMaxDays = float32(60)   // 60 Days in days
@@ -95,6 +99,7 @@ type DatabaseContext struct {
 	StartTime                   time.Time          // Timestamp when context was instantiated
 	RevsLimit                   uint32             // Max depth a document's revision tree can grow to
 	autoImport                  bool               // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache               RevisionCache      // Cache of recently-accessed doc revisions
 	channelCache                ChannelCache
 	changeCache                 changeCache            // Cache of recently-access channels
 	EventMgr                    *EventManager          // Manages notification events
@@ -129,6 +134,7 @@ type DatabaseContext struct {
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	CORS                         *auth.CORSConfig               // CORS configuration
+	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 }
 
 type Scope struct {
@@ -143,7 +149,6 @@ type DatabaseContextOptions struct {
 	UnsupportedOptions            *UnsupportedOptions
 	OIDCOptions                   *auth.OIDCOptions
 	LocalJWTConfig                auth.LocalJWTConfig
-	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
 	EnableXattr                   bool             // Use xattr for _sync
 	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
@@ -172,17 +177,12 @@ type DatabaseContextOptions struct {
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 	ConfigPrincipals              *ConfigPrincipals
-	PurgeInterval                 *time.Duration // Add a custom purge interval, as a testing seam. If nil, this parameter is filled in by Couchbase Server, with a fallback to a default value SG has.
-	LoggingConfig                 DbLogConfig    // Per-database log configuration
-	MaxConcurrentChangesBatches   *int           // Maximum number of changes batches to process concurrently per replication
-	MaxConcurrentRevs             *int           // Maximum number of revs to process concurrently per replication
-	NumIndexReplicas              uint           // Number of replicas for GSI indexes
-	ImportVersion                 uint64         // Version included in import DCP checkpoints, incremented when collections added to db
-}
-
-// DbLogConfig can be used to customise the logging for logs associated with this database.
-type DbLogConfig struct {
-	Console *base.DbConsoleLogConfig
+	PurgeInterval                 *time.Duration    // Add a custom purge interval, as a testing seam. If nil, this parameter is filled in by Couchbase Server, with a fallback to a default value SG has.
+	LoggingConfig                 *base.DbLogConfig // Per-database log configuration
+	MaxConcurrentChangesBatches   *int              // Maximum number of changes batches to process concurrently per replication
+	MaxConcurrentRevs             *int              // Maximum number of revs to process concurrently per replication
+	NumIndexReplicas              uint              // Number of replicas for GSI indexes
+	ImportVersion                 uint64            // Version included in import DCP checkpoints, incremented when collections added to db
 }
 
 type ConfigPrincipals struct {
@@ -353,10 +353,6 @@ func getServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
 	return uuid.(string), err
 }
 
-// Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
-// to come back online. A rest.ServerContext package cannot be passed since it would introduce a circular dependency
-type DBOnlineCallback func(dbContext *DatabaseContext)
-
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
 	cleanupFunctions := make([]func(), 0)
@@ -375,7 +371,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	// add db info to ctx before having a DatabaseContext (cannot call AddDatabaseLogContext),
 	// in order to pass it to RegisterImportPindexImpl
-	ctx = base.DatabaseLogCtx(ctx, dbName, options.LoggingConfig.Console)
+	ctx = base.DatabaseLogCtx(ctx, dbName, options.LoggingConfig)
 
 	if err := base.RequireNoBucketTTL(ctx, bucket); err != nil {
 		return nil, err
@@ -415,6 +411,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		ServerUUID:          serverUUID,
 		UserFunctionTimeout: defaultUserFunctionTimeout,
 	}
+
+	// Check if server version supports multi-xattr operations, required for mou handling
+	dbContext.EnableMou = bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
 
 	// Initialize metadata ID and keys
 	metaKeys := base.NewMetadataKeys(options.MetadataID)
@@ -481,8 +480,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 	dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
 	dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
+
 	// if any sync functions for any collection, we recommend running a resync
 	syncFunctionsChanged := false
+	// Create new backing store map to map from collection ID's to their associated rev cache backing stores for rev cache document loads
+	collectionIDToRevCacheBackingStore := make(map[uint32]RevisionCacheBackingStore)
 	for scopeName, scope := range options.Scopes {
 		dbContext.Scopes[scopeName] = Scope{
 			Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
@@ -492,7 +494,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			// intentional shadow - we want each collection to have its own context inside this loop body
 			ctx := ctx
 			if !base.IsDefaultCollection(scopeName, collName) {
-				ctx = base.CollectionLogCtx(ctx, collName)
+				ctx = base.CollectionLogCtx(ctx, scopeName, collName)
 			}
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
@@ -529,9 +531,17 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			collectionID := dbCollection.GetCollectionID()
 			dbContext.CollectionByID[collectionID] = dbCollection
 			collectionNameMap[collName] = struct{}{}
+			collectionIDToRevCacheBackingStore[collectionID] = dbCollection
 		}
 		dbContext.CollectionNames[scopeName] = collectionNameMap
 	}
+
+	// Init the rev cache
+	dbContext.revisionCache = NewRevisionCache(
+		dbContext.Options.RevisionCacheOptions,
+		collectionIDToRevCacheBackingStore,
+		dbContext.DbStats.Cache(),
+	)
 
 	if syncFunctionsChanged {
 		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
@@ -1451,8 +1461,8 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
-		// shadow ctx, sot that we can't misuse the parent's inside the loop
-		ctx := base.CollectionLogCtx(ctx, c.Name)
+		// shadow ctx, so that we can't misuse the parent's inside the loop
+		ctx := c.AddCollectionContext(ctx)
 
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName, c.Name)
@@ -1483,7 +1493,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 				resultCount++
 				base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 				// First, attempt to purge.
-				purgeErr := collection.Purge(ctx, tombstonesRow.Id)
+				purgeErr := collection.Purge(ctx, tombstonesRow.Id, false)
 				if purgeErr == nil {
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 				} else if base.IsDocNotFoundError(purgeErr) {
@@ -1667,21 +1677,9 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 	base.InfofCtx(ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
 	if docsChanged > 0 {
-		db.invalidateAllPrincipalsCache(ctx, endSeq)
+		db.invalidateAllPrincipals(ctx, endSeq)
 	}
 	return docsChanged, nil
-}
-
-// invalidate channel cache of all users/roles:
-func (c *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
-	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-	users, roles, _ := c.allPrincipalIDs(ctx)
-	for _, name := range users {
-		c.invalUserChannels(ctx, name, endSeq)
-	}
-	for _, name := range roles {
-		c.invalRoleChannels(ctx, name, endSeq)
-	}
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
@@ -1878,37 +1876,57 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			}
 		})
 	}
+	if err == nil {
+		base.Audit(ctx, base.AuditIDDocumentResync, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: updatedDoc.CurrentRev,
+		})
+	}
 	return updatedHighSeq, unusedSequences, err
 }
 
-func (c *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
-	authr := c.Authenticator(ctx)
+// invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections:
+func (dbCtx *DatabaseContext) invalidateAllPrincipals(ctx context.Context, collectionNames base.ScopeAndCollectionNames, endSeq uint64) {
+	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
+	users, roles, _ := dbCtx.AllPrincipalIDs(ctx)
+	for _, name := range users {
+		dbCtx.invalUserRolesAndChannels(ctx, name, collectionNames, endSeq)
+	}
+	for _, name := range roles {
+		dbCtx.invalRoleChannels(ctx, name, collectionNames, endSeq)
+	}
+}
+
+// invalUserChannels invalidates a user's computed channels for the specified collections
+func (dbCtx *DatabaseContext) invalUserChannels(ctx context.Context, username string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+	authr := dbCtx.Authenticator(ctx)
+	if err := authr.InvalidateChannels(username, true, collections, invalSeq); err != nil {
+		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
+	}
+}
+
+// invalRoleChannels invalidates a role's computed channels for the specified collections
+func (dbCtx *DatabaseContext) invalRoleChannels(ctx context.Context, rolename string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+	authr := dbCtx.Authenticator(ctx)
+	if err := authr.InvalidateChannels(rolename, false, collections, invalSeq); err != nil {
+		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
+	}
+}
+
+// invalUserRoles invalidates a user's computed roles
+func (dbCtx *DatabaseContext) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
+
+	authr := dbCtx.Authenticator(ctx)
 	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
-	authr := c.Authenticator(ctx)
-	if err := authr.InvalidateChannels(username, true, c.ScopeName, c.Name, invalSeq); err != nil {
-		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
-	}
-}
-
-func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
-	authr := c.Authenticator(ctx)
-	if err := authr.InvalidateChannels(rolename, false, c.ScopeName, c.Name, invalSeq); err != nil {
-		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
-	}
-}
-
-func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
-
-	principalName, isRole := channels.AccessNameToPrincipalName(name)
-	if isRole {
-		c.invalRoleChannels(ctx, principalName, invalSeq)
-	} else {
-		c.invalUserChannels(ctx, principalName, invalSeq)
+// invalUserRolesAndChannels invalidates the user's computed roles, and invalidates the computed channels for all specified collections
+func (dbCtx *DatabaseContext) invalUserRolesAndChannels(ctx context.Context, username string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+	authr := dbCtx.Authenticator(ctx)
+	if err := authr.InvalidateRolesAndChannels(username, collections, invalSeq); err != nil {
+		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
@@ -1959,7 +1977,7 @@ func (context *DatabaseContext) UseViews() bool {
 }
 
 func (context *DatabaseContext) UseMou() bool {
-	return context.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
+	return context.EnableMou
 }
 
 // UseQueryBasedResyncManager returns if query bases resync manager should be used for Resync operation
@@ -2110,10 +2128,22 @@ func CheckTimeout(ctx context.Context) error {
 // AddDatabaseLogContext adds database name to the parent context for logging
 func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context.Context {
 	if dbCtx != nil && dbCtx.Name != "" {
-		dbLogCtx := base.DatabaseLogCtx(ctx, dbCtx.Name, dbCtx.Options.LoggingConfig.Console)
+		dbLogCtx := base.DatabaseLogCtx(ctx, dbCtx.Name, dbCtx.Options.LoggingConfig)
 		return dbLogCtx
 	}
 	return ctx
+}
+
+// AddBucketUserLogContext adds bucket user to the parent context for logging. This is used to mark actions not caused by a user.
+func (dbCtx *DatabaseContext) AddBucketUserLogContext(ctx context.Context) context.Context {
+	spec := dbCtx.BucketSpec
+	// Server is empty in testing only
+	if spec.Server == "" || spec.IsWalrusBucket() {
+		return base.UserLogCtx(ctx, "rosmar_noauth", base.UserDomainBuiltin, nil)
+	}
+	username, _, _ := dbCtx.BucketSpec.Auth.GetCredentials()
+	return base.UserLogCtx(ctx, username, base.UserDomainBuiltin, nil)
+
 }
 
 // onlyDefaultCollection is true if the database is only configured with default collection.
@@ -2309,7 +2339,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
-	if initialSequence > 0 {
+	if initialSequence > 0 && !BypassReleasedSequenceWait.Load() {
 		_ = db.sequences.waitForReleasedSequences(ctx, initialSequenceTime)
 	}
 
@@ -2323,6 +2353,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
 	if db.autoImport {
+		ctx := db.AddBucketUserLogContext(ctx)
 		db.ImportListener = NewImportListener(ctx, db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, db.Options.ImportVersion), db)
 		if importFeedErr := db.ImportListener.StartImportFeed(db); importFeedErr != nil {
 			return importFeedErr
@@ -2451,7 +2482,7 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
+			_, _, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.

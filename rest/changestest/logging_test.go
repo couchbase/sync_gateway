@@ -1,12 +1,10 @@
-//  Copyright 2012-Present Couchbase, Inc.
+// Copyright 2024-Present Couchbase, Inc.
 //
-//  Use of this software is governed by the Business Source License included
-//  in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
-//  in that file, in accordance with the Business Source License, use of this
-//  software will be governed by the Apache License, Version 2.0, included in
-//  the file licenses/APL2.txt.
-
-//go:build !race
+// Use of this software is governed by the Business Source License included
+// in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+// in that file, in accordance with the Business Source License, use of this
+// software will be governed by the Apache License, Version 2.0, included in
+// the file licenses/APL2.txt.
 
 package changestest
 
@@ -20,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// AssertLogContains can hit the race detector due to swapping the global loggers
 // TestDocChangedLogging exercises some of the logging in DocChanged
 func TestDocChangedLogging(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCache, base.KeyChanges)
@@ -32,7 +29,7 @@ func TestDocChangedLogging(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusCreated)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/doc1", `{"foo":"bar"}`)
 	rest.RequireStatus(t, response, http.StatusCreated)
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	base.AssertLogContains(t, "Ignoring non-metadata mutation for doc", func() {
 		err := rt.GetDatabase().MetadataStore.Set("doc1", 0, nil, db.Body{"foo": "bar"})
@@ -41,6 +38,6 @@ func TestDocChangedLogging(t *testing.T) {
 		// no other way of synchronising this no-op as no stats to wait on
 		response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc2", `{"foo":"bar"}`)
 		rest.RequireStatus(t, response, http.StatusCreated)
-		require.NoError(t, rt.WaitForPendingChanges())
+		rt.WaitForPendingChanges()
 	})
 }

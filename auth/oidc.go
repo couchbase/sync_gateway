@@ -38,12 +38,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/go-oidc"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	pkgerrors "github.com/pkg/errors"
 	"golang.org/x/oauth2"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 const (
@@ -239,6 +239,10 @@ func (opm OIDCProviderMap) Stop() {
 	}
 }
 
+func (op *OIDCProvider) GetName() string {
+	return op.Name
+}
+
 // GetClient initializes the client on first successful request.
 func (op *OIDCProvider) GetClient(ctx context.Context, buildCallbackURLFunc OIDCCallbackURLFunc) (*OIDCClient, error) {
 	// If the callback URL isn't defined for the provider, uses buildCallbackURLFunc to construct (based on current request)
@@ -418,7 +422,7 @@ func getJWTUsername(provider JWTConfigCommon, identity *Identity) (username stri
 	if provider.UsernameClaim != "" {
 		value, ok := identity.Claims[provider.UsernameClaim]
 		if !ok {
-			return "", fmt.Errorf("jwt: specified claim %q not found in id_token, identity: %v", provider.UsernameClaim, identity)
+			return "", base.RedactErrorf("jwt: specified claim %q not found in id_token, identity: %+v", provider.UsernameClaim, base.UD(identity))
 		}
 		if username, err = formatUsername(value); err != nil {
 			return "", err
@@ -626,13 +630,13 @@ func (op *OIDCProvider) verifyToken(ctx context.Context, token string, callbackU
 	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
 	idToken, err := client.verifyJWT(ctx, token)
 	if err != nil {
-		base.InfofCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
+		base.InfofCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(op.Name), err)
 		return nil, err
 	}
 
 	identity, ok, err := getIdentity(idToken)
 	if err != nil {
-		base.InfofCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
+		base.InfofCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %+v, Error: %v)", base.UD(identity), err)
 	}
 	if !ok {
 		return nil, err
@@ -654,7 +658,7 @@ func getIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []
 		return issuer, audiences, pkgerrors.Wrapf(err, "failed to parse JWT claims")
 	}
 	if claims.Issuer == "" {
-		return issuer, audiences, fmt.Errorf("malformed JWT %v, issuer claim doesn't exist", token)
+		return issuer, audiences, fmt.Errorf("malformed JWT, issuer claim doesn't exist")
 	}
 	return claims.Issuer, claims.Audience, err
 }
@@ -692,6 +696,7 @@ func (op *OIDCProvider) startDiscoverySync(ctx context.Context, discoveryURL str
 		return err
 	}
 	go func() {
+		ctx := base.NewNonCancelCtxForDatabase(ctx).Ctx
 		for {
 			select {
 			case <-time.After(duration):

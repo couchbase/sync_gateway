@@ -36,9 +36,8 @@ func TestPublicChanGuestAccess(t *testing.T) {
 			}},
 		})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name
-	s := collection.ScopeName
+	c := rt.GetSingleDataStore().CollectionName()
+	s := rt.GetSingleDataStore().ScopeName()
 
 	// Create a document on the public channel
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"channels": ["!"], "foo": "bar"}`)
@@ -94,9 +93,6 @@ func TestStarAccess(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
 	a.Collections = rt.GetDatabase().CollectionNames
-	var changes struct {
-		Results []db.ChangeEntry
-	}
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -155,41 +151,28 @@ func TestStarAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	// GET /db/_changes
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	RequireStatus(t, response, 200)
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 3)
 	since := changes.Results[0].Seq
 	require.Equal(t, "doc1", changes.Results[0].ID)
 	require.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for single channel
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=books", "bernard")
 	assert.Len(t, changes.Results, 1)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "bernard")
 	assert.Len(t, changes.Results, 2)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc3", changes.Results[0].ID)
 	assert.Equal(t, uint64(3), since.Seq)
 
 	// GET /db/_changes for unauthorized channel
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=gifts", "bernard")
 	assert.Len(t, changes.Results, 0)
 
 	//
@@ -222,20 +205,14 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
 
 	// GET /db/_changes
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "fran")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "fran")
 	assert.Len(t, changes.Results, 6)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "fran")
 	assert.Len(t, changes.Results, 2)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc3", changes.Results[0].ID)
@@ -267,20 +244,14 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 
 	// GET /db/_changes
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "manny")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "manny")
 	assert.Len(t, changes.Results, 2)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc3", changes.Results[0].ID)
 	assert.Equal(t, uint64(3), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "manny")
 	assert.Len(t, changes.Results, 2)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc3", changes.Results[0].ID)
@@ -314,7 +285,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					Size: base.Uint32Ptr(0),
+					MaxItemCount: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
 					MaxNumber: base.IntPtr(0),
@@ -323,18 +294,17 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 		}},
 	})
 	defer rt.Close()
-	ctx := rt.Context()
 
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	collection := rt.GetSingleTestDatabaseCollectionWithUser()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	userHasDocAccess, err := db.UserHasDocAccess(ctx, collection, "doc")
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
 
 	// Purge the document from the bucket to force 'not found'
-	err = collection.Purge(ctx, "doc")
+	err = collection.Purge(ctx, "doc", true)
 	require.NoError(t, err)
 
 	userHasDocAccess, err = db.UserHasDocAccess(ctx, collection, "doc")
@@ -395,11 +365,12 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 					}},
 				})
 			defer rt.Close()
-			collection := rt.GetSingleTestDatabaseCollection()
-			c := collection.Name
-			s := collection.ScopeName
+			dataStore := rt.GetSingleDataStore()
+			c := dataStore.CollectionName()
+			s := dataStore.ScopeName()
 
-			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", GetUserPayload(t, "Perms", "password", "", collection, []string{"chan"}, nil))
+			// update the user to add chan
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", GetUserPayload(t, "Perms", "password", "", dataStore, []string{"chan"}, nil))
 			RequireStatus(t, resp, http.StatusOK)
 
 			// Create the initial document
@@ -796,9 +767,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name
-	s := collection.ScopeName
+	dataStore := rt.GetSingleDataStore()
+	c := dataStore.CollectionName()
+	s := dataStore.ScopeName()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -835,11 +806,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	rt.MustWaitForDoc("g1", t)
 
-	changes := ChangesResults{}
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-
-	assert.NoError(t, err)
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "zegpold")
 	require.Len(t, changes.Results, 1)
 	since := changes.Results[0].Seq
 	assert.Equal(t, "g1", changes.Results[0].ID)
@@ -910,18 +877,12 @@ func TestChannelAccessChanges(t *testing.T) {
 	rt.MustWaitForDoc("alpha", t)
 
 	// Look at alice's _changes feed:
-	changes = ChangesResults{}
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "alice")
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "alice")
 	require.Len(t, changes.Results, 1)
-	assert.NoError(t, err)
 	assert.Equal(t, "d1", changes.Results[0].ID)
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
-	changes = ChangesResults{}
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	assert.NoError(t, err)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "zegpold")
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "g1", changes.Results[0].ID)
 	assert.Equal(t, gammaDocSeq, changes.Results[0].Seq.Seq)
@@ -931,11 +892,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"", since),
-		"", "zegpold")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	changes.Results = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?since="+since.String(), "zegpold")
 	require.Len(t, changes.Results, 1)
 	assert.Equal(t, "a1", changes.Results[0].ID)
 
@@ -950,12 +907,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	dbc := rt.ServerContext().Database(ctx, "db")
-	database, _ := db.GetDatabase(dbc, nil)
+	collectionWithUser, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	collectionWithUser := db.GetSingleDatabaseCollectionWithUser(t, database)
-
-	changed, err := collection.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
+	changed, err := collectionWithUser.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
 	changeCount, err := collectionWithUser.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
@@ -1011,21 +965,12 @@ func TestAccessOnTombstone(t *testing.T) {
 	RequireStatus(t, response, 201)
 	version := DocVersionFromPutResponse(t, response)
 
-	assert.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// Validate the user gets the doc on the _changes feed
-	// Check the _changes feed:
-	var changes struct {
-		Results []db.ChangeEntry
-	}
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-	assert.NoError(t, err)
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 1)
-	if len(changes.Results) > 0 {
-		assert.Equal(t, "alpha", changes.Results[0].ID)
-	}
+	require.Equal(t, "alpha", changes.Results[0].ID)
 
 	// Delete the document
 	rt.DeleteDoc("alpha", version)
@@ -1035,19 +980,13 @@ func TestAccessOnTombstone(t *testing.T) {
 	RequireStatus(t, response, 404)
 
 	// Wait for change caching to complete
-	assert.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
 	// Check user access again:
-	changes.Results = nil
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
 	require.Len(t, changes.Results, 1)
-	if len(changes.Results) > 0 {
-		assert.Equal(t, "alpha", changes.Results[0].ID)
-		assert.Equal(t, true, changes.Results[0].Deleted)
-	}
-
+	assert.Equal(t, "alpha", changes.Results[0].ID)
+	assert.Equal(t, true, changes.Results[0].Deleted)
 }
 
 func TestDynamicChannelGrant(t *testing.T) {
@@ -1118,9 +1057,9 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
-	collection := rt.GetSingleTestDatabaseCollection()
-	scopeName := collection.ScopeName
-	collectionName := collection.Name
+	dataStore := rt.GetSingleDataStore()
+	scopeName := dataStore.ScopeName()
+	collectionName := dataStore.CollectionName()
 
 	user, err := a.GetUser("")
 	assert.NoError(t, err)

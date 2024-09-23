@@ -21,10 +21,10 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func NewTestAuthenticator(t testing.TB, dataStore sgbucket.DataStore, channelComputer ChannelComputer, opts AuthenticatorOptions) *Authenticator {
@@ -425,7 +425,7 @@ func TestRebuildUserChannelsMultiCollection(t *testing.T) {
 	err := auth.Save(user)
 	assert.NoError(t, err)
 
-	err = auth.InvalidateChannels("testUser", true, "scope1", "collection1", 2)
+	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2)
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -452,7 +452,7 @@ func TestRebuildUserChannelsNamedCollection(t *testing.T) {
 	err := auth.Save(user)
 	assert.NoError(t, err)
 
-	err = auth.InvalidateChannels("testUser", true, "scope1", "collection1", 2)
+	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2)
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -837,7 +837,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 	t.Run("token with issuer but no clientID config", func(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts})
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		provider := oidcProviderForTest(t, &OIDCProvider{
 			Name: providerGoogle.Name,
@@ -876,7 +876,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		wantUsername, err := getJWTUsername(provider.common(), &Identity{Subject: claims.Subject})
 		assert.NoError(t, err, "Error retrieving OpenID Connect username")
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
@@ -905,7 +905,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.Error(t, err, "Error verifying issuer claim from token")
@@ -934,7 +934,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.Error(t, err, "Error verifying audience claim from token")
@@ -962,7 +962,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.Error(t, err, "Error verifying audience claim from token")
@@ -991,7 +991,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
 		}
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.Error(t, err, "Can't authenticate with expired token")
@@ -1024,7 +1024,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		wantUsername, err := getJWTUsername(provider.common(), &Identity{Subject: claims.Subject})
 		assert.NoError(t, err, "Error retrieving OpenID Connect username")
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.NoError(t, err, "Error authenticating with trusted token")
@@ -1054,7 +1054,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			NotBefore: jwt.NewNumericDate(time.Now().Add(2 * time.Minute)),
 		}
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.Error(t, err, "Token with expired nbf (not before) time")
@@ -1082,7 +1082,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.Error(t, err, "Token must contain valid subject claim")
@@ -1121,7 +1121,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 		claimEmail := map[string]interface{}{"email": wantUserEmail}
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
@@ -1162,7 +1162,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 		claimEmail := map[string]interface{}{"email": "emily@"}
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
@@ -1197,7 +1197,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 		claimEmail := map[string]interface{}{"email": "layla@"}
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
@@ -1352,7 +1352,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	t.Run("multiple providers token with no issuer no audience", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		builder := jwt.Signed(signer).Claims(jwt.Claims{})
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTProviderMap{}, callbackURLFunc)
 		require.Error(t, err, "Error getting issuer and audience from token")
@@ -1362,7 +1362,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	t.Run("multiple providers token with issuer no audience", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts})
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTProviderMap{}, callbackURLFunc)
 		require.Error(t, err, "Error getting issuer and audience from token")
@@ -1372,7 +1372,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	t.Run("multiple providers token with issuer empty audience", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts, Audience: jwt.Audience{}})
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTProviderMap{}, callbackURLFunc)
 		require.Error(t, err, "Error getting issuer and audience from token")
@@ -1382,7 +1382,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	t.Run("multiple providers token with audience no issuer", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Audience: jwt.Audience{"aud1", "aud2", "aud3"}})
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTProviderMap{}, callbackURLFunc)
 		require.Error(t, err, "Error getting issuer and audience from token")
@@ -1392,7 +1392,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	t.Run("multiple providers token with issuer mismatch", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerAmazonAccounts, Audience: jwt.Audience{"aud1"}})
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTProviderMap{}, callbackURLFunc)
 		require.Error(t, err, "No provider found against the configured issuer")
@@ -1402,7 +1402,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	t.Run("multiple providers token with audience mismatch", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts, Audience: jwt.Audience{"aud2"}})
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTProviderMap{}, callbackURLFunc)
 		require.Error(t, err, "No provider found against the configured issuer")
@@ -1431,7 +1431,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
 		builder := jwt.Signed(signer).Claims(claims)
-		token, err := builder.CompactSerialize()
+		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTProviderMap{}, callbackURLFunc)
 		assert.Error(t, err, "Error authenticating with trusted JWT")

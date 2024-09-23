@@ -127,7 +127,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
 	// Get database handle
 	rtDatabase := rt.GetDatabase()
-	revCacheSize := rtDatabase.Options.RevisionCacheOptions.Size
+	revCacheSize := rtDatabase.Options.RevisionCacheOptions.MaxItemCount
 
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
 	numDocs := int(revCacheSize + 1)
@@ -162,7 +162,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 	for _, bm := range getBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			var getResponse *TestResponse
-			rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+			rt.GetDatabase().FlushRevisionCacheForTest()
 			for i := 0; i < b.N; i++ {
 				// update key in URI
 				docNum := i % numDocs

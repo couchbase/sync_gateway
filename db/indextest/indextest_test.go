@@ -254,7 +254,6 @@ func setupN1QLStore(t *testing.T, bucket base.Bucket, isServerless bool) {
 	defaultDataStore := bucket.DefaultDataStore()
 	defaultN1QLStore, ok := base.AsN1QLStore(defaultDataStore)
 	require.True(t, ok, "Unable to get n1QLStore for defaultDataStore")
-
 	options := db.InitializeIndexOptions{
 		NumReplicas: 0,
 		Serverless:  isServerless,
@@ -265,7 +264,7 @@ func setupN1QLStore(t *testing.T, bucket base.Bucket, isServerless bool) {
 	} else {
 		options.MetadataIndexes = db.IndexesMetadataOnly
 	}
-	ctx := base.CollectionLogCtx(base.TestCtx(t), defaultDataStore.CollectionName())
+	ctx := base.CollectionLogCtx(base.TestCtx(t), defaultDataStore.ScopeName(), defaultDataStore.CollectionName())
 	require.NoError(t, db.InitializeIndexes(ctx, defaultN1QLStore, options))
 	if hasOnlyDefaultDataStore {
 		return

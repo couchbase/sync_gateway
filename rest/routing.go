@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -32,12 +33,11 @@ func init() {
 	docWithSlashPathRegex, _ = regexp.Compile("/" + dbRegex + "/([^_]|_user/).*%2[fF]")
 }
 
-// CreateCommonRouter
-// Creates a GorillaMux router containing the basic HTTP handlers for a server.
+// createCommonRouter returns a Gorilla mux router containing the basic HTTP handlers for a server.
 // This is the common functionality of the public and admin ports.
 // The 'privs' parameter specifies the authentication the handler will use.
-func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspace *mux.Router) {
-	root = CreatePingRouter(sc)
+func createCommonRouter(sc *ServerContext, privs handlerPrivs, serverType serverType) (root, db, keyspace *mux.Router) {
+	root = NewRouter(sc, serverType)
 
 	// Global operations:
 	root.Handle("/", makeHandler(sc, privs, nil, nil, (*handler).handleRoot)).Methods("GET", "HEAD")
@@ -120,7 +120,7 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 
 // CreatePublicHandler Creates the HTTP handler for the public API of a gateway server.
 func CreatePublicHandler(sc *ServerContext) http.Handler {
-	r, dbr, _ := createCommonRouter(sc, regularPrivs)
+	r, dbr, _ := createCommonRouter(sc, regularPrivs, publicServer)
 
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleSessionPOST)).Methods("POST")
 	dbr.Handle("/_session", makeHandler(sc, regularPrivs, nil, nil, (*handler).handleSessionDELETE)).Methods("DELETE")
@@ -129,7 +129,8 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 	// if the db exists, and 403 if it doesn't.
 	r.Handle("/{targetdb:"+dbRegex+"}/",
 		makeHandler(sc, publicPrivs, nil, nil, (*handler).handleCreateTarget)).Methods("PUT")
-	return wrapRouter(sc, regularPrivs, r)
+
+	return wrapRouter(sc, regularPrivs, publicServer, r)
 }
 
 // ////// ADMIN API:
@@ -137,12 +138,12 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 // CreateAdminHandler Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminHandler(sc *ServerContext) http.Handler {
 	router := CreateAdminRouter(sc)
-	return wrapRouter(sc, adminPrivs, router)
+	return wrapRouter(sc, adminPrivs, adminServer, router)
 }
 
 // CreateAdminRouter Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminRouter(sc *ServerContext) *mux.Router {
-	r, dbr, keyspace := createCommonRouter(sc, adminPrivs)
+	r, dbr, keyspace := createCommonRouter(sc, adminPrivs, adminServer)
 
 	// Keyspace handlers (single collection):
 	keyspace.Handle("/_purge",
@@ -218,6 +219,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfig)).Methods("GET")
 	dbr.Handle("/_config",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, (*handler).handlePutDbConfig)).Methods("PUT", "POST")
+
+	dbr.Handle("/_config/audit", makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbAuditConfig)).Methods("GET")
+	dbr.Handle("/_config/audit", makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbAuditConfig)).Methods("PUT", "POST")
 
 	keyspace.Handle("/_config/sync",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handleGetCollectionConfigSync)).Methods("GET")
@@ -333,24 +337,51 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 // CreateMetricHandler Creates the HTTP handler for the prometheus metrics API of a gateway server.
 func CreateMetricHandler(sc *ServerContext) http.Handler {
 	router := CreateMetricRouter(sc)
-	return wrapRouter(sc, metricsPrivs, router)
+	return wrapRouter(sc, metricsPrivs, metricsServer, router)
 }
 
 // createDiagnosticHandler Creates the HTTP handler for the diagnostic API of a gateway server.
 func createDiagnosticHandler(sc *ServerContext) http.Handler {
 	router := createDiagnosticRouter(sc)
-	return wrapRouter(sc, adminPrivs, router)
+	return wrapRouter(sc, adminPrivs, diagnosticServer, router)
 }
 
-func CreatePingRouter(sc *ServerContext) *mux.Router {
+// NewRouter returns a basic router for the given server type.
+func NewRouter(sc *ServerContext, serverType serverType) *mux.Router {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
-	r.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
+	r.Use(withServerType(serverType))
+	addSharedRouterHandlers(sc, r)
 	return r
 }
 
+// addSharedRouterHandlers adds the handlers that are defined on all server types.
+func addSharedRouterHandlers(sc *ServerContext, r *mux.Router) {
+	r.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
+}
+
+// withServerType returns a middleware function that stores serverType in the request context for future retrieval.
+func withServerType(serverType serverType) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, req.WithContext(setCtxServerType(req.Context(), serverType)))
+		})
+	}
+}
+
+// serverTypeCtxKey stores the serverType on a request context.
+type serverTypeCtxKey struct{}
+
+func setCtxServerType(ctx context.Context, st serverType) context.Context {
+	return context.WithValue(ctx, serverTypeCtxKey{}, st)
+}
+
+func getCtxServerType(ctx context.Context) serverType {
+	return ctx.Value(serverTypeCtxKey{}).(serverType)
+}
+
 func CreateMetricRouter(sc *ServerContext) *mux.Router {
-	r := CreatePingRouter(sc)
+	r := NewRouter(sc, metricsServer)
 
 	r.Handle("/metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle("/_metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
@@ -360,12 +391,14 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 }
 
 func createDiagnosticRouter(sc *ServerContext) *mux.Router {
-	r := CreatePingRouter(sc)
+	r := NewRouter(sc, diagnosticServer)
+
 	dbr := r.PathPrefix("/{db:" + dbRegex + "}/").Subrouter()
 	dbr.StrictSlash(true)
 	keyspace := r.PathPrefix("/{keyspace:" + dbRegex + "}/").Subrouter()
 	keyspace.StrictSlash(true)
 	keyspace.Handle("/{docid:"+docRegex+"}/_all_channels", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetDocChannels)).Methods("GET")
+	keyspace.Handle("/_user/{name}", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetUserDocAccessSpan)).Methods("GET")
 	keyspace.Handle("/_sync", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleSyncFnDryRun)).Methods("GET")
 	keyspace.Handle("/_import_filter", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleImportFilterDryRun)).Methods("GET")
 	dbr.Handle("/_user/{name}/_all_channels",
@@ -377,7 +410,7 @@ func createDiagnosticRouter(sc *ServerContext) *mux.Router {
 // Returns a top-level HTTP handler for a Router. This adds behavior for URLs that don't
 // match anything -- it handles the OPTIONS method as well as returning either a 404 or 405
 // for URLs that don't match a route.
-func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.Handler {
+func wrapRouter(sc *ServerContext, privs handlerPrivs, serverType serverType, router *mux.Router) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
 		FixQuotedSlashes(rq)
 		var match mux.RouteMatch
@@ -385,7 +418,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			router.ServeHTTP(response, rq)
 		} else {
 			// Log the request
-			h := newHandler(sc, privs, response, rq, handlerOptions{})
+			h := newHandler(sc, privs, serverType, response, rq, handlerOptions{})
 			h.logRequestLine()
 
 			// Inject CORS if enabled and requested and not admin port

@@ -184,9 +184,21 @@ func (h *handler) handleAllDocs() error {
 			}
 			totalRows++
 			var err error
+			fmt.Printf("row: %+v value=%+v\n", row, row.Value)
 			err = h.addJSON(row)
 			if err != nil {
 				return false, err
+			}
+			if includeAccess || includeChannels || includeRevs || includeSeqs {
+				base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
+					base.AuditFieldDocID: row.ID,
+				})
+			}
+			if row.Doc != nil {
+				base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+					base.AuditFieldDocID:      row.ID,
+					base.AuditFieldDocVersion: row.Value.Rev,
+				})
 			}
 			return true, nil
 		}
@@ -262,10 +274,12 @@ func (h *handler) handleDump() error {
 
 // HTTP handler for _repair
 func (h *handler) handleRepair() error {
-
 	// TODO: If repair is re-enabled, it may need to be modified to support xattrs and GSI
-	return errors.New("_repair endpoint disabled")
-
+	err := errors.New("_repair endpoint disabled")
+	if err != nil {
+		base.Audit(h.ctx(), base.AuditIDDatabaseRepair, nil)
+	}
+	return err
 	/*base.InfofCtx(h.ctx(), base.KeyHTTP, "Repair bucket")
 
 	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
@@ -440,7 +454,25 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), body, err != nil, canCompressParts, writer)
-
+			base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+				base.AuditFieldDocID:      docid,
+				base.AuditFieldDocVersion: revid,
+			})
+			if includeAttachments {
+				if atts, ok := body[db.BodyAttachments]; ok && atts != nil {
+					attsMap, ok := atts.(db.AttachmentsMeta)
+					if !ok {
+						base.WarnfCtx(h.ctx(), "Unexpected format of attachments in the body %+v", atts)
+					}
+					for attachment := range attsMap {
+						base.Audit(h.ctx(), base.AuditIDAttachmentRead, base.AuditFields{
+							base.AuditFieldDocID:        docid,
+							base.AuditFieldDocVersion:   revid,
+							base.AuditFieldAttachmentID: attachment,
+						})
+					}
+				}
+			}
 			h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		}
 		return nil
@@ -486,7 +518,7 @@ func (h *handler) handleBulkDocs() error {
 		// empty string and handled during normal doc processing)
 		docid, _ := doc[db.BodyId].(string)
 
-		if strings.HasPrefix(docid, "_local/") {
+		if strings.HasPrefix(docid, db.LocalDocPrefix) {
 			localDocs = append(localDocs, doc)
 		} else {
 			docs = append(docs, doc)
@@ -537,12 +569,10 @@ func (h *handler) handleBulkDocs() error {
 		for k, v := range doc {
 			doc[k] = base.FixJSONNumbers(v)
 		}
-		var err error
-		var revid string
-		offset := len("_local/")
+		offset := len(db.LocalDocPrefix)
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, err = h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
+		revid, isNewDoc, err := h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
 		if err != nil {
@@ -551,9 +581,9 @@ func (h *handler) handleBulkDocs() error {
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
 			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
-			err = nil
 		} else {
 			status["rev"] = revid
+			auditEventForDocumentUpsert(h.ctx(), docid, revid, isNewDoc)
 		}
 		result = append(result, status)
 	}

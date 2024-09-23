@@ -42,14 +42,13 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 }
 
 // UpdatePrincipal updates or creates a principal from a PrincipalConfig structure.
-func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
+func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, princ auth.Principal, err error) {
 	// Sanity checking
 	if !base.AllOrNoneNil(updates.JWTIssuer, updates.JWTRoles, updates.JWTChannels) {
-		return false, fmt.Errorf("must either specify all OIDC properties or none")
+		return false, princ, fmt.Errorf("must either specify all OIDC properties or none")
 	}
 
 	// Get the existing principal, or if this is a POST make sure there isn't one:
-	var princ auth.Principal
 	var user auth.User
 	authenticator := dbc.Authenticator(ctx)
 
@@ -63,21 +62,21 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			princ, err = authenticator.GetRole(*updates.Name)
 		}
 		if err != nil {
-			return replaced, err
+			return replaced, princ, err
 		}
 
 		changed := false
 		replaced = (princ != nil)
 		if !replaced {
 			if updates.Name == nil || *updates.Name == "" {
-				return replaced, fmt.Errorf("UpdatePrincipal: cannot create principal with empty name")
+				return replaced, princ, fmt.Errorf("UpdatePrincipal: cannot create principal with empty name")
 			}
 			// If user/role didn't exist already, instantiate a new one:
 			if isUser {
 				isValid, reason := updates.IsPasswordValid(dbc.AllowEmptyPassword)
 				if !isValid {
 					err = base.HTTPErrorf(http.StatusBadRequest, "Error creating user: %s", reason)
-					return replaced, err
+					return replaced, princ, err
 				}
 				user, err = authenticator.NewUserNoChannels(*updates.Name, "")
 				princ = user
@@ -85,7 +84,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 				princ, err = authenticator.NewRoleNoChannels(*updates.Name)
 			}
 			if err != nil {
-				return replaced, fmt.Errorf("Error creating user/role: %w", err)
+				return replaced, princ, fmt.Errorf("Error creating user/role: %w", err)
 			}
 			changed = true
 		} else if !allowReplace {
@@ -95,17 +94,17 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			isValid, reason := updates.IsPasswordValid(dbc.AllowEmptyPassword)
 			if !isValid {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Error updating user/role: %s", reason)
-				return replaced, err
+				return replaced, princ, err
 			}
 		}
 
 		// Ensure the caller isn't trying to set all_channels or roles explicitly - it'll get recomputed automatically.
 		if len(updates.Channels) > 0 && !princ.Channels().Equals(updates.Channels) {
-			return false, base.HTTPErrorf(http.StatusBadRequest, "all_channels is read-only")
+			return false, princ, base.HTTPErrorf(http.StatusBadRequest, "all_channels is read-only")
 		}
 		if user, ok := princ.(auth.User); ok {
 			if len(updates.RoleNames) > 0 && !user.RoleNames().Equals(base.SetFromArray(updates.RoleNames)) {
-				return false, base.HTTPErrorf(http.StatusBadRequest, "roles is read-only")
+				return false, princ, base.HTTPErrorf(http.StatusBadRequest, "roles is read-only")
 			}
 		}
 
@@ -118,7 +117,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		}
 		collectionAccessChanged, err := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
 		if err != nil {
-			return false, err
+			return false, princ, err
 		} else if collectionAccessChanged {
 			changed = true
 		}
@@ -136,7 +135,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.Password != nil {
 				err = user.SetPassword(*updates.Password)
 				if err != nil {
-					return false, err
+					return false, princ, err
 				}
 				changed = true
 			}
@@ -177,7 +176,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 
 		// And finally save the Principal if anything has changed:
 		if !changed {
-			return replaced, nil
+			return replaced, princ, nil
 		}
 
 		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
@@ -185,7 +184,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 
 		nextSeq, err = dbc.sequences.nextSequence(ctx)
 		if err != nil {
-			return replaced, err
+			return replaced, princ, err
 		}
 		princ.SetSequence(nextSeq)
 
@@ -220,12 +219,12 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if base.IsCasMismatch(err) {
 			base.InfofCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s - will retry", base.UD(princ.Name()))
 		} else {
-			return replaced, err
+			return replaced, princ, err
 		}
 	}
 
 	base.ErrorfCtx(ctx, "CAS mismatch updating principal %s - exceeded retry count. Latest failure: %v", base.UD(princ.Name()), err)
-	return replaced, err
+	return replaced, princ, err
 }
 
 // UpdateCollectionExplicitChannels identifies whether a config update requires an update to the principal's collectionAccess.

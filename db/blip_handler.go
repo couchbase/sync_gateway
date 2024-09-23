@@ -176,6 +176,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.loggingCtx, bh.collection.DatabaseCollection))
 				bh.collectionCtx, _ = bh.collections.get(nil)
 			}
+			bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 			return next(bh, bm)
 		}
 		if !bh.collections.hasNamedCollections() {
@@ -196,7 +197,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			DatabaseCollection: bh.collectionCtx.dbCollection,
 			user:               bh.db.user,
 		}
-		bh.loggingCtx = base.CollectionLogCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
+		bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}
@@ -243,7 +244,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	if revID := checkpointMessage.rev(); revID != "" {
 		checkpoint[BodyRev] = revID
 	}
-	revID, err := bh.collection.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
+	revID, _, err := bh.collection.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
 	if err != nil {
 		return err
 	}
@@ -258,12 +259,11 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
-	defaultSince := CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.collection.LastSequence(bh.loggingCtx)
 		return SequenceID{Seq: seq}, err
 	}
-	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, ParseJSONSequenceID)
+	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, latestSeq, bh.db.Options.ChangesRequestPlus)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
@@ -317,7 +317,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	requestPlusSeq := uint64(0)
 	// If non-continuous, check whether requestPlus handling is set for request or via database config
 	if continuous == false {
-		useRequestPlus := subChangesParams.requestPlus(bh.db.Options.ChangesRequestPlus)
+		useRequestPlus := subChangesParams.requestPlus()
 		if useRequestPlus {
 			seq, requestPlusErr := bh.db.GetRequestPlusSequence()
 			if requestPlusErr != nil {
@@ -364,6 +364,25 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
+	auditFields := base.AuditFields{
+		base.AuditFieldSince: subChangesParams.Since().String(),
+	}
+	if subChangesParams.filter() != "" {
+		auditFields[base.AuditFieldFilter] = subChangesParams.filter()
+	}
+	if len(subChangesParams.docIDs()) > 0 {
+		auditFields[base.AuditFieldDocIDs] = subChangesParams.docIDs()
+		auditFields[base.AuditFieldFilter] = base.DocIDsFilter
+	}
+	if continuous {
+		auditFields[base.AuditFieldFeedType] = "continuous"
+	} else {
+		auditFields[base.AuditFieldFeedType] = "normal"
+	}
+	if len(channels) > 0 {
+		auditFields[base.AuditFieldChannels] = channels
+	}
+	base.Audit(bh.loggingCtx, base.AuditIDChangesFeedStarted, auditFields)
 	return nil
 }
 
@@ -456,7 +475,8 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		return false
 
 	}
-	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
+
+	forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
@@ -589,7 +609,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, dbCollection *DatabaseCollectionWithUser) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, dbCollection, bh.collectionIdx); err != nil {
+			if err := bh.handleChangesResponse(bh.loggingCtx, sender, response, changeArray, sendTime, dbCollection, bh.collectionIdx); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
@@ -696,10 +716,11 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		if bh.purgeOnRemoval && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 &&
 			(deletedFlags.HasFlag(changesDeletedFlagRevoked) || deletedFlags.HasFlag(changesDeletedFlagRemoved)) {
-			err := bh.collection.Purge(bh.loggingCtx, docID)
+			err := bh.collection.Purge(bh.loggingCtx, docID, true)
 			if err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)
 			}
+			bh.replicationStats.HandleRevDocsPurgedCount.Add(1)
 
 			// Fall into skip sending case
 			missing = nil
@@ -842,42 +863,42 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 // ////// DOCUMENTS:
 
-func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
+func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
-	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
+	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID)
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
-		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		base.WarnfCtx(ctx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	} else if err == base.ErrDeltaSourceIsTombstone {
-		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		base.TracefCtx(ctx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	} else if err != nil {
-		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		base.DebugfCtx(ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	}
 
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "")
-		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
+		return bsc.sendRevisionWithProperties(ctx, sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 
 	if revDelta == nil {
-		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		base.DebugfCtx(ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	}
 
 	resendFullRevisionFunc := func() error {
-		base.InfofCtx(bsc.loggingCtx, base.KeySync, "Resending revision as full body. Peer couldn't process delta %s from %s to %s for key %s", base.UD(revDelta.DeltaBytes), deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		base.InfofCtx(ctx, base.KeySync, "Resending revision as full body. Peer couldn't process delta %s from %s to %s for key %s", base.UD(revDelta.DeltaBytes), deltaSrcRevID, revID, base.UD(docID))
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
-	if err := bsc.sendDelta(sender, docID, collectionIdx, deltaSrcRevID, revDelta, seq, resendFullRevisionFunc); err != nil {
+	base.TracefCtx(ctx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
+	if err := bsc.sendDelta(ctx, sender, docID, collectionIdx, deltaSrcRevID, revDelta, seq, resendFullRevisionFunc); err != nil {
 		return err
 	}
 
@@ -988,7 +1009,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
-			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
+			if err := bh.collection.Purge(bh.loggingCtx, docID, true); err != nil {
 				return err
 			}
 
@@ -1013,7 +1034,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	newDoc.UpdateBodyBytes(bodyBytes)
 
 	injectedAttachmentsForDelta := false
-	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
+	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta && !revMessage.Deleted() {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		}
@@ -1306,6 +1327,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		attachmentAllowedKey = docID + digest
 	}
 
+	// attachmentName should only be used for logging, it is one possible name of an attachment for a given document if multiple attachments share the same digest.
 	allowedAttachment := bh.allowedAttachment(attachmentAllowedKey)
 	if allowedAttachment.counter <= 0 {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
@@ -1327,6 +1349,11 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response.SetCompressed(rq.Properties[BlipCompress] == trueProperty)
 	bh.replicationStats.HandleGetAttachment.Add(1)
 	bh.replicationStats.HandleGetAttachmentBytes.Add(int64(len(attachment)))
+	base.Audit(bh.loggingCtx, base.AuditIDAttachmentRead, base.AuditFields{
+		base.AuditFieldDocID:        docID,
+		base.AuditFieldDocVersion:   allowedAttachment.docVersion,
+		base.AuditFieldAttachmentID: allowedAttachment.name,
+	})
 
 	return nil
 }
@@ -1477,7 +1504,7 @@ func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
 	return atomic.AddUint64(&bsc.handlerSerialNumber, 1)
 }
 
-func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
+func (bsc *BlipSyncContext) addAllowedAttachments(docID string, docVersion string, attMeta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
 	if len(attMeta) == 0 {
 		return
 	}
@@ -1496,9 +1523,11 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 			bsc.allowedAttachments[key] = att
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{
-				version: attachment.version,
-				counter: 1,
-				docID:   docID,
+				version:    attachment.version,
+				counter:    1,
+				docID:      docID,
+				docVersion: docVersion,
+				name:       attachment.name,
 			}
 		}
 	}

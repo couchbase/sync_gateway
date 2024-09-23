@@ -14,14 +14,15 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/coreos/go-oidc"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/couchbase/sync_gateway/base"
-	"gopkg.in/square/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 )
 
 type jwtAuthenticator interface {
 	verifyToken(ctx context.Context, token string, callbackURLFunc OIDCCallbackURLFunc) (*Identity, error)
 	common() JWTConfigCommon
+	GetName() string
 }
 
 // SupportedAlgorithms is list of signing algorithms explicitly supported
@@ -37,6 +38,20 @@ var SupportedAlgorithms = map[jose.SignatureAlgorithm]bool{
 	jose.PS256: true,
 	jose.PS384: true,
 	jose.PS512: true,
+}
+
+// Full list of supported algorithms is used to initially parse the JWT.  The more restricted list (based
+// on the provider) is used to verify
+var SupportedAlgorithmsSlice = []jose.SignatureAlgorithm{
+	jose.RS256,
+	jose.RS384,
+	jose.RS512,
+	jose.ES256,
+	jose.ES384,
+	jose.ES512,
+	jose.PS256,
+	jose.PS384,
+	jose.PS512,
 }
 
 // JWTConfigCommon groups together configuration options common to both OIDC and local JWT authentication.
@@ -93,7 +108,8 @@ const keyUseSigning = "sig"
 type JSONWebKeys []jose.JSONWebKey
 
 func (j JSONWebKeys) VerifySignature(ctx context.Context, jwt string) (payload []byte, err error) {
-	jws, err := jose.ParseSigned(jwt)
+	// Parse using the full list of supported algorithms, prior to restricting based on JWKS
+	jws, err := jose.ParseSigned(jwt, SupportedAlgorithmsSlice)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +189,10 @@ type LocalJWTAuthProvider struct {
 	name string
 	// keySet has the keys for this config, either in-memory or from oidc.NewRemoteKeySet.
 	keySet oidc.KeySet
+}
+
+func (l *LocalJWTAuthProvider) GetName() string {
+	return l.name
 }
 
 func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ OIDCCallbackURLFunc) (*Identity, error) {

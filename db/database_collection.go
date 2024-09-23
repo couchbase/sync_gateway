@@ -21,7 +21,7 @@ import (
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
 	dataStore            base.DataStore          // Storage
-	revisionCache        RevisionCache           // Cache of recently-accessed doc revisions
+	revisionCache        collectionRevisionCache // Collection reference to cache of recently-accessed document revisions
 	collectionStats      *base.CollectionStats   // pointer to the collection stats (to avoid map lookups when used)
 	dbCtx                *DatabaseContext        // pointer to database context to allow passthrough of functions
 	ChannelMapper        *channels.ChannelMapper // Collection's sync function
@@ -43,14 +43,10 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		dataStore:       dataStore,
 		dbCtx:           dbContext,
 		collectionStats: stats,
+		revisionCache:   newCollectionRevisionCache(&dbContext.revisionCache, dataStore.GetCollectionID()),
 		ScopeName:       dataStore.ScopeName(),
 		Name:            dataStore.CollectionName(),
 	}
-	dbCollection.revisionCache = NewRevisionCache(
-		dbContext.Options.RevisionCacheOptions,
-		dbCollection,
-		dbContext.DbStats.Cache(),
-	)
 
 	return dbCollection, nil
 }
@@ -140,24 +136,14 @@ func (c *DatabaseCollection) GetCollectionID() uint32 {
 }
 
 // GetRevisionCacheForTest allow accessing a copy of revision cache.
-func (c *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
-	return c.revisionCache
+func (c *DatabaseCollection) GetRevisionCacheForTest() *collectionRevisionCache {
+	return &c.revisionCache
 }
 
 // FlushChannelCache flush support. Currently test-only - added for unit test access from rest package
 func (c *DatabaseCollection) FlushChannelCache(ctx context.Context) error {
 	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
 	return c.dbCtx.changeCache.Clear(ctx)
-}
-
-// FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
-func (c *DatabaseCollection) FlushRevisionCacheForTest() {
-	c.revisionCache = NewRevisionCache(
-		c.dbCtx.Options.RevisionCacheOptions,
-		c,
-		c.dbStats().Cache(),
-	)
-
 }
 
 // ForceAPIForbiddenErrors returns true if we return 403 vs empty docs. This is controlled at the database level.
@@ -339,6 +325,42 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 	return
 }
 
+// DatabaseCollection helper methods for channel and role invalidation - invoke the multi-collection version on
+// the databaseContext for a single collection.
+// invalUserOrRoleChannels invalidates a user or role's channels for collection c
+func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
+	principalName, isRole := channels.AccessNameToPrincipalName(name)
+	if isRole {
+		c.invalRoleChannels(ctx, principalName, invalSeq)
+	} else {
+		c.invalUserChannels(ctx, principalName, invalSeq)
+	}
+}
+
+// invalRoleChannels invalidates a user's computed channels for collection c
+func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
+	c.dbCtx.invalUserChannels(ctx, username, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq)
+}
+
+// invalRoleChannels invalidates a role's computed channels for collection c
+func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
+	c.dbCtx.invalRoleChannels(ctx, rolename, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq)
+}
+
+// invalidateAllPrincipals invalidates computed channels and roles for collection c, for all users and roles
+func (c *DatabaseCollection) invalidateAllPrincipals(ctx context.Context, endSeq uint64) {
+	c.dbCtx.invalidateAllPrincipals(ctx, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, endSeq)
+}
+
 func (c *DatabaseCollection) useMou() bool {
 	return c.dbCtx.UseMou()
+}
+
+func (c *DatabaseCollection) ScopeAndCollectionName() base.ScopeAndCollectionName {
+	return base.NewScopeAndCollectionName(c.ScopeName, c.Name)
+}
+
+// AddCollectionContext adds the collection name to a context.
+func (c *DatabaseCollection) AddCollectionContext(ctx context.Context) context.Context {
+	return base.CollectionLogCtx(ctx, c.ScopeName, c.Name)
 }

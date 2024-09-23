@@ -85,6 +85,9 @@ type User interface {
 	// Authenticates the user's password.
 	Authenticate(password string) bool
 
+	// AuthenticateWithReason is the same as Authenticate, except it provides the reason for failure.
+	AuthenticateWithReason(password string) (bool, string)
+
 	// GetSessionUUID returns the UUID that a session to match to be a valid session.
 	GetSessionUUID() string
 
@@ -93,6 +96,9 @@ type User interface {
 
 	// Changes the user's password.
 	SetPassword(password string) error
+
+	// GetRoles returns the set of roles the user belongs to, initializing them if necessary.
+	GetRoles() []Role
 
 	// The set of Roles the user belongs to (including ones given to it by the sync function and by OIDC/JWT)
 	// Returns nil if invalidated

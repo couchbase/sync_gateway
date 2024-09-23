@@ -57,6 +57,16 @@ func TestRoot(t *testing.T) {
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "Welcome", body["couchdb"])
+	isAdmin, ok := body["ADMIN"].(bool)
+	assert.False(t, ok)
+	assert.False(t, isAdmin)
+
+	response = rt.SendAdminRequest("GET", "/", "")
+	RequireStatus(t, response, 200)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	isAdmin, ok = body["ADMIN"].(bool)
+	assert.True(t, ok)
+	assert.True(t, isAdmin)
 
 	response = rt.SendRequest("HEAD", "/", "")
 	RequireStatus(t, response, 200)
@@ -1666,15 +1676,8 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 // SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test
 // once we add the ability to take a bucket offline/online.
 func TestLongpollWithWildcard(t *testing.T) {
-	// TODO: Test disabled because it fails with -race
-	t.Skip("WARNING: TEST DISABLED")
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq db.SequenceID
-	}
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1690,12 +1693,15 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// Issue is only reproducible when the wait counter is zero for all requested channels (including the user channel) - the count=0
 	// triggers early termination of the changes loop.  This can only be reproduced if the feed is restarted after the user is created -
 	// otherwise the count for the user pseudo-channel will always be non-zero
-	db, _ := rt.ServerContext().GetDatabase(ctx, "db")
+	db, err := rt.ServerContext().GetDatabase(ctx, "db")
+	require.NoError(t, err)
 	err = db.RestartListener(base.TestCtx(t))
-	assert.True(t, err == nil)
+	require.NoError(t, err)
 	// Put a document to increment the counter for the * channel
-	response := rt.Send(Request("PUT", "/{{.keyspace}}/lost", `{"channel":["ABC"]}`))
-	RequireStatus(t, response, 201)
+	rt.PutDoc("lost", `{"channel":["ABC"]}`)
+
+	// make sure docs are written to change cache
+	rt.WaitForPendingChanges()
 
 	// Previous bug: changeWaiter was treating the implicit '*' wildcard in the _changes request as the '*' channel, so the wait counter
 	// was being initialized to 1 (the previous PUT).  Later the wildcard was resolved to actual channels (PBS, _sync:user:bernard), which
@@ -1706,18 +1712,15 @@ func TestLongpollWithWildcard(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-		log.Printf("_changes looks like: %s", changesResponse.Body.Bytes())
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 		// Checkthat the changes loop isn't returning an empty result immediately (the previous bug) - should
 		// be waiting until entry 'sherlock', created below, appears.
-		assert.True(t, len(changes.Results) > 0)
+		assert.Greater(t, len(changes.Results), 0)
 	}()
 
 	// Send a doc that will properly close the longpoll response
 	time.Sleep(1 * time.Second)
-	response = rt.Send(Request("PUT", "/{{.keyspace}}/sherlock", `{"channel":["PBS"]}`))
-	RequireStatus(t, response, http.StatusOK)
+	rt.PutDoc("sherlock", `{"channel":["PBS"]}`)
 	wg.Wait()
 }
 
@@ -1821,23 +1824,21 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?rev="+docRevID2, `{"channels": ["B"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
-	// Changes call
-	response = rt.SendUserRequest(
-		"GET", "/{{.keyspace}}/_changes", "", "jacques")
-	assert.Equal(t, http.StatusOK, response.Code)
-
-	var changesResponse = make(map[string]interface{})
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changesResponse))
-	assert.NotContains(t, changesResponse["results"].([]interface{})[1], "deleted")
+	// Changes call, one user, one doc
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "jacques")
+	require.Len(t, changes.Results, 2)
+	assert.Equal(t, changes.Results[1].Deleted, false)
 }
 
 func TestChanCacheActiveRevsStat(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
 	defer rt.Close()
 
 	responseBody := make(map[string]interface{})
@@ -1853,11 +1854,10 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	rev2 := fmt.Sprint(responseBody["rev"])
 	RequireStatus(t, response, http.StatusCreated)
 
-	err = rt.WaitForPendingChanges()
-	assert.NoError(t, err)
+	rt.WaitForPendingChanges()
 
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "")
-	RequireStatus(t, response, http.StatusOK)
+	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "{}")
+	assert.Equal(t, 2, len(changes.Results))
 
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]}`)
 	RequireStatus(t, response, http.StatusCreated)
@@ -1865,8 +1865,7 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	err = rt.WaitForPendingChanges()
-	assert.NoError(t, err)
+	rt.WaitForPendingChanges()
 
 	assert.Equal(t, 0, int(rt.GetDatabase().DbStats.Cache().ChannelCacheRevsActive.Value()))
 
@@ -2522,7 +2521,8 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err := json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -2535,7 +2535,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = collection.GetDocSyncData(ctx, "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -2548,7 +2548,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = collection.GetDocSyncData(ctx, "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 2)
@@ -2613,7 +2613,8 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, "doc1")
 	assert.NoError(t, err)
 	require.Len(t, syncData.ChannelSet, 1)
 	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
@@ -2628,30 +2629,6 @@ type ChannelsTemp struct {
 	Channels map[string][]string `json:"channels"`
 }
 
-func (rt *RestTester) CreateDocReturnRev(t *testing.T, docID string, revID string, bodyIn interface{}) string {
-	bodyJSON, err := base.JSONMarshal(bodyIn)
-	assert.NoError(t, err)
-
-	url := "/{{.keyspace}}/" + docID
-	if revID != "" {
-		url += "?rev=" + revID
-	}
-
-	resp := rt.SendAdminRequest("PUT", url, string(bodyJSON))
-	RequireStatus(t, resp, http.StatusCreated)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
-	assert.Equal(t, true, body["ok"])
-	revID = body["rev"].(string)
-	if revID == "" {
-		t.Fatalf("No revID in response for PUT doc")
-	}
-
-	require.NoError(t, rt.WaitForPendingChanges())
-	return revID
-}
-
 func TestMetricsHandler(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
@@ -2660,7 +2637,7 @@ func TestMetricsHandler(t *testing.T) {
 		base.SkipPrometheusStatsRegistration = true
 	}()
 
-	// Create and remove a database
+	// Create and remove a databaseion
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
 	ctx := base.TestCtx(t)
 	tBucket := base.GetTestBucket(t)
@@ -2724,7 +2701,8 @@ func TestDocChannelSetPruning(t *testing.T) {
 		version = rt.UpdateDoc(docID, version, `{"channels": ["a"]}`)
 	}
 
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSetHistory, db.DocumentHistoryMaxEntriesPerChannel)
@@ -2736,14 +2714,19 @@ func TestDocChannelSetPruning(t *testing.T) {
 func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollectionWithUser()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	documentRev := db.DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
 
-	body, err := documentRev.Mutable1xBody(rt.Context(), collection, nil, nil, false)
+	body, err := documentRev.Mutable1xBody(ctx, collection, nil, nil, false)
 	require.Error(t, err)
 	require.Nil(t, body)
 	assert.Contains(t, err.Error(), "null doc body for doc")
+
+	bodyBytes, err := documentRev.Inject1xBodyProperties(rt.Context(), collection, nil, nil, false)
+	require.Error(t, err)
+	require.Nil(t, bodyBytes)
+	assert.Contains(t, err.Error(), "b is not a JSON object")
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {

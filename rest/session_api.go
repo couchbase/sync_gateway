@@ -48,7 +48,7 @@ func (h *handler) handleSessionPOST() error {
 		}
 	}
 
-	// NOTE: handleSessionPOST doesn't handle creating users from OIDC - checkAuth calls out into AuthenticateUntrustedJWT.
+	// NOTE: handleSessionPOST doesn't handle creating users from OIDC - checkPublicAuth calls out into AuthenticateUntrustedJWT.
 	// Therefore, if by this point `h.user` is guest, this isn't creating a session from OIDC.
 	if h.db.Options.DisablePasswordAuthentication && (h.user == nil || h.user.Name() == "") {
 		return ErrLoginRequired
@@ -84,10 +84,18 @@ func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 		return nil, err
 	}
 
-	if user != nil && !user.Authenticate(params.Password) {
-		user = nil
+	if user == nil {
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: not found", base.UD(params.Name))
+		return nil, nil
 	}
-	return user, err
+
+	authenticated, reason := user.AuthenticateWithReason(params.Password)
+	if !authenticated {
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: %s", base.UD(params.Name), reason)
+		return nil, nil
+	}
+
+	return user, nil
 }
 
 // DELETE /_session logs out the current session
@@ -104,7 +112,7 @@ func (h *handler) handleSessionDELETE() error {
 		}
 	}
 
-	cookie := h.db.Authenticator(h.ctx()).DeleteSessionForCookie(h.rq)
+	cookie := h.db.Authenticator(h.ctx()).DeleteSessionForCookie(h.ctx(), h.rq)
 	if cookie == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no session")
 	}
@@ -128,7 +136,7 @@ func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sess
 	}
 	h.user = user
 	auth := h.db.Authenticator(h.ctx())
-	session, err := auth.CreateSession(h.user, expiry)
+	session, err := auth.CreateSession(h.ctx(), h.user, expiry)
 	if err != nil {
 		return "", err
 	}
@@ -214,7 +222,7 @@ func (h *handler) createUserSession() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")
 	}
 
-	session, err := authenticator.CreateSession(user, ttl)
+	session, err := authenticator.CreateSession(h.ctx(), user, ttl)
 	if err != nil {
 		return err
 	}
@@ -253,7 +261,7 @@ func (h *handler) deleteUserSession() error {
 	if userName != "" {
 		return h.deleteUserSessionWithValidation(h.PathVar("sessionid"), userName)
 	} else {
-		return h.db.Authenticator(h.ctx()).DeleteSession(h.PathVar("sessionid"))
+		return h.db.Authenticator(h.ctx()).DeleteSession(h.ctx(), h.PathVar("sessionid"), "")
 	}
 }
 
@@ -270,7 +278,11 @@ func (h *handler) deleteUserSessions() error {
 		return nil
 	}
 	user.UpdateSessionUUID()
-	return auth.Save(user)
+	err = auth.Save(user)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDPublicUserSessionDeleteAll, base.AuditFields{base.AuditFieldUserName: userName})
+	}
+	return err
 }
 
 // Delete a session if associated with the user provided
@@ -288,7 +300,7 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 
 	if getErr == nil {
 		if session.Username == userName {
-			delErr := h.db.Authenticator(h.ctx()).DeleteSession(sessionId)
+			delErr := h.db.Authenticator(h.ctx()).DeleteSession(h.ctx(), sessionId, userName)
 			if delErr != nil {
 				return delErr
 			}

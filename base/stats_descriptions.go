@@ -75,6 +75,13 @@ const (
 	DatabaseCollectionConflictDesc = "The total number of times a database config is rolled back to an invalid state (collection conflicts)."
 )
 
+// audit stat
+const (
+	NumAuditsLoggedDesc         = "The total number of audit events logged."
+	NumAuditsFilteredByUserDesc = "The total number of audit events filtered by user."
+	NumAuditsFilteredByRoleDesc = "The total number of audit events filtered by role."
+)
+
 // cache stats descriptions
 const (
 	AbandonedSequencesDesc = "The total number of skipped sequences that were not found after 60 minutes and were abandoned."
@@ -119,6 +126,8 @@ const (
 
 	PendingSeqLengthDesc = "The total number of pending sequences. These are out-of-sequence entries waiting to be cached."
 
+	RevCacheNumItemsDesc = "The total number of items in the revision cache."
+
 	RevCacheBypassDesc = "The total number of revision cache bypass operations performed."
 
 	RevCacheHitsDesc = "The total number of revision cache hits. This metric can be used to calculate the ratio of revision cache hits: " +
@@ -126,6 +135,8 @@ const (
 
 	RevCacheMissesDesc = "The total number of revision cache misses. This metric can be used to calculate the ratio of revision cache misses: " +
 		"Rev Cache Miss Ratio = rev_cache_misses / (rev_cache_hits + rev_cache_misses)"
+
+	RevCacheMemoryDesc = "The approximation of total memory taken up by rev cache for documents. This is measured by the raw document body, the channels allocated to a document and its revision history."
 
 	SkippedSeqLengthDesc = "The current length of the pending skipped sequence slice."
 

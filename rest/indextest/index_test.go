@@ -80,12 +80,11 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 	}
 
 	// tests sg_users index
-	t.Run("testUserQueries", func(t *testing.T) {
+	rt.Run("testUserQueries", func(t *testing.T) {
 		users := []string{"alice", "bob"}
 
 		for _, user := range users {
-			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+user, rest.GetUserPayload(t, user, rest.RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"ChannelA"}, nil))
-			rest.RequireStatus(t, response, http.StatusCreated)
+			rt.CreateUser(user, []string{"ChannelA"})
 		}
 		response := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/", "")
 		rest.RequireStatus(t, response, http.StatusOK)
@@ -97,11 +96,11 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 	})
 
 	// tests sg_roles index
-	t.Run("testRoleQueries", func(t *testing.T) {
+	rt.Run("testRoleQueries", func(t *testing.T) {
 		roles := []string{"roleA", "roleB"}
 
 		for _, role := range roles {
-			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+role, rest.GetRolePayload(t, role, rest.RestTesterDefaultUserPassword, rt.GetSingleTestDatabaseCollection(), []string{"ChannelA"}))
+			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+role, rest.GetRolePayload(t, role, rt.GetSingleDataStore(), []string{"ChannelA"}))
 			rest.RequireStatus(t, response, http.StatusCreated)
 		}
 		response := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_role/", "")
@@ -261,10 +260,9 @@ func TestAsyncInitWithResync(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodDelete, "/"+dbName+"/", "")
 	resp.RequireStatus(http.StatusOK)
 
-	rest.DropAllTestIndexes(t, tb)
+	rest.DropAllTestIndexesIncludingPrimary(t, tb)
 
 	// Set testing callbacks for async initialization
-
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
@@ -390,6 +388,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
 	log.Printf("initialization started")
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
+	verifyInitializationActive(t, sc, dbName, true)
 
 	// Set up payloads for upserting db state
 	onlineConfigUpsert := rest.DbConfig{
@@ -408,24 +407,29 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, sc, dbName, db.DBStarting)
+	verifyInitializationActive(t, sc, dbName, true)
 
 	// Take the database offline while async init is still in progress
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPost, "/"+dbName+"/_config", string(dbOfflineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
+	verifyInitializationActive(t, sc, dbName, true)
 
 	// Verify offline changes can still be made
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/sync", "")
 	resp.RequireResponse(http.StatusOK, syncFunc)
+	verifyInitializationActive(t, sc, dbName, true)
 
 	// Take the database back online while async init is still in progress, verify state goes to Starting
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, sc, dbName, db.DBStarting)
+	verifyInitializationActive(t, sc, dbName, true)
 
 	// Unblock initialization, verify status goes to Online
 	close(unblockInit)
 	waitAndRequireDBState(t, sc, dbName, db.DBOnline)
+	verifyInitializationActive(t, sc, dbName, false)
 
 	// Verify only four collections were initialized (offline/online didn't trigger duplicate initialization)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -440,6 +444,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, sc, dbName, db.DBOnline)
+	verifyInitializationActive(t, sc, dbName, false)
 
 }
 
@@ -596,9 +601,263 @@ func TestSyncOnline(t *testing.T) {
 
 }
 
+// TestAsyncInitConfigUpdates verifies that a database with in-progress async
+// index initialization can accept all config updates from the local node.
+// (prior to CBG-4008, operations would block waiting for async init to complete)
+func TestAsyncInitConfigUpdates(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
+
+	sc, closeFn := rest.StartBootstrapServer(t)
+	defer closeFn()
+
+	// Set testing callbacks for async initialization
+	collectionCount := int64(0)
+	initStarted := make(chan error)
+	unblockInit := make(chan error)
+	collectionCompleteCallback := func(dbName, collectionName string) {
+		count := atomic.AddInt64(&collectionCount, 1)
+		// On first collection, close initStarted channel
+		log.Printf("collection callback count: %v", count)
+		if count == 1 {
+			log.Printf("closing initStarted")
+			close(initStarted)
+		}
+		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+	}
+	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
+
+	ctx := base.TestCtx(t)
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	importFilter := "function(doc) { return true }"
+	syncFunc := "function(doc){ channel(doc.channels); }"
+
+	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
+	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfigPayload, err := json.Marshal(dbConfig)
+	require.NoError(t, err)
+	dbName := "db"
+
+	keyspace := dbName
+	if len(dbConfig.Scopes) > 0 {
+		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
+		keyspace = keyspaces[0]
+	}
+
+	// Create database with offline=true
+	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/"+dbName+"/", string(dbConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+
+	// Wait for init to start before interacting with the db, validate db state is offline
+	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	log.Printf("initialization started")
+	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
+
+	// Set up payloads for upserting db state
+	onlineConfigUpsert := rest.DbConfig{
+		StartOffline: base.BoolPtr(false),
+	}
+	dbOnlineConfigPayload, err := json.Marshal(onlineConfigUpsert)
+	require.NoError(t, err)
+
+	// Take the database online while async init is still in progress, verify state goes to Starting
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+	waitAndRequireDBState(t, sc, dbName, db.DBStarting)
+
+	// Attempt to update import filter while in starting mode
+	importFilter = "function(doc){ return false; }"
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/"+keyspace+"/_config/import_filter", importFilter)
+	resp.RequireStatus(http.StatusOK)
+
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
+	resp.RequireResponse(http.StatusOK, importFilter)
+
+	// Attempt to delete import filter while in starting mode
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodDelete, "/"+keyspace+"/_config/import_filter", "")
+	resp.RequireStatus(http.StatusOK)
+
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
+	resp.RequireResponse(http.StatusOK, "")
+
+	// Attempt to update sync function while in starting mode
+	syncFunc = "function(doc){ channel(doc.type); }"
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/"+keyspace+"/_config/sync", syncFunc)
+	resp.RequireStatus(http.StatusOK)
+
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/sync", "")
+	resp.RequireResponse(http.StatusOK, syncFunc)
+
+	// Attempt to delete sync function while in starting mode
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodDelete, "/"+keyspace+"/_config/sync", "")
+	resp.RequireStatus(http.StatusOK)
+
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/sync", "")
+	resp.RequireResponse(http.StatusOK, "")
+
+	// Take the database back online while async init is still in progress, verify state goes to Starting
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+	waitAndRequireDBState(t, sc, dbName, db.DBStarting)
+
+	// Unblock initialization, verify status goes to Online
+	close(unblockInit)
+	waitAndRequireDBState(t, sc, dbName, db.DBOnline)
+
+}
+
+// TestAsyncInitRemoteConfigUpdates verifies that a database with in-progress async
+// index initialization can accept config updates made on other nodes (arriving via polling)
+// (prior to CBG-4008, operations would block waiting for async init to complete)
+func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
+
+	// enable config polling to allow testing of cross-node updates
+	bootstrapConfig := rest.BootstrapStartupConfigForTest(t)
+	bootstrapConfig.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
+	sc, closeFn := rest.StartServerWithConfig(t, &bootstrapConfig)
+	defer closeFn()
+
+	// Set testing callbacks for async initialization
+	collectionCount := int64(0)
+	initStarted := make(chan error)
+	unblockInit := make(chan error)
+	collectionCompleteCallback := func(dbName, collectionName string) {
+		count := atomic.AddInt64(&collectionCount, 1)
+		// On first collection, close initStarted channel
+		log.Printf("collection callback count: %v", count)
+		if count == 1 {
+			log.Printf("closing initStarted")
+			close(initStarted)
+		}
+		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+	}
+	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
+
+	ctx := base.TestCtx(t)
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	importFilter := "function(doc) { return true }"
+	syncFunc := "function(doc){ channel(doc.channels); }"
+
+	dbName := "db"
+	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
+	dbConfig.Name = dbName
+	dbConfig.StartOffline = base.BoolPtr(true)
+
+	keyspace := dbName
+	if len(dbConfig.Scopes) > 0 {
+		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
+		keyspace = keyspaces[0]
+	}
+
+	bucketName := tb.GetName()
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+
+	// Simulate creation of the database with offline=true on another node
+	version, err := rest.GenerateDatabaseConfigVersionID(ctx, "", &dbConfig)
+	require.NoError(t, err)
+	metadataID, err := sc.BootstrapContext.ComputeMetadataIDForDbConfig(ctx, &dbConfig)
+	require.NoError(t, err)
+
+	databaseConfig := dbConfig.ToDatabaseConfig()
+	databaseConfig.Version = version
+	databaseConfig.MetadataID = metadataID
+
+	_, err = sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, databaseConfig)
+	require.NoError(t, err)
+
+	// Wait for init to start before interacting with the db, validate db state is offline
+	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	log.Printf("initialization started")
+	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
+
+	log.Printf("keyspace: %v", keyspace)
+
+	// Update the bucket config to bring the database online
+	_, err = sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
+		bucketDbConfig.StartOffline = base.BoolPtr(false)
+		return bucketDbConfig, nil
+	})
+	require.NoError(t, err)
+	waitAndRequireDBState(t, sc, dbName, db.DBStarting)
+
+	// Attempt to update import filter while in starting mode
+	importFilter = "function(doc){ return false; }"
+	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/"+keyspace+"/_config/import_filter", importFilter)
+	resp.RequireStatus(http.StatusOK)
+
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
+	resp.RequireResponse(http.StatusOK, importFilter)
+
+	// Update the db config from a remote node, verify change is picked up while in starting state
+	_, err = sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
+		_, scopeName, collectionName, err := rest.ParseKeyspace(keyspace)
+		require.NoError(t, err)
+		if scopeName == nil || collectionName == nil {
+			bucketDbConfig.ImportFilter = nil
+		} else {
+			bucketDbConfig.Scopes[*scopeName].Collections[*collectionName].ImportFilter = nil
+		}
+		return bucketDbConfig, nil
+	})
+	require.NoError(t, err)
+
+	// Need a wait loop here to wait for config polling to pick up the change
+	err = rest.WaitForConditionWithOptions(ctx, func() bool {
+		resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
+		if resp.StatusCode == http.StatusOK && resp.Body == "" {
+			return true
+		} else {
+			log.Printf("Waiting for OK and empty filter, current status: %v, filter: %q", resp.StatusCode, resp.Body)
+		}
+		return (resp.StatusCode == http.StatusOK) && resp.Body == ""
+	}, 200, 100)
+	require.NoError(t, err)
+
+	// Unblock initialization, verify status goes to Online
+	close(unblockInit)
+	waitAndRequireDBState(t, sc, dbName, db.DBOnline)
+}
+
+// verifyInitializationActive verifies the expected value of InitializationActive on db and verbose all_dbs responses
+func verifyInitializationActive(t *testing.T, sc *rest.ServerContext, dbName string, expectedValue bool) {
+
+	var dbResult rest.DatabaseRoot
+	resp := rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+dbName+"/", "")
+	resp.RequireStatus(http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbResult))
+	require.Equal(t, expectedValue, dbResult.InitializationActive)
+
+	var allDbResult []rest.DbSummary
+	allDbResp := rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/_all_dbs?verbose=true", "")
+	allDbResp.RequireStatus(http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal([]byte(allDbResp.Body), &allDbResult))
+	dbFound := false
+	for _, dbSummary := range allDbResult {
+		if dbSummary.DBName == dbName {
+			dbFound = true
+			require.Equal(t, expectedValue, dbSummary.InitializationActive)
+		}
+	}
+	require.True(t, dbFound, "Database not found in _all_dbs response")
+}
+
 func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, importFilter string) rest.DbConfig {
 
-	scopesConfig := rest.GetCollectionsConfig(t, tb, 3)
+	scopesConfig := rest.GetCollectionsConfig(t, tb, 1)
 	for scopeName, scope := range scopesConfig {
 		for collectionName := range scope.Collections {
 			collectionConfig := &rest.CollectionConfig{}
@@ -622,6 +881,7 @@ func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, import
 		NumIndexReplicas: &numIndexReplicas,
 		EnableXattrs:     &enableXattrs,
 		Scopes:           scopesConfig,
+		AutoImport:       false, // disable import to streamline index tests and avoid teardown races
 	}
 	return dbConfig
 }

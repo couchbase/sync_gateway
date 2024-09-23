@@ -90,17 +90,20 @@ func GenerateDatabaseConfigVersionID(ctx context.Context, previousRevID string, 
 }
 
 func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfig {
+	dblc := &DbLoggingConfig{}
 	if bootstrapLoggingCnf.Console != nil {
 		if *bootstrapLoggingCnf.Console.Enabled {
-			return &DbLoggingConfig{
-				Console: &DbConsoleLoggingConfig{
-					LogLevel: bootstrapLoggingCnf.Console.LogLevel,
-					LogKeys:  bootstrapLoggingCnf.Console.LogKeys,
-				},
+			dblc.Console = &DbConsoleLoggingConfig{
+				LogLevel: bootstrapLoggingCnf.Console.LogLevel,
+				LogKeys:  bootstrapLoggingCnf.Console.LogKeys,
 			}
 		}
 	}
-	return &DbLoggingConfig{}
+	dblc.Audit = &DbAuditLoggingConfig{
+		Enabled:       base.BoolPtr(base.DefaultDbAuditEnabled),
+		EnabledEvents: &base.DefaultDbAuditEventIDs,
+	}
+	return dblc
 }
 
 // MergeDatabaseConfigWithDefaults merges the passed in config onto a DefaultDbConfig which results in returned value
@@ -134,8 +137,8 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		AllowEmptyPassword: base.BoolPtr(false),
 		CacheConfig: &CacheConfig{
 			RevCacheConfig: &RevCacheConfig{
-				Size:       base.Uint32Ptr(db.DefaultRevisionCacheSize),
-				ShardCount: base.Uint16Ptr(db.DefaultRevisionCacheShardCount),
+				MaxItemCount: base.Uint32Ptr(db.DefaultRevisionCacheSize),
+				ShardCount:   base.Uint16Ptr(db.DefaultRevisionCacheShardCount),
 			},
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MaxNumber:            base.IntPtr(db.DefaultChannelCacheMaxNumber),
@@ -187,7 +190,6 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		if base.IsEnterpriseEdition() {
 			dbConfig.ImportPartitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
 		}
-
 	} else {
 		dbConfig.AutoImport = base.BoolPtr(false)
 	}

@@ -179,9 +179,8 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	docID := t.Name()
 	version := rt.PutDoc(docID, `{"val":-1}`)
 	revID := version.RevID
-	collection := rt.GetSingleTestDatabaseCollectionWithUser()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
 		version = rt.UpdateDoc(docID, version, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
@@ -525,7 +524,8 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
-	results, err := rt.GetDatabase().CollectionChannelViewForTest(t, rt.GetSingleTestDatabaseCollection(), "ABC", 0, 1000)
+	collection, _ := rt.GetSingleTestDatabaseCollection()
+	results, err := rt.GetDatabase().CollectionChannelViewForTest(t, collection, "ABC", 0, 1000)
 	require.NoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)
@@ -1101,7 +1101,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
 	testExpiry := uint32(time.Now().Add(expirySeconds).Unix())
-	bodyString := rawDocWithSyncMeta()
+	bodyString := db.RawDocWithInlineSyncData(t)
 	_, err := dataStore.Add(key, testExpiry, []byte(bodyString))
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
@@ -1152,7 +1152,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	// Attempt to get the doc via Sync Gateway, triggering a cancelled on-demand import of the null document
 	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+key, "")
-	rest.RequireStatus(t, response, http.StatusBadRequest) // import attempted with empty body
+	rest.RequireStatus(t, response, http.StatusNotFound) // import attempted with empty body
 
 	// Attempt to update the doc via Sync Gateway, triggering on-demand import of the null document - should ignore empty body error and proceed with write
 	mobileBody := make(map[string]interface{})
@@ -1343,7 +1343,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			// Create via the SDK with sync metadata intact
 			expirySeconds := time.Second * 30
 			syncMetaExpiry := time.Now().Add(expirySeconds)
-			bodyString := rawDocWithSyncMeta()
+			bodyString := db.RawDocWithInlineSyncData(t)
 			_, err := dataStore.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
@@ -1625,7 +1625,7 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
@@ -1673,7 +1673,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// 4. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -1744,7 +1744,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body.  Should fail, as backup wasn't persisted
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
@@ -1869,35 +1869,6 @@ func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, property
 	value, ok := responseBody[propertyName]
 	assert.True(t, ok, fmt.Sprintf("Expected property %s not found in response %s", propertyName, getDocResponse.Body.Bytes()))
 	assert.Equal(t, expectedPropertyValue, value)
-}
-
-func rawDocWithSyncMeta() string {
-
-	return `
-{
-    "_sync": {
-        "rev": "1-ca9ad22802b66f662ff171f226211d5c",
-        "sequence": 1,
-        "recent_sequences": [
-            1
-        ],
-        "history": {
-            "revs": [
-                "1-ca9ad22802b66f662ff171f226211d5c"
-            ],
-            "parents": [
-                -1
-            ],
-            "channels": [
-                null
-            ]
-        },
-        "cas": "",
-        "time_saved": "2017-11-29T12:46:13.456631-08:00"
-    }
-}
-`
-
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
@@ -2064,7 +2035,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			name:               "_purged true",
 			importBody:         map[string]interface{}{"_purged": true},
 			expectReject:       true,
-			expectedStatusCode: base.IntPtr(200), // Import gets cancelled and returns 200 and blank body
+			expectedStatusCode: base.IntPtr(404), // Import gets cancelled and returns not found
 		},
 		{
 			name:               "_removed",
@@ -2293,8 +2264,7 @@ func TestImportRollback(t *testing.T) {
 			// wait for doc to be imported
 			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 			require.NoError(t, err)
-			lastSeq, ok := changes.Last_Seq.(string)
-			require.True(t, ok)
+			lastSeq := changes.Last_Seq.String()
 
 			// Close db while we mess with checkpoints
 			db := rt.GetDatabase()

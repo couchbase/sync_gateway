@@ -60,7 +60,8 @@ func TestSyncFnBodyProperties(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -109,7 +110,8 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{}`)
 	RequireStatus(t, response, 200)
 
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -157,7 +159,8 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{"`+testdataKey+`":true,"update":2}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -213,7 +216,8 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -837,7 +841,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		},
 	)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if ok && base.UnitTestUrlIsWalrus() {
@@ -861,10 +864,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
 	}
 
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_role/role1", GetRolePayload(t, "role1", "", collection, []string{"channel_1"}))
+	ds := rt.GetSingleDataStore()
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_role/role1", GetRolePayload(t, "role1", ds, []string{"channel_1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", ds, []string{"channel_1"}, []string{"role1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
 	_, err := rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
@@ -882,17 +886,9 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Let everything catch up before opening changes feed
-	require.NoError(t, rt.WaitForPendingChanges())
+	rt.WaitForPendingChanges()
 
-	type ChangesResp struct {
-		Results []struct {
-			ID  string `json:"id"`
-			Seq int    `json:"seq"`
-		} `json:"results"`
-		LastSeq string `json:"last_seq"`
-	}
-
-	changesRespContains := func(changesResp ChangesResp, docid string) bool {
+	changesRespContains := func(changesResp ChangesResults, docid string) bool {
 		for _, resp := range changesResp.Results {
 			if resp.ID == docid {
 				return true
@@ -901,11 +897,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		return false
 	}
 
-	var changesResp ChangesResp
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "user1")
-	RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	require.NoError(t, err)
+	changesResp := rt.GetChanges("/{{.keyspace}}/_changes", "user1")
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
@@ -936,10 +928,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.True(t, role1SeqAfter > role1SeqBefore)
 	assert.True(t, user1SeqAfter > user1SeqBefore)
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
 
-		doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
@@ -963,10 +956,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, "", "user1")
-	RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	require.NoError(t, err)
+	changesResp = rt.GetChanges("/{{.keyspace}}/_changes", "user1")
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))

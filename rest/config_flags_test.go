@@ -48,14 +48,18 @@ func TestAllConfigFlags(t *testing.T) {
 				val = `{"db1":{"password":"foo"}}`
 			case *base.PerBucketCredentialsConfig:
 				val = `{"bucket":{"password":"foo"}}`
+			case *[]uint:
+				val = `123,456,789`
 			}
 			flags = append(flags, "-"+name, val)
 		case bool:
 			flags = append(flags, "-"+name+"=true")
 		case uint, uint64:
 			flags = append(flags, "-"+name, "1234")
-		case int:
+		case int, int64:
 			flags = append(flags, "-"+name, "-5678")
+		case float64:
+			flags = append(flags, "-"+name, "123.456")
 		default:
 			assert.Failf(t, "Unknown flag type", "value type %v for flag %v", rFlagVal.Interface(), name)
 		}
@@ -84,6 +88,7 @@ func TestFillConfigWithFlagsValidVals(t *testing.T) {
 		"-logging.console.log_level", "warn", // *LogLevel
 		"-replicator.max_heartbeat", "5h2m33s", // base.ConfigDuration
 		"-max_file_descriptors", "12345", // uint64
+		"-heap_profile_collection_threshold", "10000", // uint64
 	})
 	require.NoError(t, err)
 
@@ -101,6 +106,7 @@ func TestFillConfigWithFlagsValidVals(t *testing.T) {
 	assert.Equal(t, "warn", config.Logging.Console.LogLevel.String())
 	assert.Equal(t, base.NewConfigDuration(time.Hour*5+time.Minute*2+time.Second*33), config.Replicator.MaxHeartbeat)
 	assert.Equal(t, uint64(12345), config.MaxFileDescriptors)
+	assert.Equal(t, uint64(10000), *config.HeapProfileCollectionThreshold)
 
 	// unset values
 	assert.Equal(t, "", config.Bootstrap.X509CertPath)           // String
@@ -142,7 +148,7 @@ func TestAllConfigOptionsAsFlags(t *testing.T) {
 	cfg := NewEmptyStartupConfig()
 	cfgFieldsNum := countFields(cfg)
 	flagsNum := registerConfigFlags(&cfg, flag.NewFlagSet("test", flag.ContinueOnError))
-	assert.Equalf(t, len(flagsNum), cfgFieldsNum, "Number of cli flags and startup config properties did not match! Did you forget to add a new config option in registerConfigFlags?")
+	assert.Lenf(t, flagsNum, cfgFieldsNum, "Number of cli flags and startup config properties did not match! Did you forget to add a new config option in registerConfigFlags?")
 }
 
 func countFields(cfg interface{}) (fields int) {

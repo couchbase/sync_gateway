@@ -11,7 +11,6 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -28,10 +27,10 @@ import (
 func TestRolePurge(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
 
 	// Create role
-	resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", "", collection, []string{"channel"}))
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", ds, []string{"channel"}))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role
@@ -48,7 +47,7 @@ func TestRolePurge(t *testing.T) {
 	assert.NotNil(t, role)
 
 	// Re-create role
-	resp = rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", "", collection, []string{"channel"}))
+	resp = rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", ds, []string{"channel"}))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role again but with purge flag
@@ -68,14 +67,14 @@ func TestRoleAPI(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
 
 	// PUT a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", "", collection, []string{"fedoras", "fixies"}))
+	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", ds, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", GetRolePayload(t, "", "", collection, []string{"fedoras", "fixies"}))
+	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", GetRolePayload(t, "", ds, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
 
@@ -97,9 +96,9 @@ func TestRoleAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 
 	// POST a role
-	response = rt.SendAdminRequest("POST", "/db/_role", GetRolePayload(t, "hipster", "", collection, []string{"fedoras", "fixies"}))
+	response = rt.SendAdminRequest("POST", "/db/_role", GetRolePayload(t, "hipster", ds, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 301)
-	response = rt.SendAdminRequest("POST", "/db/_role/", GetRolePayload(t, "hipster", "", collection, []string{"fedoras", "fixies"}))
+	response = rt.SendAdminRequest("POST", "/db/_role/", GetRolePayload(t, "hipster", ds, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
 	RequireStatus(t, response, 200)
@@ -146,7 +145,7 @@ func TestFunkyRoleNames(t *testing.T) {
 					SyncFn: syncFn,
 				})
 			defer rt.Close()
-			collection := rt.GetSingleTestDatabaseCollection()
+			ds := rt.GetSingleDataStore()
 
 			ctx := rt.Context()
 			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -157,7 +156,7 @@ func TestFunkyRoleNames(t *testing.T) {
 			require.NoError(t, a.Save(user))
 
 			// Create role
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), GetRolePayload(t, "", "", collection, []string{"testchannel"}))
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), GetRolePayload(t, "", ds, []string{"testchannel"}))
 			RequireStatus(t, response, 201)
 
 			// Create test document
@@ -238,9 +237,9 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name
-	s := collection.ScopeName
+	ds := rt.GetSingleDataStore()
+	c := ds.CollectionName()
+	s := ds.ScopeName()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -251,7 +250,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assert.NoError(t, err)
 
 	// POST a role
-	response := rt.SendAdminRequest("POST", "/db/_role/", GetRolePayload(t, "role1", "", collection, []string{"chan1"}))
+	response := rt.SendAdminRequest("POST", "/db/_role/", GetRolePayload(t, "role1", ds, []string{"chan1"}))
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/role1", "")
 	RequireStatus(t, response, 200)
@@ -290,9 +289,9 @@ func TestRoleAccessChanges(t *testing.T) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name
-	s := collection.ScopeName
+	ds := rt.GetSingleDataStore()
+	c := ds.CollectionName()
+	s := ds.ScopeName()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -303,24 +302,11 @@ func TestRoleAccessChanges(t *testing.T) {
 	err = a.Save(guest)
 	assert.NoError(t, err)
 
-	// Create users:
-	response := rt.SendAdminRequest("PUT", "/db/_user/alice", GetUserPayload(t, "alice", "letmein", "", collection, []string{"alpha"}, nil))
-	RequireStatus(t, response, 201)
+	rt.CreateUser("alice", []string{"alpha"})
+	rt.CreateUser("zegpold", []string{"beta"})
 
-	response = rt.SendAdminRequest("PUT", "/db/_user/zegpold", GetUserPayload(t, "zegpold", "letmein", "", collection, []string{"beta"}, nil))
+	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "hipster", ds, []string{"gamma"}))
 	RequireStatus(t, response, 201)
-
-	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "hipster", "", collection, []string{"gamma"}))
-	RequireStatus(t, response, 201)
-	/*
-		alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "alpha"))
-		assert.NoError(t, a.Save(alice))
-		zegpold, err := a.NewUser("zegpold", "letmein", channels.BaseSetOf(t, "beta"))
-		assert.NoError(t, a.Save(zegpold))
-
-		hipster, err := a.NewRole("hipster", channels.BaseSetOf(t, "gamma"))
-		assert.NoError(t, a.Save(hipster))
-	*/
 
 	// Create some docs in the channels:
 	cacheWaiter := rt.ServerContext().Database(ctx, "db").NewDCPCachingCountWaiter(t)
@@ -366,27 +352,19 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
 
 	// Check the _changes feed:
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
 
 	cacheWaiter.Wait()
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "alice")
-	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "alice")
 	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "_user/alice", changes.Results[0].ID)
 	assert.Equal(t, "g1", changes.Results[1].ID)
 	assert.Equal(t, "a1", changes.Results[2].ID)
 
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
-	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "zegpold")
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "_user/zegpold", changes.Results[0].ID)
 	assert.Equal(t, "b1", changes.Results[1].ID)
-	lastSeqPreGrant := changes.Last_Seq
+	lastSeqPreGrant := changes.Last_Seq.String()
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	cacheWaiter.Add(1)
@@ -414,22 +392,15 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	cacheWaiter.Wait()
-	changes.Results = nil
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
-	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	log.Printf("changes: %+v", changes.Results)
-	require.Equal(t, len(changes.Results), 3)
+	changes = rt.GetChanges("/{{.keyspace}}/_changes", "zegpold")
+	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "_user/zegpold", changes.Results[0].ID)
 	assert.Equal(t, "b1", changes.Results[1].ID)
 	assert.Equal(t, "g1", changes.Results[2].ID)
 
 	// Changes feed with since=lastSeqPreGrant would ordinarily be empty, but zegpold got access to channel
 	// gamma after lastSeqPreGrant, so the pre-existing docs in that channel are included:
-	response = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", lastSeqPreGrant), "", "zegpold")
-	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
-	changes.Results = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?since="+lastSeqPreGrant, "zegpold")
 	require.Len(t, changes.Results, 1)
 	assert.Equal(t, "g1", changes.Results[0].ID)
 }

@@ -62,6 +62,7 @@ type RestTesterConfig struct {
 	leakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
 	adminInterface                  string                      // adminInterface overrides the default admin interface.
 	SgReplicateEnabled              bool                        // SgReplicateManager disabled by default for RestTester
+	AutoImport                      *bool
 	HideProductInfo                 bool
 	AdminInterfaceAuthentication    bool
 	metricsInterfaceAuthentication  bool
@@ -75,6 +76,7 @@ type RestTesterConfig struct {
 	syncGatewayVersion              *base.ComparableBuildVersion // alternate version of Sync Gateway to use on startup
 	allowDbConfigEnvVars            *bool
 	maxConcurrentRevs               *int
+	UseXattrConfig                  bool
 }
 
 type collectionConfiguration uint8
@@ -233,6 +235,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
+	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
 	sc.Replicator.MaxConcurrentRevs = rt.RestTesterConfig.maxConcurrentRevs
 	if rt.serverless {
 		if !rt.PersistentConfig {
@@ -346,12 +349,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.SgReplicateEnabled)
 
+		// Check for override of AutoImport in the rt config
+		if rt.AutoImport != nil {
+			rt.DatabaseConfig.AutoImport = *rt.AutoImport
+		}
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
 		}
-
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
 		var err error
 		if rt.leakyBucketConfig != nil || isLeaky {
@@ -461,10 +467,14 @@ func (rt *RestTester) ServerContext() *ServerContext {
 }
 
 // CreateDatabase is a utility function to create a database through the REST API
-func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) *TestResponse {
+func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) (resp *TestResponse) {
 	dbcJSON, err := base.JSONMarshal(config)
 	require.NoError(rt.TB(), err)
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
+	if rt.AdminInterfaceAuthentication {
+		resp = rt.SendAdminRequestWithAuth(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
+	}
 	return resp
 }
 
@@ -494,8 +504,24 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 }
 
 // CreateUser creates a user with the default password and channels scoped to a single test collection.
-func (rt *RestTester) CreateUser(username string, channels []string) {
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+func (rt *RestTester) CreateUser(username string, channels []string, roles ...string) {
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, roles), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, roles))
+	}
+	RequireStatus(rt.TB(), response, http.StatusCreated)
+}
+
+// CreateRole creates a role with channels scoped to a single test collection.
+func (rt *RestTester) CreateRole(rolename string, channels []string) {
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_role/"+rolename, GetRolePayload(rt.TB(), rolename, rt.GetSingleDataStore(), channels), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+rolename, GetRolePayload(rt.TB(), rolename, rt.GetSingleDataStore(), channels))
+	}
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
 
@@ -509,20 +535,21 @@ func (rt *RestTester) GetUserAdminAPI(username string) auth.PrincipalConfig {
 }
 
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
-func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
-	return db.GetSingleDatabaseCollection(rt.TB(), rt.GetDatabase())
+func (rt *RestTester) GetSingleTestDatabaseCollection() (*db.DatabaseCollection, context.Context) {
+	c := db.GetSingleDatabaseCollection(rt.TB(), rt.GetDatabase())
+	ctx := base.UserLogCtx(c.AddCollectionContext(rt.Context()), "gotest", base.UserDomainBuiltin, nil)
+	return c, ctx
 }
 
 // GetSingleTestDatabaseCollectionWithUser will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
-func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() *db.DatabaseCollectionWithUser {
-	return &db.DatabaseCollectionWithUser{
-		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
-	}
+func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() (*db.DatabaseCollectionWithUser, context.Context) {
+	c, ctx := rt.GetSingleTestDatabaseCollection()
+	return &db.DatabaseCollectionWithUser{DatabaseCollection: c}, ctx
 }
 
 // GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.
 func (rt *RestTester) GetSingleDataStore() base.DataStore {
-	collection := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 	ds, err := rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
 		Scope:      collection.ScopeName,
 		Collection: collection.Name,
@@ -545,8 +572,8 @@ func (rt *RestTester) WaitForDoc(docid string) (err error) {
 }
 
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
-	collection := rt.GetSingleTestDatabaseCollection()
-	doc, err := collection.GetDocument(base.TestCtx(rt.TB()), docid, db.DocUnmarshalAll)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	doc, err := collection.GetDocument(ctx, docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
 	}
@@ -555,17 +582,15 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 
 // Wait for sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) error {
-	return rt.GetSingleTestDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB()), seq)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	return collection.WaitForSequence(ctx, seq)
 }
 
-func (rt *RestTester) WaitForPendingChanges() error {
+func (rt *RestTester) WaitForPendingChanges() {
+	ctx := rt.Context()
 	for _, collection := range rt.GetDbCollections() {
-		err := collection.WaitForPendingChanges(base.TestCtx(rt.TB()))
-		if err != nil {
-			return err
-		}
+		require.NoError(rt.TB(), collection.WaitForPendingChanges(ctx))
 	}
-	return nil
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
@@ -719,6 +744,14 @@ func (rt *RestTester) SendMetricsRequest(method, resource, body string) *TestRes
 	return rt.sendMetrics(Request(method, rt.mustTemplateResource(resource), body))
 }
 
+func (rt *RestTester) SendMetricsRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
+	request := Request(method, rt.mustTemplateResource(resource), body)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
+	return rt.sendMetrics(request)
+}
+
 func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	rt.TestMetricsHandler().ServeHTTP(response, request)
@@ -733,14 +766,29 @@ func (rt *RestTester) SendDiagnosticRequest(method, resource, body string) *Test
 	return response
 }
 
+// SendDiagnosticRequestWithHeaders runs a request against the diagnostic handler with headers.
+func (rt *RestTester) SendDiagnosticRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
+	request := Request(method, rt.mustTemplateResource(resource), body)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
+
+	rt.TestDiagnosticHandler().ServeHTTP(response, request)
+	return response
+}
+
 func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
 	rt.EnableNoConflictsMode = true
 	return rt.TestAdminHandler()
 }
 
+var fakeRestTesterIP = net.IPv4(127, 0, 0, 99)
+
 func (rt *RestTester) TestAdminHandler() http.Handler {
 	rt.adminHandlerOnce.Do(func() {
 		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(adminServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4985}})
 	})
 	return rt.AdminHandler
 }
@@ -748,6 +796,7 @@ func (rt *RestTester) TestAdminHandler() http.Handler {
 func (rt *RestTester) TestPublicHandler() http.Handler {
 	rt.publicHandlerOnce.Do(func() {
 		rt.PublicHandler = CreatePublicHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(publicServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4984}})
 	})
 	return rt.PublicHandler
 }
@@ -755,6 +804,7 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 func (rt *RestTester) TestMetricsHandler() http.Handler {
 	rt.metricsHandlerOnce.Do(func() {
 		rt.MetricsHandler = CreateMetricHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(metricsServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4986}})
 	})
 	return rt.MetricsHandler
 }
@@ -763,13 +813,14 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 	rt.diagnosticHandlerOnce.Do(func() {
 		rt.DiagnosticHandler = createDiagnosticHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(diagnosticServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4987}})
 	})
 	return rt.DiagnosticHandler
 }
 
 type ChangesResults struct {
 	Results  []db.ChangeEntry
-	Last_Seq interface{}
+	Last_Seq db.SequenceID
 }
 
 func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
@@ -865,6 +916,10 @@ func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
 }
 
 func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
+	return WaitForConditionWithOptions(rt.Context(), successFunc, maxNumAttempts, timeToSleepMs)
+}
+
+func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
 	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
 		if successFunc() {
 			return false, nil, nil
@@ -873,7 +928,7 @@ func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNu
 	}
 
 	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", waitForSuccess, sleeper)
+	err, _ := base.RetryLoop(ctx, "Wait for condition options", waitForSuccess, sleeper)
 	if err != nil {
 		return err
 	}
@@ -919,7 +974,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		var response *TestResponse
 		if user != nil {
-			request, _ := http.NewRequest("GET", viewUrlPath, nil)
+			request := Request("GET", viewUrlPath, "")
 			request.SetBasicAuth(user.Name(), password)
 			response = rt.Send(request)
 		} else {
@@ -1169,7 +1224,8 @@ func Request(method, resource, body string) *http.Request {
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
-	request.RequestURI = resource // This doesn't get filled in by NewRequest
+	request.RemoteAddr = "test.client.addr:99999" // usually populated by actual HTTP requests going into a HTTP Server
+	request.RequestURI = resource                 // This doesn't get filled in by NewRequest
 	FixQuotedSlashes(request)
 	return request
 }
@@ -1424,7 +1480,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 			adminChannels = append(adminChannels, spec.connectingUserChannelGrants...)
 		}
 
-		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, bt.restTester.GetSingleTestDatabaseCollection(), adminChannels)
+		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, bt.restTester.GetSingleDataStore(), adminChannels)
 		if err != nil {
 			return nil, err
 		}
@@ -1514,8 +1570,8 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 
 }
 
-func getUserBodyDoc(username, password string, collection *db.DatabaseCollection, adminChans []string) (string, error) {
-	config := auth.PrincipalConfig{}
+func getUserBodyDoc(username, password string, collection sgbucket.DataStore, adminChans []string) (string, error) {
+	config := PrincipalConfigForWrite{}
 	if username != "" {
 		config.Name = &username
 	}
@@ -1649,9 +1705,22 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
-// GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
-func GetUserPayload(t testing.TB, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
-	config := auth.PrincipalConfig{}
+// PrincipalConfigForWrite is used by GetUserPayload, GetRolePayload to remove the omitempty for ExplicitRoleNames
+// and ExplicitChannels, to build payloads with explicit removal of channels and roles after changes made in CBG-3883
+type PrincipalConfigForWrite struct {
+	auth.PrincipalConfig
+	ExplicitChannels  *base.Set `json:"admin_channels,omitempty"`
+	ExplicitRoleNames *base.Set `json:"admin_roles,omitempty"`
+}
+
+// GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint.
+// When using the default collection, chans and roles are handled as follows to align with CBG-3883:
+//
+//	nil: omitted from payload
+//	empty slice: "[]"
+//	populated slice: "["ABC"]"
+func GetUserPayload(t testing.TB, username, password, email string, collection sgbucket.DataStore, chans, roles []string) string {
+	config := PrincipalConfigForWrite{}
 	if username != "" {
 		config.Name = &username
 	}
@@ -1661,22 +1730,23 @@ func GetUserPayload(t testing.TB, username, password, email string, collection *
 	if email != "" {
 		config.Email = &email
 	}
-	if len(roles) != 0 {
-		config.ExplicitRoleNames = base.SetOf(roles...)
+
+	if roles != nil {
+		roleSet := base.SetOf(roles...)
+		config.ExplicitRoleNames = &roleSet
 	}
+
 	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
 	require.NoError(t, err)
 	return string(marshalledConfig)
 }
 
-// GetRolePayload will take roleName, password and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
-func GetRolePayload(t *testing.T, roleName, password string, collection *db.DatabaseCollection, chans []string) string {
-	config := auth.PrincipalConfig{}
+// GetRolePayload will take roleName and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
+// For default collection, follows same handling as GetUserPayload for chans.
+func GetRolePayload(t testing.TB, roleName string, collection sgbucket.DataStore, chans []string) string {
+	config := PrincipalConfigForWrite{}
 	if roleName != "" {
 		config.Name = &roleName
-	}
-	if password != "" {
-		config.Password = &password
 	}
 	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
 	require.NoError(t, err)
@@ -1684,11 +1754,14 @@ func GetRolePayload(t *testing.T, roleName, password string, collection *db.Data
 }
 
 // add channels to principal depending if running with collections or not. then marshal the principal config
-func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
-	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
-		config.ExplicitChannels = base.SetFromArray(chans)
+func addChannelsToPrincipal(config PrincipalConfigForWrite, ds sgbucket.DataStore, chans []string) ([]byte, error) {
+	if base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
+		if chans != nil {
+			adminChannels := base.SetFromArray(chans)
+			config.ExplicitChannels = &adminChannels
+		}
 	} else {
-		config.SetExplicitChannels(collection.ScopeName, collection.Name, chans...)
+		config.SetExplicitChannels(ds.ScopeName(), ds.CollectionName(), chans...)
 	}
 	payload, err := json.Marshal(config)
 	if err != nil {
@@ -2308,20 +2381,6 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	return s
 }
 
-func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
-	t.Helper()
-	t.Log("starting waitAndRequireCondition")
-	for i := 0; i <= 20; i++ {
-		if i == 20 {
-			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			break
-		}
-		time.Sleep(time.Millisecond * 250)
-	}
-}
-
 func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...interface{}) {
 	t.Helper()
 	t.Log("starting WaitAndAssertCondition")
@@ -2590,13 +2649,34 @@ func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username s
 	require.Len(t, changes, expectedChanges)
 }
 
-func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int, username string, changesCount int) *TestResponse {
-	changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.%s}}/_changes?since=%d", keyspace, since), "", username)
+// GetChanges returns the set of changes from a GET request for a given user.
+func (rt *RestTester) GetChanges(uri string, username string) ChangesResults {
+	changesResponse := rt.SendUserRequest(http.MethodGet, uri, "", username)
+	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
 	var changes ChangesResults
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, changesCount)
-	return changesResponse
+	assert.NoError(rt.TB(), err, "Error unmarshalling changes response")
+	return changes
+}
+
+// PostChanges issues a changes POST request for a given user.
+func (rt *RestTester) PostChanges(uri, body, username string) ChangesResults {
+	changesResponse := rt.SendUserRequest(http.MethodPost, uri, body, username)
+	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
+	var changes ChangesResults
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(rt.TB(), err, "Error unmarshalling changes response")
+	return changes
+}
+
+// PostChangesAdmin issues a changes POST request for a given user.
+func (rt *RestTester) PostChangesAdmin(uri, body string) ChangesResults {
+	changesResponse := rt.SendAdminRequest(http.MethodPost, uri, body)
+	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
+	var changes ChangesResults
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(rt.TB(), err, "Error unmarshalling changes response")
+	return changes
 }
 
 // NewDbConfig returns a DbConfig for the given RestTester. This sets up a config appropriate to collections, xattrs, import filter and sync function.
@@ -2621,7 +2701,27 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		config.ImportFilter = stringPtrOrNil(rt.ImportFilter)
 	}
 
+	if rt.GuestEnabled {
+		config.Guest = &auth.PrincipalConfig{
+			Name:     stringPtrOrNil(base.GuestUsername),
+			Disabled: base.BoolPtr(false),
+		}
+		setChannelsAllCollections(config, config.Guest, "*")
+	}
+
 	return config
+}
+
+func setChannelsAllCollections(dbConfig DbConfig, principal *auth.PrincipalConfig, channels ...string) {
+	if dbConfig.Scopes == nil {
+		principal.ExplicitChannels = base.SetOf(channels...)
+		return
+	}
+	for scope, scopeConfig := range dbConfig.Scopes {
+		for collection := range scopeConfig.Collections {
+			principal.SetExplicitChannels(scope, collection, "*")
+		}
+	}
 }
 
 // stringPtrOrNil returns a stringPtr for the given string, or nil if the string is empty
@@ -2640,6 +2740,25 @@ func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
 		ds, err := tb.GetNamedDataStore(i)
 		require.NoError(t, err)
 		dropAllNonPrimaryIndexes(t, ds)
+	}
+}
+
+func DropAllTestIndexesIncludingPrimary(t *testing.T, tb *base.TestBucket) {
+
+	ctx := base.TestCtx(t)
+	n1qlStore, ok := base.AsN1QLStore(tb.GetMetadataStore())
+	require.True(t, ok)
+	dropErr := base.DropAllIndexes(ctx, n1qlStore)
+	require.NoError(t, dropErr)
+
+	dsNames := tb.GetNonDefaultDatastoreNames()
+	for i := 0; i < len(dsNames); i++ {
+		ds, err := tb.GetNamedDataStore(i)
+		require.NoError(t, err)
+		n1qlStore, ok := base.AsN1QLStore(ds)
+		require.True(t, ok)
+		dropErr := base.DropAllIndexes(ctx, n1qlStore)
+		require.NoError(t, dropErr)
 	}
 }
 

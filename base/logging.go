@@ -17,6 +17,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -85,8 +86,10 @@ func lastComponent(path string) string {
 // *************************************************************************
 
 var (
-	consoleLogger                                                              *ConsoleLogger
-	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
+	consoleLogger                                                              atomic.Pointer[ConsoleLogger]
+	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger atomic.Pointer[FileLogger]
+
+	auditLogger atomic.Pointer[AuditLogger]
 
 	// envColorCapable evaluated only once to prevent unnecessary
 	// overhead of checking os.Getenv on each colorEnabled() invocation
@@ -94,26 +97,24 @@ var (
 )
 
 // RotateLogfiles rotates all active log files.
-func RotateLogfiles(ctx context.Context) map[*FileLogger]error {
+func RotateLogfiles(ctx context.Context) {
 	InfofCtx(ctx, KeyAll, "Rotating log files...")
 
-	loggers := map[*FileLogger]error{
-		traceLogger: nil,
-		debugLogger: nil,
-		infoLogger:  nil,
-		warnLogger:  nil,
-		errorLogger: nil,
-		statsLogger: nil,
+	for _, logger := range getFileLoggers() {
+		err := logger.Rotate()
+		if err != nil {
+			WarnfCtx(ctx, "Error rotating %v: %v", logger, err)
+		}
 	}
-
-	for logger := range loggers {
-		loggers[logger] = logger.Rotate()
-	}
-
-	return loggers
 }
 
 func init() {
+	initializeLoggers(context.Background())
+}
+
+// initializeLoggers should be called once per program in init. This is also called to reset logging in a test context.
+func initializeLoggers(ctx context.Context) {
+	nilAllNonConsoleLoggers()
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
 	// This maintains consistent formatting (timestamps, levels, etc) in the output,
 	// and allows a single set of logging functions to be used, rather than fmt.Printf()
@@ -122,14 +123,16 @@ func init() {
 	// initializing a logging config, and when running under a test scenario.
 	initialCollationBufferSize := 0
 
-	consoleLogger = mustInitConsoleLogger(context.Background(), &ConsoleLoggerConfig{LogKeys: []string{logKeyNames[KeyHTTP]}, FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
+	consoleLogger.Store(mustInitConsoleLogger(context.Background(), &ConsoleLoggerConfig{LogKeys: []string{logKeyNames[KeyHTTP]}, FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}}))
 	initExternalLoggers()
 }
 
+type logFn func(ctx context.Context, format string, args ...any)
+
 // PanicfCtx logs the given formatted string and args to the error log level and given log key and then panics.
-func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
+func PanicfCtx(ctx context.Context, format string, args ...any) {
 	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
-	if errorLogger == nil {
+	if errorLogger.Load() == nil {
 		log.Panicf(format, args...)
 	}
 	// ensure the log message always reaches console
@@ -139,9 +142,9 @@ func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 }
 
 // FatalfCtx logs the given formatted string and args to the error log level and given log key and then exits.
-func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
+func FatalfCtx(ctx context.Context, format string, args ...any) {
 	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
-	if errorLogger == nil {
+	if errorLogger.Load() == nil {
 		log.Fatalf(format, args...)
 	}
 	// ensure the log message always reaches console
@@ -151,46 +154,45 @@ func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
 }
 
 // ErrorfCtx logs the given formatted string and args to the error log level and given log key.
-func ErrorfCtx(ctx context.Context, format string, args ...interface{}) {
+func ErrorfCtx(ctx context.Context, format string, args ...any) {
 	logTo(ctx, LevelError, KeyAll, format, args...)
 }
 
 // WarnfCtx logs the given formatted string and args to the warn log level and given log key.
-func WarnfCtx(ctx context.Context, format string, args ...interface{}) {
+func WarnfCtx(ctx context.Context, format string, args ...any) {
 	logTo(ctx, LevelWarn, KeyAll, format, args...)
 }
 
 // InfofCtx logs the given formatted string and args to the info log level and given log key.
-func InfofCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func InfofCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
 	logTo(ctx, LevelInfo, logKey, format, args...)
 }
 
 // DebugfCtx logs the given formatted string and args to the debug log level with an optional log key.
-func DebugfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func DebugfCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
 	logTo(ctx, LevelDebug, logKey, format, args...)
 }
 
 // TracefCtx logs the given formatted string and args to the trace log level with an optional log key.
-func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
 	logTo(ctx, LevelTrace, logKey, format, args...)
 }
 
 // LogLevelCtx allows logging where the level can be set via parameter.
-func LogLevelCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+func LogLevelCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
 	logTo(ctx, logLevel, logKey, format, args...)
 }
 
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
 // The content passed in is expected to be a JSON dictionary.
 func RecordStats(statsJson string) {
-	if statsLogger != nil {
-		statsLogger.logf(statsJson)
-	}
+	// if statsLogger is nil, logf will no-op
+	statsLogger.Load().logf(statsJson)
 }
 
 // logTo is the "core" logging function. All other logging functions (like Debugf(), WarnfCtx(), etc.) end up here.
 // The function will fan out the log to all of the various outputs for them to decide if they should log it or not.
-func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
 	// Defensive bounds-check for log level. All callers of this function should be within this range.
 	if logLevel < LevelNone || logLevel >= levelCount {
 		return
@@ -202,12 +204,12 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Add(1)
 	}
 
-	shouldLogConsole := consoleLogger.shouldLog(ctx, logLevel, logKey)
-	shouldLogError := errorLogger.shouldLog(logLevel)
-	shouldLogWarn := warnLogger.shouldLog(logLevel)
-	shouldLogInfo := infoLogger.shouldLog(logLevel)
-	shouldLogDebug := debugLogger.shouldLog(logLevel)
-	shouldLogTrace := traceLogger.shouldLog(logLevel)
+	shouldLogConsole := consoleLogger.Load().shouldLog(ctx, logLevel, logKey)
+	shouldLogError := errorLogger.Load().shouldLog(logLevel)
+	shouldLogWarn := warnLogger.Load().shouldLog(logLevel)
+	shouldLogInfo := infoLogger.Load().shouldLog(logLevel)
+	shouldLogDebug := debugLogger.Load().shouldLog(logLevel)
+	shouldLogTrace := traceLogger.Load().shouldLog(logLevel)
 
 	// exit before string formatting if no loggers need to log
 	if !(shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
@@ -231,22 +233,22 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 
 	// If either global console or db console wants to log, allow it
 	if shouldLogConsole {
-		consoleLogger.logf(color(format, logLevel), args...)
+		consoleLogger.Load().logf(color(format, logLevel), args...)
 	}
 	if shouldLogError {
-		errorLogger.logf(format, args...)
+		errorLogger.Load().logf(format, args...)
 	}
 	if shouldLogWarn {
-		warnLogger.logf(format, args...)
+		warnLogger.Load().logf(format, args...)
 	}
 	if shouldLogInfo {
-		infoLogger.logf(format, args...)
+		infoLogger.Load().logf(format, args...)
 	}
 	if shouldLogDebug {
-		debugLogger.logf(format, args...)
+		debugLogger.Load().logf(format, args...)
 	}
 	if shouldLogTrace {
-		traceLogger.logf(format, args...)
+		traceLogger.Load().logf(format, args...)
 	}
 }
 
@@ -254,11 +256,12 @@ var consoleFOutput io.Writer = os.Stderr
 
 // ConsolefCtx logs the given formatted string and args to the given log level and log key,
 // as well as making sure the message is *always* logged to stdout.
-func ConsolefCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+func ConsolefCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
 	logTo(ctx, logLevel, logKey, format, args...)
 
+	logger := consoleLogger.Load()
 	// If the above logTo didn't already log to stderr, do it directly here
-	if !consoleLogger.isStderr || !consoleLogger.shouldLog(ctx, logLevel, logKey) {
+	if !logger.isStderr || !logger.shouldLog(ctx, logLevel, logKey) {
 		format = color(addPrefixes(format, ctx, logLevel, logKey), logLevel)
 		_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 	}
@@ -273,21 +276,11 @@ func LogSyncGatewayVersion(ctx context.Context) {
 
 	// Log the startup indicator to ALL log files too.
 	msg = addPrefixes(msg, ctx, LevelNone, KeyNone)
-	if errorLogger.shouldLog(LevelNone) {
-		errorLogger.logger.Printf(msg)
-	}
-	if warnLogger.shouldLog(LevelNone) {
-		warnLogger.logger.Printf(msg)
-	}
-	if infoLogger.shouldLog(LevelNone) {
-		infoLogger.logger.Printf(msg)
-	}
-	if debugLogger.shouldLog(LevelNone) {
-		debugLogger.logger.Printf(msg)
-	}
-	if traceLogger.shouldLog(LevelNone) {
-		traceLogger.logger.Printf(msg)
-	}
+	errorLogger.Load().conditionalPrintf(LevelNone, msg)
+	warnLogger.Load().conditionalPrintf(LevelNone, msg)
+	infoLogger.Load().conditionalPrintf(LevelNone, msg)
+	debugLogger.Load().conditionalPrintf(LevelNone, msg)
+	traceLogger.Load().conditionalPrintf(LevelNone, msg)
 }
 
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
@@ -354,35 +347,47 @@ func color(str string, logLevel LogLevel) string {
 // colorEnabled returns true if the console logger has color enabled,
 // and the environment supports ANSI color escape sequences.
 func colorEnabled() bool {
-	return consoleLogger.ColorEnabled && envColorCapable
+	return consoleLogger.Load().ColorEnabled && envColorCapable
 }
 
 // ConsoleLogLevel returns the console log level.
 func ConsoleLogLevel() *LogLevel {
-	return consoleLogger.LogLevel
+	return consoleLogger.Load().LogLevel
 }
 
 // ConsoleLogKey returns the console log key.
 func ConsoleLogKey() *LogKeyMask {
-	return consoleLogger.LogKeyMask
+	return consoleLogger.Load().LogKeyMask
 }
 
 // LogInfoEnabled returns true if either the console should log at info level,
 // or if the infoLogger is enabled.
 func LogInfoEnabled(ctx context.Context, logKey LogKey) bool {
-	return consoleLogger.shouldLog(ctx, LevelInfo, logKey) || infoLogger.shouldLog(LevelInfo)
+	return consoleLogger.Load().shouldLog(ctx, LevelInfo, logKey) || infoLogger.Load().shouldLog(LevelInfo)
 }
 
 // LogDebugEnabled returns true if either the console should log at debug level,
 // or if the debugLogger is enabled.
 func LogDebugEnabled(ctx context.Context, logKey LogKey) bool {
-	return consoleLogger.shouldLog(ctx, LevelDebug, logKey) || debugLogger.shouldLog(LevelDebug)
+	return consoleLogger.Load().shouldLog(ctx, LevelDebug, logKey) || debugLogger.Load().shouldLog(LevelDebug)
 }
 
 // LogTraceEnabled returns true if either the console should log at trace level,
 // or if the traceLogger is enabled.
 func LogTraceEnabled(ctx context.Context, logKey LogKey) bool {
-	return consoleLogger.shouldLog(ctx, LevelTrace, logKey) || traceLogger.shouldLog(LevelTrace)
+	return consoleLogger.Load().shouldLog(ctx, LevelTrace, logKey) || traceLogger.Load().shouldLog(LevelTrace)
+}
+
+func LogLevelEnabled(ctx context.Context, level LogLevel, logKey LogKey) bool {
+	switch level {
+	case LevelInfo:
+		return LogInfoEnabled(ctx, logKey)
+	case LevelDebug:
+		return LogDebugEnabled(ctx, logKey)
+	case LevelTrace:
+		return LogTraceEnabled(ctx, logKey)
+	}
+	return true
 }
 
 // AssertLogContains asserts that the logs produced by function f contain string s.
@@ -390,13 +395,30 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 	// Temporarily override logger output
 	b := &bytes.Buffer{}
 	mw := io.MultiWriter(b, os.Stderr)
-	consoleLogger.logger.SetOutput(mw)
-	defer func() { consoleLogger.logger.SetOutput(os.Stderr) }()
-
+	consoleLogger.Load().logger.SetOutput(mw)
 	// Call the given function
 	f()
 
 	FlushLogBuffers()
-	consoleLogger.FlushBufferToLog()
+	consoleLogger.Load().FlushBufferToLog()
+	// do not reset output in defer, since we are accessing b.String() after
+	consoleLogger.Load().logger.SetOutput(os.Stderr)
 	assert.Contains(t, b.String(), s)
+}
+
+// AuditLogContents returns that the audit logs produced by function f.
+func AuditLogContents(t testing.TB, f func(t testing.TB)) []byte {
+	// Temporarily override logger output
+	b := &bytes.Buffer{}
+	mw := io.MultiWriter(b, os.Stderr)
+	auditLogger.Load().logger.SetOutput(mw)
+
+	// Call the given function
+	f(t)
+
+	FlushLogBuffers()
+	auditLogger.Load().FlushBufferToLog()
+	// do not reset output in defer, since we are accessing b.bytes()
+	auditLogger.Load().logger.SetOutput(os.Stderr)
+	return b.Bytes()
 }

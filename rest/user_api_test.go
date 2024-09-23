@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -44,7 +45,6 @@ func TestUsersAPI(t *testing.T) {
 	rt := NewRestTester(t,
 		rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Validate the zero user case
 	var responseUsers []string
@@ -57,7 +57,7 @@ func TestUsersAPI(t *testing.T) {
 	// Test for user counts going from 1 to a few multiples of QueryPaginationLimit to check boundary conditions
 	for i := 1; i < 13; i++ {
 		userName := fmt.Sprintf("user%d", i)
-		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, GetUserPayload(t, "", "letmein", "", collection, []string{"foo", "bar"}, nil))
+		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, GetUserPayload(t, "", "letmein", "", rt.GetSingleDataStore(), []string{"foo", "bar"}, nil))
 		RequireStatus(t, response, 201)
 
 		// check user count
@@ -176,7 +176,6 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	}
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Validate the zero user case with limit
 	var responseUsers []auth.PrincipalConfig
@@ -190,7 +189,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	numUsers := 12
 	for i := 1; i <= numUsers; i++ {
 		userName := fmt.Sprintf("user%d", i)
-		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, GetUserPayload(t, "", "letmein", "", collection, []string{"foo", "bar"}, nil))
+		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, GetUserPayload(t, "", "letmein", "", rt.GetSingleDataStore(), []string{"foo", "bar"}, nil))
 		RequireStatus(t, response, 201)
 	}
 
@@ -265,13 +264,13 @@ func TestUserAPI(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	ctx := rt.Context()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name
-	s := collection.ScopeName
+	ds := rt.GetSingleDataStore()
+	c := ds.CollectionName()
+	s := ds.ScopeName()
 
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 
-	response := rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "letmein", "jens@couchbase.com", collection, []string{"foo", "bar"}, nil))
+	response := rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "letmein", "jens@couchbase.com", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 201)
 
 	user, err := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
@@ -306,7 +305,7 @@ func TestUserAPI(t *testing.T) {
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
-	response = rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "123", "", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "123", "", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 200)
 
 	user, _ = rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
@@ -317,10 +316,10 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 
 	// POST a user
-	response = rt.SendAdminRequest("POST", "/db/_user", GetUserPayload(t, "snej", "letmein", "", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("POST", "/db/_user", GetUserPayload(t, "snej", "letmein", "", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 301)
 
-	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "snej", "letmein", "", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "snej", "letmein", "", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
@@ -330,11 +329,11 @@ func TestUserAPI(t *testing.T) {
 
 	// Create a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", "", collection, []string{"fedoras", "fixies"}))
+	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", ds, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 
 	// Give the user that role
-	response = rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "", "", collection, []string{"foo", "bar"}, []string{"hipster"}))
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "", "", ds, []string{"foo", "bar"}, []string{"hipster"}))
 	RequireStatus(t, response, 200)
 
 	// GET the user and verify that it shows the channels inherited from the role
@@ -351,7 +350,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 
 	// POST a user with URL encoded '|' in name see #2870
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "0%7C59", "letmein", "", collection, []string{"foo", "bar"}, nil)), 201)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "0%7C59", "letmein", "", ds, []string{"foo", "bar"}, nil)), 201)
 
 	// GET the user, will fail
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C59", ""), 404)
@@ -366,7 +365,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C59", ""), 200)
 
 	// POST a user with URL encoded '|' and non-encoded @ in name see #2870
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "0%7C@59", "letmein", "", collection, []string{"foo", "bar"}, nil)), 201)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "0%7C@59", "letmein", "", ds, []string{"foo", "bar"}, nil)), 201)
 
 	// GET the user, will fail
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C@59", ""), 404)
@@ -423,7 +422,7 @@ func TestGuestUser(t *testing.T) {
 func TestUserAndRoleResponseContentType(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
 
 	// Create a user 'christopher' through PUT request with empty request body.
 	var responseBody db.Body
@@ -439,12 +438,12 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
 
 	// Create a user 'alice' through PUT request.
-	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", GetUserPayload(t, "", "cGFzc3dvcmQ=", "alice@couchbase.com", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", GetUserPayload(t, "", "cGFzc3dvcmQ=", "alice@couchbase.com", ds, []string{"foo", "bar"}, nil))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another user 'bob' through POST request.
-	response = rt.SendAdminRequest(http.MethodPost, "/db/_user/", GetUserPayload(t, "bob", "cGFzc3dvcmQ=", "bob@couchbase.com", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_user/", GetUserPayload(t, "bob", "cGFzc3dvcmQ=", "bob@couchbase.com", ds, []string{"foo", "bar"}, nil))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
@@ -517,12 +516,12 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create a role 'developer' through POST request
-	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", GetRolePayload(t, "developer", "", collection, []string{"channel1", "channel2"}))
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", GetRolePayload(t, "developer", ds, []string{"channel1", "channel2"}))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another role 'coder' through PUT request.
-	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", GetRolePayload(t, "", "", collection, []string{"channel3", "channel4"}))
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", GetRolePayload(t, "", ds, []string{"channel3", "channel4"}))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
@@ -586,12 +585,12 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 		`,
 				})
 			defer rt.Close()
-			collection := rt.GetSingleTestDatabaseCollection()
-			c := collection.Name
-			s := collection.ScopeName
+			ds := rt.GetSingleDataStore()
+			c := ds.CollectionName()
+			s := ds.ScopeName()
 
 			// Create role
-			resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", "", collection, []string{"channel"}))
+			resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", ds, []string{"channel"}))
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Create user
@@ -644,33 +643,33 @@ func TestUserPasswordValidation(t *testing.T) {
 	// PUT a user
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
 
-	response := rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "letmein", "jens@couchbase.com", collection, []string{"foo", "bar"}, nil))
+	response := rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "letmein", "jens@couchbase.com", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 201)
 
 	// PUT a user without a password, should fail
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "", "", "ajres@couchbase.com", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "", "", "ajres@couchbase.com", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// POST a user without a password, should fail
-	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "", "", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// PUT a user with a two character password, should fail
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "ajresnopassword", "in", "", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "ajresnopassword", "in", "", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// POST a user with a two character password, should fail
-	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "in", "", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "in", "", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// PUT a user with a zero character password, should fail
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "ajresnopassword", "", "", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// POST a user with a zero character password, should fail
-	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil))
+	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "", "", ds, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// PUT update a user with a two character password, should fail
@@ -811,9 +810,8 @@ function(doc, oldDoc) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", collection, []string{"profile-bernard"}, nil))
+	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", rt.GetSingleDataStore(), []string{"profile-bernard"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Try to force channel initialisation for user bernard
@@ -1290,33 +1288,33 @@ func TestPutUserUnsetAdminChannelsDefaultCollection(t *testing.T) {
 	rt := NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
 
-	collection := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
 	userRoles := []string{"role1"}
 
 	// Create a user with some admin channels and a role
-	payload := GetUserPayload(t, "demo", "password1", "", collection, []string{"foo", "bar"}, userRoles)
+	payload := GetUserPayload(t, "demo", "password1", "", ds, []string{"foo", "bar"}, userRoles)
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Note: Password not a required field for updates (only creations)
 	// Update the user with empty payload, ensure no changes
-	payload = GetUserPayload(t, "", "", "", collection, nil, nil)
+	payload = GetUserPayload(t, "", "", "", ds, nil, nil)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
 
 	// Check that the user still has access to the channels
 	userConfig := rt.GetUserAdminAPI("demo")
-	requireAdminChannels(t, base.SetFromArray([]string{"foo", "bar"}), userConfig, collection)
+	requireAdminChannels(t, base.SetFromArray([]string{"foo", "bar"}), userConfig, ds)
 	assert.Equal(t, base.SetFromArray(userRoles), userConfig.ExplicitRoleNames)
 
 	// Update the user with an empty admin channels to remove them
-	payload = `{"admin_channels":[]}`
+	payload = GetUserPayload(t, "demo", "", "", ds, []string{}, userRoles)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
 
 	// Verify that the user still has access to the channels
 	userConfig = rt.GetUserAdminAPI("demo")
-	requireAdminChannels(t, base.Set(nil), userConfig, collection)
+	requireAdminChannels(t, base.Set(nil), userConfig, ds)
 	assert.Equal(t, base.SetFromArray(userRoles), userConfig.ExplicitRoleNames)
 }
 
@@ -1324,45 +1322,45 @@ func TestPutUserUnsetAdminChannelsDefaultCollection(t *testing.T) {
 // only writable property in collection_access via the REST API.
 // See CBG-3883
 func TestPutUserUnsetAdminChannelsNamedCollection(t *testing.T) {
+	if base.TestsUseNamedCollections() {
+		t.Skip("Named collection test")
+	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	collection := rt.GetSingleTestDatabaseCollection()
-	if collection.IsDefaultCollection() {
-		t.Skip("Named collection test")
-	}
 	userRoles := []string{"role1"}
 
+	ds := rt.GetSingleDataStore()
 	// Create a user with some admin channels and a role
-	payload := GetUserPayload(t, "demo", "password1", "", collection, []string{"foo", "bar"}, userRoles)
+	payload := GetUserPayload(t, "demo", "password1", "", ds, []string{"foo", "bar"}, userRoles)
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Note: Password not a required field for updates (only creations)
 	// Update the user with empty admin channels, ensure channels are removed but roles are preserved
-	payload = GetUserPayload(t, "", "", "", collection, nil, nil)
+	payload = GetUserPayload(t, "", "", "", ds, []string{}, nil)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
 
 	// Check that channel access has been removed, but role access is unchanged
 	userConfig := rt.GetUserAdminAPI("demo")
-	requireAdminChannels(t, base.Set(nil), userConfig, collection)
+	requireAdminChannels(t, base.Set(nil), userConfig, ds)
 	assert.Equal(t, base.SetFromArray(userRoles), userConfig.ExplicitRoleNames)
 
 }
 
-func requireAdminChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, collection *db.DatabaseCollection) {
+func requireAdminChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, ds sgbucket.DataStore) {
 	configChannels := principalConfig.ExplicitChannels
-	if !collection.IsDefaultCollection() {
-		configChannels = principalConfig.CollectionAccess[collection.ScopeName][collection.Name].ExplicitChannels_
+	if !base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
+		configChannels = principalConfig.CollectionAccess[ds.ScopeName()][ds.CollectionName()].ExplicitChannels_
 	}
 	require.Equal(t, expectedChannels, configChannels)
 }
 
-func requireJWTChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, collection *db.DatabaseCollection) {
+func requireJWTChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, ds sgbucket.DataStore) {
 	configChannels := principalConfig.JWTChannels
-	if !collection.IsDefaultCollection() {
-		configChannels = principalConfig.CollectionAccess[collection.ScopeName][collection.Name].JWTChannels_
+	if !base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
+		configChannels = principalConfig.CollectionAccess[ds.ScopeName()][ds.CollectionName()].JWTChannels_
 	}
 	require.Equal(t, expectedChannels, configChannels)
 }
@@ -1579,4 +1577,79 @@ func TestUserMultipleDBs(t *testing.T) {
 
 		})
 	}
+}
+
+func TestDeletedRoleChanHistory(t *testing.T) {
+	tests := []struct {
+		defaultCollection bool
+	}{
+		{defaultCollection: true},
+		{defaultCollection: false},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("defaultCollection:%v", test.defaultCollection), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+
+			var rt *RestTester
+			if test.defaultCollection {
+				rt = NewRestTesterDefaultCollection(t, nil)
+			} else {
+				rt = NewRestTesterMultipleCollections(t, nil, 1)
+			}
+
+			defer rt.Close()
+
+			ds := rt.GetSingleDataStore()
+			const roleName = "role"
+			response := rt.SendAdminRequest("PUT", "/db/_role/role", GetUserPayload(t, "role", "letmein", "", ds, []string{"channel"}, nil))
+			RequireStatus(t, response, 201)
+
+			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+
+			// Get role - ensure accessible
+			role, err := a.GetRole(roleName)
+			assert.NoError(t, err)
+			assert.NotNil(t, role)
+			channels := role.CollectionChannels(ds.ScopeName(), ds.CollectionName())
+			assert.Len(t, channels, 2)
+			assert.True(t, channels.Contains("channel"))
+
+			// Delete role
+			err = a.DeleteRole(role, false, 2)
+			assert.NoError(t, err)
+
+			// get deleted role and assert channel is in channel history
+			role, err = a.GetRoleIncDeleted(roleName)
+			assert.NoError(t, err)
+			channelHistory := role.CollectionChannelHistory(ds.ScopeName(), ds.CollectionName())
+			assert.Len(t, channelHistory, 2)
+			_, ok := channelHistory["channel"]
+			require.True(t, ok)
+			assert.Truef(t, ok, "Channel history should contain 'channel'")
+		})
+	}
+
+}
+
+// TestDisabledUser ensures that a disabled (non-guest) user cannot authenticate to make requests.
+func TestDisabledUser(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	const username = "alice"
+	rt.CreateUser(username, nil)
+
+	response := rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", username)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", nil, username, "incorrectpassword")
+	RequireStatus(t, response, http.StatusUnauthorized)
+
+	// disable user
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":true}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", username)
+	RequireStatus(t, response, http.StatusUnauthorized)
 }

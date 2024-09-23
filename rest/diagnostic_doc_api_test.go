@@ -16,6 +16,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 
@@ -209,4 +211,867 @@ func TestGetDocDryRuns(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &newrespMap)
 	assert.NoError(t, err)
 	assert.EqualValues(t, newrespMap.Channels.ToArray(), []string{"chanOld"})
+}
+
+func TestGetUserDocAccessSpan(t *testing.T) {
+	tests := []struct {
+		name          string
+		adminChannels []string
+		grants        []grant
+	}{
+		{
+			name: "admin channels once",
+			grants: []grant{
+				docGrant{dynamicChannel: "A"},
+				userGrant{
+					user: "alice",
+					adminChannels: map[string][]string{
+						"{{.keyspace}}": {"A", "B", "C"},
+					},
+					docIDs:      []string{"doc"},
+					docUserTest: true,
+					output:      `{"doc": {"A": { "entries" : ["2-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "multiple history entries",
+			grants: []grant{
+				// grant 1
+				userGrant{
+					user: "alice",
+					adminChannels: map[string][]string{
+						"{{.keyspace}}": {"A"},
+					},
+				},
+				docGrant{dynamicChannel: "A"},
+				// grant 2
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 2
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["2-3", "4-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "limit history entries to 10",
+			grants: []grant{
+				// grant 1
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create doc
+				docGrant{dynamicChannel: "A"},
+				// grant 2
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 3
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 4
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 5
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 6
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 7
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 8
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 9
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 10
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 11
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 12
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 13
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 14
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 15
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 16
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 17
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 18
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 19
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 20
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 19
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 20
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 23
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["2-5","6-7","8-9","10-11","12-13","14-15","16-17","18-19","20-21","22-23","24-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "admin role grant channels",
+			grants: []grant{
+				// grant 1
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A", "B"}},
+				},
+				docGrant{dynamicChannel: "A"},
+				userGrant{
+					user:        "alice",
+					roles:       []string{"role1"},
+					docIDs:      []string{"doc"},
+					docUserTest: true,
+					output:      `{"doc": {"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "dynamic grant channels",
+			grants: []grant{
+				userGrant{
+					user: "alice",
+				},
+				docGrant{
+					userName:       "alice",
+					dynamicChannel: "A",
+					docIDs:         []string{"doc"},
+					docUserTest:    true,
+					output:         `{"doc": {"A": { "entries" : ["2-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "dynamic role grant channels",
+			grants: []grant{
+				// create user
+				userGrant{
+					user: "alice",
+				},
+				// create role with channels
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A", "B"}},
+				},
+				// assign role through the sync fn and check output
+				docGrant{
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "A",
+					docIDs:         []string{"doc"},
+					docUserTest:    true,
+					output:         `{"doc": {"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic and admin grants, assert earlier sequence (dynamic) is used",
+			grants: []grant{
+				docGrant{dynamicChannel: "A", docID: "docA"},
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create another doc and assign dynamic chan through sync fn
+				docGrant{
+					userName:       "alice",
+					dynamicChannel: "A",
+				},
+				// assign same channels through admin_channels and assert on sequences
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc", "docA"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["3-0"]}}, "docA":{"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both admin and admin role grants, assert earlier sequence (admin) is used",
+			grants: []grant{
+				docGrant{dynamicChannel: "A"},
+				// create user and assign channel through admin_channels
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create role with same channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign role through admin_roles and assert on sequences
+				userGrant{
+					user:        "alice",
+					roles:       []string{"role1"},
+					docIDs:      []string{"doc"},
+					docUserTest: true,
+					output:      `{"doc": {"A": { "entries" : ["2-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both admin and admin role grants, assert earlier sequence (admin role) is used",
+			grants: []grant{
+				docGrant{dynamicChannel: "A"},
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create role with channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign role through admin_roles
+				userGrant{
+					user:  "alice",
+					roles: []string{"role1"},
+				},
+				// assign role channel through admin_channels and assert on sequences
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["4-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic role and admin grants, assert earlier sequence (dynamic role) is used",
+			grants: []grant{
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create role with channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create doc and assign role through sync fn
+				docGrant{
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "A",
+				},
+				// assign role cahnnel to user through admin_channels and assert on sequences
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic role and admin grants, assert earlier sequence (admin) is used",
+			grants: []grant{
+				// create user with channel
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create role with same channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign role to user through sync fn and assert channel sequence is from admin_channels
+				docGrant{
+					userName:       "alice",
+					docIDs:         []string{"doc"},
+					dynamicChannel: "A",
+					docUserTest:    true,
+					dynamicRole:    "role1",
+					output:         `{"doc": {"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic role and admin role grants, assert earlier sequence (dynamic role) is used",
+			grants: []grant{
+				docGrant{dynamicChannel: "A"},
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create role with channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create another role with same channel
+				roleGrant{
+					role:          "role2",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign first role through sync fn
+				docGrant{
+					docID:          "doc2",
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "docChan",
+				},
+				// assign second role through admin_roles and assert sequence is from dynamic (first) role
+				userGrant{
+					user:        "alice",
+					roles:       []string{"role2"},
+					docIDs:      []string{"doc"},
+					docUserTest: true,
+					output:      `{"doc": {"A": { "entries" : ["5-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic role and admin role grants, assert earlier sequence (admin role) is used",
+			grants: []grant{
+				docGrant{dynamicChannel: "A"},
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create role with channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create another role with same channel
+				roleGrant{
+					role:          "role2",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign role through admin_roles
+				userGrant{
+					user:  "alice",
+					roles: []string{"role1"},
+				},
+				// assign other role through sync fn and assert earlier sequences are returned
+				docGrant{
+					docID:          "doc2",
+					userName:       "alice",
+					dynamicRole:    "role2",
+					docIDs:         []string{"doc"}, // doc is the doc made in the first grant
+					dynamicChannel: "A",
+					docUserTest:    true,
+					output:         `{"doc": {"A": { "entries" : ["5-0"]}}}`,
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig: true,
+				SyncFn:           `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
+			})
+			defer rt.Close()
+
+			RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+			// iterate and execute grants in each test case
+			for i, grant := range test.grants {
+				t.Logf("Processing grant %d", i+1)
+				grant.request(rt)
+			}
+
+		})
+	}
+}
+
+func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	bucket := base.GetTestBucket(t)
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, CustomTestBucket: bucket}, 1)
+	defer rt.Close()
+	SyncFn := `function(doc) {channel(doc.channel);}`
+	// add single named collection
+	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: "sg_test_0"}
+	require.NoError(t, bucket.CreateDataStore(base.TestCtx(t), newCollection))
+	defer func() {
+		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+	}()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = ScopesConfig{
+		base.DefaultScope: {
+			Collections: CollectionsConfig{
+				base.DefaultCollection:         {SyncFn: &SyncFn},
+				newCollection.CollectionName(): {SyncFn: &SyncFn},
+			},
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	grant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace1}}": {"defaultCollChan"},
+			"{{.keyspace2}}": {"coll2Chan"},
+		},
+	}
+	grant1.request(rt)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/doc1", `{"channel":"defaultCollChan"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc1", `{"channel":"coll2Chan"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedOutput1 := `{"doc1": {"defaultCollChan": { "entries" : ["2-0"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet, "/{{.keyspace1}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput1), response.BodyString())
+
+	expectedOutput2 := `{"doc1": {"coll2Chan": { "entries" : ["3-0"]}}}`
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace2}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput2), response.BodyString())
+}
+
+func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, SyncFn: `function(doc) {channel(doc.channel);}`}, 2)
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/doc1", `{"foo":"bar", "channel":["coll1Chan"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc1", `{"foo":"bar", "channel":["coll2Chan"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// check removed channel in keyspace2 is in history before deleting collection 2
+	grant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace1}}": {"coll1Chan"},
+			"{{.keyspace2}}": {"coll2Chan"},
+		},
+	}
+	grant1.request(rt)
+
+	expectedOutput1 := `{"doc1": {"coll1Chan": { "entries" : ["3-0"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace1}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput1), response.BodyString())
+
+	expectedOutput2 := `{"doc1": {"coll2Chan": { "entries" : ["3-0"]}}}`
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace2}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput2), response.BodyString())
+
+	// delete collection 2
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, rt.TestBucket, 1)
+	RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+
+}
+
+func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
+	if base.TestsUseNamedCollections() {
+		t.Skip("Only works with default collection until CBG-4003 is fixed")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
+	})
+	defer rt.Close()
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	// Create role with 1 channel and assign it to user
+	roleGrant1 := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.keyspace}}": {"A"}}}
+	roleGrant1.request(rt)
+
+	userGrant1 := userGrant{
+		user:  "alice",
+		roles: []string{"role1"},
+	}
+	userGrant1.request(rt)
+
+	// create doc in channel A
+	doc := docGrant{dynamicChannel: "A"}
+	doc.request(rt)
+	userGrant1 = userGrant{
+		user: "alice",
+	}
+	userGrant1.request(rt)
+
+	// Delete role and assert its channels no longer appear in response
+	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
+	RequireStatus(t, resp, http.StatusOK)
+
+	// seq 3 doc was made, seq 5 role was removed from user
+	expectedOutput := `{"doc": {"A": { "entries" : ["3-5"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// put doc in multiple channels, remove from some channels, assert response gets right sequences for each channels
+func TestGetUserDocAccessMultiChannel(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	defer rt.Close()
+	userGrant := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A", "B", "C"},
+		},
+	}
+	userGrant.request(rt)
+
+	version := rt.PutDoc("doc1", `{"channel":["A"]}`)
+	updatedVersion := rt.UpdateDoc("doc1", version, `{"channel":["B", "A"]}`)
+	updatedVersion = rt.UpdateDoc("doc1", updatedVersion, `{"channel":["C", "B"]}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-0"]},  "C": { "entries" : ["4-0"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+
+	// remove all channels
+	_ = rt.UpdateDoc("doc1", updatedVersion, `{"channel":[]}`)
+
+	// assert sequences spans end here
+	expectedOutput = `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-5"]},  "C": { "entries" : ["4-5"]} }}`
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give user access to chanA through admin API and role, remove admin API assignment, and assert access span is admin assignment to 0
+func TestGetUserDocAccessContinuousRoleAdminAPI(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	defer rt.Close()
+
+	roleGrant1 := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.keyspace}}": {"A"}}}
+	roleGrant1.request(rt)
+
+	// create doc in channel A
+	doc := docGrant{dynamicChannel: "A"}
+	doc.request(rt)
+
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		},
+	}
+	userGrant1.request(rt)
+
+	userGrant1 = userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"!"},
+		},
+		roles: []string{"role1"},
+	}
+	userGrant1.request(rt)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc": {"A": { "entries" : ["3-4", "4-0"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give user access to chanA through admin API and sync fn, remove admin API assignment, and assert access span is admin assignment to 0
+func TestGetUserDocAccessContinuousSyncFnAdminAPI(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel);}`})
+	defer rt.Close()
+
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		},
+	}
+	userGrant1.request(rt)
+
+	// create doc in channel A
+	doc := docGrant{dynamicChannel: "A", userName: "alice"}
+	doc.request(rt)
+
+	userGrant1 = userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"!"},
+		},
+	}
+	userGrant1.request(rt)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc": {"A": { "entries" : ["2-0"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give user access to chanA through sync fn after removing doc from chan
+func TestGetUserDocAccessDynamicGrantOnChanRemoval(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.dynamicChan);}`})
+	defer rt.Close()
+
+	userGrant1 := userGrant{
+		user: "alice",
+	}
+	userGrant1.request(rt)
+
+	version := rt.PutDoc("doc1", `{"channel":["A"]}`)
+	_ = rt.UpdateDoc("doc1", version, `{"dynamicChan":"A", "user":"alice"}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give role access to chanA through sync fn, remove doc from channel and keep role assignment
+func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.dynamicChan);}`})
+	defer rt.Close()
+
+	// create role1
+	roleGrant1 := roleGrant{role: "role1"}
+	roleGrant1.request(rt)
+
+	// create doc in channel A, assign chan A to role1
+	version := rt.PutDoc("doc1", `{"channel":["A"], "user":"role:role1", "dynamicChan":"A"}`)
+
+	userGrant1 := userGrant{
+		user:  "alice",
+		roles: []string{"role1"},
+	}
+	userGrant1.request(rt)
+
+	// update doc1 to remove chan A
+	_ = rt.UpdateDoc("doc1", version, `{"user":"role:role1", "dynamicChan":"A"}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give role access to chanA through sync fn, remove channel from role and keep doc in chan
+func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.dynamicChan);}`})
+	defer rt.Close()
+
+	// create role1
+	roleGrant1 := roleGrant{role: "role1"}
+	roleGrant1.request(rt)
+
+	// create doc in channel A, assign chan A to role1
+	version := rt.PutDoc("doc1", `{"channel":["A"], "user":"role:role1", "dynamicChan":"A"}`)
+
+	ks := rt.GetSingleDataStore().ScopeName() + "." + rt.GetSingleDataStore().CollectionName()
+	userGrant1 := userGrant{
+		user:   "alice",
+		roles:  []string{"role1"},
+		output: fmt.Sprintf(`{"all_channels":{"%s":{"A":{"entries":["3-0"]}}}}`, ks),
+	}
+	userGrant1.request(rt)
+
+	// update doc1 to remove chan A from role1
+	_ = rt.UpdateDoc("doc1", version, `{"channel":["A"]}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// multiple doc ids
+func TestGetUserDocAccessMultiDoc(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// update doc1 to remove chan A
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		}}
+	userGrant1.request(rt)
+
+	_ = rt.PutDoc("doc1", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc2", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc3", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc4", `{"channel":["B"]}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc1":{"A":{"entries":["2-0"]}},"doc2":{"A":{"entries":["3-0"]}},"doc3":{"A":{"entries":["4-0"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc1,doc2,doc3,doc4", ``)
+	t.Log(response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// multiple doc ids, one not found
+func TestGetUserDocAccessMultiDocNotFound(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// update doc1 to remove chan A
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		}}
+	userGrant1.request(rt)
+
+	_ = rt.PutDoc("doc1", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc2", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc3", `{"channel":["A"]}`)
+
+	// assert sequences are registered correctly
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc1,doc2,doc3,doc4", ``)
+	RequireStatus(rt.TB(), response, http.StatusNotFound)
+	assert.Contains(t, response.Body.String(), "doc doc4 not found")
+}
+
+// no doc id
+func TestGetUserDocAccessNoDocID(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// update doc1 to remove chan A
+	userGrant1 := userGrant{
+		user: "alice",
+	}
+	userGrant1.request(rt)
+
+	_ = rt.PutDoc("doc1", `{}`)
+
+	// assert sequences are registered correctly
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=", ``)
+	RequireStatus(rt.TB(), response, http.StatusBadRequest)
+	assert.Contains(t, response.Body.String(), "empty doc id given in request")
+}
+
+// duplicate doc ids
+func TestGetUserDocAccessDuplicates(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// update doc1 to remove chan A
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		}}
+	userGrant1.request(rt)
+
+	_ = rt.PutDoc("doc1", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc2", `{"channel":["A"]}`)
+
+	// assert no duplicates
+	expectedOutput := `{"doc1":{"A":{"entries":["2-0"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/alice?docids=doc1,doc1,doc1,doc1", ``)
+	t.Log(response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }

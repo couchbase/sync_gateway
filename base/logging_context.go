@@ -29,8 +29,8 @@ type LogContext struct {
 	// Database is the name of the sync gateway database (see DatabaseLogCtx)
 	Database string
 
-	// DbConsoleLogConfig is database-specific log settings that should be applied (see DatabaseLogCtx)
-	DbConsoleLogConfig *DbConsoleLogConfig
+	// DbLogConfig is database-specific log settings that should be applied (see DatabaseLogCtx)
+	DbLogConfig *DbLogConfig
 
 	// Bucket is the name of the backing bucket (see KeyspaceLogCtx)
 	Bucket string
@@ -43,12 +43,63 @@ type LogContext struct {
 
 	// TestName can be a unit test name (see TestCtx)
 	TestName string
+
+	// RequestAdditionalAuditFields is a map of fields to be included in audit logs
+	RequestAdditionalAuditFields map[string]any
+
+	// Username is the name of the authenticated user
+	Username string
+	// UserDomain can determine whether the authenticated user is a sync gateway user or a couchbase RBAC user
+	UserDomain UserIDDomain
+	// UserRolesForAuditFiltering is a list of the authenticated user's roles to be used to determine audit log filtering, the domain for these roles is the same as the UserDomain
+	UserRolesForAuditFiltering map[string]struct{}
+
+	// RequestHost is the HTTP Host of the request associated with this log.
+	RequestHost string
+	// RequestRemoteAddr is the IP and port of the remote client making the request associated with this log
+	RequestRemoteAddr string
+
+	// implicitDefaultCollection is set to true when the context represents the default collection, but we want to omit that value from logging to prevent verbosity.
+	implicitDefaultCollection bool
+
+	// Effective user ID from HTTP header
+	EffectiveUserID string
+
+	// Domain defined in the HTTP request header
+	EffectiveDomain string
+}
+
+// DbLogConfig can be used to customise the logging for logs associated with this database.
+type DbLogConfig struct {
+	Console *DbConsoleLogConfig
+	Audit   *DbAuditLogConfig
+}
+
+func (dlc *DbLogConfig) DbAuditEnabled() bool {
+	if dlc != nil && dlc.Audit != nil {
+		return dlc.Audit.Enabled
+	}
+	return DefaultDbAuditEnabled
 }
 
 // DbConsoleLogConfig can be used to customise the console logging for logs associated with this database.
 type DbConsoleLogConfig struct {
 	LogLevel *LogLevel
 	LogKeys  *LogKeyMask
+}
+
+// DbAuditLogConfig can be used to customise the audit logging for events associated with this database.
+// These properties are evaluated at logging time and are expected to have O(1) lookup time.
+type DbAuditLogConfig struct {
+	Enabled       bool
+	EnabledEvents map[AuditID]struct{}
+	DisabledUsers map[AuditLoggingPrincipal]struct{}
+	DisabledRoles map[AuditLoggingPrincipal]struct{}
+}
+
+type AuditLoggingPrincipal struct {
+	Domain string `json:"domain,omitempty"`
+	Name   string `json:"name,omitempty"`
 }
 
 // addContext returns a string format with additional log context if present.
@@ -59,7 +110,7 @@ func (lc *LogContext) addContext(format string) string {
 
 	if lc.Bucket != "" {
 		if lc.Database != "" {
-			if lc.Collection != "" {
+			if !lc.implicitDefaultCollection && lc.Collection != "" {
 				format = "col:" + lc.Collection + " " + format
 			}
 
@@ -73,7 +124,7 @@ func (lc *LogContext) addContext(format string) string {
 			}
 			format = keyspace + " " + format
 		}
-	} else if lc.Collection != "" {
+	} else if !lc.implicitDefaultCollection && lc.Collection != "" {
 		format = "col:" + lc.Collection + " " + format
 	}
 
@@ -97,13 +148,21 @@ func (lc *LogContext) getContextKey() LogContextKey {
 
 func (lc *LogContext) getCopy() LogContext {
 	return LogContext{
-		CorrelationID:      lc.CorrelationID,
-		Database:           lc.Database,
-		DbConsoleLogConfig: lc.DbConsoleLogConfig,
-		Bucket:             lc.Bucket,
-		Scope:              lc.Scope,
-		Collection:         lc.Collection,
-		TestName:           lc.TestName,
+		CorrelationID:                lc.CorrelationID,
+		Database:                     lc.Database,
+		DbLogConfig:                  lc.DbLogConfig,
+		Bucket:                       lc.Bucket,
+		Scope:                        lc.Scope,
+		Collection:                   lc.Collection,
+		TestName:                     lc.TestName,
+		RequestAdditionalAuditFields: lc.RequestAdditionalAuditFields,
+		Username:                     lc.Username,
+		UserDomain:                   lc.UserDomain,
+		UserRolesForAuditFiltering:   lc.UserRolesForAuditFiltering,
+		RequestHost:                  lc.RequestHost,
+		RequestRemoteAddr:            lc.RequestRemoteAddr,
+		EffectiveUserID:              lc.EffectiveUserID,
+		EffectiveDomain:              lc.EffectiveDomain,
 	}
 }
 
@@ -143,10 +202,20 @@ func BucketNameCtx(parent context.Context, bucketName string) context.Context {
 	return LogContextWith(parent, &newCtx)
 }
 
-// CollectionCtx extends the parent context with a collection name. Used when bucket and scope are implicit (e.g. in the context of a SG database)
-func CollectionLogCtx(parent context.Context, collectionName string) context.Context {
+// CollectionCtx extends the parent context with a collection name.
+func CollectionLogCtx(parent context.Context, scopeName, collectionName string) context.Context {
 	newCtx := getLogCtx(parent)
+	newCtx.Scope = scopeName
 	newCtx.Collection = collectionName
+	return LogContextWith(parent, &newCtx)
+}
+
+// ImplicitDefaultCollectionCtx extends the parent context with _default._default collection. When logging, col:_default will not be shown.
+func ImplicitDefaultCollectionLogCtx(parent context.Context) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.implicitDefaultCollection = true
+	newCtx.Scope = DefaultScope
+	newCtx.Collection = DefaultCollection
 	return LogContextWith(parent, &newCtx)
 }
 
@@ -158,10 +227,24 @@ func CorrelationIDLogCtx(parent context.Context, correlationID string) context.C
 }
 
 // DatabaseLogCtx extends the parent context with a database name.
-func DatabaseLogCtx(parent context.Context, databaseName string, config *DbConsoleLogConfig) context.Context {
+func DatabaseLogCtx(parent context.Context, databaseName string, config *DbLogConfig) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Database = databaseName
-	newCtx.DbConsoleLogConfig = config
+	newCtx.DbLogConfig = config
+	return LogContextWith(parent, &newCtx)
+}
+
+// AuditLogCtx extends the parent context with additional audit fields
+func AuditLogCtx(parent context.Context, additionalAuditFields map[string]any) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.RequestAdditionalAuditFields = additionalAuditFields
+	return LogContextWith(parent, &newCtx)
+}
+
+func EffectiveUserIDLogCtx(parent context.Context, domain, userID string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.EffectiveDomain = domain
+	newCtx.EffectiveUserID = userID
 	return LogContextWith(parent, &newCtx)
 }
 
@@ -171,6 +254,49 @@ func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionNam
 	newCtx.Bucket = bucketName
 	newCtx.Collection = collectionName
 	newCtx.Scope = scopeName
+	return LogContextWith(parent, &newCtx)
+}
+
+type EffectiveUserPair struct {
+	UserID string `json:"user"`
+	Domain string `json:"domain"`
+}
+
+type UserIDDomain string
+
+const (
+	UserDomainSyncGateway      UserIDDomain = "sgw"
+	UserDomainCBServer         UserIDDomain = "cbs"
+	UserDomainSyncGatewayAdmin UserIDDomain = "sgw_admin" // domain for SGW admin API when admin auth disabled
+	UserDomainBuiltin                       = "builtin"   // internal users (e.g. SG bootstrap user)
+)
+
+const UserSyncGatewayAdmin = "admin_noauth" // real_userid for admin API requests when admin auth is disabled
+
+func UserLogCtx(parent context.Context, username string, domain UserIDDomain, roles []string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.Username = username
+	newCtx.UserDomain = domain
+	if len(roles) > 0 {
+		newCtx.UserRolesForAuditFiltering = make(map[string]struct{}, len(roles))
+		for _, role := range roles {
+			newCtx.UserRolesForAuditFiltering[role] = struct{}{}
+		}
+	}
+	return LogContextWith(parent, &newCtx)
+}
+
+type RequestData struct {
+	CorrelationID     string
+	RequestHost       string
+	RequestRemoteAddr string
+}
+
+func RequestLogCtx(parent context.Context, d RequestData) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.CorrelationID = d.CorrelationID
+	newCtx.RequestHost = d.RequestHost
+	newCtx.RequestRemoteAddr = d.RequestRemoteAddr
 	return LogContextWith(parent, &newCtx)
 }
 

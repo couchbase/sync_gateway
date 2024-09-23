@@ -24,13 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coreos/go-oidc"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // oidcProviderForTest automatically stops the provider once the test has stopped.
@@ -453,10 +453,10 @@ func TestGetJWTIssuer(t *testing.T) {
 
 	claims := jwt.Claims{Issuer: wantIssuer, Audience: wantAudience}
 	builder := jwt.Signed(signer).Claims(claims)
-	token, err := builder.CompactSerialize()
+	token, err := builder.Serialize()
 	require.NoError(t, err, "Failed to serialize JSON Web Token")
 
-	jwt, err := jwt.ParseSigned(token)
+	jwt, err := jwt.ParseSigned(token, SupportedAlgorithmsSlice)
 	require.NoError(t, err, "Failed to decode raw JSON Web Token")
 	issuer, audiences, err := getIssuerWithAudience(jwt)
 	require.NoError(t, err)
@@ -1235,15 +1235,15 @@ func TestJWTRolesChannels(t *testing.T) {
 					Claims:  login.claims,
 				}
 				var updates PrincipalConfig
-				user, updates, _, err = auth.authenticateJWTIdentity(identity, provider.common())
+				user, updates, _, err = auth.authenticateJWTIdentity(identity, provider)
 				require.NoError(t, err, "error on authenticateOIDCIdentity")
 				require.NotNil(t, user, "nil user")
 				user.SetJWTChannels(ch.AtSequence(updates.JWTChannels, user.Sequence()), user.Sequence())
 				user.SetJWTRoles(ch.AtSequence(updates.JWTRoles, user.Sequence()), user.Sequence())
 				user.SetJWTLastUpdated(time.Now())
 
-				require.NoError(t, auth.rebuildRoles(user))
-				_, rebuildErr := auth.rebuildChannels(user)
+				require.NoError(t, auth.RebuildRoles(user))
+				_, rebuildErr := auth.RebuildChannels(user)
 				require.NoError(t, rebuildErr)
 
 				if user.RoleNames() == nil {

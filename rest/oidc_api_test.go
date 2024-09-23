@@ -31,11 +31,11 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // A forceError is being used when you want to force an error of type 'forceErrorType'
@@ -336,7 +336,7 @@ func (s *mockAuthServer) makeToken(claimSet claimSet) (string, error) {
 		primaryClaims.Issuer = s.options.issuer
 	}
 	builder := jwt.Signed(s.signer).Claims(primaryClaims).Claims(secondaryClaims)
-	token, err := builder.CompactSerialize()
+	token, err := builder.Serialize()
 	if err != nil {
 		return "", err
 	}
@@ -1159,7 +1159,7 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	docSeq := restTester.GetDocumentSequence("doc1")
 
-	require.NoError(t, restTester.WaitForPendingChanges())
+	restTester.WaitForPendingChanges()
 
 	ctx := base.DatabaseLogCtx(base.TestCtx(t), restTester.GetDatabase().Name, nil)
 	u, err := restTester.GetDatabase().Authenticator(ctx).GetUser("foo_noah")
@@ -1311,8 +1311,8 @@ func TestAdminAndJWTChannels(t *testing.T) {
 	defer restTester.Close()
 
 	// Create user with admin channels and roles
-	collection := restTester.GetSingleTestDatabaseCollection()
-	payload := GetUserPayload(t, "foo_noah", "pass", "", collection, []string{"ABC"}, []string{"role1"})
+	ds := restTester.GetSingleDataStore()
+	payload := GetUserPayload(t, "foo_noah", "pass", "", ds, []string{"ABC"}, []string{"role1"})
 	response := restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
@@ -1325,17 +1325,17 @@ func TestAdminAndJWTChannels(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	userConfig := restTester.GetUserAdminAPI("foo_noah")
-	requireAdminChannels(t, base.SetFromArray([]string{"ABC"}), userConfig, collection)
-	requireJWTChannels(t, base.SetFromArray([]string{"foo"}), userConfig, collection)
+	requireAdminChannels(t, base.SetFromArray([]string{"ABC"}), userConfig, ds)
+	requireJWTChannels(t, base.SetFromArray([]string{"foo"}), userConfig, ds)
 
 	// Update the admin channels to DEF, ensure JWT channels are preserved
-	payload = GetUserPayload(t, "", "", "", collection, []string{"DEF"}, nil)
+	payload = GetUserPayload(t, "", "", "", restTester.GetSingleDataStore(), []string{"DEF"}, nil)
 	response = restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", payload)
 	RequireStatus(t, response, http.StatusOK)
 
 	userConfig = restTester.GetUserAdminAPI("foo_noah")
-	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, collection)
-	requireJWTChannels(t, base.SetFromArray([]string{"foo"}), userConfig, collection)
+	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, ds)
+	requireJWTChannels(t, base.SetFromArray([]string{"foo"}), userConfig, ds)
 
 	// Update token to update the channels claim to 'bar'
 	updatedToken, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"bar"}}))
@@ -1345,8 +1345,8 @@ func TestAdminAndJWTChannels(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	userConfig = restTester.GetUserAdminAPI("foo_noah")
-	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, collection)
-	requireJWTChannels(t, base.SetFromArray([]string{"bar"}), userConfig, collection)
+	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, ds)
+	requireJWTChannels(t, base.SetFromArray([]string{"bar"}), userConfig, ds)
 
 	// Update token with no channel claims, ensure it removes JWT channels and preserves admin channels
 	updatedToken, err = mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"otherClaim": "not a channel"}))
@@ -1355,14 +1355,14 @@ func TestAdminAndJWTChannels(t *testing.T) {
 	resp = restTester.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", map[string]string{"Authorization": BearerToken + " " + updatedToken})
 	RequireStatus(t, resp, http.StatusOK)
 	userConfig = restTester.GetUserAdminAPI("foo_noah")
-	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, collection)
-	requireJWTChannels(t, base.Set(nil), userConfig, collection)
+	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, ds)
+	requireJWTChannels(t, base.Set(nil), userConfig, ds)
 }
 
 // checkGoodAuthResponse asserts expected session response values against the given response.
 func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response, username string) {
 	var responseBodyExpected map[string]interface{}
-	collection := rt.GetSingleTestDatabaseCollection()
+	dataStore := rt.GetSingleDataStore()
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	assert.Equal(t, "application/json", response.Header.Get("Content-Type"))
 	var responseBodyActual map[string]interface{}
@@ -1370,7 +1370,7 @@ func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response
 	sessionCookie := getCookie(response.Cookies(), auth.DefaultCookieName)
 	require.NotNil(t, sessionCookie, "No session cookie found")
 	require.NoError(t, response.Body.Close(), "error closing response body")
-	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
+	if base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
 		responseBodyExpected = map[string]interface{}{
 			"authentication_handlers": []interface{}{
 				"default", "cookie",
@@ -1398,6 +1398,8 @@ func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response
 
 // E2E test that checks OpenID Connect Implicit Flow edge cases.
 func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAuth, base.KeyHTTP)
+
 	const emailClaim = "email"
 	var username = "foo_noah"
 	providers := auth.OIDCProviderMap{
@@ -1549,7 +1551,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 
 	t.Run("new user authentication with future time nbf claim", func(t *testing.T) {
 		claimSet := claimsAuthentic()
-		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(10 * time.Minute))
 		runBadAuthTest(claimSet)
 	})
 
@@ -1570,7 +1572,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	t.Run("registered user authentication with future time nbf claim", func(t *testing.T) {
 		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
-		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(10 * time.Minute))
 		runBadAuthTest(claimSet)
 		deleteUser(t, restTester, username)
 	})
@@ -2666,7 +2668,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "{}", map[string]string{"Authorization": BearerToken + " " + jwt}), http.StatusUnauthorized)
 
 	// Finally, check that the user can sign in through basic auth, but their OIDC roles/channels get revoked
-	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+subject, GetUserPayload(t, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), nil, nil)), http.StatusOK)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+subject, GetUserPayload(t, "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), nil, nil)), http.StatusOK)
 
 	res = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "{}", subject)
 	RequireStatus(t, res, http.StatusOK)
@@ -2880,7 +2882,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 				}
 			}
 		}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), sc.getServerAddr(t, publicServer),
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), mustGetServerAddr(t, sc, publicServer),
 	)
 
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", validOIDCConfig)

@@ -18,6 +18,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -30,9 +31,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/square/go-jose.v2"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -189,11 +191,11 @@ func TestConfigValidationCache(t *testing.T) {
 
 	require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig)
 	if base.IsEnterpriseEdition() {
-		require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
-		assert.Equal(t, 0, int(*config.Databases["db"].CacheConfig.RevCacheConfig.Size))
+		require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig.MaxItemCount)
+		assert.Equal(t, 0, int(*config.Databases["db"].CacheConfig.RevCacheConfig.MaxItemCount))
 	} else {
 		// CE disallowed - should be nil
-		assert.Nil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
+		assert.Nil(t, config.Databases["db"].CacheConfig.RevCacheConfig.MaxItemCount)
 	}
 
 	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig)
@@ -417,7 +419,8 @@ func TestConfigValidationJWTAndOIDC(t *testing.T) {
 				t.Fatalf("received unexpected unmarshaling error: %v", err)
 			}
 
-			err = dbConfig.validate(base.TestCtx(t), tc.validateOIDC)
+			validateReplications := true
+			err = dbConfig.validate(base.TestCtx(t), tc.validateOIDC, validateReplications)
 			switch {
 			case tc.expectedError == "":
 				require.NoError(t, err, "failed to validate valid startupConfig")
@@ -486,7 +489,7 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	require.Len(t, warnings, 8)
 
 	// Check that the deprecated values have correctly been propagated upto the new config values
-	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.Size, uint32(10))
+	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount, uint32(10))
 	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds, 10)
 	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MinLength, 10)
 	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MaxLength, 10)
@@ -505,7 +508,7 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 
 	// Set A Couple Deprecated Values AND Their New Counterparts
 	dbConfig.DeprecatedRevCacheSize = base.Uint32Ptr(10)
-	dbConfig.CacheConfig.RevCacheConfig.Size = base.Uint32Ptr(20)
+	dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Uint32Ptr(20)
 	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.BoolPtr(false)
 	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.BoolPtr(true)
 
@@ -516,7 +519,7 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	require.Len(t, warnings, 2)
 
 	// Check that the deprecated value has been ignored as the new value is the priority
-	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.Size, uint32(20))
+	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount, uint32(20))
 	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel, true)
 }
 
@@ -693,6 +696,24 @@ func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	err := sc.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
+}
+
+func TestAuditLogConfigDatabaseEventInGlobal(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
+	base.InitializeMemoryLoggers()
+
+	sc := NewEmptyStartupConfig()
+	sc.Logging.LogFilePath = t.TempDir()
+	sc.Logging.Audit.Enabled = base.BoolPtr(true)
+	sc.Logging.Audit.EnabledEvents = []uint{
+		uint(base.AuditIDSyncGatewayStartup),          // global, non-filterable
+		uint(base.AuditIDUserCreate),                  // database, filterable
+		uint(base.AuditIDSyncGatewayCollectInfoStart), // global, filterable
+	}
+
+	err := sc.SetupAndValidateLogging(base.TestCtx(t))
+	assert.ErrorContains(t, err, "1 errors")
+	assert.ErrorContains(t, err, "audit event ID 54100 \"Create user\" can only be configured at the database level")
 }
 
 func TestServerConfigValidate(t *testing.T) {
@@ -996,7 +1017,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 		},
 	}
 
-	require.Nil(t, setupAndValidateDatabases(ctx, databases), "Unexpected error while validating databases")
+	require.Nil(t, SetupAndValidateDatabases(ctx, databases), "Unexpected error while validating databases")
 
 	sc := NewServerContext(ctx, config, false)
 	defer sc.Close(ctx)
@@ -1372,7 +1393,7 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			docID := "doc"
 			_ = rt.PutDoc(docID, `{"foo":"bar"}`)
 
-			require.NoError(t, rt.WaitForPendingChanges())
+			rt.WaitForPendingChanges()
 
 			// ensure doc is in expected channel and is not in the unexpected channels
 			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+test.expectedChannel, "", true)
@@ -1405,8 +1426,8 @@ func deleteTempFile(t *testing.T, file *os.File) {
 }
 
 func TestDefaultLogging(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
@@ -2355,7 +2376,8 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 				dbConfig.ImportFilter = testCase.ImportFilter
 			}
 
-			err := dbConfig.validate(base.TestCtx(t), false)
+			validateReplications := true
+			err := dbConfig.validate(base.TestCtx(t), false, validateReplications)
 
 			if testCase.ExpectErrorCount == 0 {
 				assert.NoError(t, err)
@@ -2725,7 +2747,8 @@ func TestCollectionsValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			validateOIDCConfig := false
-			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig)
+			validateReplications := true
+			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig, validateReplications)
 			if test.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), *test.expectedError)
@@ -2907,4 +2930,180 @@ func makeScopesConfigWithDefault(scopeName string, collections []string) *Scopes
 
 	scopesConfig := makeScopesConfig(scopeName, collections)
 	return &scopesConfig
+}
+
+// TestInvalidDbConfigNoLongerPresentInBucket:
+//   - Create rest tester with large config poll interval
+//   - Create valid db
+//   - Alter config in bucket to make it invalid
+//   - Force config poll, assert it is picked up as invalid db config
+//   - Delete the invalid db config form the bucket
+//   - Force config poll reload and assert the invalid db is cleared
+func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// configure the interval time to not run
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(10 * time.Minute)
+		},
+		DatabaseConfig: nil,
+	})
+	defer rt.Close()
+	realBucketName := rt.CustomTestBucket.GetName()
+	ctx := base.TestCtx(t)
+	const dbName = "db1"
+
+	// create db with correct config
+	dbConfig := rt.NewDbConfig()
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// wait for db to come online
+	require.NoError(t, rt.WaitForDBOnline())
+
+	// grab the persisted db config from the bucket
+	databaseConfig := DatabaseConfig{}
+	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), realBucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
+	require.NoError(t, err)
+
+	// update the persisted config to a fake bucket name
+	newBucketName := "fakeBucket"
+	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &newBucketName)
+	require.NoError(t, err)
+
+	// force reload of configs from bucket
+	rt.ServerContext().ForceDbConfigsReload(t, ctx)
+
+	// assert the config is picked as invalid db config
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 1, len(invalidDatabases))
+		assert.Equal(c, 0, len(rt.ServerContext().dbConfigs))
+	}, time.Second*10, time.Millisecond*100)
+
+	// remove the invalid config from the bucket
+	rt.RemoveDbConfigFromBucket(dbName, realBucketName)
+
+	// force reload of configs from bucket
+	rt.ServerContext().ForceDbConfigsReload(t, ctx)
+
+	// assert the config is removed from tracking
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 0, len(invalidDatabases))
+		assert.Equal(c, 0, len(rt.ServerContext().dbConfigs))
+	}, time.Second*10, time.Millisecond*100)
+
+	// create db again, should succeed
+	resp = rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+}
+
+// TestNotFoundOnInvalidDatabase:
+//   - Create rest tester with large config polling interval
+//   - Insert a bad dbConfig into the bucket
+//   - Manually fetch and load db from buckets
+//   - Assert that the bad config is tracked as invalid config
+//   - Delete the bad config manually and attempt to correct the db config through create db endpoint
+//   - Assert db is removed form invalid db's and is now a running database on server context
+func TestNotFoundOnInvalidDatabase(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// configure the interval time to not run
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(100 * time.Second)
+		},
+		DatabaseConfig: nil,
+	})
+	defer rt.Close()
+	realBucketName := rt.CustomTestBucket.GetName()
+
+	// create a new invalid db config and persist to bucket
+	badName := "badBucketName"
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = "db1"
+
+	version, err := GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
+	require.NoError(t, err)
+	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(t), &dbConfig)
+	require.NoError(t, metadataIDError)
+
+	// insert the db config with bad bucket name
+	dbConfig.Bucket = &badName
+	persistedConfig := DatabaseConfig{
+		Version:    version,
+		MetadataID: metadataID,
+		DbConfig:   dbConfig,
+		SGVersion:  base.ProductVersion.String(),
+	}
+	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
+
+	// manually fetch and load db configs from bucket
+	_, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
+	require.NoError(t, err)
+
+	// assert the config is picked as invalid db config
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 1, len(invalidDatabases))
+	}, time.Second*10, time.Millisecond*100)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/", "")
+	RequireStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
+
+	// delete the invalid db config to force the not found error
+	rt.RemoveDbConfigFromBucket(dbConfig.Name, realBucketName)
+
+	// fix the bucket name and try fix corrupt db through create db endpoint
+	dbConfig.Bucket = &realBucketName
+	RequireStatus(t, rt.CreateDatabase(dbConfig.Name, dbConfig), http.StatusCreated)
+
+	// assert the config is remove the invalid config and we have a running db
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 0, len(invalidDatabases))
+		assert.Equal(c, 1, len(rt.ServerContext().dbConfigs))
+	}, time.Second*10, time.Millisecond*100)
+}
+
+func TestRevCacheMemoryLimitConfig(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfig))
+	assert.Nil(t, dbConfig.CacheConfig)
+
+	dbConfig.CacheConfig = &CacheConfig{}
+	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
+		MaxItemCount:     base.Uint32Ptr(100),
+		MaxMemoryCountMB: base.Uint32Ptr(4),
+	}
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// empty db config struct
+	dbConfig = DbConfig{}
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfig))
+	assert.NotNil(t, dbConfig.CacheConfig)
+
+	assert.Equal(t, uint32(100), *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount)
+	if base.IsEnterpriseEdition() {
+		assert.Equal(t, uint32(4), *dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
+	} else {
+		assert.Nil(t, dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
+	}
 }

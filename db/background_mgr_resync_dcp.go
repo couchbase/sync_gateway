@@ -129,6 +129,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 		r.DocsProcessed.Add(1)
 		databaseCollection := db.CollectionByID[event.CollectionID]
+		ctx = databaseCollection.AddCollectionContext(ctx)
 		_, unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
 		}).resyncDocument(ctx, docID, key, regenerateSequences, []uint64{})
@@ -216,9 +217,12 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 			if err != nil {
 				return err
 			}
+
+			collectionNames := make(base.ScopeAndCollectionNames, 0)
 			for _, databaseCollection := range db.CollectionByID {
-				databaseCollection.invalidateAllPrincipalsCache(ctx, endSeq)
+				collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
 			}
+			db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
 
 		}
 

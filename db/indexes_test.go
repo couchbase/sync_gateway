@@ -48,16 +48,16 @@ func TestInitializeIndexes(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("xattrs=%v collections=%v clusterN1QL=%v", test.xattrs, test.collections, test.clusterN1QLStore), func(t *testing.T) {
-			var db *Database
-			var ctx context.Context
-
+			options := DatabaseContextOptions{
+				EnableXattr: test.xattrs,
+			}
 			if test.collections {
 				base.TestRequiresCollections(t)
-
-				db, ctx = setupTestNamedCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
+				// uses Scopes implicitly through test harness
 			} else {
-				db, ctx = setupTestDefaultCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
+				options.Scopes = GetScopesOptionsDefaultCollectionOnly(t)
 			}
+			db, ctx := SetupTestDBWithOptions(t, options)
 			defer db.Close(ctx)
 			collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 

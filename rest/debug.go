@@ -95,5 +95,7 @@ func (h *handler) handleExpvar() error {
 	base.DebugfCtx(h.ctx(), base.KeyHTTP, "Recording snapshot of current debug variables.")
 	h.rq.URL.Path = strings.Replace(h.rq.URL.Path, kDebugURLPathPrefix, "/debug/vars", 1)
 	http.DefaultServeMux.ServeHTTP(h.response, h.rq)
+
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayStats, base.AuditFields{base.AuditFieldStatsFormat: "expvar"})
 	return nil
 }

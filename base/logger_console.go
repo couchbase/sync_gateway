@@ -19,8 +19,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
-
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // ConsoleLogger is a file logger with a default output of stderr, and tunable log level/keys.
@@ -55,8 +53,12 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 		config = &ConsoleLoggerConfig{}
 	}
 
+	cancelCtx, cancelFunc := context.WithCancel(ctx)
+
 	// validate and set defaults
-	if err := config.init(); err != nil {
+	rotationDoneChan, err := config.init(cancelCtx)
+	if err != nil {
+		defer cancelFunc()
 		return nil, err
 	}
 
@@ -67,9 +69,13 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 		LogKeyMask:   &logKey,
 		ColorEnabled: *config.ColorEnabled,
 		FileLogger: FileLogger{
-			Enabled: AtomicBool{},
-			logger:  log.New(config.Output, "", 0),
-			config:  config.FileLoggerConfig,
+			Enabled:          AtomicBool{},
+			logger:           log.New(config.Output, "", 0),
+			config:           config.FileLoggerConfig,
+			rotationDoneChan: rotationDoneChan,
+			cancelFunc:       cancelFunc,
+			name:             "console",
+			closed:           make(chan struct{}),
 		},
 		isStderr: config.FileOutput == "" && *config.Enabled,
 		config:   *config,
@@ -83,7 +89,7 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 		logger.collateBufferWg = &sync.WaitGroup{}
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.closed, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
 	// We can only log the console log location itself when logging has previously been set up and is being re-initialized from a config.
@@ -103,6 +109,9 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 }
 
 func (l *ConsoleLogger) logf(format string, args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if l.collateBuffer != nil {
 		l.collateBufferWg.Add(1)
 		l.collateBuffer <- fmt.Sprintf(format, args...)
@@ -137,12 +146,12 @@ func shouldLogConsoleDatabase(ctx context.Context, logLevel LogLevel, logKey Log
 		return false, false
 	}
 
-	config := logCtx.DbConsoleLogConfig
-	if config == nil {
+	config := logCtx.DbLogConfig
+	if config == nil || config.Console == nil {
 		return false, false
 	}
 
-	return shouldLog(config.LogLevel, config.LogKeys, logLevel, logKey), true
+	return shouldLog(config.Console.LogLevel, config.Console.LogKeys, logLevel, logKey), true
 }
 
 // shouldLog returns true if a log at the given logLineLevel/logLineKey should get logged for the given logger levels/keys.
@@ -176,29 +185,25 @@ func (l *ConsoleLogger) getConsoleLoggerConfig() *ConsoleLoggerConfig {
 }
 
 // init validates and sets any defaults for the given ConsoleLoggerConfig
-func (lcc *ConsoleLoggerConfig) init() error {
+func (lcc *ConsoleLoggerConfig) init(ctx context.Context) (chan struct{}, error) {
 	if lcc == nil {
-		return errors.New("nil LogConsoleConfig")
+		return nil, errors.New("nil LogConsoleConfig")
 	}
 
-	if err := lcc.initRotationConfig("console", 0, 0); err != nil {
-		return err
+	if err := lcc.initRotationConfig("console", 0, 0, false); err != nil {
+		return nil, err
 	}
 
+	var rotationDoneChan chan struct{}
 	// Default to os.Stderr if alternative output is not set
 	if lcc.Output == nil && lcc.FileOutput == "" {
 		lcc.Output = os.Stderr
 	} else if lcc.FileOutput != "" {
 		// Otherwise check permissions on the given output and create a Lumberjack logger
 		if err := validateLogFileOutput(lcc.FileOutput); err != nil {
-			return err
+			return nil, err
 		}
-		lcc.Output = &lumberjack.Logger{
-			Filename: filepath.FromSlash(lcc.FileOutput),
-			MaxSize:  *lcc.Rotation.MaxSize,
-			MaxAge:   *lcc.Rotation.MaxAge,
-			Compress: BoolDefault(lcc.Rotation.Compress, false),
-		}
+		rotationDoneChan = lcc.initLumberjack(ctx, "console", filepath.FromSlash(lcc.FileOutput))
 	}
 
 	// Default to disabled only when a log key or log level has not been specified
@@ -222,7 +227,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		newLevel := LevelInfo
 		lcc.LogLevel = &newLevel
 	} else if *lcc.LogLevel < LevelNone || *lcc.LogLevel > levelCount {
-		return fmt.Errorf("invalid log level: %v", *lcc.LogLevel)
+		return nil, fmt.Errorf("invalid log level: %v", *lcc.LogLevel)
 	}
 
 	// If ColorEnabled is not explicitly set, use the value of $SG_COLOR
@@ -246,7 +251,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		lcc.CollationBufferSize = &bufferSize
 	}
 
-	return nil
+	return rotationDoneChan, nil
 }
 
 func mustInitConsoleLogger(ctx context.Context, config *ConsoleLoggerConfig) *ConsoleLogger {

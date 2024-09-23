@@ -519,9 +519,10 @@ func (b *bootstrapContext) waitForConfigDelete(ctx context.Context, bucketName, 
 		timeout = b.configRetryTimeout
 	}
 
+	dbConfigName := PersistentConfigKey(ctx, groupID, dbName)
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
 		config := &DatabaseConfig{}
-		cas, getErr := b.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), config)
+		cas, getErr := b.Connection.GetMetadataDocument(ctx, bucketName, dbConfigName, config)
 		// Success case - delete has been completed
 		if base.IsDocNotFoundError(getErr) {
 			return false, nil, nil
@@ -541,7 +542,7 @@ func (b *bootstrapContext) waitForConfigDelete(ctx context.Context, bucketName, 
 	// Kick off the retry loop
 	err, retryResult := base.RetryLoop(
 		ctx,
-		"Wait for config version match",
+		base.RedactSprintf("Wait for %q to be deleted in %q", base.MD(dbConfigName), base.MD(bucketName)),
 		retryWorker,
 		base.CreateDoublingSleeperDurationFunc(50, timeout),
 	)
@@ -740,7 +741,7 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 }
 
 func (b *bootstrapContext) addDatabaseLogContext(ctx context.Context, config *DbConfig) context.Context {
-	return base.DatabaseLogCtx(ctx, config.Name, config.toDbConsoleLogConfig(ctx))
+	return base.DatabaseLogCtx(ctx, config.Name, config.toDbLogConfig(ctx))
 }
 
 func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, config *DbConfig) (string, error) {
@@ -764,23 +765,25 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	standardMetadataID := b.standardMetadataID(config.Name)
 
 	// If there's already a metadataID assigned to this database in the registry (including other config groups), use that
-	defaultMetadataIDInUse := false
+	defaultMetadataIDDb := ""
 	for _, cg := range registry.ConfigGroups {
 		for dbName, db := range cg.Databases {
 			if dbName == config.Name {
+				base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID=%q from registry for db %q", base.MD(db.MetadataID), base.MD(dbName))
 				return db.MetadataID
 			}
 			if db.MetadataID == defaultMetadataID {
-				defaultMetadataIDInUse = true
+				// do not return standardMetadataID here in case there was a different metadata ID assigned to this database
+				defaultMetadataIDDb = config.Name
 			}
 		}
 	}
 
 	// If the default metadata ID is already in use in the registry by a different database, use standard ID.
-	if defaultMetadataIDInUse {
+	if defaultMetadataIDDb != "" {
+		base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q since the default metadata ID is already in use by db %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(defaultMetadataIDDb))
 		return standardMetadataID
 	}
-
 	// If the database config doesn't include _default._default, use standard ID
 	if config.Scopes != nil {
 		defaultFound := false
@@ -792,6 +795,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 			}
 		}
 		if !defaultFound {
+			base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q since _default._default collection is not a collection targeted by this db", base.MD(standardMetadataID), base.MD(config.Name))
 			return standardMetadataID
 		}
 	}
@@ -806,11 +810,12 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	}
 
 	if exists && syncInfo.MetadataID != defaultMetadataID {
+		base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q because db uses the default collection, and _sync:syncInfo in the default collection specifies the non-default metadata ID %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(syncInfo.MetadataID))
 		return standardMetadataID
 	}
 
+	base.InfofCtx(ctx, base.KeyConfig, "Using default metadata ID %q for db %q", base.MD(defaultMetadataID), base.MD(config.Name))
 	return defaultMetadataID
-
 }
 
 // standardMetadataID returns either the dbName or a base64 encoded SHA256 hash of the dbName, whichever is shorter.

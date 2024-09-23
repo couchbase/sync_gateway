@@ -27,9 +27,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
 )
 
 func TestLocalJWTAuthenticationE2E(t *testing.T) {
@@ -453,9 +453,9 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	restTester := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
-	collection := restTester.GetSingleTestDatabaseCollection()
-	c := collection.Name
-	s := collection.ScopeName
+	collection := restTester.GetSingleDataStore()
+	c := collection.CollectionName()
+	s := collection.ScopeName()
 
 	token := auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
 		"alg": jose.RS256,

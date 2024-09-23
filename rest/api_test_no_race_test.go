@@ -21,7 +21,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,20 +48,16 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
+	// make sure docs are written to change cache
+	rt.WaitForPendingChanges()
 	caughtUpWaiter := rt.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
 	// Start longpoll changes request
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var changes struct {
-			Results  []db.ChangeEntry
-			Last_Seq db.SequenceID
-		}
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
-		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.NoError(t, err)
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 		assert.Len(t, changes.Results, 3)
 	}()
 
@@ -89,23 +84,12 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		})
 	defer rt.Close()
 
-	collection := rt.GetSingleTestDatabaseCollection()
-
-	// Create user:
-	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", collection, []string{"ABC"}, nil))
-	RequireStatus(t, userResponse, 201)
+	rt.CreateUser("bernard", []string{"ABC"})
 
 	// Get user, to trigger all_channels calculation and bump the user change count BEFORE we write the PBS docs - otherwise the user key count
 	// will still be higher than the latest change count.
-	userResponse = rt.SendAdminRequest("GET", "/db/_user/bernard", "")
+	userResponse := rt.SendAdminRequest("GET", "/db/_user/bernard", "")
 	RequireStatus(t, userResponse, 200)
-
-	/*
-		a := it.ServerContext().Database("db").Authenticator(base.TestCtx(t))
-		bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t,"ABC"))
-		goassert.True(t, err == nil)
-		a.Save(bernard)
-	*/
 
 	// Put several documents in channel PBS
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)
@@ -115,11 +99,10 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
+	// make sure docs are written to change cache
+	rt.WaitForPendingChanges()
+
 	// Run an initial changes request to get the user doc, and update since based on last_seq:
-	var initialChanges struct {
-		Results  []db.ChangeEntry
-		Last_Seq db.SequenceID
-	}
 	changesJSON := `{"style":"all_docs",
 			 "heartbeat":300000,
 			 "feed":"longpoll",
@@ -128,9 +111,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 			 "filter":"` + base.ByChannelFilter + `",
 			 "channels":"ABC,PBS"}`
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
-	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", sinceZeroJSON, "bernard")
-	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &initialChanges)
-	assert.NoError(t, err, "Unexpected error unmarshalling initialChanges")
+	initialChanges := rt.PostChanges("/{{.keyspace}}/_changes", sinceZeroJSON, "bernard")
 	lastSeq := initialChanges.Last_Seq.String()
 	assert.Equal(t, "1", lastSeq)
 
@@ -141,13 +122,9 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var changes struct {
-			Results  []db.ChangeEntry
-			Last_Seq db.SequenceID
-		}
+
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
-		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", sinceLastJSON, "bernard")
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		changes := rt.PostChanges("/{{.keyspace}}/_changes", sinceLastJSON, "bernard")
 		assert.Len(t, changes.Results, 1)
 	}()
 

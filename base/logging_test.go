@@ -10,10 +10,10 @@ package base
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"testing"
 	"time"
@@ -73,36 +73,23 @@ func TestLogRotationInterval(t *testing.T) {
 		CollationBufferSize: IntPtr(0),
 		Rotation: logRotationConfig{
 			RotationInterval: NewConfigDuration(rotationInterval),
-			Compress:         BoolPtr(false),
+			compress:         BoolPtr(false),
 		},
 	}
 
-	// On Windows, cleanup of t.TempDir() fails due to open log file handle from Lumberjack. Cannot be fixed from SG.
-	// https://github.com/natefinch/lumberjack/issues/185
-	var logPath string
-	if runtime.GOOS == "windows" {
-		var err error
-		logPath, err = os.MkdirTemp("", t.Name())
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			if err := os.RemoveAll(logPath); err != nil {
-				// log instead of error because it's likely this is going to fail on Windows for this test.
-				t.Logf("couldn't remove temp dir: %v", err)
-			}
-		})
-	} else {
-		logPath = t.TempDir()
-	}
-
+	logPath := lumberjackTempDir(t)
 	countBefore := numFilesInDir(t, logPath, false)
 	t.Logf("countBefore: %d", countBefore)
 
-	ctx, ctxCancel := context.WithCancel(TestCtx(t))
-	defer ctxCancel()
-
+	ctx := TestCtx(t)
 	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil)
 	require.NoError(t, err)
-	defer func() { require.NoError(t, fl.Close()) }()
+	defer func() {
+		assert.NoError(t, fl.Close())
+		// Wait for Lumberjack to finish its async log compression work
+		// we have no way of waiting for this to finish, or even stopping the millRun() process inside Lumberjack.
+		time.Sleep(time.Second)
+	}()
 
 	fl.logf("test 1")
 	countAfter1 := numFilesInDir(t, logPath, false)
@@ -119,9 +106,6 @@ func TestLogRotationInterval(t *testing.T) {
 	t.Logf("countAfter2: %d", countAfter2)
 	assert.GreaterOrEqual(t, countAfter2, countAfterSleep)
 
-	// Wait for Lumberjack to finish its async log compression work
-	// we have no way of waiting for this to finish, or even stopping the millRun() process inside Lumberjack.
-	time.Sleep(time.Second)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
@@ -177,10 +161,10 @@ func BenchmarkLogRotation(b *testing.B) {
 }
 
 func TestLogColor(t *testing.T) {
-	origColor := consoleLogger.ColorEnabled
-	defer func() { consoleLogger.ColorEnabled = origColor }()
+	origColor := consoleLogger.Load().ColorEnabled
+	defer func() { consoleLogger.Load().ColorEnabled = origColor }()
 
-	consoleLogger.ColorEnabled = true
+	consoleLogger.Load().ColorEnabled = true
 	if colorEnabled() {
 		assert.Equal(t, "\x1b[0;36mFormat\x1b[0m", color("Format", LevelDebug))
 		assert.Equal(t, "\x1b[1;34mFormat\x1b[0m", color("Format", LevelInfo))
@@ -190,7 +174,7 @@ func TestLogColor(t *testing.T) {
 		assert.Equal(t, "\x1b[0mFormat\x1b[0m", color("Format", LevelNone))
 	}
 
-	consoleLogger.ColorEnabled = false
+	consoleLogger.Load().ColorEnabled = false
 	assert.Equal(t, "Format", color("Format", LevelDebug))
 	assert.Equal(t, "Format", color("Format", LevelInfo))
 	assert.Equal(t, "Format", color("Format", LevelWarn))
@@ -205,7 +189,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	}
 
 	b.Run("enabled", func(b *testing.B) {
-		consoleLogger.ColorEnabled = true
+		consoleLogger.Load().ColorEnabled = true
 		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
 
 		b.ResetTimer()
@@ -215,7 +199,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	})
 
 	b.Run("disabled console color", func(b *testing.B) {
-		consoleLogger.ColorEnabled = false
+		consoleLogger.Load().ColorEnabled = false
 		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
 
 		b.ResetTimer()
@@ -225,7 +209,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	})
 
 	b.Run("disabled term color", func(b *testing.B) {
-		consoleLogger.ColorEnabled = true
+		consoleLogger.Load().ColorEnabled = true
 		require.NoError(b, os.Setenv("TERM", "dumb"))
 
 		b.ResetTimer()
@@ -262,12 +246,12 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 
 	for i := LevelNone; i < levelCount; i++ {
 		t.Run(i.String(), func(t *testing.T) {
-			consoleLogger.LogLevel.Set(i)
+			consoleLogger.Load().LogLevel.Set(i)
 			out := CaptureConsolefLogOutput(func() { LogSyncGatewayVersion(TestCtx(t)) })
 			assert.Contains(t, out, LongVersionString)
 		})
 	}
-	consoleLogger.LogLevel.Set(LevelInfo)
+	consoleLogger.Load().LogLevel.Set(LevelInfo)
 }
 
 func CaptureConsolefLogOutput(f func()) string {
@@ -333,4 +317,25 @@ func BenchmarkGetCallersName(b *testing.B) {
 			}
 		})
 	}
+}
+
+// lumberjackTempDir returns a temporary directory like t.Tempdir() but safe for lumberjack logs
+func lumberjackTempDir(t *testing.T) string {
+	if runtime.GOOS != "windows" {
+		return t.TempDir()
+	}
+	// On Windows, cleanup of t.TempDir() fails due to open log file handle from Lumberjack. Cannot be fixed from SG.
+	// https://github.com/natefinch/lumberjack/issues/185
+
+	// windows requires no slashes in the path name
+	pathRegex := regexp.MustCompile(`/|\\`)
+	logPath, err := os.MkdirTemp("", string(pathRegex.ReplaceAll([]byte(t.Name()), []byte("_"))))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := os.RemoveAll(logPath); err != nil {
+			// log instead of error because it's likely this is going to fail on Windows for this test.
+			t.Logf("couldn't remove temp dir: %v, files: %s", err, getDirFiles(t, logPath))
+		}
+	})
+	return logPath
 }

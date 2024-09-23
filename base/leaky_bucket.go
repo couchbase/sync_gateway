@@ -121,6 +121,8 @@ type LeakyBucketConfig struct {
 
 	ForceErrorSetRawKeys []string // Issuing a SetRaw call with a specified key will return an error
 
+	ForceTimeoutErrorOnUpdateKeys []string // Specified keys will return timeout error AFTER write is sent to server
+
 	// Returns a partial error the first time ViewCustom is called
 	FirstTimeViewCustomPartialError bool
 	PostQueryCallback               func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called

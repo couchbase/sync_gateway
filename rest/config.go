@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,8 +30,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/square/go-jose.v2"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -80,13 +81,13 @@ type serverType string
 
 const (
 	// serverTypePublic indicates the public interface for sync gateway
-	publicServer = "public"
+	publicServer serverType = "public"
 	// serverTypeAdmin indicates the admin interface for sync gateway
-	adminServer = "admin"
+	adminServer serverType = "admin"
 	// serverTypeMetrics indicates the metrics interface for sync gateway
-	metricsServer = "metrics"
+	metricsServer serverType = "metrics"
 	// serverTypeDiagnostic indicates the diagnostic interface for sync gateway
-	diagnosticServer = "diagnostic"
+	diagnosticServer serverType = "diagnostic"
 )
 
 // Bucket configuration elements - used by db, index
@@ -245,8 +246,9 @@ type DeprecatedCacheConfig struct {
 }
 
 type RevCacheConfig struct {
-	Size       *uint32 `json:"size,omitempty"`        // Maximum number of revisions to store in the revision cache
-	ShardCount *uint16 `json:"shard_count,omitempty"` // Number of shards the rev cache should be split into
+	MaxItemCount     *uint32 `json:"size,omitempty"`                // Maximum number of revisions to store in the revision cache
+	MaxMemoryCountMB *uint32 `json:"max_memory_count_mb,omitempty"` // Maximum amount of memory the rev cache should consume in MB, when configured it will work in tandem with max items
+	ShardCount       *uint16 `json:"shard_count,omitempty"`         // Number of shards the rev cache should be split into
 }
 
 type ChannelCacheConfig struct {
@@ -266,12 +268,21 @@ type ChannelCacheConfig struct {
 // DbLoggingConfig allows per-database logging overrides
 type DbLoggingConfig struct {
 	Console *DbConsoleLoggingConfig `json:"console,omitempty"`
+	Audit   *DbAuditLoggingConfig   `json:"audit,omitempty"`
 }
 
 // DbConsoleLoggingConfig are per-db options configurable for console logging
 type DbConsoleLoggingConfig struct {
 	LogLevel *base.LogLevel `json:"log_level,omitempty"`
 	LogKeys  []string       `json:"log_keys,omitempty"`
+}
+
+// DbAuditLoggingConfig are per-db options configurable for audit logging
+type DbAuditLoggingConfig struct {
+	Enabled       *bool                        `json:"enabled,omitempty"`        // Whether audit logging is enabled for this database
+	EnabledEvents *[]uint                      `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled - pointer to differentiate between empty slice and nil
+	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"` // List of users to disable audit logging for
+	DisabledRoles []base.AuditLoggingPrincipal `json:"disabled_roles,omitempty"` // List of roles to disable audit logging for
 }
 
 func GetTLSVersionFromString(stringV *string) uint16 {
@@ -387,6 +398,18 @@ func (d *invalidDatabaseConfigs) remove(dbname string) {
 	d.m.Lock()
 	defer d.m.Unlock()
 	delete(d.dbNames, dbname)
+}
+
+// removeNonExistingConfigs will remove any configs from invalid config tracking map that aren't present in fetched configs
+func (d *invalidDatabaseConfigs) removeNonExistingConfigs(fetchedConfigs map[string]bool) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	for dbName := range d.dbNames {
+		if ok := fetchedConfigs[dbName]; !ok {
+			// this invalid db config was not found in config polling, so lets remove
+			delete(d.dbNames, dbName)
+		}
+	}
 }
 
 // inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
@@ -676,7 +699,8 @@ func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
 
 // validateConfigUpdate combines the results of validate and validateChanges.
 func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old DbConfig, validateOIDCConfig bool) error {
-	err := dbConfig.validate(ctx, validateOIDCConfig)
+	validateReplications := false
+	err := dbConfig.validate(ctx, validateOIDCConfig, validateReplications)
 	var multiErr *base.MultiError
 	if !errors.As(err, &multiErr) {
 		multiErr = multiErr.Append(err)
@@ -711,11 +735,12 @@ func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) err
 	return nil
 }
 
-func (dbConfig *DbConfig) validate(ctx context.Context, validateOIDCConfig bool) error {
-	return dbConfig.validateVersion(ctx, base.IsEnterpriseEdition(), validateOIDCConfig)
+// validate checks the DbConfig for any invalid or unsupported values and return a http error. If validateReplications is true, return an error if any replications are not valid. Otherwise issue a warning.
+func (dbConfig *DbConfig) validate(ctx context.Context, validateOIDCConfig, validateReplications bool) error {
+	return dbConfig.validateVersion(ctx, base.IsEnterpriseEdition(), validateOIDCConfig, validateReplications)
 }
 
-func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEdition, validateOIDCConfig bool) error {
+func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEdition, validateOIDCConfig, validateReplications bool) error {
 
 	var multiError *base.MultiError
 	// Make sure a non-zero compact_interval_days config is within the valid range
@@ -790,10 +815,15 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 
 		if dbConfig.CacheConfig.RevCacheConfig != nil {
 			// EE: disable revcache
-			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
+			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.MaxItemCount
 			if !isEnterpriseEdition && revCacheSize != nil && *revCacheSize == 0 {
 				base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
-				dbConfig.CacheConfig.RevCacheConfig.Size = nil
+				dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = nil
+			}
+			revCacheMemoryLimit := dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB
+			if !isEnterpriseEdition && revCacheMemoryLimit != nil && *revCacheMemoryLimit != 0 {
+				base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.rev_cache.max_memory_count_mb", *revCacheMemoryLimit, "no memory limit")
+				dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB = nil
 			}
 
 			if dbConfig.CacheConfig.RevCacheConfig.ShardCount != nil {
@@ -1035,6 +1065,40 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		_, err := hostOnlyCORS(dbConfig.CORS.Origin)
 		base.WarnfCtx(ctx, "The cors.origin contains values that may be ignored: %s", err)
 	}
+
+	if validateReplications {
+		for name, r := range dbConfig.Replications {
+			if name == "" {
+				if r.ID == "" {
+					multiError = multiError.Append(errors.New("replication name cannot be empty, id is also empty"))
+				} else {
+					multiError = multiError.Append(fmt.Errorf("replication name cannot be empty, id: %q", r.ID))
+				}
+			} else if r.ID == "" {
+				multiError = multiError.Append(fmt.Errorf("replication id cannot be empty, name: %q", name))
+			}
+		}
+	}
+
+	if dbConfig.Logging != nil {
+		if dbConfig.Logging.Audit != nil {
+			if !isEnterpriseEdition && dbConfig.Logging.Audit.Enabled != nil {
+				base.WarnfCtx(ctx, eeOnlyWarningMsg, "logging.audit.enabled", *dbConfig.Logging.Audit.Enabled, false)
+				dbConfig.Logging.Audit.Enabled = nil
+			}
+			if dbConfig.Logging.Audit.EnabledEvents != nil {
+				for _, id := range *dbConfig.Logging.Audit.EnabledEvents {
+					id := base.AuditID(id)
+					if e, ok := base.AuditEvents[id]; !ok {
+						multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
+					} else if e.IsGlobalEvent {
+						multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", id))
+					}
+				}
+			}
+		}
+	}
+
 	return multiError.ErrorOrNil()
 }
 
@@ -1058,8 +1122,8 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 	}
 
 	if dbConfig.DeprecatedRevCacheSize != nil {
-		if dbConfig.CacheConfig.RevCacheConfig.Size == nil {
-			dbConfig.CacheConfig.RevCacheConfig.Size = dbConfig.DeprecatedRevCacheSize
+		if dbConfig.CacheConfig.RevCacheConfig.MaxItemCount == nil {
+			dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = dbConfig.DeprecatedRevCacheSize
 		}
 		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "rev_cache_size", "cache.rev_cache.size"))
 	}
@@ -1179,6 +1243,49 @@ func (config *DbConfig) redactInPlace(ctx context.Context) error {
 	return nil
 }
 
+func redactConfigAsStr(ctx context.Context, dbConfig string) (string, error) {
+	var config map[string]*json.RawMessage
+	err := base.JSONUnmarshal([]byte(dbConfig), &config)
+	if err != nil {
+		return "", err
+	}
+	redactedConfig := make(map[string]any, len(config))
+	for k, v := range config {
+		if _, ok := config["password"]; ok {
+			redactedConfig["password"] = base.RedactedStr
+		} else if _, ok := config["users"]; ok {
+			var users map[string]*auth.PrincipalConfig
+			err := base.JSONUnmarshal(*v, &users)
+			if err != nil {
+				return "", err
+			}
+			for i := range users {
+				if users[i].Password != nil && *users[i].Password != "" {
+					users[i].Password = base.StringPtr(base.RedactedStr)
+				}
+			}
+			redactedConfig["users"] = users
+		} else if _, ok := config["replications"]; ok {
+			var replications map[string]*db.ReplicationConfig
+			err := base.JSONUnmarshal(*v, &replications)
+			if err != nil {
+				return "", err
+			}
+			for i := range replications {
+				replications[i] = replications[i].Redacted(ctx)
+			}
+			redactedConfig["replications"] = replications
+		} else {
+			redactedConfig[k] = v
+		}
+	}
+	output, err := base.JSONMarshal(redactedConfig)
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
+}
+
 // DecodeAndSanitiseStartupConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
 func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
 	b, err := io.ReadAll(r)
@@ -1275,6 +1382,14 @@ func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error
 		sc.Logging.LogFilePath = defaultLogFilePath
 	}
 
+	var auditLoggingFields map[string]any
+	if sc.Unsupported.AuditInfoProvider != nil && sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName != nil {
+		v := os.Getenv(*sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName)
+		err := base.JSONUnmarshal([]byte(v), &auditLoggingFields)
+		if err != nil {
+			return fmt.Errorf("Unable to unmarshal audit info from environment variable %s=%s %w", *sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName, v, err)
+		}
+	}
 	return base.InitLogging(ctx,
 		sc.Logging.LogFilePath,
 		sc.Logging.Console,
@@ -1284,6 +1399,8 @@ func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error
 		sc.Logging.Debug,
 		sc.Logging.Trace,
 		sc.Logging.Stats,
+		sc.Logging.Audit,
+		auditLoggingFields,
 	)
 }
 
@@ -1329,12 +1446,6 @@ func (sc *ServerContext) Serve(ctx context.Context, config *StartupConfig, t ser
 	sc.addHTTPServer(t, &serverInfo{server: server, addr: listenerAddr})
 
 	return serveFn()
-}
-
-func (sc *ServerContext) addHTTPServer(t serverType, s *serverInfo) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-	sc._httpServers[t] = s
 }
 
 // Validate returns errors errors if invalid config is present
@@ -1455,6 +1566,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	}
 
 	sc := NewServerContext(ctx, config, persistentConfig)
+
 	if !base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
 		err := sc.initializeGocbAdminConnection(ctx)
 		if err != nil {
@@ -1464,7 +1576,24 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	if err := sc.initializeBootstrapConnection(ctx); err != nil {
 		return nil, err
 	}
+
+	// On successful server context creation, generate startup audit event
+	base.Audit(ctx, base.AuditIDSyncGatewayStartup, sc.StartupAuditFields())
+
 	return sc, nil
+}
+
+func (sc *ServerContext) StartupAuditFields() base.AuditFields {
+	return base.AuditFields{
+		base.AuditFieldSGVersion:                      base.LongVersionString,
+		base.AuditFieldUseTLSServer:                   sc.Config.Bootstrap.UseTLSServer,
+		base.AuditFieldServerTLSSkipVerify:            sc.Config.Bootstrap.ServerTLSSkipVerify,
+		base.AuditFieldAdminInterfaceAuthentication:   sc.Config.API.AdminInterfaceAuthentication,
+		base.AuditFieldMetricsInterfaceAuthentication: sc.Config.API.MetricsInterfaceAuthentication,
+		base.AuditFieldLogFilePath:                    sc.Config.Logging.LogFilePath,
+		base.AuditFieldBcryptCost:                     sc.Config.Auth.BcryptCost,
+		base.AuditFieldDisablePersistentConfig:        !sc.persistentConfig,
+	}
 }
 
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
@@ -1506,17 +1635,26 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	for _, dbName := range deletedDatabases {
+		dbc, ok := sc.databases_[dbName]
+		if !ok {
+			base.DebugfCtx(ctx, base.KeyConfig, "Database %q already removed from server context after acquiring write lock - do not need to remove not removing database", base.MD(dbName))
+			continue
+		}
 		// It's possible that the "deleted" database was not written to the server until after sc.FetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
-		found, _, err := sc._fetchDatabase(ctx, dbName)
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
-		}
-		if !found {
-			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
-			sc._removeDatabase(ctx, dbName)
-		} else {
+		found, _, getConfigErr := sc._fetchDatabaseFromBucket(ctx, dbc.Bucket.GetName(), dbName)
+		if found && getConfigErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
+			continue
+		}
+		if base.IsTemporaryKvError(getConfigErr) {
+			base.InfofCtx(ctx, base.KeyConfig, "Transient error fetching config for database %q to check whether we need to remove it, will not be removed: %v", base.MD(dbName), getConfigErr)
+			continue
+		}
+
+		if !found {
+			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database (%v)", base.MD(dbName), getConfigErr)
+			sc._removeDatabase(ctx, dbName)
 		}
 	}
 
@@ -1624,56 +1762,60 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	return sc._fetchDatabase(ctx, dbName)
 }
 
+func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket string, dbName string) (found bool, cnf DatabaseConfig, err error) {
+
+	cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
+	if errors.Is(err, base.ErrNotFound) {
+		base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
+		return false, cnf, err
+	}
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
+		return false, cnf, err
+	}
+
+	if cnf.Name == "" {
+		cnf.Name = bucket
+	}
+
+	if cnf.Name != dbName {
+		base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.Config.Bootstrap.ConfigGroupID, dbName)
+		return false, cnf, err
+	}
+
+	cnf.cfgCas = cas
+
+	// inherit properties the bootstrap config
+	cnf.CACertPath = sc.Config.Bootstrap.CACertPath
+
+	// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
+	// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
+	// in memory representation on the server context.
+	if bucket != cnf.GetBucketName() {
+		sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
+		return true, cnf, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
+	}
+	bucketCopy := bucket
+	// no corruption detected carry on as usual
+	cnf.Bucket = &bucketCopy
+
+	// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
+	if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
+		cnf.Username = sc.Config.Bootstrap.Username
+		cnf.Password = sc.Config.Bootstrap.Password
+		cnf.CertPath = sc.Config.Bootstrap.X509CertPath
+		cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
+	}
+	base.TracefCtx(ctx, base.KeyConfig, "Got database config %s for bucket %q with cas %d and groupID %q", base.MD(dbName), base.MD(bucket), cas, base.MD(sc.Config.Bootstrap.ConfigGroupID))
+	return true, cnf, nil
+}
+
 func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
-	// loop code moved to foreachDbConfig
 	var cnf DatabaseConfig
-	callback := func(bucket string) (exit bool, err error) {
-		cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
-		if err == base.ErrNotFound {
-			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
-			return false, err
-		}
-		if err != nil {
-			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
-			return false, err
-		}
-
-		if cnf.Name == "" {
-			cnf.Name = bucket
-		}
-
-		if cnf.Name != dbName {
-			base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.Config.Bootstrap.ConfigGroupID, dbName)
-			return false, err
-		}
-
-		cnf.cfgCas = cas
-
-		// TODO: This code is mostly copied from FetchConfigs, move into shared function with DbConfig REST API work?
-
-		// inherit properties the bootstrap config
-		cnf.CACertPath = sc.Config.Bootstrap.CACertPath
-
-		// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
-		// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
-		// in memory representation on the server context.
-		if bucket != cnf.GetBucketName() {
-			sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
-			return true, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
-		}
-		bucketCopy := bucket
-		// no corruption detected carry on as usual
-		cnf.Bucket = &bucketCopy
-
-		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
-		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
-			cnf.Username = sc.Config.Bootstrap.Username
-			cnf.Password = sc.Config.Bootstrap.Password
-			cnf.CertPath = sc.Config.Bootstrap.X509CertPath
-			cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
-		}
-		base.TracefCtx(ctx, base.KeyConfig, "Got database config %s for bucket %q with cas %d and groupID %q", base.MD(dbName), base.MD(bucket), cas, base.MD(sc.Config.Bootstrap.ConfigGroupID))
-		return true, nil
+	callback := func(bucket string) (exit bool, callbackErr error) {
+		var foundInBucket bool
+		foundInBucket, cnf, callbackErr = sc._fetchDatabaseFromBucket(ctx, bucket, dbName)
+		return foundInBucket, callbackErr
 	}
 
 	err = sc.findBucketWithCallback(callback)
@@ -1791,6 +1933,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 		return nil, err
 	}
 
+	allConfigsFound := make(map[string]bool)
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 	for _, bucket := range buckets {
 		ctx := base.BucketNameCtx(ctx, bucket)
@@ -1811,6 +1954,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			continue
 		}
 		for _, cnf := range configs {
+			allConfigsFound[cnf.Name] = true
 			// Handle invalid database registry entries. Either:
 			// - CBG-3292: Bucket in config doesn't match the actual bucket
 			// - CBG-3742: Registry entry marked invalid (due to rollback causing collection conflict)
@@ -1843,6 +1987,10 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			fetchedConfigs[cnf.Name] = *cnf
 		}
 	}
+
+	// remove any invalid databases from the tracking map if config poll above didn't
+	// pick up that configs from the bucket. This means the config is no longer present in the bucket.
+	sc.invalidDatabaseConfigTracking.removeNonExistingConfigs(allConfigsFound)
 
 	return fetchedConfigs, nil
 }
@@ -1933,7 +2081,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast, false); err != nil {
+	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
@@ -2113,11 +2261,7 @@ func PersistentConfigKey30(ctx context.Context, groupID string) string {
 }
 
 func HandleSighup(ctx context.Context) {
-	for logger, err := range base.RotateLogfiles(ctx) {
-		if err != nil {
-			base.WarnfCtx(ctx, "Error rotating %v: %v", logger, err)
-		}
-	}
+	base.RotateLogfiles(ctx)
 }
 
 // RegisterSignalHandler invokes functions based on the given signals:
@@ -2143,15 +2287,75 @@ func RegisterSignalHandler(ctx context.Context) {
 	}()
 }
 
-// toDbConsoleLogConfig converts the console logging from a DbConfig to a DbConsoleLogConfig
-func (c *DbConfig) toDbConsoleLogConfig(ctx context.Context) *base.DbConsoleLogConfig {
-	// Per-database console logging config overrides
-	if c.Logging != nil && c.Logging.Console != nil {
-		logKey := base.ToLogKey(ctx, c.Logging.Console.LogKeys)
-		return &base.DbConsoleLogConfig{
-			LogLevel: c.Logging.Console.LogLevel,
+// toDbLogConfig converts the stored logging in a DbConfig to a runtime DbLogConfig for evaluation at log time.
+// This is required to turn the stored config (which does not have data stored in a O(1)-compatible format) into a data structure that has O(1) lookups for checking if we should log.
+func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
+	l := c.Logging
+	if l == nil || (l.Console == nil && l.Audit == nil) {
+		return nil
+	}
+
+	var con *base.DbConsoleLogConfig
+	if l.Console != nil {
+		logKey := base.ToLogKey(ctx, l.Console.LogKeys)
+		con = &base.DbConsoleLogConfig{
+			LogLevel: l.Console.LogLevel,
 			LogKeys:  &logKey,
 		}
 	}
-	return nil
+
+	var aud *base.DbAuditLogConfig
+	if l.Audit != nil {
+		// per-event configuration
+		events := l.Audit.EnabledEvents
+		if events == nil {
+			events = &base.DefaultDbAuditEventIDs
+		}
+		enabledEvents := make(map[base.AuditID]struct{}, len(*events))
+		for _, event := range *events {
+			enabledEvents[base.AuditID(event)] = struct{}{}
+		}
+
+		// always enable the non-filterable events... since by definition they cannot be disabled
+		for id := range base.NonFilterableAuditEventsForDb {
+			enabledEvents[id] = struct{}{}
+		}
+
+		// user/role filtering
+		disabledUsers := make(map[base.AuditLoggingPrincipal]struct{}, len(c.Logging.Audit.DisabledUsers))
+		disabledRoles := make(map[base.AuditLoggingPrincipal]struct{}, len(c.Logging.Audit.DisabledRoles))
+		for _, user := range c.Logging.Audit.DisabledUsers {
+			disabledUsers[user] = struct{}{}
+		}
+		for _, role := range c.Logging.Audit.DisabledRoles {
+			disabledRoles[role] = struct{}{}
+		}
+
+		aud = &base.DbAuditLogConfig{
+			Enabled:       base.BoolDefault(l.Audit.Enabled, base.DefaultDbAuditEnabled),
+			EnabledEvents: enabledEvents,
+			DisabledUsers: disabledUsers,
+			DisabledRoles: disabledRoles,
+		}
+	}
+
+	return &base.DbLogConfig{
+		Console: con,
+		Audit:   aud,
+	}
+}
+
+// IsAuditLoggingEnabled() checks whether audit logging is enabled for the db, independent of the global setting
+func (c *DbConfig) IsAuditLoggingEnabled() (enabled bool, events []uint) {
+
+	if c != nil && c.Logging != nil && c.Logging.Audit != nil && c.Logging.Audit.Enabled != nil {
+		enabled = *c.Logging.Audit.Enabled
+		if c.Logging.Audit.EnabledEvents != nil {
+			events = *c.Logging.Audit.EnabledEvents
+		}
+		return enabled, events
+	} else {
+		// Audit logging not defined in the config.  Use default value
+		return base.DefaultDbAuditEnabled, nil
+	}
 }

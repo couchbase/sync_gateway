@@ -71,7 +71,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	base.TestExternalRevStorage = true
 
@@ -82,7 +82,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.NoError(t, err, "add 1-a")
 
 	// Flush the cache
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 1-a...")
@@ -111,7 +111,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	base.TestExternalRevStorage = true
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -187,7 +187,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	base.TestExternalRevStorage = true
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -309,7 +309,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	base.TestExternalRevStorage = true
 
@@ -376,7 +376,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.Equal(t, rev2a_body["value"], revisionBody["value"])
 
 	// Retrieve the non-inline revision
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
 	assert.Equal(t, rev2a_body, rev2aGet)
@@ -464,7 +464,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.Len(t, newRevTree.BodyKeyMap, 1) // tombstone 3-c
 
 	// Retrieve the non-inline tombstone revision
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	rev3cGet, err := collection.Get1xRevBody(ctx, "doc1", "3-c", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-c")
 	assert.Equal(t, rev3c_body, rev3cGet)
@@ -493,7 +493,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	base.TestExternalRevStorage = true
 
@@ -560,7 +560,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.Equal(t, rev2a_body["value"], revisionBody["value"])
 
 	// Retrieve the non-inline revision
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
 	assert.Equal(t, rev2a_body, rev2aGet)
@@ -584,7 +584,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.NoError(t, err, "add 3-b (tombstone)")
 
 	// Retrieve tombstone
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	rev3bGet, err := collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
 	assert.Equal(t, rev3b_body, rev3bGet)
@@ -626,7 +626,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.NoError(t, err, "add 8-a")
 
 	// Verify that 3-b is still present at this point
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	_, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Rev 3-b should still exist")
 
@@ -636,7 +636,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Verify that 3-b has been pruned
 	log.Printf("Attempt to retrieve 3-b, expect pruned")
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	_, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	require.Error(t, err)
 	assert.Equal(t, "404 missing", err.Error())
@@ -653,7 +653,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	prop_1000_bytes := base.CreateProperty(1000)
 
@@ -815,7 +815,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	}
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
@@ -945,7 +945,7 @@ func TestLargeSequence(t *testing.T) {
 
 	db, ctx := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Write a doc via SG
 	body := Body{"key1": "largeSeqTest"}
@@ -984,7 +984,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create a document with a malformed revision body (due to https://github.com/couchbase/sync_gateway/issues/3692) in the bucket
 	// Document has the following rev tree, with a malformed body of revision 2-b remaining in the revision tree (same set of operations as
@@ -1033,7 +1033,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(b, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -1090,7 +1090,7 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(b, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -1148,7 +1148,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(b, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"foo": "bar"}
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -1196,7 +1196,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 func TestGetAvailableRevAttachments(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create the very first revision of the document with attachment; let's call this as rev 1-a
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
@@ -1234,7 +1234,7 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 func TestGet1xRevAndChannels(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	docId := "dd6d2dcc679d12b9430a9787bab45b33"
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
@@ -1296,7 +1296,7 @@ func TestGet1xRevAndChannels(t *testing.T) {
 func TestGet1xRevFromDoc(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create the first revision of the document
 	docId := "356779a9a1696714480f57fa3fb66d4c"
@@ -1547,7 +1547,7 @@ func TestMergeAttachments(t *testing.T) {
 func TestGetChannelsAndAccess(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	require.Nil(t, collection.ChannelMapper)
 
 	doc := &Document{
@@ -1615,7 +1615,7 @@ func TestPutStampClusterUUID(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	key := "doc1"
 
@@ -1653,7 +1653,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 
 	startReleasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value()
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	rev, doc, err := collection.Put(ctx, "doc1", Body{"foo": "bar"})
 	require.NoError(t, err)
 	t.Logf("doc sequence: %d", doc.Sequence)
@@ -1679,4 +1679,87 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	expectedReleasedSequenceCount := otherClusterSequenceOffset
 	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
 	assert.Equal(t, int64(expectedReleasedSequenceCount), releasedSequenceCount)
+}
+
+// TestReleaseSequenceOnDocWrite:
+//   - Define a leaky bucket callback for a conflicting write + define key to return a timeout error for
+//   - Setup db with leaky bucket config
+//   - Init a channel cache by calling changes
+//   - Write a doc that will return timeout error but will successfully persist
+//   - Wait for it to arrive at change cache
+//   - Assert we don't release a sequence for it + we have it in changes cache
+//   - Write new doc with conflict error
+//   - Assert we release a sequence for this
+func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
+	defer SuspendSequenceBatching()()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	var ctx context.Context
+	var db *Database
+	var forceDocConflict bool
+
+	const (
+		conflictDoc = "doc1"
+		timeoutDoc  = "doc"
+	)
+
+	// call back to create a conflict mid write and force a non timeout error upon write attempt
+	writeUpdateCallback := func(key string) {
+		if key == conflictDoc && forceDocConflict {
+			forceDocConflict = false
+			body := Body{"test": "doc"}
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			_, _, err := collection.Put(ctx, conflictDoc, body)
+			require.NoError(t, err)
+		}
+	}
+
+	callbackConfig := base.LeakyBucketConfig{
+		UpdateCallback:                writeUpdateCallback,
+		ForceTimeoutErrorOnUpdateKeys: []string{timeoutDoc},
+	}
+
+	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), callbackConfig)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// init channel cache, this will make changes call after timeout doc is written below fail pre changes made in CBG-4067,
+	// due to duplicate sequence at the cache with an unused sequence. See steps in ticket CBG-4067 as example.
+	_ = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+
+	assert.Equal(t, int64(0), db.DbStats.Database().SequenceReleasedCount.Value())
+
+	// write doc that will return timeout but will actually be persisted successfully on server
+	// this mimics what was seen before
+	_, _, err := collection.Put(ctx, timeoutDoc, Body{"test": "doc"})
+	require.Error(t, err)
+
+	// wait for changes
+	require.NoError(t, collection.WaitForPendingChanges(ctx))
+
+	// assert that no sequences were released + a sequence was cached
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		db.UpdateCalculatedStats(ctx)
+		assert.Equal(t, int64(0), db.DbStats.Database().SequenceReleasedCount.Value())
+		assert.Equal(t, int64(1), db.DbStats.Cache().HighSeqCached.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// get cached changes + assert the document is present
+	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	require.Len(t, changes, 1)
+	assert.Equal(t, timeoutDoc, changes[0].ID)
+
+	// write doc that will have a conflict error, we should expect the document sequence to be released
+	forceDocConflict = true
+	_, _, err = collection.Put(ctx, conflictDoc, Body{"test": "doc"})
+	require.Error(t, err)
+
+	// wait for changes
+	require.NoError(t, collection.WaitForPendingChanges(ctx))
+
+	// assert that a sequence was released after the above write error
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		db.UpdateCalculatedStats(ctx)
+		assert.Equal(t, int64(1), db.DbStats.Database().SequenceReleasedCount.Value())
+	}, time.Second*10, time.Millisecond*100)
 }

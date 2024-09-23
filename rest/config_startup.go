@@ -29,7 +29,7 @@ const (
 
 // DefaultStartupConfig returns a StartupConfig with values populated with defaults.
 func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
-	return StartupConfig{
+	config := StartupConfig{
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:         PersistentConfigDefaultGroupID,
 			ConfigUpdateFrequency: base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
@@ -73,6 +73,9 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
+
+	return config
+
 }
 
 // StartupConfig is the config file used by Sync Gateway in 3.0+ to start up with node-specific settings, and then bootstrap databases via Couchbase Server.
@@ -90,7 +93,9 @@ type StartupConfig struct {
 	MaxFileDescriptors         uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 	CouchbaseKeepaliveInterval *int   `json:"couchbase_keepalive_interval,omitempty" help:"TCP keep-alive interval between SG and Couchbase server"`
 
-	DeprecatedConfig *DeprecatedConfig `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
+	DeprecatedConfig               *DeprecatedConfig `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
+	HeapProfileCollectionThreshold *uint64           `json:"heap_profile_collection_threshold,omitempty" help:"Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% of the lesser of cgroup or system memory."`
+	HeapProfileDisableCollection   bool              `json:"heap_profile_disable_collection,omitempty" help:"Disables automatic heap profile collection"`
 }
 
 // BootstrapConfig describes the set of properties required in order to bootstrap config from Couchbase Server.
@@ -118,8 +123,8 @@ type APIConfig struct {
 
 	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the DP permissions check feature of admin auth"`
 
-	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"Maximum duration.Second before timing out read of the HTTP(S) request"`
-	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"Maximum duration.Second before timing out write of the HTTP(S) response"`
+	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"Maximum duration before timing out read of the HTTP(S) request"`
+	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"Maximum duration before timing out write of the HTTP(S) response"`
 	ReadHeaderTimeout  *base.ConfigDuration `json:"read_header_timeout,omitempty"  help:"The amount of time allowed to read request headers"`
 	IdleTimeout        *base.ConfigDuration `json:"idle_timeout,omitempty"         help:"The maximum amount of time to wait for the next request when keep-alives are enabled"`
 
@@ -151,14 +156,21 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
-	StatsLogFrequency    *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
-	UseStdlibJSON        *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
-	Serverless           ServerlessConfig     `json:"serverless,omitempty"`
-	HTTP2                *HTTP2Config         `json:"http2,omitempty"`
-	UserQueries          *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS queries"`
-	UseXattrConfig       *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
-	AllowDbConfigEnvVars *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
-	DiagnosticInterface  string               `json:"diagnostic_interface,omitempty"    help:"Network interface to bind diagnostic API to"`
+	StatsLogFrequency       *base.ConfigDuration     `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
+	UseStdlibJSON           *bool                    `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
+	Serverless              ServerlessConfig         `json:"serverless,omitempty"`
+	HTTP2                   *HTTP2Config             `json:"http2,omitempty"`
+	UserQueries             *bool                    `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS queries"`
+	UseXattrConfig          *bool                    `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
+	AllowDbConfigEnvVars    *bool                    `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
+	DiagnosticInterface     string                   `json:"diagnostic_interface,omitempty"    help:"Network interface to bind diagnostic API to"`
+	EffectiveUserHeaderName *string                  `json:"effective_user_header_name,omitempty" help:"HTTP header name to get effective user id from"`
+	AuditInfoProvider       *AuditInfoProviderConfig `json:"audit_info_provider,omitempty"     help:"Configuration for audit info provider"`
+}
+
+type AuditInfoProviderConfig struct {
+	GlobalInfoEnvVarName  *string `json:"global_info_env_var_name,omitempty" help:"Environment variable name to get global audit event info from"`
+	RequestInfoHeaderName *string `json:"request_info_header_name,omitempty" help:"HTTP header name to get request audit event info from"`
 }
 
 type ServerlessConfig struct {
@@ -235,9 +247,11 @@ func NewEmptyStartupConfig() StartupConfig {
 			Debug:   &base.FileLoggerConfig{},
 			Trace:   &base.FileLoggerConfig{},
 			Stats:   &base.FileLoggerConfig{},
+			Audit:   &base.AuditLoggerConfig{},
 		},
 		Unsupported: UnsupportedConfig{
-			HTTP2: &HTTP2Config{},
+			HTTP2:             &HTTP2Config{},
+			AuditInfoProvider: &AuditInfoProviderConfig{},
 		},
 	}
 }
