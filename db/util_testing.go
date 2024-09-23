@@ -432,6 +432,33 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 	return nil
 }
 
+// deleteDocsAndIndexesBucketReadier purges the datastore using DCP and drops any indexes on the bucket
+var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
+	dataStores, err := b.ListDataStores()
+	if err != nil {
+		return err
+	}
+	for _, dataStoreName := range dataStores {
+		dataStore, err := b.NamedDataStore(dataStoreName)
+		if err != nil {
+			return err
+		}
+		if _, err := purgeWithDCPFeed(ctx, dataStore, tbp); err != nil {
+			return err
+		}
+		n1qlStore, ok := base.AsN1QLStore(dataStore)
+		if !ok {
+			return errors.New("attempting to empty indexes with non-N1QL store")
+		}
+		tbp.Logf(ctx, "dropping existing bucket indexes %s.%s.%s", b.GetName(), dataStore.ScopeName(), dataStore.CollectionName())
+		if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
+			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
+			return err
+		}
+	}
+	return nil
+}
+
 // viewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
 var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
 	skipGSI := false
@@ -609,6 +636,11 @@ func (db *DatabaseContext) FlushRevisionCacheForTest() {
 // TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
 func TestBucketPoolWithIndexes(ctx context.Context, m *testing.M, tbpOptions base.TestBucketPoolOptions) {
 	base.TestBucketPoolMain(ctx, m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, tbpOptions)
+}
+
+// TestBucketPoolEnsureNoIndexes runs a TestMain for packages that expects no indexes to exist.
+func TestBucketPoolEnsureNoIndexes(ctx context.Context, m *testing.M, tbpOptions base.TestBucketPoolOptions) {
+	base.TestBucketPoolMain(ctx, m, deleteDocsAndIndexesBucketReadier, base.NoopInitFunc, tbpOptions)
 }
 
 // Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")
