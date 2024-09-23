@@ -249,7 +249,7 @@ func setupN1QLStore(t *testing.T, bucket base.Bucket, isServerless bool) {
 	testBucket, ok := bucket.(*base.TestBucket)
 	require.True(t, ok)
 
-	hasOnlyDefaultDataStore := len(testBucket.GetNonDefaultDatastoreNames()) > 0
+	hasOnlyDefaultDataStore := len(testBucket.GetNonDefaultDatastoreNames()) == 0
 
 	defaultDataStore := bucket.DefaultDataStore()
 	defaultN1QLStore, ok := base.AsN1QLStore(defaultDataStore)
