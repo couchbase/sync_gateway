@@ -596,6 +596,7 @@ func TestSyncOnline(t *testing.T) {
 	waitAndRequireDBState(t, sc, dbName, db.DBOnline)
 
 	// Verify no collections were initialized asynchronously
+	// FIXME: Since DatabaseInitManager is now used for async and sync we can't rely on this callback to assert that async was used
 	totalCount := atomic.LoadInt64(&collectionCount)
 	require.Equal(t, int64(0), totalCount)
 

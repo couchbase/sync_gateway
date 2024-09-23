@@ -649,7 +649,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
-	needDefaultCollectionInit := true
+	hasDefaultCollection := false
 	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
 		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
@@ -660,7 +660,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			for collectionName := range scopeConfig.Collections {
 				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 				if scName.IsDefault() {
-					needDefaultCollectionInit = false
+					hasDefaultCollection = true
 				}
 
 				dataStore, err := base.GetAndWaitUntilDataStoreReady(ctx, bucket, scName, options.failFast)
@@ -685,16 +685,19 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			}
 		}
 	}
-	// no scopes or the set of collections didn't include `_default` and we'll need to initialize it for metadata.
-	if needDefaultCollectionInit {
-		scName := base.DefaultScopeAndCollectionName()
+	// no scopes, or the set of collections didn't include `_default` and we'll need to initialize it for metadata.
+	if !hasDefaultCollection {
 		ds := bucket.DefaultDataStore()
-		resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
-		if err != nil {
-			return nil, err
-		}
-		if resyncRequired {
-			collectionsRequiringResync = append(collectionsRequiringResync, scName)
+		// No explicitly defined scopes means we'll initialize this as a usable default collection, otherwise it's for metadata only
+		if len(config.Scopes) == 0 {
+			scName := base.DefaultScopeAndCollectionName()
+			resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
+			if err != nil {
+				return nil, err
+			}
+			if resyncRequired {
+				collectionsRequiringResync = append(collectionsRequiringResync, scName)
+			}
 		}
 		if useViews {
 			if err := db.InitializeViews(ctx, ds); err != nil {
@@ -703,7 +706,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	}
 
-	var dbInitDoneChan chan error
+	var (
+		dbInitDoneChan chan error
+		isAsync        bool // blocks reading dbInitDoneChan if false
+	)
 	startOffline := base.BoolDefault(config.StartOffline, false)
 	if !useViews {
 		// Initialize any required indexes
@@ -716,18 +722,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 
 		// If database has been requested to start offline, or there's an active async initialization, use async initialization
-		// Initialize indexes asynchronously using DatabaseInitManager.
+		isAsync = startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
+
+		// Initialize indexes using DatabaseInitManager.
 		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
 		if err != nil {
 			return nil, err
-		}
-
-		isAsync := startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
-		if !isAsync {
-			// run as blocking synchronous operation
-			if err := <-dbInitDoneChan; err != nil {
-				return nil, err
-			}
 		}
 	}
 
@@ -869,7 +869,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	// startOnlineProcesses will be set to true if the database should be started, either synchronously or asynchronously
 	startOnlineProcesses := true
-	needsResync := len(dbcontext.RequireResync) > 0
+	needsResync := len(collectionsRequiringResync) > 0
 	if needsResync || (startOffline && !options.forceOnline) {
 		startOnlineProcesses = false
 		var stateChangeMsg string
@@ -900,7 +900,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// If asyncOnline wasn't specified, block until db init is completed, then start online processes
-	if !options.asyncOnline || dbInitDoneChan == nil {
+	if !options.asyncOnline || !isAsync {
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete...")
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
