@@ -41,6 +41,9 @@ const (
 	fileLoggerCollateFlushTimeout    = 10 * time.Millisecond
 
 	rotatedLogDeletionInterval = time.Hour // not configurable
+
+	logFilePermission            = 0644              // rw-r--r--
+	logFileDirWriteCheckFilename = ".SG_write_check" // filename used when writing a write-check test file in the log directory
 )
 
 // ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.
@@ -319,8 +322,8 @@ func validateLogFilePath(logFilePath string) error {
 	}
 
 	// Make temporary empty file to check if the log file path is writable
-	writeCheckFilePath := filepath.Join(logFilePath, ".SG_write_check")
-	err = os.WriteFile(writeCheckFilePath, nil, 0666)
+	writeCheckFilePath := filepath.Join(logFilePath, logFileDirWriteCheckFilename)
+	err = os.WriteFile(writeCheckFilePath, nil, logFilePermission) //nolint:gosec
 	if err != nil {
 		return errors.Wrap(err, ErrUnwritableLogFilePath.Error())
 	}
@@ -344,7 +347,7 @@ func validateLogFileOutput(logFileOutput string) error {
 	}
 
 	// Validate given file is writeable
-	file, err := os.OpenFile(logFileOutput, os.O_WRONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(logFileOutput, os.O_WRONLY|os.O_CREATE, logFilePermission)
 	if err != nil {
 		if os.IsPermission(err) {
 			return errors.Wrap(err, "invalid file output")

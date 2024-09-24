@@ -248,7 +248,12 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 
 	var rotationDoneChan chan struct{}
 	if lfc.Output == nil {
-		rotationDoneChan = lfc.initLumberjack(ctx, name, filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"))
+		logFileName := logFilePrefix + name + ".log"
+		logFileOutput := filepath.Join(filepath.FromSlash(logFilePath), logFileName)
+		if err := validateLogFileOutput(logFileOutput); err != nil {
+			return nil, err
+		}
+		rotationDoneChan = lfc.initLumberjack(ctx, name, logFileOutput)
 	}
 
 	if lfc.CollationBufferSize == nil {
