@@ -38,6 +38,7 @@ func TestDatabaseInitManager(t *testing.T) {
 		scopesConfig = GetCollectionsConfig(t, tb, 1)
 	}
 	dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
+	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Drop indexes
 	dropAllNonPrimaryIndexes(t, tb.GetSingleDataStore())
@@ -102,6 +103,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
+	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, blocks after first collection
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
@@ -187,6 +189,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
+	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
@@ -197,6 +200,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 
 	// Make a call to initialize database for the same db name, different collections
 	modifiedDbConfig := makeDbConfig(tb.GetName(), dbName, collection1and3ScopesConfig)
+	require.NoError(t, modifiedDbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, modifiedDbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 
@@ -268,9 +272,11 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 
 	db1Name := "db1Name"
 	db1Config := makeDbConfig(tb.GetName(), db1Name, collection1and2ScopesConfig)
+	require.NoError(t, db1Config.setup(ctx, db1Name, sc.Config.Bootstrap, nil, nil, false))
 
 	db2Name := "db2Name"
 	db2Config := makeDbConfig(tb.GetName(), db2Name, collection3ScopesConfig)
+	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig())
@@ -356,9 +362,11 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 
 	db1Name := "db1Name"
 	db1Config := makeDbConfig(tb1.GetName(), db1Name, collection1and2ScopesConfig)
+	require.NoError(t, db1Config.setup(ctx, db1Name, sc.Config.Bootstrap, nil, nil, false))
 
 	db2Name := "db2Name"
 	db2Config := makeDbConfig(tb2.GetName(), db2Name, collection1and2ScopesConfig)
+	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig())
