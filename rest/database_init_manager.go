@@ -100,6 +100,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 	// Start a goroutine to perform the initialization
 	go func() {
+		defer n1qlStore.Close()
 		defer couchbaseCluster.Close()
 		// worker.Run blocks until completion, and returns any error on doneChan.
 		worker.Run()

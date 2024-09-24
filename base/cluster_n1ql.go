@@ -56,6 +56,10 @@ func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, colle
 
 }
 
+func (cl *ClusterOnlyN1QLStore) Close() error {
+	return cl.cluster.Close(nil)
+}
+
 func (cl *ClusterOnlyN1QLStore) GetName() string {
 	return cl.bucketName
 }
