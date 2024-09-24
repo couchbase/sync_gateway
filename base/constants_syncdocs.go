@@ -378,7 +378,7 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
 type SyncInfo struct {
 	MetadataID      string `json:"metadataID,omitempty"`
-	MetaDataVersion int8   `json:"metadata_version,omitempty""`
+	MetaDataVersion int8   `json:"metadata_version,omitempty"`
 }
 
 // initSyncInfo attempts to initialize syncInfo for a datastore
