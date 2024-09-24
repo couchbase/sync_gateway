@@ -64,7 +64,8 @@ func TestLogFilePathWritable(t *testing.T) {
 			err := os.Mkdir(logFilePath, test.logFilePathPerms)
 			require.NoError(t, err)
 
-			err = validateLogFilePath(logFilePath)
+			// The write-check is done inside validateLogFileOutput now.
+			err = validateLogFileOutput(filepath.Join(logFilePath, test.name+".log"))
 			if test.error {
 				assert.Error(t, err)
 				return
