@@ -75,7 +75,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting new initialization for database %s ...",
 		base.MD(dbConfig.Name))
-	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
+	couchbaseCluster, err := createBootstrapConnectionWithCredentials(ctx, startupConfig, dbConfig.Username, dbConfig.Password, base.PerUseClusterConnections)
 	if err != nil {
 		return nil, err
 	}
@@ -85,8 +85,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		bucketName = *dbConfig.Bucket
 	}
 
-	// Initialize ClusterN1QLStore for the bucket.  Scope and collection name are set
-	// per-operation
+	// Initialize ClusterN1QLStore for the bucket.  Scope and collection name are set per-operation
 	n1qlStore, err := couchbaseCluster.GetClusterN1QLStore(bucketName, "", "")
 	if err != nil {
 		return nil, err

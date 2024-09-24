@@ -369,6 +369,10 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 }
 
 func CreateBootstrapConnectionFromStartupConfig(ctx context.Context, config *StartupConfig, bucketConnectionMode base.BucketConnectionMode) (base.BootstrapConnection, error) {
+	return createBootstrapConnectionWithCredentials(ctx, config, config.Bootstrap.Username, config.Bootstrap.Password, bucketConnectionMode)
+}
+
+func createBootstrapConnectionWithCredentials(ctx context.Context, config *StartupConfig, username, password string, bucketConnectionMode base.BucketConnectionMode) (base.BootstrapConnection, error) {
 	if base.ServerIsWalrus(config.Bootstrap.Server) {
 		cluster := base.NewRosmarCluster(config.Bootstrap.Server)
 		return cluster, nil
@@ -384,7 +388,7 @@ func CreateBootstrapConnectionFromStartupConfig(ctx context.Context, config *Sta
 	if err != nil {
 		return nil, err
 	}
-	cluster, err := base.NewCouchbaseCluster(ctx, server, config.Bootstrap.Username, config.Bootstrap.Password,
+	cluster, err := base.NewCouchbaseCluster(ctx, server, username, password,
 		config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath, config.Bootstrap.CACertPath,
 		config.IsServerless(), config.BucketCredentials, config.Bootstrap.ServerTLSSkipVerify, config.Unsupported.UseXattrConfig, bucketConnectionMode)
 	if err != nil {
