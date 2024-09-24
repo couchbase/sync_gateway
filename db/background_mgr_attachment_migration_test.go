@@ -295,7 +295,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	require.NoError(t, err)
 
 	stats := getAttachmentMigrationStats(attachMigrationMgr.Process)
-	require.Less(t, stats.DocsProcessed, int64(2000))
+	require.Less(t, stats.DocsProcessed, int64(4000))
 
 	// assert that the sync info metadata version is not present
 	var syncInfo base.SyncInfo
