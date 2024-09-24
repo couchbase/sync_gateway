@@ -120,17 +120,17 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 			return true
 		}
 
+		if syncData == nil || syncData.Attachments == nil {
+			// no attachments to migrate
+			return true
+		}
+
 		collCtx := collection.AddCollectionContext(ctx)
 		collWithUser := &DatabaseCollectionWithUser{
 			DatabaseCollection: collection,
 		}
 		if event.DataType&base.MemcachedDataTypeXattr == 0 {
-			// no xattrs on dcp event, check for sync data
-			if syncData == nil {
-				// no inline sync xattr, skip event
-				return true
-			}
-			// we have inline sync xattr to migrate
+			// no xattrs on dcp event we have inline sync xattr to migrate
 			opts := DefaultMutateInOpts()
 			existingDoc := &sgbucket.BucketDocument{
 				Cas:    event.Cas,
