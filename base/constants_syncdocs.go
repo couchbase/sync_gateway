@@ -377,7 +377,8 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
 type SyncInfo struct {
-	MetadataID string `json:"metadataID"`
+	MetadataID      string `json:"metadataID,omitempty"`
+	MetaDataVersion int8   `json:"metadata_version,omitempty""`
 }
 
 // initSyncInfo attempts to initialize syncInfo for a datastore
@@ -412,16 +413,39 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err err
 	return syncInfo.MetadataID != metadataID, nil
 }
 
-// SetSyncInfo sets syncInfo in a DataStore to the specified metadataID
-func SetSyncInfo(ds DataStore, metadataID string) error {
+// SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present
+func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 
 	// If the metadataID isn't defined, don't persist SyncInfo.  Defensive handling for legacy use cases.
 	if metadataID == "" {
 		return nil
 	}
-	syncInfo := &SyncInfo{
-		MetadataID: metadataID,
+	var syncInfo SyncInfo
+	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
+	// avoid returning error if doc not found, allow upsert operation below to create it if not existent
+	if fetchErr != nil && !IsDocNotFoundError(fetchErr) {
+		return fetchErr
 	}
+	// set new metadata id, preserving the meta version if present
+	syncInfo.MetadataID = metadataID
+
+	return ds.Set(SGSyncInfo, 0, nil, syncInfo)
+}
+
+// SetSyncInfoMetaVersion sets sync info in DataStore to specified metadata version, preserving metadataID if present
+func SetSyncInfoMetaVersion(ds DataStore, metaVersion int8) error {
+	if metaVersion == 0 {
+		return nil
+	}
+	var syncInfo SyncInfo
+	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
+	// avoid returning error if doc not found, allow upsert operation below to create it if not existent
+	if fetchErr != nil && !IsDocNotFoundError(fetchErr) {
+		return fetchErr
+	}
+	// if we have a meta version to set, set it preserving the metadata ID if present
+	syncInfo.MetaDataVersion = metaVersion
+
 	return ds.Set(SGSyncInfo, 0, nil, syncInfo)
 }
 
