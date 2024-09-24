@@ -206,7 +206,7 @@ func TestAttachmentMigrationTaskInlineSyncData(t *testing.T) {
 	assert.Equal(t, int64(2), stats.DocsChanged)
 
 	// assert attachment metadata is not present in sync xattr but is present in global sync xattr
-	_, xattrs, cas, err = collection.dataStore.GetWithXattrs(ctx, docWithXattrs, []string{base.SyncXattrName, base.GlobalXattrName})
+	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, docWithXattrs, []string{base.SyncXattrName, base.GlobalXattrName})
 	require.NoError(t, err)
 	syncXattr, ok = xattrs[base.SyncXattrName]
 	assert.True(t, ok)
@@ -220,7 +220,7 @@ func TestAttachmentMigrationTaskInlineSyncData(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
 	require.Nil(t, syncData.Attachments)
 
-	_, xattrs, cas, err = collection.dataStore.GetWithXattrs(ctx, inlineDoc, []string{base.SyncXattrName, base.GlobalXattrName})
+	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, inlineDoc, []string{base.SyncXattrName, base.GlobalXattrName})
 	require.NoError(t, err)
 	syncXattr, ok = xattrs[base.SyncXattrName]
 	assert.True(t, ok)

@@ -3673,7 +3673,7 @@ func TestInject1xBodyProperties(t *testing.T) {
 func TestSettingSyncInfo(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	ds := collection.GetCollectionDatastore()
 
 	require.NoError(t, base.SetSyncInfoMetaVersion(ds, 1))
