@@ -51,8 +51,8 @@ func NewSGBlipContextWithProtocols(ctx context.Context, id string, origin []stri
 		bc, err = blip.NewContextCustomID(id, opts)
 	}
 
-	bc.LogMessages = base.LogDebugEnabled(ctx, base.KeyWebSocket)
-	bc.LogFrames = base.LogDebugEnabled(ctx, base.KeyWebSocketFrame)
+	bc.LogMessages = base.LogTraceEnabled(ctx, base.KeyWebSocket)
+	bc.LogFrames = base.LogTraceEnabled(ctx, base.KeyWebSocketFrame)
 	bc.Logger = defaultBlipLogger(ctx)
 
 	return bc, err
@@ -63,9 +63,9 @@ func defaultBlipLogger(ctx context.Context) blip.LogFn {
 	return func(eventType blip.LogEventType, format string, params ...interface{}) {
 		switch eventType {
 		case blip.LogFrame:
-			base.DebugfCtx(ctx, base.KeyWebSocketFrame, format, params...)
+			base.TracefCtx(ctx, base.KeyWebSocketFrame, format, params...)
 		case blip.LogMessage:
-			base.DebugfCtx(ctx, base.KeyWebSocket, format, params...)
+			base.TracefCtx(ctx, base.KeyWebSocket, format, params...)
 		default:
 			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)
 		}
