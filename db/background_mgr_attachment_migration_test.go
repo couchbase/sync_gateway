@@ -297,6 +297,11 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	stats := getAttachmentMigrationStats(attachMigrationMgr.Process)
 	require.Less(t, stats.DocsProcessed, int64(2000))
 
+	// assert that the sync info metadata version is not present
+	var syncInfo base.SyncInfo
+	_, err = collection.dataStore.Get(base.SGSyncInfo, &syncInfo)
+	require.Error(t, err)
+
 	// Resume process
 	err = attachMigrationMgr.Start(ctx, options)
 	require.NoError(t, err)
@@ -311,4 +316,10 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 
 	stats = getAttachmentMigrationStats(attachMigrationMgr.Process)
 	require.GreaterOrEqual(t, stats.DocsProcessed, int64(4000))
+
+	// assert that the sync info metadata version doc has been written to the database collection
+	syncInfo = base.SyncInfo{}
+	_, err = collection.dataStore.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, int8(4), syncInfo.MetaDataVersion)
 }
