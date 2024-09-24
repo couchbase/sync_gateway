@@ -27,5 +27,6 @@ var DevModeAssertionFailures atomic.Uint32
 // AssertfCtx panics when compiled with the `cb_sg_devmode` build tag, and just warns otherwise.
 // Callers must be aware that they are responsible for handling returns to cover the non-devmode warn case.
 func AssertfCtx(ctx context.Context, format string, args ...any) {
+	SyncGatewayStats.GlobalStats.ResourceUtilization.AssertionFailCount.Add(1)
 	assertLogFn(ctx, format, args...)
 }
