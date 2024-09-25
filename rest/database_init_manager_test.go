@@ -433,6 +433,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	}
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
+	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
