@@ -323,3 +323,54 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int8(4), syncInfo.MetaDataVersion)
 }
+
+func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar does not support DCP client, pending CBG-4249")
+	}
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create a doc with no attachments defined but through sync gateway, so it will have sync data
+	docBody := Body{
+		"value": "doc",
+	}
+	key := fmt.Sprintf("%s_%d", t.Name(), 1)
+	_, _, err := collection.Put(ctx, key, docBody)
+	require.NoError(t, err)
+
+	// add new doc with no sync data (SDK write, no import)
+	key = fmt.Sprintf("%s_%d", t.Name(), 2)
+	_, err = collection.dataStore.Add(key, 0, []byte(`{"test":"doc"}`))
+	require.NoError(t, err)
+
+	attachMigrationMgr := NewAttachmentMigrationManager(db.MetadataStore, db.MetadataKeys)
+	require.NotNil(t, attachMigrationMgr)
+
+	options := map[string]interface{}{
+		"database": db,
+	}
+	err = attachMigrationMgr.Start(ctx, options)
+	require.NoError(t, err)
+
+	// wait for task to complete
+	err = WaitForConditionWithOptions(t, func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := attachMigrationMgr.GetStatus(ctx)
+		_ = base.JSONUnmarshal(rawStatus, &status)
+		return status.State == BackgroundProcessStateCompleted
+	}, 200, 200)
+	require.NoError(t, err)
+
+	// assert that the two added docs above were processed but not changed
+	stats := getAttachmentMigrationStats(attachMigrationMgr.Process)
+	assert.Equal(t, int64(2), stats.DocsProcessed)
+	assert.Equal(t, int64(0), stats.DocsChanged)
+
+	// assert that the sync info metadata version doc has been written to the database collection
+	var syncInfo base.SyncInfo
+	_, err = collection.dataStore.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, int8(4), syncInfo.MetaDataVersion)
+}
