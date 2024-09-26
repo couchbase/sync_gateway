@@ -44,6 +44,7 @@ type BlipTesterClientOpts struct {
 	SupportedBLIPProtocols        []string
 	SkipCollectionsInitialization bool
 
+	AllowCreationWithoutBlipTesterClientRunner bool // Allow the client to be created outside of a BlipTesterClientRunner.Run() subtest
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
 
@@ -646,11 +647,11 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 }
 
 func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
-	if !btcRunner.initialisedInsideRunnerCode {
-		require.FailNow(btcRunner.TB(), "must initialise BlipTesterClient inside Run() method")
-	}
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
+	}
+	if !opts.AllowCreationWithoutBlipTesterClientRunner && !btcRunner.initialisedInsideRunnerCode {
+		require.FailNow(btcRunner.TB(), "must initialise BlipTesterClient inside Run() method")
 	}
 	id, err := uuid.NewRandom()
 	require.NoError(btcRunner.TB(), err)
@@ -665,6 +666,11 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 	require.NoError(btcRunner.TB(), err)
 
 	return client
+}
+
+// ID returns the unique ID of the client.
+func (btc *BlipTesterClient) ID() uint32 {
+	return btc.id
 }
 
 // TB returns testing.TB for the current test
@@ -1238,11 +1244,12 @@ func (btc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte) {
 	if data, found := btc.GetDoc(docID); found {
 		return data
 	}
+	timeout := 10 * time.Second
 	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
 		var found bool
 		data, found = btc.GetDoc(docID)
 		assert.True(c, found, "Could not find docID:%+v", docID)
-	}, 10*time.Second, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v", docID)
+	}, timeout, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v after %s", docID, timeout)
 	return data
 }
 

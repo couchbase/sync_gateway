@@ -21,7 +21,7 @@ import (
 
 const (
 	cbsRemoteClustersEndpoint = "/pools/default/remoteClusters"
-	xdcrClusterName           = "sync_gateway_xdcr"
+	xdcrClusterName           = "sync_gateway_xdcr" // this is a hardcoded name for the local XDCR cluster
 	totalDocsFilteredStat     = "xdcr_docs_filtered_total"
 	totalDocsWrittenStat      = "xdcr_docs_written_total"
 )
@@ -62,22 +62,7 @@ func isClusterPresent(ctx context.Context, bucket *base.GocbV2Bucket) (bool, err
 	return false, nil
 }
 
-// deleteCluster deletes an XDCR cluster. The cluster must be present in order to delete it.
-func deleteCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
-	method := http.MethodDelete
-	url := "/pools/default/remoteClusters/" + xdcrClusterName
-	output, statusCode, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
-	if err != nil {
-		return err
-	}
-
-	if statusCode != http.StatusOK {
-		return fmt.Errorf("Could not delete xdcr cluster: %s. %s %s -> (%d) %s", xdcrClusterName, http.MethodDelete, method, statusCode, output)
-	}
-	return nil
-}
-
-// createCluster deletes an XDCR cluster. The cluster must be present in order to delete it.
+// createCluster creates an XDCR cluster.
 func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 	serverURL, err := url.Parse(base.UnitTestUrl())
 	if err != nil {
@@ -105,20 +90,17 @@ func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 
 // newCouchbaseServerManager creates an instance of XDCR backed by Couchbase Server. This is not started until Start is called.
 func newCouchbaseServerManager(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, opts XDCROptions) (*couchbaseServerManager, error) {
+	// there needs to be a global cluster present, this is a hostname + username + password. There can be only one per hostname, so create it lazily.
 	isPresent, err := isClusterPresent(ctx, fromBucket)
 	if err != nil {
 		return nil, err
 
 	}
-	if isPresent {
-		err := deleteCluster(ctx, fromBucket)
+	if !isPresent {
+		err := createCluster(ctx, fromBucket)
 		if err != nil {
 			return nil, err
 		}
-	}
-	err = createCluster(ctx, fromBucket)
-	if err != nil {
-		return nil, err
 	}
 	return &couchbaseServerManager{
 		fromBucket:    fromBucket,
@@ -132,7 +114,7 @@ func newCouchbaseServerManager(ctx context.Context, fromBucket *base.GocbV2Bucke
 func (x *couchbaseServerManager) Start(ctx context.Context) error {
 	method := http.MethodPost
 	body := url.Values{}
-	body.Add("name", xdcrClusterName)
+	body.Add("name", fmt.Sprintf("%s_%s", x.fromBucket.GetName(), x.toBucket.GetName()))
 	body.Add("fromBucket", x.fromBucket.GetName())
 	body.Add("toBucket", x.toBucket.GetName())
 	body.Add("toCluster", xdcrClusterName)
@@ -172,7 +154,7 @@ func (x *couchbaseServerManager) Stop(ctx context.Context) error {
 	url := "/controller/cancelXDCR/" + url.PathEscape(x.replicationID)
 	output, statusCode, err := x.fromBucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("Could not %s to %s: %w", method, url, err)
 	}
 	if statusCode != http.StatusOK {
 		return fmt.Errorf("Could not cancel XDCR replication: %s. %s %s -> (%d) %s", x.replicationID, method, url, statusCode, output)
