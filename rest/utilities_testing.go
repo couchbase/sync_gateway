@@ -2842,3 +2842,12 @@ func RequireGocbDCPResync(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
 }
+
+// SafeDatabaseName returns a database name free of any special characters for use in tests.
+func SafeDatabaseName(t *testing.T, name string) string {
+	dbName := strings.ToLower(name)
+	for _, c := range []string{" ", "<", ">", "/", "="} {
+		dbName = strings.ReplaceAll(dbName, c, "_")
+	}
+	return dbName
+}
