@@ -167,7 +167,6 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 
 	args := sgbucket.FeedArguments{
 		ID:         "xdcr-" + r.replicationID,
-		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: r.terminator,
 		Scopes:     scopes,
 	}
