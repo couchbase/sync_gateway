@@ -103,8 +103,8 @@ type PeerType int
 const (
 	// PeerTypeCouchbaseServer represents a Couchbase Server peer. This can be backed by rosmar or couchbase server (controlled by SG_TEST_BACKING_STORE).
 	PeerTypeCouchbaseServer PeerType = iota
-	// PeerTypeCouchbaseLiteMock represents a Couchbase Lite peer backed by in memory structure that will send and receive blip messages.
-	PeerTypeCouchbaseLiteMock
+	// PeerTypeCouchbaseLite represents a Couchbase Lite peer. This is currently backed in memory but will be backed by in memory structure that will send and receive blip messages. Future expansion to real Couchbase Lite peer in CBG-4260.
+	PeerTypeCouchbaseLite
 	// PeerTypeSyncGateway represents a Sync Gateway peer backed by a RestTester.
 	PeerTypeSyncGateway
 )
@@ -113,25 +113,18 @@ const (
 type PeerBucketID int
 
 const (
+	// PeerBucketNoBackingBucket represents a peer that does not have a backing bucket. This is used for Couchbase Lite peers.
+	PeerBucketNoBackingBucket PeerBucketID = iota
 	// PeerBucketID1 represents the first bucket in the test.
-	PeerBucketID1 PeerBucketID = iota + 1 // start at 1 to avoid 0 value being accidentally used
+	PeerBucketID1 // start at 1 to avoid 0 value being accidentally used
 	// PeerBucketID2 represents the second bucket in the test.
 	PeerBucketID2
 )
 
-// PeerSyncGatewayID represents a specific Sync Gateway instance. This allows multiple Sync Gateway instances to be created in a test and a way for a Couchbase Lite peer to find a given Sync Gateway instance. There is no limit to the number of Sync Gateway instances.
-type PeerSyncGatewayID int
-
-const (
-	// PeerSyncGatewayID1 represents the first Sync Gateway instance in the test.
-	PeerSyncGatewayID1 PeerSyncGatewayID = iota + 1 // start at 1 to avoid 0 value being accidentally used
-)
-
 // PeerOptions are options to create a peer.
 type PeerOptions struct {
-	Type          PeerType
-	BucketID      PeerBucketID      // BucketID is used to identify the bucket for a Couchbase Server or Sync Gateway peer. This option is ignored for Couchbase Lite peers.
-	SyncGatewayID PeerSyncGatewayID // SyncGatewayID is used to identify the Sync Gateway instance for a Sync Gateway or a Couchbase Lite peer. This option is ignored for Couchbase Server peers.
+	Type     PeerType
+	BucketID PeerBucketID // BucketID is used to identify the bucket for a Couchbase Server or Sync Gateway peer. This option is ignored for Couchbase Lite peers.
 }
 
 // NewPeer creates a new peer for replication. The buckets must be created before the peers are created.
@@ -147,7 +140,10 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 			pullReplications: make(map[Peer]xdcr.Manager),
 			pushReplications: make(map[Peer]xdcr.Manager),
 		}
-	case PeerTypeCouchbaseLiteMock:
+	case PeerTypeCouchbaseLite:
+		require.Equal(t, PeerBucketNoBackingBucket, opts.BucketID, "bucket should not be specified for Couchbase Lite peer %+v", opts)
+		_, ok := buckets[opts.BucketID]
+		require.False(t, ok, "bucket should not be specified for Couchbase Lite peer")
 		return &CouchbaseLiteMockPeer{
 			t:           t,
 			name:        name,
@@ -180,6 +176,9 @@ func CreatePeerReplications(t *testing.T, peers map[string]Peer, configs []PeerR
 func getPeerBuckets(t *testing.T, peerOptions map[string]PeerOptions) map[PeerBucketID]*base.TestBucket {
 	buckets := make(map[PeerBucketID]*base.TestBucket)
 	for _, p := range peerOptions {
+		if p.BucketID == PeerBucketNoBackingBucket {
+			continue
+		}
 		_, ok := buckets[p.BucketID]
 		if !ok {
 			bucket := base.GetTestBucket(t)

@@ -33,7 +33,7 @@ func newSyncGatewayPeer(t *testing.T, name string, bucket *base.TestBucket) Peer
 	})
 	config := rt.NewDbConfig()
 	config.AutoImport = base.BoolPtr(true)
-	rest.RequireStatus(t, rt.CreateDatabase("db", config), http.StatusCreated)
+	rest.RequireStatus(t, rt.CreateDatabase(rest.SafeDatabaseName(t, name), config), http.StatusCreated)
 	return &SyncGatewayPeer{
 		name: name,
 		rt:   rt,

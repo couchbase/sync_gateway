@@ -39,7 +39,7 @@ var Topologies = []Topology{
 		peers: map[string]PeerOptions{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
-			"cbl1": {Type: PeerTypeCouchbaseLiteMock, BucketID: PeerBucketID1},
+			"cbl1": {Type: PeerTypeCouchbaseLite},
 		},
 		replications: []PeerReplicationDefinition{
 			{
@@ -85,7 +85,7 @@ var Topologies = []Topology{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 
 			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2},
-			"cbl1": {Type: PeerTypeCouchbaseLiteMock, BucketID: PeerBucketID1},
+			"cbl1": {Type: PeerTypeCouchbaseLite},
 		},
 		replications: []PeerReplicationDefinition{
 			{
@@ -144,9 +144,9 @@ var Topologies = []Topology{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2},
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
-			"cbl1": {Type: PeerTypeCouchbaseLiteMock, BucketID: PeerBucketID1},
+			"cbl1": {Type: PeerTypeCouchbaseLite},
 			// TODO: CBG-4270, push replication only exists empemerally
-			// "cbl1": {Type: PeerTypeCouchbaseLiteMock, BucketID: PeerBucketID1, },
+			// "cbl1": {Type: PeerTypeCouchbaseLite},
 		},
 		replications: []PeerReplicationDefinition{
 			{
@@ -208,7 +208,7 @@ var Topologies = []Topology{
 					"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2},
 					"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
 					"sg2":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID2},
-					"cbl1": {Type: PeerTypeCouchbaseLiteMock, BucketID: PeerBucketID1},
+					"cbl1": {Type: PeerTypeCouchbaseLite},
 				},
 				replications: []PeerReplicationDefinition{
 					{
