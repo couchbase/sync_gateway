@@ -345,7 +345,7 @@ func TestCheckProposedVersion(t *testing.T) {
 			// proposed version is newer than server cv (same source), and previousVersion matches server cv
 			//  Not a conflict
 			name:            "new version,same source,prev matches",
-			newVersion:      Version{cvSource, incrementStringCas(cvValue, 100)},
+			newVersion:      Version{cvSource, incrementCas(cvValue, 100)},
 			previousVersion: &currentVersion,
 			expectedStatus:  ProposedRev_OK,
 			expectedRev:     "",
@@ -354,7 +354,7 @@ func TestCheckProposedVersion(t *testing.T) {
 			// proposed version is newer than server cv (same source), and previousVersion is not specified.
 			//  Not a conflict, even without previousVersion, because of source match
 			name:            "new version,same source,prev not specified",
-			newVersion:      Version{cvSource, incrementStringCas(cvValue, 100)},
+			newVersion:      Version{cvSource, incrementCas(cvValue, 100)},
 			previousVersion: nil,
 			expectedStatus:  ProposedRev_OK,
 			expectedRev:     "",
@@ -363,7 +363,7 @@ func TestCheckProposedVersion(t *testing.T) {
 			// proposed version is from a source not present in server HLV, and previousVersion matches server cv
 			//  Not a conflict, due to previousVersion match
 			name:            "new version,new source,prev matches",
-			newVersion:      Version{"other", incrementStringCas(cvValue, 100)},
+			newVersion:      Version{"other", incrementCas(cvValue, 100)},
 			previousVersion: &currentVersion,
 			expectedStatus:  ProposedRev_OK,
 			expectedRev:     "",
@@ -373,31 +373,31 @@ func TestCheckProposedVersion(t *testing.T) {
 			//  Not a conflict, regardless of previousVersion mismatch, because of source match between proposed
 			//  version and cv
 			name:            "new version,prev mismatch,new matches cv",
-			newVersion:      Version{cvSource, incrementStringCas(cvValue, 100)},
-			previousVersion: &Version{"other", incrementStringCas(cvValue, 50)},
+			newVersion:      Version{cvSource, incrementCas(cvValue, 100)},
+			previousVersion: &Version{"other", incrementCas(cvValue, 50)},
 			expectedStatus:  ProposedRev_OK,
 			expectedRev:     "",
 		},
 		{
 			// proposed version is already known, source matches cv
 			name:           "proposed version already known, no prev version",
-			newVersion:     Version{cvSource, incrementStringCas(cvValue, -100)},
+			newVersion:     Version{cvSource, incrementCas(cvValue, -100)},
 			expectedStatus: ProposedRev_Exists,
 			expectedRev:    "",
 		},
 		{
 			// conflict - previous version is older than CV
 			name:            "conflict,same source,server updated",
-			newVersion:      Version{"other", incrementStringCas(cvValue, -100)},
-			previousVersion: &Version{cvSource, incrementStringCas(cvValue, -50)},
+			newVersion:      Version{"other", incrementCas(cvValue, -100)},
+			previousVersion: &Version{cvSource, incrementCas(cvValue, -50)},
 			expectedStatus:  ProposedRev_Conflict,
 			expectedRev:     Version{cvSource, cvValue}.String(),
 		},
 		{
 			// conflict - previous version is older than CV
 			name:            "conflict,new source,server updated",
-			newVersion:      Version{"other", incrementStringCas(cvValue, 100)},
-			previousVersion: &Version{"other", incrementStringCas(cvValue, -50)},
+			newVersion:      Version{"other", incrementCas(cvValue, 100)},
+			previousVersion: &Version{"other", incrementCas(cvValue, -50)},
 			expectedStatus:  ProposedRev_Conflict,
 			expectedRev:     Version{cvSource, cvValue}.String(),
 		},
@@ -423,25 +423,24 @@ func TestCheckProposedVersion(t *testing.T) {
 
 	// New doc cases - standard insert
 	t.Run("new doc", func(t *testing.T) {
-		newVersion := Version{"other", base.CasToString(100)}.String()
+		newVersion := Version{"other", 100}.String()
 		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, "")
 		assert.Equal(t, ProposedRev_OK_IsNew, status)
 	})
 
 	// New doc cases - insert with prev version (previous version purged from SGW)
 	t.Run("new doc with prev version", func(t *testing.T) {
-		newVersion := Version{"other", base.CasToString(100)}.String()
-		prevVersion := Version{"another other", base.CasToString(50)}.String()
+		newVersion := Version{"other", 100}.String()
+		prevVersion := Version{"another other", 50}.String()
 		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, prevVersion)
 		assert.Equal(t, ProposedRev_OK_IsNew, status)
 	})
 
 }
 
-func incrementStringCas(cas string, delta int) (casOut string) {
-	casValue := base.HexCasToUint64(cas)
-	casValue = casValue + uint64(delta)
-	return base.CasToString(casValue)
+func incrementCas(cas uint64, delta int) (casOut uint64) {
+	cas = cas + uint64(delta)
+	return cas
 }
 
 func TestGetDeleted(t *testing.T) {
@@ -1312,7 +1311,7 @@ func TestConflicts(t *testing.T) {
 		Changes:        []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
 		branched:       true,
 		collectionID:   collectionID,
-		CurrentVersion: &Version{SourceID: bucketUUID, Value: string(base.Uint64CASToLittleEndianHex(doc.Cas))},
+		CurrentVersion: &Version{SourceID: bucketUUID, Value: doc.Cas},
 	}, changes[0])
 
 }
@@ -1605,7 +1604,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, channels.ChannelMap{
 		"clibup": nil,
-		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: newDoc.HLV.Version}},
+		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: base.CasToString(newDoc.HLV.Version)}},
 	}, doc.Channels)
 
 	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
@@ -2039,7 +2038,7 @@ func TestChannelQuery(t *testing.T) {
 			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
 			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
 			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
-			require.Equal(t, testCase.expectedRev.CurrentVersion, removedDocEntry.Version)
+			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
 		})
 	}
 
@@ -2118,7 +2117,7 @@ func TestChannelQueryRevocation(t *testing.T) {
 			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
 			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
 			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
-			require.Equal(t, testCase.expectedRev.CurrentVersion, removedDocEntry.Version)
+			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
 		})
 	}
 

@@ -966,11 +966,11 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 		//  - revisionHistory is just previous cv (parentRev) for changes response
 		startValue := uint64(0)
 		if parentRev != "" {
-			parentVersion, _ := db.ParseDecodedVersion(parentRev)
+			parentVersion, _ := db.ParseVersion(parentRev)
 			startValue = parentVersion.Value
 			revisionHistory = append(revisionHistory, parentRev)
 		}
-		newVersion := db.DecodedVersion{SourceID: btc.parent.SourceID, Value: startValue + uint64(revCount)}
+		newVersion := db.Version{SourceID: btc.parent.SourceID, Value: startValue + uint64(revCount)}
 		newRevID = newVersion.String()
 
 	} else {

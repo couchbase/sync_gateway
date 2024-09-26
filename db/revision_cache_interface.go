@@ -333,7 +333,7 @@ type IDAndRev struct {
 
 type IDandCV struct {
 	DocID        string
-	Version      string
+	Version      uint64
 	Source       string
 	CollectionID uint32
 }
