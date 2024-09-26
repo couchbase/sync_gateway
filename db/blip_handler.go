@@ -259,12 +259,11 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
-	defaultSince := CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.collection.LastSequence(bh.loggingCtx)
 		return SequenceID{Seq: seq}, err
 	}
-	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, ParseJSONSequenceID)
+	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, latestSeq, bh.db.Options.ChangesRequestPlus)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
@@ -318,7 +317,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	requestPlusSeq := uint64(0)
 	// If non-continuous, check whether requestPlus handling is set for request or via database config
 	if continuous == false {
-		useRequestPlus := subChangesParams.requestPlus(bh.db.Options.ChangesRequestPlus)
+		useRequestPlus := subChangesParams.requestPlus()
 		if useRequestPlus {
 			seq, requestPlusErr := bh.db.GetRequestPlusSequence()
 			if requestPlusErr != nil {
