@@ -31,13 +31,9 @@ func NewBypassRevisionCache(backingStores map[uint32]RevisionCacheBackingStore, 
 }
 
 // Get fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, collectionID uint32, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
 
-	unmarshalLevel := DocUnmarshalSync
-	if includeBody {
-		unmarshalLevel = DocUnmarshalAll
-	}
-	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, unmarshalLevel)
+	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -45,7 +41,7 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, col
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -56,13 +52,9 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, col
 }
 
 // GetActive fetches the active revision for the given docID immediately from the bucket.
-func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32, includeBody bool) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
 
-	unmarshalLevel := DocUnmarshalSync
-	if includeBody {
-		unmarshalLevel = DocUnmarshalAll
-	}
-	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, unmarshalLevel)
+	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -71,7 +63,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.CurrentRev)
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}

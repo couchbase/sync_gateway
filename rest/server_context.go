@@ -1164,8 +1164,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		}
 
 		if config.CacheConfig.RevCacheConfig != nil {
-			if config.CacheConfig.RevCacheConfig.Size != nil {
-				revCacheOptions.Size = *config.CacheConfig.RevCacheConfig.Size
+			if config.CacheConfig.RevCacheConfig.MaxItemCount != nil {
+				revCacheOptions.MaxItemCount = *config.CacheConfig.RevCacheConfig.MaxItemCount
+			}
+			if config.CacheConfig.RevCacheConfig.MaxMemoryCountMB != nil {
+				revCacheOptions.MaxBytes = int64(*config.CacheConfig.RevCacheConfig.MaxMemoryCountMB * 1024 * 1024) // Convert MB input to bytes
 			}
 			if config.CacheConfig.RevCacheConfig.ShardCount != nil {
 				revCacheOptions.ShardCount = *config.CacheConfig.RevCacheConfig.ShardCount
