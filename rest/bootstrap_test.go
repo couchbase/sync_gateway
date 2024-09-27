@@ -69,7 +69,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assert.Empty(t, dbConfigResp.Username)
 	assert.Empty(t, dbConfigResp.Password)
 	require.Nil(t, dbConfigResp.Sync)
-	require.Equal(t, uint32(1234), *dbConfigResp.CacheConfig.RevCacheConfig.Size)
+	require.Equal(t, uint32(1234), *dbConfigResp.CacheConfig.RevCacheConfig.MaxItemCount)
 
 	// Sanity check to use the database
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/doc1", `{"foo":"bar"}`)
@@ -103,7 +103,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assert.Empty(t, dbConfigResp.Username)
 	assert.Empty(t, dbConfigResp.Password)
 	require.Nil(t, dbConfigResp.Sync)
-	require.Equal(t, uint32(1234), *dbConfigResp.CacheConfig.RevCacheConfig.Size)
+	require.Equal(t, uint32(1234), *dbConfigResp.CacheConfig.RevCacheConfig.MaxItemCount)
 
 	// Ensure it's _actually_ the same bucket
 	resp = BootstrapAdminRequest(t, sc, http.MethodGet, "/db1/doc1", ``)

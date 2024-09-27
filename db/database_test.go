@@ -402,8 +402,13 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses, db.DatabaseContext.DbStats.Cache().RevisionCacheNumItems, db.DatabaseContext.DbStats.Cache().RevisionCacheTotalMemory
+	cacheOptions := &RevisionCacheOptions{
+		MaxBytes:     0,
+		MaxItemCount: DefaultRevisionCacheSize,
+		ShardCount:   DefaultRevisionCacheShardCount,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -514,9 +519,11 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	_, rev1Digest := ParseRevID(ctx, rev1ID)
 	_, rev2Digest := ParseRevID(ctx, rev2ID)
 
+	var interfaceListChannels []interface{}
+	interfaceListChannels = append(interfaceListChannels, "ABC")
 	bodyExpected := Body{
 		"k2":       "v2",
-		"channels": []string{"ABC"},
+		"channels": interfaceListChannels,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2Digest, rev1Digest},
@@ -752,8 +759,13 @@ func TestGetRemoved(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses, db.DatabaseContext.DbStats.Cache().RevisionCacheNumItems, db.DatabaseContext.DbStats.Cache().RevisionCacheTotalMemory
+	cacheOptions := &RevisionCacheOptions{
+		MaxBytes:     0,
+		MaxItemCount: DefaultRevisionCacheSize,
+		ShardCount:   DefaultRevisionCacheShardCount,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -821,8 +833,13 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStats := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses, db.DatabaseContext.DbStats.Cache().RevisionCacheNumItems, db.DatabaseContext.DbStats.Cache().RevisionCacheTotalMemory
+	cacheOptions := &RevisionCacheOptions{
+		MaxBytes:     0,
+		MaxItemCount: DefaultRevisionCacheSize,
+		ShardCount:   DefaultRevisionCacheShardCount,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStats)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -3320,4 +3337,61 @@ func TestBadDCPStart(t *testing.T) {
 	require.Error(t, err)
 
 	dbCtx.Close(ctx)
+}
+
+func TestInject1xBodyProperties(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	rev1ID, _, err := collection.Put(ctx, "doc", Body{"test": "doc"})
+	require.NoError(t, err)
+	var rev2Body Body
+	rev2Data := `{"key":"value", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
+	_, rev2ID, err := collection.PutExistingRevWithBody(ctx, "doc", rev2Body, []string{"2-abc", rev1ID}, true)
+	require.NoError(t, err)
+
+	docRev, err := collection.GetRev(ctx, "doc", rev2ID, true, nil)
+	require.NoError(t, err)
+
+	// mock expiry on doc
+	exp := time.Now()
+	docRev.Expiry = &exp
+
+	newDoc, err := docRev.Inject1xBodyProperties(ctx, collection, docRev.History, nil, true)
+	require.NoError(t, err)
+	var resBody Body
+	require.NoError(t, resBody.Unmarshal(newDoc))
+
+	// cast to map of interface given we have injected the properties runtime has no concept of the AttachmentMeta and Revisions types
+	revs := resBody[BodyRevisions].(map[string]interface{})
+	atts := resBody[BodyAttachments].(map[string]interface{})
+
+	assert.NotNil(t, atts)
+	assert.NotNil(t, revs)
+	assert.Equal(t, "doc", resBody[BodyId])
+	assert.Equal(t, "2-abc", resBody[BodyRev])
+	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal(t, "value", resBody["key"])
+
+	// mock doc deleted
+	docRev.Deleted = true
+
+	newDoc, err = docRev.Inject1xBodyProperties(ctx, collection, docRev.History, []string{"2-abc"}, true)
+	require.NoError(t, err)
+	require.NoError(t, resBody.Unmarshal(newDoc))
+
+	// cast to map of interface given we have injected the properties runtime has no concept of the AttachmentMeta and Revisions types
+	revs = resBody[BodyRevisions].(map[string]interface{})
+	atts = resBody[BodyAttachments].(map[string]interface{})
+
+	assert.NotNil(t, atts)
+	assert.NotNil(t, revs)
+	assert.Equal(t, "doc", resBody[BodyId])
+	assert.Equal(t, "2-abc", resBody[BodyRev])
+	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal(t, "value", resBody["key"])
+	assert.True(t, resBody[BodyDeleted].(bool))
 }
