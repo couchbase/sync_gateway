@@ -53,6 +53,9 @@ const (
 
 	tbpEnvUseDefaultCollection = "SG_TEST_USE_DEFAULT_COLLECTION"
 
+	// tbpEnvAllowIncompatibleServerVersion allows tests to run against a server version that is not presumed compatible with version of Couchbase Server running.
+	tbpEnvAllowIncompatibleServerVersion = "SG_TEST_SKIP_SERVER_VERSION_CHECK"
+
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
 	waitForReadyBucketTimeout = time.Minute
 

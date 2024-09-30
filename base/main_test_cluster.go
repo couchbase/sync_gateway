@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -18,11 +19,14 @@ import (
 )
 
 // firstServerVersionToSupportMobileXDCR this is the first server version to support Mobile XDCR feature
-var firstServerVersionToSupportMobileXDCR = &ComparableBuildVersion{
-	epoch: 0,
-	major: 7,
-	minor: 6,
-	patch: 2,
+var firstServerVersionToSupportMobileXDCR *ComparableBuildVersion
+
+func init() {
+	var err error
+	firstServerVersionToSupportMobileXDCR, err = NewComparableBuildVersionFromString("7.6.4@5004")
+	if err != nil {
+		log.Fatalf("Couldn't parse firstServerVersionToSupportMobileXDCR: %v", err)
+	}
 }
 
 type clusterLogFunc func(ctx context.Context, format string, args ...interface{})
@@ -216,9 +220,13 @@ func (c *tbpCluster) mobileXDCRCompatible(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	// take server version, server version will be the first 5 character of version string
-	// in the form of x.x.x
-	vrs := c.version[:5]
+	// string is x.y.z-aaaa-enterprise or x.y.z-aaaa-community
+	// convert to a comparable string that Sync Gateway understands x.y.z@aaaa
+	components := strings.Split(c.version, "-")
+	vrs := components[0]
+	if len(components) > 1 {
+		vrs += "@" + components[1]
+	}
 
 	// convert the above string into a comparable string
 	version, err := NewComparableBuildVersionFromString(vrs)
