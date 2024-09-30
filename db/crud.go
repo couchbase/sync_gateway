@@ -942,8 +942,23 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 
 // MigrateAttachmentMetadata will move any attachment metadata defined in sync data to global sync xattr
 func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Context, docID string, cas uint64, syncData *SyncData) error {
-	globalData := GlobalSyncData{
-		GlobalAttachments: syncData.Attachments,
+	xattrs, _, err := c.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	if err != nil && !base.IsXattrNotFoundError(err) {
+		return err
+	}
+	var globalData GlobalSyncData
+	if xattrs[base.GlobalXattrName] != nil {
+		// we have a global xattr to preserve
+		err := base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalData)
+		if err != nil {
+			return base.RedactErrorf("Failed to Unmarshal global sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+		}
+		// add the sync data attachment metadata to global xattr
+		for i, v := range syncData.Attachments {
+			globalData.GlobalAttachments[i] = v
+		}
+	} else {
+		globalData.GlobalAttachments = syncData.Attachments
 	}
 	globalXattr, err := base.JSONMarshal(globalData)
 	if err != nil {

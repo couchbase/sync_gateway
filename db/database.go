@@ -2568,3 +2568,12 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 	}
 	return names
 }
+
+// GetCollectionIDs will return all collection IDs for all collections configured on the database
+func (db *Database) GetCollectionIDs() []uint32 {
+	collIDs := make([]uint32, 0)
+	for id, _ := range db.CollectionByID {
+		collIDs = append(collIDs, id)
+	}
+	return collIDs
+}

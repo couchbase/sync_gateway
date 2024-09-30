@@ -94,158 +94,12 @@ func getAttachmentMigrationStats(resyncManager BackgroundManagerProcessI) Resync
 	return resp
 }
 
-func rawDocWithAttachmentAndSyncMeta() []byte {
-	return []byte(`{
-   "_sync": {
-      "rev": "1-5fc93bd36377008f96fdae2719c174ed",
-      "sequence": 2,
-      "recent_sequences": [
-         2
-      ],
-      "history": {
-         "revs": [
-            "1-5fc93bd36377008f96fdae2719c174ed"
-         ],
-         "parents": [
-            -1
-         ],
-         "channels": [
-            null
-         ]
-      },
-      "cas": "",
-      "attachments": {
-         "hi.txt": {
-            "revpos": 1,
-            "content_type": "text/plain",
-            "length": 2,
-            "stub": true,
-            "digest": "sha1-witfkXg0JglCjW9RssWvTAveakI="
-         }
-      },
-      "time_saved": "2021-09-01T17:33:03.054227821Z"
-   },
-  "key": "value"
-}`)
-}
-
-func createDocWithLegacyAttachment(t *testing.T, collection *DatabaseCollectionWithUser, docID string, rawDoc []byte, attKey string, attBody []byte) {
-	// Write attachment directly to the bucket.
-	_, err := collection.dataStore.Add(attKey, 0, attBody)
-	require.NoError(t, err)
-
-	body := Body{}
-	err = body.Unmarshal(rawDoc)
-	require.NoError(t, err, "Error unmarshalling body")
-
-	// Write raw document to the bucket.
-	_, err = collection.dataStore.Add(docID, 0, rawDoc)
-	require.NoError(t, err)
-}
-
-func TestAttachmentMigrationTaskInlineSyncData(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-
-	// create doc with legacy attachment + inline sync data
-	inlineDoc := "doc1"
-	attBody := []byte(`hi`)
-	digest := Sha1DigestKey(attBody)
-	attKey := MakeAttachmentKey(AttVersion1, inlineDoc, digest)
-	rawDoc := rawDocWithAttachmentAndSyncMeta()
-	createDocWithLegacyAttachment(t, collection, inlineDoc, rawDoc, attKey, attBody)
-
-	// create a doc with attachment defined (no inline sync data)
-	docBody := Body{
-		"value":         1234,
-		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
-	}
-	docWithXattrs := t.Name()
-	_, doc, err := collection.Put(ctx, docWithXattrs, docBody)
-	require.NoError(t, err)
-	assert.NotNil(t, doc.SyncData.Attachments)
-
-	value, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docWithXattrs, []string{base.SyncXattrName, base.GlobalXattrName})
-	require.NoError(t, err)
-	syncXattr, ok := xattrs[base.SyncXattrName]
-	assert.True(t, ok)
-	globalXattr, ok := xattrs[base.GlobalXattrName]
-	assert.True(t, ok)
-
-	var attachs GlobalSyncData
-	err = base.JSONUnmarshal(globalXattr, &attachs)
-	require.NoError(t, err)
-
-	// move doc attachment metadata back to sync data for testing purposes
-	MoveAttachmentXattrFromGlobalToSync(t, ctx, docWithXattrs, cas, value, syncXattr, attachs.GlobalAttachments, true, collection.dataStore)
-
-	attachMigrationMgr := NewAttachmentMigrationManager(db.MetadataStore, db.MetadataKeys)
-	require.NotNil(t, attachMigrationMgr)
-
-	options := map[string]interface{}{
-		"database": db,
-	}
-	err = attachMigrationMgr.Start(ctx, options)
-	require.NoError(t, err)
-
-	// wait for task to complete
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status BackgroundManagerStatus
-		rawStatus, _ := attachMigrationMgr.GetStatus(ctx)
-		_ = base.JSONUnmarshal(rawStatus, &status)
-		return status.State == BackgroundProcessStateCompleted
-	}, 200, 200)
-	require.NoError(t, err)
-
-	stats := getAttachmentMigrationStats(attachMigrationMgr.Process)
-	assert.Equal(t, int64(2), stats.DocsProcessed)
-	assert.Equal(t, int64(2), stats.DocsChanged)
-
-	// assert attachment metadata is not present in sync xattr but is present in global sync xattr
-	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, docWithXattrs, []string{base.SyncXattrName, base.GlobalXattrName})
-	require.NoError(t, err)
-	syncXattr, ok = xattrs[base.SyncXattrName]
-	assert.True(t, ok)
-	globalXattr, ok = xattrs[base.GlobalXattrName]
-	assert.True(t, ok)
-
-	attachs = GlobalSyncData{}
-	require.NoError(t, base.JSONUnmarshal(globalXattr, &attachs))
-	require.NotNil(t, attachs.GlobalAttachments)
-	var syncData SyncData
-	require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
-	require.Nil(t, syncData.Attachments)
-
-	_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, inlineDoc, []string{base.SyncXattrName, base.GlobalXattrName})
-	require.NoError(t, err)
-	syncXattr, ok = xattrs[base.SyncXattrName]
-	assert.True(t, ok)
-	globalXattr, ok = xattrs[base.GlobalXattrName]
-	assert.True(t, ok)
-
-	attachs = GlobalSyncData{}
-	require.NoError(t, base.JSONUnmarshal(globalXattr, &attachs))
-	require.NotNil(t, attachs.GlobalAttachments)
-	syncData = SyncData{}
-	require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
-	require.Nil(t, syncData.Attachments)
-
-	// assert that the sync info metadata version doc has been written to the database collection
-	var syncInfo base.SyncInfo
-	_, err = collection.dataStore.Get(base.SGSyncInfo, &syncInfo)
-	require.NoError(t, err)
-	assert.Equal(t, int8(4), syncInfo.MetaDataVersion)
-
-}
-
 func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("rosmar does not support DCP client, pending CBG-4249")
 	}
+	base.LongRunningTest(t)
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -365,7 +219,8 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 
 	// assert that the two added docs above were processed but not changed
 	stats := getAttachmentMigrationStats(attachMigrationMgr.Process)
-	assert.Equal(t, int64(2), stats.DocsProcessed)
+	// no docs should be changed, only one has xattr defined thus should only have one of the two docs processed
+	assert.Equal(t, int64(1), stats.DocsProcessed)
 	assert.Equal(t, int64(0), stats.DocsChanged)
 
 	// assert that the sync info metadata version doc has been written to the database collection
@@ -373,4 +228,85 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 	_, err = collection.dataStore.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	assert.Equal(t, int8(4), syncInfo.MetaDataVersion)
+}
+
+func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar does not support DCP client, pending CBG-4249")
+	}
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docBody := Body{
+		"value":         1234,
+		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+	}
+	key := t.Name()
+	_, _, err := collection.Put(ctx, key, docBody)
+	require.NoError(t, err)
+
+	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	require.NotNil(t, xattrs[base.GlobalXattrName])
+	require.NotNil(t, xattrs[base.SyncXattrName])
+
+	var syncData SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+	// define some attachment meta on sync data
+	syncData.Attachments = AttachmentsMeta{}
+	att := map[string]interface{}{
+		"stub": true,
+	}
+	syncData.Attachments["someAtt.txt"] = att
+
+	updateXattrs := map[string][]byte{
+		base.SyncXattrName: base.MustJSONMarshal(t, syncData),
+	}
+	_, err = collection.dataStore.UpdateXattrs(ctx, key, 0, cas, updateXattrs, DefaultMutateInOpts())
+	require.NoError(t, err)
+
+	attachMigrationMgr := NewAttachmentMigrationManager(db.MetadataStore, db.MetadataKeys)
+	require.NotNil(t, attachMigrationMgr)
+
+	options := map[string]interface{}{
+		"database": db,
+	}
+	err = attachMigrationMgr.Start(ctx, options)
+	require.NoError(t, err)
+
+	// wait for task to complete
+	err = WaitForConditionWithOptions(t, func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := attachMigrationMgr.GetStatus(ctx)
+		_ = base.JSONUnmarshal(rawStatus, &status)
+		return status.State == BackgroundProcessStateCompleted
+	}, 200, 200)
+	require.NoError(t, err)
+
+	// assert that the two added docs above were processed but not changed
+	stats := getAttachmentMigrationStats(attachMigrationMgr.Process)
+	assert.Equal(t, int64(1), stats.DocsProcessed)
+	assert.Equal(t, int64(1), stats.DocsChanged)
+
+	// assert that the sync info metadata version doc has been written to the database collection
+	var syncInfo base.SyncInfo
+	_, err = collection.dataStore.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, int8(4), syncInfo.MetaDataVersion)
+
+	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	require.NotNil(t, xattrs[base.GlobalXattrName])
+	require.NotNil(t, xattrs[base.SyncXattrName])
+
+	var globalSync GlobalSyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalSync))
+	syncData = SyncData{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+
+	require.NotNil(t, globalSync.GlobalAttachments)
+	assert.NotNil(t, globalSync.GlobalAttachments["someAtt.txt"])
+	assert.NotNil(t, globalSync.GlobalAttachments["myatt"])
+	assert.Nil(t, syncData.Attachments)
 }

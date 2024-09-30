@@ -24,8 +24,6 @@ const (
 	ProductAPIVersion      = ProductAPIVersionMajor + "." + ProductAPIVersionMinor
 )
 
-const ProductMajorVersionInteger = 4
-
 // populated via init() below
 var (
 	// ProductVersion describes the specific version information of the build.
