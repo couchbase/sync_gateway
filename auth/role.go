@@ -355,9 +355,9 @@ func (role *roleImpl) validate() error {
 
 func (role *roleImpl) UnauthError(message string) error {
 	if role.Name_ == "" {
-		return base.HTTPErrorf(http.StatusUnauthorized, "login required: "+message)
+		return base.HTTPErrorf(http.StatusUnauthorized, "login required: %s", message)
 	}
-	return base.HTTPErrorf(http.StatusForbidden, message)
+	return base.NewHTTPError(http.StatusForbidden, message)
 }
 
 // Returns true if the Role is allowed to access the channel.

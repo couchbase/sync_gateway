@@ -2851,7 +2851,7 @@ func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 		version := rt.PutDoc("replaceNewChannel", `{"chan":"`+chanName+`"}`) // init doc
 		before := rt.GetDatabase().DbStats.Database().WarnChannelNameSizeCount.Value()
 		chanName = strings.Repeat("D", channelLength+5)
-		_ = rt.UpdateDoc("replaceNewChannel", version, fmt.Sprintf(`{"chan":"`+chanName+`", "data":"test"}`))
+		_ = rt.UpdateDoc("replaceNewChannel", version, `{"chan":"`+chanName+`", "data":"test"}`)
 		after := rt.GetDatabase().DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})

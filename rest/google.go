@@ -74,7 +74,7 @@ func verifyGoogle(idToken string, allowedAppID []string) (*GoogleResponse, error
 	}
 
 	if response.ErrorDescription != "" {
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, response.ErrorDescription)
+		return nil, base.NewHTTPError(http.StatusUnauthorized, response.ErrorDescription)
 	}
 
 	if !isValidAud(response.Aud, allowedAppID) {

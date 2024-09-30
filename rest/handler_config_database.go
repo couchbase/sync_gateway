@@ -62,7 +62,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 
 		validateReplications := false
 		if err := bucketDbConfig.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
-			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
