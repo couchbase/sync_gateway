@@ -2362,9 +2362,8 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			safeDbName := strings.ToLower(strings.ReplaceAll(testCase.Name, " ", "-"))
 			dbConfig := DbConfig{
-				Name: safeDbName,
+				Name: SafeDatabaseName(t, testCase.Name),
 			}
 
 			if testCase.SyncFunction != nil {
