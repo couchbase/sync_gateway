@@ -100,14 +100,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 			continue
 		}
 		require.Contains(t, xattrs, base.VvXattrName)
-		casString := string(base.Uint64CASToLittleEndianHex(cas))
-		var vv *db.HybridLogicalVector
-		require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
-		require.Equal(t, &db.HybridLogicalVector{
-			CurrentVersionCAS: casString,
-			SourceID:          fromBucketSourceID,
-			Version:           casString,
-		}, vv)
+		requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, cas)
 	}
 
 	_, err = toDs.Get(syncDoc, nil)
@@ -120,7 +113,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
 		assert.NoError(t, err)
-		assert.Equal(c, totalDocsFiltered+1, stats.DocsFiltered)
+		assert.Equal(c, totalDocsFiltered+1, stats.MobileDocsFiltered)
 		assert.Equal(c, totalDocsWritten+2, stats.DocsWritten)
 
 	}, time.Second*5, time.Millisecond*100)
@@ -163,12 +156,14 @@ func TestReplicateVV(t *testing.T) {
 		name        string
 		docID       string
 		body        string
+		hasHLV      bool
 		preXDCRFunc func(t *testing.T, docID string) uint64
 	}{
 		{
-			name:  "normal doc",
-			docID: "doc1",
-			body:  `{"key":"value"}`,
+			name:   "normal doc",
+			docID:  "doc1",
+			body:   `{"key":"value"}`,
+			hasHLV: true,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
 				cas, err := fromDs.WriteCas(docID, 0, 0, []byte(`{"key":"value"}`), 0)
 				require.NoError(t, err)
@@ -176,9 +171,10 @@ func TestReplicateVV(t *testing.T) {
 			},
 		},
 		{
-			name:  "dest doc older, expect overwrite",
-			docID: "doc2",
-			body:  `{"datastore":"fromDs"}`,
+			name:   "dest doc older, expect overwrite",
+			docID:  "doc2",
+			body:   `{"datastore":"fromDs"}`,
+			hasHLV: true,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
 				_, err := toDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
 				require.NoError(t, err)
@@ -188,13 +184,14 @@ func TestReplicateVV(t *testing.T) {
 			},
 		},
 		{
-			name:  "dest doc newer, expect keep old version",
-			docID: "doc3",
-			body:  `{"datastore":"fromDs"}`,
+			name:   "dest doc newer, expect keep same dest doc",
+			docID:  "doc3",
+			body:   `{"datastore":"toDs"}`,
+			hasHLV: false,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
-				_, err := toDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
+				_, err := fromDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"fromDs"}`), 0)
 				require.NoError(t, err)
-				cas, err := fromDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"fromDs"}`), 0)
+				cas, err := toDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
 				require.NoError(t, err)
 				return cas
 			},
@@ -203,31 +200,32 @@ func TestReplicateVV(t *testing.T) {
 	// tests write a document
 	// start xdcr
 	// verify result
+
+	var totalDocsProcessed uint64 // totalDocsProcessed will be incremented in each subtest
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			fromCAS := testCase.preXDCRFunc(t, testCase.docID)
 
 			xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
 			defer func() {
+				stats, err := xdcr.Stats(ctx)
+				assert.NoError(t, err)
+				totalDocsProcessed = stats.DocsProcessed
 				assert.NoError(t, xdcr.Stop(ctx))
 			}()
-			requireWaitForXDCRDocsWritten(t, xdcr, 1)
+			requireWaitForXDCRDocsProcessed(t, xdcr, 1+totalDocsProcessed)
 
 			body, xattrs, destCas, err := toDs.GetWithXattrs(ctx, testCase.docID, []string{base.VvXattrName, base.MouXattrName})
 			require.NoError(t, err, "Could not get doc %s", testCase.docID)
 			require.Equal(t, fromCAS, destCas)
 			require.JSONEq(t, testCase.body, string(body))
 			require.NotContains(t, xattrs, base.MouXattrName)
+			if !testCase.hasHLV {
+				require.NotContains(t, xattrs, base.VvXattrName)
+				return
+			}
 			require.Contains(t, xattrs, base.VvXattrName)
-			casString := string(base.Uint64CASToLittleEndianHex(fromCAS))
-			var vv *db.HybridLogicalVector
-			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
-			require.Equal(t, &db.HybridLogicalVector{
-				CurrentVersionCAS: casString,
-				SourceID:          fromBucketSourceID,
-				Version:           casString,
-			}, vv)
-
+			requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 		})
 	}
 }
@@ -246,41 +244,27 @@ func TestVVWriteTwice(t *testing.T) {
 	defer func() {
 		assert.NoError(t, xdcr.Stop(ctx))
 	}()
-	requireWaitForXDCRDocsWritten(t, xdcr, 1)
+	requireWaitForXDCRDocsProcessed(t, xdcr, 1)
 
 	body, xattrs, destCas, err := toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
 	require.NoError(t, err)
 	require.Equal(t, fromCAS, destCas)
 	require.JSONEq(t, ver1Body, string(body))
-	require.Contains(t, xattrs, base.VvXattrName)
-	casString := string(base.Uint64CASToLittleEndianHex(fromCAS))
-	var vv *db.HybridLogicalVector
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
-	require.Equal(t, &db.HybridLogicalVector{
-		CurrentVersionCAS: casString,
-		SourceID:          fromBucketSourceID,
-		Version:           casString,
-	}, vv)
+	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
 	fromCAS2, err := fromDs.WriteCas(docID, 0, fromCAS, []byte(`{"ver":2}`), 0)
 	require.NoError(t, err)
-	requireWaitForXDCRDocsWritten(t, xdcr, 2)
+	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
 
 	body, xattrs, destCas, err = toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
 	require.NoError(t, err)
 	require.Equal(t, fromCAS2, destCas)
 	require.JSONEq(t, `{"ver":2}`, string(body))
 	require.Contains(t, xattrs, base.VvXattrName)
-	casString = string(base.Uint64CASToLittleEndianHex(fromCAS2))
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
-	require.Equal(t, &db.HybridLogicalVector{
-		CurrentVersionCAS: casString,
-		SourceID:          fromBucketSourceID,
-		Version:           casString,
-	}, vv)
+	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS2)
 }
 
-func TestVVWriteOnDestAfterInitialReplication(t *testing.T) {
+func TestLWWAfterInitialReplication(t *testing.T) {
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
 	fromBucketSourceID, err := getSourceID(ctx, fromBucket)
@@ -294,43 +278,28 @@ func TestVVWriteOnDestAfterInitialReplication(t *testing.T) {
 	defer func() {
 		assert.NoError(t, xdcr.Stop(ctx))
 	}()
-	requireWaitForXDCRDocsWritten(t, xdcr, 1)
+	requireWaitForXDCRDocsProcessed(t, xdcr, 1)
 
 	body, xattrs, destCas, err := toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
 	require.NoError(t, err)
 	require.Equal(t, fromCAS, destCas)
 	require.JSONEq(t, ver1Body, string(body))
 	require.Contains(t, xattrs, base.VvXattrName)
-	casString := string(base.Uint64CASToLittleEndianHex(fromCAS))
-	fmt.Printf("vv after write1: %+v\n", string(xattrs[base.VvXattrName]))
-	var vv *db.HybridLogicalVector
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
-	require.Equal(t, &db.HybridLogicalVector{
-		CurrentVersionCAS: casString,
-		SourceID:          fromBucketSourceID,
-		Version:           casString,
-	}, vv)
+	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
 	// write to dest bucket again
 	toCas2, err := toDs.WriteCas(docID, 0, fromCAS, []byte(`{"ver":3}`), 0)
 	require.NoError(t, err)
-	fmt.Printf("toCas2: %d\n", toCas2)
 
 	body, xattrs, destCas, err = toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
 	require.NoError(t, err)
 	require.Equal(t, toCas2, destCas)
 	require.JSONEq(t, `{"ver":3}`, string(body))
 	require.Contains(t, xattrs, base.VvXattrName)
-	casString = string(base.Uint64CASToLittleEndianHex(fromCAS))
-	fmt.Printf("vv after write2: %+v\n", string(xattrs[base.VvXattrName]))
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
-	require.Equal(t, &db.HybridLogicalVector{
-		CurrentVersionCAS: casString,
-		SourceID:          fromBucketSourceID,
-		Version:           casString,
-	}, vv)
+	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 }
 
+// startXDCR will create a new XDCR manager and start it. This must be closed by the caller.
 func startXDCR(t *testing.T, fromBucket base.Bucket, toBucket base.Bucket, opts XDCROptions) Manager {
 	ctx := base.TestCtx(t)
 	xdcr, err := NewXDCR(ctx, fromBucket, toBucket, opts)
@@ -340,11 +309,24 @@ func startXDCR(t *testing.T, fromBucket base.Bucket, toBucket base.Bucket, opts 
 	return xdcr
 }
 
-func requireWaitForXDCRDocsWritten(t *testing.T, xdcr Manager, expectedDocsWritten uint64) {
+// requireWaitForXDCRDocsProcessed waits for the replication to process the exact number of documents. If more than the expected number of documents are processed, this will fail.
+func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsProcessed uint64) {
 	ctx := base.TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
 		assert.NoError(t, err)
-		assert.Equal(c, expectedDocsWritten, stats.DocsWritten)
+		assert.Equal(c, expectedDocsProcessed, stats.DocsProcessed)
 	}, time.Second*5, time.Millisecond*100)
+}
+
+// requireCV requires tests that a given hlv from server has a sourceID and cas matching the version. This is strict and will fail if _pv is populated (TODO: CBG-4250).
+func requireCV(t *testing.T, vvBytes []byte, sourceID string, cas uint64) {
+	casString := string(base.Uint64CASToLittleEndianHex(cas))
+	var vv *db.HybridLogicalVector
+	require.NoError(t, base.JSONUnmarshal(vvBytes, &vv))
+	require.Equal(t, &db.HybridLogicalVector{
+		CurrentVersionCAS: casString,
+		SourceID:          sourceID,
+		Version:           casString,
+	}, vv)
 }

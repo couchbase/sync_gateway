@@ -31,7 +31,7 @@ type rosmarManager struct {
 	fromBucketSourceID  string
 	toBucket            *rosmar.Bucket
 	replicationID       string
-	docsFiltered        atomic.Uint64
+	mobileDocsFiltered  atomic.Uint64
 	docsWritten         atomic.Uint64
 	errorCount          atomic.Uint64
 	targetNewerDocs     atomic.Uint64
@@ -74,7 +74,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		// Filter out events if we have a non XDCR filter
 		if r.filterFunc != nil && !r.filterFunc(&event) {
 			base.TracefCtx(ctx, base.KeyWalrus, "Filtering doc %s", docID)
-			r.docsFiltered.Add(1)
+			r.mobileDocsFiltered.Add(1)
 			return true
 		}
 
@@ -247,13 +247,14 @@ func opWithMeta(ctx context.Context, collection *rosmar.Collection, sourceID str
 
 // Stats returns the stats of the XDCR replication.
 func (r *rosmarManager) Stats(context.Context) (*Stats, error) {
-
-	return &Stats{
-		DocsWritten:     r.docsWritten.Load(),
-		DocsFiltered:    r.docsFiltered.Load(),
-		ErrorCount:      r.errorCount.Load(),
-		TargetNewerDocs: r.targetNewerDocs.Load(),
-	}, nil
+	stats := &Stats{
+		DocsWritten:        r.docsWritten.Load(),
+		MobileDocsFiltered: r.mobileDocsFiltered.Load(),
+		ErrorCount:         r.errorCount.Load(),
+		TargetNewerDocs:    r.targetNewerDocs.Load(),
+	}
+	stats.DocsProcessed = stats.DocsWritten + stats.MobileDocsFiltered + stats.TargetNewerDocs
+	return stats, nil
 }
 
 // xattrToBytes converts a map of xattrs of marshalled json.
