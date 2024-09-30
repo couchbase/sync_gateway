@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -18,11 +19,14 @@ import (
 )
 
 // firstServerVersionToSupportMobileXDCR this is the first server version to support Mobile XDCR feature
-var firstServerVersionToSupportMobileXDCR = &ComparableBuildVersion{
-	epoch: 0,
-	major: 7,
-	minor: 6,
-	patch: 2,
+var firstServerVersionToSupportMobileXDCR *ComparableBuildVersion
+
+func init() {
+	var err error
+	firstServerVersionToSupportMobileXDCR, err = NewComparableBuildVersionFromString("7.6.3")
+	if err != nil {
+		log.Fatalf("Couldn't parse firstServerVersionToSupportMobileXDCR: %v", err)
+	}
 }
 
 type clusterLogFunc func(ctx context.Context, format string, args ...interface{})
