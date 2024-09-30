@@ -211,7 +211,7 @@ func TestUseXattrs() bool {
 		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvSyncGatewayUseXattrs, useXattrs, err))
 	}
 	if !val {
-		panic("sync gateway requires xattrs to be enabled")
+		panic(fmt.Sprintf("sync gateway %s requires xattrs to be enabled, remove env var %s=%s", ProductVersion, TestEnvSyncGatewayUseXattrs, useXattrs))
 	}
 
 	return val
