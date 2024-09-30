@@ -429,7 +429,7 @@ func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 				return nil, nil, false, parseErr
 			}
 		}
-		// if we have a metadataID to set, set it preserving the metadata ID if present
+		// if we have a metadataID to set, set it preserving the metadata version if present
 		syncInfo.MetadataID = metadataID
 		bytes, err := JSONMarshal(&syncInfo)
 		return bytes, nil, false, err

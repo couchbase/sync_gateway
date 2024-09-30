@@ -303,7 +303,7 @@ func GenerateAttachmentMigrationDCPStreamName(migrationID string) string {
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
 func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, datastore base.DataStore, database *Database, metadataKeyPrefix string, collectionIDs []uint32) error {
-	// if we are pon our first run, no collections will be defined on the manager yet
+	// if we are on our first run, no collections will be defined on the manager yet
 	if len(a.CollectionIDs) == 0 {
 		return nil
 	}
