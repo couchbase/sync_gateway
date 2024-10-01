@@ -66,7 +66,6 @@ type BlipTesterClient struct {
 	BlipTesterClientOpts
 
 	id              uint32 // unique ID for the client
-	sourceID        string // source ID for the client
 	rt              *RestTester
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
 	pushReplication *BlipTesterReplicator // CBL -> SG replications
