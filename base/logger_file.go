@@ -204,6 +204,9 @@ func (l *FileLogger) logf(format string, args ...interface{}) {
 // log will put the given message into the collation buffer if it exists,
 // otherwise will log the message directly.
 func (l *FileLogger) log(format string) {
+	if l == nil {
+		return
+	}
 	if l.collateBuffer != nil {
 		l.collateBufferWg.Add(1)
 		l.collateBuffer <- format
