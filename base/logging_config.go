@@ -317,7 +317,9 @@ func validateLogFileOutput(logFileOutput string) error {
 		return errors.Wrap(ErrInvalidLogFilePath, "not a directory")
 	}
 
-	// Validate given file is writeable
+	// Validate given file is writeable by touching it.
+	// If the file does not exist, this will open a zero sized log file intentionally to set permissions.
+	// The permissions will then be used by lumberjack. Otherwise, lumberjack will use 0600 permissions.
 	file, err := os.OpenFile(logFileOutput, os.O_WRONLY|os.O_CREATE, logFilePermission)
 	if err != nil {
 		if os.IsPermission(err) {

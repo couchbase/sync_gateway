@@ -31,6 +31,18 @@ func TestValidateLogFileOutput(t *testing.T) {
 	assert.NoError(t, err, "log file output path should be validated")
 }
 
+func TestValidateLogFileOutputNonDirectory(t *testing.T) {
+	tmpdir := t.TempDir()
+	file1 := filepath.Join(tmpdir, "1.log")
+	_, err := os.Create(file1)
+	require.NoError(t, err)
+
+	invalidFilePath := filepath.Join(file1, "2.log")
+	err = validateLogFileOutput(invalidFilePath)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not a directory")
+}
+
 // CBG-1760: Error upfront when the configured logFilePath is not writable
 func TestLogFilePathWritable(t *testing.T) {
 	if runtime.GOOS == "windows" {
