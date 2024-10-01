@@ -56,6 +56,9 @@ type BlipTesterClientOpts struct {
 
 	// sendReplacementRevs opts into the replacement rev behaviour in the event that we do not find the requested one.
 	sendReplacementRevs bool
+
+	// SourceID is used to define the SourceID for the blip client
+	SourceID string
 }
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
@@ -63,6 +66,7 @@ type BlipTesterClient struct {
 	BlipTesterClientOpts
 
 	id              uint32 // unique ID for the client
+	sourceID        string // source ID for the client
 	rt              *RestTester
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
 	pushReplication *BlipTesterReplicator // CBL -> SG replications
@@ -653,6 +657,9 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 	if !opts.AllowCreationWithoutBlipTesterClientRunner && !btcRunner.initialisedInsideRunnerCode {
 		require.FailNow(btcRunner.TB(), "must initialise BlipTesterClient inside Run() method")
 	}
+	if opts.SourceID == "" {
+		opts.SourceID = "blipclient"
+	}
 	id, err := uuid.NewRandom()
 	require.NoError(btcRunner.TB(), err)
 
@@ -964,7 +971,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 			startValue = parentVersion.Value
 			revisionHistory = append(revisionHistory, parentRev)
 		}
-		newVersion := db.DecodedVersion{SourceID: "abc", Value: startValue + uint64(revCount)}
+		newVersion := db.DecodedVersion{SourceID: btc.parent.SourceID, Value: startValue + uint64(revCount)}
 		newRevID = newVersion.String()
 
 	} else {
@@ -975,14 +982,14 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 		revGen = parentRevGen + revCount + prunedRevCount
 
 		for i := revGen - 1; i > parentRevGen; i-- {
-			rev := fmt.Sprintf("%d-%s", i, "abc")
+			rev := fmt.Sprintf("%d-%s", i, btc.parent.SourceID)
 			revisionHistory = append(revisionHistory, rev)
 		}
 		if parentRev != "" {
 
 			revisionHistory = append(revisionHistory, parentRev)
 		}
-		newRevID = fmt.Sprintf("%d-%s", revGen, "abc")
+		newRevID = fmt.Sprintf("%d-%s", revGen, btc.parent.SourceID)
 	}
 
 	// Inline attachment processing
