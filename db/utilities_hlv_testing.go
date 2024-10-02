@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -78,7 +77,7 @@ func EncodeTestVersion(versionString string) (encodedString string) {
 	if err != nil {
 		return ""
 	}
-	hexTimestamp := fmt.Sprintf("%x", timestampUint)
+	hexTimestamp := strconv.FormatUint(timestampUint, 16)
 	base64Source := EncodeSource(source)
 	return hexTimestamp + "@" + base64Source
 }
