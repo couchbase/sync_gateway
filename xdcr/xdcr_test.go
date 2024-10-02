@@ -321,12 +321,11 @@ func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsPro
 
 // requireCV requires tests that a given hlv from server has a sourceID and cas matching the version. This is strict and will fail if _pv is populated (TODO: CBG-4250).
 func requireCV(t *testing.T, vvBytes []byte, sourceID string, cas uint64) {
-	casString := string(base.Uint64CASToLittleEndianHex(cas))
 	var vv *db.HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(vvBytes, &vv))
 	require.Equal(t, &db.HybridLogicalVector{
-		CurrentVersionCAS: casString,
+		CurrentVersionCAS: cas,
 		SourceID:          sourceID,
-		Version:           casString,
+		Version:           cas,
 	}, vv)
 }
