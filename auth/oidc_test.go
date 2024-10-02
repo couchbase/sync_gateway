@@ -1235,7 +1235,7 @@ func TestJWTRolesChannels(t *testing.T) {
 					Claims:  login.claims,
 				}
 				var updates PrincipalConfig
-				user, updates, _, err = auth.authenticateJWTIdentity(identity, provider.common())
+				user, updates, _, err = auth.authenticateJWTIdentity(identity, provider)
 				require.NoError(t, err, "error on authenticateOIDCIdentity")
 				require.NotNil(t, user, "nil user")
 				user.SetJWTChannels(ch.AtSequence(updates.JWTChannels, user.Sequence()), user.Sequence())
