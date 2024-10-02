@@ -307,7 +307,7 @@ func TestHLVImport(t *testing.T) {
 	require.NoError(t, err)
 	encodedCAS = EncodeValue(cas)
 
-	docxattr, _ := existingXattrs[base.VirtualXattrRevSeqNo]
+	docxattr := existingXattrs[base.VirtualXattrRevSeqNo]
 	revSeqNo := RetrieveDocRevSeqNo(t, docxattr)
 
 	importOpts = importDocOptions{
@@ -466,7 +466,7 @@ func TestExtractHLVFromChangesMessage(t *testing.T) {
 
 			// TODO: When CBG-3662 is done, should be able to simplify base64 handling to treat source as a string
 			//       that may represent a base64 encoding
-			base64EncodedHlvString := cblEncodeTestSources(test.hlvString)
+			base64EncodedHlvString := EncodeTestHistory(test.hlvString)
 			hlv, err := extractHLVFromBlipMessage(base64EncodedHlvString)
 			require.NoError(t, err)
 
@@ -490,30 +490,4 @@ func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
 			}
 		})
 	}
-}
-
-// cblEncodeTestSources converts the simplified versions in test data to CBL-style encoding
-func cblEncodeTestSources(hlvString string) (base64HLVString string) {
-
-	vectorFields := strings.Split(hlvString, ";")
-	vectorLength := len(vectorFields)
-	if vectorLength == 0 {
-		return hlvString
-	}
-
-	// first vector field is single vector, cv
-	base64HLVString += EncodeTestVersion(vectorFields[0])
-	for _, field := range vectorFields[1:] {
-		base64HLVString += ";"
-		versions := strings.Split(field, ",")
-		if len(versions) == 0 {
-			continue
-		}
-		base64HLVString += EncodeTestVersion(versions[0])
-		for _, version := range versions[1:] {
-			base64HLVString += ","
-			base64HLVString += EncodeTestVersion(version)
-		}
-	}
-	return base64HLVString
 }
