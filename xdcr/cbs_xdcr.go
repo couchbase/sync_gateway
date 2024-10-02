@@ -10,6 +10,7 @@ package xdcr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -20,11 +21,14 @@ import (
 )
 
 const (
-	cbsRemoteClustersEndpoint = "/pools/default/remoteClusters"
-	xdcrClusterName           = "sync_gateway_xdcr" // this is a hardcoded name for the local XDCR cluster
-	totalDocsFilteredStat     = "xdcr_docs_filtered_total"
-	totalDocsWrittenStat      = "xdcr_docs_written_total"
+	cbsRemoteClustersEndpoint           = "/pools/default/remoteClusters"
+	xdcrClusterName                     = "sync_gateway_xdcr" // this is a hardcoded name for the local XDCR cluster
+	totalMobileDocsFiltered             = "xdcr_mobile_docs_filtered_total"
+	totalDocsWrittenStat                = "xdcr_docs_written_total"
+	totalDocsConflictResolutionRejected = "xdcr_docs_failed_cr_source_total"
 )
+
+var errNoXDCRMetrics = errors.New("No metric found")
 
 // couchbaseServerManager implements a XDCR setup cluster on Couchbase Server.
 type couchbaseServerManager struct {
@@ -170,15 +174,27 @@ func (x *couchbaseServerManager) Stats(ctx context.Context) (*Stats, error) {
 		return nil, err
 	}
 	stats := &Stats{}
-	stats.DocsFiltered, err = x.getValue(mf[totalDocsFilteredStat])
-	if err != nil {
-		return stats, err
+
+	statMap := map[string]*uint64{
+		totalMobileDocsFiltered:             &stats.MobileDocsFiltered,
+		totalDocsWrittenStat:                &stats.DocsWritten,
+		totalDocsConflictResolutionRejected: &stats.TargetNewerDocs,
 	}
-	stats.DocsWritten, err = x.getValue(mf[totalDocsWrittenStat])
-	if err != nil {
-		return stats, err
+	var errs *base.MultiError
+	for metricName, stat := range statMap {
+		metricFamily, ok := mf[metricName]
+		if !ok {
+			errs = errs.Append(fmt.Errorf("Could not find %s metric: %+v", metricName, mf))
+			continue
+		}
+		var err error
+		*stat, err = x.getValue(metricFamily)
+		if err != nil {
+			errs = errs.Append(err)
+		}
 	}
-	return stats, nil
+	stats.DocsProcessed = stats.DocsWritten + stats.MobileDocsFiltered + stats.TargetNewerDocs
+	return stats, errs.ErrorOrNil()
 }
 
 func (x *couchbaseServerManager) getValue(metrics *dto.MetricFamily) (uint64, error) {
@@ -204,7 +220,7 @@ outer:
 			return 0, fmt.Errorf("Do not have a relevant type for %v", metrics.Type)
 		}
 	}
-	return 0, fmt.Errorf("Could not find relevant value for metrics %v", metrics)
+	return 0, errNoXDCRMetrics
 }
 
 var _ Manager = &couchbaseServerManager{}
