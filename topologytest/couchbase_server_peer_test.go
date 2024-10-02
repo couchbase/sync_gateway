@@ -27,6 +27,7 @@ import (
 type CouchbaseServerPeer struct {
 	tb               testing.TB
 	bucket           base.Bucket
+	sourceID         string
 	pullReplications map[Peer]xdcr.Manager
 	pushReplications map[Peer]xdcr.Manager
 	name             string
@@ -85,10 +86,20 @@ func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID s
 	return rest.EmptyDocVersion(), body
 }
 
+// CreateDocument creates a document on the peer. The test will fail if the document already exists.
+func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+	return rest.EmptyDocVersion()
+}
+
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
 	err := p.getCollection(dsName).Set(docID, 0, nil, body)
 	require.NoError(p.tb, err)
+	return rest.EmptyDocVersion()
+}
+
+// DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
+func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion {
 	return rest.EmptyDocVersion()
 }
 
@@ -160,6 +171,11 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 		require.Fail(p.tb, fmt.Sprintf("unsupported replication direction %d for %s-%s", config.direction, p, passivePeer))
 	}
 	return nil
+}
+
+// SourceID returns the source ID for the peer used in <val>@sourceID.
+func (r *CouchbaseServerPeer) SourceID() string {
+	return r.sourceID
 }
 
 // GetBackingBucket returns the backing bucket for the peer.
