@@ -2446,6 +2446,24 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 	return assert.Truef(t, base.IsDocNotFoundError(err), "expected heartbeat doc to expire, but got a different error: %v", err)
 }
 
+// NewDocVersionFromXattrs will construct a DocVersion from the a map of xattrs from GetWithXattrs.
+func NewDocVersionFromXattrs(t testing.TB, xattrs map[string][]byte) DocVersion {
+	docVersion := DocVersion{}
+	hlvBytes, ok := xattrs[base.VvXattrName]
+	if ok {
+		var hlv *db.HybridLogicalVector
+		require.NoError(t, json.Unmarshal(hlvBytes, &hlv))
+		docVersion.CV = db.Version{SourceID: hlv.SourceID, Value: hlv.Version}
+	}
+	sync, ok := xattrs[base.SyncXattrName]
+	if ok {
+		var syncData *db.SyncData
+		require.NoError(t, json.Unmarshal(sync, &syncData))
+		docVersion.RevTreeID = syncData.CurrentRev
+	}
+	return docVersion
+}
+
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 type DocVersion struct {
 	RevTreeID string
@@ -2458,6 +2476,9 @@ func (v *DocVersion) String() string {
 
 func (v DocVersion) Equal(o DocVersion) bool {
 	if v.RevTreeID != o.RevTreeID {
+		return false
+	}
+	if v.CV != o.CV {
 		return false
 	}
 	return true

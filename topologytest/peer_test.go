@@ -10,6 +10,7 @@
 package topologytest
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -44,11 +45,22 @@ type Peer interface {
 	// Close will shut down the peer and close any active replications on the peer.
 	Close()
 
-	// SourceID returns the source ID for the peer used in <val>@sourceID.
+	internalPeer
+}
+
+// internalPeer represents Peer interface that are only intdeded to be used from within a Peer or Replication class, but not by tests themselves.
+type internalPeer interface {
+	// SourceID returns the source ID for the peer used in <val>@<sourceID>.
 	SourceID() string
 
 	// GetBackingBucket returns the backing bucket for the peer. This is nil when the peer is a Couchbase Lite peer.
 	GetBackingBucket() base.Bucket
+
+	// TB returns the testing.TB for the peer.
+	TB() testing.TB
+
+	// Context returns the context for the peer.
+	Context() context.Context
 }
 
 // PeerReplication represents a replication between two peers. This replication is unidirectional since all bi-directional replications are represented by two unidirectional instances.
