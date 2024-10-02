@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -74,4 +75,17 @@ func NewXDCR(ctx context.Context, fromBucket, toBucket base.Bucket, opts XDCROpt
 		return nil, fmt.Errorf("toBucket must be a *base.GocbV2Bucket since fromBucket was a gocbBucket, got %T", toBucket)
 	}
 	return newCouchbaseServerManager(ctx, gocbFromBucket, gocbToBucket, opts)
+}
+
+// getSourceID returns the source ID for a bucket.
+func getSourceID(ctx context.Context, bucket base.Bucket) (string, error) {
+	serverUUID, err := db.GetServerUUID(ctx, bucket)
+	if err != nil {
+		return "", err
+	}
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return "", err
+	}
+	return db.CreateEncodedSourceID(bucketUUID, serverUUID)
 }

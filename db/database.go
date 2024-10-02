@@ -350,8 +350,8 @@ func ConnectToBucket(ctx context.Context, spec base.BucketSpec, failFast bool) (
 	return ibucket.(base.Bucket), nil
 }
 
-// Returns Couchbase Server Cluster UUID on a timeout. If running against walrus, do return an empty string.
-func getServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
+// GetServerUUID returns Couchbase Server Cluster UUID on a timeout. If running against rosmar, do return an empty string.
+func GetServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
 	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
 	if err != nil {
 		return "", nil
@@ -390,7 +390,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	serverUUID, err := getServerUUID(ctx, bucket)
+	serverUUID, err := GetServerUUID(ctx, bucket)
 	if err != nil {
 		return nil, err
 	}
