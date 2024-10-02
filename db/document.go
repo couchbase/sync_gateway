@@ -942,7 +942,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 				doc.updateChannelHistory(channel, curSequence, false)
 				changed = append(changed, channel)
 				// If the current version requires macro expansion, new removal in channel map will also require macro expansion
-				if doc.HLV != nil && doc.HLV.Version == hlvExpandMacroCASValue {
+				if doc.HLV != nil && doc.HLV.Version == expandMacroCASValueUint64 {
 					revokedChannelsRequiringExpansion = append(revokedChannelsRequiringExpansion, channel)
 				}
 			}
@@ -1299,7 +1299,7 @@ func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *Meta
 	}
 
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
-		CAS:              expandMacroCASValue, // when non-empty, this is replaced with cas macro expansion
+		CAS:              expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
 		PreviousCAS:      prevCas,
 		PreviousRevSeqNo: revNo,
 	}
@@ -1364,7 +1364,7 @@ func (s *SyncData) GetRevAndVersion() (rav channels.RevAndVersion) {
 	rav.RevTreeID = s.CurrentRev
 	if s.HLV != nil {
 		rav.CurrentSource = s.HLV.SourceID
-		rav.CurrentVersion = s.HLV.Version
+		rav.CurrentVersion = string(base.Uint64CASToLittleEndianHex(s.HLV.Version))
 	}
 	return rav
 }

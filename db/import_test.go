@@ -240,8 +240,8 @@ func TestMigrateMetadataWithHLV(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling body")
 
 	hlv := &HybridLogicalVector{}
-	require.NoError(t, hlv.AddVersion(CreateVersion("source123", base.CasToString(100))))
-	hlv.CurrentVersionCAS = base.CasToString(100)
+	require.NoError(t, hlv.AddVersion(CreateVersion("source123", 100)))
+	hlv.CurrentVersionCAS = 100
 	hlvBytes := base.MustJSONMarshal(t, hlv)
 	xattrBytes := map[string][]byte{
 		base.VvXattrName: hlvBytes,
