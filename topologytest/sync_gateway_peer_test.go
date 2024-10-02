@@ -50,10 +50,20 @@ func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID strin
 	return p.rt.GetDoc(docID)
 }
 
+// CreateDocument creates a document on the peer. The test will fail if the document already exists.
+func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+	return rest.EmptyDocVersion()
+}
+
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
 	// this function is not yet collections aware
 	return p.rt.PutDoc(docID, string(body))
+}
+
+// DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
+func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion {
+	return rest.EmptyDocVersion()
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
@@ -86,6 +96,11 @@ func (p *SyncGatewayPeer) Close() {
 func (p *SyncGatewayPeer) CreateReplication(peer Peer, config PeerReplicationConfig) PeerReplication {
 	require.Fail(p.rt.TB(), "can not create a replication with Sync Gateway as an active peer")
 	return nil
+}
+
+// SourceID returns the source ID for the peer used in <val>@sourceID.
+func (r *SyncGatewayPeer) SourceID() string {
+	return r.rt.GetDatabase().EncodedSourceID
 }
 
 // GetBackingBucket returns the backing bucket for the peer.

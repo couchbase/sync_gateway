@@ -77,8 +77,8 @@ func NewXDCR(ctx context.Context, fromBucket, toBucket base.Bucket, opts XDCROpt
 	return newCouchbaseServerManager(ctx, gocbFromBucket, gocbToBucket, opts)
 }
 
-// getSourceID returns the source ID for a bucket.
-func getSourceID(ctx context.Context, bucket base.Bucket) (string, error) {
+// GetSourceID returns the source ID for a bucket.
+func GetSourceID(ctx context.Context, bucket base.Bucket) (string, error) {
 	serverUUID, err := db.GetServerUUID(ctx, bucket)
 	if err != nil {
 		return "", err

@@ -293,7 +293,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, SourceID: "abc"}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
@@ -375,7 +375,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, SourceID: "abc"}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 		btcRunner.StartPull(btc.id)
