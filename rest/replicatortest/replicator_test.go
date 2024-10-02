@@ -8604,8 +8604,8 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, activeBucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
-	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
 
 	// create the replication to push the doc to the passive node and wait for the doc to be replicated
 	activeRT.CreateReplication(rep, remoteURL, db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
@@ -8619,6 +8619,6 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, passiveBucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
 }

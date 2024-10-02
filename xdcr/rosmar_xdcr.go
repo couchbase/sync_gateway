@@ -222,10 +222,9 @@ func opWithMeta(ctx context.Context, collection *rosmar.Collection, sourceID str
 	// TODO: clear _mou when appropriate CBG-4251
 
 	// update new cv with new source/cas
-	casBytes := string(base.Uint64CASToLittleEndianHex(event.Cas))
 	vv.SourceID = sourceID
-	vv.CurrentVersionCAS = casBytes
-	vv.Version = casBytes
+	vv.CurrentVersionCAS = event.Cas
+	vv.Version = event.Cas
 
 	var err error
 	xattrs[base.VvXattrName], err = json.Marshal(vv)

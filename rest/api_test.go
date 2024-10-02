@@ -2819,8 +2819,8 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
-	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
 
 	// Put a new revision of this doc and assert that the version vector SourceID and Version is updated
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, `{"key1": "value1"}`)
@@ -2830,8 +2830,8 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
-	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
 
 	// Delete doc and assert that the version vector SourceID and Version is updated
 	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, "")
@@ -2841,8 +2841,8 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
-	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
 }
 
 // TestHLVOnPutWithImportRejection:
@@ -2871,8 +2871,8 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
-	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
 
 	// Put a doc that will be rejected by the import filter on the attempt to perform on demand import for write
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type": "not-mobile"}`)
@@ -2883,8 +2883,8 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
-	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {

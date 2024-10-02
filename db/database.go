@@ -1888,7 +1888,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			}
 			if db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
-				if doc.metadataOnlyUpdate.CAS == expandMacroCASValue {
+				if doc.metadataOnlyUpdate.CAS == expandMacroCASValueString {
 					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
 				}
 			}

@@ -253,11 +253,11 @@ const doc_meta_vv = `{
   }`
 
 func TestParseVersionVectorSyncData(t *testing.T) {
-	mv := make(map[string]string)
-	pv := make(map[string]string)
-	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = "c0ff05d7ac059a16"
-	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = "1c008cd6ac059a16"
-	pv["s_YZvBpEaztom9z5V/hDoeIw"] = "f0ff44d6ac059a16"
+	mv := make(HLVVersions)
+	pv := make(HLVVersions)
+	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = 1628620455147864000 //"c0ff05d7ac059a16"
+	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = 1628620455139868700
+	pv["s_YZvBpEaztom9z5V/hDoeIw"] = 1628620455135215600
 
 	ctx := base.TestCtx(t)
 
@@ -266,10 +266,10 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	doc, err := unmarshalDocumentWithXattrs(ctx, "doc_1k", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
-	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
+	vrsCAS := uint64(123456)
 	// assert on doc version vector values
-	assert.Equal(t, strCAS, doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, strCAS, doc.SyncData.HLV.Version)
+	assert.Equal(t, vrsCAS, doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, vrsCAS, doc.SyncData.HLV.Version)
 	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
@@ -278,8 +278,8 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, strCAS, doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, strCAS, doc.SyncData.HLV.Version)
+	assert.Equal(t, vrsCAS, doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, vrsCAS, doc.SyncData.HLV.Version)
 	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
@@ -288,8 +288,8 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, strCAS, doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, strCAS, doc.SyncData.HLV.Version)
+	assert.Equal(t, vrsCAS, doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, vrsCAS, doc.SyncData.HLV.Version)
 	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
@@ -309,7 +309,7 @@ func TestRevAndVersion(t *testing.T) {
 			testName:  "rev_and_version",
 			revTreeID: "1-abc",
 			source:    "source1",
-			version:   "1",
+			version:   "0x0100000000000000",
 		},
 		{
 			testName:  "both_empty",
@@ -327,7 +327,7 @@ func TestRevAndVersion(t *testing.T) {
 			testName:  "currentVersion_only",
 			revTreeID: "",
 			source:    "source1",
-			version:   "1",
+			version:   "0x0100000000000000",
 		},
 	}
 
@@ -341,7 +341,7 @@ func TestRevAndVersion(t *testing.T) {
 			if test.source != "" {
 				syncData.HLV = &HybridLogicalVector{
 					SourceID: test.source,
-					Version:  test.version,
+					Version:  base.HexCasToUint64(test.version),
 				}
 			}
 			// SyncData test
@@ -355,7 +355,7 @@ func TestRevAndVersion(t *testing.T) {
 			document.SyncData.Sequence = expectedSequence
 			document.SyncData.HLV = &HybridLogicalVector{
 				SourceID: test.source,
-				Version:  test.version,
+				Version:  base.HexCasToUint64(test.version),
 			}
 
 			marshalledDoc, marshalledXattr, marshalledVvXattr, _, _, err := document.MarshalWithXattrs()
@@ -369,7 +369,7 @@ func TestRevAndVersion(t *testing.T) {
 			if test.source != "" {
 				require.NotNil(t, newDocument.HLV)
 				require.Equal(t, test.source, newDocument.HLV.SourceID)
-				require.Equal(t, test.version, newDocument.HLV.Version)
+				require.Equal(t, base.HexCasToUint64(test.version), newDocument.HLV.Version)
 			}
 			//require.Equal(t, test.expectedCombinedVersion, newDocument.RevAndVersion)
 		})
