@@ -59,6 +59,9 @@ type BlipTesterClientOpts struct {
 	sendReplacementRevs bool
 
 	revsLimit *int // defaults to 20
+
+	// SourceID is used to define the SourceID for the blip client
+	SourceID string
 }
 
 // defaultBlipTesterClientRevsLimit is the number of revisions sent as history when the client replicates - older revisions are not sent, and may not be stored.
@@ -959,6 +962,9 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 	if !opts.AllowCreationWithoutBlipTesterClientRunner && !btcRunner.initialisedInsideRunnerCode {
 		require.FailNow(btcRunner.TB(), "must initialise BlipTesterClient inside Run() method")
 	}
+	if opts.SourceID == "" {
+		opts.SourceID = "blipclient"
+	}
 	id, err := uuid.NewRandom()
 	require.NoError(btcRunner.TB(), err)
 
@@ -1571,6 +1577,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID string, parentVe
 
 	var revisionHistory []string
 	for i := revGen - 1; i > parentRevGen; i-- {
+		// TODO: HLV/CV support from anemone branch
 		rev := fmt.Sprintf("%d-%s", i, "abc")
 		revisionHistory = append(revisionHistory, rev)
 	}

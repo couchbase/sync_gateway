@@ -42,7 +42,7 @@ func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, 
 	if opts.Mobile != MobileOn {
 		return nil, errors.New("Only sgbucket.XDCRMobileOn is supported in rosmar")
 	}
-	fromBucketSourceID, err := getSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
 	if err != nil {
 		return nil, fmt.Errorf("Could not get source ID for %s: %w", fromBucket.GetName(), err)
 	}

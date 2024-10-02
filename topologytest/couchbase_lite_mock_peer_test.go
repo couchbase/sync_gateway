@@ -60,6 +60,11 @@ func (p *CouchbaseLiteMockPeer) getSingleBlipClient() *PeerBlipTesterClient {
 	return nil
 }
 
+// CreateDocument creates a document on the peer. The test will fail if the document already exists.
+func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+	return rest.EmptyDocVersion()
+}
+
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
 	// this isn't yet collection aware, using single default collection
@@ -68,6 +73,11 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 	docVersion, err := client.btcRunner.PushRev(client.ID(), docID, rest.EmptyDocVersion(), body)
 	require.NoError(client.btcRunner.TB(), err)
 	return docVersion
+}
+
+// DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
+func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion {
+	return rest.EmptyDocVersion()
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
@@ -111,6 +121,7 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 		Channels:               []string{"*"},
 		SupportedBLIPProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()},
 		AllowCreationWithoutBlipTesterClientRunner: true,
+		SourceID: peer.SourceID(),
 	},
 	)
 	p.blipClients[sg.String()] = &PeerBlipTesterClient{
@@ -118,6 +129,11 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 		btc:       replication.btc,
 	}
 	return replication
+}
+
+// SourceID returns the source ID for the peer used in <val>@sourceID.
+func (r *CouchbaseLiteMockPeer) SourceID() string {
+	return r.name
 }
 
 // GetBackingBucket returns the backing bucket for the peer. This is always nil.
