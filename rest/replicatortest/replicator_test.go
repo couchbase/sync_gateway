@@ -7534,19 +7534,21 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	docID := t.Name()
 	// Create the docs //
 	// Doc rev 1
-	version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
+	version1 := activeRT.PutDocDirectly(docID, rest.JsonToMap(t, `{"key":"12","channels": ["rev1chan"]}`))
 	require.NoError(t, activeRT.WaitForVersion(docID, version1))
 
 	// doc rev 2
-	version2 := activeRT.UpdateDoc(docID, version1, `{"key":"12","channels":["rev2+3chan"]}`)
+	version2 := activeRT.UpdateDocDirectly(docID, version1, rest.JsonToMap(t, `{"key":"12","channels":["rev2+3chan"]}`))
 	require.NoError(t, activeRT.WaitForVersion(docID, version2))
 
 	// Doc rev 3
-	version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
+	version3 := activeRT.UpdateDocDirectly(docID, version2, rest.JsonToMap(t, `{"key":"3","channels":["rev2+3chan"]}`))
 	require.NoError(t, activeRT.WaitForVersion(docID, version3))
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
-	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevTreeID), version2.RevTreeID))
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	hashedCV := base.Crc32cHashString([]byte(version2.CV.String()))
+	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(hashedCV), hashedCV))
 	require.NoError(t, err)
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")

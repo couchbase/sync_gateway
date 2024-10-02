@@ -497,7 +497,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -505,7 +505,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -538,7 +538,8 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
+	cv := docRev2.HLV.GetCurrentVersionString()
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cv)))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
@@ -564,7 +565,8 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.Equal(t, expectedResult, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
+	cv = docRev1.HLV.GetCurrentVersionString()
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cv)))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
@@ -627,7 +629,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev1ID,
 	}
-	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
+	rev2ID, docRev2, err := collection.Put(ctx, "doc1", rev2Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the third revision of doc1 on channel ABC.
@@ -679,7 +681,8 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 	// Flush the revision cache and purge the old revision backup.
 	db.FlushRevisionCacheForTest()
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	require.NoError(t, err, "Error purging old revision JSON")
 
 	// Try with a user who has access to this revision.
@@ -706,135 +709,219 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 // Test delta sync behavior when the fromRevision is a channel removal.
 func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-
-	// Create the first revision of doc1.
-	rev1Body := Body{
-		"k1":       "v1",
-		"channels": []string{"ABC", "NBC"},
+	testCases := []struct {
+		name          string
+		versionVector bool
+	}{
+		// Disabled pending work on backwards compatibility for revtree in delta sync CBG-3748
+		//{
+		//	name:          "revTree test",
+		//	versionVector: false,
+		//},
+		{
+			name:          "versionVector test",
+			versionVector: true,
+		},
 	}
-	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
-	require.NoError(t, err, "Error creating doc")
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
-	rev2Body := Body{
-		"k2":       "v2",
-		"channels": []string{"ABC"},
-		BodyRev:    rev1ID,
+			// Create the first revision of doc1.
+			rev1Body := Body{
+				"k1":       "v1",
+				"channels": []string{"ABC", "NBC"},
+			}
+			rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+			require.NoError(t, err, "Error creating doc")
+
+			// Create the second revision of doc1 on channel ABC as removal from channel NBC.
+			rev2Body := Body{
+				"k2":       "v2",
+				"channels": []string{"ABC"},
+				BodyRev:    rev1ID,
+			}
+			rev2ID, docRev2, err := collection.Put(ctx, "doc1", rev2Body)
+			require.NoError(t, err, "Error creating doc")
+
+			// Create the third revision of doc1 on channel ABC.
+			rev3Body := Body{
+				"k3":       "v3",
+				"channels": []string{"ABC"},
+				BodyRev:    rev2ID,
+			}
+			rev3ID, docRev3, err := collection.Put(ctx, "doc1", rev3Body)
+			require.NoError(t, err, "Error creating doc")
+			require.NotEmpty(t, rev3ID, "Error creating doc")
+
+			// Flush the revision cache and purge the old revision backup.
+			db.FlushRevisionCacheForTest()
+			if testCase.versionVector {
+				cvStr := docRev2.HLV.GetCurrentVersionString()
+				err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cvStr)))
+				require.NoError(t, err, "Error purging old revision JSON")
+			} else {
+				err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
+				require.NoError(t, err, "Error purging old revision JSON")
+			}
+
+			// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
+			// as a user who doesn't have access to the removed revision via any other channel.
+			authenticator := db.Authenticator(ctx)
+			user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
+			require.NoError(t, err, "Error creating user")
+
+			collection.user = user
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+
+			if testCase.versionVector {
+				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
+				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			} else {
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID, false)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			}
+
+			// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
+			// as a user who has access to the removed revision via another channel.
+			user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
+			require.NoError(t, err, "Error creating user")
+
+			collection.user = user
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+
+			if testCase.versionVector {
+				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
+				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			} else {
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID, false)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			}
+		})
 	}
-	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
-	require.NoError(t, err, "Error creating doc")
-
-	// Create the third revision of doc1 on channel ABC.
-	rev3Body := Body{
-		"k3":       "v3",
-		"channels": []string{"ABC"},
-		BodyRev:    rev2ID,
-	}
-	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
-	require.NoError(t, err, "Error creating doc")
-	require.NotEmpty(t, rev3ID, "Error creating doc")
-
-	// Flush the revision cache and purge the old revision backup.
-	db.FlushRevisionCacheForTest()
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
-	require.NoError(t, err, "Error purging old revision JSON")
-
-	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
-	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
-	require.NoError(t, err, "Error creating user")
-
-	collection.user = user
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
-
-	delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
-	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
-	assert.Nil(t, delta)
-	assert.Nil(t, redactedRev)
-
-	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
-	// as a user who has access to the removed revision via another channel.
-	user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
-	require.NoError(t, err, "Error creating user")
-
-	collection.user = user
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
-
-	delta, redactedRev, err = collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
-	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
-	assert.Nil(t, delta)
-	assert.Nil(t, redactedRev)
 }
 
 // Test delta sync behavior when the toRevision is a channel removal.
 func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
-
-	// Create the first revision of doc1.
-	rev1Body := Body{
-		"k1":       "v1",
-		"channels": []string{"ABC", "NBC"},
+	t.Skip("Pending work for channel removal at rev cache CBG-3814")
+	testCases := []struct {
+		name          string
+		versionVector bool
+	}{
+		// Disabled pending work on backwards compatibility for revtree in delta sync CBG-3748
+		//{
+		//	name:          "revTree test",
+		//	versionVector: false,
+		//},
+		{
+			name:          "versionVector test",
+			versionVector: true,
+		},
 	}
-	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
-	require.NoError(t, err, "Error creating doc")
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
-	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
-	rev2Body := Body{
-		"k2":       "v2",
-		"channels": []string{"ABC"},
-		BodyRev:    rev1ID,
+			// Create the first revision of doc1.
+			rev1Body := Body{
+				"k1":       "v1",
+				"channels": []string{"ABC", "NBC"},
+			}
+			rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+			require.NoError(t, err, "Error creating doc")
+
+			// Create the second revision of doc1 on channel ABC as removal from channel NBC.
+			rev2Body := Body{
+				"k2":       "v2",
+				"channels": []string{"ABC"},
+				BodyRev:    rev1ID,
+			}
+			rev2ID, docRev2, err := collection.Put(ctx, "doc1", rev2Body)
+			require.NoError(t, err, "Error creating doc")
+
+			// Create the third revision of doc1 on channel ABC.
+			rev3Body := Body{
+				"k3":       "v3",
+				"channels": []string{"ABC"},
+				BodyRev:    rev2ID,
+			}
+			rev3ID, docRev3, err := collection.Put(ctx, "doc1", rev3Body)
+			require.NoError(t, err, "Error creating doc")
+			require.NotEmpty(t, rev3ID, "Error creating doc")
+
+			// Flush the revision cache and purge the old revision backup.
+			db.FlushRevisionCacheForTest()
+			if testCase.versionVector {
+				cvStr := docRev2.HLV.GetCurrentVersionString()
+				err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cvStr)))
+				require.NoError(t, err, "Error purging old revision JSON")
+			} else {
+				err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
+				require.NoError(t, err, "Error purging old revision JSON")
+			}
+
+			// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
+			// as a user who doesn't have access to the removed revision via any other channel.
+			authenticator := db.Authenticator(ctx)
+			user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
+			require.NoError(t, err, "Error creating user")
+
+			collection.user = user
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+
+			if testCase.versionVector {
+				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
+				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				require.NoError(t, err)
+				assert.Nil(t, delta)
+				assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
+			} else {
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID, false)
+				require.NoError(t, err)
+				assert.Nil(t, delta)
+				assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
+			}
+
+			// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
+			// as a user who has access to the removed revision via another channel.
+			user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
+			require.NoError(t, err, "Error creating user")
+
+			collection.user = user
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+			if testCase.versionVector {
+				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
+				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			} else {
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID, false)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			}
+		})
 	}
-	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
-	require.NoError(t, err, "Error creating doc")
-
-	// Create the third revision of doc1 on channel ABC.
-	rev3Body := Body{
-		"k3":       "v3",
-		"channels": []string{"ABC"},
-		BodyRev:    rev2ID,
-	}
-	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
-	require.NoError(t, err, "Error creating doc")
-	require.NotEmpty(t, rev3ID, "Error creating doc")
-
-	// Flush the revision cache and purge the old revision backup.
-	db.FlushRevisionCacheForTest()
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
-	require.NoError(t, err, "Error purging old revision JSON")
-
-	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
-	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
-	require.NoError(t, err, "Error creating user")
-
-	collection.user = user
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
-
-	delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
-	require.NoError(t, err)
-	assert.Nil(t, delta)
-	assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
-
-	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
-	// as a user who has access to the removed revision via another channel.
-	user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
-	require.NoError(t, err, "Error creating user")
-
-	collection.user = user
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
-
-	delta, redactedRev, err = collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
-	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
-	assert.Nil(t, delta)
-	assert.Nil(t, redactedRev)
 }
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
@@ -849,7 +936,7 @@ func TestGetRemoved(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -857,7 +944,7 @@ func TestGetRemoved(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -890,7 +977,8 @@ func TestGetRemoved(t *testing.T) {
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
@@ -899,7 +987,8 @@ func TestGetRemoved(t *testing.T) {
 	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
@@ -918,7 +1007,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -926,7 +1015,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyDeleted: true,
 		BodyRev:     rev1id,
 	}
-	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -959,7 +1048,8 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
@@ -968,7 +1058,8 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)

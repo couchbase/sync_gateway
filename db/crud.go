@@ -410,13 +410,25 @@ func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, c
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRev, toRev string, useCVRevCache bool) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
 
-	if docID == "" || fromRevID == "" || toRevID == "" {
+	if docID == "" || fromRev == "" || toRev == "" {
 		return nil, nil, nil
 	}
-
-	fromRevision, err := db.revisionCache.GetWithRev(ctx, docID, fromRevID, RevCacheIncludeDelta)
+	var fromRevision DocumentRevision
+	var fromRevVrs Version
+	if useCVRevCache {
+		fromRevVrs, err = ParseVersion(fromRev)
+		if err != nil {
+			return nil, nil, err
+		}
+		fromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		return nil, nil, fmt.Errorf("delta sync for rev tree not yet implemented")
+	}
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
@@ -437,9 +449,9 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 	// If delta is found, check whether it is a delta for the toRevID we want
 	if fromRevision.Delta != nil {
-		if fromRevision.Delta.ToRevID == toRevID {
+		if fromRevision.Delta.ToCV == toRev {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, nil, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevision.CV, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -454,15 +466,18 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	// Delta is unavailable, but the body is available.
 	if fromRevision.BodyBytes != nil {
 
-		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		toRevision, err := db.revisionCache.GetWithRev(ctx, docID, toRevID, RevCacheIncludeDelta)
+		cv, err := ParseVersion(toRev)
+		if err != nil {
+			return nil, nil, err
+		}
+		toRevision, err := db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		deleted := toRevision.Deleted
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, nil, toRevision.Channels, deleted, toRevision.History)
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, toRevision.CV, toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
 			return nil, &redactedBody, nil
 		}
@@ -473,8 +488,12 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted, nil)
-			db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRev, toRevision, deleted, nil)
+			if useCVRevCache {
+				db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
+			} else {
+				db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
+			}
 			return &revCacheDelta, nil, nil
 		}
 
@@ -511,10 +530,14 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if err != nil {
 			return nil, nil, err
 		}
-		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted, toRevAttStorageMeta)
+		revCacheDelta := newRevCacheDelta(deltaBytes, fromRev, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
-		db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+		if useCVRevCache {
+			db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
+		} else {
+			db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
+		}
 		return &revCacheDelta, nil, nil
 	}
 
@@ -831,12 +854,8 @@ func (db *DatabaseCollectionWithUser) getAvailableRevAttachments(ctx context.Con
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
-func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDoc *Document) {
-	newBodyBytes, err := newDoc.BodyBytes(ctx)
-	if err != nil {
-		base.WarnfCtx(ctx, "Error getting body bytes when backing up ancestor revs")
-		return
-	}
+func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDoc *Document) bool {
+	var backupRev bool
 
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
@@ -844,15 +863,15 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	for {
 		if ancestorRevId = doc.History.getParent(ancestorRevId); ancestorRevId == "" {
 			// No ancestors with JSON found.  Check if we need to back up current rev for delta sync, then return
-			db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, "", newBodyBytes, nil, doc.Attachments)
-			return
+			backupRev = db.backupRevisionJSON(ctx, doc.ID, "", nil)
+			return backupRev
 		} else if json = doc.getRevisionBodyJSON(ctx, ancestorRevId, db.RevisionBodyLoader); json != nil {
 			break
 		}
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, ancestorRevId, newBodyBytes, json, doc.Attachments)
+	backupRev = db.backupRevisionJSON(ctx, doc.ID, doc.HLV.GetCurrentVersionString(), json)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.CurrentRev {
@@ -860,6 +879,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	} else {
 		doc.removeRevisionBody(ctx, ancestorRevId)
 	}
+	return backupRev
 }
 
 // ////// UPDATING DOCUMENTS:
@@ -2069,6 +2089,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	changedRoleAccessUsers []string,
 	createNewRevIDSkipped bool,
 	revokedChannelsRequiringExpansion []string,
+	backupRev bool,
 	err error) {
 
 	err = validateExistingDoc(doc, allowImport, docExists)
@@ -2125,7 +2146,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		}
 	}
 
-	col.backupAncestorRevs(ctx, doc, newDoc)
+	backupRev = col.backupAncestorRevs(ctx, doc, newDoc)
 
 	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
@@ -2176,7 +2197,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 
 	doc.ClusterUUID = col.serverUUID()
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, err
+	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, backupRev, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -2230,7 +2251,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			prevCurrentRev = doc.CurrentRev
 
 			isNewDocCreation = currentValue == nil
-			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, _, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
+			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, _, _, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
 			if err != nil {
 				return
 			}
@@ -2256,6 +2277,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
+		var backupRev bool
 		// Update the document, storing metadata in extended attribute
 		if opts == nil {
 			opts = &sgbucket.MutateInOptions{}
@@ -2286,7 +2308,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			isNewDocCreation = currentValue == nil
 			var revokedChannelsRequiringExpansion []string
-			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
+			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, backupRev, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
 			if err != nil {
 				return
 			}
@@ -2376,7 +2398,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				doc.metadataOnlyUpdate.CAS = base.CasToString(casOut)
 			}
 			// update the doc's HLV defined post macro expansion
-			doc = postWriteUpdateHLV(doc, casOut)
+			doc = db.postWriteUpdateHLV(ctx, doc, casOut, backupRev)
 		}
 	}
 
@@ -2529,7 +2551,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	return doc, newRevID, nil
 }
 
-func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
+func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, doc *Document, casOut uint64, backupRev bool) *Document {
 	if doc.HLV == nil {
 		return doc
 	}
@@ -2539,6 +2561,22 @@ func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
 	}
 	if doc.HLV.CurrentVersionCAS == hlvExpandMacroCASValue {
 		doc.HLV.CurrentVersionCAS = encodedCAS
+	}
+	if backupRev {
+		var newBodyWithAtts = doc._rawBody
+		if len(doc.Attachments) > 0 {
+			var err error
+			newBodyWithAtts, err = base.InjectJSONProperties(doc._rawBody, base.KVPair{
+				Key: BodyAttachments,
+				Val: doc.Attachments,
+			})
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(doc.ID), doc.HLV.GetCurrentVersionString(), err)
+				return doc
+			}
+		}
+		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
 	}
 	return doc
 }

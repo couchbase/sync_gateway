@@ -1048,7 +1048,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
 	btc.addCollectionProperty(revRequest)
-	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
+	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" && btc.UseHLV() {
 		base.DebugfCtx(ctx, base.KeySync, "Sending deltas from test client")
 		var parentDocJSON, newDocJSON db.Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
@@ -1468,5 +1468,18 @@ func (btc *BlipTesterClient) RequireRev(t *testing.T, expectedRev string, doc *d
 		require.Equal(t, expectedRev, doc.HLV.GetCurrentVersionString())
 	} else {
 		require.Equal(t, expectedRev, doc.CurrentRev)
+	}
+}
+
+func (btc *BlipTesterClient) AssertDeltaSrcProperty(t *testing.T, msg *blip.Message, docVersion DocVersion) {
+	subProtocol, err := db.ParseSubprotocolString(btc.SupportedBLIPProtocols[0])
+	require.NoError(t, err)
+	var rev string
+	if btc.UseHLV() {
+		rev = docVersion.GetRev(subProtocol >= db.CBMobileReplicationV4)
+		assert.Equal(t, rev, msg.Properties[db.RevMessageDeltaSrc])
+	} else {
+		// v4 and below will send full revs not deltas
+		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
 	}
 }

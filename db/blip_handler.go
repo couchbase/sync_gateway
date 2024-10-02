@@ -879,7 +879,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
-	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID)
+	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID, bsc.useHLV())
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
@@ -895,7 +895,12 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	}
 
 	if redactedRev != nil {
-		history := toHistory(redactedRev.History, knownRevs, maxHistory)
+		var history []string
+		if !bsc.useHLV() {
+			history = toHistory(redactedRev.History, knownRevs, maxHistory)
+		} else {
+			history = append(history, redactedRev.hlvHistory)
+		}
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "")
 		return bsc.sendRevisionWithProperties(ctx, sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
@@ -1091,9 +1096,11 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
 		var deltaSrcRev DocumentRevision
 		if bh.useHLV() {
-			cv := Version{}
-			cv.SourceID, cv.Value = incomingHLV.GetCurrentVersion()
-			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &cv)
+			deltaSrcVersion, err := ParseVersion(deltaSrcRevID)
+			if err != nil {
+				return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to parse version for delta source for doc %s, error: %v", base.UD(docID), err)
+			}
+			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &deltaSrcVersion)
 		} else {
 			deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
 		}
@@ -1619,8 +1626,4 @@ func allowedAttachmentKey(docID, digest string, activeCBMobileSubprotocol CBMobi
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, profile, endpoint)
-}
-
-func (bh *blipHandler) useHLV() bool {
-	return bh.activeCBMobileSubprotocol >= CBMobileReplicationV4
 }
