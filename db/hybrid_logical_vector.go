@@ -13,59 +13,25 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// hlvExpandMacroCASValue causes the field to be populated by CAS value by macro expansion
-const hlvExpandMacroCASValue = "expand"
-
-// HybridLogicalVectorInterface is an interface to contain methods that will operate on both a decoded HLV and encoded HLV
-type HybridLogicalVectorInterface interface {
-	GetValue(sourceID string) (uint64, bool)
-}
-
-var _ HybridLogicalVectorInterface = &HybridLogicalVector{}
-var _ HybridLogicalVectorInterface = &DecodedHybridLogicalVector{}
-
-// DecodedHybridLogicalVector (HLV) is a type that represents a decoded vector of Hybrid Logical Clocks.
-type DecodedHybridLogicalVector struct {
-	CurrentVersionCAS uint64            // current version cas (or cvCAS) stores the current CAS in uint64 type at the time of replication
-	ImportCAS         uint64            // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
-	SourceID          string            // source bucket uuid in (base64 encoded format) of where this entry originated from
-	Version           uint64            // current cas in uint64 format of the current version on the version vector
-	MergeVersions     map[string]uint64 // map of merge versions for fast efficient lookup
-	PreviousVersions  map[string]uint64 // map of previous versions for fast efficient lookup
-}
+type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
 
 // Version is representative of a single entry in a HybridLogicalVector.
 type Version struct {
 	// SourceID is an ID representing the source of the value (e.g. Couchbase Lite ID)
 	SourceID string `json:"source_id"`
 	// Value is a Hybrid Logical Clock value (In Couchbase Server, CAS is a HLC)
-	Value string `json:"version"`
-}
-
-// DecodedVersion is a sourceID and version pair in string/uint64 format for use in conflict detection
-type DecodedVersion struct {
-	// SourceID is an ID representing the source of the value (e.g. Couchbase Lite ID)
-	SourceID string `json:"source_id"`
-	// Value is a Hybrid Logical Clock value (In Couchbase Server, CAS is a HLC)
 	Value uint64 `json:"version"`
 }
 
-// CreateDecodedVersion creates a sourceID and version pair in string/uint64 format
-func CreateDecodedVersion(source string, version uint64) DecodedVersion {
-	return DecodedVersion{
-		SourceID: source,
-		Value:    version,
-	}
-}
-
 // CreateVersion creates an encoded sourceID and version pair
-func CreateVersion(source, version string) Version {
+func CreateVersion(source string, version uint64) Version {
 	return Version{
 		SourceID: source,
 		Value:    version,
@@ -78,30 +44,21 @@ func ParseVersion(versionString string) (version Version, err error) {
 		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
 	}
 	version.SourceID = sourceBase64
-	version.Value = timestampString
-	return version, nil
-}
-
-func ParseDecodedVersion(versionString string) (version DecodedVersion, err error) {
-	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
-	if !found {
-		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
+	// remove any leading whitespace, this should be addressed in CBG-3662
+	if len(timestampString) > 0 && timestampString[0] == ' ' {
+		timestampString = timestampString[1:]
 	}
-	version.SourceID = sourceBase64
-	version.Value = base.HexCasToUint64(timestampString)
+	vrs, err := strconv.ParseUint(timestampString, 16, 64)
+	if err != nil {
+		return version, err
+	}
+	version.Value = vrs
 	return version, nil
-}
-
-// String returns a Couchbase Lite-compatible string representation of the version.
-func (v DecodedVersion) String() string {
-	timestamp := string(base.Uint64CASToLittleEndianHex(v.Value))
-	source := base64.StdEncoding.EncodeToString([]byte(v.SourceID))
-	return timestamp + "@" + source
 }
 
 // String returns a version/sourceID pair in CBL string format
 func (v Version) String() string {
-	return v.Value + "@" + v.SourceID
+	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 
 // ExtractCurrentVersionFromHLV will take the current version form the HLV struct and return it in the Version struct
@@ -114,24 +71,33 @@ func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 // PersistedHybridLogicalVector is the marshalled format of HybridLogicalVector.
 // This representation needs to be kept in sync with XDCR.
 type HybridLogicalVector struct {
-	CurrentVersionCAS string            `json:"cvCas,omitempty"`     // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
-	ImportCAS         string            `json:"importCAS,omitempty"` // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
-	SourceID          string            `json:"src"`                 // source bucket uuid in (base64 encoded format) of where this entry originated from
-	Version           string            `json:"ver"`                 // current cas in little endian hex format of the current version on the version vector
-	MergeVersions     map[string]string `json:"mv,omitempty"`        // map of merge versions for fast efficient lookup
-	PreviousVersions  map[string]string `json:"pv,omitempty"`        // map of previous versions for fast efficient lookup
+	CurrentVersionCAS uint64      // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
+	ImportCAS         uint64      // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
+	SourceID          string      // source bucket uuid in (base64 encoded format) of where this entry originated from
+	Version           uint64      // current cas in little endian hex format of the current version on the version vector
+	MergeVersions     HLVVersions // map of merge versions for fast efficient lookup
+	PreviousVersions  HLVVersions // map of previous versions for fast efficient lookup
+}
+
+type BucketVector struct {
+	CurrentVersionCAS string            `json:"cvCas,omitempty"`
+	ImportCAS         string            `json:"importCAS,omitempty"`
+	SourceID          string            `json:"src"`
+	Version           string            `json:"ver"`
+	MergeVersions     map[string]string `json:"mv,omitempty"`
+	PreviousVersions  map[string]string `json:"pv,omitempty"`
 }
 
 // NewHybridLogicalVector returns an initialised HybridLogicalVector.
 func NewHybridLogicalVector() HybridLogicalVector {
 	return HybridLogicalVector{
-		PreviousVersions: make(map[string]string),
-		MergeVersions:    make(map[string]string),
+		PreviousVersions: make(HLVVersions),
+		MergeVersions:    make(HLVVersions),
 	}
 }
 
 // GetCurrentVersion returns the current version from the HLV in memory.
-func (hlv *HybridLogicalVector) GetCurrentVersion() (string, string) {
+func (hlv *HybridLogicalVector) GetCurrentVersion() (string, uint64) {
 	return hlv.SourceID, hlv.Version
 }
 
@@ -147,15 +113,6 @@ func (hlv *HybridLogicalVector) GetCurrentVersionString() string {
 	return version.String()
 }
 
-// IsVersionInConflict tests to see if a given version would be in conflict with the in memory HLV.
-func (hlv *HybridLogicalVector) IsVersionInConflict(version Version) bool {
-	v1 := Version{hlv.SourceID, hlv.Version}
-	if v1.isVersionDominating(version) || version.isVersionDominating(v1) {
-		return false
-	}
-	return true
-}
-
 // IsVersionKnown checks to see whether the HLV already contains a Version for the provided
 // source with a matching or newer value
 func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
@@ -163,16 +120,16 @@ func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 	if !found {
 		return false
 	}
-	return existingValueForSource >= base.HexCasToUint64(version.Value)
+	return existingValueForSource >= version.Value
 
 }
 
 // AddVersion adds newVersion to the in memory representation of the HLV.
 func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	var newVersionCAS uint64
-	hlvVersionCAS := base.HexCasToUint64(hlv.Version)
-	if newVersion.Value != hlvExpandMacroCASValue {
-		newVersionCAS = base.HexCasToUint64(newVersion.Value)
+	hlvVersionCAS := hlv.Version
+	if newVersion.Value != expandMacroCASValueUint64 {
+		newVersionCAS = newVersion.Value
 	}
 	// check if this is the first time we're adding a source - version pair
 	if hlv.SourceID == "" {
@@ -182,25 +139,25 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	}
 	// if new entry has the same source we simple just update the version
 	if newVersion.SourceID == hlv.SourceID {
-		if newVersion.Value != hlvExpandMacroCASValue && newVersionCAS < hlvVersionCAS {
-			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value for the same source. Current cas: %s new cas %s", hlv.Version, newVersion.Value)
+		if newVersion.Value != expandMacroCASValueUint64 && newVersionCAS < hlvVersionCAS {
+			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value for the same source. Current cas: %d new cas %d", hlv.Version, newVersion.Value)
 		}
 		hlv.Version = newVersion.Value
 		return nil
 	}
 	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
 	if hlv.PreviousVersions == nil {
-		hlv.PreviousVersions = make(map[string]string)
+		hlv.PreviousVersions = make(HLVVersions)
 	}
 	// we need to check if source ID already exists in PV, if so we need to ensure we are only updating with the
 	// sourceID-version pair if incoming version is greater than version already there
 	if currPVVersion, ok := hlv.PreviousVersions[hlv.SourceID]; ok {
 		// if we get here source ID exists in PV, only replace version if it is less than the incoming version
-		currPVVersionCAS := base.HexCasToUint64(currPVVersion)
+		currPVVersionCAS := currPVVersion
 		if currPVVersionCAS < hlvVersionCAS {
 			hlv.PreviousVersions[hlv.SourceID] = hlv.Version
 		} else {
-			return fmt.Errorf("local hlv has current source in previous version with version greater than current version. Current CAS: %s, PV CAS %s", hlv.Version, currPVVersion)
+			return fmt.Errorf("local hlv has current source in previous version with version greater than current version. Current CAS: %d, PV CAS %d", hlv.Version, currPVVersion)
 		}
 	} else {
 		// source doesn't exist in PV so add
@@ -215,7 +172,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 // TODO: Does this need to remove source from current version as well? Merge Versions?
 func (hlv *HybridLogicalVector) Remove(source string) error {
 	// if entry is not found in previous versions we return error
-	if hlv.PreviousVersions[source] == "" {
+	if hlv.PreviousVersions[source] == 0 {
 		return base.ErrNotFound
 	}
 	delete(hlv.PreviousVersions, source)
@@ -230,88 +187,6 @@ func (hlv *HybridLogicalVector) isDominating(otherVector HybridLogicalVector) bo
 	return hlv.DominatesSource(Version{otherVector.SourceID, otherVector.Version})
 }
 
-// isVersionDominating tests if v2 is dominating v1
-func (v1 *Version) isVersionDominating(v2 Version) bool {
-	if v1.SourceID != v2.SourceID {
-		return false
-	}
-	if v1.Value > v2.Value {
-		return true
-	}
-	return false
-}
-
-// isEqual tests if in memory HLV is equal to another
-func (hlv *DecodedHybridLogicalVector) isEqual(otherVector DecodedHybridLogicalVector) bool {
-	// if in HLV(A) sourceID the same as HLV(B) sourceID and HLV(A) CAS is equal to HLV(B) CAS then the two HLV's are equal
-	if hlv.SourceID == otherVector.SourceID && hlv.Version == otherVector.Version {
-		return true
-	}
-	// if the HLV(A) merge versions isn't empty and HLV(B) merge versions isn't empty AND if
-	// merge versions between the two HLV's are the same, they are equal
-	if len(hlv.MergeVersions) != 0 && len(otherVector.MergeVersions) != 0 {
-		if hlv.equalMergeVectors(otherVector) {
-			return true
-		}
-	}
-	if len(hlv.PreviousVersions) != 0 && len(otherVector.PreviousVersions) != 0 {
-		if hlv.equalPreviousVectors(otherVector) {
-			return true
-		}
-	}
-	// they aren't equal
-	return false
-}
-
-// equalMergeVectors tests if two merge vectors between HLV's are equal or not
-func (hlv *DecodedHybridLogicalVector) equalMergeVectors(otherVector DecodedHybridLogicalVector) bool {
-	if len(hlv.MergeVersions) != len(otherVector.MergeVersions) {
-		return false
-	}
-	for k, v := range hlv.MergeVersions {
-		if v != otherVector.MergeVersions[k] {
-			return false
-		}
-	}
-	return true
-}
-
-// equalPreviousVectors tests if two previous versions vectors between two HLV's are equal or not
-func (hlv *DecodedHybridLogicalVector) equalPreviousVectors(otherVector DecodedHybridLogicalVector) bool {
-	if len(hlv.PreviousVersions) != len(otherVector.PreviousVersions) {
-		return false
-	}
-	for k, v := range hlv.PreviousVersions {
-		if v != otherVector.PreviousVersions[k] {
-			return false
-		}
-	}
-	return true
-}
-
-// GetValue returns the latest CAS value in the HLV for a given sourceID along with boolean value to
-// indicate if sourceID is found in the HLV, if the sourceID is not present in the HLV it will return 0 CAS value and false
-func (hlv *DecodedHybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
-	if sourceID == "" {
-		return 0, false
-	}
-	var latestVersion uint64
-	if sourceID == hlv.SourceID {
-		latestVersion = hlv.Version
-	}
-	if pvEntry := hlv.PreviousVersions[sourceID]; pvEntry > latestVersion {
-		latestVersion = pvEntry
-	}
-	if mvEntry := hlv.MergeVersions[sourceID]; mvEntry > latestVersion {
-		latestVersion = mvEntry
-	}
-	// if we have 0 cas value, there is no entry for this source ID in the HLV
-	if latestVersion == 0 {
-		return latestVersion, false
-	}
-	return latestVersion, true
-}
-
 // GetVersion returns the latest decoded CAS value in the HLV for a given sourceID
 func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 	if sourceID == "" {
@@ -319,16 +194,16 @@ func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 	}
 	var latestVersion uint64
 	if sourceID == hlv.SourceID {
-		latestVersion = base.HexCasToUint64(hlv.Version)
+		latestVersion = hlv.Version
 	}
 	if pvEntry, ok := hlv.PreviousVersions[sourceID]; ok {
-		entry := base.HexCasToUint64(pvEntry)
+		entry := pvEntry
 		if entry > latestVersion {
 			latestVersion = entry
 		}
 	}
 	if mvEntry, ok := hlv.MergeVersions[sourceID]; ok {
-		entry := base.HexCasToUint64(mvEntry)
+		entry := mvEntry
 		if entry > latestVersion {
 			latestVersion = entry
 		}
@@ -356,12 +231,12 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 		// Iterate through incoming vector previous versions, update with the version from other vector
 		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
-			if hlv.PreviousVersions[i] == "" {
+			if hlv.PreviousVersions[i] == 0 {
 				hlv.setPreviousVersion(i, v)
 			} else {
 				// if we get here then there is entry for this source in PV so we must check if its newer or not
-				otherHLVPVValue := base.HexCasToUint64(v)
-				localHLVPVValue := base.HexCasToUint64(hlv.PreviousVersions[i])
+				otherHLVPVValue := v
+				localHLVPVValue := hlv.PreviousVersions[i]
 				if localHLVPVValue < otherHLVPVValue {
 					hlv.setPreviousVersion(i, v)
 				}
@@ -378,14 +253,14 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 // computeMacroExpansions returns the mutate in spec needed for the document update based off the outcome in updateHLV
 func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansionSpec {
 	var outputSpec []sgbucket.MacroExpansionSpec
-	if hlv.Version == hlvExpandMacroCASValue {
+	if hlv.Version == expandMacroCASValueUint64 {
 		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.VvXattrName), sgbucket.MacroCas)
 		outputSpec = append(outputSpec, spec)
 		// If version is being expanded, we need to also specify the macro expansion for the expanded rev property
 		currentRevSpec := sgbucket.NewMacroExpansionSpec(xattrCurrentRevVersionPath(base.SyncXattrName), sgbucket.MacroCas)
 		outputSpec = append(outputSpec, currentRevSpec)
 	}
-	if hlv.CurrentVersionCAS == hlvExpandMacroCASValue {
+	if hlv.CurrentVersionCAS == expandMacroCASValueUint64 {
 		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas)
 		outputSpec = append(outputSpec, spec)
 	}
@@ -393,9 +268,9 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 }
 
 // setPreviousVersion will take a source/version pair and add it to the HLV previous versions map
-func (hlv *HybridLogicalVector) setPreviousVersion(source string, version string) {
+func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64) {
 	if hlv.PreviousVersions == nil {
-		hlv.PreviousVersions = make(map[string]string)
+		hlv.PreviousVersions = make(HLVVersions)
 	}
 	hlv.PreviousVersions[source] = version
 }
@@ -405,7 +280,7 @@ func (hlv *HybridLogicalVector) IsVersionKnown(otherVersion Version) bool {
 	if !found {
 		return false
 	}
-	return value >= base.HexCasToUint64(otherVersion.Value)
+	return value >= otherVersion.Value
 }
 
 // toHistoryForHLV formats blip History property for V4 replication and above
@@ -444,36 +319,6 @@ func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 	return s.String()
 }
 
-// ToDecodedHybridLogicalVector converts the little endian hex values of a HLV to uint64 values
-func (hlv *HybridLogicalVector) ToDecodedHybridLogicalVector() DecodedHybridLogicalVector {
-	var decodedVersion, decodedCVCAS, decodedImportCAS uint64
-	if hlv.Version != "" {
-		decodedVersion = base.HexCasToUint64(hlv.Version)
-	}
-	if hlv.ImportCAS != "" {
-		decodedImportCAS = base.HexCasToUint64(hlv.ImportCAS)
-	}
-	if hlv.CurrentVersionCAS != "" {
-		decodedCVCAS = base.HexCasToUint64(hlv.CurrentVersionCAS)
-	}
-	decodedHLV := DecodedHybridLogicalVector{
-		CurrentVersionCAS: decodedCVCAS,
-		Version:           decodedVersion,
-		ImportCAS:         decodedImportCAS,
-		SourceID:          hlv.SourceID,
-		PreviousVersions:  make(map[string]uint64, len(hlv.PreviousVersions)),
-		MergeVersions:     make(map[string]uint64, len(hlv.MergeVersions)),
-	}
-
-	for i, v := range hlv.PreviousVersions {
-		decodedHLV.PreviousVersions[i] = base.HexCasToUint64(v)
-	}
-	for i, v := range hlv.MergeVersions {
-		decodedHLV.MergeVersions[i] = base.HexCasToUint64(v)
-	}
-	return decodedHLV
-}
-
 // appendRevocationMacroExpansions adds macro expansions for the channel map.  Not strictly an HLV operation
 // but putting the function here as it's required when the HLV's current version is being macro expanded
 func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, channelNames []string) (updatedSpec []sgbucket.MacroExpansionSpec) {
@@ -508,7 +353,11 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 		return HybridLogicalVector{}, fmt.Errorf("invalid version in changes message received")
 	}
 
-	err := hlv.AddVersion(Version{SourceID: version[1], Value: version[0]})
+	vrs, err := strconv.ParseUint(version[0], 16, 64)
+	if err != nil {
+		return HybridLogicalVector{}, err
+	}
+	err = hlv.AddVersion(Version{SourceID: version[1], Value: vrs})
 	if err != nil {
 		return HybridLogicalVector{}, err
 	}
@@ -523,7 +372,7 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 		if err != nil {
 			return HybridLogicalVector{}, err
 		}
-		hlv.PreviousVersions = make(map[string]string)
+		hlv.PreviousVersions = make(HLVVersions)
 		for _, v := range sourceVersionListPV {
 			hlv.PreviousVersions[v.SourceID] = v.Value
 		}
@@ -531,7 +380,7 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 	case 3:
 		// cv, mv and pv present
 		sourceVersionListPV, err := parseVectorValues(vectorFields[2])
-		hlv.PreviousVersions = make(map[string]string)
+		hlv.PreviousVersions = make(HLVVersions)
 		if err != nil {
 			return HybridLogicalVector{}, err
 		}
@@ -540,7 +389,7 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 		}
 
 		sourceVersionListMV, err := parseVectorValues(vectorFields[1])
-		hlv.MergeVersions = make(map[string]string)
+		hlv.MergeVersions = make(HLVVersions)
 		if err != nil {
 			return HybridLogicalVector{}, err
 		}
@@ -580,10 +429,6 @@ func EncodeSource(source string) string {
 	return base64.StdEncoding.EncodeToString([]byte(source))
 }
 
-func EncodeValue(value uint64) string {
-	return base.CasToString(value)
-}
-
 // EncodeValueStr converts a simplified number ("1") to a hex-encoded string
 func EncodeValueStr(value string) (string, error) {
 	return base.StringDecimalToLittleEndianHex(strings.TrimSpace(value))
@@ -599,4 +444,94 @@ func CreateEncodedSourceID(bucketUUID, clusterUUID string) (string, error) {
 		return "", err
 	}
 	return string(source), nil
+}
+
+func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
+	var cvCasByteArray []byte
+	var importCASBytes []byte
+	var vrsCasByteArray []byte
+	if hlv.CurrentVersionCAS != 0 {
+		cvCasByteArray = base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
+	}
+	if hlv.ImportCAS != 0 {
+		importCASBytes = base.Uint64CASToLittleEndianHex(hlv.ImportCAS)
+	}
+	if hlv.Version != 0 {
+		vrsCasByteArray = base.Uint64CASToLittleEndianHex(hlv.Version)
+	}
+
+	pvPersistedFormat, err := convertMapToPersistedFormat(hlv.PreviousVersions)
+	if err != nil {
+		return nil, err
+	}
+	mvPersistedFormat, err := convertMapToPersistedFormat(hlv.MergeVersions)
+	if err != nil {
+		return nil, err
+	}
+
+	bucketVector := BucketVector{
+		CurrentVersionCAS: string(cvCasByteArray),
+		ImportCAS:         string(importCASBytes),
+		Version:           string(vrsCasByteArray),
+		SourceID:          hlv.SourceID,
+		MergeVersions:     mvPersistedFormat,
+		PreviousVersions:  pvPersistedFormat,
+	}
+
+	return base.JSONMarshal(&bucketVector)
+}
+
+func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
+	persistedJSON := BucketVector{}
+	err := base.JSONUnmarshal(inputjson, &persistedJSON)
+	if err != nil {
+		return err
+	}
+	// convert the data to in memory format
+	hlv.convertPersistedHLVToInMemoryHLV(persistedJSON)
+	return nil
+}
+
+func (hlv *HybridLogicalVector) convertPersistedHLVToInMemoryHLV(persistedJSON BucketVector) {
+	hlv.CurrentVersionCAS = base.HexCasToUint64(persistedJSON.CurrentVersionCAS)
+	if persistedJSON.ImportCAS != "" {
+		hlv.ImportCAS = base.HexCasToUint64(persistedJSON.ImportCAS)
+	}
+	hlv.SourceID = persistedJSON.SourceID
+	// convert the hex cas to uint64 cas
+	hlv.Version = base.HexCasToUint64(persistedJSON.Version)
+	// convert the maps form persisted format to the in memory format
+	hlv.PreviousVersions = convertMapToInMemoryFormat(persistedJSON.PreviousVersions)
+	hlv.MergeVersions = convertMapToInMemoryFormat(persistedJSON.MergeVersions)
+}
+
+// convertMapToPersistedFormat will convert in memory map of previous versions or merge versions into the persisted format map
+func convertMapToPersistedFormat(memoryMap map[string]uint64) (map[string]string, error) {
+	if memoryMap == nil {
+		return nil, nil
+	}
+	returnedMap := make(map[string]string)
+	var persistedCAS string
+	for source, cas := range memoryMap {
+		casByteArray := base.Uint64CASToLittleEndianHex(cas)
+		persistedCAS = string(casByteArray)
+		// remove the leading '0x' from the CAS value
+		persistedCAS = persistedCAS[2:]
+		returnedMap[source] = persistedCAS
+	}
+	return returnedMap, nil
+}
+
+// convertMapToInMemoryFormat will convert the persisted format map to an in memory format of that map.
+// Used for previous versions and merge versions maps on HLV
+func convertMapToInMemoryFormat(persistedMap map[string]string) map[string]uint64 {
+	if persistedMap == nil {
+		return nil
+	}
+	returnedMap := make(map[string]uint64)
+	// convert each CAS entry from little endian hex to Uint64
+	for key, value := range persistedMap {
+		returnedMap[key] = base.HexCasToUint64(value)
+	}
+	return returnedMap
 }

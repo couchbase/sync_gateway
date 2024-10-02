@@ -25,20 +25,20 @@ import (
 //   - Tests internal api methods on the HLV work as expected
 //   - Tests methods GetCurrentVersion, AddVersion and Remove
 func TestInternalHLVFunctions(t *testing.T) {
-	pv := make(map[string]string)
+	pv := make(HLVVersions)
 	currSourceId := EncodeSource("5pRi8Piv1yLcLJ1iVNJIsA")
-	currVersion := EncodeValue(12345678)
-	pv[EncodeSource("YZvBpEaztom9z5V/hDoeIw")] = EncodeValue(64463204720)
+	currVersion := uint64(12345678)
+	pv[EncodeSource("YZvBpEaztom9z5V/hDoeIw")] = 64463204720
 
 	inputHLV := []string{"5pRi8Piv1yLcLJ1iVNJIsA@12345678", "YZvBpEaztom9z5V/hDoeIw@64463204720", "m_NqiIe0LekFPLeX4JvTO6Iw@345454"}
 	hlv := createHLVForTest(t, inputHLV)
 
-	newCAS := EncodeValue(123456789)
+	newCAS := uint64(123456789)
 	const newSource = "s_testsource"
 
 	// create a new version vector entry that will error method AddVersion
 	badNewVector := Version{
-		Value:    EncodeValue(123345),
+		Value:    123345,
 		SourceID: currSourceId,
 	}
 	// create a new version vector entry that should be added to HLV successfully
@@ -155,46 +155,6 @@ func TestConflictDetectionDominating(t *testing.T) {
 	}
 }
 
-// TestConflictEqualHLV:
-//   - Creates two 'equal' HLV's and asserts we identify them as equal
-//   - Then tests other code path in event source ID differs and current CAS differs but with identical merge versions
-//     that we identify they are in fact 'equal'
-//   - Then test the same but for previous versions
-func TestConflictEqualHLV(t *testing.T) {
-	// two vectors with the same sourceID and version pair as the current vector
-	inputHLVA := []string{"cluster1@10", "cluster2@3"}
-	inputHLVB := []string{"cluster1@10", "cluster2@4"}
-	hlvA := createHLVForTest(t, inputHLVA)
-	hlvB := createHLVForTest(t, inputHLVB)
-	decHLVA := hlvA.ToDecodedHybridLogicalVector()
-	decHLVB := hlvB.ToDecodedHybridLogicalVector()
-	require.True(t, decHLVA.isEqual(decHLVB))
-
-	// test conflict detection with different version CAS but same merge versions
-	inputHLVA = []string{"cluster2@12", "cluster3@3", "cluster4@2"}
-	inputHLVB = []string{"cluster1@10", "cluster3@3", "cluster4@2"}
-	hlvA = createHLVForTest(t, inputHLVA)
-	hlvB = createHLVForTest(t, inputHLVB)
-	decHLVA = hlvA.ToDecodedHybridLogicalVector()
-	decHLVB = hlvB.ToDecodedHybridLogicalVector()
-	require.True(t, decHLVA.isEqual(decHLVB))
-
-	// test conflict detection with different version CAS but same previous version vectors
-	inputHLVA = []string{"cluster3@2", "cluster1@3", "cluster2@5"}
-	hlvA = createHLVForTest(t, inputHLVA)
-	inputHLVB = []string{"cluster4@7", "cluster1@3", "cluster2@5"}
-	hlvB = createHLVForTest(t, inputHLVB)
-	decHLVA = hlvA.ToDecodedHybridLogicalVector()
-	decHLVB = hlvB.ToDecodedHybridLogicalVector()
-	require.True(t, decHLVA.isEqual(decHLVB))
-
-	cluster1Encoded := base64.StdEncoding.EncodeToString([]byte("cluster1"))
-	// remove an entry from one of the HLV PVs to assert we get false returned from isEqual
-	require.NoError(t, hlvA.Remove(cluster1Encoded))
-	decHLVA = hlvA.ToDecodedHybridLogicalVector()
-	require.False(t, decHLVA.isEqual(decHLVB))
-}
-
 // createHLVForTest is a helper function to create a HLV for use in a test. Takes a list of strings in the format of <sourceID@version> and assumes
 // first entry is current version. For merge version entries you must specify 'm_' as a prefix to sourceID NOTE: it also sets cvCAS to the current version
 func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
@@ -205,9 +165,8 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 	hlvOutput.SourceID = base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))
 	value, err := strconv.ParseUint(currentVersionPair[1], 10, 64)
 	require.NoError(tb, err)
-	vrsEncoded := EncodeValue(value)
-	hlvOutput.Version = vrsEncoded
-	hlvOutput.CurrentVersionCAS = vrsEncoded
+	hlvOutput.Version = value
+	hlvOutput.CurrentVersionCAS = value
 
 	// remove current version entry in list now we have parsed it into the HLV
 	inputList = inputList[1:]
@@ -218,10 +177,10 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 		require.NoError(tb, err)
 		if strings.HasPrefix(currentVersionPair[0], "m_") {
 			// add entry to merge version removing the leading prefix for sourceID
-			hlvOutput.MergeVersions[EncodeSource(currentVersionPair[0][2:])] = EncodeValue(value)
+			hlvOutput.MergeVersions[EncodeSource(currentVersionPair[0][2:])] = value
 		} else {
 			// if it's not got the prefix we assume it's a previous version entry
-			hlvOutput.PreviousVersions[EncodeSource(currentVersionPair[0])] = EncodeValue(value)
+			hlvOutput.PreviousVersions[EncodeSource(currentVersionPair[0])] = value
 		}
 	}
 	return hlvOutput
@@ -291,10 +250,9 @@ func TestHLVImport(t *testing.T) {
 	importedDoc, _, err := collection.GetDocWithXattrs(ctx, standardImportKey, DocUnmarshalAll)
 	require.NoError(t, err)
 	importedHLV := importedDoc.HLV
-	encodedCAS := string(base.Uint64CASToLittleEndianHex(cas))
-	require.Equal(t, encodedCAS, importedHLV.ImportCAS)
-	require.Equal(t, importedDoc.SyncData.Cas, importedHLV.CurrentVersionCAS)
-	require.Equal(t, importedDoc.SyncData.Cas, importedHLV.Version)
+	require.Equal(t, cas, importedHLV.ImportCAS)
+	require.Equal(t, base.HexCasToUint64(importedDoc.SyncData.Cas), importedHLV.CurrentVersionCAS)
+	require.Equal(t, base.HexCasToUint64(importedDoc.SyncData.Cas), importedHLV.Version)
 	require.Equal(t, localSource, importedHLV.SourceID)
 
 	// 2. Test import of write by HLV-aware peer (HLV is already updated, sync metadata is not).
@@ -305,7 +263,6 @@ func TestHLVImport(t *testing.T) {
 
 	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName, base.VvXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
-	encodedCAS = EncodeValue(cas)
 
 	docxattr := existingXattrs[base.VirtualXattrRevSeqNo]
 	revSeqNo := RetrieveDocRevSeqNo(t, docxattr)
@@ -323,9 +280,9 @@ func TestHLVImport(t *testing.T) {
 	require.NoError(t, err)
 	importedHLV = importedDoc.HLV
 	// cas in the HLV's current version and cvCAS should not have changed, and should match importCAS
-	require.Equal(t, encodedCAS, importedHLV.ImportCAS)
-	require.Equal(t, encodedCAS, importedHLV.CurrentVersionCAS)
-	require.Equal(t, encodedCAS, importedHLV.Version)
+	require.Equal(t, cas, importedHLV.ImportCAS)
+	require.Equal(t, cas, importedHLV.CurrentVersionCAS)
+	require.Equal(t, cas, importedHLV.Version)
 	require.Equal(t, hlvHelper.Source, importedHLV.SourceID)
 }
 
@@ -346,18 +303,18 @@ func TestHLVMapToCBLString(t *testing.T) {
 			name: "Both PV and mv",
 			inputHLV: []string{"cb06dc003846116d9b66d2ab23887a96@123456", "YZvBpEaztom9z5V/hDoeIw@1628620455135215600", "m_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700",
 				"m_LhRPsa7CpjEvP5zeXTXEBA@1628620455147864000"},
-			expectedStr: "0x1c008cd6ac059a16@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==,0xc0ff05d7ac059a16@TGhSUHNhN0NwakV2UDV6ZVhUWEVCQQ==;0xf0ff44d6ac059a16@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
+			expectedStr: "169a05acd68c001c@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==,169a05acd705ffc0@TGhSUHNhN0NwakV2UDV6ZVhUWEVCQQ==;169a05acd644fff0@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
 			both:        true,
 		},
 		{
 			name:        "Just PV",
 			inputHLV:    []string{"cb06dc003846116d9b66d2ab23887a96@123456", "YZvBpEaztom9z5V/hDoeIw@1628620455135215600"},
-			expectedStr: "0xf0ff44d6ac059a16@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
+			expectedStr: "169a05acd644fff0@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
 		},
 		{
 			name:        "Just MV",
 			inputHLV:    []string{"cb06dc003846116d9b66d2ab23887a96@123456", "m_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700"},
-			expectedStr: "0x1c008cd6ac059a16@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==",
+			expectedStr: "169a05acd68c001c@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==",
 		},
 	}
 	for _, test := range testCases {
@@ -490,4 +447,16 @@ func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestParseCBLVersion(t *testing.T) {
+	vrsString := "19@YWJj"
+
+	vrs, err := ParseVersion(vrsString)
+	require.NoError(t, err)
+	assert.Equal(t, "YWJj", vrs.SourceID)
+	assert.Equal(t, uint64(25), vrs.Value)
+
+	cblString := vrs.String()
+	assert.Equal(t, vrsString, cblString)
 }
