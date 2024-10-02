@@ -1752,7 +1752,7 @@ func TestPutRevV4(t *testing.T) {
 	require.NoError(t, err)
 	pv, _ := db.ParseTestHistory(t, history)
 	db.RequireCVEqual(t, doc.HLV, "3@efg")
-	assert.Equal(t, db.EncodeValue(doc.Cas), doc.HLV.CurrentVersionCAS)
+	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
 	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
 	// 2. Update the document with a non-conflicting revision, where only cv is updated
@@ -1765,7 +1765,7 @@ func TestPutRevV4(t *testing.T) {
 	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 	db.RequireCVEqual(t, doc.HLV, "4@efg")
-	assert.Equal(t, db.EncodeValue(doc.Cas), doc.HLV.CurrentVersionCAS)
+	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
 	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
 	// 3. Update the document again with a non-conflicting revision from a different source (previous cv moved to pv)
@@ -1780,7 +1780,7 @@ func TestPutRevV4(t *testing.T) {
 	require.NoError(t, err)
 	pv, _ = db.ParseTestHistory(t, updatedHistory)
 	db.RequireCVEqual(t, doc.HLV, "1@jkl")
-	assert.Equal(t, db.EncodeValue(doc.Cas), doc.HLV.CurrentVersionCAS)
+	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
 	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
 	// 4. Update the document again with a non-conflicting revision from a different source, and additional sources in history (previous cv moved to pv, and pv expanded)
@@ -1795,7 +1795,7 @@ func TestPutRevV4(t *testing.T) {
 	require.NoError(t, err)
 	pv, _ = db.ParseTestHistory(t, updatedHistory)
 	db.RequireCVEqual(t, doc.HLV, "1@nnn")
-	assert.Equal(t, db.EncodeValue(doc.Cas), doc.HLV.CurrentVersionCAS)
+	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
 	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
 	// 5. Attempt to update the document again with a conflicting revision from a different source (previous cv not in pv), expect conflict
@@ -1818,7 +1818,7 @@ func TestPutRevV4(t *testing.T) {
 
 	pv, mv := db.ParseTestHistory(t, mvHistory)
 	db.RequireCVEqual(t, doc.HLV, "3@efg")
-	assert.Equal(t, base.CasToString(doc.Cas), doc.HLV.CurrentVersionCAS)
+	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
 	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 	assert.True(t, reflect.DeepEqual(mv, doc.HLV.MergeVersions))
 }
@@ -2183,7 +2183,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 			RevTreeID: bucketDoc.CurrentRev,
 			CV: db.Version{
 				SourceID: hlvHelper.Source,
-				Value:    string(base.Uint64CASToLittleEndianHex(cas)),
+				Value:    cas,
 			},
 		}
 
@@ -3345,4 +3345,26 @@ func TestBlipDatabaseClose(t *testing.T) {
 			assert.True(c, blipContextClosed.Load())
 		}, time.Second*10, time.Millisecond*100)
 	})
+}
+
+func TestPutRevBlip(t *testing.T) {
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{GuestEnabled: true, blipProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()}})
+	require.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	_, _, _, err = bt.SendRev(
+		"foo",
+		"2@stZPWD8vS/O3nsx9yb2Brw",
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+	require.NoError(t, err)
+
+	_, _, _, err = bt.SendRev(
+		"foo",
+		"fa1@stZPWD8vS/O3nsx9yb2Brw",
+		[]byte(`{"key": "val2"}`),
+		blip.Properties{},
+	)
+	require.NoError(t, err)
 }

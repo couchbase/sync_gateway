@@ -12,7 +12,7 @@ package db
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -44,9 +44,9 @@ func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrNam
 // a different, non-SGW HLV-aware peer)
 func (h *HLVAgent) InsertWithHLV(ctx context.Context, key string) (casOut uint64) {
 	hlv := &HybridLogicalVector{}
-	err := hlv.AddVersion(CreateVersion(h.Source, hlvExpandMacroCASValue))
+	err := hlv.AddVersion(CreateVersion(h.Source, expandMacroCASValueUint64))
 	require.NoError(h.t, err)
-	hlv.CurrentVersionCAS = hlvExpandMacroCASValue
+	hlv.CurrentVersionCAS = expandMacroCASValueUint64
 
 	vvDataBytes := base.MustJSONMarshal(h.t, hlv)
 	mutateInOpts := &sgbucket.MutateInOptions{
@@ -64,16 +64,20 @@ func (h *HLVAgent) InsertWithHLV(ctx context.Context, key string) (casOut uint64
 }
 
 // EncodeTestVersion converts a simplified string version of the form 1@abc to a hex-encoded version and base64 encoded
-// source, like 0x0100000000000000@YWJj.  Allows use of simplified versions in tests for readability, ease of use.
+// source, like 169a05acd705ffc0@YWJj.  Allows use of simplified versions in tests for readability, ease of use.
 func EncodeTestVersion(versionString string) (encodedString string) {
 	timestampString, source, found := strings.Cut(versionString, "@")
 	if !found {
 		return versionString
 	}
-	hexTimestamp, err := EncodeValueStr(timestampString)
-	if err != nil {
-		panic(fmt.Sprintf("unable to encode timestampString %v", timestampString))
+	if len(timestampString) > 0 && timestampString[0] == ' ' {
+		timestampString = timestampString[1:]
 	}
+	timestampUint, err := strconv.ParseUint(timestampString, 10, 64)
+	if err != nil {
+		return ""
+	}
+	hexTimestamp := strconv.FormatUint(timestampUint, 16)
 	base64Source := EncodeSource(source)
 	return hexTimestamp + "@" + base64Source
 }
@@ -106,11 +110,11 @@ func EncodeTestHistory(historyString string) (encodedString string) {
 
 // ParseTestHistory takes a string test history in the form 1@abc,2@def;3@ghi,4@jkl and formats this
 // as pv and mv maps keyed by encoded source, with encoded values
-func ParseTestHistory(t *testing.T, historyString string) (pv map[string]string, mv map[string]string) {
+func ParseTestHistory(t *testing.T, historyString string) (pv HLVVersions, mv HLVVersions) {
 	versionSets := strings.Split(historyString, ";")
 
-	pv = make(map[string]string)
-	mv = make(map[string]string)
+	pv = make(HLVVersions)
+	mv = make(HLVVersions)
 
 	var pvString, mvString string
 	switch len(versionSets) {
@@ -127,9 +131,7 @@ func ParseTestHistory(t *testing.T, historyString string) (pv map[string]string,
 	for _, versionStr := range strings.Split(pvString, ",") {
 		version, err := ParseVersion(versionStr)
 		require.NoError(t, err)
-		encodedValue, err := EncodeValueStr(version.Value)
-		require.NoError(t, err)
-		pv[EncodeSource(version.SourceID)] = encodedValue
+		pv[EncodeSource(version.SourceID)] = version.Value
 	}
 
 	// mv
@@ -137,9 +139,7 @@ func ParseTestHistory(t *testing.T, historyString string) (pv map[string]string,
 		for _, versionStr := range strings.Split(mvString, ",") {
 			version, err := ParseVersion(versionStr)
 			require.NoError(t, err)
-			encodedValue, err := EncodeValueStr(version.Value)
-			require.NoError(t, err)
-			mv[EncodeSource(version.SourceID)] = encodedValue
+			mv[EncodeSource(version.SourceID)] = version.Value
 		}
 	}
 	return pv, mv
@@ -150,7 +150,5 @@ func RequireCVEqual(t *testing.T, hlv *HybridLogicalVector, expectedCV string) {
 	testVersion, err := ParseVersion(expectedCV)
 	require.NoError(t, err)
 	require.Equal(t, EncodeSource(testVersion.SourceID), hlv.SourceID)
-	encodedValue, err := EncodeValueStr(testVersion.Value)
-	require.NoError(t, err)
-	require.Equal(t, encodedValue, hlv.Version)
+	require.Equal(t, testVersion.Value, hlv.Version)
 }

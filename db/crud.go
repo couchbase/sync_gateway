@@ -904,39 +904,38 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 	switch docUpdateEvent {
 	case ExistingVersion:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
-		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
-		d.HLV.ImportCAS = "" // remove importCAS for non-imports to save space
+		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
 	case Import:
-		encodedCAS := string(base.Uint64CASToLittleEndianHex(d.Cas))
-		if d.HLV.CurrentVersionCAS == encodedCAS {
+		if d.HLV.CurrentVersionCAS == d.Cas {
 			// if cvCAS = document CAS, the HLV has already been updated for this mutation by another HLV-aware peer.
 			// Set ImportCAS to the previous document CAS, but don't otherwise modify HLV
-			d.HLV.ImportCAS = encodedCAS
+			d.HLV.ImportCAS = d.Cas
 		} else {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
 			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
-			newVVEntry.Value = hlvExpandMacroCASValue
+			newVVEntry.Value = expandMacroCASValueUint64
 			err := d.SyncData.HLV.AddVersion(newVVEntry)
 			if err != nil {
 				return nil, err
 			}
-			d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
-			d.HLV.ImportCAS = encodedCAS
+			d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+			d.HLV.ImportCAS = d.Cas
 		}
 
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := Version{}
 		newVVEntry.SourceID = db.dbCtx.EncodedSourceID
-		newVVEntry.Value = hlvExpandMacroCASValue
+		newVVEntry.Value = expandMacroCASValueUint64
 		err := d.SyncData.HLV.AddVersion(newVVEntry)
 		if err != nil {
 			return nil, err
 		}
 		// update the cvCAS on the SGWrite event too
-		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
-		d.HLV.ImportCAS = "" // remove importCAS for non-imports to save space
+		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
 	}
 	return d, nil
 }
@@ -1182,7 +1181,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					return nil, nil, false, nil, addNewerVersionsErr
 				}
 			} else {
-				base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
+				base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
 				// cancel rest of update, HLV needs to be sent back to client with merge versions populated
 				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
@@ -2372,7 +2371,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		} else if doc != nil {
 			// Update the in-memory CAS values to match macro-expanded values
 			doc.Cas = casOut
-			if doc.metadataOnlyUpdate != nil && doc.metadataOnlyUpdate.CAS == expandMacroCASValue {
+			if doc.metadataOnlyUpdate != nil && doc.metadataOnlyUpdate.CAS == expandMacroCASValueString {
 				doc.metadataOnlyUpdate.CAS = base.CasToString(casOut)
 			}
 			// update the doc's HLV defined post macro expansion
@@ -2533,12 +2532,11 @@ func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
 	if doc.HLV == nil {
 		return doc
 	}
-	encodedCAS := string(base.Uint64CASToLittleEndianHex(casOut))
-	if doc.HLV.Version == hlvExpandMacroCASValue {
-		doc.HLV.Version = encodedCAS
+	if doc.HLV.Version == expandMacroCASValueUint64 {
+		doc.HLV.Version = casOut
 	}
-	if doc.HLV.CurrentVersionCAS == hlvExpandMacroCASValue {
-		doc.HLV.CurrentVersionCAS = encodedCAS
+	if doc.HLV.CurrentVersionCAS == expandMacroCASValueUint64 {
+		doc.HLV.CurrentVersionCAS = casOut
 	}
 	return doc
 }
@@ -3113,7 +3111,8 @@ const (
 	versionVectorVrsMacro       = "ver"          // PersistedHybridLogicalVector.Version
 	versionVectorCVCASMacro     = "cvCas"        // PersistedHybridLogicalVector.CurrentVersionCAS
 
-	expandMacroCASValue = "expand" // static value that indicates that a CAS macro expansion should be applied to a property
+	expandMacroCASValueUint64 = math.MaxUint64 // static value that indicates that a CAS macro expansion should be applied to a property
+	expandMacroCASValueString = "expand"
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
