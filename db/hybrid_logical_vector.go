@@ -58,7 +58,7 @@ func ParseVersion(versionString string) (version Version, err error) {
 
 // String returns a version/sourceID pair in CBL string format
 func (v Version) String() string {
-	return fmt.Sprintf("%x@%s", v.Value, v.SourceID)
+	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 
 // ExtractCurrentVersionFromHLV will take the current version form the HLV struct and return it in the Version struct
