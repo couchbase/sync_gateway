@@ -25,8 +25,12 @@ import (
 type Peer interface {
 	// GetDocument returns the latest version of a document. The test will fail the document does not exist.
 	GetDocument(dsName sgbucket.DataStoreName, docID string) (rest.DocVersion, db.Body)
-	// WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
+	// CreateDocument creates a document on the peer. The test will fail if the document already exists.
+	CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion
+	// WriteDocument upserts a document to the peer. The test will fail if the write does not succeed. Reasons for failure might be sync function rejections for Sync Gateway rejections.
 	WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion
+	// DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
+	DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion
 
 	// WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
 	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) db.Body
@@ -39,6 +43,9 @@ type Peer interface {
 
 	// Close will shut down the peer and close any active replications on the peer.
 	Close()
+
+	// SourceID returns the source ID for the peer used in <val>@sourceID.
+	SourceID() string
 
 	// GetBackingBucket returns the backing bucket for the peer. This is nil when the peer is a Couchbase Lite peer.
 	GetBackingBucket() base.Bucket
@@ -133,10 +140,13 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 	case PeerTypeCouchbaseServer:
 		bucket, ok := buckets[opts.BucketID]
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)
+		sourceID, err := xdcr.GetSourceID(base.TestCtx(t), bucket)
+		require.NoError(t, err)
 		return &CouchbaseServerPeer{
 			name:             name,
 			tb:               t,
 			bucket:           bucket,
+			sourceID:         sourceID,
 			pullReplications: make(map[Peer]xdcr.Manager),
 			pushReplications: make(map[Peer]xdcr.Manager),
 		}

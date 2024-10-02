@@ -69,7 +69,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		fromDs = fromBucket.DefaultDataStore()
 		toDs = toBucket.DefaultDataStore()
 	}
-	fromBucketSourceID, err := getSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 	docCas := make(map[string]uint64)
 	for _, doc := range []string{syncDoc, attachmentDoc, normalDoc} {
@@ -149,7 +149,7 @@ func getTwoBucketDataStores(t *testing.T) (base.Bucket, sgbucket.DataStore, base
 func TestReplicateVV(t *testing.T) {
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := getSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
 	testCases := []struct {
@@ -233,7 +233,7 @@ func TestReplicateVV(t *testing.T) {
 func TestVVWriteTwice(t *testing.T) {
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := getSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
 	docID := "doc1"
@@ -267,7 +267,7 @@ func TestVVWriteTwice(t *testing.T) {
 func TestLWWAfterInitialReplication(t *testing.T) {
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := getSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
 	docID := "doc1"
