@@ -921,9 +921,13 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 				return nil, err
 			}
 			d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
-			d.HLV.ImportCAS = d.Cas
+			// unused?
+			d.HLV.ImportCAS = expandMacroCASValueUint64
+			d.HLV.Version = d.Cas
+			d.metadataOnlyUpdate = &MetadataOnlyUpdate{
+				CAS: expandMacroCASValueString,
+			}
 		}
-
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := Version{}
