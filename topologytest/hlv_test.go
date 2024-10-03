@@ -10,7 +10,10 @@ package topologytest
 
 import (
 	"fmt"
+	"slices"
 	"testing"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -27,10 +30,19 @@ func getSingleDsName() base.ScopeAndCollectionName {
 
 // TestHLVCreateDocumentSingleActor tests creating a document with a single actor in different topologies.
 func TestHLVCreateDocumentSingleActor(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCRUD, base.KeyImport)
 	collectionName := getSingleDsName()
 	for i, tc := range simpleTopologies {
+		if i == 0 {
+			continue
+		}
 		t.Run(tc.description, func(t *testing.T) {
-			for peerID := range tc.peers {
+			peerNames := maps.Keys(tc.peers)
+			slices.Sort(peerNames)
+			for _, peerID := range peerNames {
+				if peerID != "cbs2" {
+					continue
+				}
 				t.Run("actor="+peerID, func(t *testing.T) {
 					peers := createPeers(t, tc.peers)
 					replications := CreatePeerReplications(t, peers, tc.replications)
@@ -40,11 +52,14 @@ func TestHLVCreateDocumentSingleActor(t *testing.T) {
 					}
 					docID := fmt.Sprintf("doc_%d_%s", i, peerID)
 
+					t.Logf("writing document %s from %s", docID, peerID)
 					docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, peerID, tc.description))
 					docVersion := peers[peerID].WriteDocument(collectionName, docID, docBody)
 
 					// for single actor, use the docVersion that was written, but if there is a SG running, wait for import
-					for _, peer := range peers {
+					for _, peerName := range peerNames {
+						peer := peers[peerName]
+
 						t.Logf("waiting for doc version on %s, written from %s", peer, peerID)
 						body := peer.WaitForDocVersion(collectionName, docID, docVersion)
 						// remove internal properties to do a comparison

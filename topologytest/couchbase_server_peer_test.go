@@ -134,9 +134,8 @@ func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, d
 			return
 		}
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
-		p.TB().Logf("cas %d\n", cas)
 		version := getDocVersion(p, cas, xattrs)
-		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV for  %s at version %+v on peer %s, found %+v", docID, expected, p, version)
+		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV for %s at version %+v on peer %s, sourceID:%s, found %+v", docID, expected, p, p.SourceID(), version)
 
 	}, 5*time.Second, 100*time.Millisecond)
 	// get hlv to construct DocVersion
@@ -222,7 +221,6 @@ func getDocVersion(peer Peer, cas uint64, xattrs map[string][]byte) rest.DocVers
 	if ok {
 		var hlv *db.HybridLogicalVector
 		require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &hlv))
-		fmt.Printf("HLV: %+v\n", hlv)
 		docVersion.CV = db.Version{SourceID: hlv.SourceID, Value: hlv.Version}
 	} else {
 		docVersion.CV = db.Version{SourceID: peer.SourceID(), Value: cas}
@@ -233,7 +231,6 @@ func getDocVersion(peer Peer, cas uint64, xattrs map[string][]byte) rest.DocVers
 		require.NoError(peer.TB(), json.Unmarshal(sync, &syncData))
 		docVersion.RevTreeID = syncData.CurrentRev
 	}
-	fmt.Printf("DocVersion: %+v\n", docVersion)
 	return docVersion
 }
 

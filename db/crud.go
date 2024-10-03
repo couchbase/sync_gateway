@@ -898,6 +898,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
 func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateType) (*Document, error) {
 
+	hasHLV := d.HLV != nil
 	if d.HLV == nil {
 		d.HLV = &HybridLogicalVector{}
 	}
@@ -907,27 +908,32 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
 		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
 	case Import:
+		fmt.Printf("Importing document %s, HLV %+v\n", d.ID, d.HLV)
 		if d.HLV.CurrentVersionCAS == d.Cas {
+			fmt.Printf("Importing document %s, HLV %+v, cvCAS == docCAS\n", d.ID, d.HLV)
 			// if cvCAS = document CAS, the HLV has already been updated for this mutation by another HLV-aware peer.
 			// Set ImportCAS to the previous document CAS, but don't otherwise modify HLV
 			d.HLV.ImportCAS = d.Cas
 		} else {
-			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
-			newVVEntry := Version{}
-			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
-			newVVEntry.Value = expandMacroCASValueUint64
-			err := d.SyncData.HLV.AddVersion(newVVEntry)
-			if err != nil {
-				return nil, err
+			if !hasHLV {
+				fmt.Printf("Importing document %s, no existing HLV cas=%d\n", d.ID, d.Cas)
+				// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
+				newVVEntry := Version{}
+				newVVEntry.SourceID = db.dbCtx.EncodedSourceID
+				newVVEntry.Value = expandMacroCASValueUint64
+				newVVEntry.Value = d.Cas
+				err := d.SyncData.HLV.AddVersion(newVVEntry)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				fmt.Printf("Importing document %s, existing HLV cas=%d\n", d.ID, d.Cas)
 			}
 			d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
-			// unused?
-			d.HLV.ImportCAS = expandMacroCASValueUint64
-			d.HLV.Version = d.Cas
-			d.metadataOnlyUpdate = &MetadataOnlyUpdate{
-				CAS: expandMacroCASValueString,
-			}
+			d.HLV.ImportCAS = d.Cas
+			fmt.Printf("Setting HLV for import, doc %s, HLV %+v\n", d.ID, d.HLV)
 		}
+
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := Version{}
