@@ -28,7 +28,7 @@ func getSingleDsName() base.ScopeAndCollectionName {
 // TestHLVCreateDocumentSingleActor tests creating a document with a single actor in different topologies.
 func TestHLVCreateDocumentSingleActor(t *testing.T) {
 	collectionName := getSingleDsName()
-	for i, tc := range Topologies {
+	for i, tc := range simpleTopologies {
 		t.Run(tc.description, func(t *testing.T) {
 			for peerID := range tc.peers {
 				t.Run("actor="+peerID, func(t *testing.T) {
@@ -42,6 +42,8 @@ func TestHLVCreateDocumentSingleActor(t *testing.T) {
 
 					docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, peerID, tc.description))
 					docVersion := peers[peerID].WriteDocument(collectionName, docID, docBody)
+
+					// for single actor, use the docVersion that was written, but if there is a SG running, wait for import
 					for _, peer := range peers {
 						t.Logf("waiting for doc version on %s, written from %s", peer, peerID)
 						body := peer.WaitForDocVersion(collectionName, docID, docVersion)

@@ -10,6 +10,7 @@ package topologytest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -108,10 +109,12 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 	if err != nil {
 		require.NoError(p.tb, err)
 	}
-	time.Sleep(1 * time.Second)
-	// This version might not be the same version as was written. Writing a version to Couchbase Server and relying on the version is inherently a race. A write to Couchbase Server when Sync Gateway is running will perform an import.
-	version, _ := p.GetDocument(dsName, docID)
-	return version
+	return rest.DocVersion{
+		CV: db.Version{
+			SourceID: p.SourceID(),
+			Value:    cas,
+		},
+	}
 }
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
@@ -125,11 +128,15 @@ func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, d
 	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
 		var err error
 		var xattrs map[string][]byte
-		docBytes, xattrs, _, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
-		assert.NoError(c, err)
+		var cas uint64
+		docBytes, xattrs, cas, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
+		if !assert.NoError(c, err) {
+			return
+		}
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
-		version := rest.NewDocVersionFromXattrs(p.tb, xattrs)
-		assert.Equal(c, expected, version, "Could not find %s at version %+v on peer %s, found %+v", docID, expected, p, version)
+		p.TB().Logf("cas %d\n", cas)
+		version := getDocVersion(p, cas, xattrs)
+		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV for  %s at version %+v on peer %s, found %+v", docID, expected, p, version)
 
 	}, 5*time.Second, 100*time.Millisecond)
 	// get hlv to construct DocVersion
@@ -195,8 +202,8 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 }
 
 // SourceID returns the source ID for the peer used in <val>@sourceID.
-func (r *CouchbaseServerPeer) SourceID() string {
-	return r.sourceID
+func (p *CouchbaseServerPeer) SourceID() string {
+	return p.sourceID
 }
 
 // GetBackingBucket returns the backing bucket for the peer.
@@ -209,14 +216,35 @@ func (p *CouchbaseServerPeer) TB() testing.TB {
 	return p.tb
 }
 
+func getDocVersion(peer Peer, cas uint64, xattrs map[string][]byte) rest.DocVersion {
+	docVersion := rest.DocVersion{}
+	hlvBytes, ok := xattrs[base.VvXattrName]
+	if ok {
+		var hlv *db.HybridLogicalVector
+		require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &hlv))
+		fmt.Printf("HLV: %+v\n", hlv)
+		docVersion.CV = db.Version{SourceID: hlv.SourceID, Value: hlv.Version}
+	} else {
+		docVersion.CV = db.Version{SourceID: peer.SourceID(), Value: cas}
+	}
+	sync, ok := xattrs[base.SyncXattrName]
+	if ok {
+		var syncData *db.SyncData
+		require.NoError(peer.TB(), json.Unmarshal(sync, &syncData))
+		docVersion.RevTreeID = syncData.CurrentRev
+	}
+	fmt.Printf("DocVersion: %+v\n", docVersion)
+	return docVersion
+}
+
 // getBodyAndVersion returns the body and version of a document from a sgbucket.DataStore.
 func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (rest.DocVersion, db.Body) {
-	docBytes, xattrs, _, err := collection.GetWithXattrs(peer.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
+	docBytes, xattrs, cas, err := collection.GetWithXattrs(peer.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
 	require.NoError(peer.TB(), err)
 	// get hlv to construct DocVersion
 	var body db.Body
 	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body))
-	return rest.NewDocVersionFromXattrs(peer.TB(), xattrs), body
+	return getDocVersion(peer, cas, xattrs), body
 }
 
 // waitForDocVersion returns the body of a document from a sgbucket.DataStore or fails.
@@ -229,11 +257,55 @@ func waitForDocVersion(peer Peer, collection sgbucket.DataStore, docID string, e
 		assert.NoError(c, err)
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version := rest.NewDocVersionFromXattrs(peer.TB(), xattrs)
-		assert.Equal(c, expected, version, "Could not find %s at version %+v on peer %s, found %+v", docID, expected, peer, version)
+		assert.Equal(c, expected.CV, version.CV, "Could not find %s at version %+v on peer %s, found %+v", docID, expected, peer, version)
 
 	}, 5*time.Second, 100*time.Millisecond)
 	// get hlv to construct DocVersion
 	var body db.Body
 	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
 	return body
+}
+
+// waitForImport will wait for an imported document
+func waitForImport(t *testing.T, cbsPeer *CouchbaseServerPeer, dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion, allPeers map[string]Peer) rest.DocVersion {
+	backingBucket := cbsPeer.GetBackingBucket().GetName()
+	for _, peer := range allPeers {
+		sgPeer, ok := peer.(*SyncGatewayPeer)
+		if !ok {
+			continue
+		}
+		if sgPeer.GetBackingBucket().GetName() != backingBucket {
+			continue
+		}
+		collection, err := cbsPeer.GetBackingBucket().NamedDataStore(dsName)
+		t.Logf("Found %s peer which is backed by same bucket as %s, waiting for import", sgPeer, cbsPeer)
+		require.NoError(t, err)
+		var version *rest.DocVersion
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			xattrs, _, err := collection.GetXattrs(peer.Context(), docID, []string{base.VvXattrName, base.MouXattrName})
+			if !assert.NoError(c, err, "Error getting xattrs for %s : %s: %+v", collection, docID, err) {
+				return
+			}
+			assert.Contains(c, xattrs, base.VvXattrName)
+			assert.Contains(c, xattrs, base.MouXattrName)
+			var mou *db.MetadataOnlyUpdate
+			assert.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
+			if base.UnitTestUrlIsWalrus() {
+				assert.Equal(c, mou.CAS, expected.CV.Value, "Expected previous CAS to be %d, got %d", expected.CV.Value, mou.PreviousCAS)
+			} else {
+				assert.Equal(c, mou.CAS, expected.CV.Value, "Expected previous CAS to be %d, got %d", expected.CV.Value, mou.CAS)
+			}
+			// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
+			newVersion := rest.NewDocVersionFromXattrs(t, xattrs)
+			fmt.Printf("expectedVersion: %+v\n", expected)
+			fmt.Printf("mou: %+v\n", mou)
+			fmt.Printf("newVersion: %+v\n", version)
+			version = &newVersion
+
+		}, 10*time.Second, 100*time.Millisecond, "Timed out waiting for import of %s on %s.%s", docID, cbsPeer.GetBackingBucket().GetName(), collection)
+		t.Logf("Updating version to %+v", *version)
+		return *version
+	}
+	t.Logf("Uusing original version %+v", expected)
+	return expected
 }

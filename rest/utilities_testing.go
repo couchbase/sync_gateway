@@ -2453,6 +2453,7 @@ func NewDocVersionFromXattrs(t testing.TB, xattrs map[string][]byte) DocVersion 
 	if ok {
 		var hlv *db.HybridLogicalVector
 		require.NoError(t, json.Unmarshal(hlvBytes, &hlv))
+		fmt.Printf("HLV: %+v\n", hlv)
 		docVersion.CV = db.Version{SourceID: hlv.SourceID, Value: hlv.Version}
 	}
 	sync, ok := xattrs[base.SyncXattrName]
