@@ -312,16 +312,6 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 			return err
 		}
 	}
-	//slices.Sort(collectionIDs)
-	//slices.Sort(a.CollectionIDs)
-	//
-	//var purgeNeeded bool
-	//for i, v := range collectionIDs {
-	//	if v != a.CollectionIDs[i] {
-	//		purgeNeeded = true
-	//		break
-	//	}
-	//}
 	slices.Sort(collectionIDs)
 	slices.Sort(a.CollectionIDs)
 	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
