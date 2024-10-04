@@ -463,7 +463,7 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 // Returns the raw body, in case it's needed for import.
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
-func UnmarshalDocumentSyncDataFromFeed(ctx context.Context, data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawXattrs map[string][]byte, err error) {
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawXattrs map[string][]byte, err error) {
 	var body []byte
 
 	// If xattr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.

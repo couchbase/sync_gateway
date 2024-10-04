@@ -397,7 +397,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	syncData, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(ctx, docJSON, event.DataType, collection.userXattrKey(), false)
+	syncData, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
