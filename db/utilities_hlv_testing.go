@@ -65,11 +65,11 @@ func (h *HLVAgent) InsertWithHLV(ctx context.Context, key string) (casOut uint64
 
 // UpdateWithHLV will update and existing doc in bucket mocking write from another hlv aware peer
 func (h *HLVAgent) UpdateWithHLV(ctx context.Context, key string, inputCas uint64, hlv *HybridLogicalVector) (casOut uint64) {
-	err := hlv.AddVersion(CreateVersion(h.Source, hlvExpandMacroCASValue))
+	err := hlv.AddVersion(CreateVersion(h.Source, expandMacroCASValueUint64))
 	require.NoError(h.t, err)
-	hlv.CurrentVersionCAS = hlvExpandMacroCASValue
+	hlv.CurrentVersionCAS = expandMacroCASValueUint64
 
-	vvXattr, err := ConstructXattrFromHlv(hlv)
+	vvXattr, err := hlv.MarshalJSON()
 	require.NoError(h.t, err)
 	mutateInOpts := &sgbucket.MutateInOptions{
 		MacroExpansion: hlv.computeMacroExpansions(),

@@ -247,8 +247,8 @@ const doc_meta_vv = `{"cvCas":"0x40e2010000000000","src":"cb06dc003846116d9b66d2
 func TestParseVersionVectorSyncData(t *testing.T) {
 	mv := make(HLVVersions)
 	pv := make(HLVVersions)
-	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = 1628620455147864000 //"c0ff05d7ac059a16"
-	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = 1628620455139868700
+	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = 1628620455147864000
+	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = 1628620458747363292
 	pv["s_YZvBpEaztom9z5V/hDoeIw"] = 1628620455135215600
 
 	ctx := base.TestCtx(t)

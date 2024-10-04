@@ -1822,9 +1822,9 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	// create a version larger than the allocated version above
 	incomingVersion := docUpdateVersionInt + 10
 	incomingHLV := HybridLogicalVector{
-		SourceID:     "test",
-		Version:      incomingVersion,
-		PrevVersions: PrevVersions{PreviousVersions: pv},
+		SourceID:         "test",
+		Version:          incomingVersion,
+		PreviousVersions: pv,
 	}
 
 	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil)
@@ -1940,9 +1940,9 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	// create a version larger than the allocated version above
 	incomingVersion := uint64(2 + 10)
 	incomingHLV := HybridLogicalVector{
-		SourceID:     "test",
-		Version:      incomingVersion,
-		PrevVersions: PrevVersions{PreviousVersions: pv},
+		SourceID:         "test",
+		Version:          incomingVersion,
+		PreviousVersions: pv,
 	}
 	// call PutExistingCurrentVersion with empty existing doc
 	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, &sgbucket.BucketDocument{})
