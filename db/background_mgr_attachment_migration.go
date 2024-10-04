@@ -25,15 +25,20 @@ type AttachmentMigrationManager struct {
 	DocsChanged   base.AtomicInt
 	MigrationID   string
 	CollectionIDs []uint32
+	databaseCtx   *DatabaseContext
 	lock          sync.RWMutex
 }
 
 var _ BackgroundManagerProcessI = &AttachmentMigrationManager{}
 
-func NewAttachmentMigrationManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager {
+func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager {
+	metadataStore := database.MetadataStore
+	metaKeys := database.MetadataKeys
 	return &BackgroundManager{
-		name:    "attachment_migration",
-		Process: &AttachmentMigrationManager{},
+		name: "attachment_migration",
+		Process: &AttachmentMigrationManager{
+			databaseCtx: database,
+		},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
@@ -51,7 +56,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 		}
 
 		a.MigrationID = uniqueUUID.String()
-		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Starting new migration run with migration ID: %q", a.MigrationID)
+		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Starting new migration run with migration ID: %s", a.MigrationID)
 		return nil
 	}
 
@@ -68,7 +73,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 		a.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
 		a.SetCollectionIDs(statusDoc.CollectionIDs)
 
-		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Attempting to resume migration with migration ID: %s", a.MigrationID)
+		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resuming migration with migration ID: %s, %d already processed", a.MigrationID, a.DocsProcessed.Value())
 
 		return nil
 	}
@@ -77,13 +82,13 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 }
 
 func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-	db := options["database"].(*Database)
+	db := a.databaseCtx
 	migrationLoggingID := "Migration: " + a.MigrationID
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback(ctx)
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to persist cluster status on-demand for attachment migration operation: %v", migrationLoggingID, err)
+			base.WarnfCtx(ctx, "[%s] Failed to persist latest cluster status for attachment migration: %v", migrationLoggingID, err)
 		}
 	}
 	defer persistClusterStatus()
@@ -120,7 +125,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		a.DocsProcessed.Add(1)
 		syncData, _, _, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 		if err != nil {
-			failProcess(err, "error unmarshaling document %s: %v", base.UD(docID), err)
+			failProcess(err, "error unmarshaling document %s with migrationID %s: %v", base.UD(docID), a.MigrationID, err)
 		}
 
 		if syncData == nil || syncData.Attachments == nil {
@@ -135,10 +140,9 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		// xattr migration to take place
 		err = collWithUser.MigrateAttachmentMetadata(collCtx, docID, event.Cas, syncData)
 		if err != nil {
-			failProcess(err, "error migrating document attachment metadata for doc: %s: %v", base.UD(docID), err)
-		} else {
-			a.DocsChanged.Add(1)
+			failProcess(err, "error migrating document attachment metadata for doc: %s with migrationID %s: %v", base.UD(docID), a.MigrationID, err)
 		}
+		a.DocsChanged.Add(1)
 		return true
 	}
 
@@ -151,7 +155,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	checkpointPrefix := db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID) + "att_migration:"
 
 	// check for mismatch in collection id's between current collections on the db and prev run
-	err = a.resetDCPMetadataIfNeeded(ctx, db.MetadataStore, db, checkpointPrefix, currCollectionIDs)
+	err = a.resetDCPMetadataIfNeeded(ctx, db, checkpointPrefix, currCollectionIDs)
 	if err != nil {
 		return err
 	}
@@ -164,7 +168,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
 		return err
 	}
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for attachment migration", migrationLoggingID, dcpFeedKey)
+	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for attachment migration", migrationLoggingID, dcpFeedKey)
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
@@ -172,35 +176,30 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		_ = dcpClient.Close()
 		return err
 	}
-	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started for Attachment Migration.", migrationLoggingID)
+	base.TracefCtx(ctx, base.KeyAll, "[%s] DCP client started for Attachment Migration.", migrationLoggingID)
 
 	select {
 	case <-doneChan:
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished migrating attachment metadata from sync data to global sync data. %d/%d docs changed", migrationLoggingID, a.DocsChanged.Value(), a.DocsProcessed.Value())
 		err = dcpClient.Close()
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client! %v", migrationLoggingID, err)
-			return err
+			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was finished %v", migrationLoggingID, err)
 		}
 		if processFailure != nil {
 			return processFailure
 		}
 		// set sync info here
 		for _, collectionID := range currCollectionIDs {
-			dbc, ok := db.CollectionByID[collectionID]
-			if !ok {
-				base.InfofCtx(ctx, base.KeyAll, "[%s] Completed attachment migration, but unable to update syncInfo for collection %v (collection is no longer associated with the database)", migrationLoggingID, collectionID)
-				continue
-			}
-			if err := base.SetSyncInfoMetaVersion(dbc.dataStore, base.MetadataVersionNumber); err != nil {
-				base.WarnfCtx(ctx, "[%s] Completed attachment migration, but unable to update syncInfo for collection %v: %v", migrationLoggingID, collectionID, err)
+			dbc := db.CollectionByID[collectionID]
+			if err := base.SetSyncInfoMetaVersion(dbc.dataStore, base.ProductAPIVersion); err != nil {
+				base.WarnfCtx(ctx, "[%s] Completed attachment migration, but unable to update syncInfo for collection %s: %v", migrationLoggingID, dbc.Name, err)
+				return err
 			}
 		}
+		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished migrating attachment metadata from sync data to global sync data. %d/%d docs changed", migrationLoggingID, a.DocsChanged.Value(), a.DocsProcessed.Value())
 	case <-terminator.Done():
-		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Attachment Migration process.", migrationLoggingID)
 		err = dcpClient.Close()
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client! %v", migrationLoggingID, err)
+			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was terminated %v", migrationLoggingID, err)
 			return err
 		}
 		if processFailure != nil {
@@ -302,50 +301,35 @@ func GenerateAttachmentMigrationDCPStreamName(migrationID string) string {
 }
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
-func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, datastore base.DataStore, database *Database, metadataKeyPrefix string, collectionIDs []uint32) error {
+func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
 	// if we are on our first run, no collections will be defined on the manager yet
 	if len(a.CollectionIDs) == 0 {
 		return nil
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
-		err := a.PurgeDCPMetadata(ctx, datastore, database, metadataKeyPrefix)
+		err := PurgeDCPMetadata(ctx, database, metadataKeyPrefix, a.MigrationID)
 		if err != nil {
 			return err
 		}
 	}
+	//slices.Sort(collectionIDs)
+	//slices.Sort(a.CollectionIDs)
+	//
+	//var purgeNeeded bool
+	//for i, v := range collectionIDs {
+	//	if v != a.CollectionIDs[i] {
+	//		purgeNeeded = true
+	//		break
+	//	}
+	//}
 	slices.Sort(collectionIDs)
 	slices.Sort(a.CollectionIDs)
-
-	var purgeNeeded bool
-	for i, v := range collectionIDs {
-		if v != a.CollectionIDs[i] {
-			purgeNeeded = true
-			break
-		}
-	}
-	if purgeNeeded {
-		err := a.PurgeDCPMetadata(ctx, datastore, database, metadataKeyPrefix)
+	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
+	if purgeNeeded != 0 {
+		err := PurgeDCPMetadata(ctx, database, metadataKeyPrefix, a.MigrationID)
 		if err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-// PurgeDCPMetadata will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
-func (a *AttachmentMigrationManager) PurgeDCPMetadata(ctx context.Context, datastore base.DataStore, database *Database, metadataKeyPrefix string) error {
-
-	bucket, err := base.AsGocbV2Bucket(database.Bucket)
-	if err != nil {
-		return err
-	}
-	numVbuckets, err := bucket.GetMaxVbno()
-	if err != nil {
-		return err
-	}
-
-	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, metadataKeyPrefix)
-	base.InfofCtx(ctx, base.KeyDCP, "purging persisted dcp metadata for attachment migration run %s", a.MigrationID)
-	metadata.Purge(ctx, base.DefaultNumWorkers)
 	return nil
 }

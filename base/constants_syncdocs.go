@@ -20,7 +20,6 @@ const SyncDocPrefix = "_sync:"                                 // Prefix for all
 const MetadataIdPrefix = "m_"                                  // Prefix for metadataId, to prevent collisions between namespaced and non-namespaced metadata documents
 const SyncDocMetadataPrefix = SyncDocPrefix + MetadataIdPrefix // Prefix for all namespaced Sync Gateway metadata documents
 const DCPCheckpointPrefix = "dcp_ck:"
-const MetadataVersionNumber = 4
 
 // Sync Gateway Metadata document types
 type metadataKey int
@@ -379,7 +378,7 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
 type SyncInfo struct {
 	MetadataID      string `json:"metadataID,omitempty"`
-	MetaDataVersion int8   `json:"metadata_version,omitempty"`
+	MetaDataVersion string `json:"metadata_version,omitempty"`
 }
 
 // initSyncInfo attempts to initialize syncInfo for a datastore
@@ -438,8 +437,8 @@ func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 }
 
 // SetSyncInfoMetaVersion sets sync info in DataStore to specified metadata version, preserving metadataID if present
-func SetSyncInfoMetaVersion(ds DataStore, metaVersion int8) error {
-	if metaVersion == 0 {
+func SetSyncInfoMetaVersion(ds DataStore, metaVersion string) error {
+	if metaVersion == "" {
 		return nil
 	}
 	_, err := ds.Update(SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {

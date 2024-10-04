@@ -2570,10 +2570,29 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 }
 
 // GetCollectionIDs will return all collection IDs for all collections configured on the database
-func (db *Database) GetCollectionIDs() []uint32 {
+func (db *DatabaseContext) GetCollectionIDs() []uint32 {
 	collIDs := make([]uint32, 0)
 	for id, _ := range db.CollectionByID {
 		collIDs = append(collIDs, id)
 	}
 	return collIDs
+}
+
+// PurgeDCPMetadata will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
+func PurgeDCPMetadata(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, taskID string) error {
+
+	bucket, err := base.AsGocbV2Bucket(database.Bucket)
+	if err != nil {
+		return err
+	}
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	datastore := database.MetadataStore
+	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, metadataKeyPrefix)
+	base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", taskID)
+	metadata.Purge(ctx, base.DefaultNumWorkers)
+	return nil
 }

@@ -3670,32 +3670,48 @@ func TestInject1xBodyProperties(t *testing.T) {
 // TestSettingSyncInfo:
 //   - Purpose of the test is to call both SetSyncInfoMetaVersion + SetSyncInfoMetadataID in different orders
 //     asserting that the operations preserve the metadataID/metaVersion
+//   - Permutations include doc being created if it doesn't exist, one element being updated and preserving the other
+//     elements if it exists and
 func TestSettingSyncInfo(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	ds := collection.GetCollectionDatastore()
 
-	require.NoError(t, base.SetSyncInfoMetaVersion(ds, 1))
+	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "1"))
 	require.NoError(t, base.SetSyncInfoMetadataID(ds, "someID"))
 
-	// assert that after above operations meta version ius preserved after setting of metadataID
+	// assert that after above operations meta version is preserved after setting of metadataID
 	var syncInfo base.SyncInfo
 	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
-	assert.Equal(t, int8(1), syncInfo.MetaDataVersion)
+	assert.Equal(t, "1", syncInfo.MetaDataVersion)
 	assert.Equal(t, "someID", syncInfo.MetadataID)
 
 	// remove sync info to test another permutation
 	require.NoError(t, ds.Delete(base.SGSyncInfo))
 
 	require.NoError(t, base.SetSyncInfoMetadataID(ds, "someID"))
-	require.NoError(t, base.SetSyncInfoMetaVersion(ds, 1))
+	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "1"))
 
 	// assert that after above operations metadataID is preserved after setting of metaVersion
 	syncInfo = base.SyncInfo{}
 	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
-	assert.Equal(t, int8(1), syncInfo.MetaDataVersion)
+	assert.Equal(t, "1", syncInfo.MetaDataVersion)
 	assert.Equal(t, "someID", syncInfo.MetadataID)
+
+	// test updating each element in sync info now both elements are defined
+	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "4"))
+	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "4", syncInfo.MetaDataVersion)
+	assert.Equal(t, "someID", syncInfo.MetadataID)
+
+	require.NoError(t, base.SetSyncInfoMetadataID(ds, "test"))
+	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "4", syncInfo.MetaDataVersion)
+	assert.Equal(t, "test", syncInfo.MetadataID)
+
 }

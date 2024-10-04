@@ -204,7 +204,7 @@ func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ct
 	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)
 		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
-		err = a.PurgeDCPMetadata(ctx, dataStore, database, keyPrefix)
+		err = PurgeDCPMetadata(ctx, database.DatabaseContext, keyPrefix, a.CompactID)
 		if err != nil {
 			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %s", err)
 			return false, err
