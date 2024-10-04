@@ -233,59 +233,141 @@ func TestHLVImport(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	localSource := db.EncodedSourceID
-
-	// 1. Test standard import of an SDK write
-	standardImportKey := "standardImport_" + t.Name()
-	standardImportBody := []byte(`{"prop":"value"}`)
-	cas, err := collection.dataStore.WriteCas(standardImportKey, 0, 0, standardImportBody, sgbucket.Raw)
-	require.NoError(t, err, "write error")
-	importOpts := importDocOptions{
-		isDelete: false,
-		expiry:   nil,
-		mode:     ImportFromFeed,
-		revSeqNo: 1,
+	type outputData struct {
+		docID             string
+		preImportCas      uint64
+		postImportCas     uint64
+		preImportRevSeqNo uint64
 	}
-	_, err = collection.ImportDocRaw(ctx, standardImportKey, standardImportBody, nil, importOpts, cas)
-	require.NoError(t, err, "import error")
 
-	importedDoc, _, err := collection.GetDocWithXattrs(ctx, standardImportKey, DocUnmarshalAll)
-	require.NoError(t, err)
-	importedHLV := importedDoc.HLV
-	require.Equal(t, cas, importedHLV.ImportCAS)
-	require.Equal(t, base.HexCasToUint64(importedDoc.SyncData.Cas), importedHLV.CurrentVersionCAS)
-	require.Equal(t, base.HexCasToUint64(importedDoc.SyncData.Cas), importedHLV.Version)
-	require.Equal(t, localSource, importedHLV.SourceID)
-
-	// 2. Test import of write by HLV-aware peer (HLV is already updated, sync metadata is not).
+	var standardBody = []byte(`{"prop":"value"}`)
 	otherSource := "otherSource"
-	hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
-	existingHLVKey := "existingHLV_" + t.Name()
-	_ = hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+	var testCases = []struct {
+		name        string
+		preFunc     func(t *testing.T, collection *DatabaseCollectionWithUser, docID string)
+		expectedMou func(output *outputData) *MetadataOnlyUpdate
+		expectedHLV func(output *outputData) *HybridLogicalVector
+	}{
+		{
+			name: "Import of SDK write, no existing doc",
+			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
+				_, err := collection.dataStore.WriteCas(docID, 0, 0, standardBody, sgbucket.Raw)
+				require.NoError(t, err, "write error")
+			},
+			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
+				return &MetadataOnlyUpdate{
+					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					PreviousRevSeqNo: output.preImportRevSeqNo,
+				}
+			},
+			expectedHLV: func(output *outputData) *HybridLogicalVector {
+				return &HybridLogicalVector{
+					SourceID:          db.EncodedSourceID,
+					Version:           output.postImportCas,
+					CurrentVersionCAS: output.postImportCas,
+					ImportCAS:         output.preImportCas,
+				}
+			},
+		},
+		{
+			name: "Import of SDK write, existing doc",
+			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
+				_, doc, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+				require.NoError(t, err)
+				_, err = collection.dataStore.WriteCas(docID, 0, doc.Cas, standardBody, sgbucket.Raw)
+				require.NoError(t, err, "write error")
+			},
+			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
+				return &MetadataOnlyUpdate{
+					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					PreviousRevSeqNo: output.preImportRevSeqNo,
+				}
+			},
+			expectedHLV: func(output *outputData) *HybridLogicalVector {
+				return &HybridLogicalVector{
+					SourceID:          db.EncodedSourceID,
+					Version:           output.postImportCas,
+					CurrentVersionCAS: output.postImportCas,
+					ImportCAS:         output.preImportCas,
+				}
+			},
+		},
 
-	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName, base.VvXattrName, base.VirtualXattrRevSeqNo})
-	require.NoError(t, err)
-
-	docxattr := existingXattrs[base.VirtualXattrRevSeqNo]
-	revSeqNo := RetrieveDocRevSeqNo(t, docxattr)
-
-	importOpts = importDocOptions{
-		isDelete: false,
-		expiry:   nil,
-		mode:     ImportFromFeed,
-		revSeqNo: revSeqNo,
+		{
+			name: "Import of HLV-aware peer write",
+			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
+				hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
+				_ = hlvHelper.InsertWithHLV(ctx, docID)
+			},
+			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
+				return &MetadataOnlyUpdate{
+					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					PreviousRevSeqNo: output.preImportRevSeqNo,
+				}
+			},
+			expectedHLV: func(output *outputData) *HybridLogicalVector {
+				return &HybridLogicalVector{
+					SourceID:          EncodeSource(otherSource),
+					Version:           output.preImportCas,
+					CurrentVersionCAS: output.preImportCas,
+					ImportCAS:         output.preImportCas,
+				}
+			},
+		},
 	}
-	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, importOpts, cas)
-	require.NoError(t, err, "import error")
 
-	importedDoc, _, err = collection.GetDocWithXattrs(ctx, existingHLVKey, DocUnmarshalAll)
-	require.NoError(t, err)
-	importedHLV = importedDoc.HLV
-	// cas in the HLV's current version and cvCAS should not have changed, and should match importCAS
-	require.Equal(t, cas, importedHLV.ImportCAS)
-	require.Equal(t, cas, importedHLV.CurrentVersionCAS)
-	require.Equal(t, cas, importedHLV.Version)
-	require.Equal(t, hlvHelper.Source, importedHLV.SourceID)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			docID := strings.ToLower(testCase.name)
+			testCase.preFunc(t, collection, docID)
+
+			xattrNames := []string{base.SyncXattrName, base.VvXattrName, base.MouXattrName, base.VirtualXattrRevSeqNo}
+			_, existingXattrs, preImportCas, err := collection.dataStore.GetWithXattrs(ctx, docID, xattrNames)
+			require.NoError(t, err)
+			revSeqNo := RetrieveDocRevSeqNo(t, existingXattrs[base.VirtualXattrRevSeqNo])
+
+			importOpts := importDocOptions{
+				isDelete: false,
+				expiry:   nil,
+				mode:     ImportFromFeed,
+				revSeqNo: revSeqNo,
+			}
+			_, err = collection.ImportDocRaw(ctx, docID, standardBody, existingXattrs, importOpts, preImportCas)
+			require.NoError(t, err, "import error")
+
+			xattrs, finalCas, err := collection.dataStore.GetXattrs(ctx, docID, xattrNames)
+			require.NoError(t, err)
+			require.NotEqual(t, preImportCas, finalCas)
+
+			// validate _sync.cas was expanded to document cas
+			require.Contains(t, xattrs, base.SyncXattrName)
+			var syncData *SyncData
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+			require.Equal(t, finalCas, base.HexCasToUint64(syncData.Cas))
+
+			output := outputData{
+				docID:             docID,
+				preImportCas:      preImportCas,
+				postImportCas:     finalCas,
+				preImportRevSeqNo: revSeqNo,
+			}
+
+			if testCase.expectedMou != nil {
+				require.Contains(t, xattrs, base.MouXattrName)
+				var mou *MetadataOnlyUpdate
+				require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
+				require.Contains(t, xattrs, base.MouXattrName)
+				require.Equal(t, testCase.expectedMou(&output), mou)
+			}
+			var hlv *HybridLogicalVector
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
+			require.Equal(t, testCase.expectedHLV(&output), hlv)
+		})
+	}
+
 }
 
 // TestHLVMapToCBLString:
