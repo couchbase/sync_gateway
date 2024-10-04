@@ -41,6 +41,8 @@ const (
 	fileLoggerCollateFlushTimeout    = 10 * time.Millisecond
 
 	rotatedLogDeletionInterval = time.Hour // not configurable
+
+	logFilePermission = 0644 // rw-r--r--
 )
 
 // ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.
@@ -78,20 +80,11 @@ func InitLogging(ctx context.Context, logFilePath string,
 		return nil
 	}
 
-	err = validateLogFilePath(logFilePath)
-	if err != nil {
-		return err
-	}
-
 	ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
 
 	auditLogFilePath := logFilePath
 	if audit != nil && audit.AuditLogFilePath != nil && BoolDefault(audit.Enabled, false) {
 		auditLogFilePath = *audit.AuditLogFilePath
-		err = validateLogFilePath(auditLogFilePath)
-		if err != nil {
-			return fmt.Errorf("error validating audit log file path: %w", err)
-		}
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Audit to %v", auditLogFilePath)
 	}
 
@@ -303,33 +296,6 @@ func BuildLoggingConfigFromLoggers(originalConfig LoggingConfig) *LoggingConfig 
 	return &config
 }
 
-// validateLogFilePath ensures the given path is created and is a directory.
-func validateLogFilePath(logFilePath string) error {
-	// Make full directory structure if it doesn't already exist
-	err := os.MkdirAll(logFilePath, 0700)
-	if err != nil {
-		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
-	}
-
-	// Ensure LogFilePath is a directory. Lumberjack will check file permissions when it opens/creates the logfile.
-	if f, err := os.Stat(logFilePath); err != nil {
-		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
-	} else if !f.IsDir() {
-		return errors.Wrap(ErrInvalidLogFilePath, "not a directory")
-	}
-
-	// Make temporary empty file to check if the log file path is writable
-	writeCheckFilePath := filepath.Join(logFilePath, ".SG_write_check")
-	err = os.WriteFile(writeCheckFilePath, nil, 0666)
-	if err != nil {
-		return errors.Wrap(err, ErrUnwritableLogFilePath.Error())
-	}
-	// best effort cleanup, but if we don't manage to remove it, WriteFile will overwrite on the next startup and try to remove again
-	_ = os.Remove(writeCheckFilePath)
-
-	return nil
-}
-
 // validateLogFileOutput ensures the given file has permission to be written to.
 func validateLogFileOutput(logFileOutput string) error {
 	if logFileOutput == "" {
@@ -338,13 +304,23 @@ func validateLogFileOutput(logFileOutput string) error {
 
 	// Validate containing directory
 	logFileOutputDirectory := filepath.Dir(logFileOutput)
-	err := validateLogFilePath(logFileOutputDirectory)
+	// Make full directory structure if it doesn't already exist
+	err := os.MkdirAll(logFileOutputDirectory, 0700)
 	if err != nil {
-		return err
+		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
 	}
 
-	// Validate given file is writeable
-	file, err := os.OpenFile(logFileOutput, os.O_WRONLY|os.O_CREATE, 0666)
+	// Ensure LogFilePath is a directory. We'll check file permissions when it opens/creates the logfile.
+	if f, err := os.Stat(logFileOutputDirectory); err != nil {
+		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
+	} else if !f.IsDir() {
+		return errors.Wrap(ErrInvalidLogFilePath, "not a directory")
+	}
+
+	// Validate given file is writeable by touching it.
+	// If the file does not exist, this will open a zero sized log file intentionally to set permissions.
+	// The permissions will then be used by lumberjack. Otherwise, lumberjack will use 0600 permissions.
+	file, err := os.OpenFile(logFileOutput, os.O_WRONLY|os.O_CREATE, logFilePermission)
 	if err != nil {
 		if os.IsPermission(err) {
 			return errors.Wrap(err, "invalid file output")

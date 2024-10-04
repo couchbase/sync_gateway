@@ -31,6 +31,24 @@ func TestValidateLogFileOutput(t *testing.T) {
 	assert.NoError(t, err, "log file output path should be validated")
 }
 
+func TestValidateLogFileOutputNonDirectory(t *testing.T) {
+	tmpdir := t.TempDir()
+	file1 := filepath.Join(tmpdir, "1.log")
+	f, err := os.Create(file1)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, f.Close()) })
+
+	invalidFilePath := filepath.Join(file1, "2.log")
+	err = validateLogFileOutput(invalidFilePath)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid log file path: mkdir")
+	if runtime.GOOS == "windows" {
+		assert.ErrorContains(t, err, "The system cannot find the path specified")
+	} else {
+		assert.ErrorContains(t, err, "not a directory")
+	}
+}
+
 // CBG-1760: Error upfront when the configured logFilePath is not writable
 func TestLogFilePathWritable(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -64,7 +82,8 @@ func TestLogFilePathWritable(t *testing.T) {
 			err := os.Mkdir(logFilePath, test.logFilePathPerms)
 			require.NoError(t, err)
 
-			err = validateLogFilePath(logFilePath)
+			// The write-check is done inside validateLogFileOutput now.
+			err = validateLogFileOutput(filepath.Join(logFilePath, test.name+".log"))
 			if test.error {
 				assert.Error(t, err)
 				return
