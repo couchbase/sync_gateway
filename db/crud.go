@@ -883,7 +883,6 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	} else {
 		doc.removeRevisionBody(ctx, ancestorRevId)
 	}
-	return
 }
 
 // ////// UPDATING DOCUMENTS:
@@ -2400,7 +2399,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				doc.metadataOnlyUpdate.CAS = base.CasToString(casOut)
 			}
 			// update the doc's HLV defined post macro expansion
-			doc = db.postWriteUpdateHLV(doc, casOut)
+			doc = postWriteUpdateHLV(doc, casOut)
 		}
 	}
 
@@ -2553,7 +2552,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	return doc, newRevID, nil
 }
 
-func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
+func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
 	if doc.HLV == nil {
 		return doc
 	}

@@ -224,6 +224,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		// msg, ok = client.pullReplication.WaitForMessage(5)
 		msg = btcRunner.WaitForBlipRevMessage(client.id, doc1ID, version2)
 
+		// pending CBG-3748 we can only assert on delta sync for HLV replication
 		if base.IsEnterpriseEdition() && client.UseHLV() {
 			// Check the request was sent with the correct deltaSrc property
 			client.AssertDeltaSrcProperty(t, msg, version)
@@ -314,6 +315,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		msg := btcRunner.WaitForBlipRevMessage(client.id, docID, version2)
 
 		// Check EE is delta, and CE is full-body replication
+		// pending CBG-3748 we can only assert on delta sync for HLV replication
 		if base.IsEnterpriseEdition() && client.UseHLV() {
 			// Check the request was sent with the correct deltaSrc property
 			client.AssertDeltaSrcProperty(t, msg, version)
@@ -523,7 +525,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		})
 		defer client.Close()
 
-		// we need to be in hlv mode and in enterprise mode to use delta sync
+		// pending CBG-3748 we can only assert on delta sync for HLV replication
 		useDelta := base.IsEnterpriseEdition() && client.UseHLV()
 		btcRunner.StartPull(client.id)
 
@@ -627,6 +629,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		})
 		defer client2.Close()
 
+		// pending CBG-3748 we can only assert on delta sync for HLV replication
 		useDeltas := base.IsEnterpriseEdition() && client2.UseHLV() && client1.UseHLV()
 
 		btcRunner.StartPull(client1.id)
@@ -747,6 +750,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		client.ClientDeltas = true
 		btcRunner.StartPull(client.id)
 
+		// pending CBG-3748 we can only assert on delta sync for HLV replication
 		useDeltas := base.IsEnterpriseEdition() && client.UseHLV()
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
@@ -842,6 +846,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client.Close()
 		client.ClientDeltas = true
+		// pending CBG-3748 we can only assert on delta sync for HLV replication
 		useDeltas := base.IsEnterpriseEdition() && client.UseHLV()
 
 		btcRunner.StartPull(client.id)
