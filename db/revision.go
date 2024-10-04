@@ -254,35 +254,44 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 //	   - new revision stored (as duplicate), with expiry rev_max_age_seconds
 //	delta=true && shared_bucket_access=false
 //	   - old revision stored, with expiry rev_max_age_seconds
-func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, oldRev string, oldBody []byte) (backupRev bool) {
+func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, newRev, oldRev string, newBody, oldBody []byte, newAtts AttachmentsMeta) {
 
 	// Without delta sync, store the old rev for in-flight replication purposes
 	if !db.deltaSyncEnabled() || db.deltaSyncRevMaxAgeSeconds() == 0 {
 		if len(oldBody) > 0 {
-			oldRevHash := base.Crc32cHashString([]byte(oldRev))
-			_ = db.setOldRevisionJSON(ctx, docId, oldRevHash, oldBody, db.oldRevExpirySeconds())
+			_ = db.setOldRevisionJSON(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds())
 		}
-		return backupRev
+		return
 	}
 
 	// Otherwise, store the revs for delta generation purposes, with a longer expiry
 
 	// Special handling for Xattrs so that SG still has revisions that were updated by an SDK write
 	if db.UseXattrs() {
-		backupRev = true // we need to 'backup' this rev postHLVUpdate due to macro expansion
+		var newBodyWithAtts = newBody
+		if len(newAtts) > 0 {
+			var err error
+			newBodyWithAtts, err = base.InjectJSONProperties(newBody, base.KVPair{
+				Key: BodyAttachments,
+				Val: newAtts,
+			})
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRev, err)
+				return
+			}
+		}
+		_ = db.setOldRevisionJSON(ctx, docId, newRev, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
 
 		// Refresh the expiry on the previous revision backup
-		oldRevHash := base.Crc32cHashString([]byte(oldRev))
-		_ = db.refreshPreviousRevisionBackup(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
-		return backupRev
+		_ = db.refreshPreviousRevisionBackup(ctx, docId, oldRev, oldBody, db.deltaSyncRevMaxAgeSeconds())
+		return
 	}
 
 	// Non-xattr only need to store the previous revision, as all writes come through SG
 	if len(oldBody) > 0 {
-		oldRevHash := base.Crc32cHashString([]byte(oldRev))
-		_ = db.setOldRevisionJSON(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
+		_ = db.setOldRevisionJSON(ctx, docId, oldRev, oldBody, db.deltaSyncRevMaxAgeSeconds())
 	}
-	return backupRev
+	return
 }
 
 func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, docid string, rev string, body []byte, expiry uint32) error {

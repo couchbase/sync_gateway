@@ -1836,7 +1836,6 @@ func TestPutRevV4(t *testing.T) {
 // Actual:
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 func TestGetRemovedDoc(t *testing.T) {
-	t.Skip("CBG-3748: backwards compatibility between cv and rev id for fetching backed up revs needed")
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
@@ -2037,8 +2036,7 @@ func TestSendReplacementRevision(t *testing.T) {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						revHash := base.Crc32cHashString([]byte(version1.GetRev(true)))
-						err := collection.PurgeOldRevisionJSON(ctx, docID, revHash)
+						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
 						require.NoError(t, err)
 						rt.GetDatabase().FlushRevisionCacheForTest()
 					}

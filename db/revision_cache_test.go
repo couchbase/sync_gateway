@@ -387,7 +387,6 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 }
 
 func TestBypassRevisionCache(t *testing.T) {
-	t.Skip("CBG-3748: backwards compatibility between cv and rev id for fetching backed up revs needed")
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)

@@ -7546,9 +7546,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	require.NoError(t, activeRT.WaitForVersion(docID, version3))
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
-	hashedCV := base.Crc32cHashString([]byte(version2.CV.String()))
-	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(hashedCV), hashedCV))
+	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevTreeID), version2.RevTreeID))
 	require.NoError(t, err)
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")

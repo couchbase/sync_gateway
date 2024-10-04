@@ -446,8 +446,7 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 
 func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document, cv Version) (bodyBytes []byte, attachments AttachmentsMeta, err error) {
 	if err = doc.HasCurrentVersion(ctx, cv); err != nil {
-		cvHash := base.Crc32cHashString([]byte(cv.String()))
-		bodyBytes, err = c.getOldRevisionJSON(ctx, doc.ID, cvHash)
+		bodyBytes, err = c.getOldRevisionJSON(ctx, doc.ID, doc.CurrentRev)
 		if err != nil || bodyBytes == nil {
 			return nil, nil, err
 		}
