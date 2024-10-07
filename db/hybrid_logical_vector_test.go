@@ -235,6 +235,7 @@ func TestHLVImport(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	type outputData struct {
 		docID             string
+		preImportHLV      *HybridLogicalVector
 		preImportCas      uint64
 		postImportCas     uint64
 		preImportRevSeqNo uint64
@@ -249,7 +250,7 @@ func TestHLVImport(t *testing.T) {
 		expectedHLV func(output *outputData) *HybridLogicalVector
 	}{
 		{
-			name: "Import of SDK write, no existing doc",
+			name: "SDK write, no existing doc",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
 				_, err := collection.dataStore.WriteCas(docID, 0, 0, standardBody, sgbucket.Raw)
 				require.NoError(t, err, "write error")
@@ -264,14 +265,13 @@ func TestHLVImport(t *testing.T) {
 			expectedHLV: func(output *outputData) *HybridLogicalVector {
 				return &HybridLogicalVector{
 					SourceID:          db.EncodedSourceID,
-					Version:           output.postImportCas,
-					CurrentVersionCAS: output.postImportCas,
-					ImportCAS:         output.preImportCas,
+					Version:           output.preImportCas,
+					CurrentVersionCAS: output.preImportCas,
 				}
 			},
 		},
 		{
-			name: "Import of SDK write, existing doc",
+			name: "SDK write, existing doc",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
 				_, doc, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 				require.NoError(t, err)
@@ -288,15 +288,13 @@ func TestHLVImport(t *testing.T) {
 			expectedHLV: func(output *outputData) *HybridLogicalVector {
 				return &HybridLogicalVector{
 					SourceID:          db.EncodedSourceID,
-					Version:           output.postImportCas,
-					CurrentVersionCAS: output.postImportCas,
-					ImportCAS:         output.preImportCas,
+					Version:           output.preImportCas,
+					CurrentVersionCAS: output.preImportCas,
 				}
 			},
 		},
-
 		{
-			name: "Import of HLV-aware peer write",
+			name: "HLV write from without mou",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
 				hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
 				_ = hlvHelper.InsertWithHLV(ctx, docID)
@@ -313,7 +311,99 @@ func TestHLVImport(t *testing.T) {
 					SourceID:          EncodeSource(otherSource),
 					Version:           output.preImportCas,
 					CurrentVersionCAS: output.preImportCas,
-					ImportCAS:         output.preImportCas,
+				}
+			},
+		},
+		{
+			name: "XDCR stamped with _mou",
+			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
+				hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
+				cas := hlvHelper.InsertWithHLV(ctx, docID)
+
+				_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
+				require.NoError(t, err)
+				mou := &MetadataOnlyUpdate{
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(cas)),
+					PreviousRevSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
+				}
+				opts := &sgbucket.MutateInOptions{
+					MacroExpansion: []sgbucket.MacroExpansionSpec{
+						sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas),
+					},
+				}
+				_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, opts)
+				require.NoError(t, err)
+			},
+			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
+				return &MetadataOnlyUpdate{
+					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					PreviousRevSeqNo: output.preImportRevSeqNo,
+				}
+			},
+			expectedHLV: func(output *outputData) *HybridLogicalVector {
+				return output.preImportHLV
+			},
+		},
+		{
+			name: "invalid _mou, but valid hlv",
+			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
+				hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
+				cas := hlvHelper.InsertWithHLV(ctx, docID)
+
+				_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
+				require.NoError(t, err)
+				mou := &MetadataOnlyUpdate{
+					CAS:              "invalid",
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(cas)),
+					PreviousRevSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
+				}
+				_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, nil)
+				require.NoError(t, err)
+			},
+			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
+				return &MetadataOnlyUpdate{
+					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					PreviousRevSeqNo: output.preImportRevSeqNo,
+				}
+			},
+			expectedHLV: func(output *outputData) *HybridLogicalVector {
+				return output.preImportHLV
+			},
+		},
+		{
+			name: "SDK write with valid _mou, but no HLV",
+			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
+				cas, err := collection.dataStore.WriteCas(docID, 0, 0, standardBody, sgbucket.Raw)
+				require.NoError(t, err)
+				_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
+				require.NoError(t, err)
+
+				mou := &MetadataOnlyUpdate{
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(cas)),
+					PreviousRevSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
+				}
+				opts := &sgbucket.MutateInOptions{
+					MacroExpansion: []sgbucket.MacroExpansionSpec{
+						sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas),
+					},
+				}
+				_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, opts)
+				require.NoError(t, err)
+			},
+			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
+				return &MetadataOnlyUpdate{
+					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					PreviousRevSeqNo: output.preImportRevSeqNo,
+				}
+			},
+			expectedHLV: func(output *outputData) *HybridLogicalVector {
+				return &HybridLogicalVector{
+					SourceID:          db.EncodedSourceID,
+					Version:           output.preImportCas,
+					CurrentVersionCAS: output.preImportCas,
 				}
 			},
 		},
@@ -354,17 +444,18 @@ func TestHLVImport(t *testing.T) {
 				postImportCas:     finalCas,
 				preImportRevSeqNo: revSeqNo,
 			}
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &output.preImportHLV))
 
 			if testCase.expectedMou != nil {
 				require.Contains(t, xattrs, base.MouXattrName)
 				var mou *MetadataOnlyUpdate
 				require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
 				require.Contains(t, xattrs, base.MouXattrName)
-				require.Equal(t, testCase.expectedMou(&output), mou)
+				require.Equal(t, *testCase.expectedMou(&output), *mou)
 			}
 			var hlv *HybridLogicalVector
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
-			require.Equal(t, testCase.expectedHLV(&output), hlv)
+			require.Equal(t, *testCase.expectedHLV(&output), *hlv)
 		})
 	}
 

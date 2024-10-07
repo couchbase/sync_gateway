@@ -896,8 +896,9 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 }
 
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
-func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateType) (*Document, error) {
+func (db *DatabaseCollectionWithUser) updateHLV(d *Document, previousMou *MetadataOnlyUpdate, docUpdateEvent DocUpdateType) (*Document, error) {
 
+	hasHLV := d.HLV != nil
 	if d.HLV == nil {
 		d.HLV = &HybridLogicalVector{}
 	}
@@ -905,25 +906,32 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 	case ExistingVersion:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
-		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
 	case Import:
-		if d.HLV.CurrentVersionCAS == d.Cas {
-			// if cvCAS = document CAS, the HLV has already been updated for this mutation by another HLV-aware peer.
-			// Set ImportCAS to the previous document CAS, but don't otherwise modify HLV
-			d.HLV.ImportCAS = d.Cas
-		} else {
+		// Update HLV if:
+		//
+		// - local SDK write without existing HLV. There could be a stale _mou, but that should be ignored.)
+		// - local SDK write with an existing HLV, where there was a document already processed by local cluster.
+		// 	- _vv.cvCAS != document cas
+		// 	- no _mou or _mou.cas != document cas
+
+		// Do not update HLV if this is an XDCR migration:
+		//
+		// - document was written by another cluster
+		// 	- _vv.cvCAS != document cas, no _mou or _mou.cas != document cas
+		// - document was written by another cluster, itself having an undergone an import
+		// 	- _vv.cvCAS == document cas and _mou.cas != document cas
+
+		if !hasHLV || (d.HLV.CurrentVersionCAS != d.Cas && (previousMou == nil || base.HexCasToUint64(previousMou.CAS) != d.Cas)) {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
 			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
-			newVVEntry.Value = expandMacroCASValueUint64
+			newVVEntry.Value = d.Cas
 			err := d.SyncData.HLV.AddVersion(newVVEntry)
 			if err != nil {
 				return nil, err
 			}
-			d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
-			d.HLV.ImportCAS = d.Cas
+			d.HLV.CurrentVersionCAS = d.Cas
 		}
-
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := Version{}
@@ -935,7 +943,6 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		}
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
-		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
 	}
 	return d, nil
 }
@@ -2090,6 +2097,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
+	previousMou := doc.metadataOnlyUpdate
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
@@ -2149,7 +2157,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	// The callback has updated the HLV for mutations coming from CBL.  Update the HLV so that the current version is set before
 	// we call updateChannels, which needs to set the current version for removals
 	// update the HLV values
-	doc, err = col.updateHLV(doc, docUpdateEvent)
+	doc, err = col.updateHLV(doc, previousMou, docUpdateEvent)
 	if err != nil {
 		return
 	}
