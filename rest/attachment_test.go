@@ -2275,7 +2275,7 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		ctx := base.TestCtx(t)
 
-		initialVersion := btc.rt.PutDocDirectly(doc1ID, JsonToMap(t, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`))
+		initialVersion := btc.rt.PutDocWithAttachment(doc1ID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
 		btc.rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
 		btcRunner.WaitForVersion(btc.id, doc1ID, initialVersion)
@@ -2669,9 +2669,9 @@ func TestCBLRevposHandling(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
 		defer btc.Close()
 
-		doc1Version := btc.rt.PutDocDirectly(doc1ID, JsonToMap(t, `{}`))
-		doc2Version := btc.rt.PutDocDirectly(doc2ID, JsonToMap(t, `{}`))
-		btc.rt.WaitForPendingChanges()
+		startingBody := db.Body{"foo": "bar"}
+		doc1Version := btc.rt.PutDocDirectly(doc1ID, startingBody)
+		doc2Version := btc.rt.PutDocDirectly(doc2ID, startingBody)
 
 		btc.rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
