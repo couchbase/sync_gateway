@@ -125,7 +125,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		a.DocsProcessed.Add(1)
 		syncData, _, _, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 		if err != nil {
-			failProcess(err, "error unmarshaling document %s with migrationID %s: %v", base.UD(docID), a.MigrationID, err)
+			failProcess(err, "[%s] error unmarshaling document %s: %v, stopping attachment migration.", migrationLoggingID, base.UD(docID), err)
 		}
 
 		if syncData == nil || syncData.Attachments == nil {
@@ -140,7 +140,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		// xattr migration to take place
 		err = collWithUser.MigrateAttachmentMetadata(collCtx, docID, event.Cas, syncData)
 		if err != nil {
-			failProcess(err, "error migrating document attachment metadata for doc: %s with migrationID %s: %v", base.UD(docID), a.MigrationID, err)
+			failProcess(err, "[%s] error migrating document attachment metadata for doc: %s: %v", migrationLoggingID, base.UD(docID), err)
 		}
 		a.DocsChanged.Add(1)
 		return true
@@ -307,7 +307,8 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 		return nil
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
-		err := PurgeDCPMetadata(ctx, database, metadataKeyPrefix, a.MigrationID)
+		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
+		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
 		if err != nil {
 			return err
 		}
@@ -316,7 +317,8 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	slices.Sort(a.CollectionIDs)
 	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
 	if purgeNeeded != 0 {
-		err := PurgeDCPMetadata(ctx, database, metadataKeyPrefix, a.MigrationID)
+		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
+		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
 		if err != nil {
 			return err
 		}

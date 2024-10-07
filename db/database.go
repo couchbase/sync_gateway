@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/exp/maps"
 )
 
 const (
@@ -2571,15 +2572,11 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 
 // GetCollectionIDs will return all collection IDs for all collections configured on the database
 func (db *DatabaseContext) GetCollectionIDs() []uint32 {
-	collIDs := make([]uint32, 0)
-	for id, _ := range db.CollectionByID {
-		collIDs = append(collIDs, id)
-	}
-	return collIDs
+	return maps.Keys(db.CollectionByID)
 }
 
-// PurgeDCPMetadata will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
-func PurgeDCPMetadata(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, taskID string) error {
+// PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
+func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, taskID string) error {
 
 	bucket, err := base.AsGocbV2Bucket(database.Bucket)
 	if err != nil {
@@ -2591,8 +2588,7 @@ func PurgeDCPMetadata(ctx context.Context, database *DatabaseContext, metadataKe
 	}
 
 	datastore := database.MetadataStore
-	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, metadataKeyPrefix)
-	base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", taskID)
+	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, checkpointPrefix)
 	metadata.Purge(ctx, base.DefaultNumWorkers)
 	return nil
 }
