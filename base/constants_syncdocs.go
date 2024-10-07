@@ -377,7 +377,8 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
 type SyncInfo struct {
-	MetadataID string `json:"metadataID"`
+	MetadataID      string `json:"metadataID,omitempty"`
+	MetaDataVersion string `json:"metadata_version,omitempty"`
 }
 
 // initSyncInfo attempts to initialize syncInfo for a datastore
@@ -412,17 +413,48 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err err
 	return syncInfo.MetadataID != metadataID, nil
 }
 
-// SetSyncInfo sets syncInfo in a DataStore to the specified metadataID
-func SetSyncInfo(ds DataStore, metadataID string) error {
+// SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present
+func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 
 	// If the metadataID isn't defined, don't persist SyncInfo.  Defensive handling for legacy use cases.
 	if metadataID == "" {
 		return nil
 	}
-	syncInfo := &SyncInfo{
-		MetadataID: metadataID,
+	_, err := ds.Update(SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		var syncInfo SyncInfo
+		if current != nil {
+			parseErr := JSONUnmarshal(current, &syncInfo)
+			if parseErr != nil {
+				return nil, nil, false, parseErr
+			}
+		}
+		// if we have a metadataID to set, set it preserving the metadata version if present
+		syncInfo.MetadataID = metadataID
+		bytes, err := JSONMarshal(&syncInfo)
+		return bytes, nil, false, err
+	})
+	return err
+}
+
+// SetSyncInfoMetaVersion sets sync info in DataStore to specified metadata version, preserving metadataID if present
+func SetSyncInfoMetaVersion(ds DataStore, metaVersion string) error {
+	if metaVersion == "" {
+		return nil
 	}
-	return ds.Set(SGSyncInfo, 0, nil, syncInfo)
+	_, err := ds.Update(SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		var syncInfo SyncInfo
+		if current != nil {
+			parseErr := JSONUnmarshal(current, &syncInfo)
+			if parseErr != nil {
+				return nil, nil, false, parseErr
+			}
+		}
+		// if we have a meta version to set, set it preserving the metadata ID if present
+		syncInfo.MetaDataVersion = metaVersion
+		bytes, err := JSONMarshal(&syncInfo)
+		return bytes, nil, false, err
+	})
+	return err
 }
 
 // SerializeIfLonger returns name as a sha1 string if the length of the name is greater or equal to the length specificed. Otherwise, returns the original string.
