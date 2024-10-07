@@ -206,13 +206,7 @@ func TestMigrateMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// Call migrateMeta with stale args that have old stale expiry
-	_, _, err = collection.migrateMetadata(
-		ctx,
-		key,
-		body,
-		existingBucketDoc,
-		&sgbucket.MutateInOptions{PreserveExpiry: false},
-	)
+	_, _, err = collection.migrateMetadata(ctx, key, existingBucketDoc, &sgbucket.MutateInOptions{PreserveExpiry: false})
 	assert.True(t, err != nil)
 	assert.True(t, err == base.ErrCasFailureShouldRetry)
 
@@ -256,13 +250,7 @@ func TestMigrateMetadataWithHLV(t *testing.T) {
 	require.NoError(t, err)
 
 	// Migrate metadata
-	_, _, err = collection.migrateMetadata(
-		ctx,
-		key,
-		body,
-		existingBucketDoc,
-		&sgbucket.MutateInOptions{PreserveExpiry: false},
-	)
+	_, _, err = collection.migrateMetadata(ctx, key, existingBucketDoc, &sgbucket.MutateInOptions{PreserveExpiry: false})
 	require.NoError(t, err)
 
 	// Fetch the existing doc, ensure _vv is preserved
