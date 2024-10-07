@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/exp/maps"
 )
 
 const (
@@ -121,6 +122,7 @@ type DatabaseContext struct {
 	ResyncManager               *BackgroundManager
 	TombstoneCompactionManager  *BackgroundManager
 	AttachmentCompactionManager *BackgroundManager
+	AttachmentMigrationManager  *BackgroundManager
 	ExitChanges                 chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
@@ -2568,4 +2570,27 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 		}
 	}
 	return names
+}
+
+// GetCollectionIDs will return all collection IDs for all collections configured on the database
+func (db *DatabaseContext) GetCollectionIDs() []uint32 {
+	return maps.Keys(db.CollectionByID)
+}
+
+// PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
+func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, taskID string) error {
+
+	bucket, err := base.AsGocbV2Bucket(database.Bucket)
+	if err != nil {
+		return err
+	}
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	datastore := database.MetadataStore
+	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, checkpointPrefix)
+	metadata.Purge(ctx, base.DefaultNumWorkers)
+	return nil
 }

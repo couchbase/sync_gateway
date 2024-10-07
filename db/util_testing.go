@@ -782,7 +782,6 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docI
 	newSync, err := base.JSONMarshal(docSync)
 	require.NoError(t, err)
 
-	// change this to update xattr
 	_, err = dataStore.WriteWithXattrs(ctx, docID, 0, cas, value, map[string][]byte{base.SyncXattrName: newSync}, []string{base.GlobalXattrName}, opts)
 	require.NoError(t, err)
 }
