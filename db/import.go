@@ -335,9 +335,9 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			newDoc.DocAttachments = doc.SyncData.Attachments
 		}
 
-		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas
+		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
 		if metadataOnlyUpdate && db.useMou() {
-			newDoc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo)
+			newDoc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo, doc.metadataOnlyUpdate)
 		}
 
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil

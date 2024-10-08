@@ -1289,12 +1289,21 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate
-func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64) *MetadataOnlyUpdate {
-	return &MetadataOnlyUpdate{
+func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
+	var prevCas string
+	currentCasString := base.CasToString(currentCas)
+	if currentMou != nil && currentCasString == currentMou.CAS {
+		prevCas = currentMou.PreviousCAS
+	} else {
+		prevCas = currentCasString
+	}
+
+	metadataOnlyUpdate := &MetadataOnlyUpdate{
 		CAS:              expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
-		PreviousCAS:      base.CasToString(currentCas),
+		PreviousCAS:      prevCas,
 		PreviousRevSeqNo: revNo,
 	}
+	return metadataOnlyUpdate
 }
 
 // HasCurrentVersion Compares the specified CV with the fetched documents CV, returns error on mismatch between the two
