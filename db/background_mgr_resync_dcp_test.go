@@ -527,6 +527,7 @@ function sync(doc, oldDoc){
 	require.NotNil(t, mou)
 	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
 	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
+	require.Equal(t, base.CasToString(cas), mou.CAS)
 }
 
 func runResync(t *testing.T, ctx context.Context, db *Database, collection *DatabaseCollectionWithUser, syncFn string) (stats ResyncManagerResponseDCP) {
