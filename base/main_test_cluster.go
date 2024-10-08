@@ -23,7 +23,7 @@ var firstServerVersionToSupportMobileXDCR *ComparableBuildVersion
 
 func init() {
 	var err error
-	firstServerVersionToSupportMobileXDCR, err = NewComparableBuildVersionFromString("7.6.4@5004")
+	firstServerVersionToSupportMobileXDCR, err = NewComparableBuildVersionFromString("7.6.4@5074")
 	if err != nil {
 		log.Fatalf("Couldn't parse firstServerVersionToSupportMobileXDCR: %v", err)
 	}
