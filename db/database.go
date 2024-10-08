@@ -1856,9 +1856,9 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			}
 			doc.SetCrc32cUserXattrHash()
 
-			// Update metadataOnlyUpdate based on previous Cas
+			// Update metadataOnlyUpdate based on previous Cas, metadataOnlyUpdate
 			if db.useMou() {
-				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo)
+				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.metadataOnlyUpdate)
 			}
 
 			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
