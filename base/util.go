@@ -1021,9 +1021,6 @@ func HexCasToUint64(cas string) uint64 {
 // HexCasToUint64ForDelta will convert hex cas to uint64 accounting for any stripped zeros in delta calculation
 func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 	var decoded []byte
-	if len(casByte) <= 2 {
-		return 0, fmt.Errorf("hex value is too short")
-	}
 
 	// as we strip any zeros off the end of the hex value for deltas, the input delta could be odd length
 	if len(casByte)%2 != 0 {
@@ -1055,14 +1052,16 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 }
 
 // Uint64ToLittleEndianHexAndStripZeros will convert a uint64 type to little endian hex, stripping any zeros off the end
+// + stripping 0x from start
 func Uint64ToLittleEndianHexAndStripZeros(cas uint64) string {
-	hexCas := Uint64CASToLittleEndianHexNo0x(cas)
+	hexCas := Uint64CASToLittleEndianHex(cas)
 
 	i := len(hexCas) - 1
 	for i > 2 && hexCas[i] == '0' {
 		i--
 	}
-	return string(hexCas[:i+1])
+	// strip 0x from start
+	return string(hexCas[2 : i+1])
 }
 
 func HexToBase64(s string) ([]byte, error) {
@@ -1073,14 +1072,6 @@ func HexToBase64(s string) ([]byte, error) {
 	encoded := make([]byte, base64.RawStdEncoding.EncodedLen(len(decoded)))
 	base64.RawStdEncoding.Encode(encoded, decoded)
 	return encoded, nil
-}
-
-func Uint64CASToLittleEndianHexNo0x(cas uint64) []byte {
-	littleEndian := make([]byte, 8)
-	binary.LittleEndian.PutUint64(littleEndian, cas)
-	encodedArray := make([]byte, hex.EncodedLen(8))
-	_ = hex.Encode(encodedArray, littleEndian)
-	return encodedArray
 }
 
 func CasToString(cas uint64) string {

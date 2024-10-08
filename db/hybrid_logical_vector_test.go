@@ -469,6 +469,7 @@ func TestParseCBLVersion(t *testing.T) {
 //   - Create a test HLV and convert it to persisted format in bytes
 //   - Convert this back to in memory format, assert each elem of in memory format previous versions map is the same as
 //     the corresponding element in the original pvMap
+//   - Do the same for a pv map that will have two entries with the same version value
 //   - Do the same as above but for nil maps
 func TestVersionDeltaCalculation(t *testing.T) {
 	src1 := "src1"
@@ -514,6 +515,33 @@ func TestVersionDeltaCalculation(t *testing.T) {
 
 	// convert the bytes back to an in memory format of hlv
 	memHLV := NewHybridLogicalVector()
+	err = base.JSONUnmarshal(vvXattr, &memHLV)
+	require.NoError(t, err)
+
+	assert.Equal(t, pvMap[src1], memHLV.PreviousVersions[src1])
+	assert.Equal(t, pvMap[src2], memHLV.PreviousVersions[src2])
+	assert.Equal(t, pvMap[src3], memHLV.PreviousVersions[src3])
+	assert.Equal(t, pvMap[src4], memHLV.PreviousVersions[src4])
+	assert.Equal(t, pvMap[src5], memHLV.PreviousVersions[src5])
+
+	// assert that the other elements are as expected
+	assert.Equal(t, expSrc, memHLV.SourceID)
+	assert.Equal(t, expVal, memHLV.Version)
+	assert.Equal(t, expCas, memHLV.CurrentVersionCAS)
+	assert.Len(t, memHLV.MergeVersions, 0)
+
+	// test hlv with two pv version entries that are equal to each other
+	hlv = createHLVForTest(t, inputHLVA)
+	// make src3 have the same version value as src2
+	pvMap[src3] = pvMap[src2]
+	hlv.PreviousVersions = pvMap
+
+	// convert hlv to persisted format
+	vvXattr, err = base.JSONMarshal(&hlv)
+	require.NoError(t, err)
+
+	// convert the bytes back to an in memory format of hlv
+	memHLV = NewHybridLogicalVector()
 	err = base.JSONUnmarshal(vvXattr, &memHLV)
 	require.NoError(t, err)
 

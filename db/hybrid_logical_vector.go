@@ -42,7 +42,7 @@ func (vde VersionsDeltas) Swap(i, j int) {
 
 func (vde VersionsDeltas) Less(i, j int) bool {
 	if vde[i].Value == vde[j].Value {
-		return vde[i].SourceID < vde[j].SourceID
+		return false
 	}
 	return vde[i].Value < vde[j].Value
 }
@@ -56,6 +56,11 @@ func VersionDeltas(versions map[string]uint64) VersionsDeltas {
 	vdm := make(VersionsDeltas, 0, len(versions))
 	for src, vrs := range versions {
 		vdm = append(vdm, CreateVersion(src, vrs))
+	}
+
+	// return early for single entry
+	if len(vdm) == 1 {
+		return vdm
 	}
 
 	// sort the list
@@ -77,10 +82,7 @@ func VersionsToDeltas(m map[string]uint64) []string {
 	var vrsList []string
 	deltas := VersionDeltas(m)
 	for _, delta := range deltas {
-		key := delta.SourceID
-		val := delta.Value
-		encodedVal := base.Uint64ToLittleEndianHexAndStripZeros(val)
-		listItem := encodedVal + "@" + key
+		listItem := delta.StringForVersionDelta()
 		vrsList = append(vrsList, listItem)
 	}
 
@@ -142,6 +144,13 @@ func (v Version) String() string {
 	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 
+// StringForVersionDelta will take a version struct and convert the value to delta format
+// (encoding it to LE hex, stripping any 0's off the end and stripping leading 0x)
+func (v Version) StringForVersionDelta() string {
+	encodedVal := base.Uint64ToLittleEndianHexAndStripZeros(v.Value)
+	return encodedVal + "@" + v.SourceID
+}
+
 // ExtractCurrentVersionFromHLV will take the current version form the HLV struct and return it in the Version struct
 func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 	src, vrs := hlv.GetCurrentVersion()
@@ -158,16 +167,6 @@ type HybridLogicalVector struct {
 	MergeVersions     HLVVersions // map of merge versions for fast efficient lookup
 	PreviousVersions  HLVVersions // map of previous versions for fast efficient lookup
 }
-
-// constants for the json fields of the bucket version vector
-const (
-	jsonCvCAS           = "cvCas"
-	jsonImportCAS       = "importCAS"
-	jsonSourceID        = "src"
-	jsonVersionCAS      = "ver"
-	jsonMergeVersion    = "mv"
-	jsonPreviousVersion = "pv"
-)
 
 // NewHybridLogicalVector returns an initialised HybridLogicalVector.
 func NewHybridLogicalVector() HybridLogicalVector {
@@ -528,30 +527,38 @@ func CreateEncodedSourceID(bucketUUID, clusterUUID string) (string, error) {
 }
 
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
+	type BucketVector struct {
+		CurrentVersionCAS string    `json:"cvCas,omitempty"`
+		ImportCAS         string    `json:"importCAS,omitempty"`
+		SourceID          string    `json:"src"`
+		Version           string    `json:"ver"`
+		PV                *[]string `json:"pv,omitempty"`
+		MV                *[]string `json:"mv,omitempty"`
+	}
 	var cvCas string
 	var importCAS string
 	var vrsCas string
 
-	bucketHLV := make(map[string]interface{})
+	var bucketHLV = BucketVector{}
 	if hlv.CurrentVersionCAS != 0 {
 		cvCas = base.CasToString(hlv.CurrentVersionCAS)
-		bucketHLV[jsonCvCAS] = cvCas
+		bucketHLV.CurrentVersionCAS = cvCas
 	}
 	if hlv.ImportCAS != 0 {
 		importCAS = base.CasToString(hlv.ImportCAS)
-		bucketHLV[jsonImportCAS] = importCAS
+		bucketHLV.ImportCAS = importCAS
 	}
 	vrsCas = base.CasToString(hlv.Version)
-	bucketHLV[jsonVersionCAS] = vrsCas
-	bucketHLV[jsonSourceID] = hlv.SourceID
+	bucketHLV.Version = vrsCas
+	bucketHLV.SourceID = hlv.SourceID
 
 	pvPersistedFormat := VersionsToDeltas(hlv.PreviousVersions)
 	if len(pvPersistedFormat) > 0 {
-		bucketHLV[jsonPreviousVersion] = pvPersistedFormat
+		bucketHLV.PV = &pvPersistedFormat
 	}
 	mvPersistedFormat := VersionsToDeltas(hlv.MergeVersions)
 	if len(mvPersistedFormat) > 0 {
-		bucketHLV[jsonMergeVersion] = mvPersistedFormat
+		bucketHLV.MV = &mvPersistedFormat
 	}
 
 	return base.JSONMarshal(&bucketHLV)

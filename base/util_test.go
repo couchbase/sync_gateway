@@ -1764,4 +1764,11 @@ func TestUint64CASToLittleEndianHexAndStripZeros(t *testing.T) {
 	u64Stripped, err = HexCasToUint64ForDelta([]byte(hexLEStripped))
 	require.NoError(t, err)
 	assert.Equal(t, u64, u64Stripped)
+
+	hexLE = "0xa500000000000000"
+	u64 = HexCasToUint64(hexLE)
+	hexLEStripped = Uint64ToLittleEndianHexAndStripZeros(u64)
+	u64Stripped, err = HexCasToUint64ForDelta([]byte(hexLEStripped))
+	require.NoError(t, err)
+	assert.Equal(t, u64, u64Stripped)
 }
