@@ -154,7 +154,7 @@ func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration
 				if len(call.ArgumentList) > 1 {
 					message = call.Argument(1).String()
 				}
-				runner.output.Rejection = base.HTTPErrorf(int(status), message)
+				runner.output.Rejection = base.NewHTTPError(int(status), message)
 			}
 		}
 		return otto.UndefinedValue()

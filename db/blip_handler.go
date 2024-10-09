@@ -137,7 +137,7 @@ func (bh *blipHandler) refreshUser() error {
 			// Refresh the BlipSyncContext database
 			err := bc.blipContextDb.ReloadUser(bh.loggingCtx)
 			if err != nil {
-				return base.HTTPErrorf(CBLReconnectErrorCode, fmt.Sprintf("%s", err))
+				return base.NewHTTPError(CBLReconnectErrorCode, err.Error())
 			}
 			newUser := bc.blipContextDb.User()
 			newUser.InitializeRoles()
@@ -191,7 +191,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 		bh.collectionIdx = &collectionIndex
 		bh.collectionCtx, err = bh.collections.get(&collectionIndex)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
+			return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
 		}
 		bh.collection = &DatabaseCollectionWithUser{
 			DatabaseCollection: bh.collectionCtx.dbCollection,
@@ -221,7 +221,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		return err
 	}
 	if value == nil {
-		return base.HTTPErrorf(http.StatusNotFound, http.StatusText(http.StatusNotFound))
+		return base.NewHTTPError(http.StatusNotFound, http.StatusText(http.StatusNotFound))
 	}
 	response.Properties[GetCheckpointResponseRev] = value[BodyRev].(string)
 	delete(value, BodyRev)
@@ -1293,7 +1293,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		if base.IsDocNotFoundError(err) {
 			return ErrAttachmentNotFound
 		}
-		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))
+		return base.HTTPErrorf(http.StatusInternalServerError, "Error getting client attachment: %v", err)
 	}
 
 	proof := ProveAttachment(bh.loggingCtx, attData, nonce)

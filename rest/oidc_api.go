@@ -98,7 +98,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	client, err := provider.GetClient(h.ctx(), h.getOIDCCallbackURL)
 	if err != nil {
 		return redirectURLString, base.HTTPErrorf(
-			http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider: %s - %v", providerName, err))
+			http.StatusInternalServerError, "Unable to obtain client for provider: %s - %v", providerName, err)
 	}
 
 	var redirectURL *url.URL
@@ -180,7 +180,7 @@ func (h *handler) handleOIDCCallback() error {
 	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)
 	token, err := client.Config().Exchange(context, code)
 	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Failed to exchange token: "+err.Error())
+		return base.HTTPErrorf(http.StatusInternalServerError, "Failed to exchange token: %s", err.Error())
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
@@ -215,7 +215,7 @@ func (h *handler) handleOIDCCallback() error {
 func (h *handler) handleOIDCRefresh() error {
 	refreshToken := h.getQuery(requestParamRefreshToken)
 	if refreshToken == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "Refresh token must be present for oidc refresh")
+		return base.NewHTTPError(http.StatusBadRequest, "Refresh token must be present for oidc refresh")
 	}
 
 	providerName := h.getQuery(requestParamProvider)
@@ -289,7 +289,7 @@ func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, erro
 	provider, err := h.db.GetOIDCProvider(providerName)
 	if provider == nil || err != nil {
 		return nil, base.HTTPErrorf(
-			http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
+			http.StatusBadRequest, "OpenID Connect not configured for database %v", h.db.Name)
 	}
 	return provider, nil
 }

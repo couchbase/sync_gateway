@@ -472,11 +472,11 @@ func GetStringArrayProperty(body map[string]interface{}, property string) ([]str
 		for i := 0; i < len(items); i++ {
 			strings[i], ok = items[i].(string)
 			if !ok {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, property+" must be a string array")
+				return nil, base.HTTPErrorf(http.StatusBadRequest, "%s must be a string array", property)
 			}
 		}
 		return strings, nil
 	} else {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, property+" must be a string array")
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "%s must be a string array", property)
 	}
 }

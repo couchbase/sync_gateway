@@ -57,12 +57,12 @@ func (h *handler) handleCreateDB() error {
 	config.Name = dbName
 	if h.server.persistentConfig {
 		if err := config.validatePersistentDbConfig(); err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		validateReplications := true
 		if err := config.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		version, err := GenerateDatabaseConfigVersionID(h.ctx(), "", config)
@@ -597,7 +597,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 	validateReplications := true
 	err = dbConfig.validate(h.ctx(), validateOIDC, validateReplications)
 	if err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		return base.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	if !h.server.persistentConfig {
@@ -606,7 +606,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		err = updatedDbConfig.validateConfigUpdate(h.ctx(), oldDBConfig,
 			validateOIDC)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
@@ -648,10 +648,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 
 		if err := dbConfig.validatePersistentDbConfig(); err != nil {
-			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 		if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
-			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -1069,7 +1069,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 
 		validateReplications := false
 		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications); err != nil {
-			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -1239,7 +1239,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 
 		validateReplications := false
 		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications); err != nil {
-			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -1470,7 +1470,7 @@ func (h *handler) handleSetLogging() error {
 	var setLogLevel bool
 	if level := h.getQuery("logLevel"); level != "" {
 		if err := newLogLevel.UnmarshalText([]byte(level)); err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			return base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 		setLogLevel = true
 	} else if level := h.getIntQuery("level", 0); level != 0 {
@@ -1697,7 +1697,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	if err = auth.ValidatePrincipalName(internalName); err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		return base.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	newInfo.Name = &internalName
@@ -1891,7 +1891,7 @@ func (h *handler) getUsers() error {
 	nameOnly, _ := h.getOptBoolQuery(paramNameOnly, true)
 
 	if limit > 0 && nameOnly {
-		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Use of %s only supported when %s=false", paramLimit, paramNameOnly))
+		return base.HTTPErrorf(http.StatusBadRequest, "Use of %s only supported when %s=false", paramLimit, paramNameOnly)
 	}
 
 	var bytes []byte
@@ -1910,7 +1910,7 @@ func (h *handler) getUsers() error {
 		bytes, marshalErr = base.JSONMarshal(users)
 	} else {
 		if h.db.Options.UseViews {
-			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Use of %s=false not supported when database has use_views=true", paramNameOnly))
+			return base.HTTPErrorf(http.StatusBadRequest, "Use of %s=false not supported when database has use_views=true", paramNameOnly)
 		}
 		users, err := h.db.GetUsers(h.ctx(), int(limit))
 		if err != nil {

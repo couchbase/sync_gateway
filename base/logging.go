@@ -187,7 +187,7 @@ func LogLevelCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format s
 // The content passed in is expected to be a JSON dictionary.
 func RecordStats(statsJson string) {
 	// if statsLogger is nil, logf will no-op
-	statsLogger.Load().logf(statsJson)
+	statsLogger.Load().log(statsJson)
 }
 
 // logTo is the "core" logging function. All other logging functions (like Debugf(), WarnfCtx(), etc.) end up here.
@@ -276,11 +276,11 @@ func LogSyncGatewayVersion(ctx context.Context) {
 
 	// Log the startup indicator to ALL log files too.
 	msg = addPrefixes(msg, ctx, LevelNone, KeyNone)
-	errorLogger.Load().conditionalPrintf(LevelNone, msg)
-	warnLogger.Load().conditionalPrintf(LevelNone, msg)
-	infoLogger.Load().conditionalPrintf(LevelNone, msg)
-	debugLogger.Load().conditionalPrintf(LevelNone, msg)
-	traceLogger.Load().conditionalPrintf(LevelNone, msg)
+	errorLogger.Load().conditionalPrint(msg)
+	warnLogger.Load().conditionalPrint(msg)
+	infoLogger.Load().conditionalPrint(msg)
+	debugLogger.Load().conditionalPrint(msg)
+	traceLogger.Load().conditionalPrint(msg)
 }
 
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.

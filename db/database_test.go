@@ -3063,7 +3063,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf(testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 
 			ctx := base.TestCtx(t)
 			dbCtx, err := NewDatabaseContext(ctx, "db", bucket.NoCloseClone(), false, testCase.options)

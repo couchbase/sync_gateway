@@ -472,7 +472,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
 			} else if dbState != db.DBOnline {
 				// DB is in transition state, no calls will be accepted until it is Online or Offline state
-				return base.HTTPErrorf(http.StatusServiceUnavailable, fmt.Sprintf("DB is %v - try again later", db.RunStateString[dbState]))
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is %v - try again later", db.RunStateString[dbState])
 			}
 		}
 	}

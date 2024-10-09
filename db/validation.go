@@ -59,7 +59,7 @@ func validateImportBody(body Body) error {
 	disallowed := []string{BodyId, BodyRev, BodyExpiry, BodyRevisions}
 	for _, prop := range disallowed {
 		if _, ok := body[prop]; ok {
-			return base.HTTPErrorf(http.StatusNotFound, "top-level property '"+prop+"' is a reserved internal property therefore cannot be imported")
+			return base.NewHTTPError(http.StatusNotFound, "top-level property '"+prop+"' is a reserved internal property therefore cannot be imported")
 		}
 	}
 	// TODO: Validate attachment data to ensure user is not setting invalid attachments
@@ -76,7 +76,7 @@ func validateBlipBody(ctx context.Context, rawBody []byte, doc *Document) error 
 		// Only unmarshal if raw body contains the disallowed property
 		if bytes.Contains(rawBody, []byte(`"`+prop+`"`)) {
 			if _, ok := doc.Body(ctx)[prop]; ok {
-				return base.HTTPErrorf(http.StatusNotFound, "top-level property '"+prop+"' is a reserved internal property")
+				return base.NewHTTPError(http.StatusNotFound, "top-level property '"+prop+"' is a reserved internal property")
 			}
 		}
 	}

@@ -214,7 +214,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 	p := &Page{Title: "Oidc Test Provider", Query: requestParams}
 	t := template.New("Test Login")
 	if t, err := t.Parse(loginHtml); err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, err.Error())
+		return base.NewHTTPError(http.StatusInternalServerError, err.Error())
 	} else {
 		err := t.Execute(h.response, p)
 		if err != nil {

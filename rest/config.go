@@ -620,7 +620,7 @@ func readFromPath(ctx context.Context, path string, insecureSkipVerify bool) (rc
 			return nil, err
 		} else if resp.StatusCode >= 300 {
 			_ = resp.Body.Close()
-			return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
+			return nil, base.NewHTTPError(resp.StatusCode, http.StatusText(resp.StatusCode))
 		}
 		rc = resp.Body
 	} else if base.FileExists(path) {
