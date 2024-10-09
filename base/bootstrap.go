@@ -150,23 +150,53 @@ func NewCouchbaseCluster(ctx context.Context, server, username, password,
 	x509CertPath, x509KeyPath, caCertPath string,
 	forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
 	tlsSkipVerify *bool, useXattrConfig *bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
+	opts := newCouchbaseClusterOpts{
+		server:             server,
+		username:           username,
+		password:           password,
+		x509CertPath:       x509CertPath,
+		x509KeyPath:        x509KeyPath,
+		caCertPath:         caCertPath,
+		forcePerBucketAuth: forcePerBucketAuth,
+		perBucketCreds:     perBucketCreds,
+		tlsSkipVerify:      tlsSkipVerify,
+		useXattrConfig:     useXattrConfig,
+		bucketMode:         bucketMode,
+	}
+	return NewCouchbaseClusterWithOpts(ctx, opts)
+}
 
-	securityConfig, err := GoCBv2SecurityConfig(ctx, tlsSkipVerify, caCertPath)
+type newCouchbaseClusterOpts struct {
+	server             string
+	username           string
+	password           string
+	x509CertPath       string
+	x509KeyPath        string
+	caCertPath         string
+	forcePerBucketAuth bool
+	perBucketCreds     PerBucketCredentialsConfig
+	tlsSkipVerify      *bool
+	useXattrConfig     *bool
+	bucketMode         BucketConnectionMode
+}
+
+func NewCouchbaseClusterWithOpts(ctx context.Context, opts newCouchbaseClusterOpts) (*CouchbaseCluster, error) {
+	securityConfig, err := GoCBv2SecurityConfig(ctx, opts.tlsSkipVerify, opts.caCertPath)
 	if err != nil {
 		return nil, err
 	}
 
 	clusterAuthConfig, err := GoCBv2Authenticator(
-		username, password,
-		x509CertPath, x509KeyPath,
+		opts.username, opts.password,
+		opts.x509CertPath, opts.x509KeyPath,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	// Populate individual bucket credentials
-	perBucketAuth := make(map[string]*gocb.Authenticator, len(perBucketCreds))
-	for bucket, credentials := range perBucketCreds {
+	perBucketAuth := make(map[string]*gocb.Authenticator, len(opts.perBucketCreds))
+	for bucket, credentials := range opts.perBucketCreds {
 		authenticator, err := GoCBv2Authenticator(
 			credentials.Username, credentials.Password,
 			credentials.X509CertPath, credentials.X509KeyPath,
@@ -185,19 +215,19 @@ func NewCouchbaseCluster(ctx context.Context, server, username, password,
 	}
 
 	cbCluster := &CouchbaseCluster{
-		server:               server,
-		forcePerBucketAuth:   forcePerBucketAuth,
+		server:               opts.server,
+		forcePerBucketAuth:   opts.forcePerBucketAuth,
 		perBucketAuth:        perBucketAuth,
 		clusterOptions:       clusterOptions,
-		bucketConnectionMode: bucketMode,
+		bucketConnectionMode: opts.bucketMode,
 	}
 
-	if bucketMode == CachedClusterConnections {
+	if opts.bucketMode == CachedClusterConnections {
 		cbCluster.cachedBucketConnections = cachedBucketConnections{buckets: make(map[string]*cachedBucket)}
 	}
 
 	cbCluster.configPersistence = &DocumentBootstrapPersistence{}
-	if useXattrConfig != nil && *useXattrConfig == true {
+	if BoolDefault(opts.useXattrConfig, false) {
 		cbCluster.configPersistence = &XattrBootstrapPersistence{}
 	}
 

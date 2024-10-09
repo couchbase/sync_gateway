@@ -73,9 +73,14 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		delete(m.workers, dbConfig.Name)
 	}
 
+	opts := bootstrapConnectionOptsFromDbConfig(dbConfig.DbConfig)
+	opts.bucketConnectionMode = base.PerUseClusterConnections
+	opts.isServerless = startupConfig.IsServerless()
+
 	base.InfofCtx(ctx, base.KeyAll, "Starting new initialization for database %s ...",
 		base.MD(dbConfig.Name))
-	couchbaseCluster, err := createBootstrapConnectionWithCredentials(ctx, startupConfig, dbConfig.Username, dbConfig.Password, base.PerUseClusterConnections)
+
+	couchbaseCluster, err := createBootstrapConnectionWithOpts(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +96,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		return nil, err
 	}
 
-	indexOptions := m.BuildIndexOptions(startupConfig, dbConfig)
+	indexOptions := m.BuildIndexOptions(startupConfig.IsServerless(), dbConfig)
 
 	// Create new worker and add this caller as a watcher
 	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
@@ -125,7 +130,7 @@ func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
 	return ok
 }
 
-func (m *DatabaseInitManager) BuildIndexOptions(startupConfig *StartupConfig, dbConfig *DatabaseConfig) db.InitializeIndexOptions {
+func (m *DatabaseInitManager) BuildIndexOptions(isServerless bool, dbConfig *DatabaseConfig) db.InitializeIndexOptions {
 	numReplicas := DefaultNumIndexReplicas
 	if dbConfig.NumIndexReplicas != nil {
 		numReplicas = *dbConfig.NumIndexReplicas
@@ -133,7 +138,7 @@ func (m *DatabaseInitManager) BuildIndexOptions(startupConfig *StartupConfig, db
 	return db.InitializeIndexOptions{
 		WaitForIndexesOnlineOption: base.WaitForIndexesInfinite,
 		NumReplicas:                numReplicas,
-		Serverless:                 startupConfig.IsServerless(),
+		Serverless:                 isServerless,
 		UseXattrs:                  dbConfig.UseXattrs(),
 	}
 }
