@@ -23,7 +23,7 @@ function ExciseRBACCapella() {
     Operation: {
       leave(Operation) {
         // remove all text after first regex match
-        idx = Operation.description.search(re);
+        idx = (Operation.description || '').search(re);
         if (idx > 0) {
           Operation.description = Operation.description.substr(0, idx);
         }
