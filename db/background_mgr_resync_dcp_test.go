@@ -486,12 +486,53 @@ func TestResyncMou(t *testing.T) {
 	require.NotNil(t, syncData)
 	require.NotNil(t, initialSDKMou)
 
-	// Update sync function
+	// Update sync function and run resync
 	syncFn := `
 function sync(doc, oldDoc){
 	channel("resync_channel");
 }`
-	_, err = collection.UpdateSyncFun(ctx, syncFn)
+	resyncStats := runResync(t, ctx, db, collection, syncFn)
+	assert.Equal(t, int64(2), resyncStats.DocsChanged)
+
+	var cas uint64
+	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, mou)
+	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
+	require.Equal(t, base.CasToString(cas), mou.CAS)
+
+	syncData, mou, cas = getSyncAndMou(t, collection, "sdkWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, mou)
+	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
+	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
+	require.Equal(t, base.CasToString(cas), mou.CAS)
+
+	// Run resync a second time with a new sync function.  mou.cas should be updated, mou.pCas should not change.
+	syncFn = `
+function sync(doc, oldDoc){
+	channel("resync_channel_again");
+}`
+	resyncStats = runResync(t, ctx, db, collection, syncFn)
+	assert.Equal(t, int64(2), resyncStats.DocsChanged)
+
+	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, mou)
+	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
+	require.Equal(t, base.CasToString(cas), mou.CAS)
+
+	syncData, mou, cas = getSyncAndMou(t, collection, "sdkWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, mou)
+	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
+	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
+	require.Equal(t, base.CasToString(cas), mou.CAS)
+}
+
+func runResync(t *testing.T, ctx context.Context, db *Database, collection *DatabaseCollectionWithUser, syncFn string) (stats ResyncManagerResponseDCP) {
+
+	_, err := collection.UpdateSyncFun(ctx, syncFn)
 	require.NoError(t, err)
 
 	resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
@@ -517,19 +558,7 @@ function sync(doc, oldDoc){
 		assert.Equal(c, BackgroundProcessStateCompleted, status.State)
 	}, 40*time.Second, 200*time.Millisecond)
 
-	stats := getResyncStats(resyncMgr.Process)
-	assert.Equal(t, int64(2), stats.DocsChanged)
-
-	syncData, mou, _ = getSyncAndMou(t, collection, "sgWrite")
-	require.NotNil(t, syncData)
-	require.NotNil(t, mou)
-	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
-
-	syncData, mou, _ = getSyncAndMou(t, collection, "sdkWrite")
-	require.NotNil(t, syncData)
-	require.NotNil(t, mou)
-	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
-	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
+	return getResyncStats(resyncMgr.Process)
 }
 
 // helper function to Unmarshal BackgroundProcess state into ResyncManagerResponseDCP
