@@ -46,7 +46,7 @@ func TestDatabaseInitManager(t *testing.T) {
 	dropAllNonPrimaryIndexes(t, tb.GetSingleDataStore())
 
 	// Async index creation
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), dbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	select {
@@ -108,14 +108,14 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, blocks after first collection
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), dbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	WaitForChannel(t, singleCollectionInitChannel, "first collection init")
 
 	// Make a duplicate call to initialize database, should reuse the existing agent
-	duplicateDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
+	duplicateDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), dbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	// Unblock collection callback to process all remaining collections
@@ -132,7 +132,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	waitForWorkerDone(t, initMgr, "dbName")
 
 	// Rerun init, should start a new worker for the database and re-verify init for each collection
-	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
+	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), dbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 	WaitForChannel(t, rerunDoneChan, "repeated init done chan")
 	totalCount = atomic.LoadInt64(&collectionCount)
@@ -194,7 +194,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), dbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
@@ -203,7 +203,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	// Make a call to initialize database for the same db name, different collections
 	modifiedDbConfig := makeDbConfig(tb.GetName(), dbName, collection1and3ScopesConfig)
 	require.NoError(t, modifiedDbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
-	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, modifiedDbConfig.ToDatabaseConfig())
+	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), modifiedDbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel
@@ -281,14 +281,14 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig())
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), db1Config.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Start second async index creation for db2 while first is still running
-	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig())
+	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), db2Config.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel
@@ -371,14 +371,14 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig())
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), db1Config.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Start second async index creation for db2 while first is still running
-	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig())
+	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), db2Config.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel
@@ -446,7 +446,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 		if currentCount == 0 {
 			defer wg.Done()
 			log.Printf("invoking InitializeDatabase again during teardown")
-			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
+			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), dbConfig.ToDatabaseConfig())
 			require.NoError(t, err)
 			WaitForChannel(t, doneChan2, "done chan 2")
 		}
@@ -455,7 +455,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	}
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config.IsServerless(), dbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 
 	WaitForChannel(t, doneChan1, "done chan 1")

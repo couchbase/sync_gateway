@@ -727,7 +727,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		isAsync = startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
 
 		// Initialize indexes using DatabaseInitManager.
-		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config.IsServerless(), &config)
 		if err != nil {
 			return nil, err
 		}

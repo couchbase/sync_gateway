@@ -49,7 +49,7 @@ type CollectionInitData map[base.ScopeAndCollectionName]db.CollectionIndexesType
 
 // Initializes the database.  Will establish a new cluster connection using the provided server config.  Establishes a new
 // cluster-only N1QLStore based on the startup config to perform initialization.
-func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig) (doneChan chan error, err error) {
+func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, isServerless bool, dbConfig *DatabaseConfig) (doneChan chan error, err error) {
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	if m.workers == nil {
@@ -75,7 +75,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 	opts := bootstrapConnectionOptsFromDbConfig(dbConfig.DbConfig)
 	opts.bucketConnectionMode = base.PerUseClusterConnections
-	opts.isServerless = startupConfig.IsServerless()
+	opts.isServerless = isServerless
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting new initialization for database %s ...",
 		base.MD(dbConfig.Name))
@@ -96,7 +96,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		return nil, err
 	}
 
-	indexOptions := m.BuildIndexOptions(startupConfig.IsServerless(), dbConfig)
+	indexOptions := m.BuildIndexOptions(isServerless, dbConfig)
 
 	// Create new worker and add this caller as a watcher
 	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
