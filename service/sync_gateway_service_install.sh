@@ -32,7 +32,7 @@ LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 SERVICE_CMD_ONLY=false
 
 usage() {
-  echo "This script creates an init service to run a sync_gateway instance."
+  echo "This script creates a systemd or launchctl service to run a sync_gateway instance."
   echo "If you want to install more than one service instance"
   echo "create additional services with different names."
   echo ""
@@ -47,23 +47,17 @@ usage() {
 }
 
 ostype() {
-  if [ -x "$(command -v lsb_release)" ]; then
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    if [ "${ID_LIKE##*rhel*}" != "${ID_LIKE}" ]; then
+      OS=rhel
+    else
+      OS=$(echo "${ID}")
+    fi
+    VER=${VERSION_ID}
+  elif [ -x "$(command -v lsb_release)" ]; then
     OS=$(lsb_release -si)
     VER=$(lsb_release -sr)
-  elif [ -f /etc/os-release ]; then
-    . /etc/os-release
-    OS=$(echo "${ID}")
-    if [ "${OS}" = "debian" ]; then
-      VER=$(cat /etc/debian_version)
-    else
-      VER=$VERSION_ID
-    fi
-  elif [ -f /etc/redhat-release ]; then
-    OS=rhel
-    VER=$(cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//)
-  elif [ -f /etc/system-release ]; then
-    OS=rhel
-    VER=5.0
   else
     OS=$(uname -s)
     VER=$(uname -r)
@@ -242,43 +236,15 @@ ubuntu)
     ;;
   esac
   ;;
-redhat* | rhel* | centos | ol)
-  case 1:${OS_MAJOR_VERSION:--} in
-  $((OS_MAJOR_VERSION >= 7))*)
-    if [ "$SERVICE_CMD_ONLY" = true ]; then
-      echo "systemctl start ${SERVICE_NAME}"
-    else
-      pre_install_actions
-      render_template script_templates/systemd_sync_gateway.tpl >/usr/lib/systemd/system/${SERVICE_NAME}.service
-      systemctl enable ${SERVICE_NAME}
-      systemctl start ${SERVICE_NAME}
-    fi
-    ;;
-  *)
-    echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
-    usage
-    exit 1
-    ;;
-  esac
-  ;;
-amzn*)
-  case 1:${OS_MAJOR_VERSION:--} in
-  $((OS_MAJOR_VERSION >= 2))*)
+rhel*|amzn*) # RHEL, Alma, Rocky, Amazon Linux and any derivatives
   if [ "$SERVICE_CMD_ONLY" = true ]; then
-      echo "systemctl start ${SERVICE_NAME}"
-    else
-      pre_install_actions
-      render_template script_templates/systemd_sync_gateway.tpl >/usr/lib/systemd/system/${SERVICE_NAME}.service
-      systemctl enable ${SERVICE_NAME}
-      systemctl start ${SERVICE_NAME}
-    fi
-    ;;
-  *)
-    echo "ERROR: Unsupported Amazon Linux Version \"$VER\""
-    usage
-    exit 1
-    ;;
-  esac
+    echo "systemctl start ${SERVICE_NAME}"
+  else
+    pre_install_actions
+    render_template script_templates/systemd_sync_gateway.tpl >/usr/lib/systemd/system/${SERVICE_NAME}.service
+    systemctl enable ${SERVICE_NAME}
+    systemctl start ${SERVICE_NAME}
+  fi
   ;;
 darwin)
   if [ "$SERVICE_CMD_ONLY" = true ]; then

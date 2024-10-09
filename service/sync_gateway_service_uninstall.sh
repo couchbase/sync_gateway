@@ -32,27 +32,21 @@ LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 SERVICE_CMD_ONLY=false
 
 usage() {
-  echo "This script removes an init service to run a sync_gateway instance."
+  echo "This script removes a systemd or launchctl service to run a sync_gateway instance."
 }
 
 ostype() {
-  if [ -x "$(command -v lsb_release)" ]; then
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    if [ "${ID_LIKE##*rhel*}" != "${ID_LIKE}" ]; then
+      OS=rhel
+    else
+      OS=$(echo "${ID}")
+    fi
+    VER=${VERSION_ID}
+  elif [ -x "$(command -v lsb_release)" ]; then
     OS=$(lsb_release -si)
     VER=$(lsb_release -sr)
-  elif [ -f /etc/os-release ]; then
-    . /etc/os-release
-    OS=$(echo "${ID}")
-    if [ "${OS}" = "debian" ]; then
-      VER=$(cat /etc/debian_version)
-    else
-      VER=$VERSION_ID
-    fi
-  elif [ -f /etc/redhat-release ]; then
-    OS=rhel
-    VER=$(cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//)
-  elif [ -f /etc/system-release ]; then
-    OS=rhel
-    VER=5.0
   else
     OS=$(uname -s)
     VER=$(uname -r)
@@ -120,39 +114,13 @@ ubuntu)
     ;;
   esac
   ;;
-redhat* | rhel* | centos | ol)
-  case 1:${OS_MAJOR_VERSION:--} in
-  $((OS_MAJOR_VERSION >= 7))*)
-    systemctl stop ${SERVICE_NAME}
-    systemctl disable ${SERVICE_NAME}
+rhel*|amzn*) # RHEL, Alma, Rocky, Amazon Linux and any derivatives
+  systemctl stop ${SERVICE_NAME}
+  systemctl disable ${SERVICE_NAME}
 
-    if [ -f /usr/lib/systemd/system/${SERVICE_NAME}.service ]; then
-      rm /usr/lib/systemd/system/${SERVICE_NAME}.service
-    fi
-    ;;
-  *)
-    echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
-    usage
-    exit 1
-    ;;
-  esac
-  ;;
-amzn*)
-  case 1:${OS_MAJOR_VERSION:--} in
-  $((OS_MAJOR_VERSION >= 2))*)
-    systemctl stop ${SERVICE_NAME}
-    systemctl disable ${SERVICE_NAME}
-
-    if [ -f /lib/systemd/system/${SERVICE_NAME}.service ]; then
-      rm /lib/systemd/system/${SERVICE_NAME}.service
-    fi
-    ;;
-  *)
-    echo "ERROR: Unsupported Amazon Linux Version \"$VER\""
-    usage
-    exit 1
-    ;;
-  esac
+  if [ -f /usr/lib/systemd/system/${SERVICE_NAME}.service ]; then
+    rm /usr/lib/systemd/system/${SERVICE_NAME}.service
+  fi
   ;;
 darwin)
   launchctl unload /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
