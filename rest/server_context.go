@@ -668,6 +668,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
 
+				// Init views now. If we're using GSI we'll use DatabaseInitManager to handle creation later.
 				if useViews {
 					if err := db.InitializeViews(ctx, dataStore); err != nil {
 						return nil, err
@@ -719,6 +720,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 		if sc.DatabaseInitManager == nil {
 			base.AssertfCtx(ctx, "DatabaseInitManager should always be initialized")
+			return nil, errors.New("DatabaseInitManager not initialized")
 		}
 
 		// If database has been requested to start offline, or there's an active async initialization, use async initialization

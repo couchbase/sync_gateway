@@ -117,7 +117,6 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
 	if m == nil {
-		// When not using persistent config, DatabaseInitManager will be nil
 		return false
 	}
 	m.workersLock.Lock()

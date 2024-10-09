@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -491,4 +493,65 @@ func waitForWorkerDone(t *testing.T, manager *DatabaseInitManager, dbName string
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("Worker did not complete in expected time interval for db %s", dbName)
+}
+
+func TestBuildCollectionIndexData(t *testing.T) {
+	tests := []struct {
+		name   string
+		config *DatabaseConfig
+		want   CollectionInitData
+	}{
+		{
+			name: "implicit default collection",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes: nil,
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+			},
+		},
+		{
+			name: "explicit default collection",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+			},
+		},
+		{
+			name: "one named collection",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                    db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			name: "one named and explicit default collection",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
+				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual := buildCollectionIndexData(test.config)
+			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(%v)", test.config)
+		})
+	}
 }
