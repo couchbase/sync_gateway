@@ -1484,7 +1484,6 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 
 func TestAuditBlipCRUD(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 
 		rt := createAuditLoggingRestTester(t)
