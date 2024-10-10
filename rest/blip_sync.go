@@ -56,6 +56,7 @@ func (h *handler) handleBLIPSync() error {
 	if err != nil {
 		return err
 	}
+	blipContext.SetCancelCtx(h.db.DatabaseContext.CancelContext)
 
 	// Overwrite the existing logging context with the blip context ID
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))
