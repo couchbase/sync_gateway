@@ -50,7 +50,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	tlsSkipVerify := BoolPtr(TestTLSSkipVerify())
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
 	ctx := TestCtx(t)
-	cluster, err := NewCouchbaseCluster(ctx, UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, BoolPtr(TestUseXattrs()), CachedClusterConnections)
+	cluster, err := NewCouchbaseCluster(ctx, UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, TestUseXattrs(), CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()
 	require.NotNil(t, cluster)

@@ -171,7 +171,3 @@ func (c *RosmarCluster) Close() {
 }
 
 func (c *RosmarCluster) SetConnectionStringServerless() error { return nil }
-
-func (c *RosmarCluster) GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error) {
-	return nil, errors.New("rosmar doesn't support a N1QL store")
-}
