@@ -7,11 +7,12 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
+# This file is used by github CI or locally and runs a subset of test scripts to validate the service installation done by the package managers. This is intended to be run from Linux or Mac.
 
 set -eux -o pipefail
 
 IMAGES=(
-    #"almalinux:9"
+    "almalinux:9"
     "amazonlinux:2"
     "amazonlinux:2023"
     "debian:10"
@@ -19,7 +20,7 @@ IMAGES=(
     "debian:12"
     "redhat/ubi8"
     "redhat/ubi9"
-    #"rockylinux:9"
+    "rockylinux:9"
     "ubuntu:20.04"
     "ubuntu:22.04"
     "ubuntu:24.04"

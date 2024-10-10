@@ -1,3 +1,5 @@
+#/bin/sh
+
 # Copyright 2024-Present Couchbase, Inc.
 #
 # Use of this software is governed by the Business Source License included
@@ -6,7 +8,7 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
-#/bin/sh
+# This code is intneded to be run from within a docker container of a specific platform and runs a subset of the service scripts. The full service can not be validated since systemd does not work in docker contains. This is intended to run in /bin/sh to test dash environments on debian systems.
 
 set -eux -o pipefail
 
@@ -55,7 +57,13 @@ EOF
 
     export PATH=/tmp/systemctl_wrapper:$PATH
 fi
+
 ./sync_gateway_service_install.sh
+./sync_gateway_service_upgrade.sh
+./sync_gateway_service_uninstall.sh
+
+# test again with runas option
+./sync_gateway_service_install.sh --runas=root
 ./sync_gateway_service_upgrade.sh
 ./sync_gateway_service_uninstall.sh
 
