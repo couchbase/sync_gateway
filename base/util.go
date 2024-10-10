@@ -1024,10 +1024,7 @@ func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
 
 	// as we strip any zeros off the end of the hex value for deltas, the input delta could be odd length
 	if len(casByte)%2 != 0 {
-		evenHexLen := make([]byte, len(casByte), len(casByte)+1)
-		copy(evenHexLen, casByte)
-		evenHexLen = append(evenHexLen, '0')
-		casByte = evenHexLen
+		casByte = append(casByte, '0')
 	}
 
 	// create byte array for decoding into
