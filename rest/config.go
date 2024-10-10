@@ -1635,17 +1635,26 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	for _, dbName := range deletedDatabases {
+		dbc, ok := sc.databases_[dbName]
+		if !ok {
+			base.DebugfCtx(ctx, base.KeyConfig, "Database %q already removed from server context after acquiring write lock - do not need to remove not removing database", base.MD(dbName))
+			continue
+		}
 		// It's possible that the "deleted" database was not written to the server until after sc.FetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
-		found, _, err := sc._fetchDatabase(ctx, dbName)
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
-		}
-		if !found {
-			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
-			sc._removeDatabase(ctx, dbName)
-		} else {
+		found, _, getConfigErr := sc._fetchDatabaseFromBucket(ctx, dbc.Bucket.GetName(), dbName)
+		if found && getConfigErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
+			continue
+		}
+		if base.IsTemporaryKvError(getConfigErr) {
+			base.InfofCtx(ctx, base.KeyConfig, "Transient error fetching config for database %q to check whether we need to remove it, will not be removed: %v", base.MD(dbName), getConfigErr)
+			continue
+		}
+
+		if !found {
+			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database (%v)", base.MD(dbName), getConfigErr)
+			sc._removeDatabase(ctx, dbName)
 		}
 	}
 
@@ -1753,56 +1762,60 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	return sc._fetchDatabase(ctx, dbName)
 }
 
+func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket string, dbName string) (found bool, cnf DatabaseConfig, err error) {
+
+	cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
+	if errors.Is(err, base.ErrNotFound) {
+		base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
+		return false, cnf, err
+	}
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
+		return false, cnf, err
+	}
+
+	if cnf.Name == "" {
+		cnf.Name = bucket
+	}
+
+	if cnf.Name != dbName {
+		base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.Config.Bootstrap.ConfigGroupID, dbName)
+		return false, cnf, err
+	}
+
+	cnf.cfgCas = cas
+
+	// inherit properties the bootstrap config
+	cnf.CACertPath = sc.Config.Bootstrap.CACertPath
+
+	// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
+	// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
+	// in memory representation on the server context.
+	if bucket != cnf.GetBucketName() {
+		sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
+		return true, cnf, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
+	}
+	bucketCopy := bucket
+	// no corruption detected carry on as usual
+	cnf.Bucket = &bucketCopy
+
+	// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
+	if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
+		cnf.Username = sc.Config.Bootstrap.Username
+		cnf.Password = sc.Config.Bootstrap.Password
+		cnf.CertPath = sc.Config.Bootstrap.X509CertPath
+		cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
+	}
+	base.TracefCtx(ctx, base.KeyConfig, "Got database config %s for bucket %q with cas %d and groupID %q", base.MD(dbName), base.MD(bucket), cas, base.MD(sc.Config.Bootstrap.ConfigGroupID))
+	return true, cnf, nil
+}
+
 func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
-	// loop code moved to foreachDbConfig
 	var cnf DatabaseConfig
-	callback := func(bucket string) (exit bool, err error) {
-		cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
-		if err == base.ErrNotFound {
-			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
-			return false, err
-		}
-		if err != nil {
-			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
-			return false, err
-		}
-
-		if cnf.Name == "" {
-			cnf.Name = bucket
-		}
-
-		if cnf.Name != dbName {
-			base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.Config.Bootstrap.ConfigGroupID, dbName)
-			return false, err
-		}
-
-		cnf.cfgCas = cas
-
-		// TODO: This code is mostly copied from FetchConfigs, move into shared function with DbConfig REST API work?
-
-		// inherit properties the bootstrap config
-		cnf.CACertPath = sc.Config.Bootstrap.CACertPath
-
-		// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
-		// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
-		// in memory representation on the server context.
-		if bucket != cnf.GetBucketName() {
-			sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
-			return true, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
-		}
-		bucketCopy := bucket
-		// no corruption detected carry on as usual
-		cnf.Bucket = &bucketCopy
-
-		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
-		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
-			cnf.Username = sc.Config.Bootstrap.Username
-			cnf.Password = sc.Config.Bootstrap.Password
-			cnf.CertPath = sc.Config.Bootstrap.X509CertPath
-			cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
-		}
-		base.TracefCtx(ctx, base.KeyConfig, "Got database config %s for bucket %q with cas %d and groupID %q", base.MD(dbName), base.MD(bucket), cas, base.MD(sc.Config.Bootstrap.ConfigGroupID))
-		return true, nil
+	callback := func(bucket string) (exit bool, callbackErr error) {
+		var foundInBucket bool
+		foundInBucket, cnf, callbackErr = sc._fetchDatabaseFromBucket(ctx, bucket, dbName)
+		return foundInBucket, callbackErr
 	}
 
 	err = sc.findBucketWithCallback(callback)

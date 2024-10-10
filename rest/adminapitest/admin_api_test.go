@@ -1777,6 +1777,91 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 
 }
 
+// TestConfigPollingRemoveDatabase:
+//
+//	Validates db is removed when polling detects that the config is not found
+func TestConfigPollingRemoveDatabase(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
+	testCases := []struct {
+		useXattrConfig bool
+	}{
+		{
+			useXattrConfig: false,
+		},
+		{
+			useXattrConfig: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("xattrConfig_%v", testCase.useXattrConfig), func(t *testing.T) {
+
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				PersistentConfig: true,
+				MutateStartupConfig: func(config *rest.StartupConfig) {
+					// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
+					config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
+				},
+				DatabaseConfig: nil,
+				UseXattrConfig: testCase.useXattrConfig,
+			})
+			defer rt.Close()
+
+			ctx := base.TestCtx(t)
+			// create a new db
+			dbName := "db1"
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Name = dbName
+			dbConfig.BucketConfig.Bucket = base.StringPtr(rt.CustomTestBucket.GetName())
+			resp := rt.CreateDatabase(dbName, dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			// Validate that db is loaded
+			_, err := rt.ServerContext().GetDatabase(ctx, dbName)
+			require.NoError(t, err)
+
+			// Force timeouts - dev-time only test enhancement to validate CBG-3947, requires manual "leaky bootstrap" handling
+			// To enable:
+			//  - Add "var ForceTimeouts bool" to bootstrap.go
+			//  - In CouchbaseCluster.GetMetadataDocument, add the following after loadConfig:
+			//    	if ForceTimeouts {
+			//			return 0, gocb.ErrTimeout
+			//		}
+			//  - enable the code block below
+			/*
+				base.ForceTimeouts = true
+
+				// Wait to ensure database doesn't disappear
+				err = rt.WaitForConditionWithOptions(func() bool {
+					_, err := rt.ServerContext().GetActiveDatabase(dbName)
+					return errors.Is(err, base.ErrNotFound)
+
+				}, 200, 50)
+				require.Error(t, err)
+
+				base.ForceTimeouts = false
+			*/
+
+			// Delete the config directly
+			rt.RemoveDbConfigFromBucket("db1", rt.CustomTestBucket.GetName())
+
+			// assert that the database is unloaded
+			err = rt.WaitForConditionWithOptions(func() bool {
+				_, err := rt.ServerContext().GetActiveDatabase(dbName)
+				return errors.Is(err, base.ErrNotFound)
+
+			}, 200, 1000)
+			require.NoError(t, err)
+
+			// assert that a request to the database fails with correct error message
+			resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+			rest.RequireStatus(t, resp, http.StatusNotFound)
+			assert.Contains(t, resp.Body.String(), "no such database")
+		})
+	}
+}
+
 func TestResyncStopUsingDCPStream(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		// This test requires a gocb bucket
