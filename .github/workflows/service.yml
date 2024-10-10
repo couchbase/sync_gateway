@@ -42,6 +42,6 @@ jobs:
         with:
           go-version: 1.22.5
       - name: "Build Sync Gateway"
-        run: env SG_EDITON=EE ./build.sh
+        run: go build -o ./bin/sync_gateway ./...
       - name: "Run test scripts"
         run: ./integration-test/service-install-tests.sh
