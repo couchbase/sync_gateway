@@ -45,9 +45,6 @@ type BootstrapConnection interface {
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetDocument(ctx context.Context, bucket, docID string, rv interface{}) (exists bool, err error)
 
-	// Returns the bootstrap connection's cluster connection as N1QLStore for the specified bucket/scope/collection.
-	// Does NOT establish a bucket connection, the bucketName/scopeName/collectionName is for query scoping only
-	GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -149,54 +146,23 @@ var _ BootstrapConnection = &CouchbaseCluster{}
 func NewCouchbaseCluster(ctx context.Context, server, username, password,
 	x509CertPath, x509KeyPath, caCertPath string,
 	forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
-	tlsSkipVerify *bool, useXattrConfig *bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
-	opts := newCouchbaseClusterOpts{
-		server:             server,
-		username:           username,
-		password:           password,
-		x509CertPath:       x509CertPath,
-		x509KeyPath:        x509KeyPath,
-		caCertPath:         caCertPath,
-		forcePerBucketAuth: forcePerBucketAuth,
-		perBucketCreds:     perBucketCreds,
-		tlsSkipVerify:      tlsSkipVerify,
-		useXattrConfig:     useXattrConfig,
-		bucketMode:         bucketMode,
-	}
-	return NewCouchbaseClusterWithOpts(ctx, opts)
-}
-
-type newCouchbaseClusterOpts struct {
-	server             string
-	username           string
-	password           string
-	x509CertPath       string
-	x509KeyPath        string
-	caCertPath         string
-	forcePerBucketAuth bool
-	perBucketCreds     PerBucketCredentialsConfig
-	tlsSkipVerify      *bool
-	useXattrConfig     *bool
-	bucketMode         BucketConnectionMode
-}
-
-func NewCouchbaseClusterWithOpts(ctx context.Context, opts newCouchbaseClusterOpts) (*CouchbaseCluster, error) {
-	securityConfig, err := GoCBv2SecurityConfig(ctx, opts.tlsSkipVerify, opts.caCertPath)
+	tlsSkipVerify *bool, useXattrConfig bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
+	securityConfig, err := GoCBv2SecurityConfig(ctx, tlsSkipVerify, caCertPath)
 	if err != nil {
 		return nil, err
 	}
 
 	clusterAuthConfig, err := GoCBv2Authenticator(
-		opts.username, opts.password,
-		opts.x509CertPath, opts.x509KeyPath,
+		username, password,
+		x509CertPath, x509KeyPath,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	// Populate individual bucket credentials
-	perBucketAuth := make(map[string]*gocb.Authenticator, len(opts.perBucketCreds))
-	for bucket, credentials := range opts.perBucketCreds {
+	perBucketAuth := make(map[string]*gocb.Authenticator, len(perBucketCreds))
+	for bucket, credentials := range perBucketCreds {
 		authenticator, err := GoCBv2Authenticator(
 			credentials.Username, credentials.Password,
 			credentials.X509CertPath, credentials.X509KeyPath,
@@ -215,19 +181,19 @@ func NewCouchbaseClusterWithOpts(ctx context.Context, opts newCouchbaseClusterOp
 	}
 
 	cbCluster := &CouchbaseCluster{
-		server:               opts.server,
-		forcePerBucketAuth:   opts.forcePerBucketAuth,
+		server:               server,
+		forcePerBucketAuth:   forcePerBucketAuth,
 		perBucketAuth:        perBucketAuth,
 		clusterOptions:       clusterOptions,
-		bucketConnectionMode: opts.bucketMode,
+		bucketConnectionMode: bucketMode,
 	}
 
-	if opts.bucketMode == CachedClusterConnections {
+	if bucketMode == CachedClusterConnections {
 		cbCluster.cachedBucketConnections = cachedBucketConnections{buckets: make(map[string]*cachedBucket)}
 	}
 
 	cbCluster.configPersistence = &DocumentBootstrapPersistence{}
-	if BoolDefault(opts.useXattrConfig, false) {
+	if useXattrConfig {
 		cbCluster.configPersistence = &XattrBootstrapPersistence{}
 	}
 
@@ -514,15 +480,6 @@ func (cc *CouchbaseCluster) Close() {
 	}
 }
 
-func (cc *CouchbaseCluster) GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error) {
-	gocbCluster, err := cc.getClusterConnection()
-	if err != nil {
-		return nil, err
-	}
-
-	return NewClusterOnlyN1QLStore(gocbCluster, bucketName, scopeName, collectionName)
-}
-
 func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
 
 	if cc.bucketConnectionMode != CachedClusterConnections {
@@ -553,9 +510,7 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 	return newBucket, teardownFn, nil
 }
 
-// connectToBucket establishes a new connection to a bucket, and returns the bucket after waiting for it to be ready.
-func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
-	var connection *gocb.Cluster
+func (cc *CouchbaseCluster) GetClusterConnectionForBucket(ctx context.Context, bucketName string) (connection *gocb.Cluster, teardownFn func(), err error) {
 	if bucketAuth, set := cc.perBucketAuth[bucketName]; set {
 		connection, err = cc.connect(bucketAuth)
 	} else if cc.forcePerBucketAuth {
@@ -563,7 +518,22 @@ func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName stri
 	} else {
 		connection, err = cc.connect(nil)
 	}
+	if err != nil {
+		return nil, nil, err
+	}
 
+	teardownFn = func() {
+		err := connection.Close(&gocb.ClusterCloseOptions{})
+		if err != nil {
+			WarnfCtx(ctx, "Failed to close cluster connection: %v", err)
+		}
+	}
+	return connection, teardownFn, nil
+}
+
+// connectToBucket establishes a new connection to a bucket, and returns the bucket after waiting for it to be ready.
+func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
+	connection, teardownFn, err := cc.GetClusterConnectionForBucket(ctx, bucketName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -575,20 +545,13 @@ func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName stri
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
 	})
 	if err != nil {
-		_ = connection.Close(&gocb.ClusterCloseOptions{})
+		teardownFn()
 
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, nil, ErrAuthError
 		}
 
 		return nil, nil, err
-	}
-
-	teardownFn = func() {
-		err := connection.Close(&gocb.ClusterCloseOptions{})
-		if err != nil {
-			WarnfCtx(ctx, "Failed to close cluster connection: %v", err)
-		}
 	}
 
 	return b, teardownFn, nil

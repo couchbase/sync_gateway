@@ -11,6 +11,7 @@ package rest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -49,7 +50,7 @@ type CollectionInitData map[base.ScopeAndCollectionName]db.CollectionIndexesType
 
 // Initializes the database.  Will establish a new cluster connection using the provided server config.  Establishes a new
 // cluster-only N1QLStore based on the startup config to perform initialization.
-func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, isServerless bool, dbConfig *DatabaseConfig) (doneChan chan error, err error) {
+func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig) (doneChan chan error, err error) {
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	if m.workers == nil {
@@ -73,9 +74,8 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, isServerle
 		delete(m.workers, dbConfig.Name)
 	}
 
-	opts := bootstrapConnectionOptsFromDbConfig(dbConfig.DbConfig)
+	opts := bootstrapConnectionOptsConfigs(startupConfig, dbConfig.DbConfig)
 	opts.bucketConnectionMode = base.PerUseClusterConnections
-	opts.isServerless = isServerless
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting new initialization for database %s ...",
 		base.MD(dbConfig.Name))
@@ -90,13 +90,23 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, isServerle
 		bucketName = *dbConfig.Bucket
 	}
 
-	// Initialize ClusterN1QLStore for the bucket.  Scope and collection name are set per-operation
-	n1qlStore, err := couchbaseCluster.GetClusterN1QLStore(bucketName, "", "")
+	cc, ok := couchbaseCluster.(*base.CouchbaseCluster)
+	if !ok {
+		return nil, fmt.Errorf("DatabaseInitManager requires gocb.Cluster connection - had %T", couchbaseCluster)
+	}
+
+	connection, closeClusterConnection, err := cc.GetClusterConnectionForBucket(ctx, bucketName)
 	if err != nil {
 		return nil, err
 	}
 
-	indexOptions := m.BuildIndexOptions(isServerless, dbConfig)
+	// Initialize ClusterN1QLStore for the bucket.  Scope and collection name are set per-operation
+	n1qlStore, err := base.NewClusterOnlyN1QLStore(connection, bucketName, "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	indexOptions := m.BuildIndexOptions(startupConfig.IsServerless(), dbConfig)
 
 	// Create new worker and add this caller as a watcher
 	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
@@ -105,7 +115,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, isServerle
 
 	// Start a goroutine to perform the initialization
 	go func() {
-		defer func() { _ = n1qlStore.Close() }()
+		defer closeClusterConnection()
 		defer couchbaseCluster.Close()
 		// worker.Run blocks until completion, and returns any error on doneChan.
 		worker.Run()

@@ -370,15 +370,9 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 
 func CreateBootstrapConnectionFromStartupConfig(ctx context.Context, config *StartupConfig, bucketConnectionMode base.BucketConnectionMode) (base.BootstrapConnection, error) {
 	opts := bootstrapConnectionOpts{
-		server:               config.Bootstrap.Server,
-		username:             config.Bootstrap.Username,
-		password:             config.Bootstrap.Password,
-		x509CertPath:         config.Bootstrap.X509CertPath,
-		x509KeyPath:          config.Bootstrap.X509KeyPath,
-		caCertPath:           config.Bootstrap.CACertPath,
 		bucketConnectionMode: bucketConnectionMode,
-		isServerless:         config.IsServerless(),
 	}
+	setBootstrapConnectionOptsFromStartupConfig(&opts, config)
 	return createBootstrapConnectionWithOpts(ctx, opts)
 }
 
@@ -393,18 +387,41 @@ type bootstrapConnectionOpts struct {
 	isServerless         bool
 	bucketCredentials    base.PerBucketCredentialsConfig
 	tlsSkipVerify        *bool
-	useXattrConfig       *bool
+	useXattrConfig       bool
 }
 
-func bootstrapConnectionOptsFromDbConfig(dbConfig DbConfig) bootstrapConnectionOpts {
-	return bootstrapConnectionOpts{
-		server:       *dbConfig.Server,
-		username:     dbConfig.Username,
-		password:     dbConfig.Password,
-		x509CertPath: dbConfig.CertPath,
-		x509KeyPath:  dbConfig.KeyPath,
-		caCertPath:   dbConfig.CACertPath,
+// bootstrapConnectionOptsConfigs returns a bootstrapConnectionOpts struct with values populated from the startup and db configs.
+func bootstrapConnectionOptsConfigs(startupConfig *StartupConfig, dbConfig DbConfig) bootstrapConnectionOpts {
+	var opts bootstrapConnectionOpts
+	setBootstrapConnectionOptsFromStartupConfig(&opts, startupConfig)
+	setBootstrapConnectionOptsFromDbConfig(&opts, dbConfig)
+	return opts
+}
+
+// setBootstrapConnectionOptsFromStartupConfig sets the bootstrapConnectionOpts struct with values from the startup config.
+func setBootstrapConnectionOptsFromStartupConfig(opts *bootstrapConnectionOpts, config *StartupConfig) {
+	opts.server = config.Bootstrap.Server
+	opts.username = config.Bootstrap.Username
+	opts.password = config.Bootstrap.Password
+	opts.x509CertPath = config.Bootstrap.X509CertPath
+	opts.x509KeyPath = config.Bootstrap.X509KeyPath
+	opts.caCertPath = config.Bootstrap.CACertPath
+	opts.isServerless = config.IsServerless()
+	opts.bucketCredentials = config.BucketCredentials
+	opts.tlsSkipVerify = config.Bootstrap.ServerTLSSkipVerify
+	opts.useXattrConfig = base.BoolDefault(config.Unsupported.UseXattrConfig, false)
+}
+
+// setBootstrapConnectionOptsFromDbConfig sets the bootstrapConnectionOpts struct with values from the db config.
+func setBootstrapConnectionOptsFromDbConfig(opts *bootstrapConnectionOpts, dbConfig DbConfig) {
+	if dbConfig.Server != nil {
+		opts.server = *dbConfig.Server
 	}
+	opts.username = dbConfig.Username
+	opts.password = dbConfig.Password
+	opts.x509CertPath = dbConfig.CertPath
+	opts.x509KeyPath = dbConfig.KeyPath
+	opts.caCertPath = dbConfig.CACertPath
 }
 
 func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnectionOpts) (base.BootstrapConnection, error) {
