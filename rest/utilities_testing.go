@@ -2859,10 +2859,3 @@ func SafeDatabaseName(t *testing.T, name string) string {
 	}
 	return dbName
 }
-
-func JsonToMap(t *testing.T, jsonStr string) map[string]interface{} {
-	result := make(map[string]interface{})
-	err := json.Unmarshal([]byte(jsonStr), &result)
-	require.NoError(t, err)
-	return result
-}

@@ -2447,7 +2447,7 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
 		defer btc.Close()
 		// Push an initial rev with attachment data
-		initialVersion := btc.rt.PutDocDirectly(docID, JsonToMap(t, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`))
+		initialVersion := btc.rt.PutDocWithAttachment(docID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
 		btc.rt.WaitForPendingChanges()
 
 		// Replicate data to client and ensure doc arrives
@@ -2487,7 +2487,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		// Create rev 1 with the hello.txt attachment
 		const docID = "doc"
 
-		version := btc.rt.PutDocDirectly(docID, JsonToMap(t, `{"val": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`))
+		version := btc.rt.PutDocWithAttachment(docID, `{"val": "val"}`, "hello.txt", "aGVsbG8gd29ybGQ=")
 		btc.rt.WaitForPendingChanges()
 
 		// Pull rev and attachment down to client
