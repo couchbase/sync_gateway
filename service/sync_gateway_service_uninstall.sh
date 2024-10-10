@@ -9,8 +9,6 @@
 # licenses/APL2.txt.
 
 # Set default values
-OS=""
-VER=""
 SERVICE_NAME="sync_gateway"
 # Determine the absolute path of the installation directory
 # $( dirname "$0" ) get the directory containing this script
@@ -30,42 +28,18 @@ GATEWAY_TEMPLATE_VAR=${INSTALL_DIR}/bin/sync_gateway
 CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
 LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 SERVICE_CMD_ONLY=false
+PLATFORM="$(uname)"
 
 usage() {
   echo "This script removes a systemd or launchctl service to run a sync_gateway instance."
-}
-
-ostype() {
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    if [ "${ID_LIKE##*rhel*}" != "${ID_LIKE}" ]; then
-      OS=rhel
-    else
-      OS=$(echo "${ID}")
-    fi
-    VER=${VERSION_ID}
-  elif [ -x "$(command -v lsb_release)" ]; then
-    OS=$(lsb_release -si)
-    VER=$(lsb_release -sr)
-  else
-    OS=$(uname -s)
-    VER=$(uname -r)
-  fi
-
-  OS=$(echo "${OS}" | tr "[:upper:]" "[:lower:]")
-  OS_MAJOR_VERSION=$(echo $VER | sed 's/\..*$//')
-  OS_MINOR_VERSION=$(echo $VER | sed s/[0-9]*\.//)
 }
 
 #
 #script starts here
 #
 
-#Figure out the OS type of the current system
-ostype
-
 #If the OS is MAC OSX, set the default user account home path to /Users/sync_gateway
-if [ "$OS" = "darwin" ]; then
+if [ "$PLATFORM" = "Darwin" ]; then
   RUNBASE_TEMPLATE_VAR=/Users/sync_gateway
   CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
   LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
@@ -78,10 +52,8 @@ if [ $(id -u) != 0 ]; then
 fi
 
 #Install the service for the specific platform
-case $OS in
-debian)
-  case 1:${OS_MAJOR_VERSION:--} in
-  $((OS_MAJOR_VERSION >= 8))*)
+case $PLATFORM in
+Linux)
     systemctl stop ${SERVICE_NAME}
     systemctl disable ${SERVICE_NAME}
 
@@ -89,47 +61,14 @@ debian)
       rm /usr/lib/systemd/system/${SERVICE_NAME}.service
     fi
     ;;
-  esac
-  ;;
-ubuntu)
-  case 1:${OS_MAJOR_VERSION:--} in
-  $((OS_MAJOR_VERSION >= 16))*)
-    systemctl stop ${SERVICE_NAME}
-    systemctl disable ${SERVICE_NAME}
-
-    if [ -f /lib/systemd/system/${SERVICE_NAME}.service ]; then
-      rm /lib/systemd/system/${SERVICE_NAME}.service
-    fi
-    ;;
-  $((OS_MAJOR_VERSION >= 12))*)
-    service ${SERVICE_NAME} stop
-    if [ -f /etc/init/${SERVICE_NAME}.conf ]; then
-      rm /etc/init/${SERVICE_NAME}.conf
-    fi
-    ;;
-  *)
-    echo "ERROR: Unsupported Ubuntu Version \"$VER\""
-    usage
-    exit 1
-    ;;
-  esac
-  ;;
-rhel*|amzn*) # RHEL, Alma, Rocky, Amazon Linux and any derivatives
-  systemctl stop ${SERVICE_NAME}
-  systemctl disable ${SERVICE_NAME}
-
-  if [ -f /usr/lib/systemd/system/${SERVICE_NAME}.service ]; then
-    rm /usr/lib/systemd/system/${SERVICE_NAME}.service
-  fi
-  ;;
-darwin)
+Darwin)
   launchctl unload /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
   if [ -f /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist ]; then
     rm /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
   fi
   ;;
 *)
-  echo "ERROR: unknown OS \"$OS\""
+  echo "ERROR: unknown platform \"$PLATFORM\""
   usage
   exit 1
   ;;

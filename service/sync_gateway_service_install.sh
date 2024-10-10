@@ -1,5 +1,6 @@
 #!/bin/sh
 
+set -x
 # Copyright 2014-Present Couchbase, Inc.
 #
 # Use of this software is governed by the Business Source License included in
@@ -9,8 +10,6 @@
 # licenses/APL2.txt.
 
 # Set default values
-OS=""
-VER=""
 SERVICE_NAME="sync_gateway"
 # Determine the absolute path of the installation directory
 # $( dirname "$0" ) get the directory containing this script
@@ -30,6 +29,7 @@ GATEWAY_TEMPLATE_VAR=${INSTALL_DIR}/bin/sync_gateway
 CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
 LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 SERVICE_CMD_ONLY=false
+PLATFORM="$(uname)"
 
 usage() {
   echo "This script creates a systemd or launchctl service to run a sync_gateway instance."
@@ -46,27 +46,7 @@ usage() {
   echo ""
 }
 
-ostype() {
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    if [ "${ID_LIKE##*rhel*}" != "${ID_LIKE}" ]; then
-      OS=rhel
-    else
-      OS=$(echo "${ID}")
-    fi
-    VER=${VERSION_ID}
-  elif [ -x "$(command -v lsb_release)" ]; then
-    OS=$(lsb_release -si)
-    VER=$(lsb_release -sr)
-  else
-    OS=$(uname -s)
-    VER=$(uname -r)
-  fi
-
-  OS=$(echo "${OS}" | tr "[:upper:]" "[:lower:]")
-  OS_MAJOR_VERSION=$(echo $VER | sed 's/\..*$//')
-  OS_MINOR_VERSION=$(echo $VER | sed s/[0-9]*\.//)
-}
+PLATFORM=$(uname)
 
 # expand template variables + preserve formatting
 render_template() {
@@ -84,7 +64,7 @@ setup_output_dirs() {
 # Run pre installation actions
 pre_install_actions() {
   # Check that runtime user account exists
-  if [ "$OS" != "darwin" ] && [ -z $(id -u $RUNAS_TEMPLATE_VAR 2>/dev/null) ]; then
+  if [ "$PLATFORM" != "Darwin" ] && [ -z $(id -u $RUNAS_TEMPLATE_VAR 2>/dev/null) ]; then
     echo "The sync_gateway runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." >/dev/stderr
     exit 1
   fi
@@ -133,10 +113,9 @@ pre_install_actions() {
 #
 
 #Figure out the OS type of the current system
-ostype
 
 #If the OS is MAC OSX, set the default user account home path to /Users/sync_gateway
-if [ "$OS" = "darwin" ]; then
+if [ "$PLATFORM" = "Darwin" ]; then
   RUNBASE_TEMPLATE_VAR=/Users/sync_gateway
   CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
   LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
@@ -159,7 +138,7 @@ while [ "$1" != "" ]; do
     ;;
   --runas)
     RUNAS_TEMPLATE_VAR=$VALUE
-    if [ "$OS" != "darwin" ]; then
+    if [ "$PLATFORM" != "Darwin" ]; then
       RUNBASE_TEMPLATE_VAR=$(getent passwd "$VALUE" | cut -d: -f 6)
     else
       RUNBASE_TEMPLATE_VAR=$(eval "echo ~$VALUE")
@@ -192,61 +171,19 @@ while [ "$1" != "" ]; do
 done
 
 #Install the service for the specific platform
-case $OS in
-debian)
-  case 1:${OS_MAJOR_VERSION:--} in
-  $((OS_MAJOR_VERSION >= 8))*)
+case ${PLATFORM} in
+Linux*)
     if [ "$SERVICE_CMD_ONLY" = true ]; then
       echo "systemctl start ${SERVICE_NAME}"
     else
       pre_install_actions
       mkdir -p /usr/lib/systemd/system
-      render_template script_templates/systemd_debian_sync_gateway.tpl >/usr/lib/systemd/system/${SERVICE_NAME}.service
+      render_template script_templates/systemd_sync_gateway.tpl >/usr/lib/systemd/system/${SERVICE_NAME}.service
       systemctl enable ${SERVICE_NAME}
       systemctl start ${SERVICE_NAME}
     fi
     ;;
-  esac
-  ;;
-ubuntu)
-  case 1:${OS_MAJOR_VERSION:--} in
-  $((OS_MAJOR_VERSION >= 16))*)
-    if [ "$SERVICE_CMD_ONLY" = true ]; then
-      echo "systemctl start ${SERVICE_NAME}"
-    else
-      pre_install_actions
-      render_template script_templates/systemd_debian_sync_gateway.tpl >/lib/systemd/system/${SERVICE_NAME}.service
-      systemctl enable ${SERVICE_NAME}
-      systemctl start ${SERVICE_NAME}
-    fi
-    ;;
-  $((OS_MAJOR_VERSION >= 12))*)
-    if [ "$SERVICE_CMD_ONLY" = true ]; then
-      echo "service ${SERVICE_NAME} start"
-    else
-      pre_install_actions
-      render_template script_templates/upstart_ubuntu_sync_gateway.tpl >/etc/init/${SERVICE_NAME}.conf
-      service ${SERVICE_NAME} start
-    fi
-    ;;
-  *)
-    echo "ERROR: Unsupported Ubuntu Version \"$VER\""
-    usage
-    exit 1
-    ;;
-  esac
-  ;;
-rhel*|amzn*) # RHEL, Alma, Rocky, Amazon Linux and any derivatives
-  if [ "$SERVICE_CMD_ONLY" = true ]; then
-    echo "systemctl start ${SERVICE_NAME}"
-  else
-    pre_install_actions
-    render_template script_templates/systemd_sync_gateway.tpl >/usr/lib/systemd/system/${SERVICE_NAME}.service
-    systemctl enable ${SERVICE_NAME}
-    systemctl start ${SERVICE_NAME}
-  fi
-  ;;
-darwin)
+Darwin*)
   if [ "$SERVICE_CMD_ONLY" = true ]; then
     echo "launchctl start /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist"
   else
@@ -256,7 +193,7 @@ darwin)
   fi
   ;;
 *)
-  echo "ERROR: unknown OS \"$OS\""
+  echo "ERROR: unknown platform \"$PLATFORM\""
   usage
   exit 1
   ;;
