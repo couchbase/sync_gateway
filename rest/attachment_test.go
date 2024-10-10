@@ -2255,7 +2255,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 }
 
 // TestUpdateViaBlipMigrateAttachment:
-//   - Tests document update through blip to a doc with attachment metadata deined in sync data
+//   - Tests document update through blip to a doc with attachment metadata defined in sync data
 //   - Assert that the c doc update this way will migrate the attachment metadata from sync data to global sync data
 func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 	rtConfig := &RestTesterConfig{
@@ -2263,7 +2263,6 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol
 	const (
 		doc1ID = "doc1"
 	)
@@ -2277,7 +2276,7 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		ctx := base.TestCtx(t)
 
-		initialVersion := btc.rt.PutDoc(doc1ID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+		initialVersion := btc.rt.PutDocWithAttachment(doc1ID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
 		btc.rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
 		btcRunner.WaitForVersion(btc.id, doc1ID, initialVersion)
@@ -2443,8 +2442,6 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
-
 	const docID = "doc"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -2457,8 +2454,8 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 
 		btcRunner.StartPull(btc.id)
 
-		// Write an initial rev with attachment data
-		initialVersion := btc.rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+		// Push an initial rev with attachment data
+		initialVersion := btc.rt.PutDocWithAttachment(docID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
 		btc.rt.WaitForPendingChanges()
 
 		// Replicate data to client and ensure doc arrives
@@ -2504,8 +2501,6 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
-
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
@@ -2516,7 +2511,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		// Create rev 1 with the hello.txt attachment
 		const docID = "doc"
 
-		version := btc.rt.PutDoc(docID, `{"val": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+		version := btc.rt.PutDocWithAttachment(docID, `{"val": "val"}`, "hello.txt", "aGVsbG8gd29ybGQ=")
 		btc.rt.WaitForPendingChanges()
 
 		// Pull rev and attachment down to client
@@ -2685,7 +2680,6 @@ func TestCBLRevposHandling(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 	const (
 		doc1ID = "doc1"
 		doc2ID = "doc2"
@@ -2699,9 +2693,9 @@ func TestCBLRevposHandling(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
 		defer btc.Close()
 
-		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
-		doc2Version := btc.rt.PutDoc(doc2ID, `{}`)
-		btc.rt.WaitForPendingChanges()
+		startingBody := db.Body{"foo": "bar"}
+		doc1Version := btc.rt.PutDocDirectly(doc1ID, startingBody)
+		doc2Version := btc.rt.PutDocDirectly(doc2ID, startingBody)
 
 		btc.rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
