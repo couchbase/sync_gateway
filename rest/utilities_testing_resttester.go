@@ -449,3 +449,17 @@ func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollecti
 	require.NoError(rt.TB(), err)
 	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
+
+// PutDocWithAttachment will upsert the document with a given contents and attachments.
+func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachmentName, attachmentBody string) DocVersion {
+	// create new body with a 1.x style inline attachment body like `{"_attachments": {"camera.txt": {"data": "Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`.
+	require.NotEmpty(rt.TB(), attachmentName)
+	require.NotEmpty(rt.TB(), attachmentBody)
+	var rawBody db.Body
+	require.NoError(rt.TB(), base.JSONUnmarshal([]byte(body), &rawBody))
+	require.NotContains(rt.TB(), rawBody, db.BodyAttachments)
+	rawBody[db.BodyAttachments] = map[string]any{
+		attachmentName: map[string]any{"data": attachmentBody},
+	}
+	return rt.PutDocDirectly(docID, rawBody)
+}
