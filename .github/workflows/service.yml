@@ -37,5 +37,11 @@ jobs:
     name: Verify service script installation.
     steps:
       - uses: actions/checkout@v4
+      # build sync gateway since the executable is needed for service installation
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.5
+      - name: "Build Sync Gateway"
+        run: env SG_EDITON=EE ./build.sh
       - name: "Run test scripts"
         run: ./integration-test/service-install-tests.sh
