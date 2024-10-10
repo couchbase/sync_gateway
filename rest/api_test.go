@@ -2801,6 +2801,62 @@ func TestCreateDBWithXattrsDisbaled(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), errResp)
 }
 
+// TestPvDeltaReadAndWrite:
+//   - Write a doc from another hlv aware peer to the bucket
+//   - Force import of this doc, then update this doc via rest tester source
+//   - Assert that the document hlv is as expected
+//   - Update the doc from a new hlv aware peer and force the import of this new write
+//   - Assert that the new hlv is as expected, testing that the hlv went through transformation to the persisted delta
+//     version and back to the in memory version as expected
+func TestPvDeltaReadAndWrite(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	testSource := rt.GetDatabase().EncodedSourceID
+
+	const docID = "doc1"
+	otherSource := "otherSource"
+	hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
+	existingHLVKey := docID
+	cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+	casV1 := cas
+	encodedSourceV1 := db.EncodeSource(otherSource)
+
+	// force import of this write
+	version1, _ := rt.GetDoc(docID)
+
+	// update the above doc, this should push CV to PV and adds a new CV
+	version2 := rt.UpdateDocDirectly(docID, version1, db.Body{"new": "update!"})
+	newDoc, _, err := collection.GetDocWithXattrs(ctx, existingHLVKey, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	casV2 := newDoc.Cas
+	encodedSourceV2 := testSource
+
+	// assert that we have a prev CV drop to pv and a new CV pair, assert pv values are as expected after delta conversions
+	assert.Equal(t, testSource, newDoc.HLV.SourceID)
+	assert.Equal(t, version2.CV.Value, newDoc.HLV.Version)
+	assert.Len(t, newDoc.HLV.PreviousVersions, 1)
+	assert.Equal(t, casV1, newDoc.HLV.PreviousVersions[encodedSourceV1])
+
+	otherSource = "diffSource"
+	hlvHelper = db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
+	cas = hlvHelper.UpdateWithHLV(ctx, existingHLVKey, newDoc.Cas, newDoc.HLV)
+	encodedSourceV3 := db.EncodeSource(otherSource)
+	casV3 := cas
+
+	// import and get raw doc
+	_, _ = rt.GetDoc(docID)
+	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+
+	// assert that we have two entries in previous versions, and they are correctly converted from deltas back to full value
+	assert.Equal(t, encodedSourceV3, bucketDoc.HLV.SourceID)
+	assert.Equal(t, casV3, bucketDoc.HLV.Version)
+	assert.Len(t, bucketDoc.HLV.PreviousVersions, 2)
+	assert.Equal(t, casV1, bucketDoc.HLV.PreviousVersions[encodedSourceV1])
+	assert.Equal(t, casV2, bucketDoc.HLV.PreviousVersions[encodedSourceV2])
+}
+
 // TestPutDocUpdateVersionVector:
 //   - Put a doc and assert that the versions and the source for the hlv is correctly updated
 //   - Update that doc and assert HLV has also been updated

@@ -10,10 +10,12 @@ package db
 
 import (
 	"encoding/base64"
+	"math/rand/v2"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -459,4 +461,122 @@ func TestParseCBLVersion(t *testing.T) {
 
 	cblString := vrs.String()
 	assert.Equal(t, vrsString, cblString)
+}
+
+// TestVersionDeltaCalculation:
+//   - Create some random versions and assign to a source/version map
+//   - Convert the map to deltas and assert that first item in list is greater than all other elements
+//   - Create a test HLV and convert it to persisted format in bytes
+//   - Convert this back to in memory format, assert each elem of in memory format previous versions map is the same as
+//     the corresponding element in the original pvMap
+//   - Do the same for a pv map that will have two entries with the same version value
+//   - Do the same as above but for nil maps
+func TestVersionDeltaCalculation(t *testing.T) {
+	src1 := "src1"
+	src2 := "src2"
+	src3 := "src3"
+	src4 := "src4"
+	src5 := "src5"
+
+	timeNow := time.Now().UnixNano()
+	// make some version deltas
+	v1 := uint64(timeNow - rand.Int64N(1000000000000))
+	v2 := uint64(timeNow - rand.Int64N(1000000000000))
+	v3 := uint64(timeNow - rand.Int64N(1000000000000))
+	v4 := uint64(timeNow - rand.Int64N(1000000000000))
+	v5 := uint64(timeNow - rand.Int64N(1000000000000))
+
+	// make map of source to version
+	pvMap := make(HLVVersions)
+	pvMap[src1] = v1
+	pvMap[src2] = v2
+	pvMap[src3] = v3
+	pvMap[src4] = v4
+	pvMap[src5] = v5
+
+	// convert to version delta map assert that first element is larger than all other elements
+	deltas := VersionDeltas(pvMap)
+	assert.Greater(t, deltas[0].Value, deltas[1].Value)
+	assert.Greater(t, deltas[0].Value, deltas[2].Value)
+	assert.Greater(t, deltas[0].Value, deltas[3].Value)
+	assert.Greater(t, deltas[0].Value, deltas[4].Value)
+
+	// create a test hlv
+	inputHLVA := []string{"cluster3@2"}
+	hlv := createHLVForTest(t, inputHLVA)
+	hlv.PreviousVersions = pvMap
+	expSrc := hlv.SourceID
+	expVal := hlv.Version
+	expCas := hlv.CurrentVersionCAS
+
+	// convert hlv to persisted format
+	vvXattr, err := base.JSONMarshal(&hlv)
+	require.NoError(t, err)
+
+	// convert the bytes back to an in memory format of hlv
+	memHLV := NewHybridLogicalVector()
+	err = base.JSONUnmarshal(vvXattr, &memHLV)
+	require.NoError(t, err)
+
+	assert.Equal(t, pvMap[src1], memHLV.PreviousVersions[src1])
+	assert.Equal(t, pvMap[src2], memHLV.PreviousVersions[src2])
+	assert.Equal(t, pvMap[src3], memHLV.PreviousVersions[src3])
+	assert.Equal(t, pvMap[src4], memHLV.PreviousVersions[src4])
+	assert.Equal(t, pvMap[src5], memHLV.PreviousVersions[src5])
+
+	// assert that the other elements are as expected
+	assert.Equal(t, expSrc, memHLV.SourceID)
+	assert.Equal(t, expVal, memHLV.Version)
+	assert.Equal(t, expCas, memHLV.CurrentVersionCAS)
+	assert.Len(t, memHLV.MergeVersions, 0)
+
+	// test hlv with two pv version entries that are equal to each other
+	hlv = createHLVForTest(t, inputHLVA)
+	// make src3 have the same version value as src2
+	pvMap[src3] = pvMap[src2]
+	hlv.PreviousVersions = pvMap
+
+	// convert hlv to persisted format
+	vvXattr, err = base.JSONMarshal(&hlv)
+	require.NoError(t, err)
+
+	// convert the bytes back to an in memory format of hlv
+	memHLV = NewHybridLogicalVector()
+	err = base.JSONUnmarshal(vvXattr, &memHLV)
+	require.NoError(t, err)
+
+	assert.Equal(t, pvMap[src1], memHLV.PreviousVersions[src1])
+	assert.Equal(t, pvMap[src2], memHLV.PreviousVersions[src2])
+	assert.Equal(t, pvMap[src3], memHLV.PreviousVersions[src3])
+	assert.Equal(t, pvMap[src4], memHLV.PreviousVersions[src4])
+	assert.Equal(t, pvMap[src5], memHLV.PreviousVersions[src5])
+
+	// assert that the other elements are as expected
+	assert.Equal(t, expSrc, memHLV.SourceID)
+	assert.Equal(t, expVal, memHLV.Version)
+	assert.Equal(t, expCas, memHLV.CurrentVersionCAS)
+	assert.Len(t, memHLV.MergeVersions, 0)
+
+	// test hlv with nil merge versions and nil previous versions to test panic safe
+	pvMap = nil
+	hlv2 := createHLVForTest(t, inputHLVA)
+	hlv2.PreviousVersions = pvMap
+	hlv2.MergeVersions = nil
+	deltas = VersionDeltas(pvMap)
+	assert.Nil(t, deltas)
+
+	// construct byte array from hlv
+	vvXattr, err = base.JSONMarshal(&hlv2)
+	require.NoError(t, err)
+	// convert the bytes back to an in memory format of hlv
+	memHLV = HybridLogicalVector{}
+	err = base.JSONUnmarshal(vvXattr, &memHLV)
+	require.NoError(t, err)
+
+	// assert in memory hlv is as expected
+	assert.Equal(t, expSrc, memHLV.SourceID)
+	assert.Equal(t, expVal, memHLV.Version)
+	assert.Equal(t, expCas, memHLV.CurrentVersionCAS)
+	assert.Len(t, memHLV.PreviousVersions, 0)
+	assert.Len(t, memHLV.MergeVersions, 0)
 }

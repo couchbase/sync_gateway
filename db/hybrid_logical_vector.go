@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,87 @@ type Version struct {
 	Value uint64 `json:"version"`
 }
 
+// VersionsDeltas will be sorted by version, first entry will be fill version then after that will be calculated deltas
+type VersionsDeltas []Version
+
+func (vde VersionsDeltas) Len() int { return len(vde) }
+
+func (vde VersionsDeltas) Swap(i, j int) {
+	vde[i], vde[j] = vde[j], vde[i]
+}
+
+func (vde VersionsDeltas) Less(i, j int) bool {
+	if vde[i].Value == vde[j].Value {
+		return false
+	}
+	return vde[i].Value < vde[j].Value
+}
+
+// VersionDeltas calculate the deltas of input map
+func VersionDeltas(versions map[string]uint64) VersionsDeltas {
+	if versions == nil {
+		return nil
+	}
+
+	vdm := make(VersionsDeltas, 0, len(versions))
+	for src, vrs := range versions {
+		vdm = append(vdm, CreateVersion(src, vrs))
+	}
+
+	// return early for single entry
+	if len(vdm) == 1 {
+		return vdm
+	}
+
+	// sort the list
+	sort.Sort(vdm)
+
+	// traverse in reverse order and calculate delta between versions, leaving the first element as is
+	for i := len(vdm) - 1; i >= 1; i-- {
+		vdm[i].Value = vdm[i].Value - vdm[i-1].Value
+	}
+	return vdm
+}
+
+// VersionsToDeltas will calculate deltas from the input map (pv or mv). Then will return the deltas in persisted format
+func VersionsToDeltas(m map[string]uint64) []string {
+	if len(m) == 0 {
+		return nil
+	}
+
+	var vrsList []string
+	deltas := VersionDeltas(m)
+	for _, delta := range deltas {
+		listItem := delta.StringForVersionDelta()
+		vrsList = append(vrsList, listItem)
+	}
+
+	return vrsList
+}
+
+// PersistedDeltasToMap converts the list of deltas in pv or mv from the bucket back from deltas into full versions in map format
+func PersistedDeltasToMap(vvList []string) (map[string]uint64, error) {
+	vv := make(map[string]uint64)
+	if len(vvList) == 0 {
+		return vv, nil
+	}
+
+	var lastEntryVersion uint64
+	for _, v := range vvList {
+		timestampString, sourceBase64, found := strings.Cut(v, "@")
+		if !found {
+			return nil, fmt.Errorf("Malformed version string %s, delimiter not found", v)
+		}
+		ver, err := base.HexCasToUint64ForDelta([]byte(timestampString))
+		if err != nil {
+			return nil, err
+		}
+		lastEntryVersion = ver + lastEntryVersion
+		vv[sourceBase64] = lastEntryVersion
+	}
+	return vv, nil
+}
+
 // CreateVersion creates an encoded sourceID and version pair
 func CreateVersion(source string, version uint64) Version {
 	return Version{
@@ -38,6 +120,7 @@ func CreateVersion(source string, version uint64) Version {
 	}
 }
 
+// ParseVersion will parse source version pair from string format
 func ParseVersion(versionString string) (version Version, err error) {
 	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
 	if !found {
@@ -61,6 +144,13 @@ func (v Version) String() string {
 	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 
+// StringForVersionDelta will take a version struct and convert the value to delta format
+// (encoding it to LE hex, stripping any 0's off the end and stripping leading 0x)
+func (v Version) StringForVersionDelta() string {
+	encodedVal := base.Uint64ToLittleEndianHexAndStripZeros(v.Value)
+	return encodedVal + "@" + v.SourceID
+}
+
 // ExtractCurrentVersionFromHLV will take the current version form the HLV struct and return it in the Version struct
 func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 	src, vrs := hlv.GetCurrentVersion()
@@ -68,8 +158,7 @@ func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 	return &currVersion
 }
 
-// PersistedHybridLogicalVector is the marshalled format of HybridLogicalVector.
-// This representation needs to be kept in sync with XDCR.
+// HybridLogicalVector is the in memory format for the hLv.
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64      // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
 	ImportCAS         uint64      // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
@@ -77,15 +166,6 @@ type HybridLogicalVector struct {
 	Version           uint64      // current cas in little endian hex format of the current version on the version vector
 	MergeVersions     HLVVersions // map of merge versions for fast efficient lookup
 	PreviousVersions  HLVVersions // map of previous versions for fast efficient lookup
-}
-
-type BucketVector struct {
-	CurrentVersionCAS string            `json:"cvCas,omitempty"`
-	ImportCAS         string            `json:"importCAS,omitempty"`
-	SourceID          string            `json:"src"`
-	Version           string            `json:"ver"`
-	MergeVersions     map[string]string `json:"mv,omitempty"`
-	PreviousVersions  map[string]string `json:"pv,omitempty"`
 }
 
 // NewHybridLogicalVector returns an initialised HybridLogicalVector.
@@ -447,91 +527,78 @@ func CreateEncodedSourceID(bucketUUID, clusterUUID string) (string, error) {
 }
 
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
-	var cvCasByteArray []byte
-	var importCASBytes []byte
-	var vrsCasByteArray []byte
+	type BucketVector struct {
+		CurrentVersionCAS string    `json:"cvCas,omitempty"`
+		ImportCAS         string    `json:"importCAS,omitempty"`
+		SourceID          string    `json:"src"`
+		Version           string    `json:"ver"`
+		PV                *[]string `json:"pv,omitempty"`
+		MV                *[]string `json:"mv,omitempty"`
+	}
+	var cvCas string
+	var importCAS string
+	var vrsCas string
+
+	var bucketHLV = BucketVector{}
 	if hlv.CurrentVersionCAS != 0 {
-		cvCasByteArray = base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
+		cvCas = base.CasToString(hlv.CurrentVersionCAS)
+		bucketHLV.CurrentVersionCAS = cvCas
 	}
 	if hlv.ImportCAS != 0 {
-		importCASBytes = base.Uint64CASToLittleEndianHex(hlv.ImportCAS)
+		importCAS = base.CasToString(hlv.ImportCAS)
+		bucketHLV.ImportCAS = importCAS
 	}
-	if hlv.Version != 0 {
-		vrsCasByteArray = base.Uint64CASToLittleEndianHex(hlv.Version)
+	vrsCas = base.CasToString(hlv.Version)
+	bucketHLV.Version = vrsCas
+	bucketHLV.SourceID = hlv.SourceID
+
+	pvPersistedFormat := VersionsToDeltas(hlv.PreviousVersions)
+	if len(pvPersistedFormat) > 0 {
+		bucketHLV.PV = &pvPersistedFormat
+	}
+	mvPersistedFormat := VersionsToDeltas(hlv.MergeVersions)
+	if len(mvPersistedFormat) > 0 {
+		bucketHLV.MV = &mvPersistedFormat
 	}
 
-	pvPersistedFormat, err := convertMapToPersistedFormat(hlv.PreviousVersions)
-	if err != nil {
-		return nil, err
-	}
-	mvPersistedFormat, err := convertMapToPersistedFormat(hlv.MergeVersions)
-	if err != nil {
-		return nil, err
-	}
-
-	bucketVector := BucketVector{
-		CurrentVersionCAS: string(cvCasByteArray),
-		ImportCAS:         string(importCASBytes),
-		Version:           string(vrsCasByteArray),
-		SourceID:          hlv.SourceID,
-		MergeVersions:     mvPersistedFormat,
-		PreviousVersions:  pvPersistedFormat,
-	}
-
-	return base.JSONMarshal(&bucketVector)
+	return base.JSONMarshal(&bucketHLV)
 }
 
 func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
-	persistedJSON := BucketVector{}
-	err := base.JSONUnmarshal(inputjson, &persistedJSON)
+	type BucketVector struct {
+		CurrentVersionCAS string    `json:"cvCas,omitempty"`
+		ImportCAS         string    `json:"importCAS,omitempty"`
+		SourceID          string    `json:"src"`
+		Version           string    `json:"ver"`
+		PV                *[]string `json:"pv,omitempty"`
+		MV                *[]string `json:"mv,omitempty"`
+	}
+	var bucketDeltas BucketVector
+	err := base.JSONUnmarshal(inputjson, &bucketDeltas)
 	if err != nil {
 		return err
 	}
-	// convert the data to in memory format
-	hlv.convertPersistedHLVToInMemoryHLV(persistedJSON)
+	if bucketDeltas.CurrentVersionCAS != "" {
+		hlv.CurrentVersionCAS = base.HexCasToUint64(bucketDeltas.CurrentVersionCAS)
+	}
+	if bucketDeltas.ImportCAS != "" {
+		hlv.ImportCAS = base.HexCasToUint64(bucketDeltas.ImportCAS)
+	}
+	hlv.SourceID = bucketDeltas.SourceID
+	hlv.Version = base.HexCasToUint64(bucketDeltas.Version)
+	if bucketDeltas.PV != nil {
+		prevVersion, err := PersistedDeltasToMap(*bucketDeltas.PV)
+		if err != nil {
+			return err
+		}
+		hlv.PreviousVersions = prevVersion
+	}
+	if bucketDeltas.MV != nil {
+		mergeVersion, err := PersistedDeltasToMap(*bucketDeltas.MV)
+		if err != nil {
+			return err
+		}
+		hlv.MergeVersions = mergeVersion
+	}
 	return nil
-}
-
-func (hlv *HybridLogicalVector) convertPersistedHLVToInMemoryHLV(persistedJSON BucketVector) {
-	hlv.CurrentVersionCAS = base.HexCasToUint64(persistedJSON.CurrentVersionCAS)
-	if persistedJSON.ImportCAS != "" {
-		hlv.ImportCAS = base.HexCasToUint64(persistedJSON.ImportCAS)
-	}
-	hlv.SourceID = persistedJSON.SourceID
-	// convert the hex cas to uint64 cas
-	hlv.Version = base.HexCasToUint64(persistedJSON.Version)
-	// convert the maps form persisted format to the in memory format
-	hlv.PreviousVersions = convertMapToInMemoryFormat(persistedJSON.PreviousVersions)
-	hlv.MergeVersions = convertMapToInMemoryFormat(persistedJSON.MergeVersions)
-}
-
-// convertMapToPersistedFormat will convert in memory map of previous versions or merge versions into the persisted format map
-func convertMapToPersistedFormat(memoryMap map[string]uint64) (map[string]string, error) {
-	if memoryMap == nil {
-		return nil, nil
-	}
-	returnedMap := make(map[string]string)
-	var persistedCAS string
-	for source, cas := range memoryMap {
-		casByteArray := base.Uint64CASToLittleEndianHex(cas)
-		persistedCAS = string(casByteArray)
-		// remove the leading '0x' from the CAS value
-		persistedCAS = persistedCAS[2:]
-		returnedMap[source] = persistedCAS
-	}
-	return returnedMap, nil
-}
-
-// convertMapToInMemoryFormat will convert the persisted format map to an in memory format of that map.
-// Used for previous versions and merge versions maps on HLV
-func convertMapToInMemoryFormat(persistedMap map[string]string) map[string]uint64 {
-	if persistedMap == nil {
-		return nil
-	}
-	returnedMap := make(map[string]uint64)
-	// convert each CAS entry from little endian hex to Uint64
-	for key, value := range persistedMap {
-		returnedMap[key] = base.HexCasToUint64(value)
-	}
-	return returnedMap
 }
