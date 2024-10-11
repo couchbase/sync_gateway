@@ -20,6 +20,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestMigrationJobStartOnDbStart:
+//   - Create a db
+//   - Grab attachment migration manager and assert it has run upon db startup
+//   - Assert job has written syncInfo metaVersion as expected to the bucket
 func TestMigrationJobStartOnDbStart(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("rosmar does not support DCP client, pending CBG-4249")
@@ -44,6 +48,15 @@ func TestMigrationJobStartOnDbStart(t *testing.T) {
 
 }
 
+// TestChangeDbCollectionsRestartMigrationJob:
+//   - Add docs before job starts, this will test that the dcp checkpoint are correctly reset upon db update later in test
+//   - Create db with collection one
+//   - Assert the attachment migration job is running
+//   - Update db config to include a new collection
+//   - Assert job runs/completes
+//   - As the job should've purged dcp collections upon new collection being added to db we expect some added docs
+//     to be processed twice in the job, so we can assert that the job has processed more docs than we added
+//   - Assert sync info: metaVersion is written to BOTH collections in the db config
 func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("rosmar does not support DCP client, pending CBG-4249")
@@ -96,6 +109,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	scopesConfigC1Only := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfigC1Only)
 	scope := dataStoreNames[0].ScopeName()
+	collection1 := dataStoreNames[0].CollectionName()
 	collection2 := dataStoreNames[1].CollectionName()
 	delete(scopesConfigC1Only[scope].Collections, collection2)
 
@@ -112,6 +126,10 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	dbCtx := rt.GetDatabase()
 	mgr := dbCtx.AttachmentMigrationManager
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 1)
+	scNames := base.ScopeAndCollectionNames{}
+	scName := base.ScopeAndCollectionName{Scope: scope, Collection: collection1}
+	scNames = append(scNames, scName)
+	assert.ElementsMatch(t, scNames, dbCtx.RequireAttachmentMigration)
 	// wait for migration job to start
 	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateRunning)
 
@@ -126,6 +144,9 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	dbCtx = rt.GetDatabase()
 	mgr = dbCtx.AttachmentMigrationManager
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 2)
+	scName = base.ScopeAndCollectionName{Scope: scope, Collection: collection2}
+	scNames = append(scNames, scName)
+	assert.ElementsMatch(t, scNames, dbCtx.RequireAttachmentMigration)
 	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateRunning)
 
 	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateCompleted)
@@ -149,6 +170,15 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
 }
 
+// TestMigrationNewCollectionToDbNoRestart:
+//   - Create db with one collection
+//   - Wait for attachment migration job to finish on that single collection
+//   - Assert syncInfo: metaVersion is present in collection
+//   - Update db config to include new collection
+//   - Assert that the attachment migration task is restarted but only on the one (new) collection
+//   - We can do this though asserting the new run only process amount of docs added in second collection
+//     after update to db config + assert on collections requiring migration
+//   - Assert that syncInfo: metaVersion is written for new collection (and is still present in original collection)
 func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("rosmar does not support DCP client, pending CBG-4249")
@@ -264,6 +294,12 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
 }
 
+// TestMigrationNoReRunStartStopDb:
+//   - Create db
+//   - Wait for attachment migration task to finish
+//   - Update db config to trigger reload of db
+//   - Assert that the migration job is not re-run (docs processed is the same as before + collections
+//     requiring migration is empty)
 func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("rosmar does not support DCP client, pending CBG-4249")
@@ -361,6 +397,10 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 0)
 }
 
+// TestStartMigrationAlreadyRunningProcess:
+//   - Create db
+//   - Wait for migration job to start
+//   - Attempt to start job again on manager, assert we get error
 func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("rosmar does not support DCP client, pending CBG-4249")

@@ -3716,13 +3716,17 @@ func TestSettingSyncInfo(t *testing.T) {
 
 }
 
+// TestRequireMigration:
+//   - Purpose is to test code pathways inside the InitSyncInfo function will return requires attachment migration
+//     as expected.
+//   - Have a test case for meta version being 4.0 in the bucket and assert it returns false in that scenario
 func TestRequireMigration(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	ds := collection.GetCollectionDatastore()
 
-	// test no sync info in bucket returns requireMigration
+	// test no sync info in bucket and set metadataID, returns requireMigration
 	_, requireMigration, err := base.InitSyncInfo(ds, "someID")
 	require.NoError(t, err)
 	assert.True(t, requireMigration)
