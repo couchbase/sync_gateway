@@ -282,10 +282,10 @@ var simpleTopologies = []Topology{
 				},
 			},
 			{
-				activePeer:  "cbs2",
-				passivePeer: "cbs1",
+				activePeer:  "cbs1",
+				passivePeer: "cbs2",
 				config: PeerReplicationConfig{
-					direction: PeerReplicationDirectionPush,
+					direction: PeerReplicationDirectionPull,
 				},
 			},
 		},
