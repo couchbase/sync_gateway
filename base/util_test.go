@@ -1735,3 +1735,40 @@ func TestCASToLittleEndianHex(t *testing.T) {
 	littleEndianHex := Uint64CASToLittleEndianHex(casValue)
 	require.Equal(t, expHexValue, string(littleEndianHex))
 }
+
+func TestUint64CASToLittleEndianHexAndStripZeros(t *testing.T) {
+	hexLE := "0x0000000000000000"
+	u64 := HexCasToUint64(hexLE)
+	hexLEStripped := Uint64ToLittleEndianHexAndStripZeros(u64)
+	u64Stripped, err := HexCasToUint64ForDelta([]byte(hexLEStripped))
+	require.NoError(t, err)
+	assert.Equal(t, u64, u64Stripped)
+
+	hexLE = "0xffffffffffffffff"
+	u64 = HexCasToUint64(hexLE)
+	hexLEStripped = Uint64ToLittleEndianHexAndStripZeros(u64)
+	u64Stripped, err = HexCasToUint64ForDelta([]byte(hexLEStripped))
+	require.NoError(t, err)
+	assert.Equal(t, u64, u64Stripped)
+
+	hexLE = "0xd123456e789a0bcf"
+	u64 = HexCasToUint64(hexLE)
+	hexLEStripped = Uint64ToLittleEndianHexAndStripZeros(u64)
+	u64Stripped, err = HexCasToUint64ForDelta([]byte(hexLEStripped))
+	require.NoError(t, err)
+	assert.Equal(t, u64, u64Stripped)
+
+	hexLE = "0xd123456e78000000"
+	u64 = HexCasToUint64(hexLE)
+	hexLEStripped = Uint64ToLittleEndianHexAndStripZeros(u64)
+	u64Stripped, err = HexCasToUint64ForDelta([]byte(hexLEStripped))
+	require.NoError(t, err)
+	assert.Equal(t, u64, u64Stripped)
+
+	hexLE = "0xa500000000000000"
+	u64 = HexCasToUint64(hexLE)
+	hexLEStripped = Uint64ToLittleEndianHexAndStripZeros(u64)
+	u64Stripped, err = HexCasToUint64ForDelta([]byte(hexLEStripped))
+	require.NoError(t, err)
+	assert.Equal(t, u64, u64Stripped)
+}
