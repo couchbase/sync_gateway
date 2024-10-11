@@ -3715,3 +3715,37 @@ func TestSettingSyncInfo(t *testing.T) {
 	assert.Equal(t, "test", syncInfo.MetadataID)
 
 }
+
+func TestRequireMigration(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	ds := collection.GetCollectionDatastore()
+
+	// test no sync info in bucket returns requireMigration
+	_, requireMigration, err := base.InitSyncInfo(ds, "someID")
+	require.NoError(t, err)
+	assert.True(t, requireMigration)
+
+	// delete the doc, test no sync info in bucket returns requireMigration
+	require.NoError(t, ds.Delete(base.SGSyncInfo))
+	_, requireMigration, err = base.InitSyncInfo(ds, "")
+	require.NoError(t, err)
+	assert.True(t, requireMigration)
+
+	// write a sync info doc to bucket with some meta ID, test InitSyncInfo will return true to require migration
+	// for both specifying a metadataID and not.
+	require.NoError(t, base.SetSyncInfoMetadataID(ds, "someID"))
+	_, requireMigration, err = base.InitSyncInfo(ds, "testID")
+	require.NoError(t, err)
+	assert.True(t, requireMigration)
+	_, requireMigration, err = base.InitSyncInfo(ds, "")
+	require.NoError(t, err)
+	assert.True(t, requireMigration)
+
+	// test sync info being defined with correct meta version
+	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "4.0"))
+	_, requireMigration, err = base.InitSyncInfo(ds, "")
+	require.NoError(t, err)
+	assert.False(t, requireMigration)
+}

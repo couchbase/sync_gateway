@@ -385,13 +385,14 @@ type SyncInfo struct {
 //  1. If syncInfo doesn't exist, it is created for the specified metadataID
 //  2. If syncInfo exists with a matching metadataID, returns requiresResync=false
 //  3. If syncInfo exists with a non-matching metadataID, returns requiresResync=true
-func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err error) {
+//     If syncInfo exists and has metaVersion equal to 4.0, return requiresAttachmentMigration=flase, else requiresAttachmentMigration=true
+func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, requiresAttachmentMigration bool, err error) {
 
 	var syncInfo SyncInfo
 	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
 	if IsDocNotFoundError(fetchErr) {
 		if metadataID == "" {
-			return false, nil
+			return false, true, nil
 		}
 		newSyncInfo := &SyncInfo{MetadataID: metadataID}
 		_, addErr := ds.Add(SGSyncInfo, 0, newSyncInfo)
@@ -399,18 +400,24 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err err
 			// attempt new fetch
 			_, fetchErr = ds.Get(SGSyncInfo, &syncInfo)
 			if fetchErr != nil {
-				return true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", fetchErr)
+				return true, true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", fetchErr)
 			}
 		} else if addErr != nil {
-			return true, fmt.Errorf("Error adding syncInfo: %v", addErr)
+			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
 		}
 		// successfully added
-		return false, nil
+		return false, true, nil
 	} else if fetchErr != nil {
-		return true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
+		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
+	}
+	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
+	if syncInfo.MetaDataVersion != "4.0" {
+		requiresAttachmentMigration = true
+	} else {
+		requiresAttachmentMigration = false
 	}
 
-	return syncInfo.MetadataID != metadataID, nil
+	return syncInfo.MetadataID != metadataID, requiresAttachmentMigration, nil
 }
 
 // SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present

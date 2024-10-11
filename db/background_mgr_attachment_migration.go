@@ -151,18 +151,22 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		return err
 	}
 
-	currCollectionIDs := db.GetCollectionIDs()
-	checkpointPrefix := db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID) + "att_migration:"
+	currCollectionIDs, err := getCollectionIDsForMigration(db)
+	if err != nil {
+		return err
+	}
+	dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(a.MigrationID)
+	dcpPrefix := db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
+	checkpointPrefix := fmt.Sprintf("%s:%v", dcpPrefix, dcpFeedKey)
 	err = a.resetDCPMetadataIfNeeded(ctx, db, checkpointPrefix, currCollectionIDs)
 	if err != nil {
 		return err
 	}
 
 	a.SetCollectionIDs(currCollectionIDs)
-	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, db.Options.GroupID, checkpointPrefix)
-	dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(a.MigrationID)
+	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, db.Options.GroupID, dcpPrefix)
 	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *dcpOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
@@ -187,14 +191,25 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		if processFailure != nil {
 			return processFailure
 		}
-		// set sync info here
+		updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(db.CollectionByID))
+		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
 			dbc := db.CollectionByID[collectionID]
 			if err := base.SetSyncInfoMetaVersion(dbc.dataStore, base.ProductAPIVersion); err != nil {
 				base.WarnfCtx(ctx, "[%s] Completed attachment migration, but unable to update syncInfo for collection %s: %v", migrationLoggingID, dbc.Name, err)
 				return err
 			}
+			updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
 		}
+		collectionsRequiringMigration := make([]base.ScopeAndCollectionName, 0)
+		for _, dsName := range db.RequireAttachmentMigration {
+			_, ok := updatedDsNames[dsName]
+			if !ok {
+				collectionsRequiringMigration = append(collectionsRequiringMigration, dsName)
+			}
+		}
+		db.RequireAttachmentMigration = collectionsRequiringMigration
+
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished migrating attachment metadata from sync data to global sync data. %d/%d docs changed", migrationLoggingID, a.DocsChanged.Value(), a.DocsProcessed.Value())
 	case <-terminator.Done():
 		err = dcpClient.Close()
@@ -264,14 +279,13 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 }
 
 func getMigrationDCPClientOptions(collectionIDs []uint32, groupID, prefix string) *base.DCPClientOptions {
-	checkpointPrefix := prefix + "att_migration:"
 	clientOptions := &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
-		CheckpointPrefix:  checkpointPrefix,
+		CheckpointPrefix:  prefix,
 	}
 	return clientOptions
 }
@@ -312,6 +326,7 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 		if err != nil {
 			return err
 		}
+		return nil
 	}
 	slices.Sort(collectionIDs)
 	slices.Sort(a.CollectionIDs)
@@ -324,4 +339,27 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 		}
 	}
 	return nil
+}
+
+// getCollectionIDsForMigration will get all collection IDs required for DCP client on migration run
+func getCollectionIDsForMigration(db *DatabaseContext) ([]uint32, error) {
+	collectionIDs := make([]uint32, 0)
+
+	// if all collections are included in RequireAttachmentMigration then we need to run against all collections,
+	// if no collections are specified in RequireAttachmentMigration, run against all collections. This is to support job
+	// being triggered by rest api (even after job was previously completed)
+	if len(db.CollectionByID) == len(db.RequireAttachmentMigration) || len(db.RequireAttachmentMigration) == 0 {
+		// get all collection IDs
+		collectionIDs = db.GetCollectionIDs()
+	} else {
+		// iterate through and grab collectionIDs we need
+		for _, v := range db.RequireAttachmentMigration {
+			collection, err := db.GetDatabaseCollection(v.ScopeName(), v.CollectionName())
+			if err != nil {
+				return nil, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(v.ScopeName()).Redact(), base.MD(v.CollectionName()).Redact())
+			}
+			collectionIDs = append(collectionIDs, collection.GetCollectionID())
+		}
+	}
+	return collectionIDs, nil
 }
