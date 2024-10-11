@@ -1119,7 +1119,8 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			}
 		}
 		if hlvXattrData != nil {
-			err := base.JSONUnmarshal(hlvXattrData, &doc.SyncData.HLV)
+			// parse the raw bytes of the hlv and convert deltas back to full values in memory
+			err := base.JSONUnmarshal(hlvXattrData, &doc.HLV)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
@@ -1159,7 +1160,8 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			}
 		}
 		if hlvXattrData != nil {
-			err := base.JSONUnmarshal(hlvXattrData, &doc.SyncData.HLV)
+			// parse the raw bytes of the hlv and convert deltas back to full values in memory
+			err := base.JSONUnmarshal(hlvXattrData, &doc.HLV)
 			if err != nil {
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), err))
 			}
@@ -1253,7 +1255,7 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 		}
 	}
 	if doc.SyncData.HLV != nil {
-		vvXattr, err = base.JSONMarshal(&doc.SyncData.HLV)
+		vvXattr, err = base.JSONMarshal(doc.SyncData.HLV)
 		if err != nil {
 			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
