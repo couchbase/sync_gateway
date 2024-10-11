@@ -239,24 +239,16 @@ const doc_meta_no_vv = `{
     "time_saved": "2017-10-25T12:45:29.622450174-07:00"
   }`
 
-const doc_meta_vv = `{
-	"cvCas":"0x40e2010000000000",
-	"src":"cb06dc003846116d9b66d2ab23887a96",
-	"ver":"0x40e2010000000000",
-	"mv":{
-		"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16",
-		"s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"
-	},
-	"pv":{
-		"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"
-	}
-  }`
+const doc_meta_vv = `{"cvCas":"0x40e2010000000000","src":"cb06dc003846116d9b66d2ab23887a96","ver":"0x40e2010000000000",
+	"mv":["c0ff05d7ac059a16@s_LhRPsa7CpjEvP5zeXTXEBA","1c008cd6@s_NqiIe0LekFPLeX4JvTO6Iw"],
+	"pv":["f0ff44d6ac059a16@s_YZvBpEaztom9z5V/hDoeIw"]
+}`
 
 func TestParseVersionVectorSyncData(t *testing.T) {
 	mv := make(HLVVersions)
 	pv := make(HLVVersions)
-	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = 1628620455147864000 //"c0ff05d7ac059a16"
-	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = 1628620455139868700
+	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = 1628620455147864000
+	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = 1628620458747363292
 	pv["s_YZvBpEaztom9z5V/hDoeIw"] = 1628620455135215600
 
 	ctx := base.TestCtx(t)
@@ -293,6 +285,22 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+}
+
+const doc_meta_vv_corrupt = `{"cvCas":"0x40e2010000000000","src":"cb06dc003846116d9b66d2ab23887a96","ver":"0x40e2010000000000",
+	"mv":["c0ff05d7ac059a16@s_LhRPsa7CpjEvP5zeXTXEBA","1c008cd61c008cd61c008cd6@s_NqiIe0LekFPLeX4JvTO6Iw"],
+	"pv":["f0ff44d6ac059a16@s_YZvBpEaztom9z5V/hDoeIw"]
+}`
+
+func TestParseVersionVectorCorruptDelta(t *testing.T) {
+
+	ctx := base.TestCtx(t)
+
+	sync_meta := []byte(doc_meta_no_vv)
+	vv_meta := []byte(doc_meta_vv_corrupt)
+	_, err := unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalAll)
+	require.Error(t, err)
+
 }
 
 // TestRevAndVersion tests marshalling and unmarshalling rev and current version
