@@ -63,6 +63,27 @@ func (h *HLVAgent) InsertWithHLV(ctx context.Context, key string) (casOut uint64
 	return cas
 }
 
+// UpdateWithHLV will update and existing doc in bucket mocking write from another hlv aware peer
+func (h *HLVAgent) UpdateWithHLV(ctx context.Context, key string, inputCas uint64, hlv *HybridLogicalVector) (casOut uint64) {
+	err := hlv.AddVersion(CreateVersion(h.Source, expandMacroCASValueUint64))
+	require.NoError(h.t, err)
+	hlv.CurrentVersionCAS = expandMacroCASValueUint64
+
+	vvXattr, err := hlv.MarshalJSON()
+	require.NoError(h.t, err)
+	mutateInOpts := &sgbucket.MutateInOptions{
+		MacroExpansion: hlv.computeMacroExpansions(),
+	}
+
+	docBody := base.MustJSONMarshal(h.t, defaultHelperBody)
+	xattrData := map[string][]byte{
+		h.xattrName: vvXattr,
+	}
+	cas, err := h.datastore.WriteWithXattrs(ctx, key, 0, inputCas, docBody, xattrData, nil, mutateInOpts)
+	require.NoError(h.t, err)
+	return cas
+}
+
 // EncodeTestVersion converts a simplified string version of the form 1@abc to a hex-encoded version and base64 encoded
 // source, like 169a05acd705ffc0@YWJj.  Allows use of simplified versions in tests for readability, ease of use.
 func EncodeTestVersion(versionString string) (encodedString string) {
