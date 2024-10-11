@@ -265,9 +265,9 @@ var simpleTopologies = []Topology{
 	{
 
 		/*
-			+------+     +------+
-			| cbs1 | --> | cbs2 |
-			+------+     +------+
+			+------+      +------+
+			| cbs1 | <--> | cbs2 |
+			+------+      +------+
 		*/
 		description: "Couchbase Server -> Couchbase Server",
 		peers: map[string]PeerOptions{
@@ -279,6 +279,13 @@ var simpleTopologies = []Topology{
 				passivePeer: "cbs2",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPush,
+				},
+			},
+			{
+				activePeer:  "cbs1",
+				passivePeer: "cbs2",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
 				},
 			},
 		},
@@ -307,6 +314,13 @@ var simpleTopologies = []Topology{
 				passivePeer: "cbs2",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPush,
+				},
+			},
+			{
+				activePeer:  "cbs1",
+				passivePeer: "cbs2",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
 				},
 			},
 		},
