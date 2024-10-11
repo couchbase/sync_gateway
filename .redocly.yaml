@@ -37,6 +37,7 @@ apis:
         value: false
       info-override:
         description: "App Services manages access and synchronization between Couchbase Lite and Couchbase Capella"
+        title: "App Services"
       plugin/excise-rbac-capella: on
       plugin/replace-description-capella: on
       plugin/replace-server-capella:
