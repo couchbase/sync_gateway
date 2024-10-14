@@ -52,11 +52,10 @@ func (h *handler) handleBLIPSync() error {
 	originPatterns, _ := hostOnlyCORS(h.db.CORS.Origin)
 
 	// Create a BLIP context:
-	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns)
+	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns, h.db.DatabaseContext.CancelContext)
 	if err != nil {
 		return err
 	}
-	blipContext.SetCancelCtx(h.db.DatabaseContext.CancelContext)
 
 	// Overwrite the existing logging context with the blip context ID
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))
