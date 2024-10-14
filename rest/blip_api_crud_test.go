@@ -3151,3 +3151,92 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		}
 	})
 }
+
+// TestBlipDatabaseClose verifies that the client connection is closed when the database is closed.
+// Starts a continuous pull replication then updates the db to trigger a close.
+func TestBlipDatabaseClose(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
+
+	bt, err := NewBlipTester(t)
+	require.NoError(t, err, "Error creating BlipTester")
+	rt := bt.restTester
+	defer bt.Close()
+	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
+	receivedChangesWg := sync.WaitGroup{}
+
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	changeCount := 0
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		body, err := request.Body()
+		require.NoError(t, err)
+		if string(body) != "null" {
+			// Expected changes body: [[1,"foo","1-abc"]]
+			changeListReceived := [][]interface{}{}
+			err = base.JSONUnmarshal(body, &changeListReceived)
+			assert.NoError(t, err, "Error unmarshalling changes received")
+
+			for _, change := range changeListReceived {
+
+				// The change should have three items in the array
+				// [1,"foo","1-abc"]
+				assert.Len(t, change, 3)
+
+				// Verify doc id has expected vals
+				docID := change[1].(string)
+				assert.True(t, strings.HasPrefix(docID, "foo"))
+				changeCount++
+				log.Printf("changeCount: %v", changeCount)
+				receivedChangesWg.Done()
+			}
+
+		}
+
+		if !request.NoReply() {
+			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
+			response := request.Response()
+			emptyResponseVal := []interface{}{}
+			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
+			assert.NoError(t, err, "Error marshalling response")
+			response.SetBody(emptyResponseValBytes)
+		}
+
+	}
+
+	blipContextClosed := false
+	bt.blipContext.OnExitCallback = func() {
+		blipContextClosed = true
+	}
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	subChangesRequest := bt.newRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "true"
+	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	subChangesRequest.SetCompressed(false)
+	sent := bt.sender.Send(subChangesRequest)
+	assert.True(t, sent)
+	subChangesResponse := subChangesRequest.Response()
+	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
+
+	// Write some documents to the server and wait for replication to confirm blip connection is established
+	for i := 1; i < 10; i++ {
+		receivedChangesWg.Add(1)
+		// Write a doc to the server
+		_ = rt.CreateTestDoc(fmt.Sprintf("foo-%d", i))
+	}
+
+	// Wait until all expected changes are received by change handler
+	require.NoError(t, WaitWithTimeout(&receivedChangesWg, time.Second*10))
+
+	// Remove the database to trigger close (avoids issues with double-close when the rest tester is closed during test teardown
+	dbName := rt.GetDatabase().Name
+	rt.ServerContext().RemoveDatabase(base.TestCtx(t), dbName)
+
+	// Verify the blip connection is closed
+	require.NoError(t, rt.WaitForCondition(func() bool {
+		return blipContextClosed
+	}))
+
+}

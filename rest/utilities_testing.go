@@ -1520,7 +1520,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		return nil, err
 	}
 	// Make BLIP/Websocket connection
-	bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", origin, protocols)
+	bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", origin, protocols, nil)
 	if err != nil {
 		return nil, err
 	}
