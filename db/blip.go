@@ -36,14 +36,15 @@ var (
 )
 
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
-func NewSGBlipContext(ctx context.Context, id string, origin []string) (bc *blip.Context, err error) {
-	return NewSGBlipContextWithProtocols(ctx, id, origin, supportedSubprotocols())
+func NewSGBlipContext(ctx context.Context, id string, origin []string, cancelCtx context.Context) (bc *blip.Context, err error) {
+	return NewSGBlipContextWithProtocols(ctx, id, origin, supportedSubprotocols(), cancelCtx)
 }
 
-func NewSGBlipContextWithProtocols(ctx context.Context, id string, origin []string, protocols []string) (bc *blip.Context, err error) {
+func NewSGBlipContextWithProtocols(ctx context.Context, id string, origin []string, protocols []string, cancelCtx context.Context) (bc *blip.Context, err error) {
 	opts := blip.ContextOptions{
 		Origin:      origin,
 		ProtocolIds: protocols,
+		CancelCtx:   cancelCtx,
 	}
 	if id == "" {
 		bc, err = blip.NewContext(opts)

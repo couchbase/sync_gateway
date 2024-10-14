@@ -115,10 +115,11 @@ type DatabaseContext struct {
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	ServerUUID                  string // UUID of the server, if available
 
-	DbStats      *base.DbStats // stats that correspond to this database context
-	CompactState uint32        // Status of database compaction
-	terminator   chan bool     // Signal termination of background goroutines
-
+	DbStats                      *base.DbStats                  // stats that correspond to this database context
+	CompactState                 uint32                         // Status of database compaction
+	terminator                   chan bool                      // Signal termination of background goroutines
+	CancelContext                context.Context                // Cancelled when the database is closed - used to notify associated processes (e.g. blipContext)
+	cancelContextFunc            context.CancelFunc             // Cancel function for cancelContext
 	backgroundTasks              []BackgroundTask               // List of background tasks that are initiated.
 	activeChannels               *channels.ActiveChannels       // Tracks active replications by channel
 	CfgSG                        cbgt.Cfg                       // Sync Gateway cluster shared config
@@ -135,6 +136,7 @@ type DatabaseContext struct {
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	CORS                         *auth.CORSConfig               // CORS configuration
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
+
 }
 
 type Scope struct {
@@ -412,6 +414,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UserFunctionTimeout: defaultUserFunctionTimeout,
 	}
 
+	// set up cancellable context based on the background context (context lifecycle should decoupled from the request context)
+	//
+	dbContext.CancelContext, dbContext.cancelContextFunc = context.WithCancel(context.Background())
+
 	// Check if server version supports multi-xattr operations, required for mou handling
 	dbContext.EnableMou = bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
 
@@ -586,6 +592,9 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	context.OIDCProviders.Stop()
 	close(context.terminator)
+	if context.cancelContextFunc != nil {
+		context.cancelContextFunc()
+	}
 
 	// Stop All background processors
 	bgManagers := context.stopBackgroundManagers()
