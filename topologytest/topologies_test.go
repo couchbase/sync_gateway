@@ -8,11 +8,18 @@
 
 package topologytest
 
+import (
+	"testing"
+
+	"github.com/couchbase/sync_gateway/base"
+)
+
 // Topology defines a topology for a set of peers and replications. This can include Couchbase Server, Sync Gateway, and Couchbase Lite peers, with push or pull replications between them.
 type Topology struct {
 	description  string
 	peers        map[string]PeerOptions
 	replications []PeerReplicationDefinition
+	skipIf       func(t *testing.T, activePeerID string, peers map[string]Peer) // allow temporary skips while the code is being ironed out
 }
 
 // Topologies represents user configurations of replications.
@@ -35,7 +42,7 @@ var Topologies = []Topology{
 			  |   cbl1  |
 			  +---------+
 		*/
-		description: "CBL <-> Sync Gateway <-> CBS",
+		description: "CBL <-> Sync Gateway <-> CBS 1.1",
 		peers: map[string]PeerOptions{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
@@ -56,6 +63,18 @@ var Topologies = []Topology{
 					direction: PeerReplicationDirectionPush,
 				},
 			},
+		},
+		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
+			switch activePeer {
+			case "cbs1":
+				t.Skip("CBG-4289 imported documents get CV updated")
+			}
+			if base.UnitTestUrlIsWalrus() {
+				switch activePeer {
+				case "cbl1":
+					t.Skip("CBG-4257, docs don't get CV when set from CBL")
+				}
+			}
 		},
 	},
 	{
@@ -79,7 +98,7 @@ var Topologies = []Topology{
 			  |   cbl1  |
 			  +---------+
 		*/
-		description: "CBL<->SG<->CBS1 CBS1<->CBS2",
+		description: "CBL<->SG<->CBS1 CBS1<->CBS2 1.2",
 		peers: map[string]PeerOptions{
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
@@ -116,6 +135,16 @@ var Topologies = []Topology{
 					direction: PeerReplicationDirectionPush,
 				},
 			},
+		},
+		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
+			if base.UnitTestUrlIsWalrus() {
+				switch activePeer {
+				case "cbs1", "cbs2":
+					t.Skip("CBG-4289 imported documents get CV updated")
+				case "cbl1":
+					t.Skip("CBG-4257, docs don't get CV when set from CBL")
+				}
+			}
 		},
 	},
 	{
@@ -139,14 +168,15 @@ var Topologies = []Topology{
 			  |   cbl1  |          |   cbl2  |
 			  +---------+          +---------+
 		*/
-		description: "2x CBL<->SG<->CBS XDCR only",
+		description: "2x CBL<->SG<->CBS XDCR only 1.3",
 		peers: map[string]PeerOptions{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2},
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
+			"sg2":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID2},
 			"cbl1": {Type: PeerTypeCouchbaseLite},
 			// TODO: CBG-4270, push replication only exists empemerally
-			// "cbl1": {Type: PeerTypeCouchbaseLite},
+			"cbl2": {Type: PeerTypeCouchbaseLite},
 		},
 		replications: []PeerReplicationDefinition{
 			{
@@ -177,6 +207,32 @@ var Topologies = []Topology{
 					direction: PeerReplicationDirectionPush,
 				},
 			},
+			{
+				activePeer:  "cbl2",
+				passivePeer: "sg2",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
+				},
+			},
+			{
+				activePeer:  "cbl2",
+				passivePeer: "sg2",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				},
+			},
+		},
+		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
+			switch activePeer {
+			case "cbs1", "cbs2":
+				t.Skip("CBG-4289 imported documents get CV updated")
+			}
+			if base.UnitTestUrlIsWalrus() {
+				switch activePeer {
+				case "cbl1", "cbl2":
+					t.Skip("CBG-4257, docs don't get CV when set from CBL")
+				}
+			}
 		},
 	},
 	// topology 1.4 not present, no P2P supported yet
@@ -289,6 +345,11 @@ var simpleTopologies = []Topology{
 				},
 			},
 		},
+		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
+			if base.UnitTestUrlIsWalrus() {
+				t.Skip("CBG-4300, need to construct a _vv on source if none is present, to then call setWithMeta")
+			}
+		},
 	},
 	{
 		/*
@@ -323,6 +384,16 @@ var simpleTopologies = []Topology{
 					direction: PeerReplicationDirectionPull,
 				},
 			},
+		},
+		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
+			if base.UnitTestUrlIsWalrus() {
+				switch activePeer {
+				case "cbs1":
+					t.Skip("CBG-4289 imported documents get CV updated")
+				case "cbs2":
+					t.Skip("CBG-4300, need to construct a _vv on source if none is present, to then call setWithMeta")
+				}
+			}
 		},
 	},
 }
