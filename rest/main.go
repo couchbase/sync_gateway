@@ -369,24 +369,80 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 }
 
 func CreateBootstrapConnectionFromStartupConfig(ctx context.Context, config *StartupConfig, bucketConnectionMode base.BucketConnectionMode) (base.BootstrapConnection, error) {
-	if base.ServerIsWalrus(config.Bootstrap.Server) {
-		cluster := base.NewRosmarCluster(config.Bootstrap.Server)
+	opts := bootstrapConnectionOpts{
+		bucketConnectionMode: bucketConnectionMode,
+	}
+	setBootstrapConnectionOptsFromStartupConfig(&opts, config)
+	return createBootstrapConnectionWithOpts(ctx, opts)
+}
+
+type bootstrapConnectionOpts struct {
+	server               string
+	username             string
+	password             string
+	x509CertPath         string
+	x509KeyPath          string
+	caCertPath           string
+	bucketConnectionMode base.BucketConnectionMode
+	isServerless         bool
+	bucketCredentials    base.PerBucketCredentialsConfig
+	tlsSkipVerify        *bool
+	useXattrConfig       bool
+}
+
+// bootstrapConnectionOptsConfigs returns a bootstrapConnectionOpts struct with values populated from the startup and db configs.
+func bootstrapConnectionOptsConfigs(startupConfig *StartupConfig, dbConfig DbConfig) bootstrapConnectionOpts {
+	var opts bootstrapConnectionOpts
+	setBootstrapConnectionOptsFromStartupConfig(&opts, startupConfig)
+	setBootstrapConnectionOptsFromDbConfig(&opts, dbConfig)
+	return opts
+}
+
+// setBootstrapConnectionOptsFromStartupConfig sets the bootstrapConnectionOpts struct with values from the startup config.
+func setBootstrapConnectionOptsFromStartupConfig(opts *bootstrapConnectionOpts, config *StartupConfig) {
+	opts.server = config.Bootstrap.Server
+	opts.username = config.Bootstrap.Username
+	opts.password = config.Bootstrap.Password
+	opts.x509CertPath = config.Bootstrap.X509CertPath
+	opts.x509KeyPath = config.Bootstrap.X509KeyPath
+	opts.caCertPath = config.Bootstrap.CACertPath
+	opts.isServerless = config.IsServerless()
+	opts.bucketCredentials = config.BucketCredentials
+	opts.tlsSkipVerify = config.Bootstrap.ServerTLSSkipVerify
+	opts.useXattrConfig = base.BoolDefault(config.Unsupported.UseXattrConfig, false)
+}
+
+// setBootstrapConnectionOptsFromDbConfig sets the bootstrapConnectionOpts struct with values from the db config.
+func setBootstrapConnectionOptsFromDbConfig(opts *bootstrapConnectionOpts, dbConfig DbConfig) {
+	if dbConfig.Server != nil {
+		opts.server = *dbConfig.Server
+	}
+	opts.username = dbConfig.Username
+	opts.password = dbConfig.Password
+	opts.x509CertPath = dbConfig.CertPath
+	opts.x509KeyPath = dbConfig.KeyPath
+	opts.caCertPath = dbConfig.CACertPath
+}
+
+func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnectionOpts) (base.BootstrapConnection, error) {
+	if base.ServerIsWalrus(opts.server) {
+		cluster := base.NewRosmarCluster(opts.server)
 		return cluster, nil
 	}
 
-	var server string
+	var connStr string
 	var err error
-	if config.IsServerless() {
-		server, err = base.GetGoCBConnStringWithDefaults(config.Bootstrap.Server, base.DefaultServerlessGoCBConnStringParams())
+	if opts.isServerless {
+		connStr, err = base.GetGoCBConnStringWithDefaults(opts.server, base.DefaultServerlessGoCBConnStringParams())
 	} else {
-		server, err = base.GetGoCBConnStringWithDefaults(config.Bootstrap.Server, base.DefaultGoCBConnStringParams())
+		connStr, err = base.GetGoCBConnStringWithDefaults(opts.server, base.DefaultGoCBConnStringParams())
 	}
 	if err != nil {
 		return nil, err
 	}
-	cluster, err := base.NewCouchbaseCluster(ctx, server, config.Bootstrap.Username, config.Bootstrap.Password,
-		config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath, config.Bootstrap.CACertPath,
-		config.IsServerless(), config.BucketCredentials, config.Bootstrap.ServerTLSSkipVerify, config.Unsupported.UseXattrConfig, bucketConnectionMode)
+	cluster, err := base.NewCouchbaseCluster(ctx, connStr, opts.username, opts.password,
+		opts.x509CertPath, opts.x509KeyPath, opts.caCertPath,
+		opts.isServerless, opts.bucketCredentials, opts.tlsSkipVerify, opts.useXattrConfig, opts.bucketConnectionMode)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
 		return nil, err
