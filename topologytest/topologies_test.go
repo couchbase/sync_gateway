@@ -232,6 +232,7 @@ var Topologies = []Topology{
 				case "cbl1", "cbl2":
 					t.Skip("CBG-4257, docs don't get CV when set from CBL")
 				}
+				t.Skip("CBG-4281 doesn't skip or preserve _sync xattr")
 			}
 		},
 	},
