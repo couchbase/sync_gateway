@@ -161,7 +161,6 @@ func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 // HybridLogicalVector is the in memory format for the hLv.
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64      // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
-	ImportCAS         uint64      // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
 	SourceID          string      // source bucket uuid in (base64 encoded format) of where this entry originated from
 	Version           uint64      // current cas in little endian hex format of the current version on the version vector
 	MergeVersions     HLVVersions // map of merge versions for fast efficient lookup
@@ -529,24 +528,18 @@ func CreateEncodedSourceID(bucketUUID, clusterUUID string) (string, error) {
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 	type BucketVector struct {
 		CurrentVersionCAS string    `json:"cvCas,omitempty"`
-		ImportCAS         string    `json:"importCAS,omitempty"`
 		SourceID          string    `json:"src"`
 		Version           string    `json:"ver"`
 		PV                *[]string `json:"pv,omitempty"`
 		MV                *[]string `json:"mv,omitempty"`
 	}
 	var cvCas string
-	var importCAS string
 	var vrsCas string
 
 	var bucketHLV = BucketVector{}
 	if hlv.CurrentVersionCAS != 0 {
 		cvCas = base.CasToString(hlv.CurrentVersionCAS)
 		bucketHLV.CurrentVersionCAS = cvCas
-	}
-	if hlv.ImportCAS != 0 {
-		importCAS = base.CasToString(hlv.ImportCAS)
-		bucketHLV.ImportCAS = importCAS
 	}
 	vrsCas = base.CasToString(hlv.Version)
 	bucketHLV.Version = vrsCas
@@ -567,7 +560,6 @@ func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 	type BucketVector struct {
 		CurrentVersionCAS string    `json:"cvCas,omitempty"`
-		ImportCAS         string    `json:"importCAS,omitempty"`
 		SourceID          string    `json:"src"`
 		Version           string    `json:"ver"`
 		PV                *[]string `json:"pv,omitempty"`
@@ -581,9 +573,7 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 	if bucketDeltas.CurrentVersionCAS != "" {
 		hlv.CurrentVersionCAS = base.HexCasToUint64(bucketDeltas.CurrentVersionCAS)
 	}
-	if bucketDeltas.ImportCAS != "" {
-		hlv.ImportCAS = base.HexCasToUint64(bucketDeltas.ImportCAS)
-	}
+
 	hlv.SourceID = bucketDeltas.SourceID
 	hlv.Version = base.HexCasToUint64(bucketDeltas.Version)
 	if bucketDeltas.PV != nil {
