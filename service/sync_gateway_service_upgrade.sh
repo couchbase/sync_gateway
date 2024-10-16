@@ -32,7 +32,7 @@ LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 SERVICE_CMD_ONLY=false
 
 usage() {
-  echo "This script upgrades an init service to run a sync_gateway instance."
+  echo "This script upgrades a service to run a sync_gateway instance."
 }
 
 ostype() {
@@ -110,14 +110,14 @@ ubuntu)
     ;;
   esac
   ;;
-redhat* | rhel* | centos | ol)
+redhat* | rhel* | centos | ol | rocky | almalinux )
   case 1:${OS_MAJOR_VERSION:--} in
   $((OS_MAJOR_VERSION >= 7))*)
     systemctl stop ${SERVICE_NAME}
     systemctl start ${SERVICE_NAME}
     ;;
   *)
-    echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
+    echo "ERROR: Unsupported RedHat/CentOS/Rocky/Alma Version \"$VER\""
     usage
     exit 1
     ;;
