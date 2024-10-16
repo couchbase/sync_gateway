@@ -18,6 +18,7 @@ apis:
   admin-capella:
     root: "./docs/api/admin-capella.yaml"
     decorators:
+      plugin/excise-rbac-capella: on
       filter-out:
         property: x-capella
         value: false
@@ -36,6 +37,8 @@ apis:
         value: false
       info-override:
         description: "App Services manages access and synchronization between Couchbase Lite and Couchbase Capella"
+        title: "App Services"
+      plugin/excise-rbac-capella: on
       plugin/replace-description-capella: on
       plugin/replace-server-capella:
         serverUrl: 'https://{hostname}:4984'
