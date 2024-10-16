@@ -101,7 +101,7 @@ func HTTPErrorf(status int, format string, args ...interface{}) *HTTPError {
 	return NewHTTPError(status, fmt.Sprintf(format, args...))
 }
 
-// NewHTTPError creates an HTTPError with an http status code and a message.
+// NewHTTPError creates an HTTPError with an http status code and a message. Use HTTPErrorf for printf style messages.
 func NewHTTPError(status int, message string) *HTTPError {
 	return &HTTPError{status, message}
 }
