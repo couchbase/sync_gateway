@@ -907,21 +907,14 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, previousMou *Metada
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
 	case Import:
-		// Update HLV if:
-		//
-		// - local SDK write without existing HLV. There could be a stale _mou, but that should be ignored.)
-		// - local SDK write with an existing HLV, where there was a document already processed by local cluster.
-		// 	- _vv.cvCAS != document cas
-		// 	- no _mou or _mou.cas != document cas
+		// Do not update HLV if the current document version (cas) is already included in the existing HLV, as either:
+		//    1. _vv.cvCAS == document.cas (current mutation is already present as cv), or
+		//    2. _mou.cas == document.cas (current mutation is already present as cv, and was imported on a different cluster)
 
-		// Do not update HLV if this is an XDCR migration:
-		//
-		// - document was written by another cluster
-		// 	- _vv.cvCAS != document cas, no _mou or _mou.cas != document cas
-		// - document was written by another cluster, itself having an undergone an import
-		// 	- _vv.cvCAS == document cas and _mou.cas != document cas
-
-		if !hasHLV || (d.HLV.CurrentVersionCAS != d.Cas && (previousMou == nil || base.HexCasToUint64(previousMou.CAS) != d.Cas)) {
+		cvCASMatch := hasHLV && d.HLV.CurrentVersionCAS == d.Cas
+		mouMatch := previousMou != nil && base.HexCasToUint64(previousMou.CAS) == d.Cas
+		if !hasHLV || (!cvCASMatch && !mouMatch) {
+			//if !hasHLV || (d.HLV.CurrentVersionCAS != d.Cas && (previousMou == nil || base.HexCasToUint64(previousMou.CAS) != d.Cas)) {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
 			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
