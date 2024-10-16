@@ -237,6 +237,7 @@ func TestHLVImport(t *testing.T) {
 		docID             string
 		preImportHLV      *HybridLogicalVector
 		preImportCas      uint64
+		preImportMou      *MetadataOnlyUpdate
 		postImportCas     uint64
 		preImportRevSeqNo uint64
 	}
@@ -314,7 +315,6 @@ func TestHLVImport(t *testing.T) {
 				}
 			},
 		},
-		/* CBG-4292 fixing this test might regress CBG-4291
 		{
 			name: "XDCR stamped with _mou",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
@@ -338,7 +338,7 @@ func TestHLVImport(t *testing.T) {
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
 					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					PreviousCAS:      output.preImportMou.PreviousCAS,
 					PreviousRevSeqNo: output.preImportRevSeqNo,
 				}
 			},
@@ -346,7 +346,6 @@ func TestHLVImport(t *testing.T) {
 				return output.preImportHLV
 			},
 		},
-		*/
 		{
 			name: "invalid _mou, but valid hlv",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
@@ -374,7 +373,6 @@ func TestHLVImport(t *testing.T) {
 				return output.preImportHLV
 			},
 		},
-		/* CBG-4292 fixing this test might regress CBG-4291
 		{
 			name: "SDK write with valid _mou, but no HLV",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
@@ -398,7 +396,7 @@ func TestHLVImport(t *testing.T) {
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
 					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					PreviousCAS:      output.preImportMou.PreviousCAS,
 					PreviousRevSeqNo: output.preImportRevSeqNo,
 				}
 			},
@@ -410,7 +408,6 @@ func TestHLVImport(t *testing.T) {
 				}
 			},
 		},
-		*/
 	}
 
 	for _, testCase := range testCases {
@@ -423,6 +420,10 @@ func TestHLVImport(t *testing.T) {
 			require.NoError(t, err)
 			revSeqNo := RetrieveDocRevSeqNo(t, existingXattrs[base.VirtualXattrRevSeqNo])
 
+			var preImportMou *MetadataOnlyUpdate
+			if mouBytes, ok := existingXattrs[base.MouXattrName]; ok && mouBytes != nil {
+				require.NoError(t, base.JSONUnmarshal(mouBytes, &preImportMou))
+			}
 			importOpts := importDocOptions{
 				isDelete: false,
 				expiry:   nil,
@@ -445,6 +446,7 @@ func TestHLVImport(t *testing.T) {
 			output := outputData{
 				docID:             docID,
 				preImportCas:      preImportCas,
+				preImportMou:      preImportMou,
 				postImportCas:     finalCas,
 				preImportRevSeqNo: revSeqNo,
 			}
