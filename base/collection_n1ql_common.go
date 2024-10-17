@@ -51,6 +51,7 @@ type N1QLStore interface {
 	GetName() string
 	BuildDeferredIndexes(ctx context.Context, indexSet []string) error
 	CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
+	CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
 	CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error
 	DropIndex(ctx context.Context, indexName string) error
 	ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
@@ -128,7 +129,29 @@ func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
 //	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
 //	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func CreateIndex(ctx context.Context, store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON %s(%s)", indexName, store.EscapedKeyspace(), expression)
+	return createIndex(ctx, store, indexName, expression, filterExpression, false, options)
+}
+
+// CreateIndexIfNotExists issues a CREATE INDEX query in the current bucket, using the form:
+//
+//	CREATE INDEX indexName ON bucket.Name(expression) IF NOT EXISTS WHERE filterExpression WITH options
+//
+// Sample usage with resulting statement:
+//
+//	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
+//	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
+func CreateIndexIfNotExists(ctx context.Context, store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	return createIndex(ctx, store, indexName, expression, filterExpression, true, options)
+}
+
+// createIndex is a common function for CreateIndex and CreateIndexIfNotExists
+func createIndex(ctx context.Context, store N1QLStore, indexName string, expression string, filterExpression string, ifNotExists bool, options *N1qlIndexOptions) error {
+	createClause := "CREATE INDEX"
+	if ifNotExists {
+		createClause += " IF NOT EXISTS"
+	}
+
+	createStatement := fmt.Sprintf("%s `%s` ON %s(%s)", createClause, indexName, store.EscapedKeyspace(), expression)
 
 	// Add filter expression, when present
 	if filterExpression != "" {
@@ -138,7 +161,7 @@ func CreateIndex(ctx context.Context, store N1QLStore, indexName string, express
 	// Replace any KeyspaceQueryToken references in the index expression
 	createStatement = strings.Replace(createStatement, KeyspaceQueryToken, store.EscapedKeyspace(), -1)
 
-	createErr := createIndex(ctx, store, indexName, createStatement, options)
+	createErr := createIndexFromStatement(ctx, store, indexName, createStatement, options)
 	if createErr != nil {
 		if strings.Contains(createErr.Error(), "already exists") || strings.Contains(createErr.Error(), "duplicate index name") {
 			return ErrAlreadyExists
@@ -149,10 +172,10 @@ func CreateIndex(ctx context.Context, store N1QLStore, indexName string, express
 
 func CreatePrimaryIndex(ctx context.Context, store N1QLStore, indexName string, options *N1qlIndexOptions) error {
 	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX `%s` ON %s", indexName, store.EscapedKeyspace())
-	return createIndex(ctx, store, indexName, createStatement, options)
+	return createIndexFromStatement(ctx, store, indexName, createStatement, options)
 }
 
-func createIndex(ctx context.Context, store N1QLStore, indexName string, createStatement string, options *N1qlIndexOptions) error {
+func createIndexFromStatement(ctx context.Context, store N1QLStore, indexName string, createStatement string, options *N1qlIndexOptions) error {
 
 	if options != nil {
 		withClause, marshalErr := JSONMarshal(options)
@@ -213,50 +236,12 @@ func waitForIndexExistence(ctx context.Context, store N1QLStore, indexName strin
 
 // BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the bucket.
 func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) error {
-
 	if len(indexSet) == 0 {
 		return nil
 	}
 
-	// Only build indexes that are in deferred state.  Query system:indexes to validate the provided set of indexes
-	statement := fmt.Sprintf("SELECT indexes.name, indexes.state FROM system:indexes WHERE indexes.keyspace_id = '%s'", s.IndexMetaKeyspaceID())
-
-	if s.IndexMetaBucketID() != "" {
-		statement += fmt.Sprintf("AND indexes.bucket_id = '%s' ", s.IndexMetaBucketID())
-	}
-	if s.IndexMetaScopeID() != "" {
-		statement += fmt.Sprintf("AND indexes.scope_id = '%s' ", s.IndexMetaScopeID())
-	}
-
-	statement += fmt.Sprintf("AND indexes.name IN [%s]", StringSliceToN1QLArray(indexSet, "'"))
-	// mod: bucket name
-
-	results, err := s.executeQuery(statement)
-	if err != nil {
-		return err
-	}
-	deferredIndexes := make([]string, 0)
-	var indexInfo struct {
-		Name  string `json:"name"`
-		State string `json:"state"`
-	}
-	for results.Next(ctx, &indexInfo) {
-		// If index is deferred (not built), add to set of deferred indexes
-		if indexInfo.State == IndexStateDeferred {
-			deferredIndexes = append(deferredIndexes, indexInfo.Name)
-		}
-	}
-	closeErr := results.Close()
-	if closeErr != nil {
-		return closeErr
-	}
-
-	if len(deferredIndexes) == 0 {
-		return nil
-	}
-
-	InfofCtx(ctx, KeyQuery, "Building deferred indexes: %v", deferredIndexes)
-	buildErr := buildIndexes(ctx, s, deferredIndexes)
+	InfofCtx(ctx, KeyQuery, "Building deferred indexes: %v", indexSet)
+	buildErr := buildIndexes(ctx, s, indexSet)
 	return buildErr
 }
 

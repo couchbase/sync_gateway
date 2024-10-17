@@ -72,6 +72,10 @@ func (cl *ClusterOnlyN1QLStore) CreateIndex(ctx context.Context, indexName strin
 	return CreateIndex(ctx, cl, indexName, expression, filterExpression, options)
 }
 
+func (cl *ClusterOnlyN1QLStore) CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	return CreateIndexIfNotExists(ctx, cl, indexName, expression, filterExpression, options)
+}
+
 func (cl *ClusterOnlyN1QLStore) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
 	return CreatePrimaryIndex(ctx, cl, indexName, options)
 }
