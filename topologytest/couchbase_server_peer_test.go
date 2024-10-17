@@ -10,6 +10,7 @@ package topologytest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -66,7 +67,8 @@ func (p *CouchbaseServerPeer) String() string {
 	return p.name
 }
 
-func (p *CouchbaseServerPeer) ctx() context.Context {
+// Context returns the context for the peer.
+func (p *CouchbaseServerPeer) Context() context.Context {
 	return base.TestCtx(p.tb)
 }
 
@@ -78,29 +80,51 @@ func (p *CouchbaseServerPeer) getCollection(dsName sgbucket.DataStoreName) sgbuc
 
 // GetDocument returns the latest version of a document. The test will fail the document does not exist.
 func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID string) (rest.DocVersion, db.Body) {
-	docBytes, _, _, err := p.getCollection(dsName).GetWithXattrs(p.ctx(), docID, []string{base.SyncXattrName, base.VvXattrName})
-	require.NoError(p.tb, err)
-	// get hlv to construct DocVersion
-	var body db.Body
-	require.NoError(p.tb, base.JSONUnmarshal(docBytes, &body))
-	return rest.EmptyDocVersion(), body
+	return getBodyAndVersion(p, p.getCollection(dsName), docID)
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
-	return rest.EmptyDocVersion()
+	cas, err := p.getCollection(dsName).WriteCas(docID, 0, 0, body, 0)
+	require.NoError(p.tb, err)
+	return rest.DocVersion{
+		CV: db.Version{
+			SourceID: p.SourceID(),
+			Value:    cas,
+		},
+	}
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
-	err := p.getCollection(dsName).Set(docID, 0, nil, body)
+	// write the document LWW, ignoring any in progress writes
+	callback := func(current []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
+		return body, nil, false, nil
+	}
+	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
 	require.NoError(p.tb, err)
-	return rest.EmptyDocVersion()
+	return rest.DocVersion{
+		CV: db.Version{
+			SourceID: p.SourceID(),
+			Value:    cas,
+		},
+	}
 }
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion {
-	return rest.EmptyDocVersion()
+	// delete the document, ignoring any in progress writes. We are allowed to delete a document that does not exist.
+	callback := func(current []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
+		return nil, nil, true, nil
+	}
+	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
+	require.NoError(p.tb, err)
+	return rest.DocVersion{
+		CV: db.Version{
+			SourceID: p.SourceID(),
+			Value:    cas,
+		},
+	}
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
@@ -108,8 +132,16 @@ func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, d
 	var docBytes []byte
 	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
 		var err error
-		docBytes, _, _, err = p.getCollection(dsName).GetWithXattrs(p.ctx(), docID, []string{base.SyncXattrName, base.VvXattrName})
-		assert.NoError(c, err)
+		var xattrs map[string][]byte
+		var cas uint64
+		docBytes, xattrs, cas, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
+		if !assert.NoError(c, err) {
+			return
+		}
+		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
+		version := getDocVersion(p, cas, xattrs)
+		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV for %s at version %+v on peer %s, sourceID:%s, found %+v", docID, expected, p, p.SourceID(), version)
+
 	}, 5*time.Second, 100*time.Millisecond)
 	// get hlv to construct DocVersion
 	var body db.Body
@@ -126,10 +158,10 @@ func (p *CouchbaseServerPeer) RequireDocNotFound(dsName sgbucket.DataStoreName, 
 // Close will shut down the peer and close any active replications on the peer.
 func (p *CouchbaseServerPeer) Close() {
 	for _, r := range p.pullReplications {
-		assert.NoError(p.tb, r.Stop(p.ctx()))
+		assert.NoError(p.tb, r.Stop(p.Context()))
 	}
 	for _, r := range p.pushReplications {
-		assert.NoError(p.tb, r.Stop(p.ctx()))
+		assert.NoError(p.tb, r.Stop(p.Context()))
 	}
 }
 
@@ -141,7 +173,7 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 		if ok {
 			require.Fail(p.tb, fmt.Sprintf("pull replication already exists for %s-%s", p, passivePeer))
 		}
-		r, err := xdcr.NewXDCR(p.ctx(), passivePeer.GetBackingBucket(), p.bucket, xdcr.XDCROptions{Mobile: xdcr.MobileOn})
+		r, err := xdcr.NewXDCR(p.Context(), passivePeer.GetBackingBucket(), p.bucket, xdcr.XDCROptions{Mobile: xdcr.MobileOn})
 		require.NoError(p.tb, err)
 		p.pullReplications[passivePeer] = r
 
@@ -149,7 +181,7 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 			activePeer:  p,
 			passivePeer: passivePeer,
 			t:           p.tb.(*testing.T),
-			ctx:         p.ctx(),
+			ctx:         p.Context(),
 			manager:     r,
 		}
 	case PeerReplicationDirectionPush:
@@ -157,14 +189,14 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 		if ok {
 			require.Fail(p.tb, fmt.Sprintf("pull replication already exists for %s-%s", p, passivePeer))
 		}
-		r, err := xdcr.NewXDCR(p.ctx(), p.bucket, passivePeer.GetBackingBucket(), xdcr.XDCROptions{Mobile: xdcr.MobileOn})
+		r, err := xdcr.NewXDCR(p.Context(), p.bucket, passivePeer.GetBackingBucket(), xdcr.XDCROptions{Mobile: xdcr.MobileOn})
 		require.NoError(p.tb, err)
 		p.pushReplications[passivePeer] = r
 		return &CouchbaseServerReplication{
 			activePeer:  p,
 			passivePeer: passivePeer,
 			t:           p.tb.(*testing.T),
-			ctx:         p.ctx(),
+			ctx:         p.Context(),
 			manager:     r,
 		}
 	default:
@@ -174,11 +206,83 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 }
 
 // SourceID returns the source ID for the peer used in <val>@sourceID.
-func (r *CouchbaseServerPeer) SourceID() string {
-	return r.sourceID
+func (p *CouchbaseServerPeer) SourceID() string {
+	return p.sourceID
 }
 
 // GetBackingBucket returns the backing bucket for the peer.
 func (p *CouchbaseServerPeer) GetBackingBucket() base.Bucket {
 	return p.bucket
+}
+
+// TB returns the testing.TB for the peer.
+func (p *CouchbaseServerPeer) TB() testing.TB {
+	return p.tb
+}
+
+// getDocVersion returns a DocVersion from a cas and xattrs with _vv (hlv) and _sync (RevTreeID).
+func getDocVersion(peer Peer, cas uint64, xattrs map[string][]byte) rest.DocVersion {
+	docVersion := rest.DocVersion{}
+	hlvBytes, ok := xattrs[base.VvXattrName]
+	if ok {
+		var hlv *db.HybridLogicalVector
+		require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &hlv))
+		docVersion.CV = db.Version{SourceID: hlv.SourceID, Value: hlv.Version}
+	} else {
+		docVersion.CV = db.Version{SourceID: peer.SourceID(), Value: cas}
+	}
+	sync, ok := xattrs[base.SyncXattrName]
+	if ok {
+		var syncData *db.SyncData
+		require.NoError(peer.TB(), json.Unmarshal(sync, &syncData))
+		docVersion.RevTreeID = syncData.CurrentRev
+	}
+	return docVersion
+}
+
+// getBodyAndVersion returns the body and version of a document from a sgbucket.DataStore.
+func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (rest.DocVersion, db.Body) {
+	docBytes, xattrs, cas, err := collection.GetWithXattrs(peer.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
+	require.NoError(peer.TB(), err)
+	// get hlv to construct DocVersion
+	var body db.Body
+	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body))
+	return getDocVersion(peer, cas, xattrs), body
+}
+
+// waitForDocVersion returns the body of a document from a sgbucket.DataStore or fails.
+func waitForDocVersion(peer Peer, collection sgbucket.DataStore, docID string, expected rest.DocVersion) db.Body {
+	var docBytes []byte
+	require.EventuallyWithT(peer.TB(), func(c *assert.CollectT) {
+		var err error
+		var xattrs map[string][]byte
+		docBytes, xattrs, _, err = collection.GetWithXattrs(peer.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
+		assert.NoError(c, err)
+		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
+		version := newDocVersionFromXattrs(peer.TB(), xattrs)
+		assert.Equal(c, expected.CV, version.CV, "Could not find %s at version %+v on peer %s, found %+v", docID, expected, peer, version)
+
+	}, 5*time.Second, 100*time.Millisecond)
+	// get hlv to construct DocVersion
+	var body db.Body
+	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
+	return body
+}
+
+// newDocVersionFromXattrs returns a DocVersion from a map of xattrs.
+func newDocVersionFromXattrs(t testing.TB, xattrs map[string][]byte) rest.DocVersion {
+	docVersion := rest.DocVersion{}
+	hlvBytes, ok := xattrs[base.VvXattrName]
+	if ok {
+		var hlv *db.HybridLogicalVector
+		require.NoError(t, json.Unmarshal(hlvBytes, &hlv))
+		docVersion.CV = db.Version{SourceID: hlv.SourceID, Value: hlv.Version}
+	}
+	sync, ok := xattrs[base.SyncXattrName]
+	if ok {
+		var syncData *db.SyncData
+		require.NoError(t, json.Unmarshal(sync, &syncData))
+		docVersion.RevTreeID = syncData.CurrentRev
+	}
+	return docVersion
 }
