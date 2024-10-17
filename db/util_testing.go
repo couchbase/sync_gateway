@@ -922,8 +922,16 @@ func RequireBackgroundManagerState(t *testing.T, ctx context.Context, mgr *Backg
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var status BackgroundManagerStatus
 		rawStatus, err := mgr.GetStatus(ctx)
-		require.NoError(c, err)
-		require.NoError(c, base.JSONUnmarshal(rawStatus, &status))
+		assert.NoError(c, err)
+		assert.NoError(c, base.JSONUnmarshal(rawStatus, &status))
 		assert.Equal(c, expState, status.State)
 	}, time.Second*10, time.Millisecond*100)
+}
+
+// AssertSyncInfoMetaVersion will assert that meta version is equal to current product version
+func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
+	var syncInfo base.SyncInfo
+	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, base.ProductVersion.String(), syncInfo.MetaDataVersion)
 }

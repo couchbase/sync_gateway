@@ -385,7 +385,7 @@ type SyncInfo struct {
 //  1. If syncInfo doesn't exist, it is created for the specified metadataID
 //  2. If syncInfo exists with a matching metadataID, returns requiresResync=false
 //  3. If syncInfo exists with a non-matching metadataID, returns requiresResync=true
-//     If syncInfo exists and has metaVersion equal to 4.0, return requiresAttachmentMigration=flase, else requiresAttachmentMigration=true
+//     If syncInfo exists and has metaDataVersion greater than or equal to 4.0, return requiresAttachmentMigration=false, else requiresAttachmentMigration=true to bring migrate metadata attachments.
 func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, requiresAttachmentMigration bool, err error) {
 
 	var syncInfo SyncInfo
@@ -411,10 +411,16 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, require
 		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
 	}
 	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
-	if syncInfo.MetaDataVersion != "4.0" {
-		requiresAttachmentMigration = true
-	} else {
-		requiresAttachmentMigration = false
+	var syncInfoVersion *ComparableBuildVersion
+	if syncInfo.MetaDataVersion != "" {
+		syncInfoVersion, err = NewComparableBuildVersionFromString(syncInfo.MetaDataVersion)
+		if err != nil {
+			return syncInfo.MetadataID != metadataID, true, err
+		}
+	}
+	requiresAttachmentMigration, err = CheckRequireAttachmentMigration(syncInfoVersion)
+	if err != nil {
+		return syncInfo.MetadataID != metadataID, true, err
 	}
 
 	return syncInfo.MetadataID != metadataID, requiresAttachmentMigration, nil
@@ -464,10 +470,27 @@ func SetSyncInfoMetaVersion(ds DataStore, metaVersion string) error {
 	return err
 }
 
-// SerializeIfLonger returns name as a sha1 string if the length of the name is greater or equal to the length specificed. Otherwise, returns the original string.
+// SerializeIfLonger returns name as a sha1 string if the length of the name is greater or equal to the length specified. Otherwise, returns the original string.
 func SerializeIfLonger(name string, length int) string {
 	if len(name) < length {
 		return name
 	}
 	return Sha1HashString(name, "")
+}
+
+// CheckRequireAttachmentMigration will return true if current metaVersion < 4.0.0, else false
+func CheckRequireAttachmentMigration(version *ComparableBuildVersion) (bool, error) {
+	if version == nil {
+		return true, nil
+	}
+	minVerStr := "4.0.0" // minimum meta version that needs to be defined for metadata migration. Any version less than this will require attachment migration
+	minVersion, err := NewComparableBuildVersionFromString(minVerStr)
+	if err != nil {
+		return true, nil
+	}
+
+	if minVersion.AtLeastMinorDowngrade(version) {
+		return true, nil
+	}
+	return false, nil
 }

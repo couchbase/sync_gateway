@@ -195,7 +195,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
 			dbc := db.CollectionByID[collectionID]
-			if err := base.SetSyncInfoMetaVersion(dbc.dataStore, base.ProductAPIVersion); err != nil {
+			if err := base.SetSyncInfoMetaVersion(dbc.dataStore, base.ProductVersion.String()); err != nil {
 				base.WarnfCtx(ctx, "[%s] Completed attachment migration, but unable to update syncInfo for collection %s: %v", migrationLoggingID, dbc.Name, err)
 				return err
 			}
@@ -348,7 +348,7 @@ func getCollectionIDsForMigration(db *DatabaseContext) ([]uint32, error) {
 	// if all collections are included in RequireAttachmentMigration then we need to run against all collections,
 	// if no collections are specified in RequireAttachmentMigration, run against all collections. This is to support job
 	// being triggered by rest api (even after job was previously completed)
-	if len(db.CollectionByID) == len(db.RequireAttachmentMigration) || len(db.RequireAttachmentMigration) == 0 {
+	if len(db.RequireAttachmentMigration) == 0 {
 		// get all collection IDs
 		collectionIDs = db.GetCollectionIDs()
 	} else {
@@ -356,7 +356,7 @@ func getCollectionIDsForMigration(db *DatabaseContext) ([]uint32, error) {
 		for _, v := range db.RequireAttachmentMigration {
 			collection, err := db.GetDatabaseCollection(v.ScopeName(), v.CollectionName())
 			if err != nil {
-				return nil, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(v.ScopeName()).Redact(), base.MD(v.CollectionName()).Redact())
+				return nil, base.RedactErrorf("failed to find ID for collection %s.%s", base.MD(v.ScopeName()), base.MD(v.CollectionName()))
 			}
 			collectionIDs = append(collectionIDs, collection.GetCollectionID())
 		}

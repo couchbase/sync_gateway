@@ -3719,12 +3719,85 @@ func TestSettingSyncInfo(t *testing.T) {
 // TestRequireMigration:
 //   - Purpose is to test code pathways inside the InitSyncInfo function will return requires attachment migration
 //     as expected.
-//   - Have a test case for meta version being 4.0 in the bucket and assert it returns false in that scenario
 func TestRequireMigration(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	ds := collection.GetCollectionDatastore()
+	type testCase struct {
+		name             string
+		initialMetaID    string
+		newMetadataID    string
+		metaVersion      string
+		requireMigration bool
+	}
+	testCases := []testCase{
+		{
+			name:             "sync info in bucket with metadataID set",
+			initialMetaID:    "someID",
+			requireMigration: true,
+		},
+		{
+			name:             "sync info in bucket with metadataID set, set newMetadataID",
+			initialMetaID:    "someID",
+			newMetadataID:    "testID",
+			requireMigration: true,
+		},
+		{
+			name:             "correct metaversion already defined, no metadata ID to set",
+			metaVersion:      "4.0.0",
+			requireMigration: false,
+		},
+		{
+			name:             "correct metaversion already defined, metadata ID to set",
+			metaVersion:      "4.0.0",
+			newMetadataID:    "someID",
+			requireMigration: false,
+		},
+		{
+			name:             "old metaversion defined, metadata ID to set",
+			metaVersion:      "3.0.0",
+			newMetadataID:    "someID",
+			requireMigration: true,
+		},
+		{
+			name:             "old metaversion defined, no metadata ID to set",
+			metaVersion:      "3.0.0",
+			requireMigration: true,
+		},
+	}
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+	ds := tb.GetSingleDataStore()
+	for _, testcase := range testCases {
+		t.Run(testcase.name, func(t *testing.T) {
+			if testcase.initialMetaID != "" {
+				require.NoError(t, base.SetSyncInfoMetadataID(ds, testcase.initialMetaID))
+			}
+			if testcase.metaVersion != "" {
+				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
+			}
+
+			_, requireMigration, err := base.InitSyncInfo(ds, testcase.newMetadataID)
+			require.NoError(t, err)
+			if testcase.requireMigration {
+				assert.True(t, requireMigration)
+			} else {
+				assert.False(t, requireMigration)
+			}
+
+			// cleanup bucket
+			require.NoError(t, ds.Delete(base.SGSyncInfo))
+		})
+	}
+}
+
+// TestInitSyncInfoRequireMigrationEmptyBucket:
+//   - Empty bucket call InitSyncInfo with metadata ID defined, assert require migration is returned
+//   - Cleanup bucket
+//   - Call InitSyncInfo with metadata ID not defined, assert require migration is not returned
+func TestInitSyncInfoRequireMigrationEmptyBucket(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+	ds := tb.GetSingleDataStore()
 
 	// test no sync info in bucket and set metadataID, returns requireMigration
 	_, requireMigration, err := base.InitSyncInfo(ds, "someID")
@@ -3736,20 +3809,64 @@ func TestRequireMigration(t *testing.T) {
 	_, requireMigration, err = base.InitSyncInfo(ds, "")
 	require.NoError(t, err)
 	assert.True(t, requireMigration)
+}
 
-	// write a sync info doc to bucket with some meta ID, test InitSyncInfo will return true to require migration
-	// for both specifying a metadataID and not.
-	require.NoError(t, base.SetSyncInfoMetadataID(ds, "someID"))
-	_, requireMigration, err = base.InitSyncInfo(ds, "testID")
-	require.NoError(t, err)
-	assert.True(t, requireMigration)
-	_, requireMigration, err = base.InitSyncInfo(ds, "")
-	require.NoError(t, err)
-	assert.True(t, requireMigration)
+// TestInitSyncInfoMetaVersionComparison:
+//   - Test requireMigration is true for metaVersion == 4.0.0 and > 4.0.0
+//   - Test requireMigration is true for non-existent metaVersion
+func TestInitSyncInfoMetaVersionComparison(t *testing.T) {
+	type testCase struct {
+		name        string
+		metadataID  string
+		metaVersion string
+	}
+	testCases := []testCase{
+		{
+			name:       "requireMigration for sync info with no meta version defined",
+			metadataID: "someID",
+		},
+		{
+			name:        "test requireMigration for metaVersion == 4.0.0",
+			metadataID:  "someID",
+			metaVersion: "4.0.0",
+		},
+		{
+			name:        "test we return true for metaVersion minor version > 4.0.0",
+			metadataID:  "someID",
+			metaVersion: "4.1.0",
+		},
+		{
+			name:        "test we return true for metaVersion patch version > 4.0.0",
+			metadataID:  "someID",
+			metaVersion: "4.0.1",
+		},
+		{
+			name:        "test we return true for metaVersion major version > 4.0.0",
+			metadataID:  "someID",
+			metaVersion: "5.0.0",
+		},
+	}
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+	ds := tb.GetSingleDataStore()
+	for _, testcase := range testCases {
+		t.Run(testcase.name, func(t *testing.T) {
+			// set sync info with no metaversion
+			require.NoError(t, base.SetSyncInfoMetadataID(ds, testcase.metadataID))
 
-	// test sync info being defined with correct meta version
-	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "4.0"))
-	_, requireMigration, err = base.InitSyncInfo(ds, "")
-	require.NoError(t, err)
-	assert.False(t, requireMigration)
+			if testcase.metaVersion == "" {
+				_, requireMigration, err := base.InitSyncInfo(ds, "someID")
+				require.NoError(t, err)
+				assert.True(t, requireMigration)
+			} else {
+				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
+				_, requireMigration, err := base.InitSyncInfo(ds, "someID")
+				require.NoError(t, err)
+				assert.False(t, requireMigration)
+			}
+			// cleanup bucket
+			require.NoError(t, ds.Delete(base.SGSyncInfo))
+		})
+	}
 }

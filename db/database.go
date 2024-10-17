@@ -2495,6 +2495,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
 		}
+		base.InfofCtx(ctx, base.KeyAll, "Migrating attachment metadata automatically to Sync Gateway 4.0+ for collections %v", db.RequireAttachmentMigration)
 	}
 
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {

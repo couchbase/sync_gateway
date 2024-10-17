@@ -30,7 +30,7 @@ func TestMigrationJobStartOnDbStart(t *testing.T) {
 	}
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
-	ctx := base.TestCtx(t)
+	ctx := rt.Context()
 
 	ds := rt.GetSingleDataStore()
 	dbCtx := rt.GetDatabase()
@@ -41,11 +41,7 @@ func TestMigrationJobStartOnDbStart(t *testing.T) {
 	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateCompleted)
 
 	// assert that sync info with metadata version written to the collection
-	syncInf := base.SyncInfo{}
-	_, err := ds.Get(base.SGSyncInfo, &syncInf)
-	require.NoError(t, err)
-	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
-
+	db.AssertSyncInfoMetaVersion(t, ds)
 }
 
 // TestChangeDbCollectionsRestartMigrationJob:
@@ -73,7 +69,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
-	ctx := base.TestCtx(t)
+	ctx := rt.Context()
 	_ = rt.Bucket()
 
 	const (
@@ -88,6 +84,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	opts := &sgbucket.MutateInOptions{}
 
 	// add some docs (with xattr so they won't be ignored in the background job) to both collections
+	// we want to add large number of docs to stop the migration job from finishing before we can assert on state
 	bodyBytes := []byte(`{"some": "body"}`)
 	for i := 0; i < 4000; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
@@ -96,13 +93,8 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 		}
 		_, writeErr := ds0.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
 		require.NoError(t, writeErr)
-	}
-	for i := 0; i < 4000; i++ {
-		key := fmt.Sprintf("%s_%d", t.Name()+"greg", i)
-		xattrsInput := map[string][]byte{
-			"_xattr": []byte(`{"some":"xattr"}`),
-		}
-		_, writeErr := ds1.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
+
+		_, writeErr = ds1.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
 		require.NoError(t, writeErr)
 	}
 
@@ -117,6 +109,8 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 
 	// Create a db1 with one collection initially
 	dbConfig := rt.NewDbConfig()
+	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
+	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigC1Only
 
@@ -125,10 +119,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 
 	dbCtx := rt.GetDatabase()
 	mgr := dbCtx.AttachmentMigrationManager
-	assert.Len(t, dbCtx.RequireAttachmentMigration, 1)
-	scNames := base.ScopeAndCollectionNames{}
-	scName := base.ScopeAndCollectionName{Scope: scope, Collection: collection1}
-	scNames = append(scNames, scName)
+	scNames := base.ScopeAndCollectionNames{base.ScopeAndCollectionName{Scope: scope, Collection: collection1}}
 	assert.ElementsMatch(t, scNames, dbCtx.RequireAttachmentMigration)
 	// wait for migration job to start
 	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateRunning)
@@ -143,9 +134,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	// wait for attachment migration job to start and finish
 	dbCtx = rt.GetDatabase()
 	mgr = dbCtx.AttachmentMigrationManager
-	assert.Len(t, dbCtx.RequireAttachmentMigration, 2)
-	scName = base.ScopeAndCollectionName{Scope: scope, Collection: collection2}
-	scNames = append(scNames, scName)
+	scNames = append(scNames, base.ScopeAndCollectionName{Scope: scope, Collection: collection2})
 	assert.ElementsMatch(t, scNames, dbCtx.RequireAttachmentMigration)
 	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateRunning)
 
@@ -160,14 +149,8 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	assert.Greater(t, mgrStatus.DocsProcessed, int64(totalDocsAdded))
 
 	// assert that sync info with metadata version written to both collections
-	syncInf := base.SyncInfo{}
-	_, err = ds0.Get(base.SGSyncInfo, &syncInf)
-	require.NoError(t, err)
-	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
-	syncInf = base.SyncInfo{}
-	_, err = ds1.Get(base.SGSyncInfo, &syncInf)
-	require.NoError(t, err)
-	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
+	db.AssertSyncInfoMetaVersion(t, ds0)
+	db.AssertSyncInfoMetaVersion(t, ds1)
 }
 
 // TestMigrationNewCollectionToDbNoRestart:
@@ -194,7 +177,7 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
-	ctx := base.TestCtx(t)
+	ctx := rt.Context()
 	_ = rt.Bucket()
 
 	const (
@@ -218,13 +201,8 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 		}
 		_, writeErr := ds0.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
 		require.NoError(t, writeErr)
-	}
-	for i := 0; i < 10; i++ {
-		key := fmt.Sprintf("%s_%d", "greg", i)
-		xattrsInput := map[string][]byte{
-			"_xattr": []byte(`{"some":"xattr"}`),
-		}
-		_, writeErr := ds1.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
+
+		_, writeErr = ds1.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
 		require.NoError(t, writeErr)
 	}
 
@@ -236,6 +214,8 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 
 	// Create a db1 with one collection initially
 	dbConfig := rt.NewDbConfig()
+	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
+	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigC1Only
 	resp := rt.CreateDatabase(dbName, dbConfig)
@@ -255,10 +235,7 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	assert.Equal(t, int64(totalDocsAddedCollOne), mgrStatus.DocsProcessed)
 
 	// assert sync info meta version exists for this collection
-	syncInf := base.SyncInfo{}
-	_, err = ds0.Get(base.SGSyncInfo, &syncInf)
-	require.NoError(t, err)
-	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
+	db.AssertSyncInfoMetaVersion(t, ds0)
 
 	// create db with second collection, background job should only run on new collection added given
 	// existent of sync info meta version on collection 1
@@ -284,14 +261,8 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	assert.Equal(t, int64(totalDocsAddedCollTwo), mgrStatus.DocsProcessed)
 
 	// assert that sync info with metadata version written to both collections
-	syncInf = base.SyncInfo{}
-	_, err = ds0.Get(base.SGSyncInfo, &syncInf)
-	require.NoError(t, err)
-	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
-	syncInf = base.SyncInfo{}
-	_, err = ds1.Get(base.SGSyncInfo, &syncInf)
-	require.NoError(t, err)
-	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
+	db.AssertSyncInfoMetaVersion(t, ds0)
+	db.AssertSyncInfoMetaVersion(t, ds1)
 }
 
 // TestMigrationNoReRunStartStopDb:
@@ -315,7 +286,7 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
-	ctx := base.TestCtx(t)
+	ctx := rt.Context()
 	_ = rt.Bucket()
 
 	const (
@@ -338,18 +309,15 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 		}
 		_, writeErr := ds0.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
 		require.NoError(t, writeErr)
-	}
-	for i := 0; i < 10; i++ {
-		key := fmt.Sprintf("%s_%d", "greg", i)
-		xattrsInput := map[string][]byte{
-			"_xattr": []byte(`{"some":"xattr"}`),
-		}
-		_, writeErr := ds1.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
+
+		_, writeErr = ds1.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
 		require.NoError(t, writeErr)
 	}
 
 	scopesConfigBothCollection := GetCollectionsConfig(t, tb, 2)
 	dbConfig := rt.NewDbConfig()
+	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
+	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigBothCollection
 	resp := rt.CreateDatabase(dbName, dbConfig)
@@ -369,14 +337,8 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	assert.Equal(t, int64(totalDocsAdded), mgrStatus.DocsProcessed)
 
 	// assert that sync info with metadata version written to both collections
-	syncInf := base.SyncInfo{}
-	_, err = ds0.Get(base.SGSyncInfo, &syncInf)
-	require.NoError(t, err)
-	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
-	syncInf = base.SyncInfo{}
-	_, err = ds1.Get(base.SGSyncInfo, &syncInf)
-	require.NoError(t, err)
-	assert.Equal(t, "4.0", syncInf.MetaDataVersion)
+	db.AssertSyncInfoMetaVersion(t, ds0)
+	db.AssertSyncInfoMetaVersion(t, ds1)
 
 	// reload db config with a config change
 	dbConfig = rt.NewDbConfig()
@@ -416,7 +378,7 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
-	ctx := base.TestCtx(t)
+	ctx := rt.Context()
 	_ = rt.Bucket()
 
 	const (
@@ -428,6 +390,8 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	opts := &sgbucket.MutateInOptions{}
 
 	// add some docs (with xattr so they won't be ignored in the background job) to both collections
+	// we want to add large number of docs to stop the migration job from finishing before we can try start the job
+	// again (whilst already running)
 	bodyBytes := []byte(`{"some": "body"}`)
 	for i := 0; i < 2000; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
@@ -440,6 +404,8 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 
 	scopesConfig := GetCollectionsConfig(t, tb, 1)
 	dbConfig := rt.NewDbConfig()
+	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
+	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfig
 	resp := rt.CreateDatabase(dbName, dbConfig)
