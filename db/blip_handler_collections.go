@@ -82,9 +82,9 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 				checkpoints[i] = Body{}
 				collectionContexts[i] = newBlipSyncCollectionContext(bh.loggingCtx, collection)
 			} else {
-				errMsg := fmt.Sprintf("Unable to fetch client checkpoint %q for collection %s: %s", key, scopeAndCollection, err)
+				errMsg := fmt.Sprintf("Unable to fetch client checkpoint %q for collection %s: %s", key, base.MD(scopeAndCollection).Redact(), err)
 				base.WarnfCtx(bh.loggingCtx, errMsg)
-				return base.HTTPErrorf(http.StatusServiceUnavailable, errMsg)
+				return base.NewHTTPError(http.StatusServiceUnavailable, errMsg)
 			}
 			continue
 		}

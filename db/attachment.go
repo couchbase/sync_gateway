@@ -15,7 +15,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -346,7 +345,7 @@ func GetAttachmentVersion(meta map[string]interface{}) (int, bool) {
 func GenerateProofOfAttachment(ctx context.Context, attachmentData []byte) (nonce []byte, proof string, err error) {
 	nonce = make([]byte, 20)
 	if _, err := rand.Read(nonce); err != nil {
-		return nil, "", base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Failed to generate random data: %s", err))
+		return nil, "", base.HTTPErrorf(http.StatusInternalServerError, "Failed to generate random data: %s", err)
 	}
 	proof = ProveAttachment(ctx, attachmentData, nonce)
 	base.TracefCtx(ctx, base.KeyCRUD, "Generated nonce %v and proof %q for attachment: %v", nonce, proof, attachmentData)

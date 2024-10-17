@@ -146,7 +146,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 		return
 	}
 
-	logger.logf(fieldsJSON)
+	logger.log(fieldsJSON)
 	SyncGatewayStats.GlobalStats.AuditStat.NumAuditsLogged.Add(1)
 }
 

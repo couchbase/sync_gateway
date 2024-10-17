@@ -826,7 +826,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 		}
 
 		base.InfofCtx(ctx, base.KeyCRUD, msg)
-		return base.HTTPErrorf(http.StatusServiceUnavailable, msg)
+		return base.NewHTTPError(http.StatusServiceUnavailable, msg)
 	}
 }
 

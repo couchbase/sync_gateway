@@ -141,7 +141,7 @@ func (l *FileLogger) FlushBufferToLog() {
 	l.buffer.Reset()
 
 	if l.Enabled.IsTrue() {
-		l.logf(logString)
+		l.log(logString)
 	}
 }
 
@@ -188,27 +188,37 @@ func (l *FileLogger) logf(format string, args ...interface{}) {
 	if l == nil {
 		return
 	}
-	doPrintf := len(args) > 0
+	// optimize for the common case of no arguments
+	if len(args) == 0 {
+		l.log(format)
+		return
+	}
 	if l.collateBuffer != nil {
 		l.collateBufferWg.Add(1)
-		if doPrintf {
-			l.collateBuffer <- fmt.Sprintf(format, args...)
-		} else {
-			l.collateBuffer <- format
-		}
+		l.collateBuffer <- fmt.Sprintf(format, args...)
 	} else {
-		if doPrintf {
-			l.logger.Printf(format, args...)
-		} else {
-			l.logger.Print(format)
-		}
+		l.logger.Printf(format, args...)
 	}
 }
 
-// conditionalPrintf will log the message if the log level is enabled.
-func (l *FileLogger) conditionalPrintf(logLevel LogLevel, format string, args ...interface{}) {
-	if l.shouldLog(logLevel) {
-		l.logf(format, args...)
+// log will put the given message into the collation buffer if it exists,
+// otherwise will log the message directly. Use logf for printf style logging.
+func (l *FileLogger) log(msg string) {
+	if l == nil {
+		return
+	}
+	if l.collateBuffer != nil {
+		l.collateBufferWg.Add(1)
+		l.collateBuffer <- msg
+	} else {
+		l.logger.Print(msg)
+	}
+}
+
+// conditionalPrintf will log the message if the logger is enabled.
+func (l *FileLogger) conditionalPrint(msg string) {
+	if l.shouldLog(LevelNone) {
+		l.log(msg)
 	}
 }
 
