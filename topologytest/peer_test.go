@@ -247,6 +247,13 @@ func TestPeerImplementation(t *testing.T) {
 				BucketID: PeerBucketID1,
 			},
 		},
+		{
+			name: "sg",
+			peerOption: PeerOptions{
+				Type:     PeerTypeSyncGateway,
+				BucketID: PeerBucketID1,
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -261,7 +268,11 @@ func TestPeerImplementation(t *testing.T) {
 			createBody := []byte(`{"op": "creation"}`)
 			createVersion := peer.CreateDocument(collectionName, docID, []byte(`{"op": "creation"}`))
 			require.NotEmpty(t, createVersion.CV)
-			require.Empty(t, createVersion.RevTreeID)
+			if tc.peerOption.Type == PeerTypeCouchbaseServer {
+				require.Empty(t, createVersion.RevTreeID)
+			} else {
+				require.NotEmpty(t, createVersion.RevTreeID)
+			}
 
 			peer.WaitForDocVersion(collectionName, docID, createVersion)
 			// Check Get after creation
@@ -274,7 +285,12 @@ func TestPeerImplementation(t *testing.T) {
 			updateVersion := peer.WriteDocument(collectionName, docID, updateBody)
 			require.NotEmpty(t, updateVersion.CV)
 			require.NotEqual(t, updateVersion.CV, createVersion.CV)
-			require.Empty(t, updateVersion.RevTreeID)
+			if tc.peerOption.Type == PeerTypeCouchbaseServer {
+				require.Empty(t, updateVersion.RevTreeID)
+			} else {
+				require.NotEmpty(t, updateVersion.RevTreeID)
+				require.NotEqual(t, updateVersion.RevTreeID, createVersion.RevTreeID)
+			}
 			peer.WaitForDocVersion(collectionName, docID, updateVersion)
 
 			// Check Get after update
@@ -287,7 +303,13 @@ func TestPeerImplementation(t *testing.T) {
 			require.NotEmpty(t, deleteVersion.CV)
 			require.NotEqual(t, deleteVersion.CV, updateVersion.CV)
 			require.NotEqual(t, deleteVersion.CV, createVersion.CV)
-			require.Empty(t, deleteVersion.RevTreeID)
+			if tc.peerOption.Type == PeerTypeCouchbaseServer {
+				require.Empty(t, deleteVersion.RevTreeID)
+			} else {
+				require.NotEmpty(t, deleteVersion.RevTreeID)
+				require.NotEqual(t, deleteVersion.RevTreeID, createVersion.RevTreeID)
+				require.NotEqual(t, deleteVersion.RevTreeID, updateVersion.RevTreeID)
+			}
 			peer.RequireDocNotFound(collectionName, docID)
 
 			// Resurrection
@@ -298,7 +320,14 @@ func TestPeerImplementation(t *testing.T) {
 			require.NotEqual(t, resurrectionVersion.CV, deleteVersion.CV)
 			require.NotEqual(t, resurrectionVersion.CV, updateVersion.CV)
 			require.NotEqual(t, resurrectionVersion.CV, createVersion.CV)
-			require.Empty(t, resurrectionVersion.RevTreeID)
+			if tc.peerOption.Type == PeerTypeCouchbaseServer {
+				require.Empty(t, resurrectionVersion.RevTreeID)
+			} else {
+				require.NotEmpty(t, resurrectionVersion.RevTreeID)
+				require.NotEqual(t, resurrectionVersion.RevTreeID, createVersion.RevTreeID)
+				require.NotEqual(t, resurrectionVersion.RevTreeID, updateVersion.RevTreeID)
+				require.NotEqual(t, resurrectionVersion.RevTreeID, deleteVersion.RevTreeID)
+			}
 			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion)
 
 		})
