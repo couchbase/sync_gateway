@@ -9,15 +9,14 @@
 package topologytest
 
 import (
+	"context"
 	"net/http"
 	"testing"
-	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,6 +43,12 @@ func (p *SyncGatewayPeer) String() string {
 	return p.name
 }
 
+func (p *SyncGatewayPeer) getCollection(dsName sgbucket.DataStoreName) sgbucket.DataStore {
+	collection, err := p.rt.Bucket().NamedDataStore(dsName)
+	require.NoError(p.TB(), err)
+	return collection
+}
+
 // GetDocument returns the latest version of a document. The test will fail the document does not exist.
 func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID string) (rest.DocVersion, db.Body) {
 	// this function is not yet collections aware
@@ -58,7 +63,12 @@ func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID st
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
 	// this function is not yet collections aware
-	return p.rt.PutDoc(docID, string(body))
+	putVersion := p.rt.PutDoc(docID, string(body))
+	// get the version since PutDoc only has revtree information
+	getVersion, _ := getBodyAndVersion(p, p.getCollection(dsName), docID)
+	// make sure RevTreeID is the same
+	require.Equal(p.TB(), putVersion.RevTreeID, getVersion.RevTreeID)
+	return getVersion
 }
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
@@ -68,23 +78,14 @@ func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID st
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
 func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) db.Body {
-	// this function is not yet collections aware
-	var body db.Body
-	require.EventuallyWithT(p.rt.TB(), func(c *assert.CollectT) {
-		response := p.rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-		assert.Equal(c, http.StatusOK, response.Code)
-		body = nil
-		assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		// FIXME can't assert for a specific version right now, not everything returns the correct version.
-		// assert.Equal(c, expected.RevTreeID, body.ExtractRev())
-	}, 10*time.Second, 100*time.Millisecond)
-	return body
+	return waitForDocVersion(p, p.getCollection(dsName), docID, expected)
 }
 
 // RequireDocNotFound asserts that a document does not exist on the peer.
 func (p *SyncGatewayPeer) RequireDocNotFound(dsName sgbucket.DataStoreName, docID string) {
-	// _, err := p.rt.GetDoc(docID)
-	// base.RequireDocNotFoundError(p.rt.TB(), err)
+	/*_, err := p.rt.GetDoc(docID)
+	base.RequireDocNotFoundError(p.rt.TB(), err)
+	*/
 }
 
 // Close will shut down the peer and close any active replications on the peer.
@@ -98,9 +99,19 @@ func (p *SyncGatewayPeer) CreateReplication(peer Peer, config PeerReplicationCon
 	return nil
 }
 
-// SourceID returns the source ID for the peer used in <val>@sourceID.
+// SourceID returns the source ID for the peer used in <val>@<sourceID>.
 func (r *SyncGatewayPeer) SourceID() string {
 	return r.rt.GetDatabase().EncodedSourceID
+}
+
+// Context returns the context for the peer.
+func (p *SyncGatewayPeer) Context() context.Context {
+	return p.rt.Context()
+}
+
+// TB returns the testing.TB for the peer.
+func (p *SyncGatewayPeer) TB() testing.TB {
+	return p.rt.TB()
 }
 
 // GetBackingBucket returns the backing bucket for the peer.
