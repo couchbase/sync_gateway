@@ -9,6 +9,7 @@
 package topologytest
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -131,9 +132,19 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 	return replication
 }
 
-// SourceID returns the source ID for the peer used in <val>@sourceID.
+// SourceID returns the source ID for the peer used in <val>@<sourceID>.
 func (r *CouchbaseLiteMockPeer) SourceID() string {
 	return r.name
+}
+
+// Context returns the context for the peer.
+func (p *CouchbaseLiteMockPeer) Context() context.Context {
+	return base.TestCtx(p.TB())
+}
+
+// TB returns the testing.TB for the peer.
+func (p *CouchbaseLiteMockPeer) TB() testing.TB {
+	return p.t
 }
 
 // GetBackingBucket returns the backing bucket for the peer. This is always nil.

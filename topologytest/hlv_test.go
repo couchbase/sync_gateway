@@ -10,7 +10,11 @@ package topologytest
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"testing"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -27,23 +31,36 @@ func getSingleDsName() base.ScopeAndCollectionName {
 
 // TestHLVCreateDocumentSingleActor tests creating a document with a single actor in different topologies.
 func TestHLVCreateDocumentSingleActor(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCRUD, base.KeyImport)
 	collectionName := getSingleDsName()
-	for i, tc := range Topologies {
+	for _, tc := range append(simpleTopologies, Topologies...) {
+		// sort peers to ensure deterministic test order
+		peerNames := maps.Keys(tc.peers)
+		slices.Sort(peerNames)
 		t.Run(tc.description, func(t *testing.T) {
-			for peerID := range tc.peers {
-				t.Run("actor="+peerID, func(t *testing.T) {
-					peers := createPeers(t, tc.peers)
-					replications := CreatePeerReplications(t, peers, tc.replications)
+			for _, activePeerID := range peerNames {
+				t.Run("actor="+activePeerID, func(t *testing.T) {
+					peers, replications := setupTests(t, tc.peers, tc.replications)
+					// Skip tests not working yet
+					if tc.skipIf != nil {
+						tc.skipIf(t, activePeerID, peers)
+					}
 					for _, replication := range replications {
 						// temporarily start the replication before writing the document, limitation of CouchbaseLiteMockPeer as active peer since WriteDocument is calls PushRev
 						replication.Start()
 					}
-					docID := fmt.Sprintf("doc_%d_%s", i, peerID)
+					docID := fmt.Sprintf("doc_%s_%s", strings.ReplaceAll(tc.description, " ", "_"), activePeerID)
 
-					docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, peerID, tc.description))
-					docVersion := peers[peerID].WriteDocument(collectionName, docID, docBody)
-					for _, peer := range peers {
-						t.Logf("waiting for doc version on %s, written from %s", peer, peerID)
+					t.Logf("writing document %s from %s", docID, activePeerID)
+					docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, activePeerID, tc.description))
+					docVersion := peers[activePeerID].WriteDocument(collectionName, docID, docBody)
+
+					// for single actor, use the docVersion that was written, but if there is a SG running, wait for import
+					for _, peerName := range peerNames {
+						peer := peers[peerName]
+
+						t.Logf("waiting for doc version on %s, written from %s", peer, activePeerID)
 						body := peer.WaitForDocVersion(collectionName, docID, docVersion)
 						// remove internal properties to do a comparison
 						stripInternalProperties(body)
