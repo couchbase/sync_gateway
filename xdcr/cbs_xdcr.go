@@ -154,6 +154,10 @@ func (x *couchbaseServerManager) Start(ctx context.Context) error {
 
 // Stop starts the XDCR replication and deletes the replication from Couchbase Server.
 func (x *couchbaseServerManager) Stop(ctx context.Context) error {
+	// replication is not started
+	if x.replicationID == "" {
+		return nil
+	}
 	method := http.MethodDelete
 	url := "/controller/cancelXDCR/" + url.PathEscape(x.replicationID)
 	output, statusCode, err := x.fromBucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)

@@ -10,6 +10,7 @@
 package topologytest
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -44,11 +45,22 @@ type Peer interface {
 	// Close will shut down the peer and close any active replications on the peer.
 	Close()
 
-	// SourceID returns the source ID for the peer used in <val>@sourceID.
+	internalPeer
+}
+
+// internalPeer represents Peer interface that are only intdeded to be used from within a Peer or Replication class, but not by tests themselves.
+type internalPeer interface {
+	// SourceID returns the source ID for the peer used in <val>@<sourceID>.
 	SourceID() string
 
 	// GetBackingBucket returns the backing bucket for the peer. This is nil when the peer is a Couchbase Lite peer.
 	GetBackingBucket() base.Bucket
+
+	// TB returns the testing.TB for the peer.
+	TB() testing.TB
+
+	// Context returns the context for the peer.
+	Context() context.Context
 }
 
 // PeerReplication represents a replication between two peers. This replication is unidirectional since all bi-directional replications are represented by two unidirectional instances.
@@ -141,6 +153,7 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 		bucket, ok := buckets[opts.BucketID]
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)
 		sourceID, err := xdcr.GetSourceID(base.TestCtx(t), bucket)
+		fmt.Printf("peer %s bucket %s sourceID: %v\n", name, bucket.GetName(), sourceID)
 		require.NoError(t, err)
 		return &CouchbaseServerPeer{
 			name:             name,
@@ -169,8 +182,8 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 	return nil
 }
 
-// CreatePeerReplications creates a list of peers and replications. The replications will not have started.
-func CreatePeerReplications(t *testing.T, peers map[string]Peer, configs []PeerReplicationDefinition) []PeerReplication {
+// createPeerReplications creates a list of peers and replications. The replications will not have started.
+func createPeerReplications(t *testing.T, peers map[string]Peer, configs []PeerReplicationDefinition) []PeerReplication {
 	replications := make([]PeerReplication, 0, len(configs))
 	for _, config := range configs {
 		activePeer, ok := peers[config.activePeer]
@@ -213,4 +226,82 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) map[string]P
 		peers[id] = peer
 	}
 	return peers
+}
+
+// setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
+func setupTests(t *testing.T, peerOptions map[string]PeerOptions, replicationDefinitions []PeerReplicationDefinition) (map[string]Peer, []PeerReplication) {
+	peers := createPeers(t, peerOptions)
+	replications := createPeerReplications(t, peers, replicationDefinitions)
+	return peers, replications
+}
+
+func TestPeerImplementation(t *testing.T) {
+	testCases := []struct {
+		name       string
+		peerOption PeerOptions
+	}{
+		{
+			name: "cbs",
+			peerOption: PeerOptions{
+				Type:     PeerTypeCouchbaseServer,
+				BucketID: PeerBucketID1,
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			peers := createPeers(t, map[string]PeerOptions{tc.name: tc.peerOption})
+			peer := peers[tc.name]
+
+			docID := t.Name()
+			collectionName := getSingleDsName()
+
+			peer.RequireDocNotFound(collectionName, docID)
+			// Create
+			createBody := []byte(`{"op": "creation"}`)
+			createVersion := peer.CreateDocument(collectionName, docID, []byte(`{"op": "creation"}`))
+			require.NotEmpty(t, createVersion.CV)
+			require.Empty(t, createVersion.RevTreeID)
+
+			peer.WaitForDocVersion(collectionName, docID, createVersion)
+			// Check Get after creation
+			roundtripGetVersion, roundtripGetbody := peer.GetDocument(collectionName, docID)
+			require.Equal(t, createVersion, roundtripGetVersion)
+			require.JSONEq(t, string(createBody), string(base.MustJSONMarshal(t, roundtripGetbody)))
+
+			// Update
+			updateBody := []byte(`{"op": "update"}`)
+			updateVersion := peer.WriteDocument(collectionName, docID, updateBody)
+			require.NotEmpty(t, updateVersion.CV)
+			require.NotEqual(t, updateVersion.CV, createVersion.CV)
+			require.Empty(t, updateVersion.RevTreeID)
+			peer.WaitForDocVersion(collectionName, docID, updateVersion)
+
+			// Check Get after update
+			roundtripGetVersion, roundtripGetbody = peer.GetDocument(collectionName, docID)
+			require.Equal(t, updateVersion, roundtripGetVersion)
+			require.JSONEq(t, string(updateBody), string(base.MustJSONMarshal(t, roundtripGetbody)))
+
+			// Delete
+			deleteVersion := peer.DeleteDocument(collectionName, docID)
+			require.NotEmpty(t, deleteVersion.CV)
+			require.NotEqual(t, deleteVersion.CV, updateVersion.CV)
+			require.NotEqual(t, deleteVersion.CV, createVersion.CV)
+			require.Empty(t, deleteVersion.RevTreeID)
+			peer.RequireDocNotFound(collectionName, docID)
+
+			// Resurrection
+
+			resurrectionBody := []byte(`{"op": "resurrection"}`)
+			resurrectionVersion := peer.WriteDocument(collectionName, docID, resurrectionBody)
+			require.NotEmpty(t, resurrectionVersion.CV)
+			require.NotEqual(t, resurrectionVersion.CV, deleteVersion.CV)
+			require.NotEqual(t, resurrectionVersion.CV, updateVersion.CV)
+			require.NotEqual(t, resurrectionVersion.CV, createVersion.CV)
+			require.Empty(t, resurrectionVersion.RevTreeID)
+			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion)
+
+		})
+	}
+
 }
