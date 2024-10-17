@@ -133,6 +133,10 @@ func (c *Collection) CreateIndex(ctx context.Context, indexName string, expressi
 	return CreateIndex(ctx, c, indexName, expression, filterExpression, options)
 }
 
+func (c *Collection) CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	return CreateIndexIfNotExists(ctx, c, indexName, expression, filterExpression, options)
+}
+
 func (c *Collection) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
 	return CreatePrimaryIndex(ctx, c, indexName, options)
 }

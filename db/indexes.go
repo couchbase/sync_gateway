@@ -14,7 +14,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
@@ -280,42 +279,12 @@ func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
 // will need to be invoked for any created indexes.
-func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, options InitializeIndexOptions) (isDeferred bool, err error) {
+func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, options InitializeIndexOptions) error {
 
 	indexName := i.fullIndexName(options.UseXattrs)
 
-	exists, indexMeta, metaErr := bucket.GetIndexMeta(ctx, indexName)
-	if metaErr != nil {
-		return false, metaErr
-	}
-
-	// For already existing indexes, check whether they need to be built.
-	if exists {
-		if indexMeta == nil {
-			return false, fmt.Errorf("No metadata retrieved for existing index %s", indexName)
-		}
-		if indexMeta.State == base.IndexStateDeferred {
-			// Two possible scenarios when index already exists in deferred state:
-			//  1. Another SG is in the process of index creation
-			//  2. SG previously crashed between index creation and index build.
-			// GSI doesn't like concurrent build requests, so wait and recheck index state before treating as option 2.
-			// (see known issue documented https://developer.couchbase.com/documentation/server/current/n1ql/n1ql-language-reference/build-index.html)
-			base.InfofCtx(ctx, base.KeyQuery, "Index %s already in deferred state - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.", indexName)
-			time.Sleep(10 * time.Second)
-			_, indexMeta, metaErr = bucket.GetIndexMeta(ctx, indexName)
-			if metaErr != nil || indexMeta == nil {
-				return false, fmt.Errorf("Error retrieving index metadata after defer wait. IndexMeta: %v Error:%v", indexMeta, metaErr)
-			}
-			if indexMeta.State == base.IndexStateDeferred {
-				return true, nil
-			}
-		}
-		return false, nil
-	}
-
 	// Create index
-	base.InfofCtx(ctx, base.KeyQuery, "Index %s doesn't exist, creating...", indexName)
-	isDeferred = true
+	base.InfofCtx(ctx, base.KeyQuery, "Creating index %s if it doesn't already exist...", indexName)
 	indexExpression := replaceSyncTokensIndex(i.expression, options.UseXattrs)
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, options.UseXattrs)
 
@@ -330,13 +299,8 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 
 	// start a retry loop to create index,
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		err = bucket.CreateIndex(ctx, indexName, indexExpression, filterExpression, n1qlOptions)
+		err = bucket.CreateIndexIfNotExists(ctx, indexName, indexExpression, filterExpression, n1qlOptions)
 		if err != nil {
-			// If index has already been created (race w/ other SG node), return without error
-			if err == base.ErrAlreadyExists {
-				isDeferred = false // Index already exists, don't need to update.
-				return false, nil, nil
-			}
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
 				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", options.NumReplicas), nil
 			}
@@ -346,14 +310,14 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 	}
 
 	description := fmt.Sprintf("Attempt to create index %s", indexName)
-	err, _ = base.RetryLoop(ctx, description, worker, sleeper)
+	err, _ := base.RetryLoop(ctx, description, worker, sleeper)
 
 	if err != nil {
-		return false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
+		return pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
 	}
 
 	base.InfofCtx(ctx, base.KeyQuery, "Index %s created successfully", indexName)
-	return isDeferred, nil
+	return nil
 }
 
 // CollectionIndexesType defines whether a collection represents the metadata collection, a standard collection, or both
@@ -384,7 +348,6 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 	deferredIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
 
-		// TODO CBG-2838: build list of indexes to create (with one GetIndexMeta call)
 		if !sgIndex.shouldCreate(options) {
 			base.DebugfCtx(ctx, base.KeyAll, "Skipping index: %s ...", sgIndex.simpleName)
 			continue
@@ -392,14 +355,12 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 
 		fullIndexName := sgIndex.fullIndexName(options.UseXattrs)
 
-		isDeferred, err := sgIndex.createIfNeeded(ctx, n1QLStore, options)
+		err := sgIndex.createIfNeeded(ctx, n1QLStore, options)
 		if err != nil {
 			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 		}
 
-		if isDeferred {
-			deferredIndexes = append(deferredIndexes, fullIndexName)
-		}
+		deferredIndexes = append(deferredIndexes, fullIndexName)
 	}
 
 	// Issue BUILD INDEX for any deferred indexes.
