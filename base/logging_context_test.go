@@ -11,7 +11,6 @@ package base
 import (
 	"bytes"
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -24,16 +23,19 @@ const standardMessage = "foobar"
 func requireLogIs(t testing.TB, s string, f func()) {
 	b := bytes.Buffer{}
 
+	config := &ConsoleLoggerConfig{
+		ColorEnabled: BoolPtr(false),
+	}
+	tempLogger, err := NewConsoleLogger(TestCtx(t), false, config)
+	require.NoError(t, err)
+	tempLogger.logger.SetOutput(&b)
 	timestampLength := len(time.Now().Format(ISO8601Format) + " ")
 
-	logger := consoleLogger.Load()
 	// Temporarily override logger output for the given function call
-	originalColor := logger.ColorEnabled
-	logger.ColorEnabled = false
-	logger.logger.SetOutput(&b)
+	oldLogger := consoleLogger.Load()
+	consoleLogger.Load()
 	defer func() {
-		logger.ColorEnabled = originalColor
-		logger.logger.SetOutput(os.Stderr)
+		consoleLogger.Store(oldLogger)
 	}()
 
 	f()
@@ -52,7 +54,7 @@ func requireLogIs(t testing.TB, s string, f func()) {
 		}
 		return true, nil, nil
 	}
-	err, _ := RetryLoop(TestCtx(t), "wait for logs", retry, CreateSleeperFunc(10, 100))
+	err, _ = RetryLoop(TestCtx(t), "wait for logs", retry, CreateSleeperFunc(10, 100))
 
 	require.NoError(t, err, "Console logs did not contain %q, got %q", s, originalLog)
 }

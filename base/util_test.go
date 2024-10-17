@@ -1570,7 +1570,7 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 				InfofCtx(ctx, KeySGTest, "got t closing d")
 				close(d)
 			},
-			timeout: time.Second * 3,
+			timeout: time.Millisecond * 100,
 			wantErr: false,
 		},
 		{
@@ -1581,7 +1581,7 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 				<-t
 				InfofCtx(ctx, KeySGTest, "got t waiting to close d")
 				select {
-				case <-time.After(time.Second * 3):
+				case <-time.After(time.Millisecond * 100):
 					InfofCtx(ctx, KeySGTest, "closing d")
 					close(d)
 				case <-ctx.Done():
@@ -1606,7 +1606,7 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 					InfofCtx(ctx, KeySGTest, "test context done")
 				}
 			},
-			timeout: time.Second * 3,
+			timeout: time.Millisecond * 100,
 			wantErr: true,
 		},
 		{
@@ -1618,7 +1618,7 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 				<-t
 				InfofCtx(ctx, KeySGTest, "got t not closing d")
 			},
-			timeout: time.Second * 3,
+			timeout: time.Millisecond * 100,
 			wantErr: true,
 		},
 		{
@@ -1631,7 +1631,7 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 				<-ctx.Done()
 				InfofCtx(ctx, KeySGTest, "test context done")
 			},
-			timeout: time.Second * 3,
+			timeout: time.Millisecond * 100,
 			wantErr: true,
 		},
 	}
