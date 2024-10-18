@@ -220,6 +220,7 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) map[string]P
 	peers := make(map[string]Peer, len(peersOptions))
 	for id, peerOptions := range peersOptions {
 		peer := NewPeer(t, id, buckets, peerOptions)
+		t.Logf("TopologyTest: created peer %s, SourceID=%+v", id, peer.SourceID())
 		t.Cleanup(func() {
 			peer.Close()
 		})
