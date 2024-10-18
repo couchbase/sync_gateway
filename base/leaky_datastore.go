@@ -394,6 +394,14 @@ func (lds *LeakyDataStore) CreateIndex(ctx context.Context, indexName string, ex
 	return n1qlStore.CreateIndex(ctx, indexName, expression, filterExpression, options)
 }
 
+func (lds *LeakyDataStore) CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return err
+	}
+	return n1qlStore.CreateIndexIfNotExists(ctx, indexName, expression, filterExpression, options)
+}
+
 func (lds *LeakyDataStore) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {

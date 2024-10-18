@@ -30,11 +30,12 @@ var _ N1QLStore = &ClusterOnlyN1QLStore{}
 // ClusterOnlyN1QLStore instances.  Anticipates future refactoring of N1QLStore to differentiate between
 // collection-scoped and non-collection-scoped operations.
 type ClusterOnlyN1QLStore struct {
-	cluster             *gocb.Cluster
-	bucketName          string // User to build keyspace for query when not otherwise set
-	scopeName           string // Used to build keyspace for query when not otherwise set
-	collectionName      string // Used to build keyspace for query when not otherwise set
-	supportsCollections bool
+	cluster                  *gocb.Cluster
+	bucketName               string // User to build keyspace for query when not otherwise set
+	scopeName                string // Used to build keyspace for query when not otherwise set
+	collectionName           string // Used to build keyspace for query when not otherwise set
+	supportsCollections      bool
+	supportsIfNotExistsInDDL bool // 7.1.0+ MB-38737
 }
 
 func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error) {
@@ -51,9 +52,23 @@ func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, colle
 		return nil, err
 	}
 	clusterOnlyn1qlStore.supportsCollections = isMinimumVersion(uint64(major), uint64(minor), 7, 0)
+	clusterOnlyn1qlStore.supportsIfNotExistsInDDL = isMinimumVersion(uint64(major), uint64(minor), 7, 1)
 
 	return clusterOnlyn1qlStore, nil
 
+}
+
+func (cl *ClusterOnlyN1QLStore) IsSupported(feature sgbucket.BucketStoreFeature) bool {
+	switch feature {
+	case sgbucket.BucketStoreFeatureN1ql:
+		return true
+	case sgbucket.BucketStoreFeatureCollections:
+		return cl.supportsCollections
+	case sgbucket.BucketStoreFeatureN1qlIfNotExistsDDL:
+		return cl.supportsIfNotExistsInDDL
+	default:
+		return false
+	}
 }
 
 func (cl *ClusterOnlyN1QLStore) GetName() string {
@@ -70,6 +85,10 @@ func (cl *ClusterOnlyN1QLStore) BuildDeferredIndexes(ctx context.Context, indexS
 
 func (cl *ClusterOnlyN1QLStore) CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 	return CreateIndex(ctx, cl, indexName, expression, filterExpression, options)
+}
+
+func (cl *ClusterOnlyN1QLStore) CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	return CreateIndexIfNotExists(ctx, cl, indexName, expression, filterExpression, options)
 }
 
 func (cl *ClusterOnlyN1QLStore) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {

@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -51,6 +52,7 @@ type N1QLStore interface {
 	GetName() string
 	BuildDeferredIndexes(ctx context.Context, indexSet []string) error
 	CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
+	CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
 	CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error
 	DropIndex(ctx context.Context, indexName string) error
 	ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
@@ -75,6 +77,8 @@ type N1QLStore interface {
 
 	// waitUntilQueryServiceReady waits until the query service is ready to accept requests
 	waitUntilQueryServiceReady(timeout time.Duration) error
+
+	sgbucket.BucketStoreFeatureIsSupported
 }
 
 func ExplainQuery(ctx context.Context, store N1QLStore, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
@@ -128,7 +132,32 @@ func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
 //	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
 //	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func CreateIndex(ctx context.Context, store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON %s(%s)", indexName, store.EscapedKeyspace(), expression)
+	return createIndex(ctx, store, indexName, expression, filterExpression, false, options)
+}
+
+// CreateIndexIfNotExists issues a CREATE INDEX query in the current bucket, using the form:
+//
+//	CREATE INDEX indexName ON bucket.Name(expression) IF NOT EXISTS WHERE filterExpression WITH options
+//
+// Sample usage with resulting statement:
+//
+//	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
+//	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
+func CreateIndexIfNotExists(ctx context.Context, store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	return createIndex(ctx, store, indexName, expression, filterExpression, true, options)
+}
+
+// createIndex is a common function for CreateIndex and CreateIndexIfNotExists
+func createIndex(ctx context.Context, store N1QLStore, indexName string, expression string, filterExpression string, ifNotExists bool, options *N1qlIndexOptions) error {
+	createClause := "CREATE INDEX"
+
+	// Server 7.1+ - we can still safely _not_ use this when it's not available, because we have equivalent error handling inside this function to swallow `ErrAlreadyExists`.
+	// Would still prefer to use it when we can, to guard us against future error string changes, which is why we do both conditionally.
+	if ifNotExists && store.IsSupported(sgbucket.BucketStoreFeatureN1qlIfNotExistsDDL) {
+		createClause += " IF NOT EXISTS"
+	}
+
+	createStatement := fmt.Sprintf("%s `%s` ON %s(%s)", createClause, indexName, store.EscapedKeyspace(), expression)
 
 	// Add filter expression, when present
 	if filterExpression != "" {
@@ -137,22 +166,26 @@ func CreateIndex(ctx context.Context, store N1QLStore, indexName string, express
 
 	// Replace any KeyspaceQueryToken references in the index expression
 	createStatement = strings.Replace(createStatement, KeyspaceQueryToken, store.EscapedKeyspace(), -1)
-
-	createErr := createIndex(ctx, store, indexName, createStatement, options)
-	if createErr != nil {
-		if strings.Contains(createErr.Error(), "already exists") || strings.Contains(createErr.Error(), "duplicate index name") {
-			return ErrAlreadyExists
+	createErr := createIndexFromStatement(ctx, store, indexName, createStatement, options)
+	if IsIndexAlreadyExistsError(createErr) || IsCreateDuplicateIndexError(createErr) {
+		// Pre-7.1 compatibility: Swallow this error like Server does when specifying `IF NOT EXISTS`
+		if ifNotExists {
+			return nil
 		}
+		return ErrAlreadyExists
 	}
 	return createErr
 }
 
 func CreatePrimaryIndex(ctx context.Context, store N1QLStore, indexName string, options *N1qlIndexOptions) error {
 	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX `%s` ON %s", indexName, store.EscapedKeyspace())
-	return createIndex(ctx, store, indexName, createStatement, options)
+	return createIndexFromStatement(ctx, store, indexName, createStatement, options)
 }
 
-func createIndex(ctx context.Context, store N1QLStore, indexName string, createStatement string, options *N1qlIndexOptions) error {
+// ErrIndexBackgroundRetry is returned when an index creation operation returned an error but just needs to wait for a server-side readiness or retry.
+var ErrIndexBackgroundRetry = errors.New("Indexer error - waiting for server background retry")
+
+func createIndexFromStatement(ctx context.Context, store N1QLStore, indexName string, createStatement string, options *N1qlIndexOptions) error {
 
 	if options != nil {
 		withClause, marshalErr := JSONMarshal(options)
@@ -162,7 +195,7 @@ func createIndex(ctx context.Context, store N1QLStore, indexName string, createS
 		createStatement = fmt.Sprintf(`%s with %s`, createStatement, withClause)
 	}
 
-	DebugfCtx(ctx, KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
+	TracefCtx(ctx, KeyQuery, "Attempting to create index %q using statement: [%s]", indexName, UD(createStatement))
 
 	err := store.executeStatement(createStatement)
 	if err == nil {
@@ -171,14 +204,12 @@ func createIndex(ctx context.Context, store N1QLStore, indexName string, createS
 
 	if IsIndexerRetryIndexError(err) {
 		InfofCtx(ctx, KeyQuery, "Indexer error creating index - waiting for server background retry.  Error:%v", err)
-		// Wait for bucket to be created in background before returning
-		return waitForIndexExistence(ctx, store, indexName, true)
+		return fmt.Errorf("%w: %s", ErrIndexBackgroundRetry, err.Error())
 	}
 
 	if IsCreateDuplicateIndexError(err) {
 		InfofCtx(ctx, KeyQuery, "Duplicate index creation in progress - waiting for index readiness.  Error:%v", err)
-		// Wait for bucket to be created in background before returning
-		return waitForIndexExistence(ctx, store, indexName, true)
+		return fmt.Errorf("%w: %s", ErrIndexBackgroundRetry, err.Error())
 	}
 
 	return pkgerrors.WithStack(RedactErrorf("Error creating index with statement: %s.  Error: %v", UD(createStatement), err))
@@ -213,51 +244,31 @@ func waitForIndexExistence(ctx context.Context, store N1QLStore, indexName strin
 
 // BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the bucket.
 func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) error {
-
 	if len(indexSet) == 0 {
 		return nil
 	}
 
-	// Only build indexes that are in deferred state.  Query system:indexes to validate the provided set of indexes
-	statement := fmt.Sprintf("SELECT indexes.name, indexes.state FROM system:indexes WHERE indexes.keyspace_id = '%s'", s.IndexMetaKeyspaceID())
+	InfofCtx(ctx, KeyQuery, "Building deferred indexes: %v", indexSet)
 
-	if s.IndexMetaBucketID() != "" {
-		statement += fmt.Sprintf("AND indexes.bucket_id = '%s' ", s.IndexMetaBucketID())
+	// the provided indexes can be in a state that is not yet ready to take a build command
+	// there's a delay between the time of index creation and when it's actually found in the system:indexes table
+	// this results in buildIndexes returning a not found error for an index that was very recently created
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		err = buildIndexes(ctx, s, indexSet)
+		if IsIndexNotFoundError(err) {
+			DebugfCtx(ctx, KeyQuery, "Index not found error when building indexes - will retry: %v", err)
+			return true, err, nil
+		}
+		return err != nil, err, nil
 	}
-	if s.IndexMetaScopeID() != "" {
-		statement += fmt.Sprintf("AND indexes.scope_id = '%s' ", s.IndexMetaScopeID())
-	}
-
-	statement += fmt.Sprintf("AND indexes.name IN [%s]", StringSliceToN1QLArray(indexSet, "'"))
-	// mod: bucket name
-
-	results, err := s.executeQuery(statement)
+	sleeper := CreateDoublingSleeperDurationFunc(500, time.Second*30)
+	err, _ := RetryLoop(ctx, "BuildDeferredIndexes", worker, sleeper)
 	if err != nil {
 		return err
 	}
-	deferredIndexes := make([]string, 0)
-	var indexInfo struct {
-		Name  string `json:"name"`
-		State string `json:"state"`
-	}
-	for results.Next(ctx, &indexInfo) {
-		// If index is deferred (not built), add to set of deferred indexes
-		if indexInfo.State == IndexStateDeferred {
-			deferredIndexes = append(deferredIndexes, indexInfo.Name)
-		}
-	}
-	closeErr := results.Close()
-	if closeErr != nil {
-		return closeErr
-	}
 
-	if len(deferredIndexes) == 0 {
-		return nil
-	}
-
-	InfofCtx(ctx, KeyQuery, "Building deferred indexes: %v", deferredIndexes)
-	buildErr := buildIndexes(ctx, s, deferredIndexes)
-	return buildErr
+	InfofCtx(ctx, KeyQuery, "Built deferred indexes: %v", indexSet)
+	return nil
 }
 
 // BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
@@ -389,6 +400,9 @@ func AsN1QLStore(dataStore DataStore) (N1QLStore, bool) {
 //
 // Stuck with doing a string compare to differentiate between 'not found' and other errors
 func IsIndexNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
 	return strings.Contains(err.Error(), "not found")
 }
 
@@ -423,6 +437,13 @@ func IsIndexerRetryBuildError(err error) bool {
 		return true
 	}
 	return false
+}
+
+func IsIndexAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "already exists")
 }
 
 // Check for transient indexer errors (can be retried)
@@ -594,7 +615,7 @@ func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManage
 		if watchedOnlineIndexCount == len(indexNames) {
 			return false, nil, nil
 		}
-		InfofCtx(ctx, KeyAll, "Indexes %s not ready - retrying...", strings.Join(offlineIndexes, ", "))
+		DebugfCtx(ctx, KeyAll, "Indexes %s not ready - retrying...", strings.Join(offlineIndexes, ", "))
 		return true, nil, nil
 	}, retrySleeper)
 	return err

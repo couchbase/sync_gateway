@@ -13,7 +13,7 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.5.1
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20240606153601-d152b90edccb
+	github.com/couchbase/sg-bucket v0.0.0-20241018143914-45ef51a0c1be
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78
@@ -38,6 +38,7 @@ require (
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
 	golang.org/x/net v0.28.0
 	golang.org/x/oauth2 v0.22.0
+	golang.org/x/sync v0.8.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
@@ -96,7 +97,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/sys v0.23.0 // indirect
-	golang.org/x/text v0.17.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/grpc v1.63.2 // indirect
