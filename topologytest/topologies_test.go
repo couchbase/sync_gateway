@@ -65,10 +65,6 @@ var Topologies = []Topology{
 			},
 		},
 		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
-			switch activePeer {
-			case "cbs1":
-				t.Skip("CBG-4289 imported documents get CV updated")
-			}
 			if base.UnitTestUrlIsWalrus() {
 				switch activePeer {
 				case "cbl1":
@@ -139,8 +135,6 @@ var Topologies = []Topology{
 		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
 			if base.UnitTestUrlIsWalrus() {
 				switch activePeer {
-				case "cbs1", "cbs2":
-					t.Skip("CBG-4289 imported documents get CV updated")
 				case "cbl1":
 					t.Skip("CBG-4257, docs don't get CV when set from CBL")
 				}
@@ -346,11 +340,6 @@ var simpleTopologies = []Topology{
 				},
 			},
 		},
-		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
-			if base.UnitTestUrlIsWalrus() {
-				t.Skip("CBG-4300, need to construct a _vv on source if none is present, to then call setWithMeta")
-			}
-		},
 	},
 	{
 		/*
@@ -385,16 +374,6 @@ var simpleTopologies = []Topology{
 					direction: PeerReplicationDirectionPull,
 				},
 			},
-		},
-		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
-			if base.UnitTestUrlIsWalrus() {
-				switch activePeer {
-				case "cbs1":
-					t.Skip("CBG-4289 imported documents get CV updated")
-				case "cbs2":
-					t.Skip("CBG-4300, need to construct a _vv on source if none is present, to then call setWithMeta")
-				}
-			}
 		},
 	},
 }

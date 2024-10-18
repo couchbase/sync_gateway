@@ -152,17 +152,27 @@ func TestReplicateVV(t *testing.T) {
 	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
+	hlvAgent := db.NewHLVAgent(t, fromDs, "fakeHLVSourceID", base.VvXattrName)
+
 	testCases := []struct {
 		name        string
 		docID       string
 		body        string
+		HLV         func(fromCas uint64) *db.HybridLogicalVector
 		hasHLV      bool
 		preXDCRFunc func(t *testing.T, docID string) uint64
 	}{
 		{
-			name:   "normal doc",
-			docID:  "doc1",
-			body:   `{"key":"value"}`,
+			name:  "normal doc",
+			docID: "doc1",
+			body:  `{"key":"value"}`,
+			HLV: func(fromCas uint64) *db.HybridLogicalVector {
+				return &db.HybridLogicalVector{
+					CurrentVersionCAS: fromCas,
+					SourceID:          fromBucketSourceID,
+					Version:           fromCas,
+				}
+			},
 			hasHLV: true,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
 				cas, err := fromDs.WriteCas(docID, 0, 0, []byte(`{"key":"value"}`), 0)
@@ -171,9 +181,16 @@ func TestReplicateVV(t *testing.T) {
 			},
 		},
 		{
-			name:   "dest doc older, expect overwrite",
-			docID:  "doc2",
-			body:   `{"datastore":"fromDs"}`,
+			name:  "dest doc older, expect overwrite",
+			docID: "doc2",
+			body:  `{"datastore":"fromDs"}`,
+			HLV: func(fromCas uint64) *db.HybridLogicalVector {
+				return &db.HybridLogicalVector{
+					CurrentVersionCAS: fromCas,
+					SourceID:          fromBucketSourceID,
+					Version:           fromCas,
+				}
+			},
 			hasHLV: true,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
 				_, err := toDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
@@ -194,6 +211,23 @@ func TestReplicateVV(t *testing.T) {
 				cas, err := toDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
 				require.NoError(t, err)
 				return cas
+			},
+		},
+		{
+			name:  "src doc has hlv",
+			docID: "doc4",
+			body:  hlvAgent.GetHelperBody(),
+			HLV: func(fromCas uint64) *db.HybridLogicalVector {
+				return &db.HybridLogicalVector{
+					CurrentVersionCAS: fromCas,
+					SourceID:          hlvAgent.SourceID(),
+					Version:           fromCas,
+				}
+			},
+			hasHLV: true,
+			preXDCRFunc: func(t *testing.T, docID string) uint64 {
+				ctx := base.TestCtx(t)
+				return hlvAgent.InsertWithHLV(ctx, docID)
 			},
 		},
 	}
@@ -225,7 +259,10 @@ func TestReplicateVV(t *testing.T) {
 				return
 			}
 			require.Contains(t, xattrs, base.VvXattrName)
-			requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
+
+			var hlv db.HybridLogicalVector
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
+			require.Equal(t, *testCase.HLV(fromCAS), hlv)
 		})
 	}
 }
@@ -262,6 +299,65 @@ func TestVVWriteTwice(t *testing.T) {
 	require.JSONEq(t, `{"ver":2}`, string(body))
 	require.Contains(t, xattrs, base.VvXattrName)
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS2)
+}
+
+func TestVVObeyMou(t *testing.T) {
+	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
+	ctx := base.TestCtx(t)
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	require.NoError(t, err)
+
+	docID := "doc1"
+	hlvAgent := db.NewHLVAgent(t, fromDs, fromBucketSourceID, base.VvXattrName)
+	fromCas1 := hlvAgent.InsertWithHLV(ctx, "doc1")
+
+	xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
+	defer func() {
+		assert.NoError(t, xdcr.Stop(ctx))
+	}()
+	requireWaitForXDCRDocsProcessed(t, xdcr, 1)
+
+	body, xattrs, destCas, err := toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	require.Equal(t, fromCas1, destCas)
+	require.JSONEq(t, hlvAgent.GetHelperBody(), string(body))
+	require.NotContains(t, xattrs, base.MouXattrName)
+	require.Contains(t, xattrs, base.VvXattrName)
+	var vv db.HybridLogicalVector
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
+	expectedVV := db.HybridLogicalVector{
+		CurrentVersionCAS: fromCas1,
+		SourceID:          hlvAgent.SourceID(),
+		Version:           fromCas1,
+	}
+
+	require.Equal(t, expectedVV, vv)
+
+	mou := &db.MetadataOnlyUpdate{
+		PreviousCAS:      base.CasToString(fromCas1),
+		PreviousRevSeqNo: db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
+	}
+
+	opts := &sgbucket.MutateInOptions{
+		MacroExpansion: []sgbucket.MacroExpansionSpec{
+			sgbucket.NewMacroExpansionSpec(db.XattrMouCasPath(), sgbucket.MacroCas),
+		},
+	}
+	fromCas2, err := fromDs.UpdateXattrs(ctx, docID, 0, fromCas1, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, opts)
+	require.NoError(t, err)
+	require.NotEqual(t, fromCas1, fromCas2)
+
+	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
+
+	body, xattrs, destCas, err = toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
+	require.NoError(t, err)
+	require.Equal(t, fromCas1, destCas)
+	require.JSONEq(t, hlvAgent.GetHelperBody(), string(body))
+	require.NotContains(t, xattrs, base.MouXattrName)
+	require.Contains(t, xattrs, base.VvXattrName)
+	vv = db.HybridLogicalVector{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
+	require.Equal(t, expectedVV, vv)
 }
 
 func TestLWWAfterInitialReplication(t *testing.T) {
