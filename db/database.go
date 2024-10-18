@@ -414,9 +414,13 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UserFunctionTimeout: defaultUserFunctionTimeout,
 	}
 
-	// set up cancellable context based on the background context (context lifecycle should decoupled from the request context)
-	//
+	// set up cancellable context based on the background context (context lifecycle for the database
+	// must be distinct from the request context associated with the db create/update).  Used to trigger
+	// teardown of connected replications on database close.
 	dbContext.CancelContext, dbContext.cancelContextFunc = context.WithCancel(context.Background())
+	cleanupFunctions = append(cleanupFunctions, func() {
+		dbContext.cancelContextFunc()
+	})
 
 	// Check if server version supports multi-xattr operations, required for mou handling
 	dbContext.EnableMou = bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
