@@ -365,7 +365,6 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 			if !errors.Is(err, base.ErrIndexBackgroundRetry) {
 				return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 			}
-			continue
 		}
 
 		fullIndexNames = append(fullIndexNames, fullIndexName)
