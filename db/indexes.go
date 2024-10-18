@@ -350,7 +350,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 	base.InfofCtx(ctx, base.KeyAll, "Initializing indexes with numReplicas: %d...", options.NumReplicas)
 
 	// Create any indexes that aren't present
-	deferredIndexes := make([]string, 0)
+	fullIndexNames := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
 
 		if !sgIndex.shouldCreate(options) {
@@ -368,12 +368,12 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 			continue
 		}
 
-		deferredIndexes = append(deferredIndexes, fullIndexName)
+		fullIndexNames = append(fullIndexNames, fullIndexName)
 	}
 
 	// Issue BUILD INDEX for any deferred indexes.
-	if len(deferredIndexes) > 0 {
-		buildErr := base.BuildDeferredIndexes(ctx, n1QLStore, deferredIndexes)
+	if len(fullIndexNames) > 0 {
+		buildErr := base.BuildDeferredIndexes(ctx, n1QLStore, fullIndexNames)
 		if buildErr != nil {
 			base.InfofCtx(ctx, base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
