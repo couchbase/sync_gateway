@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 // TestInitializeIndexes ensures all of SG's indexes can be built using both values of xattrs, with all N1QLStore implementations
@@ -104,7 +105,99 @@ func TestInitializeIndexes(t *testing.T) {
 			}
 		})
 	}
+}
 
+// TestInitializeIndexesConcurrentMultiNode simulates a multi-node SG cluster starting up and racing to create indexes.
+func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+	base.LongRunningTest(t)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	// Pick a high enough number that it's likely to trigger the concurrent/race conditions we're testing for.
+	const numNodes = 10
+
+	tests := []struct {
+		numNodes         int
+		xattrs           bool
+		collections      bool
+		clusterN1QLStore bool
+	}{
+		{numNodes, true, false, false},
+		{numNodes, false, false, false},
+		{numNodes, true, true, false},
+		{numNodes, false, true, false},
+		{numNodes, true, false, true},
+		{numNodes, false, false, true},
+		{numNodes, true, true, true},
+		{numNodes, false, true, true},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("xattrs=%v collections=%v clusterN1QL=%v", test.xattrs, test.collections, test.clusterN1QLStore), func(t *testing.T) {
+			options := DatabaseContextOptions{
+				EnableXattr: test.xattrs,
+			}
+			if test.collections {
+				base.TestRequiresCollections(t)
+				// uses Scopes implicitly through test harness
+			} else {
+				options.Scopes = GetScopesOptionsDefaultCollectionOnly(t)
+			}
+			db, ctx := SetupTestDBWithOptions(t, options)
+			defer db.Close(ctx)
+			collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+
+			gocbBucket, err := base.AsGocbV2Bucket(db.Bucket)
+			require.NoError(t, err)
+
+			n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
+			require.True(t, ok)
+
+			if test.clusterN1QLStore {
+				n1qlStore, err = base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), collection.ScopeName, collection.Name)
+				require.NoError(t, err)
+			}
+
+			// drop and restore indexes between tests, to the way the bucket pool would
+			defer func() {
+				options := InitializeIndexOptions{
+					NumReplicas: 0,
+					Serverless:  db.IsServerless(),
+					UseXattrs:   base.TestUseXattrs(),
+				}
+				if db.OnlyDefaultCollection() {
+					options.MetadataIndexes = IndexesAll
+				}
+
+				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, options)
+				assert.NoError(t, err)
+			}()
+
+			// add and drop indexes that may be different from the way the bucket pool expects, so use specific options here for test
+			xattrSpecificIndexOptions := InitializeIndexOptions{
+				NumReplicas: 0,
+				Serverless:  db.IsServerless(),
+				UseXattrs:   test.xattrs,
+			}
+			if db.OnlyDefaultCollection() {
+				xattrSpecificIndexOptions.MetadataIndexes = IndexesAll
+			}
+
+			require.NoError(t, base.DropAllIndexes(ctx, n1qlStore))
+
+			eg := errgroup.Group{}
+			for i := 0; i < test.numNodes; i++ {
+				ctx := base.CorrelationIDLogCtx(ctx, fmt.Sprintf("test-node-%d", i))
+				eg.Go(func() error {
+					return InitializeIndexes(ctx, n1qlStore, xattrSpecificIndexOptions)
+				})
+			}
+			require.NoError(t, eg.Wait())
+		})
+	}
 }
 
 func TestPostUpgradeIndexesSimple(t *testing.T) {

@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -303,6 +304,10 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 		if err != nil {
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
 				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", options.NumReplicas), nil
+			} else if errors.Is(err, base.ErrIndexBackgroundRetry) {
+				// bubble up without retry so the caller can handle waiting for index readiness
+				base.DebugfCtx(ctx, base.KeyQuery, "Index creation failed with background retry error - will wait for index readiness: %v", err)
+				return false, err, nil
 			}
 			base.WarnfCtx(ctx, "Error creating index %s: %v - will retry.", indexName, err)
 		}
@@ -339,7 +344,7 @@ type InitializeIndexOptions struct {
 	UseXattrs                  bool                            // if true, create indexes on xattrs, otherwise, use inline sync data
 }
 
-// Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
+// Initializes Sync Gateway indexes for datastore.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options InitializeIndexOptions) error {
 
 	base.InfofCtx(ctx, base.KeyAll, "Initializing indexes with numReplicas: %d...", options.NumReplicas)
@@ -357,7 +362,10 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 
 		err := sgIndex.createIfNeeded(ctx, n1QLStore, options)
 		if err != nil {
-			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
+			if !errors.Is(err, base.ErrIndexBackgroundRetry) {
+				return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
+			}
+			continue
 		}
 
 		deferredIndexes = append(deferredIndexes, fullIndexName)
