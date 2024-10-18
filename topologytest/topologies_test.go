@@ -64,11 +64,7 @@ var Topologies = []Topology{
 				},
 			},
 		},
-		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
-			switch activePeer {
-			case "cbs1":
-				t.Skip("CBG-4289 imported documents get CV updated")
-			}
+		skipIf: func(t *testing.T, activePeer string, _ map[string]Peer) {
 			if base.UnitTestUrlIsWalrus() {
 				switch activePeer {
 				case "cbl1":
@@ -136,13 +132,11 @@ var Topologies = []Topology{
 				},
 			},
 		},
-		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
+		skipIf: func(t *testing.T, activePeer string, _ map[string]Peer) {
 			if base.UnitTestUrlIsWalrus() {
 				switch activePeer {
-				case "cbs1", "cbs2":
-					t.Skip("CBG-4289 imported documents get CV updated")
-				case "cbl1":
-					t.Skip("CBG-4257, docs don't get CV when set from CBL")
+				case "cbs1", "cbs2", "cbl1":
+					t.Skip("CBG-4300 rosmar XDCR is working correctly")
 				}
 			}
 		},
@@ -222,17 +216,9 @@ var Topologies = []Topology{
 				},
 			},
 		},
-		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
-			switch activePeer {
-			case "cbs1", "cbs2":
-				t.Skip("CBG-4289 imported documents get CV updated")
-			}
+		skipIf: func(t *testing.T, _ string, _ map[string]Peer) {
 			if base.UnitTestUrlIsWalrus() {
-				switch activePeer {
-				case "cbl1", "cbl2":
-					t.Skip("CBG-4257, docs don't get CV when set from CBL")
-				}
-				t.Skip("CBG-4281 doesn't skip or preserve _sync xattr")
+				t.Skip("CBG-4300 rosmar XDCR is working correctly")
 			}
 		},
 	},
@@ -346,11 +332,6 @@ var simpleTopologies = []Topology{
 				},
 			},
 		},
-		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
-			if base.UnitTestUrlIsWalrus() {
-				t.Skip("CBG-4300, need to construct a _vv on source if none is present, to then call setWithMeta")
-			}
-		},
 	},
 	{
 		/*
@@ -386,13 +367,11 @@ var simpleTopologies = []Topology{
 				},
 			},
 		},
-		skipIf: func(t *testing.T, activePeer string, peers map[string]Peer) {
+		skipIf: func(t *testing.T, activePeer string, _ map[string]Peer) {
 			if base.UnitTestUrlIsWalrus() {
 				switch activePeer {
-				case "cbs1":
-					t.Skip("CBG-4289 imported documents get CV updated")
-				case "cbs2":
-					t.Skip("CBG-4300, need to construct a _vv on source if none is present, to then call setWithMeta")
+				case "cbs1", "cbs2":
+					t.Skip("CBG-4300 rosmar XDCR is working correctly")
 				}
 			}
 		},

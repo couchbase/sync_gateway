@@ -370,7 +370,14 @@ func TestHLVImport(t *testing.T) {
 				}
 			},
 			expectedHLV: func(output *outputData) *HybridLogicalVector {
-				return output.preImportHLV
+				return &HybridLogicalVector{
+					SourceID:          db.EncodedSourceID,
+					Version:           output.preImportCas,
+					CurrentVersionCAS: output.preImportCas,
+					PreviousVersions: map[string]uint64{
+						EncodeSource(otherSource): output.preImportHLV.CurrentVersionCAS,
+					},
+				}
 			},
 		},
 		{
@@ -450,7 +457,10 @@ func TestHLVImport(t *testing.T) {
 				postImportCas:     finalCas,
 				preImportRevSeqNo: revSeqNo,
 			}
-			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &output.preImportHLV))
+			if existingHLV, ok := existingXattrs[base.VvXattrName]; ok {
+
+				require.NoError(t, base.JSONUnmarshal(existingHLV, &output.preImportHLV))
+			}
 
 			if testCase.expectedMou != nil {
 				require.Contains(t, xattrs, base.MouXattrName)
