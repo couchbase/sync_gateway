@@ -32,8 +32,7 @@ func requireLogIs(t testing.TB, s string, f func()) {
 	timestampLength := len(time.Now().Format(ISO8601Format) + " ")
 
 	// Temporarily override logger output for the given function call
-	oldLogger := consoleLogger.Load()
-	consoleLogger.Load()
+	oldLogger := consoleLogger.Swap(tempLogger)
 	defer func() {
 		consoleLogger.Store(oldLogger)
 	}()
