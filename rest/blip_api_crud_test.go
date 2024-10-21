@@ -3167,3 +3167,37 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		}
 	})
 }
+
+// TestBlipDatabaseClose verifies that the client connection is closed when the database is closed.
+// Starts a continuous pull replication then updates the db to trigger a close.
+func TestBlipDatabaseClose(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTesterPersistentConfig(t)
+		defer rt.Close()
+		const username = "alice"
+		rt.CreateUser(username, []string{"*"})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		var blipContextClosed atomic.Bool
+		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
+			log.Printf("on exit callback invoked")
+			blipContextClosed.Store(true)
+		}
+
+		// put a doc, and make sure blip connection is established
+		markerDoc := "markerDoc"
+		markerDocVersion := rt.CreateTestDoc(markerDoc)
+		require.NoError(t, rt.WaitForPendingChanges())
+		require.NoError(t, btcRunner.StartPull(btc.id))
+
+		btcRunner.WaitForVersion(btc.id, markerDoc, markerDocVersion)
+
+		RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/", ""), http.StatusOK)
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.True(c, blipContextClosed.Load())
+		}, time.Second*10, time.Millisecond*100)
+	})
+}
