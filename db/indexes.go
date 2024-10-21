@@ -302,11 +302,13 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucket.CreateIndexIfNotExists(ctx, indexName, indexExpression, filterExpression, n1qlOptions)
 		if err != nil {
-			if strings.Contains(err.Error(), "not enough indexer nodes") {
+			switch {
+			case strings.Contains(err.Error(), "syntax error"):
+				return false, err, nil
+			case strings.Contains(err.Error(), "not enough indexer nodes"):
 				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", options.NumReplicas), nil
-			} else if errors.Is(err, base.ErrIndexBackgroundRetry) {
-				// bubble up without retry so the caller can handle waiting for index readiness
-				base.DebugfCtx(ctx, base.KeyQuery, "Index creation failed with background retry error - will wait for index readiness: %v", err)
+			case errors.Is(err, base.ErrIndexBackgroundRetry):
+				base.DebugfCtx(ctx, base.KeyQuery, "Index %q creation failed but will be retried on server - will wait for index readiness: %v", indexName, err)
 				return false, err, nil
 			}
 			base.WarnfCtx(ctx, "Error creating index %s: %v - will retry.", indexName, err)

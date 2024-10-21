@@ -165,7 +165,7 @@ func createIndex(ctx context.Context, store N1QLStore, indexName string, express
 	}
 
 	// Replace any KeyspaceQueryToken references in the index expression
-	createStatement = strings.Replace(createStatement, KeyspaceQueryToken, store.EscapedKeyspace(), -1)
+	createStatement = strings.ReplaceAll(createStatement, KeyspaceQueryToken, store.EscapedKeyspace())
 	createErr := createIndexFromStatement(ctx, store, indexName, createStatement, options)
 	if IsIndexAlreadyExistsError(createErr) || IsCreateDuplicateIndexError(createErr) {
 		// Pre-7.1 compatibility: Swallow this error like Server does when specifying `IF NOT EXISTS`
