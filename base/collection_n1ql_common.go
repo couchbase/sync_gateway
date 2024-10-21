@@ -149,20 +149,20 @@ func CreateIndexIfNotExists(ctx context.Context, store N1QLStore, indexName stri
 
 // createIndex is a common function for CreateIndex and CreateIndexIfNotExists
 func createIndex(ctx context.Context, store N1QLStore, indexName string, expression string, filterExpression string, ifNotExists bool, options *N1qlIndexOptions) error {
-	createClause := "CREATE INDEX"
-
+	var ifNotExistsStr string
 	// Server 7.1+ - we can still safely _not_ use this when it's not available, because we have equivalent error handling inside this function to swallow `ErrAlreadyExists`.
 	// Would still prefer to use it when we can, to guard us against future error string changes, which is why we do both conditionally.
 	if ifNotExists && store.IsSupported(sgbucket.BucketStoreFeatureN1qlIfNotExistsDDL) {
-		createClause += " IF NOT EXISTS"
+		ifNotExistsStr = " IF NOT EXISTS"
 	}
-
-	createStatement := fmt.Sprintf("%s `%s` ON %s(%s)", createClause, indexName, store.EscapedKeyspace(), expression)
 
 	// Add filter expression, when present
+	var filterExpressionStr string
 	if filterExpression != "" {
-		createStatement = fmt.Sprintf("%s WHERE %s", createStatement, filterExpression)
+		filterExpressionStr = " WHERE " + filterExpression
 	}
+
+	createStatement := fmt.Sprintf("CREATE INDEX `%s`%s ON %s(%s)%s", indexName, ifNotExistsStr, store.EscapedKeyspace(), expression, filterExpressionStr)
 
 	// Replace any KeyspaceQueryToken references in the index expression
 	createStatement = strings.ReplaceAll(createStatement, KeyspaceQueryToken, store.EscapedKeyspace())
