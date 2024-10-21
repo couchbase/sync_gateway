@@ -1691,6 +1691,9 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 //   - Write new doc with conflict error
 //   - Assert we release a sequence for this
 func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("skipping for CBS pending CBG-4242")
+	}
 	defer SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
