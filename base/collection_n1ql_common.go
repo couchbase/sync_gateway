@@ -123,7 +123,7 @@ func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
 	return im.cluster.GetAllIndexes(im.bucketName, opts)
 }
 
-// CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
+// CreateIndex issues a CREATE INDEX query in the N1QLStore keyspace, using the form:
 //
 //	CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
 //
@@ -135,7 +135,7 @@ func CreateIndex(ctx context.Context, store N1QLStore, indexName string, express
 	return createIndex(ctx, store, indexName, expression, filterExpression, false, options)
 }
 
-// CreateIndexIfNotExists issues a CREATE INDEX query in the current bucket, using the form:
+// CreateIndexIfNotExists issues a CREATE INDEX query in the N1QLStore keyspace, using the form:
 //
 //	CREATE INDEX indexName ON bucket.Name(expression) IF NOT EXISTS WHERE filterExpression WITH options
 //
@@ -237,7 +237,7 @@ func waitForIndexExistence(ctx context.Context, store N1QLStore, indexName strin
 	return nil
 }
 
-// BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the bucket.
+// BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the N1QLStore keyspace.
 func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) error {
 	if len(indexSet) == 0 {
 		return nil
@@ -265,7 +265,7 @@ func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) e
 	return nil
 }
 
-// BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
+// BuildIndexes executes a BUILD INDEX statement in the N1QLStore keyspace, using the form:
 //
 //	BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
 func buildIndexes(ctx context.Context, s N1QLStore, indexNames []string) error {
@@ -356,7 +356,7 @@ func getIndexMetaWithoutRetry(ctx context.Context, store N1QLStore, indexName st
 	return true, indexInfo, nil
 }
 
-// DropIndex drops the specified index from the current bucket.
+// DropIndex drops the specified index from the N1QLStore keyspace.
 func DropIndex(ctx context.Context, store N1QLStore, indexName string) error {
 	statement := fmt.Sprintf("DROP INDEX default:%s.`%s`", store.EscapedKeyspace(), indexName)
 
@@ -374,7 +374,7 @@ func DropIndex(ctx context.Context, store N1QLStore, indexName string) error {
 	return err
 }
 
-// AsN1QLStore tries to return the given DataStore as a N1QLStore, based on underlying buckets.
+// AsN1QLStore tries to return the given DataStore as a N1QLStore.
 func AsN1QLStore(dataStore DataStore) (N1QLStore, bool) {
 
 	switch typedDataStore := dataStore.(type) {
@@ -383,7 +383,7 @@ func AsN1QLStore(dataStore DataStore) (N1QLStore, bool) {
 	case *LeakyDataStore:
 		return typedDataStore, true
 	default:
-		// bail out for unrecognised/unsupported buckets
+		// bail out for unrecognised/unsupported data store types
 		return nil, false
 	}
 }
