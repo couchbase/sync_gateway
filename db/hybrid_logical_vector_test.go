@@ -329,7 +329,7 @@ func TestHLVImport(t *testing.T) {
 				}
 				opts := &sgbucket.MutateInOptions{
 					MacroExpansion: []sgbucket.MacroExpansionSpec{
-						sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas),
+						sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
 					},
 				}
 				_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, opts)
@@ -394,7 +394,7 @@ func TestHLVImport(t *testing.T) {
 				}
 				opts := &sgbucket.MutateInOptions{
 					MacroExpansion: []sgbucket.MacroExpansionSpec{
-						sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas),
+						sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
 					},
 				}
 				_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, opts)

@@ -69,6 +69,10 @@ type MetadataOnlyUpdate struct {
 	PreviousRevSeqNo uint64 `json:"pRev,omitempty"`
 }
 
+func (m *MetadataOnlyUpdate) String() string {
+	return fmt.Sprintf("{CAS:%d PreviousCAS:%d PreviousRevSeqNo:%d}", base.HexCasToUint64(m.CAS), base.HexCasToUint64(m.PreviousCAS), m.PreviousRevSeqNo)
+}
+
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
 	CurrentRev        string               `json:"-"`                 // CurrentRev.  Persisted as RevAndVersion in SyncDataJSON
