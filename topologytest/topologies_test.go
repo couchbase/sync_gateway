@@ -10,8 +10,6 @@ package topologytest
 
 import (
 	"testing"
-
-	"github.com/couchbase/sync_gateway/base"
 )
 
 // Topology defines a topology for a set of peers and replications. This can include Couchbase Server, Sync Gateway, and Couchbase Lite peers, with push or pull replications between them.
@@ -63,14 +61,6 @@ var Topologies = []Topology{
 					direction: PeerReplicationDirectionPush,
 				},
 			},
-		},
-		skipIf: func(t *testing.T, activePeer string, _ map[string]Peer) {
-			if base.UnitTestUrlIsWalrus() {
-				switch activePeer {
-				case "cbl1":
-					t.Skip("CBG-4257, docs don't get CV when set from CBL")
-				}
-			}
 		},
 	},
 	{
@@ -131,14 +121,6 @@ var Topologies = []Topology{
 					direction: PeerReplicationDirectionPush,
 				},
 			},
-		},
-		skipIf: func(t *testing.T, activePeer string, _ map[string]Peer) {
-			if base.UnitTestUrlIsWalrus() {
-				switch activePeer {
-				case "cbs1", "cbs2", "cbl1":
-					t.Skip("CBG-4300 rosmar XDCR is working correctly")
-				}
-			}
 		},
 	},
 	{
@@ -215,11 +197,6 @@ var Topologies = []Topology{
 					direction: PeerReplicationDirectionPush,
 				},
 			},
-		},
-		skipIf: func(t *testing.T, _ string, _ map[string]Peer) {
-			if base.UnitTestUrlIsWalrus() {
-				t.Skip("CBG-4300 rosmar XDCR is working correctly")
-			}
 		},
 	},
 	// topology 1.4 not present, no P2P supported yet
@@ -366,14 +343,6 @@ var simpleTopologies = []Topology{
 					direction: PeerReplicationDirectionPull,
 				},
 			},
-		},
-		skipIf: func(t *testing.T, activePeer string, _ map[string]Peer) {
-			if base.UnitTestUrlIsWalrus() {
-				switch activePeer {
-				case "cbs1", "cbs2":
-					t.Skip("CBG-4300 rosmar XDCR is working correctly")
-				}
-			}
 		},
 	},
 }
