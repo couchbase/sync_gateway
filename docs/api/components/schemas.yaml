@@ -673,7 +673,7 @@ Retrieved-replication:
       description: |-
         This defines what conflict resolution policy Sync Gateway should use to apply when resolving conflicting revisions.
 
-        Changing this is an enterprise-edition only feature.
+        Changing this is an Enterprise Edition only feature.
 
         **Behaviour**
         * *default* - In priority order, this will cause
@@ -681,7 +681,7 @@ Retrieved-replication:
           - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
         * *localWins* - This will result in local revisions always being the winner in any conflict.
         * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
-        * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an enterprise-edition only feature.
+        * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an Enterprise Edition only feature.
 
 
         Note: replications created prior to Sync Gateway 2.8 will default to `default`.
@@ -693,7 +693,7 @@ Retrieved-replication:
         - localWins
         - custom
     custom_conflict_resolver:
-      description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new documents body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an enterprise-edition only feature.\n"
+      description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new documents body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an Enterprise Edition only feature.\n"
       type: string
       default: none
     purge_on_removal:
@@ -711,7 +711,7 @@ Retrieved-replication:
 
         Replications created prior to Sync Gateway 2.8 must have delta-sync disabled.
 
-        Enabling this is an enterprise-edition only feature.
+        Enabling this is an Enterprise Edition only feature.
       type: boolean
       default: false
     max_backoff_time:
@@ -776,7 +776,7 @@ Retrieved-replication:
       type: boolean
       default: false
     batch_size:
-      description: The amount of changes to be sent in one batch of replications. Changing this is an enterprise-edition only feature.
+      description: The amount of changes to be sent in one batch of replications. Changing this is an Enterprise Edition only feature.
       type: integer
       default: 200
     run_as:
@@ -901,7 +901,7 @@ Replication:
       description: |-
         This defines what conflict resolution policy Sync Gateway should use to apply when resolving conflicting revisions.
 
-        Changing this is an enterprise-edition only feature.
+        Changing this is an Enterprise Edition only feature.
 
         **Behaviour**
         * *default* - In priority order, this will cause
@@ -909,7 +909,7 @@ Replication:
           - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
         * *localWins* - This will result in local revisions always being the winner in any conflict.
         * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
-        * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an enterprise-edition only feature.
+        * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an Enterprise Edition only feature.
 
 
         Note: replications created prior to Sync Gateway 2.8 will default to `default`.
@@ -921,7 +921,7 @@ Replication:
         - localWins
         - custom
     custom_conflict_resolver:
-      description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new documents body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an enterprise-edition only feature.\n"
+      description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new documents body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an Enterprise Edition only feature.\n"
       type: string
       default: none
     purge_on_removal:
@@ -939,7 +939,7 @@ Replication:
 
         Replications created prior to Sync Gateway 2.8 must have delta-sync disabled.
 
-        Enabling this is an enterprise-edition only feature.
+        Enabling this is an Enterprise Edition only feature.
       type: boolean
       default: false
     max_backoff_time:
@@ -1004,7 +1004,7 @@ Replication:
       type: boolean
       default: false
     batch_size:
-      description: The amount of changes to be sent in one batch of replications. Changing this is an enterprise-edition only feature.
+      description: The amount of changes to be sent in one batch of replications. Changing this is an Enterprise Edition only feature.
       type: integer
       default: 200
     run_as:
@@ -1240,13 +1240,13 @@ Database:
       description: |-
         If true, documents will be imported in to Sync Gateway from the bucket when requested. Documents will be ran through the set `import_filter` if any is set.
 
-        The default value depends on the edition of Sync Gateway being used. If the edition is the community-edition, then this will default to `false` or else in the enterprise-edition, it will default to `true`.
+        The default value depends on the edition of Sync Gateway being used. If the edition is the Community Edition, then this will default to `false` or else in the Enterprise Edition, it will default to `true`.
 
         This can also be set to the string `continuous` which maps to true.
       type: boolean
     import_partitions:
       description: |-
-        ** This is an enterprise-edition feature only**
+        ** This is an Enterprise Edition feature only**
 
         This is how many import partitions should be used for import sharding.
 
@@ -1737,14 +1737,14 @@ Database:
       description: |-
         Delta sync configuration settings.
 
-        **This is an enterprise-edition feature only**
+        **This is an Enterprise Edition feature only**
       type: object
       properties:
         enabled:
           description: |-
             Whether delta sync is enabled.
 
-            **This is an enterprise-edition feature only**
+            **This is an Enterprise Edition feature only**
           type: boolean
           default: false
         rev_max_age_seconds:
@@ -2257,7 +2257,7 @@ Startup-config:
           description: |-
             Whether to enable the DP permissions check feature of admin auth.
 
-            Defaults to `true` if using enterprise-edition or `false` if using community-edition.
+            Defaults to `true` if using Enterprise Edition or `false` if using Community Edition.
           type: boolean
         server_read_timeout:
           description: |-
