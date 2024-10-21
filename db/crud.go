@@ -895,8 +895,8 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	return nil
 }
 
-// updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
-func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateType) (*Document, error) {
+// updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering. mouMatch represents if the _mou.cas == doc.cas
+func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateType, mouMatch bool) (*Document, error) {
 
 	hasHLV := d.HLV != nil
 	if d.HLV == nil {
@@ -912,7 +912,6 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		//    2. _mou.cas == document.cas (current mutation is already present as cv, and was imported on a different cluster)
 
 		cvCASMatch := hasHLV && d.HLV.CurrentVersionCAS == d.Cas
-		mouMatch := d.metadataOnlyUpdate != nil && base.HexCasToUint64(d.metadataOnlyUpdate.CAS) == d.Cas
 		if !hasHLV || (!cvCASMatch && !mouMatch) {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
@@ -2089,6 +2088,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
+	// compute mouMatch before the callback modifies doc.metadataOnlyUpdate
+	mouMatch := doc.metadataOnlyUpdate != nil && base.HexCasToUint64(doc.metadataOnlyUpdate.CAS) == doc.Cas
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
@@ -2148,7 +2149,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	// The callback has updated the HLV for mutations coming from CBL.  Update the HLV so that the current version is set before
 	// we call updateChannels, which needs to set the current version for removals
 	// update the HLV values
-	doc, err = col.updateHLV(doc, docUpdateEvent)
+	doc, err = col.updateHLV(doc, docUpdateEvent, mouMatch)
 	if err != nil {
 		return
 	}
