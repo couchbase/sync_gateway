@@ -202,13 +202,8 @@ func createIndexFromStatement(ctx context.Context, store N1QLStore, indexName st
 		return nil
 	}
 
-	if IsIndexerRetryIndexError(err) {
-		InfofCtx(ctx, KeyQuery, "Indexer error creating index - waiting for server background retry.  Error:%v", err)
-		return fmt.Errorf("%w: %s", ErrIndexBackgroundRetry, err.Error())
-	}
-
-	if IsCreateDuplicateIndexError(err) {
-		InfofCtx(ctx, KeyQuery, "Duplicate index creation in progress - waiting for index readiness.  Error:%v", err)
+	if IsIndexerRetryIndexError(err) || IsCreateDuplicateIndexError(err) {
+		DebugfCtx(ctx, KeyQuery, "Index %q is already being created on server: %v", indexName, err)
 		return fmt.Errorf("%w: %s", ErrIndexBackgroundRetry, err.Error())
 	}
 
@@ -267,7 +262,6 @@ func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) e
 		return err
 	}
 
-	InfofCtx(ctx, KeyQuery, "Built deferred indexes: %v", indexSet)
 	return nil
 }
 
