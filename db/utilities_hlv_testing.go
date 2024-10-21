@@ -103,6 +103,16 @@ func EncodeTestVersion(versionString string) (encodedString string) {
 	return hexTimestamp + "@" + base64Source
 }
 
+// GetHelperBody returns the body contents of a document written by HLVAgent.
+func (h *HLVAgent) GetHelperBody() string {
+	return string(base.MustJSONMarshal(h.t, defaultHelperBody))
+}
+
+// SourceID returns the encoded source ID for the HLVAgent
+func (h *HLVAgent) SourceID() string {
+	return h.Source
+}
+
 // encodeTestHistory converts a simplified version history of the form "1@abc,2@def;3@ghi" to use hex-encoded versions and
 // base64 encoded sources
 func EncodeTestHistory(historyString string) (encodedString string) {
