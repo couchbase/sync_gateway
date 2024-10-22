@@ -136,3 +136,8 @@ func (rc *BypassRevisionCache) RemoveWithCV(docID string, cv *Version, collectio
 func (rc *BypassRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
 	// no-op
 }
+
+// UpdateDeltaCV is a no-op for a BypassRevisionCache
+func (rc *BypassRevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
+	// no-op
+}
