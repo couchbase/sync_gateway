@@ -117,7 +117,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 		*/
 
-		if event.Cas < toCas {
+		if event.Cas <= toCas {
 			r.targetNewerDocs.Add(1)
 			base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, toCas)
 			return true
