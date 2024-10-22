@@ -123,7 +123,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			return true
 		}
 
-		sourceHLV, sourceMou, sourceXattrs, body, err := getBodyHLVAndMou(event)
+		sourceHLV, sourceMou, nonMobileXattrs, body, err := processDCPEvent(&event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not get body, hlv, and mou: %s", event.Key, err)
 			r.errorCount.Add(1)
@@ -141,15 +141,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 				return true
 			}
 		}
-		var newXattrs map[string][]byte
-		if sourceXattrs == nil {
-			newXattrs = make(map[string][]byte)
-		} else {
-			newXattrs = sourceXattrs
-			for _, xattrName := range []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName} {
-				delete(newXattrs, xattrName)
-			}
-		}
+		newXattrs := nonMobileXattrs
 		if targetSyncXattr, ok := targetXattrs[base.SyncXattrName]; ok {
 			newXattrs[base.SyncXattrName] = targetSyncXattr
 		}
@@ -273,14 +265,18 @@ func mobileXDCRFilter(event *sgbucket.FeedEvent) bool {
 	return !(strings.HasPrefix(string(event.Key), base.SyncDocPrefix) && !strings.HasPrefix(string(event.Key), base.Att2Prefix))
 }
 
-// getBodyHLVAndMou gets the body, vv, and mou from the event.
-func getBodyHLVAndMou(event sgbucket.FeedEvent) (*db.HybridLogicalVector, *db.MetadataOnlyUpdate, map[string][]byte, []byte, error) {
+// processDCPEvent gets the body, non mobile, xattrs, vv, and mou from the event.
+func processDCPEvent(event *sgbucket.FeedEvent) (*db.HybridLogicalVector, *db.MetadataOnlyUpdate, map[string][]byte, []byte, error) {
 	if event.DataType&sgbucket.FeedDataTypeXattr == 0 {
-		return nil, nil, nil, event.Value, nil
+		xattrs := make(map[string][]byte)
+		return nil, nil, xattrs, event.Value, nil
 	}
 	body, xattrs, err := sgbucket.DecodeValueWithAllXattrs(event.Value)
 	if err != nil {
 		return nil, nil, nil, nil, err
+	}
+	if xattrs == nil {
+		xattrs = make(map[string][]byte)
 	}
 	var hlv *db.HybridLogicalVector
 	if bytes, ok := xattrs[base.VvXattrName]; ok {
@@ -296,8 +292,9 @@ func getBodyHLVAndMou(event sgbucket.FeedEvent) (*db.HybridLogicalVector, *db.Me
 			return nil, nil, nil, nil, fmt.Errorf("Could not unmarshal the mou xattr %s: %w", string(bytes), err)
 		}
 	}
-	delete(xattrs, base.VvXattrName)
-	delete(xattrs, base.MouXattrName)
+	for _, xattrName := range []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName} {
+		delete(xattrs, xattrName)
+	}
 	return hlv, mou, xattrs, body, nil
 }
 
