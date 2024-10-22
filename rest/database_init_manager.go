@@ -11,6 +11,7 @@ package rest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -58,7 +59,8 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 	base.InfofCtx(ctx, base.KeyAll, "Initializing database %s ...",
 		base.MD(dbConfig.Name))
 	dbInitWorker, ok := m.workers[dbConfig.Name]
-	collectionSet := m.buildCollectionIndexData(dbConfig)
+
+	collectionSet := buildCollectionIndexData(dbConfig)
 	if ok {
 		// If worker exists for the database and the collection sets match, add watcher to the existing worker
 		if dbInitWorker.collectionsEqual(collectionSet) {
@@ -72,9 +74,13 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		delete(m.workers, dbConfig.Name)
 	}
 
-	base.InfofCtx(ctx, base.KeyAll, "Starting new async initialization for database %s ...",
+	opts := bootstrapConnectionOptsConfigs(startupConfig, dbConfig.DbConfig)
+	opts.bucketConnectionMode = base.PerUseClusterConnections
+
+	base.InfofCtx(ctx, base.KeyAll, "Starting new initialization for database %s ...",
 		base.MD(dbConfig.Name))
-	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
+
+	couchbaseCluster, err := createBootstrapConnectionWithOpts(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -84,14 +90,23 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		bucketName = *dbConfig.Bucket
 	}
 
-	// Initialize ClusterN1QLStore for the bucket.  Scope and collection name are set
-	// per-operation
-	n1qlStore, err := couchbaseCluster.GetClusterN1QLStore(bucketName, "", "")
+	cc, ok := couchbaseCluster.(*base.CouchbaseCluster)
+	if !ok {
+		return nil, fmt.Errorf("DatabaseInitManager requires gocb.Cluster connection - had %T", couchbaseCluster)
+	}
+
+	connection, closeClusterConnection, err := cc.GetClusterConnectionForBucket(ctx, bucketName)
 	if err != nil {
 		return nil, err
 	}
 
-	indexOptions := m.BuildIndexOptions(startupConfig, dbConfig)
+	// Initialize ClusterN1QLStore for the bucket.  Scope and collection name are set per-operation
+	n1qlStore, err := base.NewClusterOnlyN1QLStore(connection, bucketName, "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	indexOptions := m.BuildIndexOptions(startupConfig.IsServerless(), dbConfig)
 
 	// Create new worker and add this caller as a watcher
 	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
@@ -100,6 +115,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 	// Start a goroutine to perform the initialization
 	go func() {
+		defer closeClusterConnection()
 		defer couchbaseCluster.Close()
 		// worker.Run blocks until completion, and returns any error on doneChan.
 		worker.Run()
@@ -116,7 +132,6 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
 	if m == nil {
-		// When not using persistent config, DatabaseInitManager will be nil
 		return false
 	}
 	m.workersLock.Lock()
@@ -125,7 +140,7 @@ func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
 	return ok
 }
 
-func (m *DatabaseInitManager) BuildIndexOptions(startupConfig *StartupConfig, dbConfig *DatabaseConfig) db.InitializeIndexOptions {
+func (m *DatabaseInitManager) BuildIndexOptions(isServerless bool, dbConfig *DatabaseConfig) db.InitializeIndexOptions {
 	numReplicas := DefaultNumIndexReplicas
 	if dbConfig.NumIndexReplicas != nil {
 		numReplicas = *dbConfig.NumIndexReplicas
@@ -133,7 +148,7 @@ func (m *DatabaseInitManager) BuildIndexOptions(startupConfig *StartupConfig, db
 	return db.InitializeIndexOptions{
 		WaitForIndexesOnlineOption: base.WaitForIndexesInfinite,
 		NumReplicas:                numReplicas,
-		Serverless:                 startupConfig.IsServerless(),
+		Serverless:                 isServerless,
 		UseXattrs:                  dbConfig.UseXattrs(),
 	}
 }
@@ -156,27 +171,27 @@ func (m *DatabaseInitManager) Cancel(dbName string) {
 
 // buildCollectionIndexData determines the set of indexes required for each collection in the config, including
 // the metadata collection
-func (m *DatabaseInitManager) buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
-	collectionInitData := make(CollectionInitData, 0)
-	if len(config.Scopes) > 0 {
-		hasDefaultCollection := false
-		for scopeName, scopeConfig := range config.Scopes {
-			for collectionName, _ := range scopeConfig.Collections {
-				metadataIndexOption := db.IndexesWithoutMetadata
-				if base.IsDefaultCollection(scopeName, collectionName) {
-					hasDefaultCollection = true
-					metadataIndexOption = db.IndexesAll
-				}
-				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
-				collectionInitData[scName] = metadataIndexOption
-			}
-		}
-		if !hasDefaultCollection {
-			collectionInitData[base.DefaultScopeAndCollectionName()] = db.IndexesMetadataOnly
-		}
-	} else {
-		collectionInitData[base.DefaultScopeAndCollectionName()] = db.IndexesAll
+func buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
+	if len(config.Scopes) == 0 {
+		return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll}
 	}
+
+	defaultScopeAndCollectionMetadataIndexes := db.IndexesMetadataOnly
+
+	collectionInitData := make(CollectionInitData)
+	for scopeName, scopeConfig := range config.Scopes {
+		for collectionName := range scopeConfig.Collections {
+			scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
+			if scName.IsDefault() {
+				defaultScopeAndCollectionMetadataIndexes = db.IndexesAll
+				continue
+			}
+			collectionInitData[scName] = db.IndexesWithoutMetadata
+		}
+	}
+
+	collectionInitData[base.DefaultScopeAndCollectionName()] = defaultScopeAndCollectionMetadataIndexes
+
 	return collectionInitData
 }
 
@@ -227,14 +242,12 @@ func (w *DatabaseInitWorker) Run() {
 		}
 	}()
 
-	// TODO: CBG-2838 refactor initialize indexes to reduce number of system:indexes calls
 	var indexErr error
 	for scName, indexSet := range w.collections {
 		// Add the index set to the common indexOptions
 		collectionIndexOptions := w.options.indexOptions
 		collectionIndexOptions.MetadataIndexes = indexSet
 
-		// TODO: CBG-2838 Refactor InitializeIndexes API to move scope, collection to parameters on system:indexes calls
 		// Set the scope and collection name on the cluster n1ql store for use by initializeIndexes
 		w.n1qlStore.SetScopeAndCollection(scName)
 		keyspaceCtx := base.KeyspaceLogCtx(w.ctx, w.n1qlStore.BucketName(), scName.ScopeName(), scName.CollectionName())

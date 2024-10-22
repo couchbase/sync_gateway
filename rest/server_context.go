@@ -151,17 +151,18 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) (filename string
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
 
 	sc := &ServerContext{
-		Config:             config,
-		persistentConfig:   persistentConfig,
-		dbRegistry:         map[string]struct{}{},
-		collectionRegistry: map[string]string{},
-		dbConfigs:          map[string]*RuntimeDatabaseConfig{},
-		databases_:         map[string]*db.DatabaseContext{},
-		HTTPClient:         http.DefaultClient,
-		statsContext:       &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
-		BootstrapContext:   &bootstrapContext{sgVersion: *base.ProductVersion},
-		hasStarted:         make(chan struct{}),
-		_httpServers:       map[serverType]*serverInfo{},
+		Config:              config,
+		persistentConfig:    persistentConfig,
+		dbRegistry:          map[string]struct{}{},
+		collectionRegistry:  map[string]string{},
+		dbConfigs:           map[string]*RuntimeDatabaseConfig{},
+		databases_:          map[string]*db.DatabaseContext{},
+		DatabaseInitManager: &DatabaseInitManager{},
+		HTTPClient:          http.DefaultClient,
+		statsContext:        &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
+		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion},
+		hasStarted:          make(chan struct{}),
+		_httpServers:        map[serverType]*serverInfo{},
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
 		dbNames: map[string]*invalidConfigInfo{},
@@ -177,10 +178,6 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	}
 	if config.Replicator.MaxConcurrentReplications != 0 {
 		sc.ActiveReplicationsCounter.activeReplicatorLimit = config.Replicator.MaxConcurrentReplications
-	}
-
-	if sc.persistentConfig {
-		sc.DatabaseInitManager = &DatabaseInitManager{}
 	}
 
 	if config.HeapProfileCollectionThreshold != nil {
@@ -587,6 +584,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if dbName == "" {
 		dbName = spec.BucketName
 	}
+
 	defer func() {
 		if returnedError == nil {
 			return
@@ -603,6 +601,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	}()
 
+	if err := db.ValidateDatabaseName(dbName); err != nil {
+		return nil, err
+	}
+
 	if spec.Server == "" {
 		spec.Server = sc.Config.Bootstrap.Server
 	}
@@ -611,14 +613,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if previousDatabase != nil {
 		if options.useExisting {
 			return previousDatabase, nil
-		} else {
-			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
-				"Duplicate database name %q", dbName)
 		}
-	}
 
-	if err := db.ValidateDatabaseName(dbName); err != nil {
-		return nil, err
+		return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
+			"Duplicate database name %q", dbName)
 	}
 
 	// Connect to bucket
@@ -635,6 +633,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if err != nil {
 		return nil, err
 	}
+
 	// If using a walrus bucket, force use of views
 	useViews := base.BoolDefault(config.UseViews, false)
 	if !useViews && spec.IsWalrusBucket() {
@@ -642,70 +641,30 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
-	type indexInitData struct {
-		scopeAndCollection base.ScopeAndCollectionName
-		indexSet           db.CollectionIndexesType
-		datastore          base.DataStore
-	}
-
-	collectionsRequiringIndexes := make([]indexInitData, 0)
-
-	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType, name base.ScopeAndCollectionName) (err error) {
-		if useViews {
-			viewErr := db.InitializeViews(ctx, ds)
-			if viewErr != nil {
-				return viewErr
-			}
-			return nil
-		}
-
-		indexInit := indexInitData{
-			scopeAndCollection: name,
-			indexSet:           metadataIndexes,
-			datastore:          ds,
-		}
-		collectionsRequiringIndexes = append(collectionsRequiringIndexes, indexInit)
-		return nil
-	}
-
+	hasDefaultCollection := false
 	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
 		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 			return nil, errCollectionsUnsupported
 		}
 
-		hasDefaultCollection := false
 		for scopeName, scopeConfig := range config.Scopes {
-			for collectionName, _ := range scopeConfig.Collections {
-				var dataStore sgbucket.DataStore
-
-				var err error
-				if options.failFast {
-					dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
-				} else {
-					waitForCollection := func() (bool, error, interface{}) {
-						dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
-						return err != nil, err, nil
-					}
-
-					err, _ = base.RetryLoop(
-						ctx,
-						fmt.Sprintf("waiting for %s.%s.%s to exist", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collectionName)),
-						waitForCollection,
-						base.CreateMaxDoublingSleeperFunc(30, 10, 1000))
+			for collectionName := range scopeConfig.Collections {
+				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
+				if scName.IsDefault() {
+					hasDefaultCollection = true
 				}
+
+				dataStore, err := base.GetAndWaitUntilDataStoreReady(ctx, bucket, scName, options.failFast)
 				if err != nil {
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
-				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
-				if err := base.WaitUntilDataStoreExists(ctx, dataStore); err != nil {
-					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
-				}
-				metadataIndexOption := db.IndexesWithoutMetadata
-				if base.IsDefaultCollection(scopeName, collectionName) {
-					hasDefaultCollection = true
-					metadataIndexOption = db.IndexesAll
+
+				// Init views now. If we're using GSI we'll use DatabaseInitManager to handle creation later.
+				if useViews {
+					if err := db.InitializeViews(ctx, dataStore); err != nil {
+						return nil, err
+					}
 				}
 
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
@@ -713,124 +672,57 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if err != nil {
 					return nil, err
 				}
-				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 				if resyncRequired {
 					collectionsRequiringResync = append(collectionsRequiringResync, scName)
 				}
-				if err := initDataStore(dataStore, metadataIndexOption, scName); err != nil {
-					return nil, err
-				}
 			}
-		}
-		if !hasDefaultCollection {
-			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly, base.DefaultScopeAndCollectionName()); err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		// no scopes configured - init the default data store
-		resyncRequired, err := base.InitSyncInfo(bucket.DefaultDataStore(), config.MetadataID)
-		if err != nil {
-			return nil, err
-		}
-		if resyncRequired {
-			collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
-		}
-		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll, base.DefaultScopeAndCollectionName()); err != nil {
-			return nil, err
 		}
 	}
-
-	startOffline := base.BoolDefault(config.StartOffline, false)
-	var dbInitDoneChan chan error
-	// Initialize any required indexes
-	if len(collectionsRequiringIndexes) > 0 {
-		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
-		if !gsiSupported {
-			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
-		}
-
-		// If database has been requested to start offline, or there's an active async initialization, use async initialization
-		// DatabaseInitManager will be nil if persistent config is not being used.
-		if sc.DatabaseInitManager != nil && (startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)) {
-			// Initialize indexes asynchronously using DatabaseInitManager.
-			dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+	// no scopes, or the set of collections didn't include `_default` and we'll need to initialize it for metadata.
+	if !hasDefaultCollection {
+		ds := bucket.DefaultDataStore()
+		// No explicitly defined scopes means we'll initialize this as a usable default collection, otherwise it's for metadata only
+		if len(config.Scopes) == 0 {
+			scName := base.DefaultScopeAndCollectionName()
+			resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
 			if err != nil {
 				return nil, err
 			}
-		} else {
-			// Initialize indexes as a blocking, synchronous operation using per-collection N1QL store
-			numReplicas := DefaultNumIndexReplicas
-			if config.NumIndexReplicas != nil {
-				numReplicas = *config.NumIndexReplicas
+			if resyncRequired {
+				collectionsRequiringResync = append(collectionsRequiringResync, scName)
 			}
-
-			for _, indexInfo := range collectionsRequiringIndexes {
-				ds := indexInfo.datastore
-				n1qlStore, ok := base.AsN1QLStore(ds)
-				if !ok {
-					return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
-				}
-				options := db.InitializeIndexOptions{
-					WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
-					NumReplicas:                numReplicas,
-					Serverless:                 sc.Config.IsServerless(),
-					MetadataIndexes:            indexInfo.indexSet,
-					UseXattrs:                  config.UseXattrs(),
-				}
-				ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), ds.ScopeName(), ds.CollectionName())
-				indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
-				if indexErr != nil {
-					return nil, indexErr
-				}
+		}
+		if useViews {
+			if err := db.InitializeViews(ctx, ds); err != nil {
+				return nil, err
 			}
 		}
 	}
 
-	// Process unsupported config options or store runtime defaults if not set
-	if config.Unsupported == nil {
-		config.Unsupported = &db.UnsupportedOptions{}
-	}
-	if config.Unsupported.WarningThresholds == nil {
-		config.Unsupported.WarningThresholds = &db.WarningThresholds{}
-	}
-
-	if config.Unsupported.WarningThresholds.XattrSize == nil {
-		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
-	} else {
-		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
-		upperLimit := 1 * 1024 * 1024   // 1 MB
-		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
-			return nil, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
-		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
-			return nil, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
+	var (
+		dbInitDoneChan chan error
+		isAsync        bool // blocks reading dbInitDoneChan if false
+	)
+	startOffline := base.BoolDefault(config.StartOffline, false)
+	if !useViews {
+		// Initialize any required indexes
+		if gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql); !gsiSupported {
+			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
-	}
 
-	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
-		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
-	} else {
-		lowerLimit := 5
-		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
-			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		if sc.DatabaseInitManager == nil {
+			base.AssertfCtx(ctx, "DatabaseInitManager should always be initialized")
+			return nil, errors.New("DatabaseInitManager not initialized")
 		}
-	}
 
-	if config.Unsupported.WarningThresholds.ChannelsPerUser == nil {
-		config.Unsupported.WarningThresholds.ChannelsPerUser = &base.DefaultWarnThresholdChannelsPerUser
-	}
+		// If database has been requested to start offline, or there's an active async initialization, use async initialization
+		isAsync = startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
 
-	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
-		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
-	} else {
-		lowerLimit := 5
-		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
-			return nil, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		// Initialize indexes using DatabaseInitManager.
+		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	if config.Unsupported.WarningThresholds.ChannelNameSize == nil {
-		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
 	}
 
 	autoImport, err := config.AutoImportEnabled(ctx)
@@ -940,10 +832,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			if dbcontext.RevsLimit < db.DefaultRevsLimitConflicts {
 				base.WarnfCtx(ctx, "Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
 			}
-		} else {
-			if dbcontext.RevsLimit <= 0 {
-				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", dbcontext.RevsLimit)
-			}
+		} else if dbcontext.RevsLimit <= 0 {
+			return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", dbcontext.RevsLimit)
 		}
 	}
 
@@ -981,7 +871,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	// startOnlineProcesses will be set to true if the database should be started, either synchronously or asynchronously
 	startOnlineProcesses := true
-	needsResync := len(dbcontext.RequireResync) > 0
+	needsResync := len(collectionsRequiringResync) > 0
 	if needsResync || (startOffline && !options.forceOnline) {
 		startOnlineProcesses = false
 		var stateChangeMsg string
@@ -1012,7 +902,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// If asyncOnline wasn't specified, block until db init is completed, then start online processes
-	if !options.asyncOnline || dbInitDoneChan == nil {
+	if !options.asyncOnline || !isAsync {
+		dbcontext.WasInitializedSynchronously = true
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete...")
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
@@ -1027,14 +918,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "online", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 		return dbcontext, nil
-	} else {
-		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
-		// before going online
-		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
-		nonCancelCtx := base.NewNonCancelCtxForDatabase(ctx)
-		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
-		return dbcontext, nil
 	}
+
+	// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
+	// before going online
+	base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
+	nonCancelCtx := base.NewNonCancelCtxForDatabase(ctx)
+	go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
+	return dbcontext, nil
 }
 
 // asyncDatabaseOnline waits for async initialization to complete (based on doneChan).  On successful completion, brings the database online.
@@ -1298,6 +1189,52 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
 	}
 
+	// Process unsupported config options or store runtime defaults if not set
+	if config.Unsupported == nil {
+		config.Unsupported = &db.UnsupportedOptions{}
+	}
+	if config.Unsupported.WarningThresholds == nil {
+		config.Unsupported.WarningThresholds = &db.WarningThresholds{}
+	}
+
+	if config.Unsupported.WarningThresholds.XattrSize == nil {
+		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
+	} else {
+		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
+		upperLimit := 1 * 1024 * 1024   // 1 MB
+		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
+			return db.DatabaseContextOptions{}, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
+		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
+			return db.DatabaseContextOptions{}, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
+		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
+	} else {
+		lowerLimit := 5
+		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
+			return db.DatabaseContextOptions{}, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.ChannelsPerUser == nil {
+		config.Unsupported.WarningThresholds.ChannelsPerUser = &base.DefaultWarnThresholdChannelsPerUser
+	}
+
+	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
+		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
+	} else {
+		lowerLimit := 5
+		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
+			return db.DatabaseContextOptions{}, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.ChannelNameSize == nil {
+		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
+	}
+
 	if config.Unsupported.DisableCleanSkippedQuery {
 		base.WarnfCtx(ctx, `Deprecation notice: setting databse configuration option "disable_clean_skipped_query" no longer has any functionality. In the future, this option will be removed.`)
 	}
@@ -1400,7 +1337,7 @@ func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContex
 // validateMetadataStore will
 func validateMetadataStore(ctx context.Context, metadataStore base.DataStore) error {
 	// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
-	err := base.WaitUntilDataStoreExists(ctx, metadataStore)
+	err := base.WaitUntilDataStoreReady(ctx, metadataStore)
 	if err == nil {
 		return nil
 	}
