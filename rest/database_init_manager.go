@@ -242,14 +242,12 @@ func (w *DatabaseInitWorker) Run() {
 		}
 	}()
 
-	// TODO: CBG-2838 refactor initialize indexes to reduce number of system:indexes calls
 	var indexErr error
 	for scName, indexSet := range w.collections {
 		// Add the index set to the common indexOptions
 		collectionIndexOptions := w.options.indexOptions
 		collectionIndexOptions.MetadataIndexes = indexSet
 
-		// TODO: CBG-2838 Refactor InitializeIndexes API to move scope, collection to parameters on system:indexes calls
 		// Set the scope and collection name on the cluster n1ql store for use by initializeIndexes
 		w.n1qlStore.SetScopeAndCollection(scName)
 		keyspaceCtx := base.KeyspaceLogCtx(w.ctx, w.n1qlStore.BucketName(), scName.ScopeName(), scName.CollectionName())

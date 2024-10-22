@@ -11,7 +11,9 @@ licenses/APL2.txt.
 package indextest
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -41,7 +43,7 @@ func TestRoleQuery(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(t, database.Bucket, testCase.isServerless)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, false)
 
 			authenticator := database.Authenticator(ctx)
 			require.NotNil(t, authenticator, "database.Authenticator(ctx) returned nil")
@@ -120,7 +122,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(t, database.Bucket, testCase.isServerless)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, false)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 			t.Run("roleQueryCovered", func(t *testing.T) {
 				roleStatement, _ := database.BuildRolesQuery("", 0)
@@ -192,7 +194,7 @@ func TestGetRoleIDs(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(t, database.Bucket, testCase.isServerless)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, false)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
@@ -235,61 +237,115 @@ func TestGetRoleIDs(t *testing.T) {
 	}
 }
 
-func getDatabaseContextOptions(isServerless bool) db.DatabaseContextOptions {
-	defaultCacheOptions := db.DefaultCacheOptions()
+// TestInitializeIndexes ensures all of SG's indexes can be built using both values of xattrs, with all N1QLStore implementations
+func TestInitializeIndexes(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+	base.LongRunningTest(t)
 
-	return db.DatabaseContextOptions{
-		CacheOptions: &defaultCacheOptions,
-		Serverless:   isServerless,
+	tests := []struct {
+		xattrs           bool
+		collections      bool
+		clusterN1QLStore bool
+	}{
+		{true, false, false},
+		{false, false, false},
+		{true, true, false},
+		{false, true, false},
+		{true, false, true},
+		{false, false, true},
+		{true, true, true},
+		{false, true, true},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("xattrs=%v collections=%v clusterN1QL=%v", test.xattrs, test.collections, test.clusterN1QLStore), func(t *testing.T) {
+			options := db.DatabaseContextOptions{
+				EnableXattr: test.xattrs,
+			}
+			if test.collections {
+				base.TestRequiresCollections(t)
+				// uses Scopes implicitly through test harness
+			} else {
+				options.Scopes = db.GetScopesOptionsDefaultCollectionOnly(t)
+			}
+			database, ctx := db.SetupTestDBWithOptions(t, options)
+			defer database.Close(ctx)
+			collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
+
+			gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
+			require.NoError(t, err)
+
+			var n1qlStore base.N1QLStore
+			if test.clusterN1QLStore {
+				n1qlStore, err = base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), collection.ScopeName, collection.Name)
+				require.NoError(t, err)
+			} else {
+				var ok bool
+				n1qlStore, ok = base.AsN1QLStore(collection.GetCollectionDatastore())
+				require.True(t, ok)
+			}
+
+			// add and drop indexes that may be different from the way the bucket pool expects, so use specific options here for test
+			xattrSpecificIndexOptions := db.InitializeIndexOptions{
+				NumReplicas: 0,
+				Serverless:  database.IsServerless(),
+				UseXattrs:   test.xattrs,
+			}
+			if database.OnlyDefaultCollection() {
+				xattrSpecificIndexOptions.MetadataIndexes = db.IndexesAll
+			}
+
+			// Make sure we can drop and reinitialize twice
+			for i := 0; i < 2; i++ {
+				dropErr := base.DropAllIndexes(ctx, n1qlStore)
+				require.NoError(t, dropErr, "Error dropping all indexes on bucket")
+
+				initErr := db.InitializeIndexes(ctx, n1qlStore, xattrSpecificIndexOptions)
+				require.NoError(t, initErr, "Error initializing all indexes on bucket")
+			}
+		})
 	}
 }
 
-// setupN1QLStore initializes the indexes for a database. This is normally done by the rest package
-func setupN1QLStore(t *testing.T, bucket base.Bucket, isServerless bool) {
-	testBucket, ok := bucket.(*base.TestBucket)
-	require.True(t, ok)
-
-	hasOnlyDefaultDataStore := len(testBucket.GetNonDefaultDatastoreNames()) > 0
-
-	defaultDataStore := bucket.DefaultDataStore()
-	defaultN1QLStore, ok := base.AsN1QLStore(defaultDataStore)
-	require.True(t, ok, "Unable to get n1QLStore for defaultDataStore")
-	options := db.InitializeIndexOptions{
-		NumReplicas: 0,
-		Serverless:  isServerless,
-		UseXattrs:   base.TestUseXattrs(),
+// TestInitializeIndexesConcurrentMultiNode simulates a large multi-node SG cluster starting up and racing to create indexes.
+func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
-	if hasOnlyDefaultDataStore {
-		options.MetadataIndexes = db.IndexesAll
-	} else {
-		options.MetadataIndexes = db.IndexesMetadataOnly
-	}
-	ctx := base.CollectionLogCtx(base.TestCtx(t), defaultDataStore.ScopeName(), defaultDataStore.CollectionName())
-	require.NoError(t, db.InitializeIndexes(ctx, defaultN1QLStore, options))
-	if hasOnlyDefaultDataStore {
-		return
-	}
-	options = db.InitializeIndexOptions{
-		NumReplicas:     0,
-		Serverless:      isServerless,
-		UseXattrs:       base.TestUseXattrs(),
-		MetadataIndexes: db.IndexesWithoutMetadata,
-	}
-	dataStore, err := testBucket.GetNamedDataStore(0)
-	require.NoError(t, err)
-	n1qlStore, ok := base.AsN1QLStore(dataStore)
-	require.True(t, ok)
-	require.NoError(t, db.InitializeIndexes(ctx, n1qlStore, options))
-}
+	base.LongRunningTest(t)
 
-func requireCoveredQuery(t *testing.T, database *db.Database, statement string, isCovered bool) {
-	n1QLStore, ok := base.AsN1QLStore(database.MetadataStore)
-	require.True(t, ok)
-	plan, explainErr := n1QLStore.ExplainQuery(base.TestCtx(t), statement, nil)
-	require.NoError(t, explainErr, "Error generating explain for %+v", statement)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	covered := db.IsCovered(plan)
-	planJSON, err := base.JSONMarshal(plan)
-	require.NoError(t, err)
-	require.Equal(t, isCovered, covered, "query covered by index; expectedToBeCovered: %t, Plan: %s", isCovered, planJSON)
+	// Pick a high enough number that it's likely to trigger the concurrent/race conditions we're testing for.
+	//
+	// This number doesn't significantly increase test time since, since there's still the same number of indexes being created.
+	// All nodes will just be waiting for the state so we can keep this unrealistically high to increase chances of finding error cases.
+	const numSGNodes = 100
+
+	tests := []struct {
+		clusterN1QLStore bool
+	}{
+		{false},
+		{true},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("clusterN1QL=%v", test.clusterN1QLStore), func(t *testing.T) {
+			bucket := base.GetTestBucket(t)
+			defer bucket.Close(base.TestCtx(t))
+
+			var wg sync.WaitGroup
+			wg.Add(numSGNodes)
+			for i := 0; i < numSGNodes; i++ {
+				ctx := base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("test-node-%d", i))
+				go func() {
+					defer wg.Done()
+					setupN1QLStore(ctx, t, bucket, false, test.clusterN1QLStore)
+				}()
+			}
+			wg.Wait()
+		})
+	}
 }
