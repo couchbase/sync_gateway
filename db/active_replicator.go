@@ -208,7 +208,8 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
 	var originPatterns []string // no origin headers for ISGR
-	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns)
+	// NewSGBlipContext doesn't set cancellation context - active replication cancellation on db close is handled independently
+	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns, nil)
 	if err != nil {
 		return nil, nil, err
 	}
