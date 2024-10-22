@@ -10,8 +10,11 @@ package xdcr
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
+
+	"golang.org/x/exp/maps"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -393,6 +396,97 @@ func TestLWWAfterInitialReplication(t *testing.T) {
 	require.JSONEq(t, `{"ver":3}`, string(body))
 	require.Contains(t, xattrs, base.VvXattrName)
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
+}
+
+func TestReplicateXattrs(t *testing.T) {
+	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
+
+	testCases := []struct {
+		name                 string
+		startingSourceXattrs map[string][]byte
+		startingDestXattrs   map[string][]byte
+		finalXattrs          map[string][]byte
+	}{
+		{
+			name: "_sync on source only",
+			startingSourceXattrs: map[string][]byte{
+				base.SyncXattrName: []byte(`{"source":"fromDs"}`),
+			},
+			finalXattrs: map[string][]byte{},
+		},
+		{
+			name: "_sync on dest only",
+			startingDestXattrs: map[string][]byte{
+				base.SyncXattrName: []byte(`{"source":"toDs"}`),
+			},
+			finalXattrs: map[string][]byte{
+				base.SyncXattrName: []byte(`{"source":"toDs"}`),
+			},
+		},
+		{
+			name: "_sync on both",
+			startingSourceXattrs: map[string][]byte{
+				base.SyncXattrName: []byte(`{"source":"fromDs"}`),
+			},
+			startingDestXattrs: map[string][]byte{
+				base.SyncXattrName: []byte(`{"source":"toDs"}`),
+			},
+			finalXattrs: map[string][]byte{
+				base.SyncXattrName: []byte(`{"source":"toDs"}`),
+			},
+		},
+		{
+			name: "_globalSync on source only",
+			startingSourceXattrs: map[string][]byte{
+				base.GlobalXattrName: []byte(`{"source":"fromDs"}`),
+			},
+			finalXattrs: map[string][]byte{
+				base.GlobalXattrName: []byte(`{"source":"fromDs"}`),
+			},
+		},
+		{
+			name: "_globalSync on overwrite dest",
+			startingSourceXattrs: map[string][]byte{
+				base.GlobalXattrName: []byte(`{"source":"fromDs"}`),
+			},
+			startingDestXattrs: map[string][]byte{
+				base.GlobalXattrName: []byte(`{"source":"toDs"}`),
+			},
+			finalXattrs: map[string][]byte{
+				base.GlobalXattrName: []byte(`{"source":"fromDs"}`),
+			},
+		},
+	}
+
+	var totalDocsProcessed uint64 // totalDocsProcessed will be incremented in each subtest
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			docID := testCase.name
+
+			ctx := base.TestCtx(t)
+			body := []byte(`{"key":"value"}`)
+			if testCase.startingDestXattrs != nil {
+				_, err := toDs.WriteWithXattrs(ctx, docID, 0, 0, body, testCase.startingDestXattrs, nil, nil)
+				require.NoError(t, err)
+			}
+			fromCas, err := fromDs.WriteWithXattrs(ctx, docID, 0, 0, body, testCase.startingSourceXattrs, nil, nil)
+			require.NoError(t, err)
+			xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
+			defer func() {
+				stats, err := xdcr.Stats(ctx)
+				assert.NoError(t, err)
+				totalDocsProcessed = stats.DocsProcessed
+				assert.NoError(t, xdcr.Stop(ctx))
+			}()
+			requireWaitForXDCRDocsProcessed(t, xdcr, 1+totalDocsProcessed)
+
+			allXattrKeys := slices.Concat(maps.Keys(testCase.startingSourceXattrs), maps.Keys(testCase.finalXattrs))
+			_, xattrs, destCas, err := toDs.GetWithXattrs(ctx, docID, allXattrKeys)
+			require.NoError(t, err)
+			require.Equal(t, fromCas, destCas)
+			require.Equal(t, testCase.finalXattrs, xattrs)
+		})
+	}
 }
 
 // startXDCR will create a new XDCR manager and start it. This must be closed by the caller.

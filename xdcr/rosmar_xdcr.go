@@ -79,7 +79,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		}
 
 		// Have to use GetWithXattrs to get a cas value back if there are no xattrs (GetWithXattrs will not return a cas if there are no xattrs)
-		_, targetXattrs, toCas, err := col.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
+		_, targetXattrs, toCas, err := col.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName})
 		if err != nil && !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "Skipping replicating doc %s, could not perform a kv op get doc in toBucket: %s", event.Key, err)
 			r.errorCount.Add(1)
@@ -123,7 +123,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			return true
 		}
 
-		sourceHLV, sourceMou, body, err := getBodyHLVAndMou(event)
+		sourceHLV, sourceMou, sourceXattrs, body, err := getBodyHLVAndMou(event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not get body, hlv, and mou: %s", event.Key, err)
 			r.errorCount.Add(1)
@@ -135,33 +135,31 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 				base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, _vv.cas %d <= %d", docID, event.Cas, toCas)
 				return true
 			}
-			fmt.Printf("sourceHLV: %+v\nsourceMou: %+v\ntoCas: %d\n", sourceHLV, sourceMou, toCas)
 			if base.HexCasToUint64(sourceMou.CAS) <= toCas {
 				r.targetNewerDocs.Add(1)
 				base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, _mou.cas %d <= %d", docID, event.Cas, toCas)
 				return true
 			}
 		}
-		if targetXattrs == nil {
-			targetXattrs = make(map[string][]byte, 1) //  length for _vv
+		var newXattrs map[string][]byte
+		if sourceXattrs == nil {
+			newXattrs = make(map[string][]byte)
+		} else {
+			newXattrs = sourceXattrs
+			for _, xattrName := range []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName} {
+				delete(newXattrs, xattrName)
+			}
 		}
-		err = updateHLV(targetXattrs, sourceHLV, sourceMou, r.fromBucketSourceID, event.Cas)
+		if targetSyncXattr, ok := targetXattrs[base.SyncXattrName]; ok {
+			newXattrs[base.SyncXattrName] = targetSyncXattr
+		}
+		err = updateHLV(newXattrs, sourceHLV, sourceMou, r.fromBucketSourceID, event.Cas)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not update hlv: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
 		}
-		if sourceMou != nil {
-			var err error
-			targetXattrs[base.MouXattrName], err = json.Marshal(sourceMou)
-			if err != nil {
-				base.WarnfCtx(ctx, "Replicating doc %s, could not marshal mou: %s", event.Key, err)
-				r.errorCount.Add(1)
-				return false
-			}
-		}
-
-		err = opWithMeta(ctx, col, toCas, targetXattrs, body, &event)
+		err = opWithMeta(ctx, col, toCas, newXattrs, body, &event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not write doc: %s", event.Key, err)
 			r.errorCount.Add(1)
@@ -231,7 +229,7 @@ func (r *rosmarManager) Stop(_ context.Context) error {
 	return nil
 }
 
-// opWithMeta writes a document to the target datastore given a type of Deletion or Mutation event with a specific cas. The originalXattrs will contain only the _vv and _mou xattr.
+// opWithMeta writes a document to the target datastore given a type of Deletion or Mutation event with a specific cas, xattrs, and body.
 func opWithMeta(ctx context.Context, collection *rosmar.Collection, originalCas uint64, xattrs map[string][]byte, body []byte, event *sgbucket.FeedEvent) error {
 	xattrBytes, err := xattrToBytes(xattrs)
 	if err != nil {
@@ -276,29 +274,31 @@ func mobileXDCRFilter(event *sgbucket.FeedEvent) bool {
 }
 
 // getBodyHLVAndMou gets the body, vv, and mou from the event.
-func getBodyHLVAndMou(event sgbucket.FeedEvent) (*db.HybridLogicalVector, *db.MetadataOnlyUpdate, []byte, error) {
+func getBodyHLVAndMou(event sgbucket.FeedEvent) (*db.HybridLogicalVector, *db.MetadataOnlyUpdate, map[string][]byte, []byte, error) {
 	if event.DataType&sgbucket.FeedDataTypeXattr == 0 {
-		return nil, nil, event.Value, nil
+		return nil, nil, nil, event.Value, nil
 	}
 	body, xattrs, err := sgbucket.DecodeValueWithAllXattrs(event.Value)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	var hlv *db.HybridLogicalVector
 	if bytes, ok := xattrs[base.VvXattrName]; ok {
 		err := json.Unmarshal(bytes, &hlv)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("Could not unmarshal the vv xattr %s: %w", string(bytes), err)
+			return nil, nil, nil, nil, fmt.Errorf("Could not unmarshal the vv xattr %s: %w", string(bytes), err)
 		}
 	}
 	var mou *db.MetadataOnlyUpdate
 	if bytes, ok := xattrs[base.MouXattrName]; ok {
 		err := json.Unmarshal(bytes, &mou)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("Could not unmarshal the mou xattr %s: %w", string(bytes), err)
+			return nil, nil, nil, nil, fmt.Errorf("Could not unmarshal the mou xattr %s: %w", string(bytes), err)
 		}
 	}
-	return hlv, mou, body, nil
+	delete(xattrs, base.VvXattrName)
+	delete(xattrs, base.MouXattrName)
+	return hlv, mou, xattrs, body, nil
 }
 
 func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, sourceCas uint64) error {
