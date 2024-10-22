@@ -1054,9 +1054,10 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(t, collection, []string{"ABC", "NBC"}, 8)
 	WriteDirect(t, collection, []string{"ABC", "PBS"}, 9)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 9, base.DefaultWaitForSequence))
-	require.NoError(t, appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequence))
-	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
+	newChanges, err := verifySequencesInFeed(feed, []uint64{7, 8, 9})
+	require.NoError(t, err)
 
+	assert.True(t, verifyChangesSequencesIgnoreOrder(append(changes, newChanges...), []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 }
 
 // Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
@@ -1313,7 +1314,7 @@ func verifyChangesSequencesIgnoreOrder(changes []*ChangeEntry, sequences []uint6
 			}
 		}
 		if !matchingSequence {
-			log.Printf("verifyChangesSequencesIgnorerder: sequenceID %d missing in changes", seq)
+			log.Printf("verifyChangesSequencesIgnorerder: sequenceID %d missing in changes: %+v", seq, changes)
 			return false
 		}
 	}
