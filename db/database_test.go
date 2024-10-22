@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -150,6 +151,33 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
 	if err != nil {
 		testBucket.Close(ctx)
+		t.Fatalf("Unable to create database context: %v", err)
+	}
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
+	err = dbCtx.StartOnlineProcesses(ctx)
+	if err != nil {
+		dbCtx.Close(ctx)
+		t.Fatalf("Unable to start online processes: %v", err)
+	}
+	db, err := CreateDatabase(dbCtx)
+	if err != nil {
+		dbCtx.Close(ctx)
+		t.Fatalf("Unable to create database: %v", err)
+	}
+	return db, addDatabaseAndTestUserContext(ctx, db)
+}
+
+func setupTestDBWithLeakyBucket(t testing.TB, leakyBucket *base.LeakyBucket) (*Database, context.Context) {
+	ctx := base.TestCtx(t)
+	testBucket, ok := leakyBucket.GetUnderlyingBucket().(*base.TestBucket)
+	require.True(t, ok)
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, testBucket, 1),
+	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
+	if err != nil {
+		leakyBucket.Close(ctx)
 		t.Fatalf("Unable to create database context: %v", err)
 	}
 	ctx = dbCtx.AddDatabaseLogContext(ctx)
@@ -1027,6 +1055,61 @@ func TestUpdatePrincipal(t *testing.T) {
 	nextSeq, err = db.sequences.nextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(3), nextSeq)
+}
+
+func TestUpdatePrincipalCASRetry(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+
+	// ensure we don't batch sequences so that the number of released sequences is deterministic
+	defer SuspendSequenceBatching()()
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close(base.TestCtx(t))
+
+	// Issue 1-10 CAS retries
+	casRetryTotalCount := rand.Intn(10) + 1
+
+	casRetryCount := 0
+	var enableCASRetry bool
+	lb := base.NewLeakyBucket(tb, base.LeakyBucketConfig{
+		UpdateCallback: func(key string) {
+			if enableCASRetry && casRetryCount < casRetryTotalCount {
+				casRetryCount++
+				t.Logf("foreceCASRetry %d/%d: Forcing CAS retry for key: %q", casRetryCount, casRetryTotalCount, key)
+				body, originalCAS, err := tb.GetMetadataStore().GetRaw(key)
+				require.NoError(t, err)
+				err = tb.GetMetadataStore().SetRaw(key, 0, nil, body)
+				require.NoError(t, err)
+				_, newCAS, err := tb.GetMetadataStore().GetRaw(key)
+				require.NoError(t, err)
+				t.Logf("foreceCASRetry %d/%d: Doc %q CAS changed from %d to %d", casRetryCount, casRetryTotalCount, key, originalCAS, newCAS)
+			}
+		},
+		IgnoreClose: true,
+	})
+
+	db, ctx := setupTestDBWithLeakyBucket(t, lb)
+	defer db.Close(ctx)
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator(ctx)
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	assert.NoError(t, authenticator.Save(user))
+
+	// Write an update that'll be forced into a CAS retry from the leaky bucket callback
+	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
+	require.NoError(t, err)
+	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
+
+	enableCASRetry = true
+	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+	assert.NoError(t, err, "Unable to update principal")
+
+	// Ensure we released the sequences for all of the CAS retries we made
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(casRetryCount), db.sequences.dbStats.SequenceReleasedCount.Value())
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 // Re-apply one of the conflicting changes to make sure that PutExistingRevWithBody() treats it as a no-op (SG Issue #3048)
