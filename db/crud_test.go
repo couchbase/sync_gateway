@@ -1701,10 +1701,8 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	var db *Database
 	var forceDocConflict bool
 
-	const (
-		conflictDoc = "doc1"
-		timeoutDoc  = "doc"
-	)
+	conflictDoc := t.Name() + "_conflict"
+	timeoutDoc := t.Name() + "_timeout"
 
 	// call back to create a conflict mid write and force a non timeout error upon write attempt
 	writeUpdateCallback := func(key string) {
