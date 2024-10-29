@@ -400,7 +400,7 @@ func (s *SkippedSequenceSlice) processUnusedSequenceRangeAtSkipped(ctx context.C
 		}
 	} else if err != nil {
 		// if we get here then the skipped list must be empty
-		base.InfofCtx(ctx, base.KeyCache, "error attempting to remove unused sequence range form skipped: %v", err)
+		base.InfofCtx(ctx, base.KeyCache, "error attempting to remove unused sequence range from skipped: %v", err)
 	}
 }
 
