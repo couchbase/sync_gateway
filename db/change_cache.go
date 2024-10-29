@@ -989,7 +989,14 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 		base.InfofCtx(ctx, base.KeyCache, "cannot push negative skipped sequence range to skipped list: %d %d", startSeq, endSeq)
 		return
 	}
-	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
+	numSeqs := (endSeq - startSeq) + 1
+	if numSeqs > MinSequencesForRange {
+		c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
+	} else {
+		for i := startSeq; i <= endSeq; i++ {
+			c.skippedSeqs.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(i))
+		}
+	}
 }
 
 // waitForSequence blocks up to maxWaitTime until the given sequence has been received.

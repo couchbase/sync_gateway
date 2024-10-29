@@ -23,6 +23,7 @@ import (
 
 const (
 	DefaultClipCapacityHeadroom = 1000
+	MinSequencesForRange        = 30 // minimum number of sequences required to store entry as range
 )
 
 // SkippedSequenceSlice stores the set of skipped sequences as an ordered slice of single skipped sequences
@@ -231,7 +232,7 @@ func (s *SkippedSequenceSlice) _removeSeqRange(ctx context.Context, startSeq, en
 	// put this below a check for !found to avoid out of bound error
 	rangeElem := s.list[startIndex]
 	if endSeq > rangeElem.getLastSeq() {
-		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
+		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list, or sequence range spans multiple skipped entries", startSeq, endSeq)
 		return base.ErrSkippedSequencesMissing
 	}
 
@@ -345,11 +346,13 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SkippedSequenceLi
 	// get index of last entry + last seq of entry
 	index := len(s.list) - 1
 	lastEntryLastSeq := s.list[index].getLastSeq()
-	if (lastEntryLastSeq + 1) == entry.getStartSeq() {
-		// adding contiguous sequence
+	totalSeqs := s.list[index].getNumSequencesInEntry() + entry.getNumSequencesInEntry()
+	if (lastEntryLastSeq+1) == entry.getStartSeq() && totalSeqs > MinSequencesForRange {
+		// adding contiguous sequence, and we are above the min threshold to hold a range in list
 		// set last seq in the range to the new arriving sequence + alter timestamp to incoming entries timestamp
 		s.list[index].extendRange(entry.getLastSeq(), entry.getTimestamp())
 	} else {
+		// add new entry as separate item
 		s.list = append(s.list, entry)
 	}
 
