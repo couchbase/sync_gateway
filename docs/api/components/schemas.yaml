@@ -1307,6 +1307,7 @@ Database:
             max_memory_count_mb:
               description: |-
                 The maximum amount of memory the revision cache should take up in MB, setting to 0 will disable any eviction based on memory at rev cache.
+                There is a minimum value of 50 (50MB) for this config option.
                 When set this memory limit will work in in hand with revision cache size parameter. So you will potentially get eviction at revision cache both based off memory footprint and number of items in the cache.
                 **This is an Enterprise Edition feature only**
               type: integer
