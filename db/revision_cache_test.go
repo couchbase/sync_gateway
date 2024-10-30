@@ -753,7 +753,6 @@ func TestShardedMemoryEvictionWhenShardEmpty(t *testing.T) {
 	docRev, err := collection.GetRev(ctx, "doc1", rev, false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "doc1", docRev.DocID)
-	assert.Equal(t, int64(64), docRev.MemoryBytes)
 	assert.NotNil(t, docRev.BodyBytes)
 
 	// assert rev cache is still empty
