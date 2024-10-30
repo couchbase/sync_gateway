@@ -90,9 +90,9 @@ type LRURevisionCache struct {
 	cacheNumItems        *base.SgwIntStat
 	lock                 sync.Mutex
 	capacity             uint32           // Max number of items capacity of LRURevisionCache
-	MaxMemoryCapacity    int64            // Max memory capacity of LRURevisionCache
-	currMemoryCapacity   base.AtomicInt   // count of number of bytes used currently in the LRURevisionCache
-	cacheMemoryBytesStat *base.SgwIntStat // stat for overall cache memory usage in bytes
+	memoryCapacity       int64            // Max memory capacity of LRURevisionCache
+	currMemoryUsage      base.AtomicInt   // count of number of bytes used currently in the LRURevisionCache
+	cacheMemoryBytesStat *base.SgwIntStat // stat for overall revision cache memory usage in bytes.  When using sharded cache, will be shared by all shards.
 }
 
 // The cache payload data. Stored as the Value of a list Element.
@@ -123,7 +123,7 @@ func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores ma
 		cacheMisses:          cacheMissStat,
 		cacheNumItems:        cacheNumItemsStat,
 		cacheMemoryBytesStat: revCacheMemoryStat,
-		MaxMemoryCapacity:    revCacheOptions.MaxBytes,
+		memoryCapacity:       revCacheOptions.MaxBytes,
 	}
 }
 
@@ -281,8 +281,8 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 
 	// check we aren't over memory capacity, if so perform eviction
 	numItemsRemoved = 0
-	if rc.MaxMemoryCapacity > 0 {
-		for rc.currMemoryCapacity.Value() > rc.MaxMemoryCapacity {
+	if rc.memoryCapacity > 0 {
+		for rc.currMemoryUsage.Value() > rc.memoryCapacity {
 			rc.purgeOldest_()
 			numItemsRemoved++
 		}
@@ -532,7 +532,7 @@ func (delta *RevisionDelta) CalculateDeltaBytes() {
 // revCacheMemoryBasedEviction checks for rev cache eviction, if required calls performEviction which will acquire lock to evict
 func (rc *LRURevisionCache) revCacheMemoryBasedEviction() {
 	// if memory capacity is not set, don't check for eviction this way
-	if rc.MaxMemoryCapacity > 0 && rc.currMemoryCapacity.Value() > rc.MaxMemoryCapacity {
+	if rc.memoryCapacity > 0 && rc.currMemoryUsage.Value() > rc.memoryCapacity {
 		rc.performEviction()
 	}
 }
@@ -542,7 +542,7 @@ func (rc *LRURevisionCache) performEviction() {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
 	var numItemsRemoved int64
-	for rc.currMemoryCapacity.Value() > rc.MaxMemoryCapacity {
+	for rc.currMemoryUsage.Value() > rc.memoryCapacity {
 		rc.purgeOldest_()
 		numItemsRemoved++
 	}
@@ -555,6 +555,6 @@ func (rc *LRURevisionCache) updateRevCacheMemoryUsage(bytesCount int64) {
 	// overall memory usage for the stat added to show rev cache usage plus we need the current rev cache capacity of the
 	// LRURevisionCache object for sharding the rev cache. This way we can perform eviction on per shard basis much like
 	// we do with the number of items capacity eviction
-	rc.currMemoryCapacity.Add(bytesCount)
+	rc.currMemoryUsage.Add(bytesCount)
 	rc.cacheMemoryBytesStat.Add(bytesCount)
 }
