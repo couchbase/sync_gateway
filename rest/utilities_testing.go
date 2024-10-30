@@ -2450,10 +2450,13 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 type DocVersion struct {
 	RevTreeID string
 	CV        db.Version
+	HLV       *db.HybridLogicalVector
+	Mou       *db.MetadataOnlyUpdate
+	Cas       uint64
 }
 
-func (v *DocVersion) String() string {
-	return fmt.Sprintf("RevTreeID: %s", v.RevTreeID)
+func (v DocVersion) String() string {
+	return fmt.Sprintf("CV:{_src:%s,_ver:%d} Cas:%d RevTreeID:%s HLV:%+v Mou %+v", v.CV.SourceID, v.CV.Value, v.Cas, v.RevTreeID, v.HLV, v.Mou)
 }
 
 func (v DocVersion) Equal(o DocVersion) bool {
@@ -2477,6 +2480,21 @@ func (v DocVersion) GetRev(useHLV bool) string {
 // Digest returns the digest for the current version
 func (v DocVersion) Digest() string {
 	return strings.Split(v.RevTreeID, "-")[1]
+}
+
+// GetLatestHLVVersion returns the latest HLV version for the current version. This isn't necessarily _vv.cas
+func (v DocVersion) GetLatestHLVVersion() db.Version {
+	if v.HLV == nil {
+		return v.CV
+	}
+	if v.Mou == nil || base.HexCasToUint64(v.Mou.CAS) == v.HLV.CurrentVersionCAS {
+		return v.CV
+	}
+
+	return db.Version{
+		SourceID: v.CV.SourceID,
+		Value:    base.HexCasToUint64(v.Mou.CAS),
+	}
 }
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.

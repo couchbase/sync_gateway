@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"golang.org/x/exp/maps"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -78,6 +80,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			return true
 		}
 
+		fmt.Printf("HONK processing event %s\n", docID)
 		// Have to use GetWithXattrs to get a cas value back if there are no xattrs (GetWithXattrs will not return a cas if there are no xattrs)
 		_, targetXattrs, toCas, err := col.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName})
 		if err != nil && !base.IsDocNotFoundError(err) {
@@ -117,28 +120,43 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 		*/
 
-		if event.Cas <= toCas {
+		if event.Cas < toCas {
+			fmt.Printf("HONK skipping replication with matching cas %+v, toCas=%d\n", event.Key, toCas)
 			r.targetNewerDocs.Add(1)
 			base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, toCas)
 			return true
+		} else if event.Cas == toCas {
+			// test flags, but flags aren't implemented by rosmar
+			hasTargetXattrs := len(targetXattrs) > 0
+			hasSourceXattrs := event.DataType&sgbucket.FeedDataTypeXattr != 0
+			fmt.Printf("HONK hasSourceXattrs=%t, hasTargetXattrs=%t\n", hasSourceXattrs, hasTargetXattrs)
+			if !(hasSourceXattrs && !hasTargetXattrs) {
+				fmt.Printf("HONK skipping replication with matching cas")
+				base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, cas %d == %d, sourceXattrs=%t, targetXattrs=%d", docID, event.Cas, toCas, hasSourceXattrs, hasTargetXattrs)
+				return true
+			}
+			fmt.Printf("HONK replicating with matching cas\n")
 		}
-
 		sourceHLV, sourceMou, nonMobileXattrs, body, err := processDCPEvent(&event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not get body, hlv, and mou: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
 		}
-		if sourceHLV != nil && sourceMou != nil {
-			if sourceHLV.CurrentVersionCAS <= toCas {
+		if sourceHLV != nil && sourceHLV.CurrentVersionCAS != event.Cas {
+			if event.Cas < toCas {
+				fmt.Printf("HONK skipping replication with matching hlv sourceHLV.CurrentVersionCAS %d, toCAS=%d\n", sourceHLV.CurrentVersionCAS, toCas)
 				r.targetNewerDocs.Add(1)
 				base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, _vv.cas %d <= %d", docID, event.Cas, toCas)
 				return true
 			}
-			if base.HexCasToUint64(sourceMou.CAS) <= toCas {
-				r.targetNewerDocs.Add(1)
-				base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, _mou.cas %d <= %d", docID, event.Cas, toCas)
-				return true
+			if sourceMou != nil {
+				if base.HexCasToUint64(sourceMou.CAS) <= toCas {
+					fmt.Printf("HONK skipping replication with mou.CAS %d matching to %d\n", base.HexCasToUint64(sourceMou.CAS), toCas)
+					r.targetNewerDocs.Add(1)
+					base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, _mou.cas %d <= %d", docID, event.Cas, toCas)
+					return true
+				}
 			}
 		}
 		newXattrs := nonMobileXattrs
@@ -146,11 +164,13 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			newXattrs[base.SyncXattrName] = targetSyncXattr
 		}
 		err = updateHLV(newXattrs, sourceHLV, sourceMou, r.fromBucketSourceID, event.Cas)
+		fmt.Printf("HONK newXattrs=%+v\n", maps.Keys(newXattrs))
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not update hlv: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
 		}
+		base.WarnfCtx(ctx, "HONK Replicating doc %s, cas %d, body %s", event.Key, event.Cas, string(body))
 		err = opWithMeta(ctx, col, toCas, newXattrs, body, &event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not write doc: %s", event.Key, err)

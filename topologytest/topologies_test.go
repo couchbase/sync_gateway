@@ -9,7 +9,10 @@
 package topologytest
 
 import (
+	"slices"
 	"testing"
+
+	"golang.org/x/exp/maps"
 )
 
 // Topology defines a topology for a set of peers and replications. This can include Couchbase Server, Sync Gateway, and Couchbase Lite peers, with push or pull replications between them.
@@ -18,6 +21,12 @@ type Topology struct {
 	peers        map[string]PeerOptions
 	replications []PeerReplicationDefinition
 	skipIf       func(t *testing.T, activePeerID string, peers map[string]Peer) // allow temporary skips while the code is being ironed out
+}
+
+func (t Topology) PeerNames() []string {
+	peerNames := maps.Keys(t.peers)
+	slices.Sort(peerNames)
+	return peerNames
 }
 
 // Topologies represents user configurations of replications.

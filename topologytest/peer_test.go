@@ -230,9 +230,17 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) map[string]P
 }
 
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
-func setupTests(t *testing.T, peerOptions map[string]PeerOptions, replicationDefinitions []PeerReplicationDefinition) (map[string]Peer, []PeerReplication) {
-	peers := createPeers(t, peerOptions)
-	replications := createPeerReplications(t, peers, replicationDefinitions)
+func setupTests(t *testing.T, topology Topology, activePeerID string) (map[string]Peer, []PeerReplication) {
+	peers := createPeers(t, topology.peers)
+	replications := createPeerReplications(t, peers, topology.replications)
+
+	if topology.skipIf != nil {
+		topology.skipIf(t, activePeerID, peers)
+	}
+	for _, replication := range replications {
+		// temporarily start the replication before writing the document, limitation of CouchbaseLiteMockPeer as active peer since WriteDocument is calls PushRev
+		replication.Start()
+	}
 	return peers, replications
 }
 
