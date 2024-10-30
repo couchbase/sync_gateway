@@ -993,9 +993,8 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 	if numSeqs > MinSequencesForRange {
 		c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
 	} else {
-		for i := startSeq; i <= endSeq; i++ {
-			c.skippedSeqs.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(i))
-		}
+		// push sequences as separate entries
+		c.skippedSeqs.PushSkippedSequenceEntries(startSeq, endSeq, int64(numSeqs))
 	}
 }
 
