@@ -3070,6 +3070,7 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 }
 
 func TestRevCacheMemoryLimitConfig(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
@@ -3113,7 +3114,12 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 		MaxMemoryCountMB: base.Uint32Ptr(4),
 	}
 	resp = rt.UpsertDbConfig("db1", dbConfig)
-	assertHTTPErrorReason(t, resp, http.StatusInternalServerError, "Internal error: maximum rev cache memory size cannot be lower than 50 MB")
+	if base.IsEnterpriseEdition() {
+		assertHTTPErrorReason(t, resp, http.StatusInternalServerError, "Internal error: maximum rev cache memory size cannot be lower than 50 MB")
+	} else {
+		// CE will roll back to no memory limit as it's an EE ony feature
+		RequireStatus(t, resp, http.StatusCreated)
+	}
 
 	// test turing off the memory based rev cache
 	dbConfig.CacheConfig = &CacheConfig{}
