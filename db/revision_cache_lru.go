@@ -34,7 +34,7 @@ func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingSt
 	revCacheOptions.MaxItemCount = uint32(perCacheCapacity)
 	var perCacheMemoryCapacity float32
 	if revCacheOptions.MaxBytes > 0 {
-		perCacheMemoryCapacity = 1.1 * float32(revCacheOptions.MaxBytes) / float32(revCacheOptions.ShardCount)
+		perCacheMemoryCapacity = float32(revCacheOptions.MaxBytes) / float32(revCacheOptions.ShardCount)
 		revCacheOptions.MaxBytes = int64(perCacheMemoryCapacity)
 	}
 
@@ -89,10 +89,10 @@ type LRURevisionCache struct {
 	cacheMisses          *base.SgwIntStat
 	cacheNumItems        *base.SgwIntStat
 	lock                 sync.Mutex
-	capacity             uint32
-	MaxMemoryCapacity    int64
-	currMemoryCapacity   base.AtomicInt
-	cacheMemoryBytesStat *base.SgwIntStat
+	capacity             uint32           // Max number of items capacity of LRURevisionCache
+	MaxMemoryCapacity    int64            // Max memory capacity of LRURevisionCache
+	currMemoryCapacity   base.AtomicInt   // count of number of bytes used currently in the LRURevisionCache
+	cacheMemoryBytesStat *base.SgwIntStat // stat for overall cache memory usage in bytes
 }
 
 // The cache payload data. Stored as the Value of a list Element.

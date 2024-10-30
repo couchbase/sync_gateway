@@ -642,7 +642,16 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 	assert.Equal(t, int64(0), cacheNumItems.Value())
 
-	docRev, err := cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheOmitDelta)
+	// assert we can still fetch this upsert doc
+	docRev, err := cache.Get(ctx, "doc2", "1-abc", testCollectionID, false)
+	require.NoError(t, err)
+	assert.Equal(t, "doc2", docRev.DocID)
+	assert.Equal(t, int64(102), docRev.MemoryBytes)
+	assert.NotNil(t, docRev.BodyBytes)
+	assert.Equal(t, int64(0), memoryBytesCounted.Value())
+	assert.Equal(t, int64(0), cacheNumItems.Value())
+
+	docRev, err = cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheOmitDelta)
 	require.NoError(t, err)
 	assert.NotNil(t, docRev.BodyBytes)
 
@@ -665,7 +674,7 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 func TestShardedMemoryEviction(t *testing.T) {
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
-			MaxBytes:     150,
+			MaxBytes:     160,
 			MaxItemCount: 10,
 			ShardCount:   2,
 		},
@@ -730,12 +739,24 @@ func TestShardedMemoryEvictionWhenShardEmpty(t *testing.T) {
 	}
 
 	// add doc that will be added to one shard
-	_, _, err := collection.Put(ctx, "doc1", docBody)
+	rev, _, err := collection.Put(ctx, "doc1", docBody)
 	require.NoError(t, err)
 	shardedCache := db.revisionCache.(*ShardedLRURevisionCache)
 
 	// assert that doc was not added to cache as it's too large
 	doc1Shard := shardedCache.getShard("doc1")
+	assert.Equal(t, int64(0), doc1Shard.currMemoryCapacity.Value())
+	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
+	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
+
+	// test we can still fetch this doc
+	docRev, err := collection.GetRev(ctx, "doc1", rev, false, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "doc1", docRev.DocID)
+	assert.Equal(t, int64(64), docRev.MemoryBytes)
+	assert.NotNil(t, docRev.BodyBytes)
+
+	// assert rev cache is still empty
 	assert.Equal(t, int64(0), doc1Shard.currMemoryCapacity.Value())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
