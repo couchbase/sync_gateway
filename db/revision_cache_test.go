@@ -642,7 +642,16 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 	assert.Equal(t, int64(0), cacheNumItems.Value())
 
-	docRev, err := cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheOmitDelta)
+	// assert we can still fetch this upsert doc
+	docRev, err := cache.Get(ctx, "doc2", "1-abc", testCollectionID, false)
+	require.NoError(t, err)
+	assert.Equal(t, "doc2", docRev.DocID)
+	assert.Equal(t, int64(102), docRev.MemoryBytes)
+	assert.NotNil(t, docRev.BodyBytes)
+	assert.Equal(t, int64(0), memoryBytesCounted.Value())
+	assert.Equal(t, int64(0), cacheNumItems.Value())
+
+	docRev, err = cache.Get(ctx, "doc1", "1-abc", testCollectionID, RevCacheOmitDelta)
 	require.NoError(t, err)
 	assert.NotNil(t, docRev.BodyBytes)
 
@@ -655,6 +664,101 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 	assert.Equal(t, int64(0), cacheNumItems.Value())
+}
+
+// TestShardedMemoryEviction:
+//   - Test adding a doc to each shard in the test
+//   - Assert that each shard has individual count for memory usage as expected
+//   - Add new doc that will take over the shard memory capacity and assert that that eviction takes place and
+//     all stats are as expected
+func TestShardedMemoryEviction(t *testing.T) {
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxBytes:     160,
+			MaxItemCount: 10,
+			ShardCount:   2,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	cacheStats := db.DbStats.Cache()
+
+	docBody := Body{
+		"channels": "_default",
+	}
+
+	// add doc that will be added to one shard
+	size, _ := createDocAndReturnSizeAndRev(t, ctx, "doc1", collection, docBody)
+	assert.Equal(t, int64(size), cacheStats.RevisionCacheTotalMemory.Value())
+	// grab this particular shard + assert that the shard memory usage is as expected
+	shardedCache := db.revisionCache.(*ShardedLRURevisionCache)
+	doc1Shard := shardedCache.getShard("doc1")
+	assert.Equal(t, int64(size), doc1Shard.currMemoryUsage.Value())
+
+	// add new doc in diff shard + assert that the shard memory usage is as expected
+	size, _ = createDocAndReturnSizeAndRev(t, ctx, "doc2", collection, docBody)
+	doc2Shard := shardedCache.getShard("doc2")
+	assert.Equal(t, int64(size), doc2Shard.currMemoryUsage.Value())
+	// overall mem usage should be combination oif the two added docs
+	assert.Equal(t, int64(size*2), cacheStats.RevisionCacheTotalMemory.Value())
+
+	// two docs should reside in cache at this time
+	assert.Equal(t, int64(2), cacheStats.RevisionCacheNumItems.Value())
+
+	docBody = Body{
+		"channels": "_default",
+		"some":     "field",
+	}
+	// add new doc to trigger eviction and assert stats are as expected
+	newDocSize, _ := createDocAndReturnSizeAndRev(t, ctx, "doc3", collection, docBody)
+	doc3Shard := shardedCache.getShard("doc3")
+	assert.Equal(t, int64(newDocSize), doc3Shard.currMemoryUsage.Value())
+	assert.Equal(t, int64(2), cacheStats.RevisionCacheNumItems.Value())
+	assert.Equal(t, int64(size+newDocSize), cacheStats.RevisionCacheTotalMemory.Value())
+}
+
+// TestShardedMemoryEvictionWhenShardEmpty:
+//   - Test adding a doc to sharded revision cache that will immediately be evicted due to size
+//   - Assert that stats look as expected
+func TestShardedMemoryEvictionWhenShardEmpty(t *testing.T) {
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxBytes:     100,
+			MaxItemCount: 10,
+			ShardCount:   2,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	cacheStats := db.DbStats.Cache()
+
+	docBody := Body{
+		"channels": "_default",
+	}
+
+	// add doc that will be added to one shard
+	rev, _, err := collection.Put(ctx, "doc1", docBody)
+	require.NoError(t, err)
+	shardedCache := db.revisionCache.(*ShardedLRURevisionCache)
+
+	// assert that doc was not added to cache as it's too large
+	doc1Shard := shardedCache.getShard("doc1")
+	assert.Equal(t, int64(0), doc1Shard.currMemoryUsage.Value())
+	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
+	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
+
+	// test we can still fetch this doc
+	docRev, err := collection.GetRev(ctx, "doc1", rev, false, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "doc1", docRev.DocID)
+	assert.NotNil(t, docRev.BodyBytes)
+
+	// assert rev cache is still empty
+	assert.Equal(t, int64(0), doc1Shard.currMemoryUsage.Value())
+	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
+	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
 }
 
 func TestImmediateRevCacheItemBasedEviction(t *testing.T) {
