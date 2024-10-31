@@ -3070,6 +3070,7 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 }
 
 func TestRevCacheMemoryLimitConfig(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
@@ -3088,7 +3089,7 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
 		MaxItemCount:     base.Uint32Ptr(100),
-		MaxMemoryCountMB: base.Uint32Ptr(4),
+		MaxMemoryCountMB: base.Uint32Ptr(51),
 	}
 	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
 
@@ -3102,8 +3103,39 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 
 	assert.Equal(t, uint32(100), *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount)
 	if base.IsEnterpriseEdition() {
-		assert.Equal(t, uint32(4), *dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
+		assert.Equal(t, uint32(51), *dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
 	} else {
 		assert.Nil(t, dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
 	}
+
+	dbConfig.CacheConfig = &CacheConfig{}
+	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
+		MaxItemCount:     base.Uint32Ptr(100),
+		MaxMemoryCountMB: base.Uint32Ptr(4),
+	}
+	resp = rt.UpsertDbConfig("db1", dbConfig)
+	if base.IsEnterpriseEdition() {
+		assertHTTPErrorReason(t, resp, http.StatusInternalServerError, "Internal error: maximum rev cache memory size cannot be lower than 50 MB")
+	} else {
+		// CE will roll back to no memory limit as it's an EE ony feature
+		RequireStatus(t, resp, http.StatusCreated)
+	}
+
+	// test turing off the memory based rev cache
+	dbConfig.CacheConfig = &CacheConfig{}
+	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
+		MaxItemCount:     base.Uint32Ptr(100),
+		MaxMemoryCountMB: base.Uint32Ptr(0),
+	}
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// empty db config struct
+	dbConfig = DbConfig{}
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfig))
+	assert.NotNil(t, dbConfig.CacheConfig)
+	assert.Equal(t, uint32(100), *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount)
+	assert.Equal(t, uint32(0), *dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
 }

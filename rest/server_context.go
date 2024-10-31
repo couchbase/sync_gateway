@@ -1059,6 +1059,10 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 				revCacheOptions.MaxItemCount = *config.CacheConfig.RevCacheConfig.MaxItemCount
 			}
 			if config.CacheConfig.RevCacheConfig.MaxMemoryCountMB != nil {
+				maxMemoryConfigValue := *config.CacheConfig.RevCacheConfig.MaxMemoryCountMB
+				if maxMemoryConfigValue != uint32(0) && maxMemoryConfigValue < uint32(50) {
+					return db.DatabaseContextOptions{}, fmt.Errorf("maximum rev cache memory size cannot be lower than 50 MB")
+				}
 				revCacheOptions.MaxBytes = int64(*config.CacheConfig.RevCacheConfig.MaxMemoryCountMB * 1024 * 1024) // Convert MB input to bytes
 			}
 			if config.CacheConfig.RevCacheConfig.ShardCount != nil {
