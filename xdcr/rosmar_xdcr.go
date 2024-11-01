@@ -158,7 +158,8 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 		*/
 
-		if sourceCas < targetCas {
+		// CBG-4334, check sourceCas == targetCas
+		if sourceCas <= targetCas {
 			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
 			r.targetNewerDocs.Add(1)
 			base.TracefCtx(ctx, base.KeySGTest, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, targetCas)

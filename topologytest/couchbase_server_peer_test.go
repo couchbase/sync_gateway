@@ -142,6 +142,28 @@ func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docI
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) db.Body {
+	docBytes := p.waitForDocVersion(dsName, docID, expected)
+	var body db.Body
+	require.NoError(p.tb, base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
+	return body
+}
+
+// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
+func (p *CouchbaseServerPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID string) {
+	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
+		_, err := p.getCollection(dsName).Get(docID, nil)
+		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s to be deleted, found err=%v", docID, err)
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+// WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
+func (p *CouchbaseServerPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) {
+	docBytes := p.waitForDocVersion(dsName, docID, expected)
+	require.Nil(p.tb, docBytes, "expected tombstone for docID %s, got %s", docID, docBytes)
+}
+
+// waitForDocVersion waits for a document to reach a specific version and returns the body in bytes. The bytes will be nil if the document is a tombstone. The test will fail if the document does not reach the expected version in 20s.
+func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) []byte {
 	var docBytes []byte
 	var version rest.DocVersion
 	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
@@ -155,14 +177,11 @@ func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, d
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(p, cas, xattrs)
 		// assert.Equal(c, expected.GetLatestHLVVersion(), version.GetLatestHLVVersion(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v", docID, p, p.SourceID(), expected, version)
-		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(docBytes))
+		assert.Equal(c, getCVBeforeImport(expected), getCVBeforeImport(version), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(docBytes))
 
 	}, 5*time.Second, 100*time.Millisecond)
 	p.tb.Logf("found version %+v for doc %s on %s", version, docID, p)
-	// get hlv to construct DocVersion
-	var body db.Body
-	require.NoError(p.tb, base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
-	return body
+	return docBytes
 }
 
 // RequireDocNotFound asserts that a document does not exist on the peer.
@@ -280,4 +299,12 @@ func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (
 	var body db.Body
 	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body))
 	return getDocVersion(peer, cas, xattrs), body
+}
+
+// getFunctionalCV returns a functional version from a DocVersion, which will  CV from a DocVersion.
+func getCVBeforeImport(version rest.DocVersion) db.Version {
+	if version.Cas != 0 && version.Mou != nil && version.HLV.CurrentVersionCAS != version.Cas {
+		return db.Version{SourceID: version.HLV.SourceID, Value: base.HexCasToUint64(version.Mou.PreviousCAS)}
+	}
+	return db.Version{SourceID: version.HLV.SourceID, Value: version.HLV.Version}
 }

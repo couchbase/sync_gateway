@@ -93,6 +93,16 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docI
 	return body
 }
 
+// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
+func (p *CouchbaseLiteMockPeer) WaitForDeletion(_ sgbucket.DataStoreName, _ string) {
+	require.Fail(p.TB(), "WaitForDeletion not yet implemented CBG-4257")
+}
+
+// WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
+func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(_ sgbucket.DataStoreName, _ string, _ rest.DocVersion) {
+	require.Fail(p.TB(), "WaitForTombstoneVersion not yet implemented CBG-4257")
+}
+
 // RequireDocNotFound asserts that a document does not exist on the peer.
 func (p *CouchbaseLiteMockPeer) RequireDocNotFound(sgbucket.DataStoreName, string) {
 	// not implemented yet in blip client tester

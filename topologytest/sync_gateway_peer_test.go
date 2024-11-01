@@ -132,12 +132,30 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 		}
 		version := rest.DocVersionFromDocument(doc)
 		// Only assert on CV since RevTreeID might not be present if this was a Couchbase Server write
-		//assert.Equal(c, expected.CV, docVersion.CV, "expected %v, got %v, body %+v", expected, docVersion, doc.Body(ctx))
 		bodyBytes, err := doc.BodyBytes(ctx)
 		assert.NoError(c, err)
-		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\nbody:%+v\n", docID, p, p.SourceID(), expected, version, string(bodyBytes))
+		assert.Equal(c, getCVBeforeImport(expected), getCVBeforeImport(version), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(bodyBytes))
 	}, 5*time.Second, 100*time.Millisecond)
 	return doc.Body(ctx)
+}
+
+// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
+func (p *SyncGatewayPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID string) {
+	collection, ctx := p.getCollection(dsName)
+	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		if err == nil {
+			assert.True(c, doc.IsDeleted(), "expected %s to be deleted", doc)
+			return
+		}
+		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s to be deleted, found err=%v", docID, err)
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+// WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
+func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) {
+	docBytes := p.WaitForDocVersion(dsName, docID, expected)
+	require.Nil(p.TB(), docBytes, "expected tombstone for docID %s, got %s", docID, docBytes)
 }
 
 // RequireDocNotFound asserts that a document does not exist on the peer.
