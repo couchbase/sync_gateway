@@ -100,8 +100,33 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		if sourceMou != nil && base.HexCasToUint64(sourceMou.CAS) == sourceCas && sourceHLV != nil {
 			sourceCas = sourceHLV.CurrentVersionCAS
 			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s source _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, event.Cas, sourceCas)
-			sourceCas = sourceHLV.CurrentVersionCAS
 		}
+		targetCas := toCas
+		if targetXattrs[base.MouXattrName] != nil && targetXattrs[base.VvXattrName] != nil {
+			var targetMou db.MetadataOnlyUpdate
+			err := json.Unmarshal(targetXattrs[base.MouXattrName], &targetMou)
+			if err != nil {
+				base.WarnfCtx(ctx, "Replicating doc %s, could not unmarshal target mou: %s", event.Key, err)
+				r.errorCount.Add(1)
+				return false
+			}
+
+			var targetHLV *db.HybridLogicalVector
+			if targetHLVBytes, ok := targetXattrs[base.VvXattrName]; ok {
+				err := json.Unmarshal(targetHLVBytes, &targetHLV)
+				if err != nil {
+					base.WarnfCtx(ctx, "Replicating doc %s, could not unmarshal target hlv: %s", event.Key, err)
+					r.errorCount.Add(1)
+
+					return false
+				}
+			}
+			if base.HexCasToUint64(targetMou.CAS) == targetCas {
+				targetCas = targetHLV.CurrentVersionCAS
+				base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s target _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, targetCas, targetHLV.CurrentVersionCAS)
+			}
+		}
+
 		/* full LWW conflict resolution is not implemented in rosmar yet. There is no need to implement this since CAS will always be unique due to rosmar limitations.
 
 		CBS algorithm is:
@@ -134,17 +159,17 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 		*/
 
-		if sourceCas < toCas {
-			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, toCas)
+		if sourceCas < targetCas {
+			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
 			r.targetNewerDocs.Add(1)
-			base.TracefCtx(ctx, base.KeySGTest, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, toCas)
+			base.TracefCtx(ctx, base.KeySGTest, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, targetCas)
 			return true
-		} else if sourceCas == toCas {
+		} else if sourceCas == targetCas {
 			// test flags, but flags aren't implemented by rosmar
 			hasTargetXattrs := len(targetXattrs) > 0
 			hasSourceXattrs := event.DataType&sgbucket.FeedDataTypeXattr != 0
 			if hasSourceXattrs && !hasTargetXattrs {
-				base.InfofCtx(ctx, base.KeySGTest, "skipping %q skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, toCas)
+				base.InfofCtx(ctx, base.KeySGTest, "skipping %q skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
 				return true
 			}
 			base.InfofCtx(ctx, base.KeySGTest, "XDCR replicating %q since cas (%d) matches on source and target but source has xattrs and target does not", docID, sourceCas)
