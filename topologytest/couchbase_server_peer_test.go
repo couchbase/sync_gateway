@@ -85,8 +85,11 @@ func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID s
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
-
-	//cas, err := p.getCollection(dsName).WriteCas(docID, 0, 0, body, 0)
+	p.tb.Logf("%s: Creating document %s", p, docID)
+	// create document with xattrs to prevent XDCR from doing a round trip replication in this scenario:
+	// CBS1: write document (cas1, no _vv)
+	// CBS1->CBS2: XDCR replication
+	// CBS2->CBS1: XDCR replication, creates a new _vv
 	cas, err := p.getCollection(dsName).WriteWithXattrs(p.Context(), docID, 0, 0, body, map[string][]byte{"userxattr": []byte(`{"dummy": "xattr"}`)}, nil, nil)
 	require.NoError(p.tb, err)
 	return rest.DocVersion{
@@ -100,6 +103,7 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+	p.tb.Logf("%s: Writing document %s", p, docID)
 	// write the document LWW, ignoring any in progress writes
 	callback := func(_ []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
 		return body, nil, false, nil
@@ -145,8 +149,8 @@ func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, d
 		}
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(p, cas, xattrs)
-		//assert.Equal(c, expected.GetLatestHLVVersion(), version.GetLatestHLVVersion(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v", docID, p, p.SourceID(), expected, version)
-		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v", docID, p, p.SourceID(), expected, version)
+		// assert.Equal(c, expected.GetLatestHLVVersion(), version.GetLatestHLVVersion(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v", docID, p, p.SourceID(), expected, version)
+		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(docBytes))
 
 	}, 5*time.Second, 100*time.Millisecond)
 	p.tb.Logf("found version %+v for doc %s on %s", version, docID, p)

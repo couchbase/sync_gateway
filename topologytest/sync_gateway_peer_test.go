@@ -66,11 +66,12 @@ func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID strin
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+	p.TB().Logf("%s: Creating document %s", p, docID)
 	return p.WriteDocument(dsName, docID, body)
 }
 
-// WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+// writeDocument writes a document to the peer. The test will fail if the write does not succeed.
+func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
 	collection, ctx := p.getCollection(dsName)
 
 	var doc *db.Document
@@ -99,6 +100,12 @@ func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID str
 	return docVersionFromDocument(doc)
 }
 
+// WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
+func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+	p.TB().Logf("%s: Writing document %s", p, docID)
+	return p.writeDocument(dsName, docID, body)
+}
+
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion {
 	collection, ctx := p.getCollection(dsName)
@@ -120,9 +127,15 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 		var err error
 		doc, err = collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		assert.NoError(c, err)
-		docVersion := docVersionFromDocument(doc)
+		if doc == nil {
+			return
+		}
+		version := docVersionFromDocument(doc)
 		// Only assert on CV since RevTreeID might not be present if this was a Couchbase Server write
-		assert.Equal(c, expected.CV, docVersion.CV)
+		//assert.Equal(c, expected.CV, docVersion.CV, "expected %v, got %v, body %+v", expected, docVersion, doc.Body(ctx))
+		bodyBytes, err := doc.BodyBytes(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\nbody:%+v\n", docID, p, p.SourceID(), expected, version, string(bodyBytes))
 	}, 5*time.Second, 100*time.Millisecond)
 	return doc.Body(ctx)
 }
@@ -172,11 +185,18 @@ func (p *SyncGatewayPeer) GetBackingBucket() base.Bucket {
 // docVersionFromDocument sets the DocVersion from the current revision of the document.
 func docVersionFromDocument(doc *db.Document) rest.DocVersion {
 	sourceID, value := doc.HLV.GetCurrentVersion()
+	cv := db.Version{
+		SourceID: sourceID,
+		Value:    value,
+	}
+	if doc.HLV.CurrentVersionCAS != doc.Cas && doc.MetadataOnlyUpdate != nil {
+		cv = db.Version{
+			SourceID: doc.HLV.SourceID,
+			Value:    base.HexCasToUint64(doc.MetadataOnlyUpdate.PreviousCAS),
+		}
+	}
 	return rest.DocVersion{
 		RevTreeID: doc.CurrentRev,
-		CV: db.Version{
-			SourceID: sourceID,
-			Value:    value,
-		},
+		CV:        cv,
 	}
 }

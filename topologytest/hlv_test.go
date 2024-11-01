@@ -12,10 +12,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
+	"golang.org/x/exp/maps"
 
 	"github.com/stretchr/testify/require"
 )
@@ -27,83 +28,80 @@ func getSingleDsName() base.ScopeAndCollectionName {
 	return base.DefaultScopeAndCollectionName()
 }
 
+// singleActorTest represents a test case for a single actor in a given topology.
+type singleActorTest struct {
+	topology     Topology
+	activePeerID string
+}
+
+// description returns a human-readable description of the test case.
+func (t singleActorTest) description() string {
+	return fmt.Sprintf("%s_actor=%s", t.topology.description, t.activePeerID)
+}
+
+// docID returns a unique document ID for the test case.
+func (t singleActorTest) docID() string {
+	return fmt.Sprintf("doc_%s", strings.ReplaceAll(t.description(), " ", "_"))
+}
+
+// PeerNames returns the names of all peers in the test case's topology, sorted deterministically.
+func (t singleActorTest) PeerNames() []string {
+	return t.topology.PeerNames()
+}
+
+// collectionName returns the collection name for the test case.
+func (t singleActorTest) collectionName() base.ScopeAndCollectionName {
+	return getSingleDsName()
+}
+
+// getSingleActorTestCase returns a list of test cases in the matrix for all topologies * active peers.
+func getSingleActorTestCase() []singleActorTest {
+	var tests []singleActorTest
+	for _, tc := range append(simpleTopologies, Topologies...) {
+		for _, activePeerID := range tc.PeerNames() {
+			tests = append(tests, singleActorTest{topology: tc, activePeerID: activePeerID})
+		}
+	}
+	return tests
+}
+
 // TestHLVCreateDocumentSingleActor tests creating a document with a single actor in different topologies.
 func TestHLVCreateDocumentSingleActor(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCRUD, base.KeyImport)
-	collectionName := getSingleDsName()
-	for _, tc := range append(simpleTopologies, Topologies...) {
-		t.Run(tc.description, func(t *testing.T) {
-			for _, activePeerID := range tc.PeerNames() {
-				t.Run("actor="+activePeerID, func(t *testing.T) {
-					peers, _ := setupTests(t, tc, activePeerID)
-					docID := fmt.Sprintf("doc_%s_%s", strings.ReplaceAll(tc.description, " ", "_"), activePeerID)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeySGTest)
+	for _, tc := range getSingleActorTestCase() {
+		t.Run(tc.description(), func(t *testing.T) {
+			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
-					t.Logf("writing document %s from %s", docID, activePeerID)
-					docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, activePeerID, tc.description))
-					docVersion := peers[activePeerID].CreateDocument(collectionName, docID, docBody)
-
-					for _, peerName := range tc.PeerNames() {
-						peer := peers[peerName]
-
-						t.Logf("waiting for doc version on %s, written from %s", peer, activePeerID)
-						body := peer.WaitForDocVersion(collectionName, docID, docVersion)
-						requireBodyEqual(t, docBody, body)
-						stripInternalProperties(body)
-						require.JSONEq(t, string(docBody), string(base.MustJSONMarshal(t, body)))
-					}
-				})
-			}
+			docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, tc.activePeerID, tc.description()))
+			docVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), tc.docID(), docBody)
+			waitForVersionAndBody(t, tc, peers, docVersion, docBody)
 		})
 	}
 }
 
-// TestHLVCreateDocumentSingleActor tests creating a document with a single actor in different topologies.
+// TestHLVUpdateDocumentSingleActor tests creating a document with a single actor in different topologies.
 func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCRUD, base.KeyImport)
-	collectionName := getSingleDsName()
-	for i, tc := range append(simpleTopologies, Topologies...) {
-		if i == 0 {
-			continue
-		}
-		t.Run(tc.description, func(t *testing.T) {
-			for _, activePeerID := range tc.PeerNames() {
-				if strings.HasPrefix(activePeerID, "cbl") {
-					t.Skip("Skipping CBL active peer, gives 304")
-				}
-				t.Run("actor="+activePeerID, func(t *testing.T) {
-					peers, _ := setupTests(t, tc, activePeerID)
-					docID := fmt.Sprintf("doc_%s_%s", strings.ReplaceAll(tc.description, " ", "_"), activePeerID)
-
-					t.Logf("creating document %s from %s", docID, activePeerID)
-					body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, activePeerID, tc.description))
-					createVersion := peers[activePeerID].CreateDocument(collectionName, docID, body1)
-
-					t.Logf("waiting for document version 1 on all peers")
-					for _, peerName := range tc.PeerNames() {
-						peer := peers[peerName]
-
-						t.Logf("waiting for doc version on %s, written from %s", peer, activePeerID)
-						body := peer.WaitForDocVersion(collectionName, docID, createVersion)
-						requireBodyEqual(t, body1, body)
-					}
-
-					time.Sleep(1 * time.Second)
-					t.Logf("HONK HONK HONK updating document %s from %s", docID, activePeerID)
-					body2 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 2}`, activePeerID, tc.description))
-					updateVersion := peers[activePeerID].WriteDocument(collectionName, docID, body2)
-					t.Logf("createVersion: %+v, updateVersion: %+v", createVersion, updateVersion)
-					t.Logf("waiting for document version 2 on all peers")
-					for _, peerName := range tc.PeerNames() {
-						peer := peers[peerName]
-
-						t.Logf("waiting for doc version on %s, written from %s", peer, activePeerID)
-						body := peer.WaitForDocVersion(collectionName, docID, updateVersion)
-						requireBodyEqual(t, body2, body)
-					}
-				})
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeySGTest)
+	for _, tc := range getSingleActorTestCase() {
+		t.Run(tc.description(), func(t *testing.T) {
+			if strings.HasPrefix(tc.activePeerID, "cbl") {
+				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304]")
 			}
+			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
+
+			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
+			createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), tc.docID(), body1)
+
+			waitForVersionAndBody(t, tc, peers, createVersion, body1)
+
+			t.Logf("HONK HONK HONK updating document %s from %s", tc.docID(), tc.activePeerID)
+			body2 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 2}`, tc.activePeerID, tc.description()))
+			updateVersion := peers[tc.activePeerID].WriteDocument(tc.collectionName(), tc.docID(), body2)
+			t.Logf("createVersion: %+v, updateVersion: %+v", createVersion, updateVersion)
+			t.Logf("waiting for document version 2 on all peers")
+			waitForVersionAndBody(t, tc, peers, updateVersion, body2)
 		})
 	}
 }
@@ -117,4 +115,15 @@ func requireBodyEqual(t *testing.T, expected []byte, actual db.Body) {
 func stripInternalProperties(body db.Body) {
 	delete(body, "_rev")
 	delete(body, "_id")
+}
+
+func waitForVersionAndBody(t *testing.T, testCase singleActorTest, peers map[string]Peer, expectedVersion rest.DocVersion, expectedBody []byte) {
+	// sort peer names to make tests more deterministic
+	peerNames := maps.Keys(peers)
+	for _, peerName := range peerNames {
+		peer := peers[peerName]
+		t.Logf("waiting for doc version on %s, written from %s", peer, testCase.activePeerID)
+		body := peer.WaitForDocVersion(testCase.collectionName(), testCase.docID(), expectedVersion)
+		requireBodyEqual(t, expectedBody, body)
+	}
 }

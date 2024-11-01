@@ -1485,7 +1485,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("Creating user: %v", userDocBody)
+		log.Printf("db:%s Creating user: %v", bt.restTester.GetDatabase().Name, userDocBody)
 
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
 		_ = bt.restTester.SendAdminRequest(

@@ -1797,7 +1797,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	// Store the new revision body into the doc:
 	doc.setRevisionBody(ctx, newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
 	doc.SyncData.Attachments = newDoc.DocAttachments
-	doc.metadataOnlyUpdate = newDoc.metadataOnlyUpdate
+	doc.MetadataOnlyUpdate = newDoc.MetadataOnlyUpdate
 
 	if doc.CurrentRev == newRevID {
 		doc.NewestRev = ""
@@ -1808,7 +1808,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		if doc.CurrentRev != prevCurrentRev {
 			doc.promoteNonWinningRevisionBody(ctx, doc.CurrentRev, db.RevisionBodyLoader)
 			// If the update resulted in promoting a previous non-winning revision body to winning, this isn't a metadata only update.
-			doc.metadataOnlyUpdate = nil
+			doc.MetadataOnlyUpdate = nil
 		}
 	}
 }
@@ -2088,8 +2088,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	// compute mouMatch before the callback modifies doc.metadataOnlyUpdate
-	mouMatch := doc.metadataOnlyUpdate != nil && base.HexCasToUint64(doc.metadataOnlyUpdate.CAS) == doc.Cas
+	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
+	mouMatch := doc.MetadataOnlyUpdate != nil && base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
@@ -2322,8 +2322,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			updatedDoc.Spec = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
-			if doc.metadataOnlyUpdate != nil {
-				if doc.metadataOnlyUpdate.CAS != "" {
+			if doc.MetadataOnlyUpdate != nil {
+				if doc.MetadataOnlyUpdate.CAS != "" {
 					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 				}
 			} else {
@@ -2386,8 +2386,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		} else if doc != nil {
 			// Update the in-memory CAS values to match macro-expanded values
 			doc.Cas = casOut
-			if doc.metadataOnlyUpdate != nil && doc.metadataOnlyUpdate.CAS == expandMacroCASValueString {
-				doc.metadataOnlyUpdate.CAS = base.CasToString(casOut)
+			if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.CAS == expandMacroCASValueString {
+				doc.MetadataOnlyUpdate.CAS = base.CasToString(casOut)
 			}
 			// update the doc's HLV defined post macro expansion
 			doc = postWriteUpdateHLV(doc, casOut)

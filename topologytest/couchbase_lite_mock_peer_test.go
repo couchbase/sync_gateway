@@ -43,7 +43,7 @@ func (p *CouchbaseLiteMockPeer) String() string {
 }
 
 // GetDocument returns the latest version of a document. The test will fail the document does not exist.
-func (p *CouchbaseLiteMockPeer) GetDocument(dsName sgbucket.DataStoreName, docID string) (rest.DocVersion, db.Body) {
+func (p *CouchbaseLiteMockPeer) GetDocument(_ sgbucket.DataStoreName, _ string) (rest.DocVersion, db.Body) {
 	// this isn't yet collection aware, using single default collection
 	return rest.EmptyDocVersion(), nil
 }
@@ -63,11 +63,12 @@ func (p *CouchbaseLiteMockPeer) getSingleBlipClient() *PeerBlipTesterClient {
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
-	return rest.EmptyDocVersion()
+	p.t.Logf("%s: Creating document %s", p, docID)
+	return p.WriteDocument(dsName, docID, body)
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+func (p *CouchbaseLiteMockPeer) WriteDocument(_ sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
 	// set an HLV here.
@@ -77,12 +78,12 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 }
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
-func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion {
+func (p *CouchbaseLiteMockPeer) DeleteDocument(sgbucket.DataStoreName, string) rest.DocVersion {
 	return rest.EmptyDocVersion()
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) db.Body {
+func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docID string, _ rest.DocVersion) db.Body {
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
 	// FIXME: waiting for a specific version isn't working yet.
@@ -93,7 +94,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 }
 
 // RequireDocNotFound asserts that a document does not exist on the peer.
-func (p *CouchbaseLiteMockPeer) RequireDocNotFound(dsName sgbucket.DataStoreName, docID string) {
+func (p *CouchbaseLiteMockPeer) RequireDocNotFound(sgbucket.DataStoreName, string) {
 	// not implemented yet in blip client tester
 	// _, err := p.btcRunner.GetDoc(p.btc.id, docID)
 	// base.RequireDocNotFoundError(p.btcRunner.TB(), err)
@@ -107,7 +108,7 @@ func (p *CouchbaseLiteMockPeer) Close() {
 }
 
 // CreateReplication creates a replication instance
-func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicationConfig) PeerReplication {
+func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, _ PeerReplicationConfig) PeerReplication {
 	sg, ok := peer.(*SyncGatewayPeer)
 	if !ok {
 		require.Fail(p.t, fmt.Sprintf("unsupported peer type %T for pull replication", peer))
@@ -133,8 +134,8 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 }
 
 // SourceID returns the source ID for the peer used in <val>@<sourceID>.
-func (r *CouchbaseLiteMockPeer) SourceID() string {
-	return r.name
+func (p *CouchbaseLiteMockPeer) SourceID() string {
+	return p.name
 }
 
 // Context returns the context for the peer.

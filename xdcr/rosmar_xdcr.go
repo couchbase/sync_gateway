@@ -16,8 +16,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"golang.org/x/exp/maps"
-
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -28,6 +26,7 @@ import (
 type rosmarManager struct {
 	filterFunc          xdcrFilterFunc
 	terminator          chan bool
+	fromBucketKeyspaces map[uint32]string
 	toBucketCollections map[uint32]*rosmar.Collection
 	fromBucket          *rosmar.Bucket
 	fromBucketSourceID  string
@@ -54,6 +53,7 @@ func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, 
 		toBucket:            toBucket,
 		replicationID:       fmt.Sprintf("%s-%s", fromBucket.GetName(), toBucket.GetName()),
 		toBucketCollections: make(map[uint32]*rosmar.Collection),
+		fromBucketKeyspaces: make(map[uint32]string),
 		terminator:          make(chan bool),
 		filterFunc:          mobileXDCRFilter,
 	}, nil
@@ -63,24 +63,24 @@ func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, 
 // processEvent processes a DCP event coming from a toBucket and replicates it to the target datastore.
 func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEvent) bool {
 	docID := string(event.Key)
-	base.TracefCtx(ctx, base.KeyWalrus, "Got event %s, opcode: %s", docID, event.Opcode)
+	base.TracefCtx(ctx, base.KeySGTest, "Got event %s, opcode: %s", docID, event.Opcode)
 	col, ok := r.toBucketCollections[event.CollectionID]
 	if !ok {
 		base.ErrorfCtx(ctx, "This violates the assumption that all collections are mapped to a target collection. This should not happen. Found event=%+v", event)
 		r.errorCount.Add(1)
 		return false
 	}
+	ctx = base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("%s->%s\n\t", r.fromBucketKeyspaces[event.CollectionID], col.GetName())) // use context.Background() to drop test information since context is too long
 
 	switch event.Opcode {
 	case sgbucket.FeedOpDeletion, sgbucket.FeedOpMutation:
 		// Filter out events if we have a non XDCR filter
 		if r.filterFunc != nil && !r.filterFunc(&event) {
-			base.TracefCtx(ctx, base.KeyWalrus, "Filtering doc %s", docID)
+			base.TracefCtx(ctx, base.KeySGTest, "Filtering doc %s", docID)
 			r.mobileDocsFiltered.Add(1)
 			return true
 		}
 
-		fmt.Printf("HONK processing event %s\n", docID)
 		// Have to use GetWithXattrs to get a cas value back if there are no xattrs (GetWithXattrs will not return a cas if there are no xattrs)
 		_, targetXattrs, toCas, err := col.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName})
 		if err != nil && !base.IsDocNotFoundError(err) {
@@ -89,6 +89,19 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			return false
 		}
 
+		sourceHLV, sourceMou, nonMobileXattrs, body, err := processDCPEvent(&event)
+		if err != nil {
+			base.WarnfCtx(ctx, "Replicating doc %s, could not get body, hlv, and mou: %s", event.Key, err)
+			r.errorCount.Add(1)
+			return false
+		}
+
+		sourceCas := event.Cas
+		if sourceMou != nil && base.HexCasToUint64(sourceMou.CAS) == sourceCas && sourceHLV != nil {
+			sourceCas = sourceHLV.CurrentVersionCAS
+			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s source _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, event.Cas, sourceCas)
+			sourceCas = sourceHLV.CurrentVersionCAS
+		}
 		/* full LWW conflict resolution is not implemented in rosmar yet. There is no need to implement this since CAS will always be unique due to rosmar limitations.
 
 		CBS algorithm is:
@@ -117,60 +130,36 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		2. RevSeqno is not implemented
 		3. Expiry is implemented and could be compared except all CAS values are unique.
 		4. Flags are not implemented
+		5. Presence of xattrs on the source and not the target.
 
 		*/
 
-		if event.Cas < toCas {
-			fmt.Printf("HONK skipping replication with matching cas %+v, toCas=%d\n", event.Key, toCas)
+		if sourceCas < toCas {
+			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, toCas)
 			r.targetNewerDocs.Add(1)
-			base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, toCas)
+			base.TracefCtx(ctx, base.KeySGTest, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, toCas)
 			return true
-		} else if event.Cas == toCas {
+		} else if sourceCas == toCas {
 			// test flags, but flags aren't implemented by rosmar
 			hasTargetXattrs := len(targetXattrs) > 0
 			hasSourceXattrs := event.DataType&sgbucket.FeedDataTypeXattr != 0
-			fmt.Printf("HONK hasSourceXattrs=%t, hasTargetXattrs=%t\n", hasSourceXattrs, hasTargetXattrs)
-			if !(hasSourceXattrs && !hasTargetXattrs) {
-				fmt.Printf("HONK skipping replication with matching cas")
-				base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, cas %d == %d, sourceXattrs=%t, targetXattrs=%d", docID, event.Cas, toCas, hasSourceXattrs, hasTargetXattrs)
+			if hasSourceXattrs && !hasTargetXattrs {
+				base.InfofCtx(ctx, base.KeySGTest, "skipping %q skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, toCas)
 				return true
 			}
-			fmt.Printf("HONK replicating with matching cas\n")
-		}
-		sourceHLV, sourceMou, nonMobileXattrs, body, err := processDCPEvent(&event)
-		if err != nil {
-			base.WarnfCtx(ctx, "Replicating doc %s, could not get body, hlv, and mou: %s", event.Key, err)
-			r.errorCount.Add(1)
-			return false
-		}
-		if sourceHLV != nil && sourceHLV.CurrentVersionCAS != event.Cas {
-			if event.Cas < toCas {
-				fmt.Printf("HONK skipping replication with matching hlv sourceHLV.CurrentVersionCAS %d, toCAS=%d\n", sourceHLV.CurrentVersionCAS, toCas)
-				r.targetNewerDocs.Add(1)
-				base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, _vv.cas %d <= %d", docID, event.Cas, toCas)
-				return true
-			}
-			if sourceMou != nil {
-				if base.HexCasToUint64(sourceMou.CAS) <= toCas {
-					fmt.Printf("HONK skipping replication with mou.CAS %d matching to %d\n", base.HexCasToUint64(sourceMou.CAS), toCas)
-					r.targetNewerDocs.Add(1)
-					base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, _mou.cas %d <= %d", docID, event.Cas, toCas)
-					return true
-				}
-			}
+			base.InfofCtx(ctx, base.KeySGTest, "XDCR replicating %q since cas (%d) matches on source and target but source has xattrs and target does not", docID, sourceCas)
 		}
 		newXattrs := nonMobileXattrs
 		if targetSyncXattr, ok := targetXattrs[base.SyncXattrName]; ok {
 			newXattrs[base.SyncXattrName] = targetSyncXattr
 		}
 		err = updateHLV(newXattrs, sourceHLV, sourceMou, r.fromBucketSourceID, event.Cas)
-		fmt.Printf("HONK newXattrs=%+v\n", maps.Keys(newXattrs))
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not update hlv: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
 		}
-		base.WarnfCtx(ctx, "HONK Replicating doc %s, cas %d, body %s", event.Key, event.Cas, string(body))
+		base.InfofCtx(ctx, base.KeySGTest, "Replicating doc %q, with cas (%d), body %s", event.Key, event.Cas, string(body))
 		err = opWithMeta(ctx, col, toCas, newXattrs, body, &event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not write doc: %s", event.Key, err)
@@ -216,6 +205,7 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 				return fmt.Errorf("DataStore %s is not of rosmar.Collection: %T", toDataStore, toDataStore)
 			}
 			r.toBucketCollections[collectionID] = col
+			r.fromBucketKeyspaces[collectionID] = fromDataStore.GetName()
 			scopes[fromName.ScopeName()] = append(scopes[fromName.ScopeName()], fromName.CollectionName())
 			break
 		}

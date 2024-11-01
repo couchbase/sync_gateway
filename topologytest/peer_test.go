@@ -153,7 +153,6 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 		bucket, ok := buckets[opts.BucketID]
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)
 		sourceID, err := xdcr.GetSourceID(base.TestCtx(t), bucket)
-		fmt.Printf("peer %s bucket %s sourceID: %v\n", name, bucket.GetName(), sourceID)
 		require.NoError(t, err)
 		return &CouchbaseServerPeer{
 			name:             name,
