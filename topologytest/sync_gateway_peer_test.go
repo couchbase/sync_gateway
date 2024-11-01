@@ -61,7 +61,7 @@ func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID strin
 	collection, ctx := p.getCollection(dsName)
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 	require.NoError(p.TB(), err)
-	return docVersionFromDocument(doc), doc.Body(ctx)
+	return rest.DocVersionFromDocument(doc), doc.Body(ctx)
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
@@ -97,7 +97,7 @@ func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID str
 		return false, nil, nil
 	}, base.CreateSleeperFunc(5, 100))
 	require.NoError(p.TB(), err)
-	return docVersionFromDocument(doc)
+	return rest.DocVersionFromDocument(doc)
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
@@ -116,7 +116,7 @@ func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID st
 	}
 	_, doc, err = collection.DeleteDoc(ctx, docID, revID)
 	require.NoError(p.TB(), err)
-	return docVersionFromDocument(doc)
+	return rest.DocVersionFromDocument(doc)
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
@@ -130,7 +130,7 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 		if doc == nil {
 			return
 		}
-		version := docVersionFromDocument(doc)
+		version := rest.DocVersionFromDocument(doc)
 		// Only assert on CV since RevTreeID might not be present if this was a Couchbase Server write
 		//assert.Equal(c, expected.CV, docVersion.CV, "expected %v, got %v, body %+v", expected, docVersion, doc.Body(ctx))
 		bodyBytes, err := doc.BodyBytes(ctx)
@@ -180,23 +180,4 @@ func (p *SyncGatewayPeer) TB() testing.TB {
 // GetBackingBucket returns the backing bucket for the peer.
 func (p *SyncGatewayPeer) GetBackingBucket() base.Bucket {
 	return p.rt.Bucket()
-}
-
-// docVersionFromDocument sets the DocVersion from the current revision of the document.
-func docVersionFromDocument(doc *db.Document) rest.DocVersion {
-	sourceID, value := doc.HLV.GetCurrentVersion()
-	cv := db.Version{
-		SourceID: sourceID,
-		Value:    value,
-	}
-	if doc.HLV.CurrentVersionCAS != doc.Cas && doc.MetadataOnlyUpdate != nil {
-		cv = db.Version{
-			SourceID: doc.HLV.SourceID,
-			Value:    base.HexCasToUint64(doc.MetadataOnlyUpdate.PreviousCAS),
-		}
-	}
-	return rest.DocVersion{
-		RevTreeID: doc.CurrentRev,
-		CV:        cv,
-	}
 }

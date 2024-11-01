@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"golang.org/x/exp/maps"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -82,7 +84,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		}
 
 		// Have to use GetWithXattrs to get a cas value back if there are no xattrs (GetWithXattrs will not return a cas if there are no xattrs)
-		_, targetXattrs, toCas, err := col.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName})
+		_, targetXattrs, actualTargetCas, err := col.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName})
 		if err != nil && !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "Skipping replicating doc %s, could not perform a kv op get doc in toBucket: %s", event.Key, err)
 			r.errorCount.Add(1)
@@ -101,53 +103,50 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			sourceCas = sourceHLV.CurrentVersionCAS
 			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s source _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, event.Cas, sourceCas)
 		}
-		targetCas := toCas
-		if targetXattrs[base.MouXattrName] != nil && targetXattrs[base.VvXattrName] != nil {
-			var targetMou db.MetadataOnlyUpdate
-			err := json.Unmarshal(targetXattrs[base.MouXattrName], &targetMou)
-			if err != nil {
-				base.WarnfCtx(ctx, "Replicating doc %s, could not unmarshal target mou: %s", event.Key, err)
-				r.errorCount.Add(1)
-				return false
-			}
-
-			var targetHLV *db.HybridLogicalVector
-			if targetHLVBytes, ok := targetXattrs[base.VvXattrName]; ok {
-				err := json.Unmarshal(targetHLVBytes, &targetHLV)
-				if err != nil {
-					base.WarnfCtx(ctx, "Replicating doc %s, could not unmarshal target hlv: %s", event.Key, err)
-					r.errorCount.Add(1)
-
-					return false
-				}
-			}
+		targetCas := actualTargetCas
+		targetHLV, targetMou, err := getHLVAndMou(targetXattrs)
+		if err != nil {
+			base.WarnfCtx(ctx, "Replicating doc %s, could not get target hlv and mou: %s", event.Key, err)
+			r.errorCount.Add(1)
+			return false
+		}
+		if targetMou != nil && targetHLV != nil {
+			// _mou.CAS matches the CAS value, use the _vv.cvCAS for conflict resolution
 			if base.HexCasToUint64(targetMou.CAS) == targetCas {
 				targetCas = targetHLV.CurrentVersionCAS
 				base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s target _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, targetCas, targetHLV.CurrentVersionCAS)
 			}
 		}
 
-		/* full LWW conflict resolution is not implemented in rosmar yet. There is no need to implement this since CAS will always be unique due to rosmar limitations.
+		/*  full LWW conflict resolution is implemented in rosmar. There is no need to implement this since CAS will always be unique due to rosmar limitations.
 
-		CBS algorithm is:
+		CBS algorithm is, return true when a document should be copied:
 
-		if (command.CAS > document.CAS)
-		  command succeeds
-		else if (command.CAS == document.CAS)
-		  // Check the RevSeqno
-		  if (command.RevSeqno > document.RevSeqno)
-		    command succeeds
-		  else if (command.RevSeqno == document.RevSeqno)
-		    // Check the expiry time
-		    if (command.Expiry > document.Expiry)
-		      command succeeds
-		    else if (command.Expiry == document.Expiry)
-		      // Finally check flags
-		      if (command.Flags < document.Flags)
-		        command succeeds
-
-
-		command fails
+		if source.CAS > target.CAS {
+			return true
+		} else if source.CAS < target.CAS {
+			return false
+		}
+		// Check the RevSeqno
+		if source.RevSeqno > target.RevSeqno {
+			return true
+		} else if source.RevSeqno < target.RevSeqno {
+			return false
+		}
+		// Check the expiry time
+		if source.Expiry > target.Expiry {
+			return true
+		} else if source.Expiry < target.Expiry {
+			return false
+		}
+		// Check flags
+		if source.Flags > target.Flags {
+			return true
+		} else if source.Flags < target.Flags {
+			return false
+		}
+		// Check xattrs
+		return source_has_xattrs && !target_has_xattrs
 
 		In the current state of rosmar:
 
@@ -155,7 +154,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		2. RevSeqno is not implemented
 		3. Expiry is implemented and could be compared except all CAS values are unique.
 		4. Flags are not implemented
-		5. Presence of xattrs on the source and not the target.
+		5. Presence of xattrs on the source and not the target. (CBG-4334 is not implemented.)
 
 		*/
 
@@ -164,16 +163,16 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			r.targetNewerDocs.Add(1)
 			base.TracefCtx(ctx, base.KeySGTest, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, targetCas)
 			return true
-		} else if sourceCas == targetCas {
-			// test flags, but flags aren't implemented by rosmar
-			hasTargetXattrs := len(targetXattrs) > 0
+		} /* else if sourceCas == targetCas {
+			// CBG-4334, check datatype for targetXattrs to see if there are any xattrs present
 			hasSourceXattrs := event.DataType&sgbucket.FeedDataTypeXattr != 0
-			if hasSourceXattrs && !hasTargetXattrs {
+			hasTargetXattrs := len(targetXattrs) > 0
+			if !(hasSourceXattrs && !hasTargetXattrs) {
 				base.InfofCtx(ctx, base.KeySGTest, "skipping %q skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
 				return true
 			}
-			base.InfofCtx(ctx, base.KeySGTest, "XDCR replicating %q since cas (%d) matches on source and target but source has xattrs and target does not", docID, sourceCas)
 		}
+		*/
 		newXattrs := nonMobileXattrs
 		if targetSyncXattr, ok := targetXattrs[base.SyncXattrName]; ok {
 			newXattrs[base.SyncXattrName] = targetSyncXattr
@@ -184,8 +183,8 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			r.errorCount.Add(1)
 			return false
 		}
-		base.InfofCtx(ctx, base.KeySGTest, "Replicating doc %q, with cas (%d), body %s", event.Key, event.Cas, string(body))
-		err = opWithMeta(ctx, col, toCas, newXattrs, body, &event)
+		base.InfofCtx(ctx, base.KeySGTest, "Replicating doc %q, with cas (%d), body %s, xattrsKeys: %+v", event.Key, event.Cas, string(body), maps.Keys(newXattrs))
+		err = opWithMeta(ctx, col, actualTargetCas, newXattrs, body, &event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not write doc: %s", event.Key, err)
 			r.errorCount.Add(1)
@@ -313,24 +312,33 @@ func processDCPEvent(event *sgbucket.FeedEvent) (*db.HybridLogicalVector, *db.Me
 	if xattrs == nil {
 		xattrs = make(map[string][]byte)
 	}
+	hlv, mou, err := getHLVAndMou(xattrs)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	for _, xattrName := range []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName} {
+		delete(xattrs, xattrName)
+	}
+	return hlv, mou, xattrs, body, nil
+}
+
+// getHLVAndMou gets the hlv and mou from the xattrs.
+func getHLVAndMou(xattrs map[string][]byte) (*db.HybridLogicalVector, *db.MetadataOnlyUpdate, error) {
 	var hlv *db.HybridLogicalVector
 	if bytes, ok := xattrs[base.VvXattrName]; ok {
 		err := json.Unmarshal(bytes, &hlv)
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("Could not unmarshal the vv xattr %s: %w", string(bytes), err)
+			return nil, nil, fmt.Errorf("Could not unmarshal the vv xattr %s: %w", string(bytes), err)
 		}
 	}
 	var mou *db.MetadataOnlyUpdate
 	if bytes, ok := xattrs[base.MouXattrName]; ok {
 		err := json.Unmarshal(bytes, &mou)
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("Could not unmarshal the mou xattr %s: %w", string(bytes), err)
+			return nil, nil, fmt.Errorf("Could not unmarshal the mou xattr %s: %w", string(bytes), err)
 		}
 	}
-	for _, xattrName := range []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName} {
-		delete(xattrs, xattrName)
-	}
-	return hlv, mou, xattrs, body, nil
+	return hlv, mou, nil
 }
 
 func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, sourceCas uint64) error {

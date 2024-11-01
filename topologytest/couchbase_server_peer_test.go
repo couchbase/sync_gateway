@@ -93,11 +93,12 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 	cas, err := p.getCollection(dsName).WriteWithXattrs(p.Context(), docID, 0, 0, body, map[string][]byte{"userxattr": []byte(`{"dummy": "xattr"}`)}, nil, nil)
 	require.NoError(p.tb, err)
 	return rest.DocVersion{
-		CV: db.Version{
-			SourceID: p.SourceID(),
-			Value:    cas,
+		HLV: &db.HybridLogicalVector{
+			SourceID:          p.SourceID(),
+			Version:           cas,
+			CurrentVersionCAS: cas,
 		},
-		Cas: cas,
+		HasImplicitCV: true,
 	}
 }
 
@@ -111,11 +112,13 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
 	require.NoError(p.tb, err)
 	return rest.DocVersion{
-		CV: db.Version{
-			SourceID: p.SourceID(),
-			Value:    cas,
+		// FIXME: this should actually probably show the HLV persisted, and then also the implicit CV
+		HLV: &db.HybridLogicalVector{
+			SourceID:          p.SourceID(),
+			Version:           cas,
+			CurrentVersionCAS: cas,
 		},
-		Cas: cas,
+		HasImplicitCV: true,
 	}
 }
 
@@ -128,10 +131,12 @@ func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docI
 	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
 	require.NoError(p.tb, err)
 	return rest.DocVersion{
-		CV: db.Version{
-			SourceID: p.SourceID(),
-			Value:    cas,
+		HLV: &db.HybridLogicalVector{
+			SourceID:          p.SourceID(),
+			Version:           cas,
+			CurrentVersionCAS: cas,
 		},
+		HasImplicitCV: true,
 	}
 }
 
@@ -243,13 +248,20 @@ func getDocVersion(peer Peer, cas uint64, xattrs map[string][]byte) rest.DocVers
 	hlvBytes, ok := xattrs[base.VvXattrName]
 	if ok {
 		require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &docVersion.HLV))
-		if docVersion.HLV.CurrentVersionCAS != cas && docVersion.Mou != nil {
-			docVersion.CV = db.Version{SourceID: docVersion.HLV.SourceID, Value: base.HexCasToUint64(docVersion.Mou.PreviousCAS)}
-		} else {
-			docVersion.CV = db.Version{SourceID: docVersion.HLV.SourceID, Value: docVersion.HLV.Version}
-		}
+		/*
+			if docVersion.HLV.CurrentVersionCAS != cas && docVersion.Mou != nil {
+				docVersion.CV = db.Version{SourceID: docVersion.HLV.SourceID, Value: base.HexCasToUint64(docVersion.Mou.PreviousCAS)}
+			} else {
+				docVersion.CV = db.Version{SourceID: docVersion.HLV.SourceID, Value: docVersion.HLV.Version}
+			}
+		*/
 	} else {
-		docVersion.CV = db.Version{SourceID: peer.SourceID(), Value: cas}
+		docVersion.HLV = &db.HybridLogicalVector{
+			SourceID:          peer.SourceID(),
+			Version:           cas,
+			CurrentVersionCAS: cas,
+		}
+		docVersion.HasImplicitCV = true
 	}
 	sync, ok := xattrs[base.SyncXattrName]
 	if ok {

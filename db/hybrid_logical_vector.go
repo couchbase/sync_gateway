@@ -141,7 +141,6 @@ func ParseVersion(versionString string) (version Version, err error) {
 
 // String returns a version/sourceID pair in CBL string format
 func (v Version) String() string {
-	//return fmt.Sprintf("%d@%s", v.Value, v.SourceID)
 	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 

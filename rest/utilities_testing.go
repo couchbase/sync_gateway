@@ -2448,15 +2448,15 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 type DocVersion struct {
-	RevTreeID string
-	CV        db.Version
-	HLV       *db.HybridLogicalVector
-	Mou       *db.MetadataOnlyUpdate
-	Cas       uint64
+	RevTreeID     string                  // RevTreeID is the rev treee ID of a document, may be empty not present
+	HLV           *db.HybridLogicalVector // HLV is the hybrid logical vector of the document, may not be present
+	Mou           *db.MetadataOnlyUpdate  // Mou is the metadata only update of the document, may not be present
+	Cas           uint64                  // Cas is the cas value of the document
+	HasImplicitCV bool                    // If true, the HLV was constructed from cas@sourceID instead of from _vv, used for documents written to Couchbase Server without Sync Gateway
 }
 
 func (v DocVersion) String() string {
-	return fmt.Sprintf("CV:{_src:%s,_ver:%d} Cas:%d RevTreeID:%s HLV:%+v Mou %+v", v.CV.SourceID, v.CV.Value, v.Cas, v.RevTreeID, v.HLV, v.Mou)
+	return fmt.Sprintf("Cas:%d RevTreeID:%s HLV:%+v Mou:%+v HasImplicitCV:%t", v.Cas, v.RevTreeID, v.HLV, v.Mou, v.HasImplicitCV)
 }
 
 func (v DocVersion) Equal(o DocVersion) bool {
@@ -2468,33 +2468,22 @@ func (v DocVersion) Equal(o DocVersion) bool {
 
 func (v DocVersion) GetRev(useHLV bool) string {
 	if useHLV {
-		if v.CV.SourceID == "" {
+		if v.HLV == nil {
 			return ""
 		}
-		return v.CV.String()
+		return v.HLV.GetCurrentVersionString()
 	} else {
 		return v.RevTreeID
 	}
 }
 
+func (v DocVersion) CV() string {
+	return v.GetRev(true)
+}
+
 // Digest returns the digest for the current version
 func (v DocVersion) Digest() string {
 	return strings.Split(v.RevTreeID, "-")[1]
-}
-
-// GetLatestHLVVersion returns the latest HLV version for the current version. This isn't necessarily _vv.cas
-func (v DocVersion) GetLatestHLVVersion() db.Version {
-	if v.HLV == nil {
-		return v.CV
-	}
-	if v.Mou == nil || base.HexCasToUint64(v.Mou.CAS) == v.HLV.CurrentVersionCAS {
-		return v.CV
-	}
-
-	return db.Version{
-		SourceID: v.CV.SourceID,
-		Value:    base.HexCasToUint64(v.Mou.CAS),
-	}
 }
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.
@@ -2520,6 +2509,16 @@ func EmptyDocVersion() DocVersion {
 // NewDocVersionFromFakeRev returns a new DocVersion from the given fake rev ID, intended for use when we explicit create conflicts.
 func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
 	return DocVersion{RevTreeID: fakeRev}
+}
+
+// DocVersionFromDocument returns a DocVersion from the given document.
+func DocVersionFromDocument(doc *db.Document) DocVersion {
+	return DocVersion{
+		RevTreeID: doc.CurrentRev,
+		Mou:       doc.MetadataOnlyUpdate,
+		Cas:       doc.Cas,
+		HLV:       doc.HLV,
+	}
 }
 
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
