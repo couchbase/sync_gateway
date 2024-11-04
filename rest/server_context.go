@@ -710,7 +710,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				}
 
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
-				resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(dataStore, config.MetadataID)
+				resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, dataStore, config.MetadataID)
 				if err != nil {
 					return nil, err
 				}
@@ -733,7 +733,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	} else {
 		// no scopes configured - init the default data store
-		resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(bucket.DefaultDataStore(), config.MetadataID)
+		resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, bucket.DefaultDataStore(), config.MetadataID)
 		if err != nil {
 			return nil, err
 		}

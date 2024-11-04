@@ -3775,7 +3775,7 @@ func TestRequireMigration(t *testing.T) {
 				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
 			}
 
-			_, requireMigration, err := base.InitSyncInfo(ds, testcase.newMetadataID)
+			_, requireMigration, err := base.InitSyncInfo(ctx, ds, testcase.newMetadataID)
 			require.NoError(t, err)
 			if testcase.requireMigration {
 				assert.True(t, requireMigration)
@@ -3800,13 +3800,13 @@ func TestInitSyncInfoRequireMigrationEmptyBucket(t *testing.T) {
 	ds := tb.GetSingleDataStore()
 
 	// test no sync info in bucket and set metadataID, returns requireMigration
-	_, requireMigration, err := base.InitSyncInfo(ds, "someID")
+	_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
 	require.NoError(t, err)
 	assert.True(t, requireMigration)
 
 	// delete the doc, test no sync info in bucket returns requireMigration
 	require.NoError(t, ds.Delete(base.SGSyncInfo))
-	_, requireMigration, err = base.InitSyncInfo(ds, "")
+	_, requireMigration, err = base.InitSyncInfo(ctx, ds, "")
 	require.NoError(t, err)
 	assert.True(t, requireMigration)
 }
@@ -3856,12 +3856,12 @@ func TestInitSyncInfoMetaVersionComparison(t *testing.T) {
 			require.NoError(t, base.SetSyncInfoMetadataID(ds, testcase.metadataID))
 
 			if testcase.metaVersion == "" {
-				_, requireMigration, err := base.InitSyncInfo(ds, "someID")
+				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
 				require.NoError(t, err)
 				assert.True(t, requireMigration)
 			} else {
 				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
-				_, requireMigration, err := base.InitSyncInfo(ds, "someID")
+				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
 				require.NoError(t, err)
 				assert.False(t, requireMigration)
 			}

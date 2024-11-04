@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -386,7 +387,7 @@ type SyncInfo struct {
 //  2. If syncInfo exists with a matching metadataID, returns requiresResync=false
 //  3. If syncInfo exists with a non-matching metadataID, returns requiresResync=true
 //     If syncInfo exists and has metaDataVersion greater than or equal to 4.0, return requiresAttachmentMigration=false, else requiresAttachmentMigration=true to bring migrate metadata attachments.
-func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, requiresAttachmentMigration bool, err error) {
+func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (requiresResync bool, requiresAttachmentMigration bool, err error) {
 
 	var syncInfo SyncInfo
 	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
@@ -406,7 +407,7 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, require
 			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
 		}
 		// successfully added
-		requiresAttachmentMigration, err = CompareMetadataVersion(syncInfo.MetaDataVersion)
+		requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 		if err != nil {
 			return syncInfo.MetadataID != metadataID, true, err
 		}
@@ -415,7 +416,7 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, require
 		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
 	}
 	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
-	requiresAttachmentMigration, err = CompareMetadataVersion(syncInfo.MetaDataVersion)
+	requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 	if err != nil {
 		return syncInfo.MetadataID != metadataID, true, err
 	}
@@ -477,31 +478,37 @@ func SerializeIfLonger(name string, length int) string {
 
 // CompareMetadataVersion Will build comparable build version for comparison with meta version defined in syncInfo, then
 // will return true if we require attachment migration, false if not.
-func CompareMetadataVersion(metaVersion string) (bool, error) {
+func CompareMetadataVersion(ctx context.Context, metaVersion string) (bool, error) {
 	var syncInfoVersion *ComparableBuildVersion
+	var requiresAttachmentMigration bool
 	var err error
 	if metaVersion != "" {
 		syncInfoVersion, err = NewComparableBuildVersionFromString(metaVersion)
 		if err != nil {
 			return true, err
 		}
-	}
-	requiresAttachmentMigration, err := CheckRequireAttachmentMigration(syncInfoVersion)
-	if err != nil {
-		return true, err
+		requiresAttachmentMigration, err = CheckRequireAttachmentMigration(ctx, syncInfoVersion)
+		if err != nil {
+			return true, err
+		}
+	} else {
+		// no meta version passed in, thus attachment migration should take place
+		requiresAttachmentMigration = true
 	}
 	return requiresAttachmentMigration, nil
 }
 
 // CheckRequireAttachmentMigration will return true if current metaVersion < 4.0.0, else false
-func CheckRequireAttachmentMigration(version *ComparableBuildVersion) (bool, error) {
+func CheckRequireAttachmentMigration(ctx context.Context, version *ComparableBuildVersion) (bool, error) {
 	if version == nil {
-		return true, nil
+		AssertfCtx(ctx, "failed to build comparable build version for syncInfo metaVersion")
+		return true, fmt.Errorf("corrupt syncInfo metaVersion value")
 	}
 	minVerStr := "4.0.0" // minimum meta version that needs to be defined for metadata migration. Any version less than this will require attachment migration
 	minVersion, err := NewComparableBuildVersionFromString(minVerStr)
 	if err != nil {
-		return true, nil
+		AssertfCtx(ctx, "failed to build comparable build version for minimum version for attachment migration")
+		return true, err
 	}
 
 	if minVersion.AtLeastMinorDowngrade(version) {
