@@ -933,5 +933,5 @@ func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
 	var syncInfo base.SyncInfo
 	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
-	assert.Equal(t, base.ProductVersion.String(), syncInfo.MetaDataVersion)
+	assert.Equal(t, "4.0.0", syncInfo.MetaDataVersion)
 }

@@ -479,23 +479,15 @@ func SerializeIfLonger(name string, length int) string {
 // CompareMetadataVersion Will build comparable build version for comparison with meta version defined in syncInfo, then
 // will return true if we require attachment migration, false if not.
 func CompareMetadataVersion(ctx context.Context, metaVersion string) (bool, error) {
-	var syncInfoVersion *ComparableBuildVersion
-	var requiresAttachmentMigration bool
-	var err error
-	if metaVersion != "" {
-		syncInfoVersion, err = NewComparableBuildVersionFromString(metaVersion)
-		if err != nil {
-			return true, err
-		}
-		requiresAttachmentMigration, err = CheckRequireAttachmentMigration(ctx, syncInfoVersion)
-		if err != nil {
-			return true, err
-		}
-	} else {
+	if metaVersion == "" {
 		// no meta version passed in, thus attachment migration should take place
-		requiresAttachmentMigration = true
+		return true, nil
 	}
-	return requiresAttachmentMigration, nil
+	syncInfoVersion, err := NewComparableBuildVersionFromString(metaVersion)
+	if err != nil {
+		return true, err
+	}
+	return CheckRequireAttachmentMigration(ctx, syncInfoVersion)
 }
 
 // CheckRequireAttachmentMigration will return true if current metaVersion < 4.0.0, else false
