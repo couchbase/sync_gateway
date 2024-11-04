@@ -406,19 +406,16 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, require
 			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
 		}
 		// successfully added
-		return false, true, nil
+		requiresAttachmentMigration, err = CompareMetadataVersion(syncInfo.MetaDataVersion)
+		if err != nil {
+			return syncInfo.MetadataID != metadataID, true, err
+		}
+		return false, requiresAttachmentMigration, nil
 	} else if fetchErr != nil {
 		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
 	}
 	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
-	var syncInfoVersion *ComparableBuildVersion
-	if syncInfo.MetaDataVersion != "" {
-		syncInfoVersion, err = NewComparableBuildVersionFromString(syncInfo.MetaDataVersion)
-		if err != nil {
-			return syncInfo.MetadataID != metadataID, true, err
-		}
-	}
-	requiresAttachmentMigration, err = CheckRequireAttachmentMigration(syncInfoVersion)
+	requiresAttachmentMigration, err = CompareMetadataVersion(syncInfo.MetaDataVersion)
 	if err != nil {
 		return syncInfo.MetadataID != metadataID, true, err
 	}
@@ -476,6 +473,24 @@ func SerializeIfLonger(name string, length int) string {
 		return name
 	}
 	return Sha1HashString(name, "")
+}
+
+// CompareMetadataVersion Will build comparable build version for comparison with meta version defined in syncInfo, then
+// will return true if we require attachment migration, false if not.
+func CompareMetadataVersion(metaVersion string) (bool, error) {
+	var syncInfoVersion *ComparableBuildVersion
+	var err error
+	if metaVersion != "" {
+		syncInfoVersion, err = NewComparableBuildVersionFromString(metaVersion)
+		if err != nil {
+			return true, err
+		}
+	}
+	requiresAttachmentMigration, err := CheckRequireAttachmentMigration(syncInfoVersion)
+	if err != nil {
+		return true, err
+	}
+	return requiresAttachmentMigration, nil
 }
 
 // CheckRequireAttachmentMigration will return true if current metaVersion < 4.0.0, else false
