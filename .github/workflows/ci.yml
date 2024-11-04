@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.22.5
+          go-version: 1.23.2
       - name: go-build
         run: go build "./..."
 
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.22.5
+          go-version: 1.23.2
       - run: go install github.com/google/addlicense@latest
       - run: addlicense -check -f licenses/addlicense.tmpl .
 
@@ -54,12 +54,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.22.5
-          cache: false
+          go-version: 1.23.2
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v4
         with:
-          version: v1.59.0
+          version: v1.61.0
           args: --config=.golangci-strict.yml
 
   test:
@@ -82,7 +81,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.22.5
+          go-version: 1.23.2
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
@@ -90,7 +89,7 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.7.0
+        uses: guyarb/golang-test-annotations@v0.8.0
         with:
           test-results: test.json
 
@@ -102,13 +101,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.22.5
+          go-version: 1.23.2
       - name: Run Tests
         run: go test -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.6.0
+        uses: guyarb/golang-test-annotations@v0.8.0
         with:
           test-results: test.json
 
@@ -121,13 +120,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.22.5
+          go-version: 1.23.2
       - name: Run Tests
         run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.6.0
+        uses: guyarb/golang-test-annotations@v0.8.0
         with:
           test-results: test.json
 
@@ -140,13 +139,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.22.5
+          go-version: 1.23.2
       - name: Run Tests
         run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.6.0
+        uses: guyarb/golang-test-annotations@v0.8.0
         with:
           test-results: test.json
 
@@ -192,7 +191,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.22.5
+          go-version: 1.23.2
       - name: Build
         run: go build -v "./tools/stats-definition-exporter"
       - name: Run Tests

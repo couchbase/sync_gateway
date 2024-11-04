@@ -57,7 +57,10 @@ if [ "${USE_GO_MODULES:-}" == "false" ]; then
     go get -u -v github.com/AlekSi/gocov-xml
 else
     # Install tools to use after job has completed
-    go install -v github.com/tebeka/go2xunit@latest
+    # go2xunit will fail with 1.23 with name mismatch (try disabling parallel mode), but without any t.Parallel()
+    go install golang.org/dl/go1.22.8@latest
+    ~/go/bin/go1.22.8 download
+    ~/go/bin/go1.22.8 install -v github.com/tebeka/go2xunit@latest
     go install -v github.com/axw/gocov/gocov@latest
     go install -v github.com/AlekSi/gocov-xml@latest
 fi
