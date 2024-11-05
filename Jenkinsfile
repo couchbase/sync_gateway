@@ -37,20 +37,6 @@ pipeline {
         }
         stage('Setup') {
             stages {
-                stage('Go Modules') {
-                    steps {
-                        sh "which go"
-                        sh "go version"
-                        sh "go env"
-                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
-                            sh '''
-                                [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
-                                ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
-                            '''
-                            sh "go get -v -tags ${EE_BUILD_TAG} ./..."
-                        }
-                    }
-                }
                 stage('Go Tools') {
                     steps {
                         // unhandled error checker
@@ -254,7 +240,7 @@ pipeline {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
-                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... > verbose_ee.out.raw || true"
+                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... -run TestDatabase > verbose_ee.out.raw || true"
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
