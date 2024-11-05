@@ -305,6 +305,7 @@ func TestVVWriteTwice(t *testing.T) {
 }
 
 func TestVVObeyMou(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest)
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
 	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
@@ -336,6 +337,14 @@ func TestVVObeyMou(t *testing.T) {
 
 	require.Equal(t, expectedVV, vv)
 
+	stats, err := xdcr.Stats(ctx)
+	assert.NoError(t, err)
+	require.Equal(t, Stats{
+		DocsWritten:   1,
+		DocsProcessed: 1,
+	}, *stats)
+
+	fmt.Printf("HONK HONK HONK\n")
 	mou := &db.MetadataOnlyUpdate{
 		PreviousCAS:      base.CasToString(fromCas1),
 		PreviousRevSeqNo: db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
@@ -346,18 +355,30 @@ func TestVVObeyMou(t *testing.T) {
 			sgbucket.NewMacroExpansionSpec(db.XattrMouCasPath(), sgbucket.MacroCas),
 		},
 	}
-	fromCas2, err := fromDs.UpdateXattrs(ctx, docID, 0, fromCas1, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, opts)
+	const userXattrKey = "extra_xattr"
+	fromCas2, err := fromDs.UpdateXattrs(ctx, docID, 0, fromCas1, map[string][]byte{
+		base.MouXattrName: base.MustJSONMarshal(t, mou),
+		userXattrKey:      []byte(`{"key":"value"}`),
+	}, opts)
 	require.NoError(t, err)
 	require.NotEqual(t, fromCas1, fromCas2)
 
 	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
+	stats, err = xdcr.Stats(ctx)
+	assert.NoError(t, err)
+	require.Equal(t, Stats{
+		TargetNewerDocs: 1,
+		DocsWritten:     1,
+		DocsProcessed:   2,
+	}, *stats)
 
-	body, xattrs, destCas, err = toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
+	body, xattrs, destCas, err = toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, userXattrKey})
 	require.NoError(t, err)
 	require.Equal(t, fromCas1, destCas)
 	require.JSONEq(t, hlvAgent.GetHelperBody(), string(body))
 	require.NotContains(t, xattrs, base.MouXattrName)
 	require.Contains(t, xattrs, base.VvXattrName)
+	require.NotContains(t, xattrs, userXattrKey)
 	vv = db.HybridLogicalVector{}
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
 	require.Equal(t, expectedVV, vv)
