@@ -32,6 +32,10 @@ on:
       - 'release/*'
       - 'beryllium'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'release/')}}
+
 jobs:
   api_validation:
     runs-on: ubuntu-latest
