@@ -3391,3 +3391,13 @@ func TestInject1xBodyProperties(t *testing.T) {
 	assert.Equal(t, "value", resBody["key"])
 	assert.True(t, resBody[BodyDeleted].(bool))
 }
+
+func TestDatabaseCloseIdempotent(t *testing.T) {
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// simulate a stop from StartOnlineProcesses, if the import feed does not work
+	db.BucketLock.Lock()
+	defer db.BucketLock.Unlock()
+	db._stopOnlineProcesses(ctx)
+}
