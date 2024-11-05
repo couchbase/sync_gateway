@@ -98,6 +98,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			return false
 		}
 
+		// When doing the evaluation of cas, we want to ignore import mutations, marked with _mou.cas == cas. In that case, we will just use the _vv.cvCAS for conflict resolution. If _mou.cas is present but out of date, continue to use _vv.ver.
 		sourceCas := event.Cas
 		if sourceMou != nil && base.HexCasToUint64(sourceMou.CAS) == sourceCas && sourceHLV != nil {
 			sourceCas = sourceHLV.CurrentVersionCAS
@@ -158,7 +159,6 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 		*/
 
-		// CBG-4334, check sourceCas == targetCas
 		if sourceCas <= targetCas {
 			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
 			r.targetNewerDocs.Add(1)
