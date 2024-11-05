@@ -785,3 +785,21 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docI
 	_, err = dataStore.WriteWithXattrs(ctx, docID, 0, cas, value, map[string][]byte{base.SyncXattrName: newSync}, []string{base.GlobalXattrName}, opts)
 	require.NoError(t, err)
 }
+
+func RequireBackgroundManagerState(t *testing.T, ctx context.Context, mgr *BackgroundManager, expState BackgroundProcessState) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var status BackgroundManagerStatus
+		rawStatus, err := mgr.GetStatus(ctx)
+		assert.NoError(c, err)
+		assert.NoError(c, base.JSONUnmarshal(rawStatus, &status))
+		assert.Equal(c, expState, status.State)
+	}, time.Second*10, time.Millisecond*100)
+}
+
+// AssertSyncInfoMetaVersion will assert that meta version is equal to current product version
+func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
+	var syncInfo base.SyncInfo
+	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "4.0.0", syncInfo.MetaDataVersion)
+}
