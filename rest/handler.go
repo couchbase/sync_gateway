@@ -953,7 +953,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 				provider := dbCtx.Options.OIDCOptions.Providers.GetProviderForIssuer(h.ctx(), issuerUrlForDB(h, dbCtx.Name), testProviderAudiences)
 				if provider != nil && provider.ValidationKey != nil {
 					if base.StringDefault(provider.ClientID, "") == username && *provider.ValidationKey == password {
-						auditFields = base.AuditFields{base.AuditFieldAuthMethod: "bearer"}
+						auditFields = base.AuditFields{base.AuditFieldAuthMethod: "basic"}
 						return nil
 					}
 				}
