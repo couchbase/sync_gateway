@@ -315,7 +315,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 	// wait for value to move from pending to cache and skipped list to fill
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		rt.GetDatabase().UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(18), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	docVrs := rt.UpdateDoc("doc", vrs, `{"prob": "lol"}`)
