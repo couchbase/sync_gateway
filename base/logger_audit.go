@@ -128,7 +128,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 			globalFields = logger.globalFields
 		}
 		fields = expandFields(id, ctx, globalFields, additionalData)
-		id.MustValidateFields(fields)
+		id.MustValidateFields(ctx, fields)
 	}
 
 	if !logger.shouldLog(id, ctx) {
