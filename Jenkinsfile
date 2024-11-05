@@ -64,7 +64,7 @@ pipeline {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
-                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... -run TestDatabase > verbose_ce.out.raw || true'
+                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -count=1 -v ./... -run TestDatabase > verbose_ce.out.raw || true'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
@@ -113,7 +113,7 @@ pipeline {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
-                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... -run TestDatabase > verbose_ee.out.raw || true"
+                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -count=1 -v ./... -run TestDatabase > verbose_ee.out.raw || true"
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
@@ -188,47 +188,6 @@ pipeline {
                         }
                     }
                 }
-
-                stage('Integration') {
-                    stages {
-                        stage('main') {
-                            when { branch 'main' }
-                            steps {
-                                echo 'Queueing Integration test for branch "main" ...'
-                                // Queues up an async integration test run using default build params (main branch),
-                                // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                build job: 'MasterIntegration', quietPeriod: 3600, wait: false
-                            }
-                        }
-
-                        stage('PR') {
-                            // TODO: Remove skip
-                            when { expression { return false } }
-                            steps {
-                                // TODO: Read labels on PR for 'integration-test'
-                                // if present, run stage as separate GH status
-                                echo 'Example of where we can run integration tests for this commit'
-                                gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
-                                    echo "Waiting for integration test to finish..."
-                                    // TODO: add commit parameter
-                                    // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
-                                    build job: 'sync-gateway-integration-master', wait: true, propagate: false
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        stage('Benchmarks'){
-            when { branch 'main' }
-            steps{
-                echo 'Queueing Benchmark Run test for branch "main" ...'
-                // TODO: Add this back with new system
-                // build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
-            }
-        }
-    }
 
     post {
         always {
