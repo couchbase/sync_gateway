@@ -146,6 +146,7 @@ type DatabaseContext struct {
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
+	RequireAttachmentMigration   base.ScopeAndCollectionNames   // Collections that require the attachment migration background task to run against
 	CORS                         *auth.CORSConfig               // CORS configuration
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 }
@@ -668,6 +669,14 @@ func (context *DatabaseContext) stopBackgroundManagers() []*BackgroundManager {
 		if !isBackgroundManagerStopped(context.TombstoneCompactionManager.GetRunState()) {
 			if err := context.TombstoneCompactionManager.Stop(); err == nil {
 				bgManagers = append(bgManagers, context.TombstoneCompactionManager)
+			}
+		}
+	}
+
+	if context.AttachmentMigrationManager != nil {
+		if !isBackgroundManagerStopped(context.AttachmentMigrationManager.GetRunState()) {
+			if err := context.AttachmentMigrationManager.Stop(); err == nil {
+				bgManagers = append(bgManagers, context.AttachmentMigrationManager)
 			}
 		}
 	}
@@ -2478,6 +2487,16 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		return err
 	}
 	db.backgroundTasks = append(db.backgroundTasks, bgtSyncTime)
+
+	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
+	// if we have collections requiring migration, run the job
+	if len(db.RequireAttachmentMigration) > 0 && !db.BucketSpec.IsWalrusBucket() {
+		err := db.AttachmentMigrationManager.Start(ctx, nil)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
+		}
+		base.DebugfCtx(ctx, base.KeyAll, "Migrating attachment metadata automatically to Sync Gateway 4.0+ for collections %v", db.RequireAttachmentMigration)
+	}
 
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
 		return err

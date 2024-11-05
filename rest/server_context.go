@@ -670,6 +670,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
+	collectionsRequiringAttachmentMigration := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
 		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 			return nil, errCollectionsUnsupported
@@ -709,13 +710,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				}
 
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
-				resyncRequired, err := base.InitSyncInfo(dataStore, config.MetadataID)
+				resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, dataStore, config.MetadataID)
 				if err != nil {
 					return nil, err
 				}
 				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 				if resyncRequired {
 					collectionsRequiringResync = append(collectionsRequiringResync, scName)
+				}
+				if requiresAttachmentMigration {
+					collectionsRequiringAttachmentMigration = append(collectionsRequiringAttachmentMigration, scName)
 				}
 				if err := initDataStore(dataStore, metadataIndexOption, scName); err != nil {
 					return nil, err
@@ -729,12 +733,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	} else {
 		// no scopes configured - init the default data store
-		resyncRequired, err := base.InitSyncInfo(bucket.DefaultDataStore(), config.MetadataID)
+		resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, bucket.DefaultDataStore(), config.MetadataID)
 		if err != nil {
 			return nil, err
 		}
 		if resyncRequired {
 			collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
+		}
+		if requiresAttachmentMigration {
+			collectionsRequiringAttachmentMigration = append(collectionsRequiringAttachmentMigration, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
 		}
 		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll, base.DefaultScopeAndCollectionName()); err != nil {
 			return nil, err
@@ -923,6 +930,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 	dbcontext.RequireResync = collectionsRequiringResync
+	dbcontext.RequireAttachmentMigration = collectionsRequiringAttachmentMigration
 
 	if config.CORS != nil {
 		dbcontext.CORS = config.DbConfig.CORS
