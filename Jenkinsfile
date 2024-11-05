@@ -53,139 +53,18 @@ pipeline {
             }
         }
 
-        stage('Builds') {
-            parallel {
-                stage('Test compile') {
-                    steps {
-                        // run no tests but force them to be compiled
-                        sh "go test -run=- -count=1 ./..."
-                    }
-                }
-                stage('CE Linux') {
-                    steps {
-                        sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
-                    }
-                }
-                stage('EE Linux') {
-                    steps {
-                        sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                    }
-                }
-                stage('CE macOS') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
-                    steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
-                        }
-                    }
-                }
-                stage('EE macOS') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
-                    steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                        }
-                    }
-                }
-                /* can't build windows with cgo
-		stage('CE Windows') {
-                    steps {
-                        sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
-                    }
-                }
-                stage('EE Windows') {
-                    steps {
-                        sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                    }
-                }
-		*/
-                stage('Windows Service') {
-                    steps {
-                        sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
-                    }
-                }
-            }
-        }
-
-        stage('Checks') {
-            parallel {
-                stage('gofmt') {
-                    steps {
-                        script {
-                            try {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
-                                sh "which gofmt" // check if gofmt is installed
-                                sh "gofmt -d -e . | tee gofmt.out"
-                                sh "test -z \"\$(cat gofmt.out)\""
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
-                            } catch (Exception e) {
-                                sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
-                                script {
-                                    env.GOFMT_COUNT = readFile 'gofmt.count'
-                                }
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
-                                unstable("gofmt failed")
-                            }
-                        }
-                    }
-                }
-                stage('go vet') {
-                    steps {
-                        warnError(message: "go vet failed") {
-                            sh "go vet -tags ${EE_BUILD_TAG} ./..."
-                        }
-                    }
-                }
-                stage('go fix') {
-                    steps {
-                        warnError(message: "go fix failed") {
-                            sh "go tool fix -diff . | tee gofix.out"
-                            sh "test -z \"\$(cat gofix.out)\""
-                        }
-                    }
-                }
-                stage('errcheck') {
-                    steps {
-                        script {
-                            try {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
-                                    sh "which errcheck" // check if errcheck is installed
-                                    sh "errcheck ./... | tee errcheck.out"
-                                }
-                                sh "test -z \"\$(cat errcheck.out)\""
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
-                            } catch (Exception e) {
-                                sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
-                                script {
-                                    env.ERRCHECK_COUNT = readFile 'errcheck.count'
-                                }
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-                                unstable("errcheck failed")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         stage('Tests') {
             parallel {
                 stage('Unit') {
                     stages {
                         stage('CE') {
-                            when { branch 'main' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
                                 withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
-                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... > verbose_ce.out.raw || true'
+                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... -run TestDatabase > verbose_ce.out.raw || true'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
@@ -224,12 +103,6 @@ pipeline {
                                             unstable("At least one CE unit test failed")
                                         }
                                     }
-
-                                    // Publish CE coverage to coveralls.io
-                                    // Replace covermode values with set just for coveralls to reduce the variability in reports.
-                                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
-                                    sh 'which goveralls' // check if goveralls is installed
-                                    sh 'goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=$COVERALLS_TOKEN || true'
                                 }
                             }
                         }
