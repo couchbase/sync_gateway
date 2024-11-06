@@ -12,6 +12,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -86,19 +87,16 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 	return attDocID
 }
 
-// maybe replace woth require eventually with t?
 func (rt *RestTester) WaitForAttachmentMigrationStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
 	var response db.AttachmentMigrationManagerResponse
-	err := rt.WaitForConditionWithOptions(func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		resp := rt.SendAdminRequest("GET", "/{{.db}}/_attachment_migration", "")
-		RequireStatus(t, resp, http.StatusOK)
+		require.Equal(c, http.StatusOK, resp.Code)
 
 		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(t, err)
-
-		return response.State == state
-	}, 90, 1000)
-	require.NoError(t, err)
+		require.NoError(c, err)
+		assert.Equal(c, state, response.State)
+	}, time.Second*20, time.Millisecond*100)
 
 	return response
 }

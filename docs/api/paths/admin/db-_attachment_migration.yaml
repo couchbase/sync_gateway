@@ -1,4 +1,4 @@
-# Copyright 2022-Present Couchbase, Inc.
+# Copyright 2024-Present Couchbase, Inc.
 #
 # Use of this software is governed by the Business Source License included
 # in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
@@ -12,8 +12,8 @@ post:
   description: |-
     This allows a new attachment migration operation to be done on the database, or to stop an existing running attachment migration operation.
 
-    Attachment Migration is a single node process and can only one node can be running it at one point. 
-    
+    Attachment Migration is a single node process and can only one node can be running it at one point.
+
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Architect

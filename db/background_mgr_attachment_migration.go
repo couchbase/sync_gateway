@@ -68,7 +68,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 
 		reset, ok := options["reset"].(bool)
 		if reset && ok {
-			base.InfofCtx(ctx, base.KeyAll, "Resync: Resetting resync process. Will not resume any partially completed process")
+			base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resetting migration process. Will not resume any partially completed process")
 		}
 
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
