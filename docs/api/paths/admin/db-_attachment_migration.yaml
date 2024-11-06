@@ -1,0 +1,73 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Manage a attachment migration operation
+  description: |-
+    This allows a new attachment migration operation to be done on the database, or to stop an existing running attachment migration operation.
+
+    Attachment Migration is a single node process and can only one node can be running it at one point. 
+    
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - name: action
+      in: query
+      description: Defines whether the an attachment migration operation is being started or stopped.
+      schema:
+        type: string
+        default: start
+        enum:
+          - start
+          - stop
+    - name: reset
+      in: query
+      description: |-
+        This forces a fresh attachment migration start instead of trying to resume the previous failed migration operation.
+      schema:
+        type: boolean
+  responses:
+    '200':
+      description: Started or stopped compact operation successfully
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '503':
+      description: Cannot start attachment migration due to another migration operation still running.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+    - Database Management
+  operationId: post_db-_attachment_migration
+get:
+  summary: Get the status of the most recent attachment migration operation
+  description: |-
+    This will retrieve the current status of the most recent attachment migration operation.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  responses:
+    '200':
+      description: Attachment migration status retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Attachment-Migration-status
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Management
+  operationId: get_db-_attachment_migration

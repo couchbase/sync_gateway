@@ -85,3 +85,20 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 
 	return attDocID
 }
+
+// maybe replace woth require eventually with t?
+func (rt *RestTester) WaitForAttachmentMigrationStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
+	var response db.AttachmentMigrationManagerResponse
+	err := rt.WaitForConditionWithOptions(func() bool {
+		resp := rt.SendAdminRequest("GET", "/{{.db}}/_attachment_migration", "")
+		RequireStatus(t, resp, http.StatusOK)
+
+		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
+		require.NoError(t, err)
+
+		return response.State == state
+	}, 90, 1000)
+	require.NoError(t, err)
+
+	return response
+}

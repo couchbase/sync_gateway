@@ -59,7 +59,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
 
-	// Wait for run to complete
+	// Wait for run to completes
 	err = rt.WaitForCondition(func() bool {
 		time.Sleep(1 * time.Second)
 

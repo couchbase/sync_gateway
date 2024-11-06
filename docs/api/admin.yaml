@@ -124,6 +124,8 @@ paths:
     $ref: ./paths/admin/_all_dbs.yaml
   '/{db}/_compact':
     $ref: './paths/admin/db-_compact.yaml'
+  '/{.db}/_attachment_migration':
+    $ref: './paths/admin/db-_attachment_migration.yaml'
   '/{db}/':
     $ref: './paths/admin/db-.yaml'
   '/{keyspace}/':
