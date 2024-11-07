@@ -371,7 +371,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		auditFields[base.AuditFieldFilter] = subChangesParams.filter()
 	}
 	if len(subChangesParams.docIDs()) > 0 {
-		auditFields[base.AuditFieldDocIDs] = base.UD(subChangesParams.docIDs()).Redact()
+		auditFields[base.AuditFieldDocIDs] = subChangesParams.docIDs()
 		auditFields[base.AuditFieldFilter] = base.DocIDsFilter
 	}
 	if continuous {
@@ -380,7 +380,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		auditFields[base.AuditFieldFeedType] = "normal"
 	}
 	if len(channels) > 0 {
-		auditFields[base.AuditFieldChannels] = base.UD(channels).Redact()
+		auditFields[base.AuditFieldChannels] = channels
 	}
 	base.Audit(bh.loggingCtx, base.AuditIDChangesFeedStarted, auditFields)
 	return nil
