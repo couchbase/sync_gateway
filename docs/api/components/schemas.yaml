@@ -2972,7 +2972,7 @@ ResyncScopesMap:
   type: object
   additionalProperties:
     $ref: '#/CollectionNames'
-  example: {"scopeName": {"collection1", "collection2"}}
+  example: {"scopeName": ["collection1", "collection2"]}
 CollectionNames:
   description: 'List of collection names'
   type: array
