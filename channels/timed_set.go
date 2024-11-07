@@ -10,7 +10,7 @@ package channels
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -334,9 +334,19 @@ func TimedSetFromSequenceOnlySet(sequenceOnlySet map[string]uint64) TimedSet {
 // Encodes a TimedSet as a string (as sent in the public _changes feed.)
 // This string can later be turned back into a TimedSet by calling TimedSetFromString().
 func (set TimedSet) String() string {
-	var items []string
+	// setting to false is necessary to preserve the round trip compatbility.
+	items := set.asStrings(false, nil)
+	return strings.Join(items, ",")
+}
+
+// asStrings returns a sorted list of items in the list, appropriate for logging or serialization. show_zero_sequence is the preferred format unless the string needs to be backward compatible. Passing a redactorFunc is optional.
+func (set TimedSet) asStrings(show_zero_sequence bool, redactorFunc func(any) base.RedactorFunc) []string {
+	items := make([]string, 0, len(set))
 	for channel, vbSeq := range set {
-		if vbSeq.Sequence > 0 {
+		if show_zero_sequence || vbSeq.Sequence > 0 {
+			if redactorFunc != nil {
+				channel = redactorFunc(channel).Redact()
+			}
 			if vbSeq.VbNo != nil {
 				items = append(items, fmt.Sprintf("%s:%d.%d", channel, *vbSeq.VbNo, vbSeq.Sequence))
 			} else {
@@ -344,8 +354,13 @@ func (set TimedSet) String() string {
 			}
 		}
 	}
-	sort.Strings(items) // not strictly necessary but makes the string reproducible
-	return strings.Join(items, ",")
+	slices.Sort(items) // not strictly necessary but makes the string reproducible
+	return items
+}
+
+// RedactLogs the TimedSet as a string, for debugging.
+func (set TimedSet) BuildRedactor(redactor func(any) base.RedactorFunc) base.Redactor {
+	return redactableTimedSet{set: set, redactorFunc: redactor}
 }
 
 // Parses a string as generated from TimedSet.String().
@@ -393,4 +408,30 @@ func TimedSetFromString(encoded string) TimedSet {
 		}
 	}
 	return set
+}
+
+// redactableTimedSet is a wrapper for TimedSet that allows it to be redacted in logs.
+type redactableTimedSet struct {
+	set          TimedSet
+	redactorFunc func(interface{}) base.RedactorFunc
+}
+
+// Redact returns the TimedSet as a redacted string for logging.
+func (redactorSet redactableTimedSet) Redact() string {
+	return redactorSet.getRedactionString(true)
+}
+
+// Strings returns the TimedSet as an unredacted string for logging.
+func (redactorSet redactableTimedSet) String() string {
+	return redactorSet.getRedactionString(false)
+}
+
+// getRedactionString returns a string for logging.
+func (redactorSet redactableTimedSet) getRedactionString(shouldRedact bool) string {
+	redactorFunc := redactorSet.redactorFunc
+	if !shouldRedact {
+		redactorFunc = nil
+	}
+	items := redactorSet.set.asStrings(true, redactorFunc)
+	return strings.Join(items, ",")
 }

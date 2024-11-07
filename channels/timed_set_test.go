@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTimedSetMarshal(t *testing.T) {
@@ -165,6 +166,59 @@ func TestTimedSetCompareKeys(t *testing.T) {
 				assert.True(t, found)
 				assert.Equal(t, expectedValue, actualValue)
 			}
+		})
+	}
+}
+
+func TestTimedSetRedaction(t *testing.T) {
+	testCases := []struct {
+		name             string
+		input            TimedSet
+		redactedOutput   string
+		unredactedOutput string
+		stringOutput     string
+	}{
+		{
+			name:  "empty",
+			input: TimedSet{},
+		},
+		{
+			name:             "single",
+			input:            TimedSet{"ABC": NewVbSimpleSequence(17)},
+			redactedOutput:   "<ud>ABC</ud>:17",
+			unredactedOutput: "ABC:17",
+			stringOutput:     "ABC:17",
+		},
+		{
+			name:             "single zero",
+			input:            TimedSet{"ABC": NewVbSimpleSequence(0)},
+			redactedOutput:   "<ud>ABC</ud>:0",
+			unredactedOutput: "ABC:0",
+			stringOutput:     "",
+		},
+		{
+			name:             "multiple",
+			input:            TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)},
+			redactedOutput:   "<ud>ABC</ud>:17,<ud>BBC</ud>:1,<ud>CBS</ud>:23",
+			unredactedOutput: "ABC:17,BBC:1,CBS:23",
+			stringOutput:     "ABC:17,BBC:1,CBS:23",
+		},
+		{
+			name:             "multiple with zero",
+			input:            TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(0), "BBC": NewVbSimpleSequence(1)},
+			redactedOutput:   "<ud>ABC</ud>:17,<ud>BBC</ud>:1,<ud>CBS</ud>:0",
+			unredactedOutput: "ABC:17,BBC:1,CBS:0",
+			stringOutput:     "ABC:17,BBC:1",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			output := base.UD(testCase.input)
+			redacted := output.Redact()
+			require.Equal(t, testCase.redactedOutput, redacted)
+			unredacted := output.String()
+			require.Equal(t, testCase.unredactedOutput, unredacted)
+			require.Equal(t, testCase.stringOutput, testCase.input.String())
 		})
 	}
 }
