@@ -40,7 +40,7 @@ jobs:
       # build sync gateway since the executable is needed for service installation
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.23.2
+          go-version: 1.23.3
       - name: "Build Sync Gateway"
         run: mkdir -p ./bin && go build -o ./bin ./...
       - name: "Run test scripts"
