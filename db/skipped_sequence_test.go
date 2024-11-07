@@ -23,7 +23,6 @@ import (
 //   - Populate 10 single skipped sequence items in the slice
 //   - Assert that each one is added in the correct order
 //   - Assert that timestamp is increasing from the last entry (or equal to)
-//   - Add contiguous sequence to slice and assert that it is added as single range
 //   - Add contiguous sequence to slice and assert that it extends the last element with a range
 func TestPushSingleSkippedSequence(t *testing.T) {
 	skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
@@ -38,28 +37,17 @@ func TestPushSingleSkippedSequence(t *testing.T) {
 		assert.GreaterOrEqual(t, skippedSlice.list[j].getTimestamp(), prevTime)
 		prevTime = skippedSlice.list[j].getTimestamp()
 	}
-	// add a new single entry that is contiguous with end of the slice which is results in thee range being less than
-	// MinRangeThreshold so wil be added as single entry
+	// add a new single entry that is contiguous with end of the slice which should replace last
+	// single entry with a range
 	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(19))
 	// grab last entry in list
 	index := len(skippedSlice.list) - 1
 	entry := skippedSlice.list[index]
 
-	// assert last entry is single entry and start + end sequence on range is as expected
-	assert.True(t, entry.singleEntry())
-	assert.Equal(t, uint64(19), entry.getStartSeq())
-	assert.Equal(t, uint64(19), entry.getLastSeq())
-
-	// add a new single entry that is contiguous with end of the slice which is results in the range being greater than
-	// MinRangeThreshold so wil be added as range entry
-	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(20, 50))
-	// grab last entry in list
-	index = len(skippedSlice.list) - 1
-	entry = skippedSlice.list[index]
 	// assert last entry is range entry and start + end sequence on range is as expected
 	assert.False(t, entry.singleEntry())
-	assert.Equal(t, uint64(19), entry.getStartSeq())
-	assert.Equal(t, uint64(50), entry.getLastSeq())
+	assert.Equal(t, uint64(18), entry.getStartSeq())
+	assert.Equal(t, uint64(19), entry.getLastSeq())
 }
 
 // TestPushSkippedSequenceRange:
@@ -84,9 +72,8 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 		prevTime = skippedSlice.list[j].getTimestamp()
 	}
 
-	// add a new range entry that is contiguous with end of the slice which is greater then range threshold so should
-	// extend the existing last range
-	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(96, 142))
+	// add a new range entry that is contiguous with end of the slice which should alter range last element in list
+	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(96, 110))
 	// grab last entry in list
 	index := len(skippedSlice.list) - 1
 	entry := skippedSlice.list[index]
@@ -94,13 +81,13 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 	// assert last entry is range entry and start + end sequence on range is as expected
 	assert.False(t, entry.singleEntry())
 	assert.Equal(t, uint64(90), entry.getStartSeq())
-	assert.Equal(t, uint64(142), entry.getLastSeq())
+	assert.Equal(t, uint64(110), entry.getLastSeq())
 
 	// add new single entry that is not contiguous with last element on slice
 	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(500))
 
 	// add new range that is contiguous with the single entry on the last element of the slice + garbage timestamp
-	// for later assertion. This new range will not be greater than min threshold so wil be added a separate range
+	// for later assertion
 	newTimeStamp := time.Now().Unix() + 10000
 	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(501, 510, newTimeStamp))
 
@@ -109,7 +96,7 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 	// assert that last element in list is a range and holds sequences we expect + timestamp
 	// is what the new pushed range above holds
 	assert.False(t, entry.singleEntry())
-	assert.Equal(t, uint64(501), entry.getStartSeq())
+	assert.Equal(t, uint64(500), entry.getStartSeq())
 	assert.Equal(t, uint64(510), entry.getLastSeq())
 	assert.Equal(t, newTimeStamp, entry.getTimestamp())
 }

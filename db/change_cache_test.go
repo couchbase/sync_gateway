@@ -2056,7 +2056,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 
 	// assert this pushes an entry on the skipped sequence slice
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 19, len(testChangeCache.skippedSeqs.list))
+		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
 	}, time.Second*10, time.Millisecond*100)
 
 	// process some sequences over cache
@@ -2130,13 +2130,13 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 
 	// assert this pushes an entry on the skipped sequence slice
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 19, len(testChangeCache.skippedSeqs.list))
+		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
 	}, time.Second*10, time.Millisecond*100)
 
 	// expected values for stats on skipped slice
 	arrivingSeqs := []uint64{3, 15, 18, 2, 1}
-	expSliceLen := []int64{18, 17, 16, 15, 14}
-	expSliceCap := []int64{32, 32, 32, 32, 32}
+	expSliceLen := []int64{2, 3, 4, 4, 3}
+	expSliceCap := []int64{2, 4, 4, 4, 4}
 
 	numSeqsInList := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
 	for j := 0; j < len(arrivingSeqs); j++ {
@@ -2181,7 +2181,7 @@ func TestSkippedSequenceCompact(t *testing.T) {
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
-		CacheSkippedSeqMaxWait: 1 * time.Second,
+		CacheSkippedSeqMaxWait: 2 * time.Second,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
 		t.Fail()
@@ -2206,11 +2206,8 @@ func TestSkippedSequenceCompact(t *testing.T) {
 
 	// assert this pushes an entry on the skipped sequence slice
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 19, len(testChangeCache.skippedSeqs.list))
+		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
 	}, time.Second*10, time.Millisecond*100)
-
-	// manually call clean skipped sequence queue, avoiding race with actual wait time omn skipped
-	require.NoError(t, testChangeCache.CleanSkippedSequenceQueue(ctx))
 
 	// assert that compaction empties the skipped slice and we have correct value for abandoned sequences
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2267,7 +2264,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	// assert that skipped list is filled and next seq at cache is updated
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
 	}, time.Second*10, time.Millisecond*100)
@@ -2715,7 +2712,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	// assert that the skipped list is filled
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2797,7 +2794,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(16), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
 		assert.Equal(c, int64(16), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2805,14 +2802,14 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	}, time.Second*10, time.Millisecond*100)
 
 	// process unusedSeq range with range containing duplicate sipped sequences
-	// Skipped should contain: (1,2,3,4,5,6,7,8,9,10,11,12,13), (15,16,17) before processing this range
+	// Skipped should contain: (1-13), (15-17) before processing this range
 	testChangeCache.releaseUnusedSequenceRange(ctx, 10, 17, time.Now())
 
 	// assert skipped list altered to reflect the above range is processed
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(9), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
 		assert.Equal(c, int64(9), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2852,104 +2849,6 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		assert.Equal(c, uint64(20), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestRangeInSkippedSplit:
-//   - Test skipped handling when skipped list has ranges
-//   - Purpose to ensure range handling isn't broken now changes are to have more single entries
-func TestRangeInSkippedSplit(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 20 * time.Minute,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-		CachePendingSeqMaxNum:  0,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// entry that will create a skipped range entry on the list
-	entry := &LogEntry{
-		Sequence:     uint64(MinSequencesForRange + 10),
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// process unusedSeq range with range in middle of skipped entry
-	testChangeCache.releaseUnusedSequenceRange(ctx, 10, 17, time.Now())
-
-	// assert on stats
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(31), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(41), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(40), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// expected values for stats on skipped slice
-	arrivingSeqs := []uint64{3, 30, 25, 27}
-	expSliceLen := []int64{3, 4, 5, 6}
-	expSliceCap := []int64{4, 4, 8, 8}
-
-	testChangeCache.updateStats(ctx)
-	numSeqsInList := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
-	for j := 0; j < len(arrivingSeqs); j++ {
-		newEntry := &LogEntry{
-			DocID:    fmt.Sprintf("doc_%d", arrivingSeqs),
-			RevID:    "1-abcdefabcdefabcdef",
-			Sequence: arrivingSeqs[j],
-		}
-
-		_ = testChangeCache.processEntry(ctx, newEntry)
-		// assert on skipped sequence slice stats
-		testChangeCache.updateStats(ctx)
-		assert.Equal(t, numSeqsInList-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(t, expSliceLen[j], dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(t, int64(39), dbContext.DbStats.CacheStats.NumSkippedSeqs.Value())
-		assert.Equal(t, expSliceCap[j], dbContext.DbStats.CacheStats.SkippedSeqCap.Value())
-		numSeqsInList = dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
-	}
-
-	// empty list
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 40, time.Now())
-
-	// assert on stats
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(41), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(40), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 
@@ -3043,19 +2942,19 @@ func TestAddPendingLogs(t *testing.T) {
 			// overlapping ranges, low range arrives first
 			incoming:             []sequenceRange{{4, 8}, {6, 10}},
 			expectedNextSequence: 11,
-			expectedSkipped:      []sequenceRange{{1, 1}, {2, 2}, {3, 3}},
+			expectedSkipped:      []sequenceRange{{1, 3}},
 		},
 		{
 			// completely overlapping ranges, larger range arrives first
 			incoming:             []sequenceRange{{4, 8}, {6, 8}},
 			expectedNextSequence: 9,
-			expectedSkipped:      []sequenceRange{{1, 1}, {2, 2}, {3, 3}},
+			expectedSkipped:      []sequenceRange{{1, 3}},
 		},
 		{
 			// range arrives then partly overlapping range arrives
 			incoming:             []sequenceRange{{4, 8}, {6, 10}},
 			expectedNextSequence: 11,
-			expectedSkipped:      []sequenceRange{{1, 1}, {2, 2}, {3, 3}},
+			expectedSkipped:      []sequenceRange{{1, 3}},
 		},
 		{
 			// range arrives, partly overlapping range arrives the single overlapping range
@@ -3063,7 +2962,7 @@ func TestAddPendingLogs(t *testing.T) {
 			channelName:          "B",
 			expectedNextSequence: 10,
 			expectedCached:       []uint64{9},
-			expectedSkipped:      []sequenceRange{{1, 1}, {2, 2}, {3, 3}},
+			expectedSkipped:      []sequenceRange{{1, 3}},
 		},
 		{
 			// single range arrives, left side overlapping range arrives
@@ -3077,13 +2976,13 @@ func TestAddPendingLogs(t *testing.T) {
 			incoming:             []sequenceRange{{4, 0}, {4, 5}},
 			channelName:          "C",
 			expectedNextSequence: 6,
-			expectedSkipped:      []sequenceRange{{1, 1}, {2, 2}, {3, 3}},
+			expectedSkipped:      []sequenceRange{{1, 3}},
 		},
 		{
 			// range arrives, lower end overlapping range arrives
 			incoming:             []sequenceRange{{6, 10}, {4, 8}},
 			expectedNextSequence: 11,
-			expectedSkipped:      []sequenceRange{{1, 1}, {2, 2}, {3, 3}},
+			expectedSkipped:      []sequenceRange{{1, 3}},
 		},
 	}
 

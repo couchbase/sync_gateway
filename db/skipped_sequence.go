@@ -23,7 +23,6 @@ import (
 
 const (
 	DefaultClipCapacityHeadroom = 1000
-	MinSequencesForRange        = 30 // minimum number of sequences required to store entry as range
 )
 
 // SkippedSequenceSlice stores the set of skipped sequences as an ordered slice of single skipped sequences
@@ -232,7 +231,7 @@ func (s *SkippedSequenceSlice) _removeSeqRange(ctx context.Context, startSeq, en
 	// put this below a check for !found to avoid out of bound error
 	rangeElem := s.list[startIndex]
 	if endSeq > rangeElem.getLastSeq() {
-		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list, or sequence range spans multiple skipped entries", startSeq, endSeq)
+		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
 		return base.ErrSkippedSequencesMissing
 	}
 
@@ -328,35 +327,6 @@ func (s *SkippedSequenceSlice) _insert(index int, entry *SkippedSequenceListEntr
 	s.list[index] = entry
 }
 
-// PushSkippedSequenceEntries will push seq range to end of slice as separate single sequence entries unless the range
-// being pushed in contiguous with end of the slice and that contiguous range is grater than the min range threshold
-func (s *SkippedSequenceSlice) PushSkippedSequenceEntries(startSeq, endSeq uint64, numSeqsIncoming int64) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	// update num current skipped sequences count + the cumulative count of skipped sequences
-	s.NumCurrentSkippedSequences += numSeqsIncoming
-	s.NumCumulativeSkippedSequences += numSeqsIncoming
-
-	// check if we should be extending the last entry on the slice
-	if len(s.list) != 0 {
-		index := len(s.list) - 1
-		lastEntryLastSeq := s.list[index].getLastSeq()
-		totalSeqs := s.list[index].getNumSequencesInEntry() + numSeqsIncoming
-		if (lastEntryLastSeq+1) == startSeq && totalSeqs > MinSequencesForRange {
-			// adding contiguous sequence, and we are above the min threshold to hold a range in list
-			// set last seq in the range to the new arriving sequence + alter timestamp to incoming entries timestamp
-			s.list[index].extendRange(endSeq, time.Now().Unix())
-			return
-		}
-	}
-
-	// push all items separate to end of slice
-	for i := startSeq; i <= endSeq; i++ {
-		s.list = append(s.list, NewSingleSkippedSequenceEntry(i))
-	}
-}
-
 // PushSkippedSequenceEntry will append a new skipped sequence entry to the end of the slice, if adding a contiguous
 // sequence function will expand the last entry of the slice to reflect this
 func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SkippedSequenceListEntry) {
@@ -375,13 +345,11 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SkippedSequenceLi
 	// get index of last entry + last seq of entry
 	index := len(s.list) - 1
 	lastEntryLastSeq := s.list[index].getLastSeq()
-	totalSeqs := s.list[index].getNumSequencesInEntry() + entry.getNumSequencesInEntry()
-	if (lastEntryLastSeq+1) == entry.getStartSeq() && totalSeqs > MinSequencesForRange {
-		// adding contiguous sequence, and we are above the min threshold to hold a range in list
+	if (lastEntryLastSeq + 1) == entry.getStartSeq() {
+		// adding contiguous sequence
 		// set last seq in the range to the new arriving sequence + alter timestamp to incoming entries timestamp
 		s.list[index].extendRange(entry.getLastSeq(), entry.getTimestamp())
 	} else {
-		// add new entry as separate item
 		s.list = append(s.list, entry)
 	}
 
@@ -429,7 +397,7 @@ func (s *SkippedSequenceSlice) processUnusedSequenceRangeAtSkipped(ctx context.C
 		}
 	} else if err != nil {
 		// if we get here then the skipped list must be empty
-		base.InfofCtx(ctx, base.KeyCache, "error attempting to remove unused sequence range from skipped: %v", err)
+		base.InfofCtx(ctx, base.KeyCache, "error attempting to remove unused sequence range form skipped: %v", err)
 	}
 }
 
