@@ -178,7 +178,7 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		}
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(p, cas, xattrs)
-		assert.Equal(c, getCVBeforeImport(expected), getCVBeforeImport(version), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(docBytes))
+		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(docBytes))
 
 	}, 5*time.Second, 100*time.Millisecond)
 	p.tb.Logf("found version %+v for doc %s on %s", version, docID, p)
@@ -293,12 +293,4 @@ func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (
 	var body db.Body
 	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body))
 	return getDocVersion(peer, cas, xattrs), body
-}
-
-// getFunctionalCV returns a functional version from a DocVersion, which will  CV from a DocVersion.
-func getCVBeforeImport(version rest.DocVersion) db.Version {
-	if version.Cas != 0 && version.Mou != nil && version.HLV.CurrentVersionCAS != version.Cas {
-		return db.Version{SourceID: version.HLV.SourceID, Value: base.HexCasToUint64(version.Mou.PreviousCAS)}
-	}
-	return db.Version{SourceID: version.HLV.SourceID, Value: version.HLV.Version}
 }

@@ -134,7 +134,7 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 		// Only assert on CV since RevTreeID might not be present if this was a Couchbase Server write
 		bodyBytes, err := doc.BodyBytes(ctx)
 		assert.NoError(c, err)
-		assert.Equal(c, getCVBeforeImport(expected), getCVBeforeImport(version), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(bodyBytes))
+		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(bodyBytes))
 	}, 5*time.Second, 100*time.Millisecond)
 	return doc.Body(ctx)
 }
