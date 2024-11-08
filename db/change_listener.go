@@ -159,7 +159,7 @@ func (listener *changeListener) Stop(ctx context.Context) {
 
 	base.DebugfCtx(ctx, base.KeyChanges, "changeListener.Stop() called")
 
-	if !listener.started.IsTrue() {
+	if !listener.started.CompareAndSwap(true, false) {
 		// not started, nothing to do
 		return
 	}

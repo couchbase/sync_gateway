@@ -590,6 +590,24 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
+// _stopOnlineProcesses is called to represent an error condition from startOnlineProcesses, or from DatabaseContext.Close. Most of the objects are not safe to close twice, since they have internal terminator objects and goroutines that wait on closed channels. Acquire the bucket lock, to avoid calling this function multiple times.
+func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
+	db.mutationListener.Stop(ctx)
+	db.changeCache.Stop(ctx)
+	if db.ImportListener != nil {
+		db.ImportListener.Stop()
+		db.ImportListener = nil
+	}
+	if db.Heartbeater != nil {
+		db.Heartbeater.Stop(ctx)
+		db.Heartbeater = nil
+	}
+	if db.SGReplicateMgr != nil {
+		db.SGReplicateMgr.Stop()
+		db.SGReplicateMgr = nil
+	}
+}
+
 func (context *DatabaseContext) Close(ctx context.Context) {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
@@ -606,17 +624,9 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop(ctx)
-	context.mutationListener.Stop(ctx)
-	context.changeCache.Stop(ctx)
+	context._stopOnlineProcesses(ctx)
 	// Stop the channel cache and its background tasks.
 	context.channelCache.Stop(ctx)
-	context.ImportListener.Stop()
-	if context.Heartbeater != nil {
-		context.Heartbeater.Stop(ctx)
-	}
-	if context.SGReplicateMgr != nil {
-		context.SGReplicateMgr.Stop()
-	}
 
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
@@ -2243,13 +2253,13 @@ func (dbc *DatabaseContext) GetRequestPlusSequence() (uint64, error) {
 }
 
 func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedError error) {
-	cleanupFunctions := make([]func(), 0)
 
 	defer func() {
 		if returnedError != nil {
-			for _, cleanupFunc := range cleanupFunctions {
-				cleanupFunc()
-			}
+			// grab bucket lock so stopOnlineProcesses is not called at the same time as db.Close()
+			db.BucketLock.RLock()
+			defer db.BucketLock.RUnlock()
+			db._stopOnlineProcesses(ctx)
 		}
 	}()
 
@@ -2315,11 +2325,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 			return err
 		}
 		db.Heartbeater = heartbeater
-
-		cleanupFunctions = append(cleanupFunctions, func() {
-			db.Heartbeater.Stop(ctx)
-			db.Heartbeater = nil
-		})
 	}
 
 	// If sgreplicate is enabled on this node, register this node to accept notifications
@@ -2328,10 +2333,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		if registerNodeErr != nil {
 			return registerNodeErr
 		}
-
-		cleanupFunctions = append(cleanupFunctions, func() {
-			db.SGReplicateMgr.Stop()
-		})
 	}
 
 	// Start DCP feed
@@ -2340,10 +2341,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	if err := db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
 		return err
 	}
-
-	cleanupFunctions = append(cleanupFunctions, func() {
-		db.mutationListener.Stop(ctx)
-	})
 
 	// Get current value of _sync:seq
 	initialSequence, seqErr := db.sequences.lastSequence(ctx)
@@ -2363,9 +2360,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	if err := db.changeCache.Start(initialSequence); err != nil {
 		return err
 	}
-	cleanupFunctions = append(cleanupFunctions, func() {
-		db.changeCache.Stop(ctx)
-	})
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
@@ -2373,12 +2367,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		ctx := db.AddBucketUserLogContext(ctx)
 		db.ImportListener = NewImportListener(ctx, db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, db.Options.ImportVersion), db)
 		if importFeedErr := db.ImportListener.StartImportFeed(db); importFeedErr != nil {
+			db.ImportListener = nil
 			return importFeedErr
 		}
-
-		cleanupFunctions = append(cleanupFunctions, func() {
-			db.ImportListener.Stop()
-		})
 	}
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
