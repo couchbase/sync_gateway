@@ -73,7 +73,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new migration ID. Otherwise, we should resume with the migration ID, stats specified in the doc.
-		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
+		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || reset {
 			return newRunInit()
 		}
 		a.MigrationID = statusDoc.MigrationID
