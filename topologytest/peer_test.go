@@ -33,8 +33,14 @@ type Peer interface {
 	// DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 	DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion
 
-	// WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
+	// WaitForDocVersion waits for a document to reach a specific version. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
 	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) db.Body
+
+	// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
+	WaitForDeletion(dsName sgbucket.DataStoreName, docID string)
+
+	// WaitForTombstoneVersion waits for a document to reach a specific version. This document must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
+	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion)
 
 	// RequireDocNotFound asserts that a document does not exist on the peer.
 	RequireDocNotFound(dsName sgbucket.DataStoreName, docID string)
@@ -153,7 +159,6 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 		bucket, ok := buckets[opts.BucketID]
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)
 		sourceID, err := xdcr.GetSourceID(base.TestCtx(t), bucket)
-		fmt.Printf("peer %s bucket %s sourceID: %v\n", name, bucket.GetName(), sourceID)
 		require.NoError(t, err)
 		return &CouchbaseServerPeer{
 			name:             name,
@@ -230,9 +235,17 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) map[string]P
 }
 
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
-func setupTests(t *testing.T, peerOptions map[string]PeerOptions, replicationDefinitions []PeerReplicationDefinition) (map[string]Peer, []PeerReplication) {
-	peers := createPeers(t, peerOptions)
-	replications := createPeerReplications(t, peers, replicationDefinitions)
+func setupTests(t *testing.T, topology Topology, activePeerID string) (map[string]Peer, []PeerReplication) {
+	peers := createPeers(t, topology.peers)
+	replications := createPeerReplications(t, peers, topology.replications)
+
+	if topology.skipIf != nil {
+		topology.skipIf(t, activePeerID, peers)
+	}
+	for _, replication := range replications {
+		// temporarily start the replication before writing the document, limitation of CouchbaseLiteMockPeer as active peer since WriteDocument is calls PushRev
+		replication.Start()
+	}
 	return peers, replications
 }
 
@@ -285,7 +298,7 @@ func TestPeerImplementation(t *testing.T) {
 			updateBody := []byte(`{"op": "update"}`)
 			updateVersion := peer.WriteDocument(collectionName, docID, updateBody)
 			require.NotEmpty(t, updateVersion.CV)
-			require.NotEqual(t, updateVersion.CV, createVersion.CV)
+			require.NotEqual(t, updateVersion.CV(), createVersion.CV())
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
 				require.Empty(t, updateVersion.RevTreeID)
 			} else {
@@ -301,9 +314,9 @@ func TestPeerImplementation(t *testing.T) {
 
 			// Delete
 			deleteVersion := peer.DeleteDocument(collectionName, docID)
-			require.NotEmpty(t, deleteVersion.CV)
-			require.NotEqual(t, deleteVersion.CV, updateVersion.CV)
-			require.NotEqual(t, deleteVersion.CV, createVersion.CV)
+			require.NotEmpty(t, deleteVersion.CV())
+			require.NotEqual(t, deleteVersion.CV(), updateVersion.CV())
+			require.NotEqual(t, deleteVersion.CV(), createVersion.CV())
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
 				require.Empty(t, deleteVersion.RevTreeID)
 			} else {
@@ -317,10 +330,10 @@ func TestPeerImplementation(t *testing.T) {
 
 			resurrectionBody := []byte(`{"op": "resurrection"}`)
 			resurrectionVersion := peer.WriteDocument(collectionName, docID, resurrectionBody)
-			require.NotEmpty(t, resurrectionVersion.CV)
-			require.NotEqual(t, resurrectionVersion.CV, deleteVersion.CV)
-			require.NotEqual(t, resurrectionVersion.CV, updateVersion.CV)
-			require.NotEqual(t, resurrectionVersion.CV, createVersion.CV)
+			require.NotEmpty(t, resurrectionVersion.CV())
+			require.NotEqual(t, resurrectionVersion.CV(), deleteVersion.CV())
+			require.NotEqual(t, resurrectionVersion.CV(), updateVersion.CV())
+			require.NotEqual(t, resurrectionVersion.CV(), createVersion.CV())
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
 				require.Empty(t, resurrectionVersion.RevTreeID)
 			} else {
