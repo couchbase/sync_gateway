@@ -18,7 +18,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/xdcr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -290,12 +289,4 @@ func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (
 	var body db.Body
 	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body))
 	return getDocVersion(docID, peer, cas, xattrs), body
-}
-
-// getFunctionalCV returns a functional version from a DocVersion, which will  CV from a DocVersion.
-func getCVBeforeImport(version rest.DocVersion) db.Version {
-	if version.Cas != 0 && version.Mou != nil && version.HLV.CurrentVersionCAS != version.Cas {
-		return db.Version{SourceID: version.HLV.SourceID, Value: base.HexCasToUint64(version.Mou.PreviousCAS)}
-	}
-	return db.Version{SourceID: version.HLV.SourceID, Value: version.HLV.Version}
 }
