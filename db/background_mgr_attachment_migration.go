@@ -66,9 +66,14 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 		var statusDoc AttachmentMigrationManagerStatusDoc
 		err := base.JSONUnmarshal(clusterStatus, &statusDoc)
 
+		reset, _ := options["reset"].(bool)
+		if reset {
+			base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resetting migration process. Will not resume any partially completed process")
+		}
+
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new migration ID. Otherwise, we should resume with the migration ID, stats specified in the doc.
-		if statusDoc.State == BackgroundProcessStateCompleted || err != nil {
+		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || reset {
 			return newRunInit()
 		}
 		a.MigrationID = statusDoc.MigrationID
