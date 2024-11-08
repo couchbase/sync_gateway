@@ -130,6 +130,52 @@ func (h *handler) handleGetCompact() error {
 	return nil
 }
 
+func (h *handler) handleAttachmentMigration() error {
+	action := h.getQuery("action")
+	if action == "" {
+		action = string(db.BackgroundProcessActionStart)
+	}
+	reset := h.getBoolQuery("reset")
+
+	if action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
+	}
+
+	if action == string(db.BackgroundProcessActionStart) {
+		err := h.db.AttachmentMigrationManager.Start(h.ctx(), map[string]interface{}{
+			"reset": reset,
+		})
+		if err != nil {
+			return err
+		}
+		status, err := h.db.AttachmentMigrationManager.GetStatus(h.ctx())
+		if err != nil {
+			return err
+		}
+		h.writeRawJSON(status)
+	} else if action == string(db.BackgroundProcessActionStop) {
+		err := h.db.AttachmentMigrationManager.Stop()
+		if err != nil {
+			return err
+		}
+		status, err := h.db.AttachmentMigrationManager.GetStatus(h.ctx())
+		if err != nil {
+			return err
+		}
+		h.writeRawJSON(status)
+	}
+	return nil
+}
+
+func (h *handler) handleGetAttachmentMigration() error {
+	status, err := h.db.AttachmentMigrationManager.GetStatus(h.ctx())
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(status)
+	return nil
+}
+
 func (h *handler) handleCompact() error {
 	action := h.getQuery("action")
 	if action == "" {
