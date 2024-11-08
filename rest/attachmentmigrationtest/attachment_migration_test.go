@@ -6,7 +6,7 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-package rest
+package attachmentmigrationtest
 
 import (
 	"fmt"
@@ -16,6 +16,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +29,7 @@ func TestMigrationJobStartOnDbStart(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("rosmar does not support DCP client, pending CBG-4249")
 	}
-	rt := NewRestTesterPersistentConfig(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -62,12 +63,12 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
-	rtConfig := &RestTesterConfig{
+	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
 	}
 
-	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 	ctx := rt.Context()
 	_ = rt.Bucket()
@@ -98,14 +99,14 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 		require.NoError(t, writeErr)
 	}
 
-	scopesConfigC1Only := GetCollectionsConfig(t, tb, 2)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfigC1Only)
+	scopesConfigC1Only := rest.GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfigC1Only)
 	scope := dataStoreNames[0].ScopeName()
 	collection1 := dataStoreNames[0].CollectionName()
 	collection2 := dataStoreNames[1].CollectionName()
 	delete(scopesConfigC1Only[scope].Collections, collection2)
 
-	scopesConfigBothCollection := GetCollectionsConfig(t, tb, 2)
+	scopesConfigBothCollection := rest.GetCollectionsConfig(t, tb, 2)
 
 	// Create a db1 with one collection initially
 	dbConfig := rt.NewDbConfig()
@@ -115,7 +116,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	dbConfig.Scopes = scopesConfigC1Only
 
 	resp := rt.CreateDatabase(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx := rt.GetDatabase()
 	mgr := dbCtx.AttachmentMigrationManager
@@ -129,7 +130,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigBothCollection
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// wait for attachment migration job to start and finish
 	dbCtx = rt.GetDatabase()
@@ -170,12 +171,12 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
-	rtConfig := &RestTesterConfig{
+	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
 	}
 
-	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 	ctx := rt.Context()
 	_ = rt.Bucket()
@@ -206,8 +207,8 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 		require.NoError(t, writeErr)
 	}
 
-	scopesConfigC1Only := GetCollectionsConfig(t, tb, 2)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfigC1Only)
+	scopesConfigC1Only := rest.GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfigC1Only)
 	scope := dataStoreNames[0].ScopeName()
 	collection2 := dataStoreNames[1].CollectionName()
 	delete(scopesConfigC1Only[scope].Collections, collection2)
@@ -219,7 +220,7 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigC1Only
 	resp := rt.CreateDatabase(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx := rt.GetDatabase()
 	mgr := dbCtx.AttachmentMigrationManager
@@ -239,12 +240,12 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 
 	// create db with second collection, background job should only run on new collection added given
 	// existent of sync info meta version on collection 1
-	scopesConfigBothCollection := GetCollectionsConfig(t, tb, 2)
+	scopesConfigBothCollection := rest.GetCollectionsConfig(t, tb, 2)
 	dbConfig = rt.NewDbConfig()
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigBothCollection
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx = rt.GetDatabase()
 	mgr = dbCtx.AttachmentMigrationManager
@@ -279,12 +280,12 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
-	rtConfig := &RestTesterConfig{
+	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
 	}
 
-	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 	ctx := rt.Context()
 	_ = rt.Bucket()
@@ -314,14 +315,14 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 		require.NoError(t, writeErr)
 	}
 
-	scopesConfigBothCollection := GetCollectionsConfig(t, tb, 2)
+	scopesConfigBothCollection := rest.GetCollectionsConfig(t, tb, 2)
 	dbConfig := rt.NewDbConfig()
 	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
 	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigBothCollection
 	resp := rt.CreateDatabase(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx := rt.GetDatabase()
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 2)
@@ -345,7 +346,7 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	dbConfig.AutoImport = true
 	dbConfig.Scopes = scopesConfigBothCollection
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx = rt.GetDatabase()
 	mgr = dbCtx.AttachmentMigrationManager
@@ -371,12 +372,12 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	base.RequireNumTestDataStores(t, 1)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
-	rtConfig := &RestTesterConfig{
+	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
 	}
 
-	rt := NewRestTester(t, rtConfig)
+	rt := rest.NewRestTester(t, rtConfig)
 	defer rt.Close()
 	ctx := rt.Context()
 	_ = rt.Bucket()
@@ -402,14 +403,14 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 		require.NoError(t, writeErr)
 	}
 
-	scopesConfig := GetCollectionsConfig(t, tb, 1)
+	scopesConfig := rest.GetCollectionsConfig(t, tb, 1)
 	dbConfig := rt.NewDbConfig()
 	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
 	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfig
 	resp := rt.CreateDatabase(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 	dbCtx := rt.GetDatabase()
 	nodeMgr := dbCtx.AttachmentMigrationManager
 	// wait for migration job to start
