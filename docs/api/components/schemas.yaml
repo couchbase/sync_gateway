@@ -2099,6 +2099,41 @@ Resync-status:
     - docs_changed
     - docs_processed
   title: Resync-status
+Attachment-Migration-status:
+  description: The status of a attachment migration operation
+  type: object
+  properties:
+    status:
+      description: The status of the current attachment migration operation.
+      type: string
+      enum:
+        - running
+        - completed
+        - stopping
+        - stopped
+        - error
+    start_time:
+      description: The ISO-8601 date and time the attachment migration operation was started.
+      type: string
+    last_error:
+      description: The last error that occurred in the attachment migration operation (if any).
+      type: string
+    migration_id:
+      description: The UUID given to the attachment migration operation.
+      type: string
+    docs_changed:
+      description: The amount of documents that have had attachment metadata migrated as a result of attachment migration operation.
+      type: integer
+    docs_processed:
+      description: The amount of docs that have been processed through the attachment migration operation.
+      type: integer
+  required:
+    - status
+    - start_time
+    - last_error
+    - docs_changed
+    - docs_processed
+  title: Attachment-Migration-status
 Compact-status:
   description: The status returned from a compaction.
   type: object
