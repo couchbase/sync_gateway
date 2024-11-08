@@ -89,7 +89,6 @@ func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 			if strings.HasPrefix(tc.activePeerID, "cbl") {
 				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4335")
 			}
-			t.Skip("Skipping Sync Gateway test for rosmar, intermittent failures CBG-4239")
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
 			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))

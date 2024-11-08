@@ -896,11 +896,14 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 }
 
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering. mouMatch represents if the _mou.cas == doc.cas
-func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateType, mouMatch bool) (*Document, error) {
+func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document, docUpdateEvent DocUpdateType, mouMatch bool) (*Document, error) {
 
 	hasHLV := d.HLV != nil
 	if d.HLV == nil {
 		d.HLV = &HybridLogicalVector{}
+		base.DebugfCtx(ctx, base.KeySGTest, "No existing HLV for doc %s", base.UD(d.ID))
+	} else {
+		base.DebugfCtx(ctx, base.KeySGTest, "Existing HLV for doc %s before modification %+v", base.UD(d.ID), d.HLV)
 	}
 	switch docUpdateEvent {
 	case ExistingVersion:
@@ -922,6 +925,9 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 				return nil, err
 			}
 			d.HLV.CurrentVersionCAS = d.Cas
+			base.DebugfCtx(ctx, base.KeySGTest, "Adding new version to HLV due to import for doc %s, updated HLV %+v", base.UD(d.ID), d.HLV)
+		} else {
+
 		}
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
@@ -2089,7 +2095,13 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	}
 
 	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
-	mouMatch := doc.MetadataOnlyUpdate != nil && base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas
+	mouMatch := false
+	if doc.MetadataOnlyUpdate != nil {
+		mouMatch := base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas
+		base.DebugfCtx(ctx, base.KeySGTest, "updateDoc(%q): _mou:%+v Metadata-only update match:%t", base.UD(doc.ID), doc.MetadataOnlyUpdate, mouMatch)
+	} else {
+		base.DebugfCtx(ctx, base.KeySGTest, "updateDoc(%q): has no _mou", base.UD(doc.ID))
+	}
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
@@ -2149,7 +2161,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	// The callback has updated the HLV for mutations coming from CBL.  Update the HLV so that the current version is set before
 	// we call updateChannels, which needs to set the current version for removals
 	// update the HLV values
-	doc, err = col.updateHLV(doc, docUpdateEvent, mouMatch)
+	doc, err = col.updateHLV(ctx, doc, docUpdateEvent, mouMatch)
 	if err != nil {
 		return
 	}
