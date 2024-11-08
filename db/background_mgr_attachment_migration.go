@@ -66,8 +66,8 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 		var statusDoc AttachmentMigrationManagerStatusDoc
 		err := base.JSONUnmarshal(clusterStatus, &statusDoc)
 
-		reset, ok := options["reset"].(bool)
-		if reset && ok {
+		reset, _ := options["reset"].(bool)
+		if reset {
 			base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resetting migration process. Will not resume any partially completed process")
 		}
 
