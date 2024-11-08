@@ -2173,7 +2173,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		otherSource := "otherSource"
 		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
 		existingHLVKey := "doc1"
-		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+		_ = hlvHelper.InsertWithHLV(ctx, existingHLVKey)
 
 		// force import of this write
 		_, _ = rt.GetDoc(docID)
@@ -2181,13 +2181,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		require.NoError(t, err)
 
 		// create doc version of the above doc write
-		version1 := DocVersion{
-			RevTreeID: bucketDoc.CurrentRev,
-			CV: db.Version{
-				SourceID: hlvHelper.Source,
-				Value:    cas,
-			},
-		}
+		version1 := DocVersionFromDocument(bucketDoc)
 
 		_ = btcRunner.WaitForVersion(client.id, docID, version1)
 
