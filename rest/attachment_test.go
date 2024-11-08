@@ -2220,6 +2220,7 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
