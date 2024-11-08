@@ -100,9 +100,17 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 		// When doing the evaluation of cas, we want to ignore import mutations, marked with _mou.cas == cas. In that case, we will just use the _vv.cvCAS for conflict resolution. If _mou.cas is present but out of date, continue to use _vv.ver.
 		sourceCas := event.Cas
-		if sourceMou != nil && base.HexCasToUint64(sourceMou.CAS) == sourceCas && sourceHLV != nil {
-			sourceCas = sourceHLV.CurrentVersionCAS
-			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s source _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, event.Cas, sourceCas)
+		fmt.Printf("sourceHLV: %+v, sourceMou: %+v, sourceCas: %d\n", sourceHLV, sourceMou, sourceCas)
+		if sourceMou != nil && base.HexCasToUint64(sourceMou.CAS) == sourceCas {
+			if sourceHLV != nil {
+				sourceCas = sourceHLV.CurrentVersionCAS
+				base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s source _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, event.Cas, sourceCas)
+			} else {
+				panic("here")
+				sourceCas = 0
+				sourceCas = base.HexCasToUint64(sourceMou.PreviousCAS)
+				base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s source _mou.cas=cas (%d), using _mou.pCas (%d) for conflict resolution", docID, event.Cas, sourceCas)
+			}
 		}
 		targetCas := actualTargetCas
 		targetHLV, targetMou, err := getHLVAndMou(targetXattrs)
@@ -342,24 +350,18 @@ func getHLVAndMou(xattrs map[string][]byte) (*db.HybridLogicalVector, *db.Metada
 	return hlv, mou, nil
 }
 
-func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, sourceCas uint64) error {
-	var targetHLV *db.HybridLogicalVector
-	if sourceHLV != nil {
-		// TODO: read existing targetXattrs[base.VvXattrName] and update the pv CBG-4250
-		targetHLV = sourceHLV
-	} else {
-		hlv := db.NewHybridLogicalVector()
-		err := hlv.AddVersion(db.Version{
-			SourceID: sourceID,
-			Value:    sourceCas,
-		})
-		if err != nil {
-			return err
-		}
-		hlv.CurrentVersionCAS = sourceCas
-		targetHLV = &hlv
+func updateHLV(xattrs map[string][]byte, _ *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, sourceCas uint64) error {
+	fmt.Printf("HONK HONK sourceCas: %d, sourceID: %s\n", sourceCas, sourceID)
+	// TODO: read existing targetXattrs[base.VvXattrName] and update the pv CBG-4250
+	targetHLV := db.NewHybridLogicalVector()
+	err := targetHLV.AddVersion(db.Version{
+		SourceID: sourceID,
+		Value:    sourceCas,
+	})
+	if err != nil {
+		return err
 	}
-	var err error
+	targetHLV.CurrentVersionCAS = sourceCas
 	xattrs[base.VvXattrName], err = json.Marshal(targetHLV)
 	if err != nil {
 		return err
