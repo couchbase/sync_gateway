@@ -276,3 +276,118 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	assert.Equal(t, 5, int(atomic.LoadUint32(&WinningRevChangedCount)))
 	assert.Equal(t, 6, int(atomic.LoadUint32(&DocumentChangedCount)))
 }
+
+// TestJumpInSequencesAtAllocatorSkippedSequenceFill:
+//   - High level test
+//   - Add a doc through Sync Gateway
+//   - Alter that allocated sequence to be higher value. Mocking this document arriving from different env
+//     (e.g. via XDCR)
+//   - Wait for this sequence to arrive over cache feed and wait for skipped sequences to subsequently fill
+//   - Update this doc again, triggering unused sequence range release
+//   - Write another doc and assert that the changes feed returns all expected docs
+func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport: false,
+			CacheConfig: &CacheConfig{
+				ChannelCacheConfig: &ChannelCacheConfig{
+					MaxWaitPending: base.Uint32Ptr(10),
+				},
+			},
+		}},
+	})
+	defer rt.Close()
+	ctx := base.TestCtx(t)
+	vrs := rt.PutDoc("doc", `{"prop":true}`)
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes", "")
+	RequireStatus(t, resp, http.StatusOK)
+	ds := rt.GetSingleDataStore()
+	var syncData db.SyncData
+	_, err := ds.GetXattr(ctx, "doc", base.SyncXattrName, &syncData)
+	require.NoError(t, err)
+	syncData.Sequence = uint64(20)
+	newXattrVal, err := base.JSONMarshal(&syncData)
+	require.NoError(t, err)
+	_, err = ds.SetXattr(ctx, "doc", base.SyncXattrName, newXattrVal)
+	require.NoError(t, err)
+	// wait for value to move from pending to cache and skipped list to fill
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		rt.GetDatabase().UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(18), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+	}, time.Second*10, time.Millisecond*100)
+	docVrs := rt.UpdateDoc("doc", vrs.Rev, `{"prob": "lol"}`)
+	// wait skipped list to be emptied by release of sequence range
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		rt.GetDatabase().UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.PendingSeqLen.Value())
+		//assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSeqCap.Value())
+		//assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+	}, time.Second*10, time.Millisecond*100)
+	doc1Vrs := rt.PutDoc("doc1", `{"prop":true}`)
+	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+	changes.RequireDocIDs(t, []string{"doc1", "doc"})
+	changes.RequireRevID(t, []string{docVrs.Rev, doc1Vrs.Rev})
+}
+
+// TestJumpInSequencesAtAllocatorRangeInPending:
+//   - High level test
+//   - Add a doc through Sync Gateway
+//   - Alter that allocated sequence to be higher value. Mocking this document arriving from different env
+//     (e.g. via XDCR)
+//   - Wait for this sequence to arrive over cache feed and subsequently pushed to pending
+//   - Update this doc again, triggering unused sequence range release
+//   - Write another doc and assert that the changes feed returns all expected docs
+func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport: false,
+			CacheConfig: &CacheConfig{
+				ChannelCacheConfig: &ChannelCacheConfig{
+					MaxWaitPending: base.Uint32Ptr(1500),
+				},
+			},
+		}},
+	})
+	defer rt.Close()
+	ctx := base.TestCtx(t)
+	vrs := rt.PutDoc("doc", `{"prop":true}`)
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes", "")
+	RequireStatus(t, resp, http.StatusOK)
+	ds := rt.GetSingleDataStore()
+	var syncData db.SyncData
+	_, err := ds.GetXattr(ctx, "doc", base.SyncXattrName, &syncData)
+	require.NoError(t, err)
+	syncData.Sequence = uint64(20)
+	newXattrVal, err := base.JSONMarshal(&syncData)
+	require.NoError(t, err)
+	_, err = ds.SetXattr(ctx, "doc", base.SyncXattrName, newXattrVal)
+	require.NoError(t, err)
+	// wait for value top be added to pending
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		rt.GetDatabase().UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.PendingSeqLen.Value())
+	}, time.Second*10, time.Millisecond*100)
+	docVrs := rt.UpdateDoc("doc", vrs.Rev, `{"prob": "lol"}`)
+	// assert that nothing has been pushed to skipped
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		rt.GetDatabase().UpdateCalculatedStats(ctx)
+		//assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqCap.Value())
+		//assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+	}, time.Second*10, time.Millisecond*100)
+	doc1Vrs := rt.PutDoc("doc1", `{"prop":true}`)
+	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+	changes.RequireDocIDs(t, []string{"doc1", "doc"})
+	changes.RequireRevID(t, []string{docVrs.Rev, doc1Vrs.Rev})
+}
