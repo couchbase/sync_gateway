@@ -927,7 +927,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 			d.HLV.CurrentVersionCAS = d.Cas
 			base.DebugfCtx(ctx, base.KeySGTest, "Adding new version to HLV due to import for doc %s, updated HLV %+v", base.UD(d.ID), d.HLV)
 		} else {
-
+			base.DebugfCtx(ctx, base.KeySGTest, "Not updating HLV to _mou.cas == doc.cas for doc %s, extant HLV %+v", base.UD(d.ID), d.HLV)
 		}
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
@@ -2096,8 +2096,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 
 	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
 	mouMatch := false
-	if doc.MetadataOnlyUpdate != nil {
-		mouMatch := base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas
+	if doc.MetadataOnlyUpdate != nil && base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas {
+		mouMatch = base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas
 		base.DebugfCtx(ctx, base.KeySGTest, "updateDoc(%q): _mou:%+v Metadata-only update match:%t", base.UD(doc.ID), doc.MetadataOnlyUpdate, mouMatch)
 	} else {
 		base.DebugfCtx(ctx, base.KeySGTest, "updateDoc(%q): has no _mou", base.UD(doc.ID))

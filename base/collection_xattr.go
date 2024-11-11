@@ -456,7 +456,6 @@ func (c *Collection) updateXattrs(ctx context.Context, k string, exp uint32, cas
 	}
 	mutateOps = appendMacroExpansions(mutateOps, opts)
 
-	fmt.Printf("mutateOps: %+v\n", mutateOps)
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsReplace,
