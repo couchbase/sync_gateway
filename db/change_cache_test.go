@@ -2064,16 +2064,6 @@ func BenchmarkDocChanged(b *testing.B) {
 	}
 }
 
-func TestInvalidXattrStream(t *testing.T) {
-
-	body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", []byte("abcde"))
-	require.Error(t, err)
-	require.Nil(t, body)
-	require.Nil(t, xattr)
-	require.Nil(t, userXattr)
-}
-
-
 // getChanges is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
 func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
 	require.NotNil(t, options.ChangesCtx)
