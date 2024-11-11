@@ -70,9 +70,6 @@ var (
 
 	// ErrConfigRegistryReloadRequired is returned when a db config fetch requires a registry reload based on version mismatch (config is newer)
 	ErrConfigRegistryReloadRequired = &sgError{"Config registry reload required"}
-
-	// ErrSkippedSequencesMissing is returned when attempting to remove a sequence range form the skipped sequence list and at least one sequence in that range is not present
-	ErrSkippedSequencesMissing = &sgError{"Sequence range has sequences that aren't present in skipped list"}
 )
 
 func (e *sgError) Error() string {
