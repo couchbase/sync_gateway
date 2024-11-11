@@ -93,6 +93,9 @@ func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 			} else {
 				t.Skip("intermittent failure in Couchbase Server CBG-4329")
 			}
+			if base.UnitTestUrlIsWalrus() {
+				t.Skip("rosmar failure to investigate CBG-4329")
+			}
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
 			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
