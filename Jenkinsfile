@@ -381,9 +381,6 @@ pipeline {
 
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
-
-            step([$class: 'WsCleanup'])
-            sh "go clean -cache"
         }
         unstable {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
@@ -411,5 +408,9 @@ pipeline {
                 }
             }
         }
+        cleanup {
+            cleanWs(disableDeferredWipeout: true)
+            sh "go clean -cache"
+	}
     }
 }
