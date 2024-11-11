@@ -795,20 +795,6 @@ func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 	}
 }
 
-func (cr ChangesResults) RequireRevID(t testing.TB, revIDs []string) {
-	require.Equal(t, len(revIDs), len(cr.Results))
-	for _, rev := range revIDs {
-		var found bool
-		for _, changeEntry := range cr.Results {
-			if changeEntry.Changes[0]["rev"] == rev {
-				found = true
-				break
-			}
-		}
-		require.True(t, found, "RevID %q missing from results %v", rev, cr.Results)
-	}
-}
-
 func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesURL, username string, useAdminPort bool) (worker base.RetryWorker) {
 
 	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
