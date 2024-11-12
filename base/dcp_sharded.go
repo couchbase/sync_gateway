@@ -451,6 +451,7 @@ func (c *CbgtContext) Stop() {
 
 func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 	removeCbgtCredentials(dbName)
+	removeCbgtRootCertsForBucket(c.sourceUUID)
 }
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
