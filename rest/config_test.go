@@ -3150,8 +3150,9 @@ func TestTLSWithoutCerts(t *testing.T) {
 	})
 	defer rt.Close()
 
-	rt.CreateDatabase("db", rt.NewDbConfig())
-
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AutoImport = true
+	rt.CreateDatabase("db", dbConfig)
 	// ensure import feed works without TLS
 	err := rt.GetSingleDataStore().Set("doc1", 0, nil, []byte(`{"foo": "bar"}`))
 	require.NoError(t, err)
