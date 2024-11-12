@@ -645,6 +645,8 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 	to := ""
 	if col.user != nil && col.user.Name() != "" {
 		to = fmt.Sprintf("  (to %s)", col.user.Name())
+	} else {
+		to = "  (to ADMIN)"
 	}
 
 	base.InfofCtx(ctx, base.KeyChanges, "MultiChangesFeed(channels: %s, options: %s) ... %s", base.UD(chans), options, base.UD(to))
