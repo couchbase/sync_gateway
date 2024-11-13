@@ -127,7 +127,7 @@ type LogPriorityQueue []*LogEntry
 
 type SkippedSequence struct {
 	seq       uint64
-	timeAdded time.Time
+	timeAdded int64
 }
 
 type CacheOptions struct {
@@ -897,7 +897,7 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 }
 
 func (c *changeCache) PushSkipped(ctx context.Context, sequence uint64) {
-	err := c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
+	err := c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now().Unix()})
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyCache, "Error pushing skipped sequence: %d, %v", sequence, err)
 		return
@@ -1061,7 +1061,8 @@ func (l *SkippedSequenceList) getOlderThan(skippedExpiry time.Duration) []uint64
 	oldSequences := make([]uint64, 0)
 	for e := l.skippedList.Front(); e != nil; e = e.Next() {
 		skippedSeq := e.Value.(*SkippedSequence)
-		if time.Since(skippedSeq.timeAdded) > skippedExpiry {
+		timeStamp := time.Unix(skippedSeq.timeAdded, 0)
+		if time.Since(timeStamp) > skippedExpiry {
 			oldSequences = append(oldSequences, skippedSeq.seq)
 		} else {
 			// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
