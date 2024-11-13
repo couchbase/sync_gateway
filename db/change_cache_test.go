@@ -78,11 +78,11 @@ func TestSkippedSequenceList(t *testing.T) {
 
 	skipList := NewSkippedSequenceList()
 	// Push values
-	assert.NoError(t, skipList.Push(&SkippedSequence{4, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{7, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{8, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{12, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{18, time.Now()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{4, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{7, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{8, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{12, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{18, time.Now().Unix()}))
 	assert.True(t, verifySkippedSequences(skipList, []uint64{4, 7, 8, 12, 18}))
 
 	// Retrieval of low value
@@ -108,8 +108,8 @@ func TestSkippedSequenceList(t *testing.T) {
 	assert.True(t, verifySkippedSequences(skipList, []uint64{7}))
 
 	// Add an out-of-sequence entry (make sure bad sequencing doesn't throw us into an infinite loop)
-	assert.Error(t, skipList.Push(&SkippedSequence{6, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{9, time.Now()}))
+	assert.Error(t, skipList.Push(&SkippedSequence{6, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{9, time.Now().Unix()}))
 	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 9}))
 }
 
@@ -1325,7 +1325,8 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(t, db, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	timeAdded := time.Now().Add(time.Duration(time.Hour * -2))
+	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, timeAdded.Unix()})
 	require.NoError(t, err)
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
@@ -1334,6 +1335,80 @@ func TestStopChangeCache(t *testing.T) {
 	// Hang around a while to see if the housekeeping tasks fire and panic
 	time.Sleep(1 * time.Second)
 
+}
+
+// TestSkippedSequenceCompaction:
+//   - Add skipped sequence with time added that is above the max wait for skipped threshold
+//   - Run clean skipped task and assert the sequence is cleaned
+//   - Add new skipped sequence with current timestamp on it
+//   - Run clean skipped task and assert that that sequence still exists in list
+func TestSkippedSequenceCompaction(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	testChangeCache := &changeCache{}
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: 2 * time.Minute,
+		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxNum:  0,
+	}, dbContext.MetadataKeys); err != nil {
+		log.Printf("Init failed for testChangeCache: %v", err)
+		t.Fail()
+	}
+
+	if err := testChangeCache.Start(0); err != nil {
+		log.Printf("Start error for testChangeCache: %v", err)
+		t.Fail()
+	}
+	defer testChangeCache.Stop(ctx)
+	require.NoError(t, err)
+
+	// push entry on skipped list with time added over two minutes (tests max wait for skipped) in the past
+	timeAdded := time.Now().Add(time.Minute * -3)
+	err = testChangeCache.skippedSeqs.Push(&SkippedSequence{3, timeAdded.Unix()})
+	require.NoError(t, err)
+
+	// run clean skipped sequence task
+	require.NoError(t, testChangeCache.CleanSkippedSequenceQueue(ctx))
+
+	// assert that sequence 3 doesn't exists on list
+	assert.False(t, testChangeCache.WasSkipped(3))
+
+	// assert that the skipped sequence 3 is removed
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().AbandonedSeqs.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// push new skipped sequence with current time
+	testChangeCache.PushSkipped(ctx, 4)
+
+	// assert that length is 1
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().SkippedSeqLen.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// run clean skipped sequence task
+	require.NoError(t, testChangeCache.CleanSkippedSequenceQueue(ctx))
+
+	// assert that the above skipped sequence (4) is remains in list, abandoned sequences should still be 1
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().SkippedSeqLen.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().AbandonedSeqs.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// assert that sequence 4 still exists on list
+	assert.True(t, testChangeCache.WasSkipped(4))
 }
 
 // Test size config
