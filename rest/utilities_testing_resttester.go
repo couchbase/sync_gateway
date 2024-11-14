@@ -419,25 +419,25 @@ func (rt *RestTester) RequireDbOnline() {
 // TEMPORARY HELPER METHODS FOR BLIP TEST CLIENT RUNNER
 func (rt *RestTester) PutDocDirectly(docID string, body db.Body) DocVersion {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	_, doc, err := collection.Put(ctx, docID, body)
+	rev, doc, err := collection.Put(ctx, docID, body)
 	require.NoError(rt.TB(), err)
-	return DocVersionFromDocument(doc)
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 func (rt *RestTester) UpdateDocDirectly(docID string, version DocVersion, body db.Body) DocVersion {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	body[db.BodyId] = docID
 	body[db.BodyRev] = version.RevTreeID
-	_, doc, err := collection.Put(ctx, docID, body)
+	rev, doc, err := collection.Put(ctx, docID, body)
 	require.NoError(rt.TB(), err)
-	return DocVersionFromDocument(doc)
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 func (rt *RestTester) DeleteDocDirectly(docID string, version DocVersion) DocVersion {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	_, doc, err := collection.DeleteDoc(ctx, docID, version.RevTreeID)
+	rev, doc, err := collection.DeleteDoc(ctx, docID, version.RevTreeID)
 	require.NoError(rt.TB(), err)
-	return DocVersionFromDocument(doc)
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollection, docID string, body db.Body) DocVersion {
@@ -445,9 +445,9 @@ func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollecti
 		DatabaseCollection: collection,
 	}
 	ctx := base.UserLogCtx(collection.AddCollectionContext(rt.Context()), "gotest", base.UserDomainBuiltin, nil)
-	_, doc, err := dbUser.Put(ctx, docID, body)
+	rev, doc, err := dbUser.Put(ctx, docID, body)
 	require.NoError(rt.TB(), err)
-	return DocVersionFromDocument(doc)
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 // PutDocWithAttachment will upsert the document with a given contents and attachments.

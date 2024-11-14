@@ -17,7 +17,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/xdcr"
 	"github.com/stretchr/testify/require"
 )
@@ -25,22 +24,22 @@ import (
 // Peer represents a peer in an Mobile workflow. The types of Peers are Couchbase Server, Sync Gateway, or Couchbase Lite.
 type Peer interface {
 	// GetDocument returns the latest version of a document. The test will fail the document does not exist.
-	GetDocument(dsName sgbucket.DataStoreName, docID string) (rest.DocVersion, db.Body)
+	GetDocument(dsName sgbucket.DataStoreName, docID string) (DocMetadata, db.Body)
 	// CreateDocument creates a document on the peer. The test will fail if the document already exists.
-	CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion
+	CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata
 	// WriteDocument upserts a document to the peer. The test will fail if the write does not succeed. Reasons for failure might be sync function rejections for Sync Gateway rejections.
-	WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion
+	WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata
 	// DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
-	DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion
+	DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata
 
 	// WaitForDocVersion waits for a document to reach a specific version. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
-	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) db.Body
+	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) db.Body
 
 	// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
 	WaitForDeletion(dsName sgbucket.DataStoreName, docID string)
 
 	// WaitForTombstoneVersion waits for a document to reach a specific version. This document must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion)
+	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata)
 
 	// RequireDocNotFound asserts that a document does not exist on the peer.
 	RequireDocNotFound(dsName sgbucket.DataStoreName, docID string)

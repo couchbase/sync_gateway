@@ -53,6 +53,7 @@ const (
 	KeyReplicate
 	KeySync
 	KeySyncMsg
+	KeyVV
 	KeyWebSocket
 	KeyWebSocketFrame
 	KeySGTest
@@ -87,6 +88,7 @@ var (
 		KeyReplicate:      "Replicate",
 		KeySync:           "Sync",
 		KeySyncMsg:        "SyncMsg",
+		KeyVV:             "VV",
 		KeyWebSocket:      "WS",
 		KeyWebSocketFrame: "WSFrame",
 		KeySGTest:         "TEST",

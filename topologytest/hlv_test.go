@@ -15,7 +15,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/rest"
 	"golang.org/x/exp/maps"
 
 	"github.com/stretchr/testify/require"
@@ -68,7 +67,7 @@ func getSingleActorTestCase() []singleActorTest {
 // TestHLVCreateDocumentSingleActor tests creating a document with a single actor in different topologies.
 func TestHLVCreateDocumentSingleActor(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeySGTest)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
 	for _, tc := range getSingleActorTestCase() {
 		t.Run(tc.description(), func(t *testing.T) {
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
@@ -83,14 +82,14 @@ func TestHLVCreateDocumentSingleActor(t *testing.T) {
 // TestHLVUpdateDocumentSingleActor tests creating a document with a single actor in different topologies.
 func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeySGTest)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
 	for _, tc := range getSingleActorTestCase() {
 		t.Run(tc.description(), func(t *testing.T) {
 			if strings.HasPrefix(tc.activePeerID, "cbl") {
-				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4335")
+				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
 			}
 			if base.UnitTestUrlIsWalrus() {
-				t.Skip("rosmar failure to investigate CBG-4329")
+				t.Skip("rosmar failure CBG-4365")
 			}
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
@@ -111,11 +110,11 @@ func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 // TestHLVDeleteDocumentSingleActor tests creating a document with a single actor in different topologies.
 func TestHLVDeleteDocumentSingleActor(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeySGTest)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
 	for _, tc := range getSingleActorTestCase() {
 		t.Run(tc.description(), func(t *testing.T) {
 			if strings.HasPrefix(tc.activePeerID, "cbl") {
-				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet")
+				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 			}
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
@@ -135,13 +134,13 @@ func TestHLVDeleteDocumentSingleActor(t *testing.T) {
 // TestHLVResurrectDocumentSingleActor tests resurrect a document with a single actor in different topologies.
 func TestHLVResurrectDocumentSingleActor(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeySGTest)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
 	for _, tc := range getSingleActorTestCase() {
 		t.Run(tc.description(), func(t *testing.T) {
 			if strings.HasPrefix(tc.activePeerID, "cbl") {
-				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet")
+				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 			}
-			t.Skip("Skipping Sync Gateway test for rosmar, intermittent failures CBG-4239")
+			t.Skip("Skipping ressurection tests CBG-4366")
 
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
@@ -183,7 +182,7 @@ func stripInternalProperties(body db.Body) {
 	delete(body, "_id")
 }
 
-func waitForVersionAndBody(t *testing.T, testCase singleActorTest, peers map[string]Peer, expectedVersion rest.DocVersion, expectedBody []byte) {
+func waitForVersionAndBody(t *testing.T, testCase singleActorTest, peers map[string]Peer, expectedVersion DocMetadata, expectedBody []byte) {
 	// sort peer names to make tests more deterministic
 	peerNames := maps.Keys(peers)
 	for _, peerName := range peerNames {

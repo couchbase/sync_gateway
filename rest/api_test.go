@@ -2834,7 +2834,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 
 	// assert that we have a prev CV drop to pv and a new CV pair, assert pv values are as expected after delta conversions
 	assert.Equal(t, testSource, newDoc.HLV.SourceID)
-	assert.Equal(t, version2.HLV.Version, newDoc.HLV.Version)
+	assert.Equal(t, version2.CV.Value, newDoc.HLV.Version)
 	assert.Len(t, newDoc.HLV.PreviousVersions, 1)
 	assert.Equal(t, casV1, newDoc.HLV.PreviousVersions[encodedSourceV1])
 

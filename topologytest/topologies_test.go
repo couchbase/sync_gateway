@@ -23,6 +23,7 @@ type Topology struct {
 	skipIf       func(t *testing.T, activePeerID string, peers map[string]Peer) // allow temporary skips while the code is being ironed out
 }
 
+// PeerNames returns a sorted list of peers.
 func (t Topology) PeerNames() []string {
 	peerNames := maps.Keys(t.peers)
 	slices.Sort(peerNames)

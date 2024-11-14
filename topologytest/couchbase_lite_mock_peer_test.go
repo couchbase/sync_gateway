@@ -43,9 +43,9 @@ func (p *CouchbaseLiteMockPeer) String() string {
 }
 
 // GetDocument returns the latest version of a document. The test will fail the document does not exist.
-func (p *CouchbaseLiteMockPeer) GetDocument(_ sgbucket.DataStoreName, _ string) (rest.DocVersion, db.Body) {
+func (p *CouchbaseLiteMockPeer) GetDocument(_ sgbucket.DataStoreName, _ string) (DocMetadata, db.Body) {
 	// this isn't yet collection aware, using single default collection
-	return rest.EmptyDocVersion(), nil
+	return DocMetadata{}, nil
 }
 
 // getSingleBlipClient returns the single blip client for the peer. If there are multiple clients, or not clients it will fail the test. This is temporary to stub support for multiple Sync Gateway peers.
@@ -62,28 +62,28 @@ func (p *CouchbaseLiteMockPeer) getSingleBlipClient() *PeerBlipTesterClient {
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
-func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
 	p.t.Logf("%s: Creating document %s", p, docID)
 	return p.WriteDocument(dsName, docID, body)
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *CouchbaseLiteMockPeer) WriteDocument(_ sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+func (p *CouchbaseLiteMockPeer) WriteDocument(_ sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
 	// set an HLV here.
 	docVersion, err := client.btcRunner.PushRev(client.ID(), docID, rest.EmptyDocVersion(), body)
 	require.NoError(client.btcRunner.TB(), err)
-	return docVersion
+	return DocMetadataFromDocVersion(docID, docVersion)
 }
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
-func (p *CouchbaseLiteMockPeer) DeleteDocument(sgbucket.DataStoreName, string) rest.DocVersion {
-	return rest.EmptyDocVersion()
+func (p *CouchbaseLiteMockPeer) DeleteDocument(sgbucket.DataStoreName, string) DocMetadata {
+	return DocMetadata{}
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docID string, _ rest.DocVersion) db.Body {
+func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docID string, _ DocMetadata) db.Body {
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
 	// FIXME: waiting for a specific version isn't working yet.
@@ -99,7 +99,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDeletion(_ sgbucket.DataStoreName, _ stri
 }
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(_ sgbucket.DataStoreName, _ string, _ rest.DocVersion) {
+func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(_ sgbucket.DataStoreName, _ string, _ DocMetadata) {
 	require.Fail(p.TB(), "WaitForTombstoneVersion not yet implemented CBG-4257")
 }
 
