@@ -17,7 +17,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/xdcr"
 	"github.com/stretchr/testify/require"
 )
@@ -46,7 +45,7 @@ type Peer interface {
 	WaitForDeletion(dsName sgbucket.DataStoreName, docID string)
 
 	// WaitForTombstoneVersion waits for a document to reach a specific version. This document must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion)
+	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata)
 
 	// RequireDocNotFound asserts that a document does not exist on the peer.
 	RequireDocNotFound(dsName sgbucket.DataStoreName, docID string)

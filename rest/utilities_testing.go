@@ -1485,7 +1485,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("db:%s Creating user: %v", bt.restTester.GetDatabase().Name, userDocBody)
+		log.Printf("Creating user: %v", userDocBody)
 
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
 		_ = bt.restTester.SendAdminRequest(
@@ -2448,15 +2448,12 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 type DocVersion struct {
-	RevTreeID     string                  // RevTreeID is the rev treee ID of a document, may be empty not present
-	HLV           *db.HybridLogicalVector // HLV is the hybrid logical vector of the document, may not be present
-	Mou           *db.MetadataOnlyUpdate  // Mou is the metadata only update of the document, may not be present
-	Cas           uint64                  // Cas is the cas value of the document
-	HasImplicitCV bool                    // If true, the HLV was constructed from cas@sourceID instead of from _vv, used for documents written to Couchbase Server without Sync Gateway
+	RevTreeID string
+	CV        db.Version
 }
 
-func (v DocVersion) String() string {
-	return fmt.Sprintf("Cas:%d RevTreeID:%s HLV:%+v Mou:%+v HasImplicitCV:%t", v.Cas, v.RevTreeID, v.HLV, v.Mou, v.HasImplicitCV)
+func (v *DocVersion) String() string {
+	return fmt.Sprintf("RevTreeID: %s", v.RevTreeID)
 }
 
 func (v DocVersion) Equal(o DocVersion) bool {
@@ -2468,17 +2465,13 @@ func (v DocVersion) Equal(o DocVersion) bool {
 
 func (v DocVersion) GetRev(useHLV bool) string {
 	if useHLV {
-		if v.HLV == nil {
+		if v.CV.SourceID == "" {
 			return ""
 		}
-		return v.HLV.GetCurrentVersionString()
+		return v.CV.String()
 	} else {
 		return v.RevTreeID
 	}
-}
-
-func (v DocVersion) CV() string {
-	return v.GetRev(true)
 }
 
 // Digest returns the digest for the current version
@@ -2509,16 +2502,6 @@ func EmptyDocVersion() DocVersion {
 // NewDocVersionFromFakeRev returns a new DocVersion from the given fake rev ID, intended for use when we explicit create conflicts.
 func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
 	return DocVersion{RevTreeID: fakeRev}
-}
-
-// DocVersionFromDocument returns a DocVersion from the given document.
-func DocVersionFromDocument(doc *db.Document) DocVersion {
-	return DocVersion{
-		RevTreeID: doc.CurrentRev,
-		Mou:       doc.MetadataOnlyUpdate,
-		Cas:       doc.Cas,
-		HLV:       doc.HLV,
-	}
 }
 
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
