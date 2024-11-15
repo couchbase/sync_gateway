@@ -18,7 +18,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/xdcr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,16 +78,23 @@ func (p *CouchbaseServerPeer) getCollection(dsName sgbucket.DataStoreName) sgbuc
 }
 
 // GetDocument returns the latest version of a document. The test will fail the document does not exist.
-func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID string) (rest.DocVersion, db.Body) {
+func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID string) (DocMetadata, db.Body) {
 	return getBodyAndVersion(p, p.getCollection(dsName), docID)
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
-func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
-	cas, err := p.getCollection(dsName).WriteCas(docID, 0, 0, body, 0)
+func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
+	p.tb.Logf("%s: Creating document %s", p, docID)
+	// create document with xattrs to prevent XDCR from doing a round trip replication in this scenario:
+	// CBS1: write document (cas1, no _vv)
+	// CBS1->CBS2: XDCR replication
+	// CBS2->CBS1: XDCR replication, creates a new _vv
+	cas, err := p.getCollection(dsName).WriteWithXattrs(p.Context(), docID, 0, 0, body, map[string][]byte{"userxattr": []byte(`{"dummy": "xattr"}`)}, nil, nil)
 	require.NoError(p.tb, err)
-	return rest.DocVersion{
-		CV: db.Version{
+	return DocMetadata{
+		DocID: docID,
+		Cas:   cas,
+		ImplicitCV: &db.Version{
 			SourceID: p.SourceID(),
 			Value:    cas,
 		},
@@ -96,15 +102,19 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) rest.DocVersion {
+func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
+	p.tb.Logf("%s: Writing document %s", p, docID)
 	// write the document LWW, ignoring any in progress writes
-	callback := func(current []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
+	callback := func(_ []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
 		return body, nil, false, nil
 	}
 	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
 	require.NoError(p.tb, err)
-	return rest.DocVersion{
-		CV: db.Version{
+	return DocMetadata{
+		DocID: docID,
+		// FIXME: this should actually probably show the HLV persisted, and then also the implicit CV
+		Cas: cas,
+		ImplicitCV: &db.Version{
 			SourceID: p.SourceID(),
 			Value:    cas,
 		},
@@ -112,15 +122,17 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 }
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
-func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) rest.DocVersion {
+func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata {
 	// delete the document, ignoring any in progress writes. We are allowed to delete a document that does not exist.
-	callback := func(current []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
+	callback := func(_ []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
 		return nil, nil, true, nil
 	}
 	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
 	require.NoError(p.tb, err)
-	return rest.DocVersion{
-		CV: db.Version{
+	return DocMetadata{
+		DocID: docID,
+		Cas:   cas,
+		ImplicitCV: &db.Version{
 			SourceID: p.SourceID(),
 			Value:    cas,
 		},
@@ -128,25 +140,46 @@ func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docI
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected rest.DocVersion) db.Body {
+func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) db.Body {
+	docBytes := p.waitForDocVersion(dsName, docID, expected)
+	var body db.Body
+	require.NoError(p.tb, base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
+	return body
+}
+
+// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
+func (p *CouchbaseServerPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID string) {
+	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
+		_, err := p.getCollection(dsName).Get(docID, nil)
+		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s to be deleted, found err=%v", docID, err)
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+// WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
+func (p *CouchbaseServerPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) {
+	docBytes := p.waitForDocVersion(dsName, docID, expected)
+	require.Nil(p.tb, docBytes, "expected tombstone for docID %s, got %s", docID, docBytes)
+}
+
+// waitForDocVersion waits for a document to reach a specific version and returns the body in bytes. The bytes will be nil if the document is a tombstone. The test will fail if the document does not reach the expected version in 20s.
+func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) []byte {
 	var docBytes []byte
+	var version DocMetadata
 	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
 		var err error
 		var xattrs map[string][]byte
 		var cas uint64
-		docBytes, xattrs, cas, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
+		docBytes, xattrs, cas, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, []string{base.VvXattrName})
 		if !assert.NoError(c, err) {
 			return
 		}
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
-		version := getDocVersion(p, cas, xattrs)
-		assert.Equal(c, expected.CV, version.CV, "Could not find matching CV for %s at version %+v on peer %s, sourceID:%s, found %+v", docID, expected, p, p.SourceID(), version)
+		version = getDocVersion(docID, p, cas, xattrs)
+		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(docBytes))
 
 	}, 5*time.Second, 100*time.Millisecond)
-	// get hlv to construct DocVersion
-	var body db.Body
-	require.NoError(p.tb, base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
-	return body
+	p.tb.Logf("found version %+v for doc %s on %s", version, docID, p)
+	return docBytes
 }
 
 // RequireDocNotFound asserts that a document does not exist on the peer.
@@ -221,15 +254,23 @@ func (p *CouchbaseServerPeer) TB() testing.TB {
 }
 
 // getDocVersion returns a DocVersion from a cas and xattrs with _vv (hlv) and _sync (RevTreeID).
-func getDocVersion(peer Peer, cas uint64, xattrs map[string][]byte) rest.DocVersion {
-	docVersion := rest.DocVersion{}
+func getDocVersion(docID string, peer Peer, cas uint64, xattrs map[string][]byte) DocMetadata {
+	docVersion := DocMetadata{
+		DocID: docID,
+		Cas:   cas,
+	}
+	mouBytes, ok := xattrs[base.MouXattrName]
+	if ok {
+		require.NoError(peer.TB(), json.Unmarshal(mouBytes, &docVersion.Mou))
+	}
 	hlvBytes, ok := xattrs[base.VvXattrName]
 	if ok {
-		var hlv *db.HybridLogicalVector
-		require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &hlv))
-		docVersion.CV = db.Version{SourceID: hlv.SourceID, Value: hlv.Version}
+		require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &docVersion.HLV))
 	} else {
-		docVersion.CV = db.Version{SourceID: peer.SourceID(), Value: cas}
+		docVersion.ImplicitCV = &db.Version{
+			SourceID: peer.SourceID(),
+			Value:    cas,
+		}
 	}
 	sync, ok := xattrs[base.SyncXattrName]
 	if ok {
@@ -241,11 +282,11 @@ func getDocVersion(peer Peer, cas uint64, xattrs map[string][]byte) rest.DocVers
 }
 
 // getBodyAndVersion returns the body and version of a document from a sgbucket.DataStore.
-func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (rest.DocVersion, db.Body) {
-	docBytes, xattrs, cas, err := collection.GetWithXattrs(peer.Context(), docID, []string{base.SyncXattrName, base.VvXattrName})
+func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (DocMetadata, db.Body) {
+	docBytes, xattrs, cas, err := collection.GetWithXattrs(peer.Context(), docID, []string{base.VvXattrName})
 	require.NoError(peer.TB(), err)
 	// get hlv to construct DocVersion
 	var body db.Body
 	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body))
-	return getDocVersion(peer, cas, xattrs), body
+	return getDocVersion(docID, peer, cas, xattrs), body
 }
