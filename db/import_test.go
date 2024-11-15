@@ -104,11 +104,11 @@ func TestOnDemandImportMou(t *testing.T) {
 		require.NoError(t, err)
 
 		if db.UseMou() {
-			require.NotNil(t, doc.metadataOnlyUpdate)
-			require.Equal(t, base.CasToString(writeCas), doc.metadataOnlyUpdate.PreviousCAS)
-			require.Equal(t, base.CasToString(doc.Cas), doc.metadataOnlyUpdate.CAS)
+			require.NotNil(t, doc.MetadataOnlyUpdate)
+			require.Equal(t, base.CasToString(writeCas), doc.MetadataOnlyUpdate.PreviousCAS)
+			require.Equal(t, base.CasToString(doc.Cas), doc.MetadataOnlyUpdate.CAS)
 		} else {
-			require.Nil(t, doc.metadataOnlyUpdate)
+			require.Nil(t, doc.MetadataOnlyUpdate)
 		}
 	})
 
