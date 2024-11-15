@@ -896,11 +896,14 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 }
 
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering. mouMatch represents if the _mou.cas == doc.cas
-func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateType, mouMatch bool) (*Document, error) {
+func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document, docUpdateEvent DocUpdateType, mouMatch bool) (*Document, error) {
 
 	hasHLV := d.HLV != nil
 	if d.HLV == nil {
 		d.HLV = &HybridLogicalVector{}
+		base.DebugfCtx(ctx, base.KeyVV, "No existing HLV for doc %s", base.UD(d.ID))
+	} else {
+		base.DebugfCtx(ctx, base.KeyVV, "Existing HLV for doc %s before modification %+v", base.UD(d.ID), d.HLV)
 	}
 	switch docUpdateEvent {
 	case ExistingVersion:
@@ -922,6 +925,9 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 				return nil, err
 			}
 			d.HLV.CurrentVersionCAS = d.Cas
+			base.DebugfCtx(ctx, base.KeyVV, "Adding new version to HLV due to import for doc %s, updated HLV %+v", base.UD(d.ID), d.HLV)
+		} else {
+			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV to _mou.cas == doc.cas for doc %s, extant HLV %+v", base.UD(d.ID), d.HLV)
 		}
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
@@ -1797,7 +1803,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	// Store the new revision body into the doc:
 	doc.setRevisionBody(ctx, newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
 	doc.SyncData.Attachments = newDoc.DocAttachments
-	doc.metadataOnlyUpdate = newDoc.metadataOnlyUpdate
+	doc.MetadataOnlyUpdate = newDoc.MetadataOnlyUpdate
 
 	if doc.CurrentRev == newRevID {
 		doc.NewestRev = ""
@@ -1808,7 +1814,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		if doc.CurrentRev != prevCurrentRev {
 			doc.promoteNonWinningRevisionBody(ctx, doc.CurrentRev, db.RevisionBodyLoader)
 			// If the update resulted in promoting a previous non-winning revision body to winning, this isn't a metadata only update.
-			doc.metadataOnlyUpdate = nil
+			doc.MetadataOnlyUpdate = nil
 		}
 	}
 }
@@ -2088,8 +2094,14 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	// compute mouMatch before the callback modifies doc.metadataOnlyUpdate
-	mouMatch := doc.metadataOnlyUpdate != nil && base.HexCasToUint64(doc.metadataOnlyUpdate.CAS) == doc.Cas
+	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
+	mouMatch := false
+	if doc.MetadataOnlyUpdate != nil && base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas {
+		mouMatch = base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas
+		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): _mou:%+v Metadata-only update match:%t", base.UD(doc.ID), doc.MetadataOnlyUpdate, mouMatch)
+	} else {
+		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou", base.UD(doc.ID))
+	}
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
@@ -2149,7 +2161,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	// The callback has updated the HLV for mutations coming from CBL.  Update the HLV so that the current version is set before
 	// we call updateChannels, which needs to set the current version for removals
 	// update the HLV values
-	doc, err = col.updateHLV(doc, docUpdateEvent, mouMatch)
+	doc, err = col.updateHLV(ctx, doc, docUpdateEvent, mouMatch)
 	if err != nil {
 		return
 	}
@@ -2322,8 +2334,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			updatedDoc.Spec = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
-			if doc.metadataOnlyUpdate != nil {
-				if doc.metadataOnlyUpdate.CAS != "" {
+			if doc.MetadataOnlyUpdate != nil {
+				if doc.MetadataOnlyUpdate.CAS != "" {
 					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 				}
 			} else {
@@ -2386,8 +2398,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		} else if doc != nil {
 			// Update the in-memory CAS values to match macro-expanded values
 			doc.Cas = casOut
-			if doc.metadataOnlyUpdate != nil && doc.metadataOnlyUpdate.CAS == expandMacroCASValueString {
-				doc.metadataOnlyUpdate.CAS = base.CasToString(casOut)
+			if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.CAS == expandMacroCASValueString {
+				doc.MetadataOnlyUpdate.CAS = base.CasToString(casOut)
 			}
 			// update the doc's HLV defined post macro expansion
 			doc = postWriteUpdateHLV(doc, casOut)

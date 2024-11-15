@@ -93,8 +93,8 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	} else {
 		if existingDoc.Deleted {
 			existingBucketDoc.Xattrs[base.SyncXattrName], err = base.JSONMarshal(existingDoc.SyncData)
-			if err == nil && existingDoc.metadataOnlyUpdate != nil && db.useMou() {
-				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.metadataOnlyUpdate)
+			if err == nil && existingDoc.MetadataOnlyUpdate != nil && db.useMou() {
+				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.MetadataOnlyUpdate)
 			}
 		} else {
 			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.VvXattrName], existingBucketDoc.Xattrs[base.MouXattrName], existingBucketDoc.Xattrs[base.GlobalXattrName], err = existingDoc.MarshalWithXattrs()
@@ -337,7 +337,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
 		if metadataOnlyUpdate && db.useMou() {
-			newDoc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo, doc.metadataOnlyUpdate)
+			newDoc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo, doc.MetadataOnlyUpdate)
 		}
 
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil
