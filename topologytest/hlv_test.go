@@ -140,7 +140,7 @@ func TestHLVResurrectDocumentSingleActor(t *testing.T) {
 			if strings.HasPrefix(tc.activePeerID, "cbl") {
 				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 			}
-			t.Skip("Skipping ressurection tests CBG-4366")
+			t.Skip("Skipping resurection tests CBG-4366")
 
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
