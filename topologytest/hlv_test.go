@@ -89,7 +89,9 @@ func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
 			}
 			if base.UnitTestUrlIsWalrus() {
-				t.Skip("rosmar failure CBG-4365")
+				t.Skip("rosmar consistent failure CBG-4365")
+			} else {
+				t.Skip("intermittent failure in Couchbase Server CBG-4329")
 			}
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
