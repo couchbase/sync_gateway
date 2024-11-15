@@ -198,7 +198,7 @@ type Document struct {
 	ID                 string              `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas                uint64              // Document cas
 	rawUserXattr       []byte              // Raw user xattr as retrieved from the bucket
-	metadataOnlyUpdate *MetadataOnlyUpdate // Contents of _mou xattr, marshalled/unmarshalled with document from xattrs
+	MetadataOnlyUpdate *MetadataOnlyUpdate // Contents of _mou xattr, marshalled/unmarshalled with document from xattrs
 
 	Deleted        bool
 	DocExpiry      uint32
@@ -433,7 +433,7 @@ func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data, syncXa
 	}
 
 	if len(mouXattrData) > 0 {
-		if err := base.JSONUnmarshal(mouXattrData, &doc.metadataOnlyUpdate); err != nil {
+		if err := base.JSONUnmarshal(mouXattrData, &doc.MetadataOnlyUpdate); err != nil {
 			base.WarnfCtx(ctx, "Failed to unmarshal mouXattr for key %v, mou will be ignored. Err: %v mou:%s", base.UD(docid), err, mouXattrData)
 		}
 	}
@@ -1274,8 +1274,8 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 		return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
-	if doc.metadataOnlyUpdate != nil {
-		mouXattr, err = base.JSONMarshal(doc.metadataOnlyUpdate)
+	if doc.MetadataOnlyUpdate != nil {
+		mouXattr, err = base.JSONMarshal(doc.MetadataOnlyUpdate)
 		if err != nil {
 			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc MouData with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
