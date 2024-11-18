@@ -12,7 +12,10 @@ package rest
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -171,5 +174,72 @@ func TestGuestReadOnly(t *testing.T) {
 	RequireStatus(t, response, http.StatusForbidden)
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc/_blipsync", "")
 	RequireStatus(t, response, http.StatusForbidden)
+
+}
+
+func TestGetDocWithCV(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	docID := "doc1"
+	docVersion := rt.PutDocDirectly(docID, db.Body{"foo": "bar"})
+	testCases := []struct {
+		name      string
+		url       string
+		output    string
+		headers   map[string]string
+		multipart bool
+	}{
+		{
+			name:   "get doc",
+			url:    "/{{.keyspace}}/doc1",
+			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar"}`, docID, docVersion.RevTreeID),
+		},
+		{
+			name:   "get doc with rev",
+			url:    fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s", docVersion.RevTreeID),
+			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar"}`, docID, docVersion.RevTreeID),
+		},
+		{
+			name:   "get doc with cv",
+			url:    "/{{.keyspace}}/doc1?show_cv=true",
+			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}`, docID, docVersion.RevTreeID, docVersion.CV),
+		},
+		{
+			name:   "get doc with open_revs=all and cv no multipart",
+			url:    "/{{.keyspace}}/doc1?open_revs=all&show_cv=true",
+			output: fmt.Sprintf(`[{"ok": {"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}}]`, docID, docVersion.RevTreeID, docVersion.CV),
+			headers: map[string]string{
+				"Accept": "application/json",
+			},
+		},
+
+		{
+			name:      "get doc with open_revs=all and cv",
+			url:       "/{{.keyspace}}/doc1?open_revs=all&show_cv=true",
+			output:    fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}`, docID, docVersion.RevTreeID, docVersion.CV),
+			multipart: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := rt.SendAdminRequestWithHeaders("GET", testCase.url, "", testCase.headers)
+			RequireStatus(t, response, http.StatusOK)
+			output := response.BodyString()
+			if testCase.multipart {
+				_, params, err := mime.ParseMediaType(response.Header().Get("Content-Type"))
+				require.NoError(t, err)
+				mr := multipart.NewReader(response.Body, params["boundary"])
+				p, err := mr.NextPart()
+				require.NoError(t, err)
+				bodyBytes, err := io.ReadAll(p)
+				require.NoError(t, err)
+				output = string(bodyBytes)
+				_, err = mr.NextPart()
+				require.ErrorIs(t, err, io.EOF)
+			}
+			assert.JSONEq(t, testCase.output, output)
+		})
+	}
 
 }
