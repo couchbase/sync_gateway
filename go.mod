@@ -3,7 +3,7 @@ module github.com/couchbase/sync_gateway
 go 1.23
 
 require (
-	dario.cat/mergo v1.0.0
+	dario.cat/mergo v1.0.1
 	github.com/KimMachineGun/automemlimit v0.6.1
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/couchbase/cbgt v1.3.9
@@ -38,7 +38,6 @@ require (
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
 	golang.org/x/net v0.28.0
 	golang.org/x/oauth2 v0.22.0
-	golang.org/x/sync v0.8.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
