@@ -328,7 +328,7 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	apr.activeSendChanges.Set(true)
 	go func(s *blip.Sender) {
 		defer apr.activeSendChanges.Set(false)
-		isComplete := bh.sendChanges(s, &sendChangesOptions{
+		isComplete, err := bh.sendChanges(s, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,
 			since:             apr.defaultCollection.Checkpointer.lastCheckpointSeq,
 			continuous:        apr.config.Continuous,
@@ -340,6 +340,9 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
 			changesCtx:        collectionCtx.changesCtx,
 		})
+		if err != nil {
+			base.InfofCtx(apr.ctx, base.KeyReplicate, "Error sending changes: %v", err)
+		}
 		// On a normal completion, call complete for the replication
 		if isComplete {
 			apr.Complete()

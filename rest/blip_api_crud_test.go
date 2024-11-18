@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -3179,6 +3180,47 @@ func TestBlipDatabaseClose(t *testing.T) {
 		btcRunner.WaitForVersion(btc.id, markerDoc, markerDocVersion)
 
 		RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/", ""), http.StatusOK)
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.True(c, blipContextClosed.Load())
+		}, time.Second*10, time.Millisecond*100)
+	})
+}
+
+// Starts a continuous pull replication then updates the db to trigger a close.
+func TestChangesFeedExitDisconnect(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
+	btcRunner := NewBlipTesterClientRunner(t)
+	var shouldChanenlQueryError atomic.Bool
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			leakyBucketConfig: &base.LeakyBucketConfig{
+				QueryCallback: func(ddoc, viewname string, params map[string]any) error {
+					if viewname == "channels" && shouldChanenlQueryError.Load() {
+						return gocb.ErrTimeout
+					}
+					return nil
+				},
+				N1QLQueryCallback: func(_ context.Context, statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool) error {
+					if strings.Contains(statement, "sg_channels") && shouldChanenlQueryError.Load() {
+						return gocb.ErrTimeout
+					}
+					return nil
+				},
+			},
+		})
+		defer rt.Close()
+		const username = "alice"
+		rt.CreateUser(username, []string{"*"})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		var blipContextClosed atomic.Bool
+		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
+			blipContextClosed.Store(true)
+		}
+
+		shouldChanenlQueryError.Store(true)
+		btcRunner.StartPull(btc.id)
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			assert.True(c, blipContextClosed.Load())

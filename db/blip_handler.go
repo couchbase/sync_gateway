@@ -348,7 +348,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
-		_ = bh.sendChanges(rq.Sender, &sendChangesOptions{
+		_, err = bh.sendChanges(rq.Sender, &sendChangesOptions{
 			docIDs:            subChangesParams.docIDs(),
 			since:             subChangesParams.Since(),
 			continuous:        continuous,
@@ -361,6 +361,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			changesCtx:        collectionCtx.changesCtx,
 			requestPlusSeq:    requestPlusSeq,
 		})
+		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
+		if err != nil {
+			base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "Closing blip connection due to changes feed error %+v\n", err)
+			bh.ctxCancelFunc()
+		}
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
@@ -429,7 +434,7 @@ func (flag changesDeletedFlag) HasFlag(deletedFlag changesDeletedFlag) bool {
 }
 
 // Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (isComplete bool) {
+func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (bool, error) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			bh.replicationStats.NumHandlersPanicked.Add(1)
@@ -472,11 +477,10 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	changesDb, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
 	if err != nil {
 		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %v", bh.blipContext.ID, err)
-		return false
-
+		return false, err
 	}
 
-	forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
+	forceClose, err := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
@@ -539,8 +543,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		}
 		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.loggingCtx, user)
 	}
-
-	return !forceClose
+	return !forceClose, err
 }
 
 func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []interface{} {

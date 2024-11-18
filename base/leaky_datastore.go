@@ -241,6 +241,12 @@ func (lds *LeakyDataStore) ViewQuery(ctx context.Context, ddoc, name string, par
 	if !ok {
 		return nil, errors.New("bucket does not support views")
 	}
+	if lds.config.QueryCallback != nil {
+		err := lds.config.QueryCallback(ddoc, name, params)
+		if err != nil {
+			return nil, err
+		}
+	}
 	iterator, err := vs.ViewQuery(ctx, ddoc, name, params)
 
 	if lds.config.FirstTimeViewCustomPartialError {
@@ -324,8 +330,12 @@ func (lds *LeakyDataStore) SetFirstTimeViewCustomPartialError(val bool) {
 	lds.config.FirstTimeViewCustomPartialError = val
 }
 
-func (lds *LeakyDataStore) SetPostQueryCallback(callback func(ddoc, viewName string, params map[string]interface{})) {
+func (lds *LeakyDataStore) SetPostQueryCallback(callback func(ddoc, viewName string, params map[string]any)) {
 	lds.config.PostQueryCallback = callback
+}
+
+func (lds *LeakyDataStore) SetQueryCallback(fn func(ddoc, viewName string, params map[string]any) error) {
+	lds.config.QueryCallback = fn
 }
 
 func (lds *LeakyDataStore) SetPostN1QLQueryCallback(callback func()) {
@@ -446,6 +456,12 @@ func (lds *LeakyDataStore) Query(ctx context.Context, statement string, params m
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {
 		return nil, err
+	}
+	if lds.config.N1QLQueryCallback != nil {
+		err := lds.config.N1QLQueryCallback(ctx, statement, params, consistency, adhoc)
+		if err != nil {
+			return nil, err
+		}
 	}
 	iterator, err := n1qlStore.Query(ctx, statement, params, consistency, adhoc)
 

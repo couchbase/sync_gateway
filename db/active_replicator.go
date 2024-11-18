@@ -207,12 +207,15 @@ func (ar *ActiveReplicator) GetStatus(ctx context.Context) *ReplicationStatus {
 func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
-	var originPatterns []string // no origin headers for ISGR
-	// NewSGBlipContext doesn't set cancellation context - active replication cancellation on db close is handled independently
-	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns, nil)
+	bsc, err = NewBlipSyncContext(arc.ctx, BlipSyncContextOptions{
+		DB:               arc.config.ActiveDB,
+		ReplicationStats: arc.replicationStats,
+		BlipID:           arc.config.ID + idSuffix,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
+	blipContext := bsc.BlipContext()
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
 	blipContext.OnExitCallback = func() {
 		// fall into a reconnect loop only if the connection is unexpectedly closed.
@@ -220,8 +223,6 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 			go arc.reconnectLoop()
 		}
 	}
-
-	bsc = NewBlipSyncContext(arc.ctx, blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats)
 
 	bsc.loggingCtx = base.CorrelationIDLogCtx(
 		arc.config.ActiveDB.AddDatabaseLogContext(base.NewNonCancelCtx().Ctx),

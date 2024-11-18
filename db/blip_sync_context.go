@@ -34,37 +34,64 @@ const (
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
-func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
+// BlipSyncContextOptions provides options for creating a new BlipSyncContext
+type BlipSyncContextOptions struct {
+	DB               *Database // The backing database
+	ReplicationStats *BlipSyncStats
+	OriginPatterns   []string                  // origin patterns for CORS checking
+	BlipID           string                    // if specified, becomes blip.Context.ID, otherwise this is automatically assigned
+	CorrelationID    string                    // correlation ID for logging
+	ClientType       BLIPSyncContextClientType // name of the client
+	CancelContext    context.Context           // optional context for cancelation
+}
+
+// NewBlipSyncContext creates a BlipSyncContext for listening to blip messages and an associated blip.Context.
+func NewBlipSyncContext(ctx context.Context, opts BlipSyncContextOptions) (*BlipSyncContext, error) {
+	cancelCtx := opts.CancelContext
+	if cancelCtx == nil {
+		cancelCtx = context.Background() // create a local context for the BlipSyncContext
+	}
+	cancelCtx, cancelFunc := context.WithCancel(cancelCtx)
+	bc, err := NewSGBlipContext(ctx, opts.BlipID, opts.OriginPatterns, cancelCtx)
+	if err != nil {
+		cancelFunc()
+		return nil, err
+	}
+
 	maxInFlightChangesBatches := DefaultMaxConcurrentChangesBatches
-	if db.Options.MaxConcurrentChangesBatches != nil {
-		maxInFlightChangesBatches = *db.Options.MaxConcurrentChangesBatches
+	if opts.DB.Options.MaxConcurrentChangesBatches != nil {
+		maxInFlightChangesBatches = *opts.DB.Options.MaxConcurrentChangesBatches
 	}
 	maxInFlightRevs := DefaultMaxConcurrentRevs
-	if db.Options.MaxConcurrentRevs != nil {
-		maxInFlightRevs = *db.Options.MaxConcurrentRevs
+	if opts.DB.Options.MaxConcurrentRevs != nil {
+		maxInFlightRevs = *opts.DB.Options.MaxConcurrentRevs
 	}
 
 	bsc := &BlipSyncContext{
 		blipContext:             bc,
-		blipContextDb:           db,
+		blipContextDb:           opts.DB,
 		loggingCtx:              ctx,
 		terminator:              make(chan bool),
-		userChangeWaiter:        db.NewUserWaiter(),
-		sgCanUseDeltas:          db.DeltaSyncEnabled(),
-		replicationStats:        replicationStats,
+		userChangeWaiter:        opts.DB.NewUserWaiter(),
+		sgCanUseDeltas:          opts.DB.DeltaSyncEnabled(),
+		replicationStats:        opts.ReplicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 		inFlightRevsThrottle:    make(chan struct{}, maxInFlightRevs),
 		collections:             &blipCollections{},
+		ctxCancelFunc:           cancelFunc,
+	}
+	if opts.ClientType != "" {
+		bsc.clientType = opts.ClientType
 	}
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
 	bsc.stats.lastReportTime.Store(time.Now().UnixMilli())
 
-	if u := db.User(); u != nil {
+	if u := opts.DB.User(); u != nil {
 		bsc.userName = u.Name()
 		u.InitializeRoles()
-		if u.Name() == "" && db.IsGuestReadOnly() {
+		if u.Name() == "" && opts.DB.IsGuestReadOnly() {
 			bsc.readOnly = true
 		}
 	}
@@ -72,7 +99,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 	// Register default handlers
 	bc.DefaultHandler = bsc.NotFoundHandler
 	bc.FatalErrorHandler = func(err error) {
-		base.InfofCtx(ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", contextID, err)
+		base.InfofCtx(ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", opts.CorrelationID, err)
 	}
 
 	// Register 2.x replicator handlers
@@ -80,13 +107,13 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		bsc.register(profile, handlerFn)
 	}
 
-	if db.Options.UnsupportedOptions.ConnectedClient {
+	if opts.DB.Options.UnsupportedOptions.ConnectedClient {
 		// Register Connected Client handlers
 		for profile, handlerFn := range kConnectedClientHandlersByProfile {
 			bsc.register(profile, handlerFn)
 		}
 	}
-	return bsc
+	return bsc, nil
 }
 
 // BlipSyncContext represents one BLIP connection (socket) opened by a client.
@@ -133,6 +160,8 @@ type BlipSyncContext struct {
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
 
 	stats blipSyncStats // internal structure to store stats
+
+	ctxCancelFunc context.CancelFunc // function which will terminate the BlipSyncContext connections
 }
 
 // blipSyncStats has support structures to support reporting stats at regular interval
@@ -158,10 +187,6 @@ type AllowedAttachment struct {
 func (bsc *BlipSyncContext) SetActiveCBMobileSubprotocol(subprotocol string) (err error) {
 	bsc.activeCBMobileSubprotocol, err = ParseSubprotocolString(subprotocol)
 	return err
-}
-
-func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
-	bsc.clientType = clientType
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.
@@ -246,6 +271,7 @@ func (bsc *BlipSyncContext) Close() {
 
 			collection.changesCtxCancel()
 		}
+		bsc.ctxCancelFunc()
 		bsc.reportStats(true)
 		close(bsc.terminator)
 	})
@@ -772,4 +798,9 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	dbStats.ReplicationBytesReceived.Add(int64(newBytesReceived))
 	bsc.stats.lastReportTime.Store(currentTime)
 
+}
+
+// BlipContext returns blip.Context for the BlipSyncContext
+func (bsc *BlipSyncContext) BlipContext() *blip.Context {
+	return bsc.blipContext
 }

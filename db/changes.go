@@ -1362,16 +1362,16 @@ func (options ChangesOptions) String() string {
 	)
 }
 
-// Used by BLIP connections for changes.  Supports both one-shot and continuous changes.
-func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (forceClose bool) {
+// Used by BLIP connections for changes.  Supports both one-shot and continuous changes. Returns an error in the case that the feed does not start up, or there is a fatal error in the feed. The caller is responsible for closing the connection, no more changes will be generated. forceClose will be true if connection was terminated underneath the changes feed.
+func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (forceClose bool, err error) {
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose := GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
+	forceClose, err = GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
 
 	if _, ok := err.(*ChangesSendErr); ok {
 		// If there was already an error in a send function, do not send last one shot changes message, since it probably will not work anyway.
-		return forceClose // error is probably because the client closed the connection
+		return forceClose, err // error is probably because the client closed the connection
 	}
 
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
@@ -1379,7 +1379,7 @@ func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWi
 	if isOneShot {
 		_ = send(nil)
 	}
-	return forceClose
+	return forceClose, err
 }
 
 type ChangesSendErr struct{ error }
@@ -1387,7 +1387,7 @@ type ChangesSendErr struct{ error }
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
 // method on `handler`.
-func GenerateChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
+func GenerateChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (forceClose bool, err error) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -1416,6 +1416,7 @@ func GenerateChanges(ctx context.Context, database *DatabaseCollectionWithUser, 
 	var lastSeq SequenceID
 	var feed <-chan *ChangeEntry
 	var timeout <-chan time.Time
+	var feedErr error
 
 	// feedStarted identifies whether at least one MultiChangesFeed has been started.  Used to identify when a one-shot changes is done.
 	feedStarted := false
@@ -1444,7 +1445,7 @@ loop:
 				feed, feedErr = database.MultiChangesFeed(ctx, inChannels, options)
 			}
 			if feedErr != nil || feed == nil {
-				return feedErr, forceClose
+				return forceClose, feedErr
 			}
 			feedStarted = true
 		}
@@ -1456,7 +1457,6 @@ loop:
 		}
 
 		var sendErr error
-
 		// Wait for either a new change, a heartbeat, or a timeout:
 		select {
 		case entry, ok := <-feed:
@@ -1465,6 +1465,7 @@ loop:
 			} else if entry == nil {
 				sendErr = send(nil)
 			} else if entry.Err != nil {
+				feedErr = entry.Err
 				break loop // error returned by feed - end changes
 			} else {
 				entries := []*ChangeEntry{entry}
@@ -1481,6 +1482,7 @@ loop:
 							waiting = true
 							break collect
 						} else if entry.Err != nil {
+							feedErr = entry.Err
 							break loop // error returned by feed - end changes
 						}
 						entries = append(entries, entry)
@@ -1524,14 +1526,14 @@ loop:
 		}
 		if sendErr != nil {
 			forceClose = true
-			return &ChangesSendErr{sendErr}, forceClose
+			return forceClose, &ChangesSendErr{sendErr}
 		}
 	}
 
 	// if the ChangesCtx is done, the connection was force closed. This could actually happen and send a ChangeEntry.Err. Instead of checking each place in this function, set the forceClose flag here.
-	if options.ChangesCtx.Err() != nil {
+	if options.ChangesCtx.Err() != nil { // && feedErr != nil {
 		forceClose = true
 	}
 
-	return nil, forceClose
+	return forceClose, feedErr
 }
