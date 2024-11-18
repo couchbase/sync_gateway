@@ -18,7 +18,7 @@ require (
 	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78
 	github.com/elastic/gosigar v0.14.3
-	github.com/felixge/fgprof v0.9.4
+	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.0.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
@@ -38,7 +38,6 @@ require (
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
 	golang.org/x/net v0.28.0
 	golang.org/x/oauth2 v0.22.0
-	golang.org/x/sync v0.8.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
