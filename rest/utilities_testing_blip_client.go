@@ -1475,10 +1475,5 @@ func (btc *BlipTesterClient) AssertDeltaSrcProperty(t *testing.T, msg *blip.Mess
 	subProtocol, err := db.ParseSubprotocolString(btc.SupportedBLIPProtocols[0])
 	require.NoError(t, err)
 	rev := docVersion.GetRev(subProtocol >= db.CBMobileReplicationV4)
-	if btc.UseHLV() {
-		assert.Equal(t, rev, msg.Properties[db.RevMessageDeltaSrc])
-	} else {
-		// v4 and below will use revid
-		assert.Equal(t, rev, msg.Properties[db.RevMessageDeltaSrc])
-	}
+	assert.Equal(t, rev, msg.Properties[db.RevMessageDeltaSrc])
 }
