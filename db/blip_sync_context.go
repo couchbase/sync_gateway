@@ -372,8 +372,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 
 			var err error
 
-			// fallback to sending full revision if protocol is < v4
-			if deltaSrcRevID != "" { //"" && bsc.useHLV() {
+			if deltaSrcRevID != "" {
 				err = bsc.sendRevAsDelta(ctx, sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
 				err = bsc.sendRevision(ctx, sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
