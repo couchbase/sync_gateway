@@ -211,6 +211,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns, cancelCtx)
 	if err != nil {
+		cancelFunc()
 		return nil, nil, err
 	}
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval

@@ -55,6 +55,7 @@ func (h *handler) handleBLIPSync() error {
 	// Create a BLIP context:
 	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns, cancelCtx)
 	if err != nil {
+		cancelCtxFunc()
 		return err
 	}
 
