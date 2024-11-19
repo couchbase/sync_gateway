@@ -41,12 +41,6 @@ type Peer interface {
 	// WaitForTombstoneVersion waits for a document to reach a specific version. This document must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata)
 
-	// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
-	WaitForDeletion(dsName sgbucket.DataStoreName, docID string)
-
-	// WaitForTombstoneVersion waits for a document to reach a specific version. This document must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata)
-
 	// RequireDocNotFound asserts that a document does not exist on the peer.
 	RequireDocNotFound(dsName sgbucket.DataStoreName, docID string)
 

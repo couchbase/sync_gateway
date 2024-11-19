@@ -170,9 +170,10 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		var xattrs map[string][]byte
 		var cas uint64
 		docBytes, xattrs, cas, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, []string{base.VvXattrName})
-		if !assert.NoError(c, err) {
+		if err != nil && base.IsDocNotFoundError(err) {
 			return
 		}
+		assert.NoError(c, err)
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(docID, p, cas, xattrs)
 		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(docBytes))

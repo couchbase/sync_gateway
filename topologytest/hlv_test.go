@@ -186,7 +186,9 @@ func TestHLVUpdateDocumentMultiActor(t *testing.T) {
 				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
 			}
 			if base.UnitTestUrlIsWalrus() {
-				t.Skip("rosmar failure CBG-4365")
+				t.Skip("rosmar consistent failure CBG-4365")
+			} else {
+				t.Skip("intermittent failure in Couchbase Server CBG-4329")
 			}
 			peers, _ := setupTests(t, tc.topology, "")
 
@@ -248,6 +250,9 @@ func TestHLVDeleteDocumentMultiActor(t *testing.T) {
 		t.Run(tc.description(), func(t *testing.T) {
 			if strings.Contains(tc.description(), "CBL") {
 				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+			}
+			if !base.UnitTestUrlIsWalrus() {
+				t.Skip("intermittent failure in Couchbase Server CBG-4329")
 			}
 			peers, _ := setupTests(t, tc.topology, "")
 
@@ -325,7 +330,7 @@ func TestHLVResurrectDocumentMultiActor(t *testing.T) {
 				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 			}
 
-			t.Skip("skipped resurrection test, intermittent failures ")
+			t.Skip("skipped resurrection test, intermittent failures CBG-4372")
 
 			peers, _ := setupTests(t, tc.topology, "")
 
