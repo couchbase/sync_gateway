@@ -427,7 +427,10 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 			return nil, nil, err
 		}
 	} else {
-		return nil, nil, fmt.Errorf("delta sync for rev tree not yet implemented")
+		fromRevision, err = db.revisionCache.GetWithRev(ctx, docID, fromRev, RevCacheIncludeDelta)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
@@ -449,7 +452,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 	// If delta is found, check whether it is a delta for the toRevID we want
 	if fromRevision.Delta != nil {
-		if fromRevision.Delta.ToCV == toRev {
+		if fromRevision.Delta.ToCV == toRev || fromRevision.Delta.ToRevID == toRev {
 
 			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevision.CV, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
@@ -467,13 +470,21 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	if fromRevision.BodyBytes != nil {
 
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		cv, err := ParseVersion(toRev)
-		if err != nil {
-			return nil, nil, err
-		}
-		toRevision, err := db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta)
-		if err != nil {
-			return nil, nil, err
+		var toRevision DocumentRevision
+		if useCVRevCache {
+			cv, err := ParseVersion(toRev)
+			if err != nil {
+				return nil, nil, err
+			}
+			toRevision, err = db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta)
+			if err != nil {
+				return nil, nil, err
+			}
+		} else {
+			toRevision, err = db.revisionCache.GetWithRev(ctx, docID, toRev, RevCacheIncludeDelta)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 
 		deleted := toRevision.Deleted
