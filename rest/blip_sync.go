@@ -51,30 +51,32 @@ func (h *handler) handleBLIPSync() error {
 	// error is checked at the time of database load, and ignored at this time
 	originPatterns, _ := hostOnlyCORS(h.db.CORS.Origin)
 
-	// we could pull the exact CBL client and version from User-Agent
-	clientType := db.BLIPClientTypeCBL2
-	if string(db.BLIPClientTypeSGR2) == h.getQuery(db.BLIPSyncClientTypeQueryParam) {
-		clientType = db.BLIPClientTypeSGR2
-	}
-	bsc, err := db.NewBlipSyncContext(h.ctx(), db.BlipSyncContextOptions{
-		DB:               h.db,
-		ReplicationStats: db.BlipSyncStatsForCBL(h.db.DbStats),
-		OriginPatterns:   originPatterns,
-		CorrelationID:    h.formatSerialNumber(),
-		CancelContext:    h.db.DatabaseContext.CancelContext,
-		ClientType:       clientType,
-	})
+	cancelCtx, cancelCtxFunc := context.WithCancel(h.db.DatabaseContext.CancelContext)
+	// Create a BLIP context:
+	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns, cancelCtx)
 	if err != nil {
 		return err
 	}
-	defer bsc.Close()
 
-	blipContext := bsc.BlipContext()
 	// Overwrite the existing logging context with the blip context ID
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))
 	h.response.Header().Set(db.BLIPCorrelationIDResponseHeader, blipContext.ID)
+	// Create a new BlipSyncContext attached to the given blipContext.
+	ctx, err := db.NewBlipSyncContext(h.rqCtx, blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats), cancelCtxFunc)
+	if err != nil {
+		return err
+	}
+	defer ctx.Close()
 
-	auditFields := base.AuditFields{base.AuditFieldReplicationID: base.FormatBlipContextID(blipContext.ID), "client_type": clientType}
+	auditFields := base.AuditFields{base.AuditFieldReplicationID: base.FormatBlipContextID(blipContext.ID)}
+	if string(db.BLIPClientTypeSGR2) == h.getQuery(db.BLIPSyncClientTypeQueryParam) {
+		ctx.SetClientType(db.BLIPClientTypeSGR2)
+		auditFields["client_type"] = db.BLIPClientTypeSGR2
+	} else {
+		// we could pull the exact CBL client and version from User-Agent
+		ctx.SetClientType(db.BLIPClientTypeCBL2)
+		auditFields["client_type"] = db.BLIPClientTypeCBL2
+	}
 	base.Audit(h.rqCtx, base.AuditIDReplicationConnect, auditFields)
 	defer func() {
 		base.Audit(h.rqCtx, base.AuditIDReplicationDisconnect, auditFields)
@@ -91,7 +93,7 @@ func (h *handler) handleBLIPSync() error {
 		// ActiveSubprotocol only available after handshake via ServeHTTP(), so have to get go-blip to invoke callback between handshake and serving BLIP messages
 		subprotocol := blipContext.ActiveSubprotocol()
 		h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to WebSocket protocol %s+%s%s", blipContext.ID, blip.WebSocketSubProtocolPrefix, subprotocol, h.formattedEffectiveUserName()))
-		err = bsc.SetActiveCBMobileSubprotocol(subprotocol)
+		err = ctx.SetActiveCBMobileSubprotocol(subprotocol)
 		if err != nil {
 			base.WarnfCtx(h.ctx(), "Couldn't set active CB Mobile Subprotocol: %v", err)
 		}

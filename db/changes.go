@@ -1367,7 +1367,7 @@ func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWi
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	forceClose, err = GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
+	err, forceClose = GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
 
 	if _, ok := err.(*ChangesSendErr); ok {
 		// If there was already an error in a send function, do not send last one shot changes message, since it probably will not work anyway.
@@ -1387,7 +1387,7 @@ type ChangesSendErr struct{ error }
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
 // method on `handler`.
-func GenerateChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (forceClose bool, err error) {
+func GenerateChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -1445,7 +1445,7 @@ loop:
 				feed, feedErr = database.MultiChangesFeed(ctx, inChannels, options)
 			}
 			if feedErr != nil || feed == nil {
-				return forceClose, feedErr
+				return feedErr, forceClose
 			}
 			feedStarted = true
 		}
@@ -1526,14 +1526,14 @@ loop:
 		}
 		if sendErr != nil {
 			forceClose = true
-			return forceClose, &ChangesSendErr{sendErr}
+			return &ChangesSendErr{sendErr}, forceClose
 		}
 	}
 
 	// if the ChangesCtx is done, the connection was force closed. This could actually happen and send a ChangeEntry.Err. Instead of checking each place in this function, set the forceClose flag here.
-	if options.ChangesCtx.Err() != nil { // && feedErr != nil {
+	if options.ChangesCtx.Err() != nil {
 		forceClose = true
 	}
 
-	return forceClose, feedErr
+	return feedErr, forceClose
 }

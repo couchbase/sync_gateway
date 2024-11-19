@@ -361,7 +361,6 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			changesCtx:        collectionCtx.changesCtx,
 			requestPlusSeq:    requestPlusSeq,
 		})
-		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 		if err != nil {
 			base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "Closing blip connection due to changes feed error %+v\n", err)
 			bh.ctxCancelFunc()
