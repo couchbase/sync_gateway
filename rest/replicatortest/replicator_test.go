@@ -7559,15 +7559,15 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	docID := t.Name()
 	// Create the docs //
 	// Doc rev 1
-	version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
+	version1 := activeRT.PutDocDirectly(docID, rest.JsonToMap(t, `{"key":"12","channels": ["rev1chan"]}`))
 	require.NoError(t, activeRT.WaitForVersion(docID, version1))
 
 	// doc rev 2
-	version2 := activeRT.UpdateDoc(docID, version1, `{"key":"12","channels":["rev2+3chan"]}`)
+	version2 := activeRT.UpdateDocDirectly(docID, version1, rest.JsonToMap(t, `{"key":"12","channels":["rev2+3chan"]}`))
 	require.NoError(t, activeRT.WaitForVersion(docID, version2))
 
 	// Doc rev 3
-	version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
+	version3 := activeRT.UpdateDocDirectly(docID, version2, rest.JsonToMap(t, `{"key":"3","channels":["rev2+3chan"]}`))
 	require.NoError(t, activeRT.WaitForVersion(docID, version3))
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()

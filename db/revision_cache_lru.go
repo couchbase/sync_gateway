@@ -68,6 +68,10 @@ func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, revID
 	sc.getShard(docID).UpdateDelta(ctx, docID, revID, collectionID, toDelta)
 }
 
+func (sc *ShardedLRURevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
+	sc.getShard(docID).UpdateDeltaCV(ctx, docID, cv, collectionID, toDelta)
+}
+
 func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
 	return sc.getShard(docID).GetActive(ctx, docID, collectionID)
 }
@@ -173,6 +177,13 @@ func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string
 		}
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction()
+	}
+}
+
+func (rc *LRURevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
+	value := rc.getValueByCV(docID, cv, collectionID, false)
+	if value != nil {
+		value.updateDelta(toDelta)
 	}
 }
 

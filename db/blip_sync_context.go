@@ -372,8 +372,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 
 			var err error
 
-			// fall back to sending full revision v4 protocol, delta sync not yet implemented for v4
-			if deltaSrcRevID != "" && bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+			if deltaSrcRevID != "" {
 				err = bsc.sendRevAsDelta(ctx, sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
 				err = bsc.sendRevision(ctx, sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
@@ -568,12 +567,23 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
-	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq, "")
+	var history []string
+	if bsc.useHLV() {
+		history = append(history, revDelta.HlvHistory)
+	} else {
+		history = revDelta.RevisionHistory
+	}
+	properties := blipRevMessageProperties(history, revDelta.ToDeleted, seq, "")
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bsc.sendRevisionWithProperties(ctx, sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
-		properties, seq, resendFullRevisionFunc)
+	if bsc.useHLV() {
+		return bsc.sendRevisionWithProperties(ctx, sender, docID, revDelta.ToCV, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
+			properties, seq, resendFullRevisionFunc)
+	} else {
+		return bsc.sendRevisionWithProperties(ctx, sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
+			properties, seq, resendFullRevisionFunc)
+	}
 }
 
 // sendBLIPMessage is a simple wrapper around all sent BLIP messages
@@ -717,7 +727,9 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
 		history = toHistory(docRev.History, knownRevs, maxHistory)
 	} else {
-		history = append(history, docRev.hlvHistory)
+		if docRev.hlvHistory != "" {
+			history = append(history, docRev.hlvHistory)
+		}
 	}
 
 	properties := blipRevMessageProperties(history, docRev.Deleted, seq, replacedRevID)
@@ -791,4 +803,8 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	dbStats.ReplicationBytesReceived.Add(int64(newBytesReceived))
 	bsc.stats.lastReportTime.Store(currentTime)
 
+}
+
+func (bsc *BlipSyncContext) useHLV() bool {
+	return bsc.activeCBMobileSubprotocol >= CBMobileReplicationV4
 }
