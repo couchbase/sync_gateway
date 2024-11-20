@@ -67,9 +67,8 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
+	_, rev2ID, err := collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
-	rev2ID := "2-abc"
 
 	// now in any case - we'll have rev 1 backed up
 	rev1OldBody, err = collection.getOldRevisionJSON(ctx, docID, rev1ID)
