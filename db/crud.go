@@ -410,13 +410,28 @@ func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, c
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRev, toRev string, useCVRevCache bool) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
 
-	if docID == "" || fromRevID == "" || toRevID == "" {
+	if docID == "" || fromRev == "" || toRev == "" {
 		return nil, nil, nil
 	}
-
-	fromRevision, err := db.revisionCache.GetWithRev(ctx, docID, fromRevID, RevCacheIncludeDelta)
+	var fromRevision DocumentRevision
+	var fromRevVrs Version
+	if useCVRevCache {
+		fromRevVrs, err = ParseVersion(fromRev)
+		if err != nil {
+			return nil, nil, err
+		}
+		fromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		fromRevision, err = db.revisionCache.GetWithRev(ctx, docID, fromRev, RevCacheIncludeDelta)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
@@ -437,9 +452,9 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 	// If delta is found, check whether it is a delta for the toRevID we want
 	if fromRevision.Delta != nil {
-		if fromRevision.Delta.ToRevID == toRevID {
+		if fromRevision.Delta.ToCV == toRev || fromRevision.Delta.ToRevID == toRev {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, nil, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevision.CV, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -454,15 +469,26 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	// Delta is unavailable, but the body is available.
 	if fromRevision.BodyBytes != nil {
 
-		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		toRevision, err := db.revisionCache.GetWithRev(ctx, docID, toRevID, RevCacheIncludeDelta)
-		if err != nil {
-			return nil, nil, err
+		var toRevision DocumentRevision
+		if useCVRevCache {
+			cv, err := ParseVersion(toRev)
+			if err != nil {
+				return nil, nil, err
+			}
+			toRevision, err = db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta)
+			if err != nil {
+				return nil, nil, err
+			}
+		} else {
+			toRevision, err = db.revisionCache.GetWithRev(ctx, docID, toRev, RevCacheIncludeDelta)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 
 		deleted := toRevision.Deleted
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, nil, toRevision.Channels, deleted, toRevision.History)
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, toRevision.CV, toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
 			return nil, &redactedBody, nil
 		}
@@ -473,8 +499,12 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted, nil)
-			db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRev, toRevision, deleted, nil)
+			if useCVRevCache {
+				db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
+			} else {
+				db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
+			}
 			return &revCacheDelta, nil, nil
 		}
 
@@ -511,10 +541,14 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if err != nil {
 			return nil, nil, err
 		}
-		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted, toRevAttStorageMeta)
+		revCacheDelta := newRevCacheDelta(deltaBytes, fromRev, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
-		db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+		if useCVRevCache {
+			db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
+		} else {
+			db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
+		}
 		return &revCacheDelta, nil, nil
 	}
 
