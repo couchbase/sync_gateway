@@ -20,6 +20,7 @@ get:
     - $ref: ../../components/parameters.yaml#/startkey
     - $ref: ../../components/parameters.yaml#/endkey
     - $ref: ../../components/parameters.yaml#/limit-result-rows
+    - $ref: ../../components/parameters.yaml#/show_cv
   responses:
     '200':
       $ref: ../../components/responses.yaml#/all-docs
