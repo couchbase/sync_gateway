@@ -30,6 +30,7 @@ func (h *handler) handleGetDoc() error {
 	revid := h.getQuery("rev")
 	openRevs := h.getQuery("open_revs")
 	showExp := h.getBoolQuery("show_exp")
+	showCV := h.getBoolQuery("show_cv")
 
 	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
 		return h.handleGetDocReplicator2(docid, revid)
@@ -68,7 +69,12 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+		value, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, db.Get1xRevBodyOptions{
+			MaxHistory:       revsLimit,
+			HistoryFrom:      revsFrom,
+			AttachmentsSince: attachmentsSince,
+			ShowExp:          showExp,
+			ShowCV:           showCV})
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
 				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
@@ -130,7 +136,12 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+					revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, db.Get1xRevBodyOptions{
+						MaxHistory:       revsLimit,
+						HistoryFrom:      revsFrom,
+						AttachmentsSince: attachmentsSince,
+						ShowExp:          showExp,
+						ShowCV:           showCV})
 					if err != nil {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
@@ -152,7 +163,12 @@ func (h *handler) handleGetDoc() error {
 			_, _ = h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+				revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, db.Get1xRevBodyOptions{
+					MaxHistory:       revsLimit,
+					HistoryFrom:      revsFrom,
+					AttachmentsSince: attachmentsSince,
+					ShowExp:          showExp,
+					ShowCV:           showCV})
 				if err != nil {
 					revBody = db.Body{"missing": revid} // TODO: More specific error
 				} else {
