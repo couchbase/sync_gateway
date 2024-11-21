@@ -25,6 +25,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type allDocsResponse struct {
+	TotalRows int          `json:"total_rows"`
+	Offset    int          `json:"offset"`
+	Rows      []allDocsRow `json:"rows"`
+}
+
 func TestPublicChanGuestAccess(t *testing.T) {
 	rt := NewRestTester(t,
 		&RestTesterConfig{
@@ -70,17 +76,6 @@ func TestStarAccess(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
-	type allDocsRow struct {
-		ID    string `json:"id"`
-		Key   string `json:"key"`
-		Value struct {
-			Rev      string              `json:"rev"`
-			Channels []string            `json:"channels,omitempty"`
-			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
-		} `json:"value"`
-		Doc   db.Body `json:"doc,omitempty"`
-		Error string  `json:"error"`
-	}
 	var allDocsResult struct {
 		TotalRows int          `json:"total_rows"`
 		Offset    int          `json:"offset"`
@@ -552,23 +547,6 @@ func TestAllDocsAccessControl(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	type allDocsRow struct {
-		ID    string `json:"id"`
-		Key   string `json:"key"`
-		Value struct {
-			Rev      string              `json:"rev"`
-			Channels []string            `json:"channels,omitempty"`
-			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
-		} `json:"value"`
-		Doc   db.Body `json:"doc,omitempty"`
-		Error string  `json:"error"`
-	}
-	type allDocsResponse struct {
-		TotalRows int          `json:"total_rows"`
-		Offset    int          `json:"offset"`
-		Rows      []allDocsRow `json:"rows"`
-	}
-
 	// Create some docs:
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
 	a.Collections = rt.GetDatabase().CollectionNames
@@ -708,13 +686,13 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, "doc1", allDocsResult.Rows[1].Key)
 	assert.Equal(t, "forbidden", allDocsResult.Rows[1].Error)
-	assert.Equal(t, "", allDocsResult.Rows[1].Value.Rev)
+	assert.Nil(t, allDocsResult.Rows[1].Value)
 	assert.Equal(t, "doc3", allDocsResult.Rows[2].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
 	assert.Equal(t, "1-20912648f85f2bbabefb0993ddd37b41", allDocsResult.Rows[2].Value.Rev)
 	assert.Equal(t, "b0gus", allDocsResult.Rows[3].Key)
 	assert.Equal(t, "not_found", allDocsResult.Rows[3].Error)
-	assert.Equal(t, "", allDocsResult.Rows[3].Value.Rev)
+	assert.Nil(t, allDocsResult.Rows[3].Value)
 
 	// Check GET to _all_docs with keys parameter:
 	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D", "", "alice")
@@ -1177,4 +1155,44 @@ func TestPublicChannel(t *testing.T) {
 	RequireStatus(t, response, 200)
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/privateDoc", "", "user1")
 	RequireStatus(t, response, 403)
+}
+
+func TestAllDocsCV(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	const docID = "foo"
+	docVersion := rt.PutDocDirectly(docID, db.Body{"foo": "bar"})
+
+	testCases := []struct {
+		name   string
+		url    string
+		output string
+	}{
+		{
+			name: "no query string",
+			url:  "/{{.keyspace}}/_all_docs",
+			output: fmt.Sprintf(`{
+				"total_rows": 1,
+				"update_seq": 1,
+				"rows": [{"key": "%s", "id": "%s", "value": {"rev": "%s"}}]
+			}`, docID, docID, docVersion.RevTreeID),
+		},
+		{
+			name: "cvs=true",
+			url:  "/{{.keyspace}}/_all_docs?show_cv=true",
+			output: fmt.Sprintf(`{
+				"total_rows": 1,
+				"update_seq": 1,
+				"rows": [{"key": "%s", "id": "%s", "value": {"rev": "%s", "cv": "%s"}}]
+			}`, docID, docID, docVersion.RevTreeID, docVersion.CV.String()),
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := rt.SendAdminRequest(http.MethodGet, testCase.url, "")
+			RequireStatus(t, response, http.StatusOK)
+			require.JSONEq(t, testCase.output, response.Body.String())
+		})
+	}
 }
