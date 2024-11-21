@@ -51,7 +51,7 @@ func (h *handler) handleAllDocs() error {
 	includeChannels := h.getBoolQuery("channels")
 	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
-	includeCVs := h.getBoolQuery("cvs")
+	includeCVs := h.getBoolQuery("show_cv")
 	includeSeqs := h.getBoolQuery("update_seq")
 
 	// Get the doc IDs if this is a POST request:
@@ -285,10 +285,9 @@ func (h *handler) handleDump() error {
 func (h *handler) handleRepair() error {
 	// TODO: If repair is re-enabled, it may need to be modified to support xattrs and GSI
 	err := errors.New("_repair endpoint disabled")
-	/*if err != nil {
+	if err != nil {
 		base.Audit(h.ctx(), base.AuditIDDatabaseRepair, nil)
 	}
-	*/
 	return err
 	/*base.InfofCtx(h.ctx(), base.KeyHTTP, "Repair bucket")
 

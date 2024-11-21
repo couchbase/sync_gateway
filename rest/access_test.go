@@ -1180,7 +1180,7 @@ func TestAllDocsCV(t *testing.T) {
 		},
 		{
 			name: "cvs=true",
-			url:  "/{{.keyspace}}/_all_docs?cvs=true",
+			url:  "/{{.keyspace}}/_all_docs?show_cv=true",
 			output: fmt.Sprintf(`{
 				"total_rows": 1,
 				"update_seq": 1,
