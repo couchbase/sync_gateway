@@ -25,6 +25,25 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+// allDocsRowValue is a struct that represents possible values returned in a document from /ks/_all_docs endpoint
+type allDocsRowValue struct {
+	Rev      string              `json:"rev"`
+	CV       string              `json:"cv,omitempty"`
+	Channels []string            `json:"channels,omitempty"`
+	Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+}
+
+// allDocsRow is a struct that represents a linefrom /ks/_all_docs endpoint
+type allDocsRow struct {
+	Key       string           `json:"key"`
+	ID        string           `json:"id,omitempty"`
+	Value     *allDocsRowValue `json:"value,omitempty"`
+	Doc       json.RawMessage  `json:"doc,omitempty"`
+	UpdateSeq uint64           `json:"update_seq,omitempty"`
+	Error     string           `json:"error,omitempty"`
+	Status    int              `json:"status,omitempty"`
+}
+
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
@@ -32,6 +51,7 @@ func (h *handler) handleAllDocs() error {
 	includeChannels := h.getBoolQuery("channels")
 	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
+	includeCVs := h.getBoolQuery("show_cv")
 	includeSeqs := h.getBoolQuery("update_seq")
 
 	// Get the doc IDs if this is a POST request:
@@ -99,21 +119,6 @@ func (h *handler) handleAllDocs() error {
 		return result
 	}
 
-	type allDocsRowValue struct {
-		Rev      string              `json:"rev"`
-		Channels []string            `json:"channels,omitempty"`
-		Access   map[string]base.Set `json:"access,omitempty"` // for admins only
-	}
-	type allDocsRow struct {
-		Key       string           `json:"key"`
-		ID        string           `json:"id,omitempty"`
-		Value     *allDocsRowValue `json:"value,omitempty"`
-		Doc       json.RawMessage  `json:"doc,omitempty"`
-		UpdateSeq uint64           `json:"update_seq,omitempty"`
-		Error     string           `json:"error,omitempty"`
-		Status    int              `json:"status,omitempty"`
-	}
-
 	// Subroutine that creates a response row for a document:
 	totalRows := 0
 	createRow := func(doc db.IDRevAndSequence, channels []string) *allDocsRow {
@@ -169,6 +174,9 @@ func (h *handler) handleAllDocs() error {
 		if includeChannels {
 			row.Value.Channels = channels
 		}
+		if includeCVs {
+			row.Value.CV = doc.CV
+		}
 		return row
 	}
 
@@ -220,7 +228,8 @@ func (h *handler) handleAllDocs() error {
 	if explicitDocIDs != nil {
 		count := uint64(0)
 		for _, docID := range explicitDocIDs {
-			_, _ = writeDoc(db.IDRevAndSequence{DocID: docID, RevID: "", Sequence: 0}, nil)
+			// no revtreeid or cv if explicitDocIDs are specified
+			_, _ = writeDoc(db.IDRevAndSequence{DocID: docID, RevID: "", Sequence: 0, CV: ""}, nil)
 			count++
 			if options.Limit > 0 && count == options.Limit {
 				break
@@ -364,6 +373,7 @@ func (h *handler) handleBulkGet() error {
 
 	includeAttachments := h.getBoolQuery("attachments")
 	showExp := h.getBoolQuery("show_exp")
+	showCV := h.getBoolQuery("show_cv")
 
 	showRevs := h.getBoolQuery("revs")
 	globalRevsLimit := int(h.getIntQuery("revs_limit", math.MaxInt32))
@@ -440,7 +450,12 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, db.Get1xRevBodyOptions{
+					MaxHistory:       docRevsLimit,
+					HistoryFrom:      revsFrom,
+					AttachmentsSince: attsSince,
+					ShowExp:          showExp,
+					ShowCV:           showCV})
 			}
 
 			if err != nil {
