@@ -12,7 +12,10 @@ package rest
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -172,4 +175,130 @@ func TestGuestReadOnly(t *testing.T) {
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc/_blipsync", "")
 	RequireStatus(t, response, http.StatusForbidden)
 
+}
+
+func TestGetDocWithCV(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	docID := "doc1"
+	docVersion := rt.PutDocDirectly(docID, db.Body{"foo": "bar"})
+	testCases := []struct {
+		name      string
+		url       string
+		output    string
+		headers   map[string]string
+		multipart bool
+	}{
+		{
+			name:   "get doc",
+			url:    "/{{.keyspace}}/doc1",
+			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar"}`, docID, docVersion.RevTreeID),
+		},
+		{
+			name:   "get doc with rev",
+			url:    fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s", docVersion.RevTreeID),
+			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar"}`, docID, docVersion.RevTreeID),
+		},
+		{
+			name:   "get doc with cv",
+			url:    "/{{.keyspace}}/doc1?show_cv=true",
+			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}`, docID, docVersion.RevTreeID, docVersion.CV),
+		},
+		{
+			name:   "get doc with open_revs=all and cv no multipart",
+			url:    "/{{.keyspace}}/doc1?open_revs=all&show_cv=true",
+			output: fmt.Sprintf(`[{"ok": {"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}}]`, docID, docVersion.RevTreeID, docVersion.CV),
+			headers: map[string]string{
+				"Accept": "application/json",
+			},
+		},
+
+		{
+			name:      "get doc with open_revs=all and cv",
+			url:       "/{{.keyspace}}/doc1?open_revs=all&show_cv=true",
+			output:    fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}`, docID, docVersion.RevTreeID, docVersion.CV),
+			multipart: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := rt.SendAdminRequestWithHeaders("GET", testCase.url, "", testCase.headers)
+			RequireStatus(t, response, http.StatusOK)
+			output := response.BodyString()
+			if testCase.multipart {
+				multipartOutput := readMultiPartBody(t, response)
+				require.Len(t, multipartOutput, 1)
+				output = multipartOutput[0]
+			}
+			assert.JSONEq(t, testCase.output, output)
+		})
+	}
+
+}
+
+func TestBulkGetWithCV(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	doc1ID := "doc1"
+	doc2ID := "doc2"
+	doc1Version := rt.PutDocDirectly(doc1ID, db.Body{"foo": "bar"})
+	doc2Version := rt.PutDocDirectly(doc2ID, db.Body{"foo": "baz"})
+	testCases := []struct {
+		name   string
+		url    string
+		input  string
+		output []string
+	}{
+		{
+			name:  "get doc multipart",
+			url:   "/{{.keyspace}}/_bulk_get",
+			input: fmt.Sprintf(`{"docs":[{"id":"%s"},{"id":"%s"}]}`, doc1ID, doc2ID),
+			output: []string{
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar"}`, doc1ID, doc1Version.RevTreeID),
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"baz"}`, doc2ID, doc2Version.RevTreeID),
+			},
+		},
+		{
+			name:  "get doc multipart",
+			url:   "/{{.keyspace}}/_bulk_get?show_cv=true",
+			input: fmt.Sprintf(`{"docs":[{"id":"%s"},{"id":"%s"}]}`, doc1ID, doc2ID),
+			output: []string{
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar", "_cv": "%s"}`, doc1ID, doc1Version.RevTreeID, doc1Version.CV),
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"baz", "_cv": "%s"}`, doc2ID, doc2Version.RevTreeID, doc2Version.CV),
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := rt.SendAdminRequest(http.MethodPost, testCase.url, testCase.input)
+			RequireStatus(t, response, http.StatusOK)
+			bodies := readMultiPartBody(t, response)
+			require.Len(t, bodies, len(testCase.output))
+			for i, body := range bodies {
+				assert.JSONEq(t, testCase.output[i], body)
+			}
+		})
+	}
+
+}
+
+// readMultiPartBody reads a multipart response body and returns the parts as strings
+func readMultiPartBody(t *testing.T, response *TestResponse) []string {
+	_, params, err := mime.ParseMediaType(response.Header().Get("Content-Type"))
+	require.NoError(t, err)
+	mr := multipart.NewReader(response.Body, params["boundary"])
+	var output []string
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		bodyBytes, err := io.ReadAll(p)
+		require.NoError(t, err)
+		output = append(output, string(bodyBytes))
+	}
+	return output
 }

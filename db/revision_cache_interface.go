@@ -279,7 +279,7 @@ func (rev *DocumentRevision) Inject1xBodyProperties(ctx context.Context, db *Dat
 
 // Mutable1xBody returns a copy of the given document revision as a 1.x style body (with special properties)
 // Callers are free to modify this body without affecting the document revision.
-func (rev *DocumentRevision) Mutable1xBody(ctx context.Context, db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
+func (rev *DocumentRevision) Mutable1xBody(ctx context.Context, db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool, showCV bool) (b Body, err error) {
 	b, err = rev.Body()
 	if err != nil {
 		return nil, err
@@ -298,6 +298,10 @@ func (rev *DocumentRevision) Mutable1xBody(ctx context.Context, db *DatabaseColl
 
 	if showExp && rev.Expiry != nil && !rev.Expiry.IsZero() {
 		b[BodyExpiry] = rev.Expiry.Format(time.RFC3339)
+	}
+
+	if showCV && rev.CV != nil {
+		b["_cv"] = rev.CV.String()
 	}
 
 	if rev.Deleted {
