@@ -287,12 +287,25 @@ func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, r
 		maxHistory = math.MaxInt32
 	}
 
-	return db.Get1xRevBodyWithHistory(ctx, docid, revid, maxHistory, nil, attachmentsSince, false)
+	return db.Get1xRevBodyWithHistory(ctx, docid, revid, Get1xRevBodyOptions{
+		MaxHistory:       maxHistory,
+		HistoryFrom:      nil,
+		AttachmentsSince: attachmentsSince,
+		ShowExp:          false,
+	})
+}
+
+type Get1xRevBodyOptions struct {
+	MaxHistory       int
+	HistoryFrom      []string
+	AttachmentsSince []string
+	ShowExp          bool
+	ShowCV           bool
 }
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
-	rev, err := db.getRev(ctx, docid, revid, maxHistory, historyFrom)
+func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revtreeid string, opts Get1xRevBodyOptions) (Body, error) {
+	rev, err := db.getRev(ctx, docid, revtreeid, opts.MaxHistory, opts.HistoryFrom)
 	if err != nil {
 		return nil, err
 	}
@@ -300,14 +313,14 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
 	// during attachment processing below
 	requestedHistory := rev.History
-	if maxHistory == 0 {
+	if opts.MaxHistory == 0 {
 		requestedHistory = nil
 	}
 	if requestedHistory != nil {
-		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, historyFrom, maxHistory)
+		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, opts.HistoryFrom, opts.MaxHistory)
 	}
 
-	return rev.Mutable1xBody(ctx, db, requestedHistory, attachmentsSince, showExp)
+	return rev.Mutable1xBody(ctx, db, requestedHistory, opts.AttachmentsSince, opts.ShowExp, opts.ShowCV)
 }
 
 // Underlying revision retrieval used by Get1xRevBody, Get1xRevBodyWithHistory, GetRevCopy.

@@ -14,6 +14,7 @@ package channels
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -125,4 +126,10 @@ func (rv *RevAndVersion) UnmarshalJSON(data []byte) error {
 	default:
 		return fmt.Errorf("unrecognized JSON format for RevAndVersion: %s", data)
 	}
+}
+
+// CV returns ver@src in big endian format 1@cbl for CBL format.
+func (rv RevAndVersion) CV() string {
+	// this should match db.Version.String()
+	return strconv.FormatUint(base.HexCasToUint64(rv.CurrentVersion), 16) + "@" + rv.CurrentSource
 }

@@ -970,6 +970,7 @@ type IDRevAndSequence struct {
 	DocID    string
 	RevID    string
 	Sequence uint64
+	CV       string
 }
 
 // The ForEachDocID options for limiting query results
@@ -1005,6 +1006,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 		var found bool
 		var docid, revid string
 		var seq uint64
+		var cv string
 		var channels []string
 		if c.useViews() {
 			var viewRow AllDocsViewQueryRow
@@ -1012,6 +1014,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 			if found {
 				docid = viewRow.Key
 				revid = viewRow.Value.RevID.RevTreeID
+				cv = viewRow.Value.RevID.CV()
 				seq = viewRow.Value.Sequence
 				channels = viewRow.Value.Channels
 			}
@@ -1020,6 +1023,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 			if found {
 				docid = queryRow.Id
 				revid = queryRow.RevID.RevTreeID
+				cv = queryRow.RevID.CV()
 				seq = queryRow.Sequence
 				channels = make([]string, 0)
 				// Query returns all channels, but we only want to return active channels
@@ -1034,7 +1038,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 			break
 		}
 
-		if ok, err := callback(IDRevAndSequence{docid, revid, seq}, channels); ok {
+		if ok, err := callback(IDRevAndSequence{DocID: docid, RevID: revid, Sequence: seq, CV: cv}, channels); ok {
 			count++
 		} else if err != nil {
 			return err
