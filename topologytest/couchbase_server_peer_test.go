@@ -54,11 +54,13 @@ func (r *CouchbaseServerReplication) PassivePeer() Peer {
 
 // Start starts the replication
 func (r *CouchbaseServerReplication) Start() {
+	r.t.Logf("starting XDCR replication")
 	require.NoError(r.t, r.manager.Start(r.ctx))
 }
 
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseServerReplication) Stop() {
+	r.t.Logf("stopping XDCR replication")
 	require.NoError(r.t, r.manager.Stop(r.ctx))
 }
 
@@ -83,16 +85,15 @@ func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID s
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
-func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
-	p.tb.Logf("%s: Creating document %s", p, docID)
-	p.tb.Logf("bucket %s", p.bucket.GetName())
+func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
+	p.tb.Logf("%s: Creating document %s in bucket %s", p, docID, p.bucket.GetName())
 	// create document with xattrs to prevent XDCR from doing a round trip replication in this scenario:
 	// CBS1: write document (cas1, no _vv)
 	// CBS1->CBS2: XDCR replication
 	// CBS2->CBS1: XDCR replication, creates a new _vv
 	cas, err := p.getCollection(dsName).WriteWithXattrs(p.Context(), docID, 0, 0, body, map[string][]byte{"userxattr": []byte(`{"dummy": "xattr"}`)}, nil, nil)
 	require.NoError(p.tb, err)
-	return DocMetadata{
+	docMetadata := DocMetadata{
 		DocID: docID,
 		Cas:   cas,
 		ImplicitCV: &db.Version{
@@ -100,10 +101,15 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 			Value:    cas,
 		},
 	}
+	return BodyAndVersion{
+		docMeta:    docMetadata,
+		body:       body,
+		updatePeer: p.name,
+	}
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
+func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	p.tb.Logf("%s: Writing document %s", p, docID)
 	// write the document LWW, ignoring any in progress writes
 	callback := func(_ []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
@@ -111,7 +117,7 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 	}
 	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
 	require.NoError(p.tb, err)
-	return DocMetadata{
+	docMetadata := DocMetadata{
 		DocID: docID,
 		// FIXME: this should actually probably show the HLV persisted, and then also the implicit CV
 		Cas: cas,
@@ -119,6 +125,11 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 			SourceID: p.SourceID(),
 			Value:    cas,
 		},
+	}
+	return BodyAndVersion{
+		docMeta:    docMetadata,
+		body:       body,
+		updatePeer: p.name,
 	}
 }
 

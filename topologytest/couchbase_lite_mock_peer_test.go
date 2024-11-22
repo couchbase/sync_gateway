@@ -62,19 +62,24 @@ func (p *CouchbaseLiteMockPeer) getSingleBlipClient() *PeerBlipTesterClient {
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
-func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
+func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	p.t.Logf("%s: Creating document %s", p, docID)
 	return p.WriteDocument(dsName, docID, body)
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *CouchbaseLiteMockPeer) WriteDocument(_ sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
+func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
 	// set an HLV here.
 	docVersion, err := client.btcRunner.PushRev(client.ID(), docID, rest.EmptyDocVersion(), body)
 	require.NoError(client.btcRunner.TB(), err)
-	return DocMetadataFromDocVersion(docID, docVersion)
+	docMetadata := DocMetadataFromDocVersion(docID, docVersion)
+	return BodyAndVersion{
+		docMeta:    docMetadata,
+		body:       body,
+		updatePeer: p.name,
+	}
 }
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
@@ -183,11 +188,13 @@ func (r *CouchbaseLiteMockReplication) PassivePeer() Peer {
 
 // Start starts the replication
 func (r *CouchbaseLiteMockReplication) Start() {
+	r.btc.TB().Logf("starting CBL replication")
 	r.btcRunner.StartPull(r.btc.ID())
 }
 
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseLiteMockReplication) Stop() {
+	r.btc.TB().Logf("stopping CBL replication")
 	_, err := r.btcRunner.UnsubPullChanges(r.btc.ID())
 	require.NoError(r.btcRunner.TB(), err)
 }
