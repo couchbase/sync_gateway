@@ -290,7 +290,7 @@ func TestPeerImplementation(t *testing.T) {
 			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta)
 			// Check Get after creation
 			roundtripGetVersion, roundtripGetbody := peer.GetDocument(collectionName, docID)
-			require.Equal(t, createVersion, roundtripGetVersion)
+			require.Equal(t, createVersion.docMeta, roundtripGetVersion)
 			require.JSONEq(t, string(createBody), string(base.MustJSONMarshal(t, roundtripGetbody)))
 
 			// Update
@@ -308,7 +308,7 @@ func TestPeerImplementation(t *testing.T) {
 
 			// Check Get after update
 			roundtripGetVersion, roundtripGetbody = peer.GetDocument(collectionName, docID)
-			require.Equal(t, updateVersion, roundtripGetVersion)
+			require.Equal(t, updateVersion.docMeta, roundtripGetVersion)
 			require.JSONEq(t, string(updateBody), string(base.MustJSONMarshal(t, roundtripGetbody)))
 
 			// Delete
