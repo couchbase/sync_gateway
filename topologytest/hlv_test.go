@@ -92,10 +92,6 @@ func (t multiActorTest) singleDocID() string {
 	return fmt.Sprintf("doc_%s", strings.ReplaceAll(t.description(), " ", "_"))
 }
 
-func (t multiActorTest) peerDocID(peerName string) string {
-	return fmt.Sprintf("doc_%s_%s", strings.ReplaceAll(t.description(), " ", "_"), peerName)
-}
-
 // collectionName returns the collection name for the test case.
 func (t multiActorTest) collectionName() base.ScopeAndCollectionName {
 	return getSingleDsName()
