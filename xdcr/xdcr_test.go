@@ -344,9 +344,8 @@ func TestVVObeyMou(t *testing.T) {
 		DocsProcessed: 1,
 	}, *stats)
 
-	fmt.Printf("HONK HONK HONK\n")
 	mou := &db.MetadataOnlyUpdate{
-		PreviousCAS:      base.CasToString(fromCas1),
+		PreviousHexCAS:   base.CasToString(fromCas1),
 		PreviousRevSeqNo: db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
 	}
 
@@ -382,6 +381,117 @@ func TestVVObeyMou(t *testing.T) {
 	vv = db.HybridLogicalVector{}
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
 	require.Equal(t, expectedVV, vv)
+}
+
+func TestVVMouImport(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest)
+	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
+	ctx := base.TestCtx(t)
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	require.NoError(t, err)
+
+	docID := "doc1"
+	ver1Body := `{"ver":1}`
+	fromCas1, err := fromDs.WriteWithXattrs(ctx, docID, 0, 0, []byte(ver1Body), map[string][]byte{"ver1": []byte(`{}`)}, nil,
+		&sgbucket.MutateInOptions{
+			MacroExpansion: []sgbucket.MacroExpansionSpec{
+				sgbucket.NewMacroExpansionSpec("ver1.cas", sgbucket.MacroCas),
+			},
+		})
+	require.NoError(t, err)
+
+	xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
+	defer func() {
+		assert.NoError(t, xdcr.Stop(ctx))
+	}()
+	requireWaitForXDCRDocsProcessed(t, xdcr, 1)
+
+	body, xattrs, destCas, err := toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	require.Equal(t, fromCas1, destCas)
+	require.JSONEq(t, ver1Body, string(body))
+	require.NotContains(t, xattrs, base.MouXattrName)
+	require.Contains(t, xattrs, base.VvXattrName)
+	var vv db.HybridLogicalVector
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
+	expectedVV := db.HybridLogicalVector{
+		CurrentVersionCAS: fromCas1,
+		SourceID:          fromBucketSourceID,
+		Version:           fromCas1,
+	}
+
+	require.Equal(t, expectedVV, vv)
+
+	stats, err := xdcr.Stats(ctx)
+	assert.NoError(t, err)
+	require.Equal(t, Stats{
+		DocsWritten:   1,
+		DocsProcessed: 1,
+	}, *stats)
+
+	mou := &db.MetadataOnlyUpdate{
+		HexCAS:           "expand",
+		PreviousHexCAS:   base.CasToString(fromCas1),
+		PreviousRevSeqNo: db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
+	}
+
+	opts := &sgbucket.MutateInOptions{
+		MacroExpansion: []sgbucket.MacroExpansionSpec{
+			sgbucket.NewMacroExpansionSpec(db.XattrMouCasPath(), sgbucket.MacroCas),
+			sgbucket.NewMacroExpansionSpec("ver2.cas", sgbucket.MacroCas)},
+	}
+	fromCas2, err := fromDs.UpdateXattrs(ctx, docID, 0, fromCas1, map[string][]byte{
+		base.MouXattrName: base.MustJSONMarshal(t, mou),
+		"ver2":            []byte(`{}`),
+	}, opts)
+	require.NoError(t, err)
+	require.NotEqual(t, fromCas1, fromCas2)
+
+	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
+	stats, err = xdcr.Stats(ctx)
+	assert.NoError(t, err)
+	require.Equal(t, Stats{
+		TargetNewerDocs: 1,
+		DocsWritten:     1,
+		DocsProcessed:   2,
+	}, *stats)
+
+	ver3Body := `{"ver":3}`
+	fromCas3, err := fromDs.WriteWithXattrs(ctx, docID, 0, fromCas2, []byte(ver3Body), map[string][]byte{"ver3": []byte(`{}`)}, nil,
+		&sgbucket.MutateInOptions{
+			MacroExpansion: []sgbucket.MacroExpansionSpec{
+				sgbucket.NewMacroExpansionSpec("ver3.cas", sgbucket.MacroCas),
+			},
+		})
+	require.NoError(t, err)
+	requireWaitForXDCRDocsProcessed(t, xdcr, 3)
+
+	stats, err = xdcr.Stats(ctx)
+	assert.NoError(t, err)
+	require.Equal(t, Stats{
+		TargetNewerDocs: 1,
+		DocsWritten:     2,
+		DocsProcessed:   3,
+	}, *stats)
+
+	body, xattrs, destCas, err = toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
+	require.NoError(t, err)
+	require.Equal(t, fromCas3, destCas)
+	require.JSONEq(t, ver3Body, string(body))
+	require.Contains(t, xattrs, base.VvXattrName)
+	vv = db.HybridLogicalVector{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: fromCas3,
+		SourceID:          fromBucketSourceID,
+		Version:           fromCas3}, vv)
+	require.Contains(t, xattrs, base.MouXattrName)
+	var actualMou *db.MetadataOnlyUpdate
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &actualMou))
+	// it is weird that couchbase server XDCR doesn't clear _mou but only _mou.cas and _mou.pRev but this is not a problem since eventing and couchbase server read _mou.cas to determine if _mou should be used
+	require.Equal(t, db.MetadataOnlyUpdate{
+		PreviousHexCAS: mou.PreviousHexCAS},
+		*actualMou)
 }
 
 func TestLWWAfterInitialReplication(t *testing.T) {

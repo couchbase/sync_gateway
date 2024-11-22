@@ -63,14 +63,25 @@ type ChannelSetEntry struct {
 	Compacted bool   `json:"compacted,omitempty"`
 }
 
+// MetadataOnlyUpdate represents a cas value of a document modification if it only updated xattrs and not the document body. The previous cas and revSeqNo are stored as the version of the document before any metadata was modified. This is serialized as _mou.
 type MetadataOnlyUpdate struct {
-	CAS              string `json:"cas,omitempty"`
-	PreviousCAS      string `json:"pCas,omitempty"`
+	HexCAS           string `json:"cas,omitempty"`  // 0x0 hex value from Couchbase Server
+	PreviousHexCAS   string `json:"pCas,omitempty"` // 0x0 hex value from Couchbase Server
 	PreviousRevSeqNo uint64 `json:"pRev,omitempty"`
 }
 
 func (m *MetadataOnlyUpdate) String() string {
-	return fmt.Sprintf("{CAS:%d PreviousCAS:%d PreviousRevSeqNo:%d}", base.HexCasToUint64(m.CAS), base.HexCasToUint64(m.PreviousCAS), m.PreviousRevSeqNo)
+	return fmt.Sprintf("{CAS:%d PreviousCAS:%d PreviousRevSeqNo:%d}", m.CAS(), m.PreviousCAS(), m.PreviousRevSeqNo)
+}
+
+// CAS returns the CAS value as a uint64
+func (m *MetadataOnlyUpdate) CAS() uint64 {
+	return base.HexCasToUint64(m.HexCAS)
+}
+
+// PreviousCAS returns the previous CAS value as a uint64
+func (m *MetadataOnlyUpdate) PreviousCAS() uint64 {
+	return base.HexCasToUint64(m.PreviousHexCAS)
 }
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
@@ -1296,15 +1307,15 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
 	var prevCas string
 	currentCasString := base.CasToString(currentCas)
-	if currentMou != nil && currentCasString == currentMou.CAS {
-		prevCas = currentMou.PreviousCAS
+	if currentMou != nil && currentCasString == currentMou.HexCAS {
+		prevCas = currentMou.PreviousHexCAS
 	} else {
 		prevCas = currentCasString
 	}
 
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
-		CAS:              expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
-		PreviousCAS:      prevCas,
+		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
+		PreviousHexCAS:   prevCas,
 		PreviousRevSeqNo: revNo,
 	}
 	return metadataOnlyUpdate
