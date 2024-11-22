@@ -85,6 +85,7 @@ func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID s
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
 	p.tb.Logf("%s: Creating document %s", p, docID)
+	p.tb.Logf("bucket %s", p.bucket.GetName())
 	// create document with xattrs to prevent XDCR from doing a round trip replication in this scenario:
 	// CBS1: write document (cas1, no _vv)
 	// CBS1->CBS2: XDCR replication
