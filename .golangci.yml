@@ -46,7 +46,6 @@ linters:
     - godot # Check if comments end in a period
     - godox # Tool for detection of FIXME, TODO and other comment keywords
     - gofmt # Gofmt checks whether code was gofmt-ed. By default this tool runs with -s option to check for code simplification
-    - gomnd # An analyzer to detect magic numbers.
     - gomodguard # Allow and block list linter for direct Go module dependencies.
     - lll # Reports long lines
     - nestif # Reports deeply nested if statements
