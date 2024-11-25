@@ -350,12 +350,13 @@ func getHLVAndMou(xattrs map[string][]byte) (*db.HybridLogicalVector, *db.Metada
 	return hlv, mou, nil
 }
 
-func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, copiedCas uint64) error {
+// updateHLV will update the xattrs on the target document considering the source's HLV, _mou, sourceID and cas.
+func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, sourceCas uint64) error {
 	// TODO: read existing targetXattrs[base.VvXattrName] and update the pv CBG-4250. This will need to merge pv from sourceHLV and targetHLV.
 	var targetHLV *db.HybridLogicalVector
 	// if source vv.cvCas == cas, the _vv.cv, _vv.cvCAS from the source is correct and we can use it directly.
-	sourcecvCASMatch := sourceHLV != nil && sourceHLV.CurrentVersionCAS == copiedCas
-	sourceWasImport := sourceMou != nil && sourceMou.CAS() == copiedCas
+	sourcecvCASMatch := sourceHLV != nil && sourceHLV.CurrentVersionCAS == sourceCas
+	sourceWasImport := sourceMou != nil && sourceMou.CAS() == sourceCas
 	if sourceHLV != nil && (sourceWasImport || sourcecvCASMatch) {
 		targetHLV = sourceHLV
 	} else {
