@@ -2143,8 +2143,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 
 	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
 	mouMatch := false
-	if doc.MetadataOnlyUpdate != nil && base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas {
-		mouMatch = base.HexCasToUint64(doc.MetadataOnlyUpdate.CAS) == doc.Cas
+	if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.CAS() == doc.Cas {
+		mouMatch = doc.MetadataOnlyUpdate.CAS() == doc.Cas
 		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): _mou:%+v Metadata-only update match:%t", base.UD(doc.ID), doc.MetadataOnlyUpdate, mouMatch)
 	} else {
 		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou", base.UD(doc.ID))
@@ -2382,7 +2382,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
 			if doc.MetadataOnlyUpdate != nil {
-				if doc.MetadataOnlyUpdate.CAS != "" {
+				if doc.MetadataOnlyUpdate.HexCAS != "" {
 					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 				}
 			} else {
@@ -2445,8 +2445,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		} else if doc != nil {
 			// Update the in-memory CAS values to match macro-expanded values
 			doc.Cas = casOut
-			if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.CAS == expandMacroCASValueString {
-				doc.MetadataOnlyUpdate.CAS = base.CasToString(casOut)
+			if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
+				doc.MetadataOnlyUpdate.HexCAS = base.CasToString(casOut)
 			}
 			// update the doc's HLV defined post macro expansion
 			doc = postWriteUpdateHLV(doc, casOut)

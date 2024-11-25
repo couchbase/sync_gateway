@@ -258,8 +258,8 @@ func TestHLVImport(t *testing.T) {
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
-					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousHexCAS:   string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
 					PreviousRevSeqNo: output.preImportRevSeqNo,
 				}
 			},
@@ -281,8 +281,8 @@ func TestHLVImport(t *testing.T) {
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
-					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousHexCAS:   string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
 					PreviousRevSeqNo: output.preImportRevSeqNo,
 				}
 			},
@@ -302,8 +302,8 @@ func TestHLVImport(t *testing.T) {
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
-					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousHexCAS:   string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
 					PreviousRevSeqNo: output.preImportRevSeqNo,
 				}
 			},
@@ -324,7 +324,7 @@ func TestHLVImport(t *testing.T) {
 				_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
 				require.NoError(t, err)
 				mou := &MetadataOnlyUpdate{
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(cas)),
+					PreviousHexCAS:   string(base.Uint64CASToLittleEndianHex(cas)),
 					PreviousRevSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
 				}
 				opts := &sgbucket.MutateInOptions{
@@ -337,8 +337,8 @@ func TestHLVImport(t *testing.T) {
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
-					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
-					PreviousCAS:      output.preImportMou.PreviousCAS,
+					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousHexCAS:   output.preImportMou.PreviousHexCAS,
 					PreviousRevSeqNo: output.preImportRevSeqNo,
 				}
 			},
@@ -355,8 +355,8 @@ func TestHLVImport(t *testing.T) {
 				_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
 				require.NoError(t, err)
 				mou := &MetadataOnlyUpdate{
-					CAS:              "invalid",
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(cas)),
+					HexCAS:           "invalid",
+					PreviousHexCAS:   string(base.Uint64CASToLittleEndianHex(cas)),
 					PreviousRevSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
 				}
 				_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, nil)
@@ -364,8 +364,8 @@ func TestHLVImport(t *testing.T) {
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
-					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
+					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousHexCAS:   string(base.Uint64CASToLittleEndianHex(output.preImportCas)),
 					PreviousRevSeqNo: output.preImportRevSeqNo,
 				}
 			},
@@ -389,7 +389,7 @@ func TestHLVImport(t *testing.T) {
 				require.NoError(t, err)
 
 				mou := &MetadataOnlyUpdate{
-					PreviousCAS:      string(base.Uint64CASToLittleEndianHex(cas)),
+					PreviousHexCAS:   string(base.Uint64CASToLittleEndianHex(cas)),
 					PreviousRevSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
 				}
 				opts := &sgbucket.MutateInOptions{
@@ -402,8 +402,8 @@ func TestHLVImport(t *testing.T) {
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
-					CAS:              string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
-					PreviousCAS:      output.preImportMou.PreviousCAS,
+					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
+					PreviousHexCAS:   output.preImportMou.PreviousHexCAS,
 					PreviousRevSeqNo: output.preImportRevSeqNo,
 				}
 			},
