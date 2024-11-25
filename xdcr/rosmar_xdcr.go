@@ -363,12 +363,12 @@ func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sour
 		hlv := db.NewHybridLogicalVector()
 		err := hlv.AddVersion(db.Version{
 			SourceID: sourceID,
-			Value:    copiedCas,
+			Value:    sourceCas,
 		})
 		if err != nil {
 			return err
 		}
-		hlv.CurrentVersionCAS = copiedCas
+		hlv.CurrentVersionCAS = sourceCas
 		targetHLV = &hlv
 	}
 	var err error
