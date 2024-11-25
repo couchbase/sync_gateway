@@ -24,6 +24,25 @@ import (
 	"github.com/couchbaselabs/rosmar"
 )
 
+// replicatedDocLocation represents whether a document is from the source or target bucket.
+type replicatedDocLocation uint8
+
+const (
+	sourceDoc replicatedDocLocation = iota
+	targetDoc
+)
+
+func (r replicatedDocLocation) String() string {
+	switch r {
+	case sourceDoc:
+		return "source"
+	case targetDoc:
+		return "target"
+	default:
+		return "unknown"
+	}
+}
+
 // rosmarManager implements a XDCR bucket to bucket replication within rosmar.
 type rosmarManager struct {
 	filterFunc          xdcrFilterFunc
@@ -65,7 +84,7 @@ func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, 
 // processEvent processes a DCP event coming from a toBucket and replicates it to the target datastore.
 func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEvent) bool {
 	docID := string(event.Key)
-	base.TracefCtx(ctx, base.KeySGTest, "Got event %s, opcode: %s", docID, event.Opcode)
+	base.TracefCtx(ctx, base.KeyVV, "Got event %s, opcode: %s", docID, event.Opcode)
 	col, ok := r.toBucketCollections[event.CollectionID]
 	if !ok {
 		base.ErrorfCtx(ctx, "This violates the assumption that all collections are mapped to a target collection. This should not happen. Found event=%+v", event)
@@ -78,7 +97,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 	case sgbucket.FeedOpDeletion, sgbucket.FeedOpMutation:
 		// Filter out events if we have a non XDCR filter
 		if r.filterFunc != nil && !r.filterFunc(&event) {
-			base.TracefCtx(ctx, base.KeySGTest, "Filtering doc %s", docID)
+			base.TracefCtx(ctx, base.KeyVV, "Filtering doc %s", docID)
 			r.mobileDocsFiltered.Add(1)
 			return true
 		}
@@ -98,26 +117,16 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			return false
 		}
 
-		// When doing the evaluation of cas, we want to ignore import mutations, marked with _mou.cas == cas. In that case, we will just use the _vv.cvCAS for conflict resolution. If _mou.cas is present but out of date, continue to use _vv.ver.
-		sourceCas := event.Cas
-		if sourceMou != nil && base.HexCasToUint64(sourceMou.CAS) == sourceCas && sourceHLV != nil {
-			sourceCas = sourceHLV.CurrentVersionCAS
-			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s source _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, event.Cas, sourceCas)
-		}
-		targetCas := actualTargetCas
+		actualSourceCas := event.Cas
+		conflictResolutionSourceCas := getConflictResolutionCas(ctx, docID, sourceDoc, actualSourceCas, sourceHLV, sourceMou)
+
 		targetHLV, targetMou, err := getHLVAndMou(targetXattrs)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not get target hlv and mou: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
 		}
-		if targetMou != nil && targetHLV != nil {
-			// _mou.CAS matches the CAS value, use the _vv.cvCAS for conflict resolution
-			if base.HexCasToUint64(targetMou.CAS) == targetCas {
-				targetCas = targetHLV.CurrentVersionCAS
-				base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s target _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, targetCas, targetHLV.CurrentVersionCAS)
-			}
-		}
+		conflictResolutionTargetCas := getConflictResolutionCas(ctx, docID, targetDoc, actualTargetCas, targetHLV, targetMou)
 
 		/*  full LWW conflict resolution is implemented in rosmar. There is no need to implement this since CAS will always be unique due to rosmar limitations.
 
@@ -159,17 +168,16 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 		*/
 
-		if sourceCas <= targetCas {
-			base.InfofCtx(ctx, base.KeySGTest, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
+		if conflictResolutionSourceCas <= conflictResolutionTargetCas {
+			base.InfofCtx(ctx, base.KeyVV, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, conflictResolutionSourceCas, conflictResolutionTargetCas)
 			r.targetNewerDocs.Add(1)
-			base.TracefCtx(ctx, base.KeySGTest, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, targetCas)
 			return true
 		} /* else if sourceCas == targetCas {
 			// CBG-4334, check datatype for targetXattrs to see if there are any xattrs present
 			hasSourceXattrs := event.DataType&sgbucket.FeedDataTypeXattr != 0
 			hasTargetXattrs := len(targetXattrs) > 0
 			if !(hasSourceXattrs && !hasTargetXattrs) {
-				base.InfofCtx(ctx, base.KeySGTest, "skipping %q skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
+				base.InfofCtx(ctx, base.KeyVV, "skipping %q skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
 				return true
 			}
 		}
@@ -178,13 +186,13 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		if targetSyncXattr, ok := targetXattrs[base.SyncXattrName]; ok {
 			newXattrs[base.SyncXattrName] = targetSyncXattr
 		}
-		err = updateHLV(newXattrs, sourceHLV, sourceMou, r.fromBucketSourceID, event.Cas)
+		err = updateHLV(newXattrs, sourceHLV, sourceMou, r.fromBucketSourceID, actualSourceCas)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not update hlv: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
 		}
-		base.InfofCtx(ctx, base.KeySGTest, "Replicating doc %q, with cas (%d), body %s, xattrsKeys: %+v", event.Key, event.Cas, string(body), maps.Keys(newXattrs))
+		base.InfofCtx(ctx, base.KeyVV, "Replicating doc %q, with cas (%d), body %s, xattrsKeys: %+v", event.Key, actualSourceCas, string(body), maps.Keys(newXattrs))
 		err = opWithMeta(ctx, col, actualTargetCas, newXattrs, body, &event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not write doc: %s", event.Key, err)
@@ -342,10 +350,14 @@ func getHLVAndMou(xattrs map[string][]byte) (*db.HybridLogicalVector, *db.Metada
 	return hlv, mou, nil
 }
 
+// updateHLV will update the xattrs on the target document considering the source's HLV, _mou, sourceID and cas.
 func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, sourceCas uint64) error {
+	// TODO: read existing targetXattrs[base.VvXattrName] and update the pv CBG-4250. This will need to merge pv from sourceHLV and targetHLV.
 	var targetHLV *db.HybridLogicalVector
-	if sourceHLV != nil {
-		// TODO: read existing targetXattrs[base.VvXattrName] and update the pv CBG-4250
+	// if source vv.cvCas == cas, the _vv.cv, _vv.cvCAS from the source is correct and we can use it directly.
+	sourcecvCASMatch := sourceHLV != nil && sourceHLV.CurrentVersionCAS == sourceCas
+	sourceWasImport := sourceMou != nil && sourceMou.CAS() == sourceCas
+	if sourceHLV != nil && (sourceWasImport || sourcecvCASMatch) {
 		targetHLV = sourceHLV
 	} else {
 		hlv := db.NewHybridLogicalVector()
@@ -365,6 +377,10 @@ func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sour
 		return err
 	}
 	if sourceMou != nil {
+		// removing _mou.cas and _mou.pRev matches cbs xdcr behavior.
+		// CBS xdcr maybe should clear _mou.pCas as well, but it is not a problem since all checks for _mou.cas should check current cas for _mou being up to date.
+		sourceMou.HexCAS = ""
+		sourceMou.PreviousRevSeqNo = 0
 		var err error
 		xattrs[base.MouXattrName], err = json.Marshal(sourceMou)
 		if err != nil {
@@ -372,4 +388,24 @@ func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sour
 		}
 	}
 	return nil
+}
+
+// getConflictResolutionCas returns cas for conflict resolution.
+// If _mou.cas == actualCas, assume _vv is up to date and use _vv.cvCAS
+// Otherwise, return actualCas
+func getConflictResolutionCas(ctx context.Context, docID string, location replicatedDocLocation, actualCas uint64, hlv *db.HybridLogicalVector, mou *db.MetadataOnlyUpdate) uint64 {
+	if mou == nil {
+		return actualCas
+	}
+	// _mou.CAS is out of date, ignoring
+	if mou.CAS() != actualCas {
+		return actualCas
+	}
+	if hlv == nil {
+		base.InfofCtx(ctx, base.KeyVV, "XDCR doc:%s %s _mou.cas=cas (%d), but there is no HLV, using 0 for conflict resolution to match behavior of Couchbase Server", docID, location, actualCas)
+		return 0
+	}
+	// _mou.CAS matches the CAS value, use the _vv.cvCAS for conflict resolution
+	base.InfofCtx(ctx, base.KeyVV, "XDCR doc:%s %s _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, location, actualCas, hlv.CurrentVersionCAS)
+	return hlv.CurrentVersionCAS
 }
