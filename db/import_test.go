@@ -69,8 +69,8 @@ func TestFeedImport(t *testing.T) {
 		mouXattr, mouOk := xattrs[base.MouXattrName]
 		require.True(t, mouOk)
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-		require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
-		require.Equal(t, base.CasToString(importCas), mou.CAS)
+		require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+		require.Equal(t, base.CasToString(importCas), mou.HexCAS)
 	} else {
 		// Expect not found fetching mou xattr
 		require.Error(t, err)
@@ -105,8 +105,8 @@ func TestOnDemandImportMou(t *testing.T) {
 
 		if db.UseMou() {
 			require.NotNil(t, doc.MetadataOnlyUpdate)
-			require.Equal(t, base.CasToString(writeCas), doc.MetadataOnlyUpdate.PreviousCAS)
-			require.Equal(t, base.CasToString(doc.Cas), doc.MetadataOnlyUpdate.CAS)
+			require.Equal(t, base.CasToString(writeCas), doc.MetadataOnlyUpdate.PreviousHexCAS)
+			require.Equal(t, base.CasToString(doc.Cas), doc.MetadataOnlyUpdate.HexCAS)
 		} else {
 			require.Nil(t, doc.MetadataOnlyUpdate)
 		}
@@ -138,8 +138,8 @@ func TestOnDemandImportMou(t *testing.T) {
 			var mou *MetadataOnlyUpdate
 			require.True(t, mouOk)
 			require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-			require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
-			require.Equal(t, base.CasToString(importCas), mou.CAS)
+			require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+			require.Equal(t, base.CasToString(importCas), mou.HexCAS)
 		} else {
 			// expect not found fetching mou xattr
 			require.Error(t, err)
@@ -940,8 +940,8 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 	previousRev := syncData.CurrentRev
 
 	// verify mou contents
-	require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
-	require.Equal(t, base.CasToString(importCas), mou.CAS)
+	require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+	require.Equal(t, base.CasToString(importCas), mou.HexCAS)
 
 	// 3. Update the previous SDK write via SGW, ensure mou isn't updated again
 	updatedBody := Body{"_rev": previousRev, "foo": "baz"}
