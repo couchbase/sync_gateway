@@ -294,7 +294,9 @@ func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, doc
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 		}
 		if meta["data"] == nil {
-			if revpos, ok := base.ToInt64(meta["revpos"]); revpos < int64(minRevpos) || !ok {
+			// default to zero if not present
+			revpos, _ := base.ToInt64(meta["revpos"])
+			if revpos < int64(minRevpos) {
 				continue
 			}
 			digest, ok := meta["digest"].(string)
