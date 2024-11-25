@@ -389,7 +389,9 @@ func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sour
 	return nil
 }
 
-// getConflictResolutionCas returns cas for conflict resolution. If thethe conflict resolution cas.
+// getConflictResolutionCas returns cas for conflict resolution.
+// If _mou.cas == actualCas, assume _vv is up to date and use _vv.cvCAS
+// Otherwise, return actualCas
 func getConflictResolutionCas(ctx context.Context, docID string, location replicatedDocLocation, actualCas uint64, hlv *db.HybridLogicalVector, mou *db.MetadataOnlyUpdate) uint64 {
 	if mou == nil {
 		return actualCas
