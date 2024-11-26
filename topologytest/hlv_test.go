@@ -88,7 +88,6 @@ func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 			if strings.HasPrefix(tc.activePeerID, "cbl") {
 				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
 			}
-			t.Skip("intermittent failure in Couchbase Server and rosmar CBG-4329")
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
 			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
@@ -113,9 +112,6 @@ func TestHLVDeleteDocumentSingleActor(t *testing.T) {
 		t.Run(tc.description(), func(t *testing.T) {
 			if strings.HasPrefix(tc.activePeerID, "cbl") {
 				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
-			}
-			if !base.UnitTestUrlIsWalrus() {
-				t.Skip("intermittent failure in Couchbase Server CBG-4329")
 			}
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
