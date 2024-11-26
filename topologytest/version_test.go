@@ -23,14 +23,19 @@ type DocMetadata struct {
 	ImplicitCV *db.Version             // ImplicitCV is the version of the document, if there was no HLV
 }
 
-func (v DocMetadata) CV() string {
+// CV returns the current version of the document.
+func (v DocMetadata) CV() db.Version {
 	if v.HLV == nil {
+		// If there is no HLV, then the version is implicit from the current ver@sourceID
 		if v.ImplicitCV == nil {
-			return ""
+			return db.Version{}
 		}
-		return v.ImplicitCV.String()
+		return *v.ImplicitCV
 	}
-	return v.HLV.GetCurrentVersionString()
+	return db.Version{
+		SourceID: v.HLV.SourceID,
+		Value:    v.HLV.Version,
+	}
 }
 
 // DocMetadataFromDocument returns a DocVersion from the given document.
