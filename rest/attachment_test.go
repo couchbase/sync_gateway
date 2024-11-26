@@ -2976,3 +2976,55 @@ func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 	attMeta := globalXattr.GlobalAttachments["camera.txt"].(map[string]interface{})
 	assert.Equal(t, float64(20), attMeta["length"])
 }
+
+func TestBlipPushRevWithAttachment(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		// Setup
+		rt := NewRestTesterPersistentConfig(t)
+		defer rt.Close()
+		const username = "bernard"
+
+		opts := &BlipTesterClientOpts{Username: username, SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		docID := "doc1"
+		attachmentName := "attachment1"
+		attachmentData := "attachmentContents"
+
+		contentType := "text/plain"
+
+		length, digest, err := btcRunner.saveAttachment(btc.id, contentType, base64.StdEncoding.EncodeToString([]byte(attachmentData)))
+		require.NoError(t, err)
+
+		blipBody := db.Body{
+			"key": "val",
+			"_attachments": db.Body{
+				"attachment1": db.Body{
+					"digest": digest,
+					"stub":   true,
+					"length": length,
+				},
+			},
+		}
+		version1, err := btcRunner.PushRev(btc.id, docID, EmptyDocVersion(), base.MustJSONMarshal(t, blipBody))
+		require.NoError(t, err)
+		body := rt.GetDocBody(docID)
+		require.Equal(t, db.Body{
+			"key": "val",
+			"_attachments": map[string]any{
+				"attachment1": map[string]any{
+					"digest": digest,
+					"stub":   true,
+					"revpos": float64(1),
+					"length": float64(length),
+				},
+			},
+			"_id":  docID,
+			"_rev": version1.RevTreeID,
+		}, body)
+		response := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attachmentName), "")
+		RequireStatus(t, response, http.StatusOK)
+		require.Equal(t, attachmentData, string(response.BodyBytes()))
+	})
+}
