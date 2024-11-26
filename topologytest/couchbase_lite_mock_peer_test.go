@@ -12,11 +12,13 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,13 +85,19 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(sgbucket.DataStoreName, string) D
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docID string, _ DocMetadata) db.Body {
+func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docID string, docVersion DocMetadata) db.Body {
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
-	// FIXME: waiting for a specific version isn't working yet.
-	bodyBytes := client.btcRunner.WaitForDoc(client.ID(), docID)
+	var data []byte
+	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
+		var found bool
+		data, found = client.btcRunner.GetVersion(client.ID(), docID, rest.DocVersion{CV: docVersion.CV()})
+		if !assert.True(c, found, "Could not find docID:%+v Version %+v", docID, docVersion) {
+			return
+		}
+	}, 10*time.Second, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v Version %+v", docID, docVersion)
 	var body db.Body
-	require.NoError(p.t, base.JSONUnmarshal(bodyBytes, &body))
+	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))
 	return body
 }
 
