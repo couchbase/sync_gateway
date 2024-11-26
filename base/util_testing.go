@@ -462,8 +462,31 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 				log.Printf("TEST: Memory high water mark increased to %.2f MB (heap: %.2f MB stack: %.2f MB)", totalInuseMB, heapInuseMB, stackInuseMB)
 				inuseHighWaterMarkMB = totalInuseMB
 			}
-		}
+			if totalInuseMB > float64(memWatermarkThresholdMB) {
+				filename := fmt.Sprintf("test-high_watermark-heap-%s.pb.gz", time.Now().Format(ISO8601Format))
+				fd, err := os.Create(filename)
+				if err != nil {
+					log.Printf("TEST: couldn't open pprof heap file: %v", err)
+					return
+				}
+				defer func() {
+					if fd.Close() != nil {
+						log.Printf("TEST: couldn't close pprof heap file %q: %v", filename, err)
+					}
+				}()
+				cwd, err := os.Getwd()
+				if err != nil {
+					log.Printf("TEST: couldn't get current working directory: %v", err)
+					return
+				}
+				log.Printf("TEST: Writing heap profile to: %s", filepath.Join(cwd, filename))
+				if pprof.Lookup("heap").WriteTo(fd, 2) != nil {
+					log.Printf("TEST: couldn't write pprof heap file %q: %v", filename, err)
+					return
+				}
 
+			}
+		}
 		t := time.NewTicker(sampleFrequency)
 		defer t.Stop()
 

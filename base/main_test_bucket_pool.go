@@ -513,6 +513,10 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 	// create required number of buckets (skipping any already existing ones)
 	for i := 0; i < numBuckets; i++ {
 		testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
+		// shorten the name for rosmar buckets since they are in memory only
+		if UnitTestUrlIsWalrus() {
+			testBucketName = fmt.Sprintf("bucket%d", i)
+		}
 		ctx := BucketNameCtx(context.Background(), testBucketName)
 
 		// Bucket creation takes a few seconds for each bucket,
