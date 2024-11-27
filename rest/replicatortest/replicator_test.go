@@ -8628,7 +8628,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	docID := "doc1"
 	_ = activeRT.CreateTestDoc(docID)
 
-	shouldChannelQueryError.Store(false)
+	shouldChannelQueryError.Store(true)
 	require.NoError(t, ar.Start(activeRT.Context()))
 
 	changesResults, err := passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)

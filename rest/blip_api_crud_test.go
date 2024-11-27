@@ -1206,7 +1206,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 		concurrentSendRevNum = 50
 	)
 	rt := NewRestTester(t, &RestTesterConfig{
-		leakyBucketConfig: &base.LeakyBucketConfig{
+		LeakyBucketConfig: &base.LeakyBucketConfig{
 			UpdateCallback: func(_ string) {
 				time.Sleep(time.Millisecond * 5) // slow down rosmar - it's too quick to be throttled
 			},
@@ -3195,7 +3195,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 	var shouldChanenlQueryError atomic.Bool
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &RestTesterConfig{
-			leakyBucketConfig: &base.LeakyBucketConfig{
+			LeakyBucketConfig: &base.LeakyBucketConfig{
 				QueryCallback: func(ddoc, viewname string, params map[string]any) error {
 					if viewname == "channels" && shouldChanenlQueryError.Load() {
 						return gocb.ErrTimeout
