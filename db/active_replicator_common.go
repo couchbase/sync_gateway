@@ -15,6 +15,7 @@ import (
 	"errors"
 	"expvar"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -52,7 +53,7 @@ type activeReplicatorCommon struct {
 	ctxCancel             context.CancelFunc
 	reconnectActive       base.AtomicBool                                             // Tracks whether reconnect goroutine is active
 	replicatorConnectFn   func() error                                                // the function called inside reconnectLoop.
-	activeSendChanges     base.AtomicBool                                             // Tracks whether sendChanges goroutine is active.
+	activeSendChanges     atomic.Int32                                                // Tracks whether sendChanges goroutines are active, there is one per collection.
 	namedCollections      map[base.ScopeAndCollectionName]*activeReplicatorCollection // set only if the replicator is running with collections - access with forEachCollection
 	defaultCollection     *activeReplicatorCollection                                 // set only if the replicator is not running with collections - access with forEachCollection
 }

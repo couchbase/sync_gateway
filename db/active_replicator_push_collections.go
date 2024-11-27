@@ -10,9 +10,7 @@ package db
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -52,47 +50,6 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 		bh.collectionIdx = collectionIdx
 		bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 
-		var channels base.Set
-		if filteredChannels := apr.config.getFilteredChannels(collectionIdx); len(filteredChannels) > 0 {
-			channels = base.SetFromArray(filteredChannels)
-		}
-
-		apr.blipSyncContext.fatalErrorCallback = func(err error) {
-			if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
-				err = ErrUseProposeChanges
-				_ = apr.setError(PreHydrogenTargetAllowConflictsError)
-				err = apr.stopAndDisconnect()
-				if err != nil {
-					base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
-				}
-			} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
-				err = apr.reconnect()
-				if err != nil {
-					base.ErrorfCtx(apr.ctx, "Failed to reconnect replication: %v", err)
-				}
-			}
-			// No special handling for error
-		}
-		apr.activeSendChanges.Set(true)
-		go func(s *blip.Sender) {
-			defer apr.activeSendChanges.Set(false)
-			isComplete := bh.sendChanges(s, &sendChangesOptions{
-				docIDs:            apr.config.DocIDs,
-				since:             replicationCollection.Checkpointer.lastCheckpointSeq,
-				continuous:        apr.config.Continuous,
-				activeOnly:        apr.config.ActiveOnly,
-				batchSize:         int(apr.config.ChangesBatchSize),
-				revocations:       apr.config.PurgeOnRemoval,
-				channels:          channels,
-				clientType:        clientTypeSGR2,
-				ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
-				changesCtx:        c.changesCtx,
-			})
-			// On a normal completion, call complete for the replication
-			if isComplete {
-				apr.Complete()
-			}
-		}(apr.blipSender)
-		return nil
+		return apr._startSendingChanges(bh, replicationCollection.Checkpointer.lastCheckpointSeq)
 	})
 }
