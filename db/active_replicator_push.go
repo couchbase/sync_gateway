@@ -347,7 +347,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 		if err != nil {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
 			bh.ctxCancelFunc()
-			apr.setError(err)
+			_ = apr.setError(err)
 			apr.publishStatus()
 			return
 		}
