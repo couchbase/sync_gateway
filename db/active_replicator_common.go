@@ -313,8 +313,9 @@ func (a *activeReplicatorCommon) getState() string {
 	return a.state
 }
 
-// requires a.stateErrorLock
 func (a *activeReplicatorCommon) _getStateWithErrorMessage() (state string, lastErrorMessage string) {
+	a.stateErrorLock.RLock()
+	defer a.stateErrorLock.RUnlock()
 	if a.lastError == nil {
 		return a.state, ""
 	}
