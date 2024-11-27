@@ -131,7 +131,11 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
 		}
 		var body db.Body
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		return body.ExtractRev() == version.RevID
+		if body.ExtractRev() != version.RevID {
+			rt.TB().Logf("Retrying WaitForVersion for doc %s, expected rev %s, got body %s", docID, version.RevID, body)
+			return false
+		}
+		return true
 	})
 }
 

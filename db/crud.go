@@ -2189,8 +2189,15 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		base.InfofCtx(ctx, base.KeyCRUD, "doc %q / %q, has been pruned, it has not been inserted into the revision cache", base.UD(docid), newRevID)
 	}
 
+	// If this update branched the revision tree, make a note of it in the 'Stored doc' log.
+	// The next time we'll see this is when the changes feed sends this revision.
+	inConflictLogSuffix := ""
+	if inConflict {
+		inConflictLogSuffix = " (branched)"
+	}
+
 	// Now that the document has successfully been stored, we can make other db changes:
-	base.DebugfCtx(ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
+	base.DebugfCtx(ctx, base.KeyCRUD, "Stored doc %q / %q%s as #%v", base.UD(docid), newRevID, inConflictLogSuffix, doc.Sequence)
 
 	leafAttachments := make(map[string][]string)
 	if !skipObsoleteAttachmentsRemoval {

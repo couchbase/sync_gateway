@@ -12,8 +12,10 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
+	"iter"
 	"net/http"
 	"slices"
 	"strconv"
@@ -25,7 +27,6 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,7 +51,11 @@ type BlipTesterClientOpts struct {
 
 	// sendReplacementRevs opts into the replacement rev behaviour in the event that we do not find the requested one.
 	sendReplacementRevs bool
+
+	revsLimit *int // defaults to 20
 }
+
+const defaultBelipTesterClientRevsLimit = 20
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
 type BlipTesterClient struct {
@@ -65,19 +70,157 @@ type BlipTesterClient struct {
 	nonCollectionAwareClient *BlipTesterCollectionClient
 }
 
+func (c *BlipTesterCollectionClient) getClientDocForSeq(seq clientSeq) (*clientDoc, bool) {
+	c.seqLock.RLock()
+	defer c.seqLock.RUnlock()
+	doc, ok := c._seqStore[seq]
+	return doc, ok
+}
+
+// OneShotDocsSince is an iterator that yields client sequence and document pairs that are newer than the given since value.
+func (c *BlipTesterCollectionClient) OneShotDocsSince(since clientSeq) iter.Seq2[clientSeq, *clientDoc] {
+	return func(yield func(clientSeq, *clientDoc) bool) {
+		c.seqLock.Lock()
+		seqLast := c._seqLast
+		for c._seqLast <= since {
+			// block until new seq
+			c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - waiting for new sequence", since, c._seqLast)
+			c._seqCond.Wait()
+			seqLast = c._seqLast
+			c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - woke up", since, c._seqLast)
+		}
+		c.seqLock.Unlock()
+		c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - iterating", since, seqLast)
+		for seq := since; seq <= seqLast; seq++ {
+			doc, ok := c.getClientDocForSeq(seq)
+			// filter non-latest entries in cases where we haven't pruned _seqStore
+			if !ok {
+				continue
+			} else if doc.latestSeq != seq {
+				// this entry should be cleaned up from _seqStore?
+				base.AssertfCtx(context.TODO(), "seq %d found in _seqStore but latestSeq for doc %d - this should've been pruned out!", seq, doc.latestSeq)
+				continue
+			}
+			if !yield(seq, doc) {
+				c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - stopping iteration", since, c._seqLast)
+				return
+			}
+		}
+		c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - done", since, c._seqLast)
+	}
+}
+
+func (c *BlipTesterCollectionClient) docsSince(ctx context.Context, since clientSeq, continuous bool) chan *clientDoc {
+	ch := make(chan *clientDoc)
+	go func() {
+		sinceVal := since
+		for {
+			c.TB().Logf("docsSince: sinceVal=%d", sinceVal)
+			for _, doc := range c.OneShotDocsSince(sinceVal) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				c.TB().Logf("sending doc %q", doc.id)
+				ch <- doc
+				sinceVal = doc.latestSeq
+			}
+			if !continuous {
+				c.TB().Logf("opts.Continuous=false, breaking changes loop")
+				break
+			}
+		}
+	}()
+	return ch
+}
+
+type clientSeq uint64
+
+// clientDocRev represents a revision of a document stored on this client, including any metadata assocaited with this specific revision.
+type clientDocRev struct {
+	clientSeq     clientSeq
+	version       DocVersion
+	parentVersion *DocVersion
+	body          []byte
+	isDelete      bool
+	isNoRev       bool
+	message       *blip.Message // rev or norev message associated with this revision
+}
+
+type clientDoc struct {
+	id                  string                     // doc ID
+	latestSeq           clientSeq                  // Latest sequence number we have for the doc - the active rev
+	latestServerVersion DocVersion                 // Latest version we know the server had (via push or a pull)
+	revisionsBySeq      map[clientSeq]clientDocRev // Full history of doc from client POV
+	seqsByVersions      map[DocVersion]clientSeq   // Lookup from version into revisionsBySeq
+}
+
+// docRevSeqsNewestToOldest returns a list of sequences associated with this document, ordered newest to oldest.
+// Can be used for lookups in clientDoc.revisionsBySeq
+func (cd *clientDoc) docRevSeqsNewestToOldest() []clientSeq {
+	seqs := make([]clientSeq, 0, len(cd.revisionsBySeq))
+	for _, rev := range cd.revisionsBySeq {
+		seqs = append(seqs, rev.clientSeq)
+	}
+	slices.Sort(seqs)    // oldest to newest
+	slices.Reverse(seqs) // newest to oldest
+	return seqs
+}
+
+func (cd *clientDoc) activeRev() *clientDocRev {
+	rev, ok := cd.revisionsBySeq[cd.latestSeq]
+	if !ok {
+		base.AssertfCtx(context.TODO(), "latestSeq %d not found in revisionsBySeq", cd.latestSeq)
+		return nil
+	}
+	return &rev
+}
+
+func (cd *clientDoc) latestVersion() DocVersion {
+	return cd.activeRev().version
+}
+
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
 	collection    string
 	collectionIdx int
 
-	docs map[string]map[string]*BodyMessagePair // Client's local store of documents - Map of docID
-	// to rev ID to bytes
-	attachments           map[string][]byte // Client's local store of attachments - Map of digest to bytes
-	lastReplicatedRev     map[string]string // Latest known rev pulled or pushed
-	docsLock              sync.RWMutex      // lock for docs map
-	attachmentsLock       sync.RWMutex      // lock for attachments map
-	lastReplicatedRevLock sync.RWMutex      // lock for lastReplicatedRev map
+	// seqLock protects all _seq... fields below
+	seqLock *sync.RWMutex
+	// _lastSeq is the client's latest assigned sequence number
+	_seqLast clientSeq
+	// _seqStore is a sparse map of (client) sequences and the corresponding document
+	// entries are removed from this map when the sequence no longer represents an active document revision
+	// the older revisions for a particular document can still be accessed via clientDoc.revisionsBySeq if required
+	_seqStore map[clientSeq]*clientDoc
+	// _seqFromDocID used to lookup entry in _seqStore by docID - not a pointer into other map for simplicity
+	_seqFromDocID map[string]clientSeq
+	// _seqCond is used to signal when a new sequence has been added to wake up idle "changes" loops
+	_seqCond *sync.Cond
+
+	attachmentsLock sync.RWMutex      // lock for _attachments map
+	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
+}
+
+func (btcc *BlipTesterCollectionClient) getClientDoc(docID string) (*clientDoc, bool) {
+	btcc.seqLock.RLock()
+	defer btcc.seqLock.RUnlock()
+	return btcc._getClientDoc(docID)
+}
+
+func (btcc *BlipTesterCollectionClient) _getClientDoc(docID string) (*clientDoc, bool) {
+	seq, ok := btcc._seqFromDocID[docID]
+	if !ok {
+		return nil, false
+	}
+	clientDoc, ok := btcc._seqStore[seq]
+	if !ok {
+		base.AssertfCtx(base.TestCtx(btcc.TB()), "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
+		return nil, false
+	}
+	return clientDoc, ok
 }
 
 // BlipTestClientRunner is for running the blip tester client and its associated methods in test framework
@@ -120,6 +263,8 @@ func (btr *BlipTesterReplicator) Close() {
 }
 
 func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
+	revsLimit := base.IntDefault(btc.revsLimit, defaultBelipTesterClientRevsLimit)
+
 	if btr.replicationStats == nil {
 		btr.replicationStats = db.NewBlipSyncStats()
 	}
@@ -170,7 +315,6 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 			knownRevs = make([]interface{}, len(changesReqs))
 			// changesReqs == [[sequence, docID, revID, {deleted}, {size (bytes)}], ...]
-			btcr.docsLock.RLock() // TODO: Move locking to accessor methods
 		outer:
 			for i, changesReq := range changesReqs {
 				docID := changesReq[1].(string)
@@ -190,30 +334,27 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 				// Build up a list of revisions known to the client for each change
 				// The first element of each revision list must be the parent revision of the change
-				if revs, haveDoc := btcr.docs[docID]; haveDoc {
-					revList := make([]string, 0, len(revs))
+				if doc, haveDoc := btcr.getClientDoc(docID); haveDoc {
+					docSeqs := doc.docRevSeqsNewestToOldest()
+					revList := make([]string, 0, revsLimit)
 
-					// Insert the highest ancestor rev generation at the start of the revList
-					latest, ok := btcr.getLastReplicatedRev(docID)
-					if ok {
-						revList = append(revList, latest)
-					}
-
-					for knownRevID := range revs {
+					for _, seq := range docSeqs {
 						if deletedInt&2 == 2 {
 							continue
 						}
 
-						if revID == knownRevID {
+						rev := doc.revisionsBySeq[seq]
+
+						if revID == rev.version.RevID {
 							knownRevs[i] = nil // Send back null to signal we don't need this change
 							continue outer
-						} else if latest == knownRevID {
-							// We inserted this rev as the first element above, so skip it here
-							continue
 						}
 
-						// TODO: Limit known revs to 20 to copy CBL behaviour
-						revList = append(revList, knownRevID)
+						if len(revList) < revsLimit {
+							revList = append(revList, rev.version.RevID)
+						} else {
+							break
+						}
 					}
 
 					knownRevs[i] = revList
@@ -222,7 +363,6 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				}
 
 			}
-			btcr.docsLock.RUnlock()
 		}
 
 		response := msg.Response()
@@ -255,23 +395,47 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		require.NoError(btr.TB(), err)
 
 		if msg.Properties[db.RevMessageDeleted] == "1" {
-			btcr.docsLock.Lock()
-			defer btcr.docsLock.Unlock()
-			if _, ok := btcr.docs[docID]; ok {
-				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-				btcr.docs[docID][revID] = bodyMessagePair
-				if replacedRev != "" {
-					// store a pointer to the message from the replaced rev for tests waiting for this specific rev
-					btcr.docs[docID][replacedRev] = bodyMessagePair
+			btcr.seqLock.Lock()
+			defer btcr.seqLock.Unlock()
+			btcr._seqLast++
+			newClientSeq := btcr._seqLast
+			newVersion := DocVersion{RevID: revID}
+
+			docRev := clientDocRev{
+				clientSeq: newClientSeq,
+				version:   newVersion,
+				body:      body,
+				isDelete:  true,
+				message:   msg,
+			}
+
+			doc, ok := btcr._getClientDoc(docID)
+			if !ok {
+				doc = &clientDoc{
+					id:        docID,
+					latestSeq: newClientSeq,
+					revisionsBySeq: map[clientSeq]clientDocRev{
+						newClientSeq: docRev,
+					},
+					seqsByVersions: map[DocVersion]clientSeq{
+						newVersion: newClientSeq,
+					},
 				}
 			} else {
-				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-				btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
-				if replacedRev != "" {
-					btcr.docs[docID][replacedRev] = bodyMessagePair
-				}
+				// TODO: Insert parent rev into docRev? How do we know what the parent rev actually was???
+				// remove existing entry and replace with new seq
+				delete(btcr._seqStore, doc.latestSeq)
+				doc.seqsByVersions[newVersion] = newClientSeq
+				doc.revisionsBySeq[newClientSeq] = docRev
 			}
-			btcr.updateLastReplicatedRev(docID, revID)
+			btcr._seqStore[newClientSeq] = doc
+			btcr._seqFromDocID[docID] = newClientSeq
+
+			if replacedRev != "" {
+				// store the new sequence for a replaced rev for tests waiting for this specific rev
+				doc.seqsByVersions[DocVersion{RevID: replacedRev}] = newClientSeq
+			}
+			doc.latestServerVersion = newVersion
 
 			if !msg.NoReply() {
 				response := msg.Response()
@@ -301,10 +465,22 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			require.NoError(btc.TB(), err)
 
 			var old db.Body
-			btcr.docsLock.RLock()
-			oldBytes := btcr.docs[docID][deltaSrc].body
-			btcr.docsLock.RUnlock()
-			err = old.Unmarshal(oldBytes)
+			doc, ok := btcr.getClientDoc(docID)
+			if !ok {
+				base.AssertfCtx(base.TestCtx(btc.TB()), "docID %q not found in _seqFromDocID", docID)
+				return
+			}
+			seq, ok := doc.seqsByVersions[DocVersion{RevID: deltaSrc}]
+			if !ok {
+				base.AssertfCtx(base.TestCtx(btc.TB()), "revID (deltaSrc) %q not found in seqsByVersions", deltaSrc)
+				return
+			}
+			oldRev, ok := doc.revisionsBySeq[seq]
+			if !ok {
+				base.AssertfCtx(base.TestCtx(btc.TB()), "seq %q not found in revisionsBySeq", seq)
+				return
+			}
+			err = old.Unmarshal(oldRev.body)
 			require.NoError(btc.TB(), err)
 
 			var oldMap = map[string]interface{}(old)
@@ -335,7 +511,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					require.True(btr.TB(), ok, "att in doc wasn't map[string]interface{}")
 					digest := attMap["digest"].(string)
 
-					if _, found := btcr.attachments[digest]; !found {
+					if _, found := btcr._attachments[digest]; !found {
 						missingDigests = append(missingDigests, digest)
 					} else {
 						if btr.bt.activeSubprotocol == db.CBMobileReplicationV2 {
@@ -413,7 +589,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					}
 
 					btcr.attachmentsLock.Lock()
-					btcr.attachments[digest] = respBody
+					btcr._attachments[digest] = respBody
 					btcr.attachmentsLock.Unlock()
 				}
 			}
@@ -425,23 +601,47 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			require.NoError(btr.TB(), err)
 		}
 
-		btcr.docsLock.Lock()
-		defer btcr.docsLock.Unlock()
+		// TODO: Duplicated code from the deleted case above - factor into shared function?
+		btcr.seqLock.Lock()
+		defer btcr.seqLock.Unlock()
+		btcr._seqLast++
+		newClientSeq := btcr._seqLast
+		newVersion := DocVersion{RevID: revID}
 
-		if _, ok := btcr.docs[docID]; ok {
-			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-			btcr.docs[docID][revID] = bodyMessagePair
-			if replacedRev != "" {
-				btcr.docs[docID][replacedRev] = bodyMessagePair
+		docRev := clientDocRev{
+			clientSeq: newClientSeq,
+			version:   newVersion,
+			body:      body,
+			message:   msg,
+		}
+
+		doc, ok := btcr._getClientDoc(docID)
+		if !ok {
+			doc = &clientDoc{
+				id:        docID,
+				latestSeq: newClientSeq,
+				revisionsBySeq: map[clientSeq]clientDocRev{
+					newClientSeq: docRev,
+				},
+				seqsByVersions: map[DocVersion]clientSeq{
+					newVersion: newClientSeq,
+				},
 			}
 		} else {
-			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
-			if replacedRev != "" {
-				btcr.docs[docID][replacedRev] = bodyMessagePair
-			}
+			// TODO: Insert parent rev into docRev? How do we know what the parent rev actually was???
+			// remove existing entry and replace with new seq
+			delete(btcr._seqStore, doc.latestSeq)
+			doc.seqsByVersions[newVersion] = newClientSeq
+			doc.revisionsBySeq[newClientSeq] = docRev
 		}
-		btcr.updateLastReplicatedRev(docID, revID)
+		btcr._seqStore[newClientSeq] = doc
+		btcr._seqFromDocID[docID] = newClientSeq
+
+		if replacedRev != "" {
+			// store the new sequence for a replaced rev for tests waiting for this specific rev
+			doc.seqsByVersions[DocVersion{RevID: replacedRev}] = newClientSeq
+		}
+		doc.latestServerVersion = newVersion
 
 		if !msg.NoReply() {
 			response := msg.Response()
@@ -477,16 +677,32 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		docID := msg.Properties[db.NorevMessageId]
 		revID := msg.Properties[db.NorevMessageRev]
 
-		btcr.docsLock.Lock()
-		defer btcr.docsLock.Unlock()
-
-		if _, ok := btcr.docs[docID]; ok {
-			bodyMessagePair := &BodyMessagePair{message: msg}
-			btcr.docs[docID][revID] = bodyMessagePair
-		} else {
-			bodyMessagePair := &BodyMessagePair{message: msg}
-			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+		btcr.seqLock.Lock()
+		defer btcr.seqLock.Unlock()
+		btcr._seqLast++
+		newSeq := btcr._seqLast
+		doc, ok := btcr._getClientDoc(docID)
+		if !ok {
+			doc = &clientDoc{
+				id:             docID,
+				latestSeq:      newSeq,
+				revisionsBySeq: make(map[clientSeq]clientDocRev, 1),
+				seqsByVersions: make(map[DocVersion]clientSeq, 1),
+			}
 		}
+		newVersion := DocVersion{RevID: revID}
+		doc.seqsByVersions[newVersion] = newSeq
+		doc.revisionsBySeq[newSeq] = clientDocRev{
+			clientSeq:     newSeq,
+			version:       newVersion,
+			parentVersion: nil,
+			body:          nil,
+			isDelete:      false,
+			isNoRev:       true,
+			message:       msg,
+		}
+		btcr._seqStore[newSeq] = doc
+		btcr._seqFromDocID[docID] = newSeq
 	}
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
@@ -518,10 +734,10 @@ func (btc *BlipTesterCollectionClient) saveAttachment(_, base64data string) (dat
 	}
 
 	digest = db.Sha1DigestKey(data)
-	if _, found := btc.attachments[digest]; found {
+	if _, found := btc._attachments[digest]; found {
 		base.InfofCtx(ctx, base.KeySync, "attachment with digest %s already exists", digest)
 	} else {
-		btc.attachments[digest] = data
+		btc._attachments[digest] = data
 	}
 
 	return len(data), digest, nil
@@ -531,7 +747,7 @@ func (btc *BlipTesterCollectionClient) getAttachment(digest string) (attachment 
 	btc.attachmentsLock.RLock()
 	defer btc.attachmentsLock.RUnlock()
 
-	attachment, found := btc.attachments[digest]
+	attachment, found := btc._attachments[digest]
 	if !found {
 		return nil, fmt.Errorf("attachment not found")
 	}
@@ -539,30 +755,26 @@ func (btc *BlipTesterCollectionClient) getAttachment(digest string) (attachment 
 	return attachment, nil
 }
 
-func (btc *BlipTesterCollectionClient) updateLastReplicatedRev(docID, revID string) {
-	btc.lastReplicatedRevLock.Lock()
-	defer btc.lastReplicatedRevLock.Unlock()
-
-	currentRevID, ok := btc.lastReplicatedRev[docID]
+func (btc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, version DocVersion) {
+	btc.seqLock.Lock()
+	defer btc.seqLock.Unlock()
+	doc, ok := btc._getClientDoc(docID)
 	if !ok {
-		btc.lastReplicatedRev[docID] = revID
+		base.AssertfCtx(base.TestCtx(btc.TB()), "docID %q not found in _seqFromDocID", docID)
 		return
 	}
-
-	ctx := base.TestCtx(btc.parent.rt.TB())
-	currentGen, _ := db.ParseRevID(ctx, currentRevID)
-	incomingGen, _ := db.ParseRevID(ctx, revID)
-	if incomingGen > currentGen {
-		btc.lastReplicatedRev[docID] = revID
-	}
+	doc.latestServerVersion = version
 }
 
-func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (revID string, ok bool) {
-	btc.lastReplicatedRevLock.RLock()
-	defer btc.lastReplicatedRevLock.RUnlock()
-
-	revID, ok = btc.lastReplicatedRev[docID]
-	return revID, ok
+func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (version DocVersion, ok bool) {
+	btc.seqLock.Lock()
+	defer btc.seqLock.Unlock()
+	doc, ok := btc._getClientDoc(docID)
+	if !ok {
+		base.AssertfCtx(base.TestCtx(btc.TB()), "docID %q not found in _seqFromDocID", docID)
+		return DocVersion{}, false
+	}
+	return doc.latestServerVersion, doc.latestServerVersion.RevID != ""
 }
 
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) (*BlipTesterReplicator, error) {
@@ -691,11 +903,14 @@ func (btc *BlipTesterClient) createBlipTesterReplications() error {
 			}
 		}
 	} else {
+		l := sync.RWMutex{}
 		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
-			docs:              make(map[string]map[string]*BodyMessagePair),
-			attachments:       make(map[string][]byte),
-			lastReplicatedRev: make(map[string]string),
-			parent:            btc,
+			seqLock:       &l,
+			_seqStore:     make(map[clientSeq]*clientDoc),
+			_seqFromDocID: make(map[string]clientSeq),
+			_seqCond:      sync.NewCond(&l),
+			_attachments:  make(map[string][]byte),
+			parent:        btc,
 		}
 	}
 
@@ -706,11 +921,14 @@ func (btc *BlipTesterClient) createBlipTesterReplications() error {
 }
 
 func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) error {
+	l := sync.RWMutex{}
 	btcReplicator := &BlipTesterCollectionClient{
-		docs:              make(map[string]map[string]*BodyMessagePair),
-		attachments:       make(map[string][]byte),
-		lastReplicatedRev: make(map[string]string),
-		parent:            btc,
+		seqLock:       &l,
+		_seqStore:     make(map[clientSeq]*clientDoc),
+		_seqCond:      sync.NewCond(&l),
+		_seqFromDocID: make(map[string]clientSeq),
+		_attachments:  make(map[string][]byte),
+		parent:        btc,
 	}
 
 	btcReplicator.collection = collection
@@ -748,6 +966,183 @@ func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionNam
 	}
 	require.FailNow(btcRunner.clients[clientID].TB(), "Could not find collection %s in BlipTesterClient", collectionName)
 	return nil
+}
+
+// BlipTesterPushOptions
+type BlipTesterPushOptions struct {
+	Continuous bool
+	Since      string
+
+	// TODO: Not Implemented
+	//Channels   string
+	//DocIDs     []string
+	//changesBatchSize int
+}
+
+// StartPush will begin a continuous push replication since 0 between the client and server
+func (btcc *BlipTesterCollectionClient) StartPush() {
+	btcc.StartPushWithOpts(BlipTesterPushOptions{Continuous: true, Since: "0"})
+}
+
+// TODO: Implement opts.changesBatchSize and raise default batch to ~20-200 to match real CBL client
+const changesBatchSize = 1
+
+// StartPull will begin a push replication with the given options between the client and server
+func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
+	sinceFromStr, err := db.ParsePlainSequenceID(opts.Since)
+	require.NoError(btcc.TB(), err)
+	seq := clientSeq(sinceFromStr.SafeSequence())
+	go func() {
+		for {
+			// TODO: wire up opts.changesBatchSize and implement a flush timeout
+			changesBatch := make([]*clientDoc, 0, changesBatchSize)
+			btcc.TB().Logf("Starting push replication iteration with since=%v", seq)
+			for doc := range btcc.docsSince(btcc.parent.rt.Context(), seq, opts.Continuous) {
+				select {
+				case <-btcc.parent.rt.Context().Done():
+					return
+				default:
+				}
+				changesBatch = append(changesBatch, doc)
+				if len(changesBatch) >= changesBatchSize {
+					btcc.TB().Logf("Sending batch of %d changes", len(changesBatch))
+					proposeChangesRequest := blip.NewRequest()
+					proposeChangesRequest.SetProfile(db.MessageProposeChanges)
+
+					proposeChangesRequestBody := bytes.NewBufferString(`[`)
+					for i, change := range changesBatch {
+						if i > 0 {
+							proposeChangesRequestBody.WriteString(",")
+						}
+						activeRev := change.activeRev()
+						proposeChangesRequestBody.WriteString(fmt.Sprintf(`["%s","%s"`, change.id, activeRev.version.RevID))
+						// write last known server version to support no-conflict mode
+						if serverVersion, ok := btcc.getLastReplicatedRev(change.id); ok {
+							btcc.TB().Logf("specifying last known server version for doc %s = %v", change.id, serverVersion)
+							proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.RevID))
+						}
+						proposeChangesRequestBody.WriteString(`]`)
+					}
+					proposeChangesRequestBody.WriteString(`]`)
+					proposeChangesRequestBodyBytes := proposeChangesRequestBody.Bytes()
+					proposeChangesRequest.SetBody(proposeChangesRequestBodyBytes)
+
+					btcc.TB().Logf("proposeChanges request: %s", string(proposeChangesRequestBodyBytes))
+
+					btcc.addCollectionProperty(proposeChangesRequest)
+
+					if err := btcc.sendPushMsg(proposeChangesRequest); err != nil {
+						btcc.TB().Errorf("Error sending proposeChanges: %v", err)
+						return
+					}
+
+					proposeChangesResponse := proposeChangesRequest.Response()
+					rspBody, err := proposeChangesResponse.Body()
+					if err != nil {
+						btcc.TB().Errorf("Error reading proposeChanges response body: %v", err)
+						return
+					}
+					errorDomain := proposeChangesResponse.Properties["Error-Domain"]
+					errorCode := proposeChangesResponse.Properties["Error-Code"]
+					if errorDomain != "" && errorCode != "" {
+						btcc.TB().Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
+						return
+					}
+
+					btcc.TB().Logf("proposeChanges response: %s", string(rspBody))
+
+					var serverDeltas bool
+					if proposeChangesResponse.Properties[db.ChangesResponseDeltas] == "true" {
+						btcc.TB().Logf("server supports deltas")
+						serverDeltas = true
+					}
+
+					var response []int
+					err = base.JSONUnmarshal(rspBody, &response)
+					require.NoError(btcc.TB(), err)
+					for i, change := range changesBatch {
+						var status int
+						if i >= len(response) {
+							// trailing zeros are removed - treat as 0 from now on
+							status = 0
+						} else {
+							status = response[i]
+						}
+						switch status {
+						case 0:
+							// FIXME: `change.activeRev()` could change if the test is writing concurrently. We'll have to store the specific version we sent in proposeChanges and iterate on that.
+							version := change.activeRev().version
+							var revisionHistory []string
+							for i, seq := range change.docRevSeqsNewestToOldest() {
+								if i == 0 {
+									// skip current rev
+									continue
+								}
+								revisionHistory = append(revisionHistory, change.revisionsBySeq[seq].version.RevID)
+							}
+							// send
+							revRequest := blip.NewRequest()
+							revRequest.SetProfile(db.MessageRev)
+							revRequest.Properties[db.RevMessageID] = change.id
+							revRequest.Properties[db.RevMessageRev] = version.RevID
+							revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
+							serverVersion, ok := btcc.getLastReplicatedRev(change.id)
+							if serverDeltas && btcc.parent.ClientDeltas && ok && !change.revisionsBySeq[change.seqsByVersions[serverVersion]].isDelete {
+								btcc.TB().Logf("specifying last known server version as deltaSrc for doc %s = %v", change.id, serverVersion)
+								revRequest.Properties[db.RevMessageDeltaSrc] = serverVersion.RevID
+								var parentBodyUnmarshalled db.Body
+								if err := parentBodyUnmarshalled.Unmarshal(change.revisionsBySeq[change.seqsByVersions[serverVersion]].body); err != nil {
+									base.AssertfCtx(base.TestCtx(btcc.TB()), "Error unmarshalling parent body: %v", err)
+									return
+								}
+								var newBodyUnmarshalled db.Body
+								if err := newBodyUnmarshalled.Unmarshal(change.activeRev().body); err != nil {
+									base.AssertfCtx(base.TestCtx(btcc.TB()), "Error unmarshalling new body: %v", err)
+									return
+								}
+								delta, err := base.Diff(parentBodyUnmarshalled, newBodyUnmarshalled)
+								if err != nil {
+									base.AssertfCtx(base.TestCtx(btcc.TB()), "Error creating delta: %v", err)
+									return
+								}
+								revRequest.SetBody(delta)
+							} else {
+								revRequest.SetBody(change.activeRev().body)
+							}
+
+							btcc.addCollectionProperty(revRequest)
+							if err := btcc.sendPushMsg(revRequest); err != nil {
+								btcc.TB().Errorf("Error sending rev: %v", err)
+								return
+							}
+							btcc.TB().Logf("sent doc %s / %v", change.id, version)
+							btcc.updateLastReplicatedRev(change.id, version)
+						case 304:
+							// peer already has doc version
+							btcc.TB().Logf("peer already has doc %s / %v", changesBatch[i].id, changesBatch[i].activeRev().version)
+							continue
+						case 409:
+							// conflict - puller will need to resolve (if enabled) - resolution pushed independently so we can ignore this one
+							btcc.TB().Logf("conflict for doc %s clientVersion:%v serverVersion:%v", changesBatch[i].id, changesBatch[i].activeRev().version, changesBatch[i].latestServerVersion)
+							continue
+						default:
+							btcc.TB().Errorf("unexpected status %d for doc %s", status, changesBatch[i].id)
+							return
+						}
+					}
+
+					changesBatch = emptyChangesBatch(changesBatch)
+				}
+			}
+		}
+	}()
+}
+
+func emptyChangesBatch(changesBatch []*clientDoc) []*clientDoc {
+	for i := range changesBatch {
+		changesBatch[i] = nil
+	}
+	return changesBatch[:0]
 }
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
@@ -839,16 +1234,13 @@ func (btc *BlipTesterCollectionClient) UnsubPushChanges() (response []byte, err 
 
 // Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterCollectionClient) Close() {
-	btc.docsLock.Lock()
-	btc.docs = make(map[string]map[string]*BodyMessagePair, 0)
-	btc.docsLock.Unlock()
-
-	btc.lastReplicatedRevLock.Lock()
-	btc.lastReplicatedRev = make(map[string]string, 0)
-	btc.lastReplicatedRevLock.Unlock()
+	btc.seqLock.Lock()
+	btc._seqStore = make(map[clientSeq]*clientDoc, 0)
+	btc._seqFromDocID = make(map[string]clientSeq, 0)
+	btc.seqLock.Unlock()
 
 	btc.attachmentsLock.Lock()
-	btc.attachments = make(map[string][]byte, 0)
+	btc._attachments = make(map[string][]byte, 0)
 	btc.attachmentsLock.Unlock()
 }
 
@@ -861,17 +1253,89 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 	return nil
 }
 
-// PushRev creates a revision on the client, and immediately sends a changes request for it.
+// upsertDoc will create or update the doc based on whether parentVersion is passed or not. Enforces MVCC update.
+func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *DocVersion, body []byte) (*clientDocRev, error) {
+	btc.seqLock.Lock()
+	defer btc.seqLock.Unlock()
+	oldSeq, ok := btc._seqFromDocID[docID]
+	var doc *clientDoc
+	if ok {
+		if parentVersion == nil {
+			return nil, fmt.Errorf("docID: %v already exists on the client with seq: %v - expecting to create doc based on nil parentVersion", docID, oldSeq)
+		}
+		doc, ok = btc._seqStore[oldSeq]
+		if !ok {
+			base.AssertfCtx(base.TestCtx(btc.TB()), "seq %q for docID %q found but no doc in _seqStore", oldSeq, docID)
+			return nil, fmt.Errorf("seq %q for docID %q found but no doc in _seqStore", oldSeq, docID)
+		}
+	} else {
+		if parentVersion != nil {
+			return nil, fmt.Errorf("docID: %v was not found on the client - expecting to update doc based on parentVersion %v", docID, parentVersion)
+		}
+		doc = &clientDoc{
+			id:             docID,
+			latestSeq:      0,
+			revisionsBySeq: make(map[clientSeq]clientDocRev, 1),
+			seqsByVersions: make(map[DocVersion]clientSeq, 1),
+		}
+	}
+	newGen := 1
+	var parentVersionCopy DocVersion
+	if parentVersion != nil {
+		parentVersionCopy = *parentVersion
+		// grab latest revision for this doc and make sure we're doing an upsert on top of it to avoid branching revisions
+		newestSeq := doc.docRevSeqsNewestToOldest()[0]
+		latestRev := doc.revisionsBySeq[newestSeq]
+		if parentVersion.RevID != latestRev.version.RevID {
+			return nil, fmt.Errorf("latest revision for docID: %v is %v, expected parentVersion: %v", docID, latestRev.version.RevID, parentVersion.RevID)
+		}
+		newGen = parentVersion.RevIDGeneration() + 1
+	}
+
+	body, err := btc.ProcessInlineAttachments(body, newGen)
+	if err != nil {
+		return nil, err
+	}
+
+	digest := "abc" // TODO: Generate rev ID digest based on body hash?
+
+	newRevID := fmt.Sprintf("%d-%s", newGen, digest)
+	btc._seqLast++
+	newSeq := btc._seqLast
+	doc.latestSeq = newSeq
+	newVersion := DocVersion{RevID: newRevID}
+	rev := clientDocRev{clientSeq: newSeq, version: newVersion, parentVersion: &parentVersionCopy, body: body}
+	doc.revisionsBySeq[newSeq] = rev
+	doc.seqsByVersions[newVersion] = newSeq
+
+	btc._seqStore[newSeq] = doc
+	btc._seqFromDocID[docID] = newSeq
+	delete(btc._seqStore, oldSeq)
+
+	// new sequence written, wake up changes feeds
+	btc._seqCond.Broadcast()
+
+	return &rev, nil
+}
+
+// AddRev creates a revision on the client.
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
-func (btc *BlipTesterCollectionClient) PushRev(docID string, parentVersion DocVersion, body []byte) (DocVersion, error) {
-	revid, err := btc.PushRevWithHistory(docID, parentVersion.RevID, body, 1, 0)
-	return DocVersion{RevID: revid}, err
+func (btc *BlipTesterCollectionClient) AddRev(docID string, parentVersion *DocVersion, body []byte) (DocVersion, error) { // Inline attachment processing
+	newRev, err := btc.upsertDoc(docID, parentVersion, body)
+	if err != nil {
+		return DocVersion{}, err
+	}
+	return newRev.version, nil
+}
+
+func (btc *BlipTesterCollectionClient) PushUnsolicitedRev(docID string, parentRev *DocVersion, body []byte) (version *DocVersion, err error) {
+	return btc.PushRevWithHistory(docID, parentRev, body, 1, 0)
 }
 
 // PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
-func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev string, body []byte, revCount, prunedRevCount int) (revID string, err error) {
+func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID string, parentVersion *DocVersion, body []byte, revCount, prunedRevCount int) (version *DocVersion, err error) {
 	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB()), btc.parent.rt.GetDatabase().Name, nil)
-	parentRevGen, _ := db.ParseRevID(ctx, parentRev)
+	parentRevGen := parentVersion.RevIDGeneration()
 	revGen := parentRevGen + revCount + prunedRevCount
 
 	var revisionHistory []string
@@ -883,60 +1347,51 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	// Inline attachment processing
 	body, err = btc.ProcessInlineAttachments(body, revGen)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	var parentDocBody []byte
-	newRevID := fmt.Sprintf("%d-%s", revGen, "abc")
-	btc.docsLock.Lock()
-	if parentRev != "" {
-		revisionHistory = append(revisionHistory, parentRev)
-		if _, ok := btc.docs[docID]; ok {
-			// create new rev if doc and parent rev already exists
-			if parentDoc, okParent := btc.docs[docID][parentRev]; okParent {
-				parentDocBody = parentDoc.body
-				bodyMessagePair := &BodyMessagePair{body: body}
-				btc.docs[docID][newRevID] = bodyMessagePair
-			} else {
-				btc.docsLock.Unlock()
-				return "", fmt.Errorf("docID: %v with parent rev: %v was not found on the client", docID, parentRev)
-			}
-		} else {
-			btc.docsLock.Unlock()
-			return "", fmt.Errorf("docID: %v was not found on the client", docID)
+	if parentVersion != nil {
+		doc, ok := btc.getClientDoc(docID)
+		if !ok {
+			return nil, fmt.Errorf("doc %s not found in client", docID)
 		}
-	} else {
-		// create new doc + rev
-		if _, ok := btc.docs[docID]; !ok {
-			bodyMessagePair := &BodyMessagePair{body: body}
-			btc.docs[docID] = map[string]*BodyMessagePair{newRevID: bodyMessagePair}
-		}
+		parentDocBody = doc.revisionsBySeq[doc.seqsByVersions[*parentVersion]].body
 	}
-	btc.docsLock.Unlock()
 
-	// send msg proposeChanges with rev
+	newRevID := fmt.Sprintf("%d-%s", revGen, "abc")
+	newRev, err := btc.upsertDoc(docID, parentVersion, body)
+	if err != nil {
+		return nil, fmt.Errorf("error upserting doc: %v", err)
+	}
+
+	// send a proposeChanges message with the single rev we just created on the client
 	proposeChangesRequest := blip.NewRequest()
 	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
-	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s","%s"]]`, docID, newRevID, parentRev)))
+	var serverVersionComponent string
+	if parentVersion != nil {
+		serverVersionComponent = fmt.Sprintf(`,"%s"`, parentVersion.RevID)
+	}
+	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s"%s]]`, docID, newRevID, serverVersionComponent)))
 
 	btc.addCollectionProperty(proposeChangesRequest)
 
 	if err := btc.sendPushMsg(proposeChangesRequest); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	proposeChangesResponse := proposeChangesRequest.Response()
 	rspBody, err := proposeChangesResponse.Body()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	errorDomain := proposeChangesResponse.Properties["Error-Domain"]
 	errorCode := proposeChangesResponse.Properties["Error-Code"]
 	if errorDomain != "" && errorCode != "" {
-		return "", fmt.Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
+		return nil, fmt.Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
 	}
 	if string(rspBody) != `[]` {
-		return "", fmt.Errorf("unexpected body in proposeChangesResponse: %s", string(rspBody))
+		return nil, fmt.Errorf("unexpected body in proposeChangesResponse: %s", string(rspBody))
 	}
 
 	// send msg rev with new doc
@@ -947,24 +1402,24 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
 	btc.addCollectionProperty(revRequest)
-	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
-		base.DebugfCtx(ctx, base.KeySync, "Sending deltas from test client")
+	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" && parentVersion != nil {
+		base.DebugfCtx(ctx, base.KeySync, "Sending deltas from test client from parent %v", parentVersion)
 		var parentDocJSON, newDocJSON db.Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		err = newDocJSON.Unmarshal(body)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		delta, err := base.Diff(parentDocJSON, newDocJSON)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		revRequest.Properties[db.RevMessageDeltaSrc] = parentRev
+		revRequest.Properties[db.RevMessageDeltaSrc] = parentVersion.RevID
 		body = delta
 	} else {
 		base.DebugfCtx(ctx, base.KeySync, "Not sending deltas from test client")
@@ -973,33 +1428,26 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	revRequest.SetBody(body)
 
 	if err := btc.sendPushMsg(revRequest); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	revResponse := revRequest.Response()
 	rspBody, err = revResponse.Body()
 	if err != nil {
-		return "", fmt.Errorf("error getting body of revResponse: %v", err)
+		return nil, fmt.Errorf("error getting body of revResponse: %v", err)
 	}
 
 	if revResponse.Type() == blip.ErrorType {
-		return "", fmt.Errorf("error %s %s from revResponse: %s", revResponse.Properties["Error-Domain"], revResponse.Properties["Error-Code"], rspBody)
+		return nil, fmt.Errorf("error %s %s from revResponse: %s", revResponse.Properties["Error-Domain"], revResponse.Properties["Error-Code"], rspBody)
 	}
 
-	btc.updateLastReplicatedRev(docID, newRevID)
-	return newRevID, nil
+	btc.updateLastReplicatedRev(docID, newRev.version)
+	return &newRev.version, nil
 }
 
-func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID, revID string, body []byte) error {
-	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB()), btc.parent.rt.GetDatabase().Name, nil)
-	revGen, _ := db.ParseRevID(ctx, revID)
-	newBody, err := btc.ProcessInlineAttachments(body, revGen)
-	if err != nil {
-		return err
-	}
-	bodyMessagePair := &BodyMessagePair{body: newBody}
-	btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
-	return nil
+func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID string, parentVersion *DocVersion, body []byte) error {
+	_, err := btc.upsertDoc(docID, parentVersion, body)
+	return err
 }
 
 func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte, err error) {
@@ -1056,16 +1504,22 @@ func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte
 
 // GetVersion returns the data stored in the Client under the given docID and version
 func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
-	btc.docsLock.RLock()
-	defer btc.docsLock.RUnlock()
-
-	if rev, ok := btc.docs[docID]; ok {
-		if data, ok := rev[docVersion.RevID]; ok && data != nil {
-			return data.body, true
-		}
+	doc, ok := btc.getClientDoc(docID)
+	if !ok {
+		return nil, false
+	}
+	revSeq, ok := doc.seqsByVersions[docVersion]
+	if !ok {
+		return nil, false
 	}
 
-	return nil, false
+	rev, ok := doc.revisionsBySeq[revSeq]
+	if !ok {
+		base.AssertfCtx(base.TestCtx(btc.TB()), "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
+		return nil, false
+	}
+
+	return rev.body, true
 }
 
 // WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found. The test will fail after 10 seocnds if a matching document is not found.
@@ -1083,16 +1537,18 @@ func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion D
 
 // GetDoc returns a rev stored in the Client under the given docID.  (if multiple revs are present, rev body returned is non-deterministic)
 func (btc *BlipTesterCollectionClient) GetDoc(docID string) (data []byte, found bool) {
-	btc.docsLock.RLock()
-	defer btc.docsLock.RUnlock()
-
-	if rev, ok := btc.docs[docID]; ok {
-		for _, data := range rev {
-			return data.body, true
-		}
+	doc, ok := btc.getClientDoc(docID)
+	if !ok {
+		return nil, false
 	}
 
-	return nil, false
+	latestRev, ok := doc.revisionsBySeq[doc.latestSeq]
+	if !ok {
+		base.AssertfCtx(base.TestCtx(btc.TB()), "seq %q for docID %q found but no rev in _seqStore", doc.latestSeq, docID)
+		return nil, false
+	}
+
+	return latestRev.body, true
 }
 
 // WaitForDoc blocks until any document with the doc ID has been stored by the client, and returns the document body when found. If a document will be reported multiple times, the latest copy of the document is returned (not necessarily the first). The test will fail after 10 seconds if the document
@@ -1156,20 +1612,22 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (msg *blip.Message) {
 	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
 		var ok bool
-		msg, ok = btc.GetBlipRevMessage(docID, docVersion.RevID)
+		msg, ok = btc.GetBlipRevMessage(docID, docVersion)
 		assert.True(c, ok, "Could not find docID:%+v, RevID: %+v", docID, docVersion.RevID)
 	}, 10*time.Second, 50*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message")
 	return msg
 }
 
-func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
-	btc.docsLock.RLock()
-	defer btc.docsLock.RUnlock()
+// GetBLipRevMessage returns the rev message that wrote the given docID/DocVersion on the client.
+func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID string, version DocVersion) (msg *blip.Message, found bool) {
+	btc.seqLock.RLock()
+	defer btc.seqLock.RUnlock()
 
-	if rev, ok := btc.docs[docID]; ok {
-		if pair, found := rev[revID]; found {
-			found = pair.message != nil
-			return pair.message, found
+	if doc, ok := btc._getClientDoc(docID); ok {
+		if seq, ok := doc.seqsByVersions[version]; ok {
+			if rev, ok := doc.revisionsBySeq[seq]; ok {
+				return rev.message, true
+			}
 		}
 	}
 
@@ -1178,6 +1636,14 @@ func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID, revID string) (m
 
 func (btcRunner *BlipTestClientRunner) StartPull(clientID uint32) {
 	btcRunner.SingleCollection(clientID).StartPull()
+}
+
+func (btcRunner *BlipTestClientRunner) StartPush(clientID uint32) {
+	btcRunner.SingleCollection(clientID).StartPush()
+}
+
+func (btcRunner *BlipTestClientRunner) StartPushWithOpts(clientID uint32, opts BlipTesterPushOptions) {
+	btcRunner.SingleCollection(clientID).StartPushWithOpts(opts)
 }
 
 // WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found or fails test if document is not found after 10 seconds.
@@ -1207,8 +1673,12 @@ func (btcRunner *BlipTestClientRunner) StartOneshotPullRequestPlus(clientID uint
 	btcRunner.SingleCollection(clientID).StartOneshotPullRequestPlus()
 }
 
-func (btcRunner *BlipTestClientRunner) PushRev(clientID uint32, docID string, version DocVersion, body []byte) (DocVersion, error) {
-	return btcRunner.SingleCollection(clientID).PushRev(docID, version, body)
+func (btcRunner *BlipTestClientRunner) AddRev(clientID uint32, docID string, version *DocVersion, body []byte) (DocVersion, error) {
+	return btcRunner.SingleCollection(clientID).AddRev(docID, version, body)
+}
+
+func (btcRunner *BlipTestClientRunner) PushUnsolicitedRev(clientID uint32, docID string, parentVersion *DocVersion, body []byte) (*DocVersion, error) {
+	return btcRunner.SingleCollection(clientID).PushUnsolicitedRev(docID, parentVersion, body)
 }
 
 func (btcRunner *BlipTestClientRunner) StartPullSince(clientID uint32, options BlipTesterPullOptions) {
@@ -1223,12 +1693,12 @@ func (btcRunner *BlipTestClientRunner) saveAttachment(clientID uint32, contentTy
 	return btcRunner.SingleCollection(clientID).saveAttachment(contentType, attachmentData)
 }
 
-func (btcRunner *BlipTestClientRunner) StoreRevOnClient(clientID uint32, docID, revID string, body []byte) error {
-	return btcRunner.SingleCollection(clientID).StoreRevOnClient(docID, revID, body)
+func (btcRunner *BlipTestClientRunner) StoreRevOnClient(clientID uint32, docID string, parentVersion *DocVersion, body []byte) error {
+	return btcRunner.SingleCollection(clientID).StoreRevOnClient(docID, parentVersion, body)
 }
 
-func (btcRunner *BlipTestClientRunner) PushRevWithHistory(clientID uint32, docID, revID string, body []byte, revCount, prunedRevCount int) (string, error) {
-	return btcRunner.SingleCollection(clientID).PushRevWithHistory(docID, revID, body, revCount, prunedRevCount)
+func (btcRunner *BlipTestClientRunner) PushRevWithHistory(clientID uint32, docID string, parentVersion *DocVersion, body []byte, revCount, prunedRevCount int) (*DocVersion, error) {
+	return btcRunner.SingleCollection(clientID).PushRevWithHistory(docID, parentVersion, body, revCount, prunedRevCount)
 }
 
 func (btcRunner *BlipTestClientRunner) AttachmentsLock(clientID uint32) *sync.RWMutex {
@@ -1240,11 +1710,11 @@ func (btc *BlipTesterCollectionClient) AttachmentsLock() *sync.RWMutex {
 }
 
 func (btcRunner *BlipTestClientRunner) Attachments(clientID uint32) map[string][]byte {
-	return btcRunner.SingleCollection(clientID).attachments
+	return btcRunner.SingleCollection(clientID)._attachments
 }
 
 func (btc *BlipTesterCollectionClient) Attachments() map[string][]byte {
-	return btc.attachments
+	return btc._attachments
 }
 
 func (btcRunner *BlipTestClientRunner) UnsubPullChanges(clientID uint32) ([]byte, error) {

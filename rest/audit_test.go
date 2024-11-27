@@ -1482,6 +1482,8 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 }
 
 func TestAuditBlipCRUD(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 
@@ -1507,15 +1509,35 @@ func TestAuditBlipCRUD(t *testing.T) {
 			{
 				name:           "add attachment",
 				attachmentName: "attachment1",
-				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				setupCode: func(t testing.TB, docID string) DocVersion {
 					attData := base64.StdEncoding.EncodeToString([]byte("attach"))
-
-					version, err := btcRunner.PushRev(btc.id, docID, EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment1":{"data":"`+attData+`"}}}`))
+					version, err := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment1":{"data":"`+attData+`"}}}`))
 					require.NoError(t, err)
-					btcRunner.WaitForVersion(btc.id, docID, version)
+					return version
+				},
+				auditableCode: func(t testing.TB, docID string, version DocVersion) {
+					btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
+					// wait for the doc to be replicated, since that's what we're actually auditing
+					require.NoError(t, rt.WaitForVersion(docID, version))
 				},
 				attachmentCreateCount: 1,
 			},
+			//{
+			//	name:           "read attachment",
+			//	attachmentName: "attachment1",
+			//	setupCode: func(_ testing.TB, docID string) DocVersion {
+			//		attData := base64.StdEncoding.EncodeToString([]byte("attach"))
+			//		version := rt.PutDoc(docID, `{"key":"val","_attachments":{"attachment1":{"data":"`+attData+`"}}}`)
+			//		return version
+			//	},
+			//	auditableCode: func(_ testing.TB, docID string, version DocVersion) {
+			//		btcRunner.StartPull(btc.id)
+			//		btcRunner.WaitForVersion(btc.id, docID, version)
+			//		// TODO: Requires a WaitForAttachment implementation
+			//		time.Sleep(time.Millisecond * 5000)
+			//	},
+			//	attachmentReadCount: 1,
+			//},
 		}
 		for _, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
@@ -1527,12 +1549,11 @@ func TestAuditBlipCRUD(t *testing.T) {
 				output := base.AuditLogContents(t, func(t testing.TB) {
 					testCase.auditableCode(t, docID, docVersion)
 				})
-				postAttachmentVersion, _ := rt.GetDoc(docID)
 
-				requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentCreateCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentReadCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentUpdateCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentDeleteCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, docVersion.RevID, testCase.attachmentName, testCase.attachmentCreateCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, docVersion.RevID, testCase.attachmentName, testCase.attachmentReadCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, docVersion.RevID, testCase.attachmentName, testCase.attachmentUpdateCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, docVersion.RevID, testCase.attachmentName, testCase.attachmentDeleteCount)
 			})
 		}
 	})

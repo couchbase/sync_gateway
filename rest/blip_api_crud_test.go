@@ -1959,7 +1959,7 @@ func TestSendReplacementRevision(t *testing.T) {
 					_ = btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version2)
 
 					// rev message with a replacedRev property referring to the originally requested rev
-					msg2, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2.RevID)
+					msg2, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageRev, msg2.Profile())
 					assert.Equal(t, version2.RevID, msg2.Properties[db.RevMessageRev])
@@ -1967,7 +1967,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 					// the blip test framework records a message entry for the originally requested rev as well, but it should point to the message sent for rev 2
 					// this is an artifact of the test framework to make assertions for tests not explicitly testing replacement revs easier
-					msg1, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1.RevID)
+					msg1, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1)
 					require.True(t, ok)
 					assert.Equal(t, msg1, msg2)
 
@@ -1979,11 +1979,11 @@ func TestSendReplacementRevision(t *testing.T) {
 					assert.Nil(t, data)
 
 					// no message for rev 2
-					_, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2.RevID)
+					_, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
 					require.False(t, ok)
 
 					// norev message for the requested rev
-					msg, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1.RevID)
+					msg, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageNoRev, msg.Profile())
 
@@ -1998,7 +1998,7 @@ func TestSendReplacementRevision(t *testing.T) {
 // TestBlipPullRevMessageHistory tests that a simple pull replication contains history in the rev message.
 func TestBlipPullRevMessageHistory(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
@@ -2043,7 +2043,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 // Reproduces CBG-617 (a client using activeOnly for the initial replication, and then still expecting to get subsequent tombstones afterwards)
 func TestActiveOnlyContinuous(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -2442,7 +2442,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 }
 
 func TestBlipInternalPropertiesHandling(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 
 	testCases := []struct {
 		name                        string
@@ -2557,13 +2557,13 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 				rawBody, err := json.Marshal(test.inputBody)
 				require.NoError(t, err)
 
-				_, err = btcRunner.PushRev(client.id, docID, EmptyDocVersion(), rawBody)
-
+				// push each rev manually so we can error check the replication synchronously
+				_, err = btcRunner.PushUnsolicitedRev(client.id, docID, nil, rawBody)
 				if test.expectReject {
 					assert.Error(t, err)
 					return
 				}
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				// Wait for rev to be received on RT
 				rt.WaitForPendingChanges()
@@ -3143,7 +3143,8 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				btcRunner.WaitForDoc(btc2.id, markerDoc)
 
 				// Validate that the latest client message for the requested doc/rev was a norev
-				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID.RevID)
+				// FIXME: Norev support
+				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID)
 				require.True(t, ok)
 				require.Equal(t, db.MessageNoRev, msg.Profile())
 

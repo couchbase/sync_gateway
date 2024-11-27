@@ -265,7 +265,7 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 				xattrs[xattrKey] = xattr
 			}
 
-			if len(xattrErrors) == len(xattrs) {
+			if len(xattrErrors) == len(xattrKeys) {
 				// No doc, no xattrs means the doc isn't found
 				return false, ErrNotFound, cas
 			}

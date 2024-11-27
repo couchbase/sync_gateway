@@ -18,6 +18,11 @@ import (
 
 const kDefaultSessionTTL = 24 * time.Hour
 
+var (
+	ErrSessionNotFound = base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+	ErrSessionNotValid = base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
+)
+
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
 	ID          string        `json:"id"`
@@ -41,7 +46,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session not found: %s", base.UD(cookie.Value))
-			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+			return nil, ErrSessionNotFound
 		}
 		return nil, err
 	}
@@ -74,7 +79,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 
 	if session.SessionUUID != user.GetSessionUUID() {
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
+		return nil, ErrSessionNotValid
 	}
 	return user, err
 }

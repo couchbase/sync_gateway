@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,7 +56,7 @@ type RestTesterConfig struct {
 	ImportFilter                    string                      // put the import filter function source in here (optional)
 	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
-	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	InitSyncSeq                     uint64                      // If specified, initializes _sync:clientSeq on bucket creation.  Not supported when running against walrus
 	EnableNoConflictsMode           bool                        // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
 	CustomTestBucket                *base.TestBucket            // If set, use this bucket instead of requesting a new one.
@@ -2448,8 +2449,24 @@ func (v DocVersion) Equal(o DocVersion) bool {
 	return true
 }
 
-// Digest returns the digest for the current version
-func (v DocVersion) Digest() string {
+// RevIDGeneration returns the Rev ID generation for the current version
+func (v *DocVersion) RevIDGeneration() int {
+	if v == nil {
+		return 0
+	}
+	gen, err := strconv.ParseInt(strings.Split(v.RevID, "-")[0], 10, 64)
+	if err != nil {
+		base.AssertfCtx(nil, "Error parsing generation from rev ID %q: %v", v.RevID, err)
+		return 0
+	}
+	return int(gen)
+}
+
+// RevIDDigest returns the Rev ID digest for the current version
+func (v *DocVersion) RevIDDigest() string {
+	if v == nil {
+		return ""
+	}
 	return strings.Split(v.RevID, "-")[1]
 }
 
@@ -2469,8 +2486,8 @@ func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
 }
 
 // EmptyDocVersion reprents an empty document version.
-func EmptyDocVersion() DocVersion {
-	return DocVersion{RevID: ""}
+func EmptyDocVersion() *DocVersion {
+	return nil
 }
 
 // NewDocVersionFromFakeRev returns a new DocVersion from the given fake rev ID, intended for use when we explicit create conflicts.
