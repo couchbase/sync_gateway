@@ -1438,7 +1438,6 @@ loop:
 				forceClose = true
 				break loop
 			}
-			var feedErr error
 			if len(docIDFilter) > 0 {
 				feed, feedErr = database.DocIDChangesFeed(ctx, inChannels, docIDFilter, options)
 			} else {

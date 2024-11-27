@@ -3192,18 +3192,18 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 	btcRunner := NewBlipTesterClientRunner(t)
-	var shouldChanenlQueryError atomic.Bool
+	var shouldChannelQueryError atomic.Bool
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &RestTesterConfig{
 			LeakyBucketConfig: &base.LeakyBucketConfig{
 				QueryCallback: func(ddoc, viewname string, params map[string]any) error {
-					if viewname == "channels" && shouldChanenlQueryError.Load() {
+					if viewname == "channels" && shouldChannelQueryError.Load() {
 						return gocb.ErrTimeout
 					}
 					return nil
 				},
 				N1QLQueryCallback: func(_ context.Context, statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool) error {
-					if strings.Contains(statement, "sg_channels") && shouldChanenlQueryError.Load() {
+					if strings.Contains(statement, "sg_channels") && shouldChannelQueryError.Load() {
 						return gocb.ErrTimeout
 					}
 					return nil
@@ -3219,7 +3219,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 			blipContextClosed.Store(true)
 		}
 
-		shouldChanenlQueryError.Store(true)
+		shouldChannelQueryError.Store(true)
 		btcRunner.StartPull(btc.id)
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
