@@ -312,3 +312,40 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NoError(t, err)
 
 }
+
+// TestUserDeleteAllSessions changes the session UUID on a user such that existing sessions should not be usable.
+func TestUserDeleteAllSessions(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+	const username = "Alice"
+	user, err := auth.NewUser(username, "password", base.Set{})
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NoError(t, auth.Save(user))
+
+	// Create session with a username and valid TTL of 2 hours.
+	session, err := auth.CreateSession(ctx, user, 2*time.Hour)
+	require.NoError(t, err)
+
+	session, err = auth.GetSession(session.ID)
+	require.NoError(t, err)
+
+	request, err := http.NewRequest(http.MethodGet, "", nil)
+	require.NoError(t, err)
+	request.AddCookie(auth.MakeSessionCookie(session, true, true))
+	recorder := httptest.NewRecorder()
+
+	_, err = auth.AuthenticateCookie(request, recorder)
+	require.NoError(t, err)
+
+	// h.deleteUserSessions() equivalent
+	user.UpdateSessionUUID()
+	err = auth.Save(user)
+	require.NoError(t, err)
+
+	_, err = auth.AuthenticateCookie(request, recorder)
+	require.EqualError(t, err, "401 Session no longer valid for user")
+}
