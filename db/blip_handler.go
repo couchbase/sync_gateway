@@ -432,7 +432,7 @@ func (flag changesDeletedFlag) HasFlag(deletedFlag changesDeletedFlag) bool {
 	return flag&deletedFlag != 0
 }
 
-// Sends all changes since the given sequence
+// sendChanges will start a changes feed and send changes. Returns bool to indicate whether the changes feed finished and all changes were sent. The error value is only used to indicate a fatal error, where the blip connection should be terminated. If the blip connection is disconnected by the client, the error will be nil, but the boolean parameter will be false.
 func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (bool, error) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
@@ -542,7 +542,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		}
 		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.loggingCtx, user)
 	}
-	return !forceClose, err
+	return (err == nil && !forceClose), err
 }
 
 func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []interface{} {

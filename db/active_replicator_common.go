@@ -357,6 +357,14 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 	return highSeqStr
 }
 
+// publishStatus updates the replication status document in the metadata store.
+func (a *activeReplicatorCommon) publishStatus() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a._publishStatus()
+}
+
+// _publishStatus updates the replication status document in the metadata store. Requires holding a.lock before calling.
 func (a *activeReplicatorCommon) _publishStatus() {
 	status := a._getStatusCallback()
 	err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.statusKey, status, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
