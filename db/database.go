@@ -1903,8 +1903,8 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			}
 			if db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
-				if doc.metadataOnlyUpdate.CAS == expandMacroCASValueString {
-					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
+				if doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
+					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 				}
 			}
 			if rawGlobalXattr != nil {
