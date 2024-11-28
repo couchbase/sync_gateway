@@ -2433,38 +2433,7 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 	return assert.Truef(t, base.IsDocNotFoundError(err), "expected heartbeat doc to expire, but got a different error: %v", err)
 }
 
-// DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
-type DocVersion struct {
-	RevTreeID string
-	CV        db.Version
-}
-
-func (v *DocVersion) String() string {
-	return fmt.Sprintf("RevTreeID: %s", v.RevTreeID)
-}
-
-func (v DocVersion) Equal(o DocVersion) bool {
-	if v.RevTreeID != o.RevTreeID {
-		return false
-	}
-	return true
-}
-
-func (v DocVersion) GetRev(useHLV bool) string {
-	if useHLV {
-		if v.CV.SourceID == "" {
-			return ""
-		}
-		return v.CV.String()
-	} else {
-		return v.RevTreeID
-	}
-}
-
-// Digest returns the digest for the current version
-func (v DocVersion) Digest() string {
-	return strings.Split(v.RevTreeID, "-")[1]
-}
+type DocVersion = db.DocVersion
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.
 func RequireDocVersionNotNil(t *testing.T, version DocVersion) {

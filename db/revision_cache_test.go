@@ -794,12 +794,12 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
 
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: "123", SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 	assert.Equal(t, int64(0), cacheNumItems.Value())
 
-	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: "123", SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 	assert.Equal(t, int64(0), cacheNumItems.Value())
@@ -933,15 +933,15 @@ func TestImmediateRevCacheItemBasedEviction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
 	// load up item to hit max capacity
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: "123", SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	// eviction starts from here in test
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "newDoc", RevID: "1-abc", CV: &Version{Value: "123", SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "newDoc", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	assert.Equal(t, int64(15), memoryBytesCounted.Value())
 	assert.Equal(t, int64(1), cacheNumItems.Value())
 
-	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: "123", SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	assert.Equal(t, int64(15), memoryBytesCounted.Value())
 	assert.Equal(t, int64(1), cacheNumItems.Value())
@@ -1012,7 +1012,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 
 	// Test Get operation with load from bucket, need to first create and remove from rev cache
 	prevMemStat := cacheStats.RevisionCacheTotalMemory.Value()
-	revIDDoc2 := createThenRemoveFromRevCache(t, ctx, "doc2", db, collection)
+	revDoc2 := createThenRemoveFromRevCache(t, ctx, "doc2", db, collection)
 	// load from doc from bucket
 	docRev, err = db.revisionCache.GetWithRev(ctx, "doc2", docRev.RevID, collctionID, RevCacheOmitDelta)
 	require.NoError(t, err)
@@ -1029,7 +1029,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 
 	// Test Get active with item to be loaded from bucket, need to first create and remove from rev cache
 	prevMemStat = cacheStats.RevisionCacheTotalMemory.Value()
-	revIDDoc3 := createThenRemoveFromRevCache(t, ctx, "doc3", db, collection)
+	revDoc3 := createThenRemoveFromRevCache(t, ctx, "doc3", db, collection)
 	docRev, err = db.revisionCache.GetActive(ctx, "doc3", collctionID)
 	require.NoError(t, err)
 	assert.Equal(t, "doc3", docRev.DocID)
@@ -1043,7 +1043,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	assert.Equal(t, prevMemStat, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Peek in cache, assert stat unchanged
-	docRev, ok = db.revisionCache.Peek(ctx, "doc3", revIDDoc3, collctionID)
+	docRev, ok = db.revisionCache.Peek(ctx, "doc3", revDoc3.RevTreeID, collctionID)
 	require.True(t, ok)
 	assert.Equal(t, "doc3", docRev.DocID)
 	assert.Equal(t, prevMemStat, cacheStats.RevisionCacheTotalMemory.Value())
@@ -1052,21 +1052,14 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	docRev.CalculateBytes()
 	doc3Size := docRev.MemoryBytes
 	expMem := cacheStats.RevisionCacheTotalMemory.Value() - doc3Size
-	newDocRev := DocumentRevision{
-		DocID:     "doc3",
-		RevID:     revIDDoc3,
-		BodyBytes: []byte(`"some": "body"`),
-	}
+	newDocRev := documentRevisionForCacheTestUpdate("doc3", `"some": "body"`, revDoc3)
+
 	expMem = expMem + 14 // size for above doc rev
 	db.revisionCache.Upsert(ctx, newDocRev, collctionID)
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Upsert with item not in cache, assert stat is as expected
-	newDocRev = DocumentRevision{
-		DocID:     "doc5",
-		RevID:     "1-abc",
-		BodyBytes: []byte(`"some": "body"`),
-	}
+	newDocRev = documentRevisionForCacheTest("doc5", `"some": "body"`)
 	expMem = cacheStats.RevisionCacheTotalMemory.Value() + 14 // size for above doc rev
 	db.revisionCache.Upsert(ctx, newDocRev, collctionID)
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
@@ -1084,12 +1077,12 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	// Test Update Delta, assert stat increases as expected
 	revDelta := newRevCacheDelta([]byte(`"rev":"delta"`), "1-abc", newDocRev, false, nil)
 	expMem = prevMemStat + revDelta.totalDeltaBytes
-	db.revisionCache.UpdateDelta(ctx, "doc3", revIDDoc3, collctionID, revDelta)
+	db.revisionCache.UpdateDelta(ctx, "doc3", revDoc3.RevTreeID, collctionID, revDelta)
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Empty cache and see memory stat is 0
-	db.revisionCache.RemoveWithRev("doc3", revIDDoc3, collctionID)
-	db.revisionCache.RemoveWithRev("doc2", revIDDoc2, collctionID)
+	db.revisionCache.RemoveWithRev("doc3", revDoc3.RevTreeID, collctionID)
+	db.revisionCache.RemoveWithRev("doc2", revDoc2.RevTreeID, collctionID)
 	db.revisionCache.RemoveWithRev("doc1", revIDDoc1, collctionID)
 
 	// TODO: pending CBG-4135 assert rev cache had 0 items in it
@@ -1300,7 +1293,7 @@ func TestRevCacheCapacityStat(t *testing.T) {
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
 	// Create a new doc + asert num items increments
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, documentRevisionForCacheTest("doc1", `{"test":"1234"}`), testCollectionID)
 	assert.Equal(t, int64(1), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
@@ -1339,12 +1332,12 @@ func TestRevCacheCapacityStat(t *testing.T) {
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
 	// Upsert a doc resident in cache, assert stat is unchanged
-	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"test":"12345"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
+	cache.Upsert(ctx, documentRevisionForCacheTest("doc1", `{"test":"12345"}`), testCollectionID)
 	assert.Equal(t, int64(3), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
 	// Upsert new doc, assert the num items stat increments
-	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"test":"1234}`), DocID: "doc4", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
+	cache.Upsert(ctx, documentRevisionForCacheTest("doc4", `{"test":"1234}`), testCollectionID)
 	assert.Equal(t, int64(4), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
@@ -1362,12 +1355,12 @@ func TestRevCacheCapacityStat(t *testing.T) {
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
 	// Eviction situation and assert stat doesn't go over the capacity set
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc5", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, documentRevisionForCacheTest("doc5", `{"test":"1234"}`), testCollectionID)
 	assert.Equal(t, int64(4), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
 	// test case of eviction for upsert
-	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"test":"12345"}`), DocID: "doc6", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
+	cache.Upsert(ctx, documentRevisionForCacheTest("doc6", `{"test":"12345"}`), testCollectionID)
 	assert.Equal(t, int64(4), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
@@ -1380,6 +1373,35 @@ func TestRevCacheCapacityStat(t *testing.T) {
 	// Assert num items goes back to 0
 	assert.Equal(t, int64(0), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
+}
+
+// documentRevisionForCacheTest creates a document revision with the specified body and key, and a hardcoded revID, cv and history:
+//
+//	RevID: 1-abc
+//	CV: Version{SourceID: "test", Value: 123}
+//	History: Revisions{"start": 1}}
+func documentRevisionForCacheTest(key string, body string) DocumentRevision {
+	cv := Version{SourceID: "test", Value: 123}
+	return DocumentRevision{
+		BodyBytes: []byte(body),
+		DocID:     key,
+		RevID:     "1-abc",
+		History:   Revisions{"start": 1},
+		CV:        &cv,
+	}
+}
+
+// documentRevisionForCacheTestUpsert creates a document revision with the specified body and key and Version
+//
+//	History: Revisions{"start": 1}}
+func documentRevisionForCacheTestUpdate(key string, body string, version DocVersion) DocumentRevision {
+	return DocumentRevision{
+		BodyBytes: []byte(body),
+		DocID:     key,
+		RevID:     version.RevTreeID,
+		History:   Revisions{"start": 1},
+		CV:        &version.CV,
+	}
 }
 
 // TestRevCacheOperationsCV:
@@ -1469,13 +1491,18 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 }
 
 // createThenRemoveFromRevCache will create a doc and then immediately remove it from the rev cache
-func createThenRemoveFromRevCache(t *testing.T, ctx context.Context, docID string, db *Database, collection *DatabaseCollectionWithUser) string {
-	revIDDoc, _, err := collection.Put(ctx, docID, Body{"test": "doc"})
+func createThenRemoveFromRevCache(t *testing.T, ctx context.Context, docID string, db *Database, collection *DatabaseCollectionWithUser) DocVersion {
+	revIDDoc, doc, err := collection.Put(ctx, docID, Body{"test": "doc"})
 	require.NoError(t, err)
 
 	db.revisionCache.RemoveWithRev(docID, revIDDoc, collection.GetCollectionID())
-
-	return revIDDoc
+	docVersion := DocVersion{
+		RevTreeID: doc.CurrentRev,
+	}
+	if doc.HLV != nil {
+		docVersion.CV = *doc.HLV.ExtractCurrentVersionFromHLV()
+	}
+	return docVersion
 }
 
 // createDocAndReturnSizeAndRev creates a rev and measures its size based on rev cache measurements
