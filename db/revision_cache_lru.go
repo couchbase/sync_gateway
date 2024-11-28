@@ -110,21 +110,22 @@ type LRURevisionCache struct {
 
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
-	err         error
-	history     Revisions
-	channels    base.Set
-	expiry      *time.Time
-	attachments AttachmentsMeta
-	delta       *RevisionDelta
-	id          string
-	cv          Version
-	hlvHistory  string
-	revID       string
-	bodyBytes   []byte
-	lock        sync.RWMutex
-	deleted     bool
-	removed     bool
-	itemBytes   int64
+	err          error
+	history      Revisions
+	channels     base.Set
+	expiry       *time.Time
+	attachments  AttachmentsMeta
+	delta        *RevisionDelta
+	id           string
+	cv           Version
+	hlvHistory   string
+	revID        string
+	bodyBytes    []byte
+	lock         sync.RWMutex
+	deleted      bool
+	removed      bool
+	itemBytes    int64
+	collectionID uint32
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -329,7 +330,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 
 	// Add new value and overwrite existing cache key, pushing to front to maintain order
 	// also ensure we add to rev id lookup map too
-	value = &revCacheValue{id: docRev.DocID, cv: *docRev.CV}
+	value = &revCacheValue{id: docRev.DocID, cv: *docRev.CV, collectionID: collectionID}
 	elem := rc.lruList.PushFront(value)
 	rc.hlvCache[key] = elem
 	rc.cache[legacyKey] = elem
@@ -379,7 +380,7 @@ func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, c
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
 	} else if create {
-		value = &revCacheValue{id: docID, revID: revID}
+		value = &revCacheValue{id: docID, revID: revID, collectionID: collectionID}
 		rc.cache[key] = rc.lruList.PushFront(value)
 		rc.cacheNumItems.Add(1)
 
@@ -410,7 +411,7 @@ func (rc *LRURevisionCache) getValueByCV(docID string, cv *Version, collectionID
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
 	} else if create {
-		value = &revCacheValue{id: docID, cv: *cv}
+		value = &revCacheValue{id: docID, cv: *cv, collectionID: collectionID}
 		newElem := rc.lruList.PushFront(value)
 		rc.hlvCache[key] = newElem
 		rc.cacheNumItems.Add(1)
@@ -563,8 +564,8 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 
 func (rc *LRURevisionCache) purgeOldest_() {
 	value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
-	revKey := IDAndRev{DocID: value.id, RevID: value.revID}
-	hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value}
+	revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
+	hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: value.collectionID}
 	delete(rc.cache, revKey)
 	delete(rc.hlvCache, hlvKey)
 	// decrement memory overall size
