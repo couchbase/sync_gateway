@@ -45,6 +45,7 @@ post:
       description: If this header includes `gzip` then the the HTTP response will be compressed. This takes priority over `X-Accept-Part-Encoding`. Only part compression will be done if `X-Accept-Part-Encoding=gzip` and the `User-Agent` is below 1.2 due to clients not being able to handle full compression.
       schema:
         type: string
+    - $ref: ../../components/parameters.yaml#/show_cv
   requestBody:
     content:
       application/json:
