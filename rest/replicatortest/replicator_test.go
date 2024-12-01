@@ -8592,7 +8592,8 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 				return nil
 			},
 			N1QLQueryCallback: func(_ context.Context, statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool) error {
-				if strings.Contains(statement, "sg_channels") && shouldChannelQueryError.Load() {
+				// * channel query uses all docs index
+				if strings.Contains(statement, "sg_allDocs") && shouldChannelQueryError.Load() {
 					shouldChannelQueryError.Store(false)
 					return gocb.ErrTimeout
 				}
