@@ -46,11 +46,6 @@ func (t singleActorTest) description() string {
 	return fmt.Sprintf("%s_actor=%s", t.topology.description, t.activePeerID)
 }
 
-// docID returns a unique document ID for the test case.
-func (t singleActorTest) singleDocID() string {
-	return fmt.Sprintf("doc_%s", strings.ReplaceAll(t.description(), " ", "_"))
-}
-
 // PeerNames returns the names of all peers in the test case's topology, sorted deterministically.
 func (t singleActorTest) PeerNames() []string {
 	return t.topology.PeerNames()
@@ -85,15 +80,6 @@ func (t multiActorTest) PeerNames() []string {
 // description returns a human-readable description of the test case.
 func (t multiActorTest) description() string {
 	return fmt.Sprintf("%s_multi_actor", t.topology.description)
-}
-
-// docID returns a unique document ID for the test case+actor combination.
-func (t multiActorTest) singleDocID() string {
-	return fmt.Sprintf("doc_%s", strings.ReplaceAll(t.description(), " ", "_"))
-}
-
-func (t multiActorTest) peerDocID(peerName string) string {
-	return fmt.Sprintf("doc_%s_%s", strings.ReplaceAll(t.description(), " ", "_"), peerName)
 }
 
 // collectionName returns the collection name for the test case.
@@ -136,7 +122,7 @@ func TestHLVCreateDocumentSingleActor(t *testing.T) {
 		t.Run(tc.description(), func(t *testing.T) {
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, tc.activePeerID, tc.description()))
 			docVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, docBody)
 			waitForVersionAndBody(t, tc, peers, docID, docVersion)
@@ -156,14 +142,15 @@ func TestHLVCreateDocumentMultiActor(t *testing.T) {
 			// grab sorted peer list and create a list to store expected version,
 			// doc body
 			for _, peerName := range tc.PeerNames() {
-				docID := tc.peerDocID(peerName)
+				docID := getDocID(t) + "_" + peerName
 				docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, peerName, tc.description()))
 				docVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, docBody)
 				docVersionList = append(docVersionList, docVersion)
 			}
 			for i, peerName := range tc.PeerNames() {
+				docID := getDocID(t) + "_" + peerName
 				docBodyAndVersion := docVersionList[i]
-				waitForVersionAndBody(t, tc, peers, tc.peerDocID(peerName), docBodyAndVersion)
+				waitForVersionAndBody(t, tc, peers, docID, docBodyAndVersion)
 			}
 		})
 	}
@@ -190,7 +177,7 @@ func TestHLVCreateDocumentMultiActorConflict(t *testing.T) {
 
 			stopPeerReplications(replications)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, tc, peers, docID)
 
 			startPeerReplications(replications)
@@ -216,7 +203,7 @@ func TestHLVUpdateDocumentMultiActor(t *testing.T) {
 			var docVersionList []BodyAndVersion
 
 			for _, peerName := range tc.PeerNames() {
-				docID := tc.peerDocID(peerName)
+				docID := getDocID(t) + "_" + peerName
 				body1 := []byte(fmt.Sprintf(`{"originPeer": "%s", "topology": "%s", "write": 1}`, peerName, tc.description()))
 				createVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, body1)
 				waitForVersionAndBody(t, tc, peers, docID, createVersion)
@@ -228,7 +215,7 @@ func TestHLVUpdateDocumentMultiActor(t *testing.T) {
 			}
 			// loop through peers again and assert all peers have updates
 			for i, peerName := range tc.PeerNames() {
-				docID := tc.peerDocID(peerName)
+				docID := getDocID(t) + "_" + peerName
 				docBodyAndVersion := docVersionList[i]
 				waitForVersionAndBodyOnNonActivePeers(t, tc, docID, peers, docBodyAndVersion)
 			}
@@ -248,7 +235,7 @@ func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 			}
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
 			createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
 
@@ -288,7 +275,7 @@ func TestHLVUpdateDocumentMultiActorConflict(t *testing.T) {
 			peers, replications := setupTests(t, tc.topology, "")
 			stopPeerReplications(replications)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, tc, peers, docID)
 
 			startPeerReplications(replications)
@@ -314,7 +301,7 @@ func TestHLVDeleteDocumentSingleActor(t *testing.T) {
 			}
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
 			createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
 
@@ -338,8 +325,8 @@ func TestHLVDeleteDocumentMultiActor(t *testing.T) {
 			}
 			peers, _ := setupTests(t, tc.topology, "")
 
-			for peerName, _ := range peers {
-				docID := tc.peerDocID(peerName)
+			for peerName := range peers {
+				docID := getDocID(t) + "_" + peerName
 				body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, docID, tc.description()))
 				createVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, body1)
 				waitForVersionAndBody(t, tc, peers, docID, createVersion)
@@ -384,7 +371,7 @@ func TestHLVDeleteDocumentMultiActorConflict(t *testing.T) {
 			peers, replications := setupTests(t, tc.topology, "")
 			stopPeerReplications(replications)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, tc, peers, docID)
 
 			startPeerReplications(replications)
@@ -424,7 +411,7 @@ func TestHLVUpdateDeleteDocumentMultiActorConflict(t *testing.T) {
 			peers, replications := setupTests(t, tc.topology, "")
 			stopPeerReplications(replications)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, tc, peers, docID)
 
 			startPeerReplications(replications)
@@ -469,7 +456,7 @@ func TestHLVDeleteUpdateDocumentMultiActorConflict(t *testing.T) {
 			peers, replications := setupTests(t, tc.topology, "")
 			stopPeerReplications(replications)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, tc, peers, docID)
 
 			startPeerReplications(replications)
@@ -503,7 +490,7 @@ func TestHLVResurrectDocumentSingleActor(t *testing.T) {
 
 			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
 			createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
 			waitForVersionAndBody(t, tc, peers, docID, createVersion)
@@ -543,7 +530,7 @@ func TestHLVResurrectDocumentMultiActor(t *testing.T) {
 
 			var docVersionList []BodyAndVersion
 			for _, peerName := range tc.PeerNames() {
-				docID := tc.peerDocID(peerName)
+				docID := getDocID(t) + "_" + peerName
 				body1 := []byte(fmt.Sprintf(`{"topology": "%s","writePeer": "%s"}`, tc.description(), peerName))
 				createVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, body1)
 				t.Logf("createVersion: %+v for docID: %s", createVersion, docID)
@@ -560,7 +547,7 @@ func TestHLVResurrectDocumentMultiActor(t *testing.T) {
 			}
 
 			for i, updatePeer := range tc.PeerNames() {
-				docID := tc.peerDocID(updatePeer)
+				docID := getDocID(t) + "_" + updatePeer
 				docVersion := docVersionList[i]
 				waitForVersionAndBodyOnNonActivePeers(t, tc, docID, peers, docVersion)
 			}
@@ -594,7 +581,7 @@ func TestHLVResurrectDocumentMultiActorConflict(t *testing.T) {
 			peers, replications := setupTests(t, tc.topology, "")
 			stopPeerReplications(replications)
 
-			docID := tc.singleDocID()
+			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, tc, peers, docID)
 
 			startPeerReplications(replications)
@@ -688,7 +675,7 @@ func removeSyncGatewayBackingPeers(peers map[string]Peer) map[string]bool {
 // returns the last peer to have a doc created on it
 func createConflictingDocs(t *testing.T, tc multiActorTest, peers map[string]Peer, docID string) (lastWrite BodyAndVersion) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
-	var documentVersion []BodyAndVersion
+	documentVersion := make([]BodyAndVersion, 0, len(peers))
 	for _, peerName := range tc.PeerNames() {
 		if backingPeers[peerName] {
 			continue
@@ -728,7 +715,7 @@ func updateConflictingDocs(t *testing.T, tc multiActorTest, peers map[string]Pee
 // returns the last peer to have a doc deleted on it
 func deleteConflictDocs(t *testing.T, tc multiActorTest, peers map[string]Peer, docID string) (lastWrite BodyAndVersion) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
-	var documentVersion []BodyAndVersion
+	documentVersion := make([]BodyAndVersion, 0, len(peers))
 	for _, peerName := range tc.PeerNames() {
 		if backingPeers[peerName] {
 			continue
@@ -741,4 +728,9 @@ func deleteConflictDocs(t *testing.T, tc multiActorTest, peers map[string]Peer, 
 	lastWrite = documentVersion[index]
 
 	return lastWrite
+}
+
+// getDocID returns a unique doc ID for the test case
+func getDocID(t *testing.T) string {
+	return fmt.Sprintf("doc_%s", strings.ReplaceAll(t.Name(), " ", "_"))
 }

@@ -73,6 +73,7 @@ issues:
     - path: (_test\.go|utilities_testing\.go)
       linters:
         - goconst
+        - prealloc
     - path: (_test\.go|utilities_testing\.go)
       linters:
         - govet

@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -39,6 +38,7 @@ type CouchbaseServerReplication struct {
 	ctx         context.Context
 	activePeer  Peer
 	passivePeer Peer
+	direction   PeerReplicationDirection
 	manager     xdcr.Manager
 }
 
@@ -54,18 +54,28 @@ func (r *CouchbaseServerReplication) PassivePeer() Peer {
 
 // Start starts the replication
 func (r *CouchbaseServerReplication) Start() {
-	r.t.Logf("starting XDCR replication")
+	r.t.Logf("starting XDCR replication %s", r)
 	require.NoError(r.t, r.manager.Start(r.ctx))
 }
 
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseServerReplication) Stop() {
-	r.t.Logf("stopping XDCR replication")
+	r.t.Logf("stopping XDCR replication %s", r)
 	require.NoError(r.t, r.manager.Stop(r.ctx))
 }
 
+func (r *CouchbaseServerReplication) String() string {
+	switch r.direction {
+	case PeerReplicationDirectionPush:
+		return fmt.Sprintf("%s->%s", r.activePeer, r.passivePeer)
+	case PeerReplicationDirectionPull:
+		return fmt.Sprintf("%s->%s", r.passivePeer, r.activePeer)
+	}
+	return fmt.Sprintf("%s-%s (direction unknown)", r.activePeer, r.passivePeer)
+}
+
 func (p *CouchbaseServerPeer) String() string {
-	return p.name
+	return fmt.Sprintf("%s (bucket:%s,sourceid:%s)", p.name, p.bucket.GetName(), p.sourceID)
 }
 
 // Context returns the context for the peer.
@@ -164,7 +174,7 @@ func (p *CouchbaseServerPeer) WaitForDeletion(dsName sgbucket.DataStoreName, doc
 	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
 		_, err := p.getCollection(dsName).Get(docID, nil)
 		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s to be deleted from peer %s, found err=%v", docID, p.name, err)
-	}, 5*time.Second, 100*time.Millisecond)
+	}, totalWaitTime, pollInterval)
 }
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
@@ -187,10 +197,10 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		}
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(docID, p, cas, xattrs)
-		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(docBytes))
 
-	}, 5*time.Second, 100*time.Millisecond)
-	p.tb.Logf("found version %+v for doc %s on %s", version, docID, p)
+		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s\nexpected: %#v\nactual:   %#v\n          body: %#v\n", docID, p, expected, version, string(docBytes))
+
+	}, totalWaitTime, pollInterval)
 	return docBytes
 }
 
@@ -221,10 +231,10 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 		r, err := xdcr.NewXDCR(p.Context(), passivePeer.GetBackingBucket(), p.bucket, xdcr.XDCROptions{Mobile: xdcr.MobileOn})
 		require.NoError(p.tb, err)
 		p.pullReplications[passivePeer] = r
-
 		return &CouchbaseServerReplication{
 			activePeer:  p,
 			passivePeer: passivePeer,
+			direction:   config.direction,
 			t:           p.tb.(*testing.T),
 			ctx:         p.Context(),
 			manager:     r,
@@ -240,6 +250,7 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 		return &CouchbaseServerReplication{
 			activePeer:  p,
 			passivePeer: passivePeer,
+			direction:   config.direction,
 			t:           p.tb.(*testing.T),
 			ctx:         p.Context(),
 			manager:     r,

@@ -135,7 +135,7 @@ func (x *couchbaseServerManager) Start(ctx context.Context) error {
 		return err
 	}
 	if statusCode != http.StatusOK {
-		return fmt.Errorf("Could not create xdcr cluster: %s. %s %s -> (%d) %s", xdcrClusterName, method, url, statusCode, output)
+		return fmt.Errorf("Could not create xdcr replication: %s. %s %s -> (%d) %s", xdcrClusterName, method, url, statusCode, output)
 	}
 	type replicationOutput struct {
 		ID string `json:"id"`
