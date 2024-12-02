@@ -92,6 +92,10 @@ func (t multiActorTest) singleDocID() string {
 	return fmt.Sprintf("doc_%s", strings.ReplaceAll(t.description(), " ", "_"))
 }
 
+func (t multiActorTest) peerDocID(peerName string) string {
+	return fmt.Sprintf("doc_%s_%s", strings.ReplaceAll(t.description(), " ", "_"), peerName)
+}
+
 // collectionName returns the collection name for the test case.
 func (t multiActorTest) collectionName() base.ScopeAndCollectionName {
 	return getSingleDsName()
@@ -140,6 +144,31 @@ func TestHLVCreateDocumentSingleActor(t *testing.T) {
 	}
 }
 
+func TestHLVCreateDocumentMultiActor(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
+
+	for _, tc := range getMultiActorTestCases() {
+		t.Run(tc.description(), func(t *testing.T) {
+			peers, _ := setupTests(t, tc.topology, "")
+
+			var docVersionList []BodyAndVersion
+
+			// grab sorted peer list and create a list to store expected version,
+			// doc body
+			for _, peerName := range tc.PeerNames() {
+				docID := tc.peerDocID(peerName)
+				docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, peerName, tc.description()))
+				docVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, docBody)
+				docVersionList = append(docVersionList, docVersion)
+			}
+			for i, peerName := range tc.PeerNames() {
+				docBodyAndVersion := docVersionList[i]
+				waitForVersionAndBody(t, tc, peers, tc.peerDocID(peerName), docBodyAndVersion)
+			}
+		})
+	}
+}
+
 // TestHLVCreateDocumentMultiActorConflict:
 //   - Create conflicting docs on each peer
 //   - Wait for docs last write to be replicated to all other peers
@@ -167,6 +196,42 @@ func TestHLVCreateDocumentMultiActorConflict(t *testing.T) {
 			startPeerReplications(replications)
 
 			waitForVersionAndBody(t, tc, peers, docID, docVersion)
+
+		})
+	}
+}
+
+func TestHLVUpdateDocumentMultiActor(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
+
+	for _, tc := range getMultiActorTestCases() {
+		t.Run(tc.description(), func(t *testing.T) {
+			if strings.Contains(tc.description(), "CBL") {
+				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
+			}
+			peers, _ := setupTests(t, tc.topology, "")
+
+			// grab sorted peer list and create a list to store expected version,
+			// doc body and the peer the write came from
+			var docVersionList []BodyAndVersion
+
+			for _, peerName := range tc.PeerNames() {
+				docID := tc.peerDocID(peerName)
+				body1 := []byte(fmt.Sprintf(`{"originPeer": "%s", "topology": "%s", "write": 1}`, peerName, tc.description()))
+				createVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, body1)
+				waitForVersionAndBody(t, tc, peers, docID, createVersion)
+
+				newBody := []byte(fmt.Sprintf(`{"originPeer": "%s", "topology": "%s", "write": 2}`, peerName, tc.description()))
+				updateVersion := peers[peerName].WriteDocument(tc.collectionName(), docID, newBody)
+				// store update version along with doc body and the current peer the update came in on
+				docVersionList = append(docVersionList, updateVersion)
+			}
+			// loop through peers again and assert all peers have updates
+			for i, peerName := range tc.PeerNames() {
+				docID := tc.peerDocID(peerName)
+				docBodyAndVersion := docVersionList[i]
+				waitForVersionAndBodyOnNonActivePeers(t, tc, docID, peers, docBodyAndVersion)
+			}
 
 		})
 	}
@@ -259,6 +324,38 @@ func TestHLVDeleteDocumentSingleActor(t *testing.T) {
 			t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion.docMeta, deleteVersion)
 			t.Logf("waiting for document deletion on all peers")
 			waitForDeletion(t, tc, peers, docID, tc.activePeerID)
+		})
+	}
+}
+
+func TestHLVDeleteDocumentMultiActor(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
+	for _, tc := range getMultiActorTestCases() {
+		t.Run(tc.description(), func(t *testing.T) {
+			if strings.Contains(tc.description(), "CBL") {
+				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+			}
+			peers, _ := setupTests(t, tc.topology, "")
+
+			for peerName, _ := range peers {
+				docID := tc.peerDocID(peerName)
+				body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, docID, tc.description()))
+				createVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, body1)
+				waitForVersionAndBody(t, tc, peers, docID, createVersion)
+
+				for _, deletePeer := range tc.PeerNames() {
+					if deletePeer == peerName {
+						// continue till we find peer that write didn't originate from
+						continue
+					}
+					deleteVersion := peers[deletePeer].DeleteDocument(tc.collectionName(), docID)
+					t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion, deleteVersion)
+					t.Logf("waiting for document %s deletion on all peers", docID)
+					waitForDeletion(t, tc, peers, docID, deletePeer)
+					break
+				}
+			}
 		})
 	}
 }
@@ -433,6 +530,44 @@ func TestHLVResurrectDocumentSingleActor(t *testing.T) {
 	}
 }
 
+func TestHLVResurrectDocumentMultiActor(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
+	for _, tc := range getMultiActorTestCases() {
+		t.Run(tc.description(), func(t *testing.T) {
+			if strings.Contains(tc.description(), "CBL") {
+				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+			}
+			t.Skip("skipped resurrection test, intermittent failures CBG-4372")
+
+			peers, _ := setupTests(t, tc.topology, "")
+
+			var docVersionList []BodyAndVersion
+			for _, peerName := range tc.PeerNames() {
+				docID := tc.peerDocID(peerName)
+				body1 := []byte(fmt.Sprintf(`{"topology": "%s","writePeer": "%s"}`, tc.description(), peerName))
+				createVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, body1)
+				t.Logf("createVersion: %+v for docID: %s", createVersion, docID)
+				waitForVersionAndBody(t, tc, peers, docID, createVersion)
+
+				deleteVersion := peers[peerName].DeleteDocument(tc.collectionName(), docID)
+				t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion, deleteVersion)
+				t.Logf("waiting for document %s deletion on all peers", docID)
+				waitForDeletion(t, tc, peers, docID, peerName)
+				// recreate doc and assert it arrives at all peers
+				resBody := []byte(fmt.Sprintf(`{"topology": "%s", "write": "resurrection on peer %s"}`, tc.description(), peerName))
+				updateVersion := peers[peerName].WriteDocument(tc.collectionName(), docID, resBody)
+				docVersionList = append(docVersionList, updateVersion)
+			}
+
+			for i, updatePeer := range tc.PeerNames() {
+				docID := tc.peerDocID(updatePeer)
+				docVersion := docVersionList[i]
+				waitForVersionAndBodyOnNonActivePeers(t, tc, docID, peers, docVersion)
+			}
+		})
+	}
+}
+
 // TestHLVResurrectDocumentMultiActorConflict:
 //   - Create conflicting docs on each peer
 //   - Start replications
@@ -501,6 +636,20 @@ func waitForVersionAndBody(t *testing.T, testCase ActorTest, peers map[string]Pe
 	for _, peerName := range peerNames {
 		peer := peers[peerName]
 		t.Logf("waiting for doc version on %s, written from %s", peer, expectedVersion.updatePeer)
+		body := peer.WaitForDocVersion(testCase.collectionName(), docID, expectedVersion.docMeta)
+		requireBodyEqual(t, expectedVersion.body, body)
+	}
+}
+
+func waitForVersionAndBodyOnNonActivePeers(t *testing.T, testCase ActorTest, docID string, peers map[string]Peer, expectedVersion BodyAndVersion) {
+	peerNames := maps.Keys(peers)
+	for _, peerName := range peerNames {
+		if peerName == expectedVersion.updatePeer {
+			// skip peer the write came from
+			continue
+		}
+		peer := peers[peerName]
+		t.Logf("waiting for doc version on %s, update written from %s", peer, expectedVersion.updatePeer)
 		body := peer.WaitForDocVersion(testCase.collectionName(), docID, expectedVersion.docMeta)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
