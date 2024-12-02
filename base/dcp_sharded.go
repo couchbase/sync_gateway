@@ -451,7 +451,7 @@ func (c *CbgtContext) Stop() {
 
 func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 	removeCbgtCredentials(dbName)
-	removeCbgtRootCertsForBucket(c.sourceUUID)
+	// CBG-4394: removing root certs for the bucket should be done, but it is keyed based on the bucket UUID, and multiple dbs can use the same bucket
 }
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories

@@ -302,10 +302,3 @@ func setCbgtRootCertsForBucket(bucketUUID string, pool *x509.CertPool) {
 	defer cbgtGlobalsLock.Unlock()
 	cbgtRootCertPools[bucketUUID] = pool
 }
-
-// removeCbgtRootCertsForBucket removes all the root certificates for a bucket. See the comment of cbgtRootCAsProvider for usage details.
-func removeCbgtRootCertsForBucket(bucketUUID string) {
-	cbgtGlobalsLock.Lock()
-	defer cbgtGlobalsLock.Unlock()
-	delete(cbgtRootCertPools, bucketUUID)
-}

@@ -3140,6 +3140,7 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 }
 
 func TestTLSWithoutCerts(t *testing.T) {
+	base.ResetCBGTCertPools(t) // CBG-4394: removing root certs for the bucket should be done, but it is keyed based on the bucket UUID, and multiple dbs can use the same bucket
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
