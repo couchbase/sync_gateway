@@ -341,6 +341,15 @@ pipeline {
                                 build job: 'MasterIntegration', quietPeriod: 3600, wait: false
                             }
                         }
+                        stage('anemone') {
+                            when { branch 'release/anemone' }
+                            steps {
+                                echo 'Queueing Integration test for branch "release/anemone" ...'
+                                // Queues up an async integration test run using default build params (anemone branch),
+                                // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
+                                build job: 'AnemoneIntegration', quietPeriod: 3600, wait: false
+                            }
+                        }
 
                         stage('PR') {
                             // TODO: Remove skip
