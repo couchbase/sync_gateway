@@ -65,7 +65,7 @@ func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID strin
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
-func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
+func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	p.TB().Logf("%s: Creating document %s", p, docID)
 	return p.WriteDocument(dsName, docID, body)
 }
@@ -101,9 +101,14 @@ func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID str
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
+func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	p.TB().Logf("%s: Writing document %s", p, docID)
-	return p.writeDocument(dsName, docID, body)
+	docMetadata := p.writeDocument(dsName, docID, body)
+	return BodyAndVersion{
+		docMeta:    docMetadata,
+		body:       body,
+		updatePeer: p.name,
+	}
 }
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
