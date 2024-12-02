@@ -163,7 +163,7 @@ func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, d
 func (p *CouchbaseServerPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID string) {
 	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
 		_, err := p.getCollection(dsName).Get(docID, nil)
-		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s to be deleted, found err=%v", docID, err)
+		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s to be deleted from peer %s, found err=%v", docID, p.name, err)
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
