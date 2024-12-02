@@ -13,12 +13,18 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/xdcr"
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	totalWaitTime = 10 * time.Second
+	pollInterval  = 50 * time.Millisecond
 )
 
 // Peer represents a peer in an Mobile workflow. The types of Peers are Couchbase Server, Sync Gateway, or Couchbase Lite.
@@ -224,7 +230,7 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) map[string]P
 	peers := make(map[string]Peer, len(peersOptions))
 	for id, peerOptions := range peersOptions {
 		peer := NewPeer(t, id, buckets, peerOptions)
-		t.Logf("TopologyTest: created peer %s, SourceID=%+v", id, peer.SourceID())
+		t.Logf("TopologyTest: created peer %s", peer)
 		t.Cleanup(func() {
 			peer.Close()
 		})

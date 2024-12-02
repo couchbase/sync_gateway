@@ -9,6 +9,8 @@
 package topologytest
 
 import (
+	"fmt"
+
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 )
@@ -47,6 +49,10 @@ func DocMetadataFromDocument(doc *db.Document) DocMetadata {
 		Cas:       doc.Cas,
 		HLV:       doc.HLV,
 	}
+}
+
+func (v DocMetadata) GoString() string {
+	return fmt.Sprintf("DocMetadata{\nDocID:%s\n\tRevTreeID:%s\n\tHLV:%+v\n\tMou:%+v\n\tCas:%d\n\tImplicitCV:%+v\n}", v.DocID, v.RevTreeID, v.HLV, v.Mou, v.Cas, v.ImplicitCV)
 }
 
 // DocMetadataFromDocVersion returns metadata DocVersion from the given document and version.
