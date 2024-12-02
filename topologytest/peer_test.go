@@ -26,9 +26,9 @@ type Peer interface {
 	// GetDocument returns the latest version of a document. The test will fail the document does not exist.
 	GetDocument(dsName sgbucket.DataStoreName, docID string) (DocMetadata, db.Body)
 	// CreateDocument creates a document on the peer. The test will fail if the document already exists.
-	CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata
+	CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion
 	// WriteDocument upserts a document to the peer. The test will fail if the write does not succeed. Reasons for failure might be sync function rejections for Sync Gateway rejections.
-	WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata
+	WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion
 	// DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 	DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata
 
@@ -280,48 +280,48 @@ func TestPeerImplementation(t *testing.T) {
 			// Create
 			createBody := []byte(`{"op": "creation"}`)
 			createVersion := peer.CreateDocument(collectionName, docID, []byte(`{"op": "creation"}`))
-			require.NotEmpty(t, createVersion.CV)
+			require.NotEmpty(t, createVersion.docMeta.CV)
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
-				require.Empty(t, createVersion.RevTreeID)
+				require.Empty(t, createVersion.docMeta.RevTreeID)
 			} else {
-				require.NotEmpty(t, createVersion.RevTreeID)
+				require.NotEmpty(t, createVersion.docMeta.RevTreeID)
 			}
 
-			peer.WaitForDocVersion(collectionName, docID, createVersion)
+			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta)
 			// Check Get after creation
 			roundtripGetVersion, roundtripGetbody := peer.GetDocument(collectionName, docID)
-			require.Equal(t, createVersion, roundtripGetVersion)
+			require.Equal(t, createVersion.docMeta, roundtripGetVersion)
 			require.JSONEq(t, string(createBody), string(base.MustJSONMarshal(t, roundtripGetbody)))
 
 			// Update
 			updateBody := []byte(`{"op": "update"}`)
 			updateVersion := peer.WriteDocument(collectionName, docID, updateBody)
-			require.NotEmpty(t, updateVersion.CV)
-			require.NotEqual(t, updateVersion.CV(), createVersion.CV())
+			require.NotEmpty(t, updateVersion.docMeta.CV)
+			require.NotEqual(t, updateVersion.docMeta.CV(), createVersion.docMeta.CV())
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
-				require.Empty(t, updateVersion.RevTreeID)
+				require.Empty(t, updateVersion.docMeta.RevTreeID)
 			} else {
-				require.NotEmpty(t, updateVersion.RevTreeID)
-				require.NotEqual(t, updateVersion.RevTreeID, createVersion.RevTreeID)
+				require.NotEmpty(t, updateVersion.docMeta.RevTreeID)
+				require.NotEqual(t, updateVersion.docMeta.RevTreeID, createVersion.docMeta.RevTreeID)
 			}
-			peer.WaitForDocVersion(collectionName, docID, updateVersion)
+			peer.WaitForDocVersion(collectionName, docID, updateVersion.docMeta)
 
 			// Check Get after update
 			roundtripGetVersion, roundtripGetbody = peer.GetDocument(collectionName, docID)
-			require.Equal(t, updateVersion, roundtripGetVersion)
+			require.Equal(t, updateVersion.docMeta, roundtripGetVersion)
 			require.JSONEq(t, string(updateBody), string(base.MustJSONMarshal(t, roundtripGetbody)))
 
 			// Delete
 			deleteVersion := peer.DeleteDocument(collectionName, docID)
 			require.NotEmpty(t, deleteVersion.CV())
-			require.NotEqual(t, deleteVersion.CV(), updateVersion.CV())
-			require.NotEqual(t, deleteVersion.CV(), createVersion.CV())
+			require.NotEqual(t, deleteVersion.CV(), updateVersion.docMeta.CV())
+			require.NotEqual(t, deleteVersion.CV(), createVersion.docMeta.CV())
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
 				require.Empty(t, deleteVersion.RevTreeID)
 			} else {
 				require.NotEmpty(t, deleteVersion.RevTreeID)
-				require.NotEqual(t, deleteVersion.RevTreeID, createVersion.RevTreeID)
-				require.NotEqual(t, deleteVersion.RevTreeID, updateVersion.RevTreeID)
+				require.NotEqual(t, deleteVersion.RevTreeID, createVersion.docMeta.RevTreeID)
+				require.NotEqual(t, deleteVersion.RevTreeID, updateVersion.docMeta.RevTreeID)
 			}
 			peer.RequireDocNotFound(collectionName, docID)
 
@@ -329,19 +329,19 @@ func TestPeerImplementation(t *testing.T) {
 
 			resurrectionBody := []byte(`{"op": "resurrection"}`)
 			resurrectionVersion := peer.WriteDocument(collectionName, docID, resurrectionBody)
-			require.NotEmpty(t, resurrectionVersion.CV())
-			require.NotEqual(t, resurrectionVersion.CV(), deleteVersion.CV())
-			require.NotEqual(t, resurrectionVersion.CV(), updateVersion.CV())
-			require.NotEqual(t, resurrectionVersion.CV(), createVersion.CV())
+			require.NotEmpty(t, resurrectionVersion.docMeta.CV())
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(), deleteVersion.CV())
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(), updateVersion.docMeta.CV())
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(), createVersion.docMeta.CV())
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
-				require.Empty(t, resurrectionVersion.RevTreeID)
+				require.Empty(t, resurrectionVersion.docMeta.RevTreeID)
 			} else {
-				require.NotEmpty(t, resurrectionVersion.RevTreeID)
-				require.NotEqual(t, resurrectionVersion.RevTreeID, createVersion.RevTreeID)
-				require.NotEqual(t, resurrectionVersion.RevTreeID, updateVersion.RevTreeID)
-				require.NotEqual(t, resurrectionVersion.RevTreeID, deleteVersion.RevTreeID)
+				require.NotEmpty(t, resurrectionVersion.docMeta.RevTreeID)
+				require.NotEqual(t, resurrectionVersion.docMeta.RevTreeID, createVersion.docMeta.RevTreeID)
+				require.NotEqual(t, resurrectionVersion.docMeta.RevTreeID, updateVersion.docMeta.RevTreeID)
+				require.NotEqual(t, resurrectionVersion.docMeta.RevTreeID, deleteVersion.RevTreeID)
 			}
-			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion)
+			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta)
 
 		})
 	}
