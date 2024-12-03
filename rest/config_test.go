@@ -3138,3 +3138,27 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	assert.Equal(t, uint32(100), *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount)
 	assert.Equal(t, uint32(0), *dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
 }
+
+func TestTLSWithoutCerts(t *testing.T) {
+	base.ResetCBGTCertPools(t) // CBG-4394: removing root certs for the bucket should be done, but it is keyed based on the bucket UUID, and multiple dbs can use the same bucket
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Bootstrap.Server = strings.ReplaceAll(config.Bootstrap.Server, "couchbase://", "couchbases://")
+			config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
+			config.Bootstrap.UseTLSServer = base.BoolPtr(true)
+		},
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AutoImport = true
+	rt.CreateDatabase("db", dbConfig)
+	// ensure import feed works without TLS
+	err := rt.GetSingleDataStore().Set("doc1", 0, nil, []byte(`{"foo": "bar"}`))
+	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+}
