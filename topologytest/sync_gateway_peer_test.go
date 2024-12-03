@@ -11,9 +11,9 @@ package topologytest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
-	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -43,7 +43,7 @@ func newSyncGatewayPeer(t *testing.T, name string, bucket *base.TestBucket) Peer
 }
 
 func (p *SyncGatewayPeer) String() string {
-	return p.name
+	return fmt.Sprintf("%s (bucket:%s,sourceid:%s)", p.name, p.rt.Bucket().GetName(), p.SourceID())
 }
 
 // getCollection returns the collection for the given data store name and a related context. The special context is needed to add fields for audit logging, required by build tag cb_sg_devmode.
@@ -139,8 +139,8 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 		// Only assert on CV since RevTreeID might not be present if this was a Couchbase Server write
 		bodyBytes, err := doc.BodyBytes(ctx)
 		assert.NoError(c, err)
-		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %+v\nactual:   %+v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(bodyBytes))
-	}, 5*time.Second, 100*time.Millisecond)
+		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %#v\nactual:   %#v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(bodyBytes))
+	}, totalWaitTime, pollInterval)
 	return doc.Body(ctx)
 }
 
@@ -150,11 +150,11 @@ func (p *SyncGatewayPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID s
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		if err == nil {
-			assert.True(c, doc.IsDeleted(), "expected %s to be deleted", doc)
+			assert.True(c, doc.IsDeleted(), "expected %s on %s to be deleted", doc, p)
 			return
 		}
-		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s to be deleted, found err=%v", docID, err)
-	}, 5*time.Second, 100*time.Millisecond)
+		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s on %s to be deleted, found err=%v", docID, p, err)
+	}, totalWaitTime, pollInterval)
 }
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.

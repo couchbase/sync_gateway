@@ -12,7 +12,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -41,7 +40,7 @@ type CouchbaseLiteMockPeer struct {
 }
 
 func (p *CouchbaseLiteMockPeer) String() string {
-	return p.name
+	return fmt.Sprintf("%s (sourceid:%s)", p.name, p.SourceID())
 }
 
 // GetDocument returns the latest version of a document. The test will fail the document does not exist.
@@ -70,7 +69,7 @@ func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, do
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
+func (p *CouchbaseLiteMockPeer) WriteDocument(_ sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
 	// set an HLV here.
@@ -97,10 +96,10 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docI
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var found bool
 		data, found = client.btcRunner.GetVersion(client.ID(), docID, rest.DocVersion{CV: docVersion.CV()})
-		if !assert.True(c, found, "Could not find docID:%+v Version %+v", docID, docVersion) {
+		if !assert.True(c, found, "Could not find docID:%+v on %p\nVersion %#v", docID, p, docVersion) {
 			return
 		}
-	}, 10*time.Second, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v Version %+v", docID, docVersion)
+	}, totalWaitTime, pollInterval, "BlipTesterClient timed out waiting for doc %+v Version %#v", docID, docVersion)
 	var body db.Body
 	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))
 	return body
@@ -196,13 +195,17 @@ func (r *CouchbaseLiteMockReplication) PassivePeer() Peer {
 
 // Start starts the replication
 func (r *CouchbaseLiteMockReplication) Start() {
-	r.btc.TB().Logf("starting CBL replication")
+	r.btc.TB().Logf("starting CBL replication: %s", r)
 	r.btcRunner.StartPull(r.btc.ID())
 }
 
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseLiteMockReplication) Stop() {
-	r.btc.TB().Logf("stopping CBL replication")
+	r.btc.TB().Logf("stopping CBL replication: %s", r)
 	_, err := r.btcRunner.UnsubPullChanges(r.btc.ID())
 	require.NoError(r.btcRunner.TB(), err)
+}
+
+func (r *CouchbaseLiteMockReplication) String() string {
+	return fmt.Sprintf("%s->%s", r.activePeer, r.passivePeer)
 }
