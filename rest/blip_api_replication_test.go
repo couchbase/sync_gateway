@@ -11,15 +11,12 @@ package rest
 import (
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestBlipClientPushAndPullReplication sets up a push replication for a BlipTesterClient, writes a (client) document and ensures it ends up on Sync Gateway.
+// TestBlipClientPushAndPullReplication sets up a bidi replication for a BlipTesterClient, writes documents on SG and the client and ensures they replicate.
 func TestBlipClientPushAndPullReplication(t *testing.T) {
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},
 		GuestEnabled:   true,

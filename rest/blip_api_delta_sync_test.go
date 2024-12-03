@@ -832,7 +832,6 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		// Check EE is delta, and CE is full-body replication
 		msg := client.waitForReplicationMessage(collection, 2)
 
-		// FIXME: Delta sync support for push replication
 		if base.IsEnterpriseEdition() {
 			// Check the request was sent with the correct deltaSrc property
 			assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[db.RevMessageDeltaSrc])
@@ -865,7 +864,6 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
 
 		// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
-		// FIXME: Not replicated to client?
 		deletedVersion := rt.DeleteDocReturnVersion(docID, newRev)
 
 		data = btcRunner.WaitForVersion(client.id, docID, deletedVersion)

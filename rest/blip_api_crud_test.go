@@ -3143,7 +3143,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				btcRunner.WaitForDoc(btc2.id, markerDoc)
 
 				// Validate that the latest client message for the requested doc/rev was a norev
-				// FIXME: Norev support
 				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID)
 				require.True(t, ok)
 				require.Equal(t, db.MessageNoRev, msg.Profile())

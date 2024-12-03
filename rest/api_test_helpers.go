@@ -60,7 +60,6 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB()), parentVersionCopy.RevID)
 		ids = append(ids, parentDigest)
 	}
-	// TODO: Revs invalid???
 	revisions["ids"] = ids
 
 	requestBody[db.BodyRevisions] = revisions

@@ -2254,8 +2254,6 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 }
 func TestUpdateExistingAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
-
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2363,7 +2361,6 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 }
 
 func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{

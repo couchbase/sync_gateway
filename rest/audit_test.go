@@ -1482,8 +1482,6 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 }
 
 func TestAuditBlipCRUD(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 
@@ -1522,22 +1520,6 @@ func TestAuditBlipCRUD(t *testing.T) {
 				},
 				attachmentCreateCount: 1,
 			},
-			//{
-			//	name:           "read attachment",
-			//	attachmentName: "attachment1",
-			//	setupCode: func(_ testing.TB, docID string) DocVersion {
-			//		attData := base64.StdEncoding.EncodeToString([]byte("attach"))
-			//		version := rt.PutDoc(docID, `{"key":"val","_attachments":{"attachment1":{"data":"`+attData+`"}}}`)
-			//		return version
-			//	},
-			//	auditableCode: func(_ testing.TB, docID string, version DocVersion) {
-			//		btcRunner.StartPull(btc.id)
-			//		btcRunner.WaitForVersion(btc.id, docID, version)
-			//		// TODO: Requires a WaitForAttachment implementation
-			//		time.Sleep(time.Millisecond * 5000)
-			//	},
-			//	attachmentReadCount: 1,
-			//},
 		}
 		for _, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
