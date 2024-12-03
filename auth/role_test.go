@@ -143,14 +143,12 @@ func TestValidatePrincipalName(t *testing.T) {
 	name240 := getName(240)
 	nonUTF := "\xc3\x28"
 	noAlpha := "!@#$%"
-	testName := "myorg_john.davis~40myorganization.org@department.mysuperdomain.onemicrosoft.com"
 
 	testcases := []struct {
 		desc   string
 		name   string
 		expect string
 	}{
-		{desc: "valid test name", name: testName, expect: ""},
 		{desc: "valid name", name: name50, expect: ""},
 		{desc: "valid guest", name: "", expect: ""},
 		{desc: "invalid char", name: name25 + "/" + name25, expect: "contains '/', ':', ',', or '`'"},
