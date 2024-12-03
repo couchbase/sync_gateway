@@ -380,7 +380,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		// CBL replicates, sends to client as 4-abc history:[4-abc, 3-abc, 2-abc], attachment has revpos=2
 		bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 		rev := NewDocVersionFromFakeRev("2-abc")
-		// FIXME: docID: doc1 was not found on the client - expecting to update doc based on parentVersion RevID: 2-abc
+		// FIXME CBG-4400:  docID: doc1 was not found on the client - expecting to update doc based on parentVersion RevID: 2-abc
 		err := btcRunner.StoreRevOnClient(btc.id, docID, &rev, []byte(bodyText))
 		require.NoError(t, err)
 
@@ -609,7 +609,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 		// TODO: Replace with Pull replication?
 		// Store the document and attachment on the test client
 		err := btcRunner.StoreRevOnClient(client1.id, docID, &docVersion, rawDoc)
-		// FIXME: docID: doc was not found on the client - expecting to update doc based on parentVersion RevID: 1-5fc93bd36377008f96fdae2719c174ed
+		// FIXME CBG-4400: docID: doc was not found on the client - expecting to update doc based on parentVersion RevID: 1-5fc93bd36377008f96fdae2719c174ed
 		require.NoError(t, err)
 
 		btcRunner.AttachmentsLock(client1.id).Lock()
@@ -669,7 +669,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		version, _ := client1.rt.GetDoc(docID)
 
 		// Store the document and attachment on the test client
-		// FIXME: docID: doc was not found on the client - expecting to update doc based on parentVersion RevID: 1-5fc93bd36377008f96fdae2719c174ed
+		// FIXME CBG-4400: docID: doc was not found on the client - expecting to update doc based on parentVersion RevID: 1-5fc93bd36377008f96fdae2719c174ed
 		err := btcRunner.StoreRevOnClient(client1.id, docID, &version, rawDoc)
 		require.NoError(t, err)
 		btcRunner.AttachmentsLock(client1.id).Lock()
