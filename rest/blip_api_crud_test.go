@@ -1998,8 +1998,6 @@ func TestSendReplacementRevision(t *testing.T) {
 // TestBlipPullRevMessageHistory tests that a simple pull replication contains history in the rev message.
 func TestBlipPullRevMessageHistory(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
-
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -2043,7 +2041,6 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 // Reproduces CBG-617 (a client using activeOnly for the initial replication, and then still expecting to get subsequent tombstones afterwards)
 func TestActiveOnlyContinuous(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -2442,7 +2439,6 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 }
 
 func TestBlipInternalPropertiesHandling(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 
 	testCases := []struct {
 		name                        string
