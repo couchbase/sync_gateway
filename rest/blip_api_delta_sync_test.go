@@ -793,7 +793,6 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyChanges, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
