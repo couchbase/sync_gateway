@@ -181,7 +181,10 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 
 	var isSGWrite bool
 	var crc32Match bool
-	if syncData != nil {
+	if syncData == nil && event.Opcode == sgbucket.FeedOpDeletion {
+		base.DebugfCtx(ctx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(event.Key))
+		return
+	} else if syncData != nil {
 		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, rawBody, rawXattrs[collection.userXattrKey()])
 		if crc32Match {
 			il.dbStats.Crc32MatchCount.Add(1)
