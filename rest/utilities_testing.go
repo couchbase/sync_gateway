@@ -2456,7 +2456,7 @@ func (v *DocVersion) RevIDGeneration() int {
 	}
 	gen, err := strconv.ParseInt(strings.Split(v.RevID, "-")[0], 10, 64)
 	if err != nil {
-		base.AssertfCtx(nil, "Error parsing generation from rev ID %q: %v", v.RevID, err)
+		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevID, err)
 		return 0
 	}
 	return int(gen)

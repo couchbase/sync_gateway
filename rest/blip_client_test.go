@@ -137,7 +137,7 @@ func (c *BlipTesterCollectionClient) docsSince(ctx context.Context, since client
 
 type clientSeq uint64
 
-// clientDocRev represents a revision of a document stored on this client, including any metadata assocaited with this specific revision.
+// clientDocRev represents a revision of a document stored on this client, including any metadata associated with this specific revision.
 type clientDocRev struct {
 	clientSeq     clientSeq
 	version       DocVersion
@@ -175,10 +175,6 @@ func (cd *clientDoc) activeRev() *clientDocRev {
 		return nil
 	}
 	return &rev
-}
-
-func (cd *clientDoc) latestVersion() DocVersion {
-	return cd.activeRev().version
 }
 
 type BlipTesterCollectionClient struct {
@@ -229,11 +225,6 @@ type BlipTestClientRunner struct {
 	t                               *testing.T
 	initialisedInsideRunnerCode     bool // flag to check that the BlipTesterClient is being initialised in the correct area (inside the Run() method)
 	SkipVersionVectorInitialization bool // used to skip the version vector subtest
-}
-
-type BodyMessagePair struct {
-	body    []byte
-	message *blip.Message
 }
 
 // BlipTesterReplicator is a BlipTester which stores a map of messages keyed by Serial Number
