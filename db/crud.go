@@ -1182,7 +1182,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *Version, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
 		doc, unmarshalErr := db.unmarshalDocumentWithXattrs(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs, existingDoc.Cas, DocUnmarshalRev)
@@ -1229,8 +1229,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		// Conflict check here
 		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
 		if doc.HLV == nil {
-			newHLV := NewHybridLogicalVector()
-			doc.HLV = &newHLV
+			doc.HLV = NewHybridLogicalVector()
 			addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
 			if addNewerVersionsErr != nil {
 				return nil, nil, false, nil, addNewerVersionsErr
@@ -1240,7 +1239,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add", base.UD(newDoc.ID))
 				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 			}
-			if newDocHLV.isDominating(*doc.HLV) {
+			if newDocHLV.isDominating(doc.HLV) {
 				// update hlv for all newer incoming source version pairs
 				addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
 				if addNewerVersionsErr != nil {
