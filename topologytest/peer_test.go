@@ -70,6 +70,9 @@ type internalPeer interface {
 	// TB returns the testing.TB for the peer.
 	TB() testing.TB
 
+	// UpdateTB updates the testing.TB for the peer.
+	UpdateTB(*testing.T)
+
 	// Context returns the context for the peer.
 	Context() context.Context
 }
@@ -239,14 +242,19 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) map[string]P
 	return peers
 }
 
+func updatePeersT(t *testing.T, peers map[string]Peer) {
+	for _, peer := range peers {
+		oldTB := peer.TB().(*testing.T)
+		t.Cleanup(func() { peer.UpdateTB(oldTB) })
+		peer.UpdateTB(t)
+	}
+}
+
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
-func setupTests(t *testing.T, topology Topology, activePeerID string) (map[string]Peer, []PeerReplication) {
+func setupTests(t *testing.T, topology Topology) (map[string]Peer, []PeerReplication) {
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
 
-	if topology.skipIf != nil {
-		topology.skipIf(t, activePeerID, peers)
-	}
 	for _, replication := range replications {
 		// temporarily start the replication before writing the document, limitation of CouchbaseLiteMockPeer as active peer since WriteDocument is calls PushRev
 		replication.Start()

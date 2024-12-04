@@ -56,17 +56,6 @@ func (t singleActorTest) collectionName() base.ScopeAndCollectionName {
 	return getSingleDsName()
 }
 
-// getSingleActorTestCase returns a list of test cases in the matrix for all topologies * active peers.
-func getSingleActorTestCase() []singleActorTest {
-	var tests []singleActorTest
-	for _, tc := range append(simpleTopologies, Topologies...) {
-		for _, activePeerID := range tc.PeerNames() {
-			tests = append(tests, singleActorTest{topology: tc, activePeerID: activePeerID})
-		}
-	}
-	return tests
-}
-
 // multiActorTest represents a test case for a single actor in a given topology.
 type multiActorTest struct {
 	topology Topology
@@ -118,14 +107,19 @@ func startPeerReplications(peerReplications []PeerReplication) {
 func TestHLVCreateDocumentSingleActor(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
-	for _, tc := range getSingleActorTestCase() {
-		t.Run(tc.description(), func(t *testing.T) {
-			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
-
-			docID := getDocID(t)
-			docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, tc.activePeerID, tc.description()))
-			docVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, docBody)
-			waitForVersionAndBody(t, tc, peers, docID, docVersion)
+	for _, topology := range append(simpleTopologies, Topologies...) {
+		t.Run(topology.description, func(t *testing.T) {
+			peers, _ := setupTests(t, topology)
+			for _, activePeerID := range topology.PeerNames() {
+				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
+					updatePeersT(t, peers)
+					tc := singleActorTest{topology: topology, activePeerID: activePeerID}
+					docID := getDocID(t)
+					docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, activePeerID, tc.description()))
+					docVersion := peers[activePeerID].CreateDocument(getSingleDsName(), docID, docBody)
+					waitForVersionAndBody(t, tc, peers, docID, docVersion)
+				})
+			}
 		})
 	}
 }
@@ -135,7 +129,7 @@ func TestHLVCreateDocumentMultiActor(t *testing.T) {
 
 	for _, tc := range getMultiActorTestCases() {
 		t.Run(tc.description(), func(t *testing.T) {
-			peers, _ := setupTests(t, tc.topology, "")
+			peers, _ := setupTests(t, tc.topology)
 
 			var docVersionList []BodyAndVersion
 
@@ -173,7 +167,7 @@ func TestHLVCreateDocumentMultiActorConflict(t *testing.T) {
 			t.Skip("We need to be able to wait for a specific version to arrive over pull replication, CBG-4257")
 		}
 		t.Run(tc.description(), func(t *testing.T) {
-			peers, replications := setupTests(t, tc.topology, "")
+			peers, replications := setupTests(t, tc.topology)
 
 			stopPeerReplications(replications)
 
@@ -196,7 +190,7 @@ func TestHLVUpdateDocumentMultiActor(t *testing.T) {
 			if strings.Contains(tc.description(), "CBL") {
 				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
 			}
-			peers, _ := setupTests(t, tc.topology, "")
+			peers, _ := setupTests(t, tc.topology)
 
 			// grab sorted peer list and create a list to store expected version,
 			// doc body and the peer the write came from
@@ -228,25 +222,32 @@ func TestHLVUpdateDocumentMultiActor(t *testing.T) {
 func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
-	for _, tc := range getSingleActorTestCase() {
-		t.Run(tc.description(), func(t *testing.T) {
-			if strings.HasPrefix(tc.activePeerID, "cbl") {
-				t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
+
+	for _, topology := range append(simpleTopologies, Topologies...) {
+		t.Run(topology.description, func(t *testing.T) {
+			peers, _ := setupTests(t, topology)
+			for _, activePeerID := range topology.PeerNames() {
+				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
+					updatePeersT(t, peers)
+					tc := singleActorTest{topology: topology, activePeerID: activePeerID}
+					if strings.HasPrefix(tc.activePeerID, "cbl") {
+						t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
+					}
+
+					docID := getDocID(t)
+					body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
+					createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
+
+					waitForVersionAndBody(t, tc, peers, docID, createVersion)
+
+					body2 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 2}`, tc.activePeerID, tc.description()))
+					updateVersion := peers[tc.activePeerID].WriteDocument(tc.collectionName(), docID, body2)
+					t.Logf("createVersion: %+v, updateVersion: %+v", createVersion.docMeta, updateVersion.docMeta)
+					t.Logf("waiting for document version 2 on all peers")
+
+					waitForVersionAndBody(t, tc, peers, docID, updateVersion)
+				})
 			}
-			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
-
-			docID := getDocID(t)
-			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
-			createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
-
-			waitForVersionAndBody(t, tc, peers, docID, createVersion)
-
-			body2 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 2}`, tc.activePeerID, tc.description()))
-			updateVersion := peers[tc.activePeerID].WriteDocument(tc.collectionName(), docID, body2)
-			t.Logf("createVersion: %+v, updateVersion: %+v", createVersion.docMeta, updateVersion.docMeta)
-			t.Logf("waiting for document version 2 on all peers")
-
-			waitForVersionAndBody(t, tc, peers, docID, updateVersion)
 		})
 	}
 }
@@ -272,7 +273,7 @@ func TestHLVUpdateDocumentMultiActorConflict(t *testing.T) {
 			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
 		}
 		t.Run(tc.description(), func(t *testing.T) {
-			peers, replications := setupTests(t, tc.topology, "")
+			peers, replications := setupTests(t, tc.topology)
 			stopPeerReplications(replications)
 
 			docID := getDocID(t)
@@ -294,23 +295,31 @@ func TestHLVUpdateDocumentMultiActorConflict(t *testing.T) {
 func TestHLVDeleteDocumentSingleActor(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
-	for _, tc := range getSingleActorTestCase() {
-		t.Run(tc.description(), func(t *testing.T) {
-			if strings.HasPrefix(tc.activePeerID, "cbl") {
-				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+
+	for _, topology := range append(simpleTopologies, Topologies...) {
+		t.Run(topology.description, func(t *testing.T) {
+			peers, _ := setupTests(t, topology)
+			for _, activePeerID := range topology.PeerNames() {
+				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
+					updatePeersT(t, peers)
+					tc := singleActorTest{topology: topology, activePeerID: activePeerID}
+
+					if strings.HasPrefix(tc.activePeerID, "cbl") {
+						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+					}
+
+					docID := getDocID(t)
+					body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
+					createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
+
+					waitForVersionAndBody(t, tc, peers, docID, createVersion)
+
+					deleteVersion := peers[tc.activePeerID].DeleteDocument(tc.collectionName(), docID)
+					t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion.docMeta, deleteVersion)
+					t.Logf("waiting for document deletion on all peers")
+					waitForDeletion(t, tc, peers, docID, tc.activePeerID)
+				})
 			}
-			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
-
-			docID := getDocID(t)
-			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
-			createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
-
-			waitForVersionAndBody(t, tc, peers, docID, createVersion)
-
-			deleteVersion := peers[tc.activePeerID].DeleteDocument(tc.collectionName(), docID)
-			t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion.docMeta, deleteVersion)
-			t.Logf("waiting for document deletion on all peers")
-			waitForDeletion(t, tc, peers, docID, tc.activePeerID)
 		})
 	}
 }
@@ -323,7 +332,7 @@ func TestHLVDeleteDocumentMultiActor(t *testing.T) {
 			if strings.Contains(tc.description(), "CBL") {
 				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 			}
-			peers, _ := setupTests(t, tc.topology, "")
+			peers, _ := setupTests(t, tc.topology)
 
 			for peerName := range peers {
 				docID := getDocID(t) + "_" + peerName
@@ -368,7 +377,7 @@ func TestHLVDeleteDocumentMultiActorConflict(t *testing.T) {
 			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
 		}
 		t.Run(tc.description(), func(t *testing.T) {
-			peers, replications := setupTests(t, tc.topology, "")
+			peers, replications := setupTests(t, tc.topology)
 			stopPeerReplications(replications)
 
 			docID := getDocID(t)
@@ -408,7 +417,7 @@ func TestHLVUpdateDeleteDocumentMultiActorConflict(t *testing.T) {
 		}
 		t.Run(tc.description(), func(t *testing.T) {
 			peerList := tc.PeerNames()
-			peers, replications := setupTests(t, tc.topology, "")
+			peers, replications := setupTests(t, tc.topology)
 			stopPeerReplications(replications)
 
 			docID := getDocID(t)
@@ -453,7 +462,7 @@ func TestHLVDeleteUpdateDocumentMultiActorConflict(t *testing.T) {
 		}
 		t.Run(tc.description(), func(t *testing.T) {
 			peerList := tc.PeerNames()
-			peers, replications := setupTests(t, tc.topology, "")
+			peers, replications := setupTests(t, tc.topology)
 			stopPeerReplications(replications)
 
 			docID := getDocID(t)
@@ -481,37 +490,44 @@ func TestHLVDeleteUpdateDocumentMultiActorConflict(t *testing.T) {
 func TestHLVResurrectDocumentSingleActor(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
-	for _, tc := range getSingleActorTestCase() {
-		t.Run(tc.description(), func(t *testing.T) {
-			if strings.HasPrefix(tc.activePeerID, "cbl") {
-				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+	for _, topology := range append(simpleTopologies, Topologies...) {
+		t.Run(topology.description, func(t *testing.T) {
+			peers, _ := setupTests(t, topology)
+			for _, activePeerID := range topology.PeerNames() {
+				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
+					updatePeersT(t, peers)
+					tc := singleActorTest{topology: topology, activePeerID: activePeerID}
+
+					if strings.HasPrefix(tc.activePeerID, "cbl") {
+						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+					}
+					t.Skip("Skipping resurection tests CBG-4366")
+
+					docID := getDocID(t)
+					body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
+					createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
+					waitForVersionAndBody(t, tc, peers, docID, createVersion)
+
+					deleteVersion := peers[tc.activePeerID].DeleteDocument(tc.collectionName(), docID)
+					t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion, deleteVersion)
+					t.Logf("waiting for document deletion on all peers")
+					waitForDeletion(t, tc, peers, docID, tc.activePeerID)
+
+					body2 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": "resurrection"}`, tc.activePeerID, tc.description()))
+					resurrectVersion := peers[tc.activePeerID].WriteDocument(tc.collectionName(), docID, body2)
+					t.Logf("createVersion: %+v, deleteVersion: %+v, resurrectVersion: %+v", createVersion.docMeta, deleteVersion, resurrectVersion.docMeta)
+					t.Logf("waiting for document resurrection on all peers")
+
+					// Couchbase Lite peers do not know how to push a deletion yet, so we need to filter them out CBG-4257
+					nonCBLPeers := make(map[string]Peer)
+					for peerName, peer := range peers {
+						if !strings.HasPrefix(peerName, "cbl") {
+							nonCBLPeers[peerName] = peer
+						}
+					}
+					waitForVersionAndBody(t, tc, peers, docID, resurrectVersion)
+				})
 			}
-
-			peers, _ := setupTests(t, tc.topology, tc.activePeerID)
-
-			docID := getDocID(t)
-			body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
-			createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
-			waitForVersionAndBody(t, tc, peers, docID, createVersion)
-
-			deleteVersion := peers[tc.activePeerID].DeleteDocument(tc.collectionName(), docID)
-			t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion, deleteVersion)
-			t.Logf("waiting for document deletion on all peers")
-			waitForDeletion(t, tc, peers, docID, tc.activePeerID)
-
-			body2 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": "resurrection"}`, tc.activePeerID, tc.description()))
-			resurrectVersion := peers[tc.activePeerID].WriteDocument(tc.collectionName(), docID, body2)
-			t.Logf("createVersion: %+v, deleteVersion: %+v, resurrectVersion: %+v", createVersion.docMeta, deleteVersion, resurrectVersion.docMeta)
-			t.Logf("waiting for document resurrection on all peers")
-
-			// Couchbase Lite peers do not know how to push a deletion yet, so we need to filter them out CBG-4257
-			nonCBLPeers := make(map[string]Peer)
-			for peerName, peer := range peers {
-				if !strings.HasPrefix(peerName, "cbl") {
-					nonCBLPeers[peerName] = peer
-				}
-			}
-			waitForVersionAndBody(t, tc, peers, docID, resurrectVersion)
 		})
 	}
 }
@@ -525,7 +541,7 @@ func TestHLVResurrectDocumentMultiActor(t *testing.T) {
 			}
 			t.Skip("skipped resurrection test, intermittent failures CBG-4372")
 
-			peers, _ := setupTests(t, tc.topology, "")
+			peers, _ := setupTests(t, tc.topology)
 
 			var docVersionList []BodyAndVersion
 			for _, peerName := range tc.PeerNames() {
@@ -577,7 +593,7 @@ func TestHLVResurrectDocumentMultiActorConflict(t *testing.T) {
 			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
 		}
 		t.Run(tc.description(), func(t *testing.T) {
-			peers, replications := setupTests(t, tc.topology, "")
+			peers, replications := setupTests(t, tc.topology)
 			stopPeerReplications(replications)
 
 			docID := getDocID(t)
