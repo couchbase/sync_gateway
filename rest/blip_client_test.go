@@ -102,11 +102,11 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(since clientSeq) iter.Seq2
 				continue
 			}
 			if !yield(seq, doc) {
-				c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - stopping iteration", since, c._seqLast)
+				c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - stopping iteration", since, seqLast)
 				return
 			}
 		}
-		c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - done", since, c._seqLast)
+		c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - done", since, seqLast)
 	}
 }
 
