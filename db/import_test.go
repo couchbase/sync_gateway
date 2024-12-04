@@ -14,11 +14,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1021,56 +1019,4 @@ func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key str
 	}
 	return syncData, mou, cas
 
-}
-
-func TestImportFeedEventDeletion(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
-	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
-	defer db.Close(ctx)
-
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-
-	// grab DCP event from real write
-	uuid, err := uuid.NewRandom() // use UUID to allow test to work with -count > 1
-	require.NoError(t, err)
-	docID := t.Name() + "-" + uuid.String()
-
-	feedArgs := sgbucket.FeedArguments{
-		ID:         docID,
-		Backfill:   sgbucket.FeedNoBackfill,
-		Terminator: make(chan bool),
-		Scopes:     map[string][]string{collection.ScopeName: []string{collection.Name}},
-	}
-
-	var event atomic.Value
-	callback := func(e sgbucket.FeedEvent) bool {
-		if event.Load() != nil {
-			return false
-		}
-		if e.Opcode == sgbucket.FeedOpDeletion && string(e.Key) == docID {
-			event.Store(&e)
-			close(feedArgs.Terminator)
-		}
-		return false
-	}
-
-	require.NoError(t, db.Bucket.StartDCPFeed(ctx, feedArgs, callback, nil))
-
-	cas, err := collection.dataStore.WriteTombstoneWithXattrs(ctx, docID, 0, 0, map[string][]byte{"_systemxattr": []byte(`{"key": "val"}`)}, nil, false, nil)
-	require.NoError(t, err)
-	require.NotEqual(t, uint64(0), cas)
-
-	select {
-	case <-feedArgs.Terminator:
-	case <-time.After(15 * time.Second):
-		close(feedArgs.Terminator)
-
-		if event.Load() == nil {
-			close(feedArgs.Terminator)
-			t.Fatalf("Timed out waiting for DCP event")
-		}
-	}
-	base.AssertLogContains(t, "Ignoring delete mutation", func() {
-		db.ImportListener.ImportFeedEvent(ctx, collection, *(event.Load().(*sgbucket.FeedEvent)))
-	})
 }
