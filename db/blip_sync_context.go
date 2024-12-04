@@ -341,8 +341,6 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 		return err
 	}
 
-	fmt.Println("answers", answer)
-
 	for i, knownRevsArrayInterface := range answer {
 		seq := changeArray[i][0].(SequenceID)
 		docID := changeArray[i][1].(string)
