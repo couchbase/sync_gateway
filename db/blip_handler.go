@@ -1055,7 +1055,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	var history []string
 	historyStr := rq.Properties[RevMessageHistory]
-	var incomingHLV HybridLogicalVector
+	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
 	if !bh.useHLV() {
 		newDoc.RevID = rev
@@ -1073,7 +1073,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v.  HLV:%v Error: %v", base.UD(docID), versionVectorStr, err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
 		}
-		newDoc.HLV = &incomingHLV
+		newDoc.HLV = incomingHLV
 	}
 
 	newDoc.UpdateBodyBytes(bodyBytes)

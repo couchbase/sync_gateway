@@ -81,7 +81,7 @@ func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, 
 
 }
 
-// processEvent processes a DCP event coming from a toBucket and replicates it to the target datastore.
+// processEvent processes a DCP event coming from a source bucket and replicates it to the target datastore.
 func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEvent) bool {
 	docID := string(event.Key)
 	base.TracefCtx(ctx, base.KeyVV, "Got event %s, opcode: %s", docID, event.Opcode)
@@ -352,24 +352,25 @@ func getHLVAndMou(xattrs map[string][]byte) (*db.HybridLogicalVector, *db.Metada
 
 // updateHLV will update the xattrs on the target document considering the source's HLV, _mou, sourceID and cas.
 func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, sourceCas uint64) error {
-	// TODO: read existing targetXattrs[base.VvXattrName] and update the pv CBG-4250. This will need to merge pv from sourceHLV and targetHLV.
-	var targetHLV *db.HybridLogicalVector
-	// if source vv.cvCas == cas, the _vv.cv, _vv.cvCAS from the source is correct and we can use it directly.
+
+	targetHLV := db.NewHybridLogicalVector()
+	if sourceHLV != nil {
+		targetHLV = sourceHLV
+	}
+
+	// If source vv.cvCas == cas, the _vv.cv, _vv.cvCAS from the source already includes the latest mutation and we can use it directly.
+	// Otherwise we need to add the current mutation (sourceID, sourceCas) to the HLV before writing to the target
 	sourcecvCASMatch := sourceHLV != nil && sourceHLV.CurrentVersionCAS == sourceCas
 	sourceWasImport := sourceMou != nil && sourceMou.CAS() == sourceCas
-	if sourceHLV != nil && (sourceWasImport || sourcecvCASMatch) {
-		targetHLV = sourceHLV
-	} else {
-		hlv := db.NewHybridLogicalVector()
-		err := hlv.AddVersion(db.Version{
+	if !(sourceWasImport || sourcecvCASMatch) {
+		err := targetHLV.AddVersion(db.Version{
 			SourceID: sourceID,
 			Value:    sourceCas,
 		})
 		if err != nil {
 			return err
 		}
-		hlv.CurrentVersionCAS = sourceCas
-		targetHLV = &hlv
+		targetHLV.CurrentVersionCAS = sourceCas
 	}
 	var err error
 	xattrs[base.VvXattrName], err = json.Marshal(targetHLV)
