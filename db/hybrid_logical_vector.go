@@ -168,8 +168,8 @@ type HybridLogicalVector struct {
 }
 
 // NewHybridLogicalVector returns an initialised HybridLogicalVector.
-func NewHybridLogicalVector() HybridLogicalVector {
-	return HybridLogicalVector{
+func NewHybridLogicalVector() *HybridLogicalVector {
+	return &HybridLogicalVector{
 		PreviousVersions: make(HLVVersions),
 		MergeVersions:    make(HLVVersions),
 	}
@@ -262,7 +262,7 @@ func (hlv *HybridLogicalVector) Remove(source string) error {
 // If HLV A dominates CV of HLV B, it can be assumed to dominate the entire HLV, since
 // CV dominates PV for a given HLV.  Given this, it's sufficient to check whether HLV A
 // has a version for HLV B's current source that's greater than or equal to HLV B's current version.
-func (hlv *HybridLogicalVector) isDominating(otherVector HybridLogicalVector) bool {
+func (hlv *HybridLogicalVector) isDominating(otherVector *HybridLogicalVector) bool {
 	return hlv.DominatesSource(Version{otherVector.SourceID, otherVector.Version})
 }
 
@@ -296,7 +296,7 @@ func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 
 // AddNewerVersions will take a hlv and add any newer source/version pairs found across CV and PV found in the other HLV taken as parameter
 // when both HLV
-func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector) error {
+func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVector) error {
 
 	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
 	// version than local HLVs CV pair
@@ -416,29 +416,29 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 //  3. cv, pv, and mv: 	cv;mv;pv
 //
 // TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
-func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, error) {
-	hlv := HybridLogicalVector{}
+func extractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, error) {
+	hlv := &HybridLogicalVector{}
 
 	vectorFields := strings.Split(versionVectorStr, ";")
 	vectorLength := len(vectorFields)
 	if (vectorLength == 1 && vectorFields[0] == "") || vectorLength > 3 {
-		return HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
+		return &HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
 	}
 
 	// add current version (should always be present)
 	cvStr := vectorFields[0]
 	version := strings.Split(cvStr, "@")
 	if len(version) < 2 {
-		return HybridLogicalVector{}, fmt.Errorf("invalid version in changes message received")
+		return &HybridLogicalVector{}, fmt.Errorf("invalid version in changes message received")
 	}
 
 	vrs, err := strconv.ParseUint(version[0], 16, 64)
 	if err != nil {
-		return HybridLogicalVector{}, err
+		return &HybridLogicalVector{}, err
 	}
 	err = hlv.AddVersion(Version{SourceID: version[1], Value: vrs})
 	if err != nil {
-		return HybridLogicalVector{}, err
+		return &HybridLogicalVector{}, err
 	}
 
 	switch vectorLength {
@@ -449,7 +449,7 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 		// only cv and pv present
 		sourceVersionListPV, err := parseVectorValues(vectorFields[1])
 		if err != nil {
-			return HybridLogicalVector{}, err
+			return &HybridLogicalVector{}, err
 		}
 		hlv.PreviousVersions = make(HLVVersions)
 		for _, v := range sourceVersionListPV {
@@ -461,7 +461,7 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 		sourceVersionListPV, err := parseVectorValues(vectorFields[2])
 		hlv.PreviousVersions = make(HLVVersions)
 		if err != nil {
-			return HybridLogicalVector{}, err
+			return &HybridLogicalVector{}, err
 		}
 		for _, pv := range sourceVersionListPV {
 			hlv.PreviousVersions[pv.SourceID] = pv.Value
@@ -470,14 +470,14 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 		sourceVersionListMV, err := parseVectorValues(vectorFields[1])
 		hlv.MergeVersions = make(HLVVersions)
 		if err != nil {
-			return HybridLogicalVector{}, err
+			return &HybridLogicalVector{}, err
 		}
 		for _, mv := range sourceVersionListMV {
 			hlv.MergeVersions[mv.SourceID] = mv.Value
 		}
 		return hlv, nil
 	default:
-		return HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
+		return &HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
 	}
 }
 

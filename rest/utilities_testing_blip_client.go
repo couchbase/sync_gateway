@@ -165,7 +165,7 @@ func (btcr *BlipTesterCollectionClient) NewBlipTesterDoc(revID string, body []by
 	}
 	if btcr.UseHLV() {
 		doc.revMode = revModeHLV
-		doc.HLV = db.NewHybridLogicalVector()
+		doc.HLV = *db.NewHybridLogicalVector()
 		_ = doc.HLV.AddVersion(VersionFromRevID(revID))
 	} else {
 		doc.revMode = revModeRevTree

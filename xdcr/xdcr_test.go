@@ -620,6 +620,93 @@ func TestReplicateXattrs(t *testing.T) {
 	}
 }
 
+// TestVVMultiActor verifies that updates by multiple actors (updates to different clusters/buckets) are properly
+// reflected in the HLV (cv and pv).
+func TestVVMultiActor(t *testing.T) {
+	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
+	ctx := base.TestCtx(t)
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	require.NoError(t, err)
+	toBucketSourceID, err := GetSourceID(ctx, toBucket)
+	require.NoError(t, err)
+
+	// Create document on source
+	docID := "doc1"
+	ver1Body := `{"ver":1}`
+	fromCAS, err := fromDs.WriteCas(docID, 0, 0, []byte(ver1Body), 0)
+	require.NoError(t, err)
+
+	// start bidirectional XDCR
+	xdcrSource := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
+	xdcrTarget := startXDCR(t, toBucket, fromBucket, XDCROptions{Mobile: MobileOn})
+	defer func() {
+		assert.NoError(t, xdcrSource.Stop(ctx))
+		assert.NoError(t, xdcrTarget.Stop(ctx))
+	}()
+	requireWaitForXDCRDocsProcessed(t, xdcrSource, 1)
+
+	// Verify HLV on remote.
+	// expected HLV:
+	//    cv: fromCAS@source
+	body, xattrs, destCas, err := toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
+	require.NoError(t, err)
+	require.Equal(t, fromCAS, destCas)
+	require.JSONEq(t, ver1Body, string(body))
+	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
+
+	// Update document on remote
+	toCAS, err := toDs.WriteCas(docID, 0, fromCAS, []byte(`{"ver":2}`), 0)
+	require.NoError(t, err)
+	requireWaitForXDCRDocsProcessed(t, xdcrTarget, 2)
+
+	// Verify HLV on source.
+	// expected HLV:
+	//    cv: toCAS@remote
+	//    pv: fromCAS@source
+	body, xattrs, destCas, err = fromDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
+	require.NoError(t, err)
+	require.Equal(t, toCAS, destCas)
+	require.JSONEq(t, `{"ver":2}`, string(body))
+	require.Contains(t, xattrs, base.VvXattrName)
+	requireCV(t, xattrs[base.VvXattrName], toBucketSourceID, toCAS)
+	requirePV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
+
+	// Update document on remote again.  Verifies that another update to cv doesn't affect pv.
+	toCAS2, err := toDs.WriteCas(docID, 0, toCAS, []byte(`{"ver":3}`), 0)
+	require.NoError(t, err)
+	requireWaitForXDCRDocsProcessed(t, xdcrTarget, 3)
+
+	// Verify HLV on source bucket.
+	// expected HLV:
+	//    cv: toCAS2@remote
+	//    pv: fromCAS@source
+	body, xattrs, destCas, err = fromDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
+	require.NoError(t, err)
+	require.Equal(t, toCAS2, destCas)
+	require.JSONEq(t, `{"ver":3}`, string(body))
+	require.Contains(t, xattrs, base.VvXattrName)
+	requireCV(t, xattrs[base.VvXattrName], toBucketSourceID, toCAS2)
+	requirePV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
+
+	// Update document on source bucket.  Verifies that local source is moved from pv to cv, target source from cv to pv.
+	fromCAS2, err := fromDs.WriteCas(docID, 0, toCAS2, []byte(`{"ver":4}`), 0)
+	require.NoError(t, err)
+	requireWaitForXDCRDocsProcessed(t, xdcrTarget, 4)
+
+	// Verify HLV on target
+	// expected HLV:
+	//    cv: fromCAS2@source
+	//    pv: toCAS2@remote
+	body, xattrs, destCas, err = toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
+	require.NoError(t, err)
+	require.Equal(t, fromCAS2, destCas)
+	require.JSONEq(t, `{"ver":4}`, string(body))
+	require.Contains(t, xattrs, base.VvXattrName)
+	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS2)
+	requirePV(t, xattrs[base.VvXattrName], toBucketSourceID, toCAS2)
+
+}
+
 // startXDCR will create a new XDCR manager and start it. This must be closed by the caller.
 func startXDCR(t *testing.T, fromBucket base.Bucket, toBucket base.Bucket, opts XDCROptions) Manager {
 	ctx := base.TestCtx(t)
@@ -640,13 +727,20 @@ func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsPro
 	}, time.Second*5, time.Millisecond*100)
 }
 
-// requireCV requires tests that a given hlv from server has a sourceID and cas matching the version. This is strict and will fail if _pv is populated (TODO: CBG-4250).
+// requireCV requires tests that a given hlv from server has sourceID and cas matching the current version.
 func requireCV(t *testing.T, vvBytes []byte, sourceID string, cas uint64) {
 	var vv *db.HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(vvBytes, &vv))
-	require.Equal(t, &db.HybridLogicalVector{
-		CurrentVersionCAS: cas,
-		SourceID:          sourceID,
-		Version:           cas,
-	}, vv)
+	require.Equal(t, cas, vv.CurrentVersionCAS)
+	require.Equal(t, sourceID, vv.SourceID)
+}
+
+// requirePV requires tests that a given hlv from server has an entry in the PV with sourceID and cas matching the provided values.
+func requirePV(t *testing.T, vvBytes []byte, sourceID string, cas uint64) {
+	var vv *db.HybridLogicalVector
+	require.NoError(t, base.JSONUnmarshal(vvBytes, &vv))
+	require.NotNil(t, vv.PreviousVersions)
+	pvValue, ok := vv.PreviousVersions[sourceID]
+	require.True(t, ok)
+	require.Equal(t, cas, pvValue)
 }

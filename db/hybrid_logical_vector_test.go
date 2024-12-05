@@ -159,7 +159,7 @@ func TestConflictDetectionDominating(t *testing.T) {
 
 // createHLVForTest is a helper function to create a HLV for use in a test. Takes a list of strings in the format of <sourceID@version> and assumes
 // first entry is current version. For merge version entries you must specify 'm_' as a prefix to sourceID NOTE: it also sets cvCAS to the current version
-func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
+func createHLVForTest(tb *testing.T, inputList []string) *HybridLogicalVector {
 	hlvOutput := NewHybridLogicalVector()
 
 	// first element will be current version and source pair
@@ -537,13 +537,13 @@ func TestInvalidHLVInBlipMessageForm(t *testing.T) {
 	hlv, err := extractHLVFromBlipMessage(hlvStr)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid hlv in changes message received")
-	assert.Equal(t, HybridLogicalVector{}, hlv)
+	assert.Equal(t, &HybridLogicalVector{}, hlv)
 
 	hlvStr = ""
 	hlv, err = extractHLVFromBlipMessage(hlvStr)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid hlv in changes message received")
-	assert.Equal(t, HybridLogicalVector{}, hlv)
+	assert.Equal(t, &HybridLogicalVector{}, hlv)
 }
 
 var extractHLVFromBlipMsgBMarkCases = []struct {
@@ -758,7 +758,7 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	vvXattr, err = base.JSONMarshal(&hlv2)
 	require.NoError(t, err)
 	// convert the bytes back to an in memory format of hlv
-	memHLV = HybridLogicalVector{}
+	memHLV = &HybridLogicalVector{}
 	err = base.JSONUnmarshal(vvXattr, &memHLV)
 	require.NoError(t, err)
 
