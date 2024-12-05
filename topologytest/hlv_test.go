@@ -501,7 +501,6 @@ func TestHLVResurrectDocumentSingleActor(t *testing.T) {
 					if strings.HasPrefix(tc.activePeerID, "cbl") {
 						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 					}
-					t.Skip("Skipping resurection tests CBG-4366")
 
 					docID := getDocID(t)
 					body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
@@ -539,7 +538,6 @@ func TestHLVResurrectDocumentMultiActor(t *testing.T) {
 			if strings.Contains(tc.description(), "CBL") {
 				t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 			}
-			t.Skip("skipped resurrection test, intermittent failures CBG-4372")
 
 			peers, _ := setupTests(t, tc.topology)
 
