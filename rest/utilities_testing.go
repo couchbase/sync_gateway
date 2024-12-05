@@ -56,7 +56,7 @@ type RestTesterConfig struct {
 	ImportFilter                    string                      // put the import filter function source in here (optional)
 	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
-	InitSyncSeq                     uint64                      // If specified, initializes _sync:clientSeq on bucket creation.  Not supported when running against walrus
+	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
 	EnableNoConflictsMode           bool                        // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
 	CustomTestBucket                *base.TestBucket            // If set, use this bucket instead of requesting a new one.

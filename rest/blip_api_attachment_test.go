@@ -303,7 +303,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
+		btcRunner.StartPush(btc.id)
 
 		docVersion, err := btcRunner.AddRev(btc.id, docID, nil, []byte(`{"greetings":[{"hi": "alice"}]}`))
 		require.NoError(t, err)
@@ -316,8 +316,6 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 
 		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, "")
 		assert.Equal(t, http.StatusOK, resp.Code)
-
-		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false, Since: "2"})
 
 		// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
 		// sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2

@@ -2406,10 +2406,9 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 		proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
 		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
 
-		// start another push to run in the background since the last doc version
-		doc, ok := btcRunner.SingleCollection(btc.id).getClientDoc(docID)
-		require.True(t, ok)
-		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: true, Since: strconv.Itoa(int(doc.latestSeq))})
+		// start another push to run in the background from where we last left off
+		latestSeq := btcRunner.SingleCollection(btc.id).lastSeq()
+		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: true, Since: strconv.Itoa(int(latestSeq))})
 
 		// Push another bunch of history, this time whilst a replicator is actively pushing them
 		for i := 25; i < 50; i++ {
