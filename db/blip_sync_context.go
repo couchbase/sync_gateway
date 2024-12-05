@@ -357,7 +357,16 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc
 			if bsc.useDeltas && len(knownRevsArray) > 0 {
 				if revID, ok := knownRevsArray[0].(string); ok {
-					deltaSrcRevID = revID
+					if bsc.useHLV() {
+						msgHLV, err := extractHLVFromBlipMessage(revID)
+						if err != nil {
+							base.ErrorfCtx(ctx, "Invalid known rev format for hlv")
+							return nil
+						}
+						deltaSrcRevID = msgHLV.GetCurrentVersionString()
+					} else {
+						deltaSrcRevID = revID
+					}
 				}
 			}
 
