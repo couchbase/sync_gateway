@@ -1817,7 +1817,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 
 	// create a version larger than the allocated version above
 	incomingVersion := docUpdateVersionInt + 10
-	incomingHLV := HybridLogicalVector{
+	incomingHLV := &HybridLogicalVector{
 		SourceID:         "test",
 		Version:          incomingVersion,
 		PreviousVersions: pv,
@@ -1895,7 +1895,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	// create a new doc update to simulate a doc update arriving over replicator from, client
 	body = Body{"key1": "value2"}
 	newDoc := createTestDocument(key, "", body, false, 0)
-	incomingHLV := HybridLogicalVector{
+	incomingHLV := &HybridLogicalVector{
 		SourceID: "test",
 		Version:  1234,
 	}
@@ -1935,7 +1935,7 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	pv[bucketUUID] = uint64(2)
 	// create a version larger than the allocated version above
 	incomingVersion := uint64(2 + 10)
-	incomingHLV := HybridLogicalVector{
+	incomingHLV := &HybridLogicalVector{
 		SourceID:         "test",
 		Version:          incomingVersion,
 		PreviousVersions: pv,
