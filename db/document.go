@@ -485,7 +485,9 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	}
 
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
-	result, err = UnmarshalDocumentSyncData(body, needHistory)
+	if len(body) != 0 {
+		result, err = UnmarshalDocumentSyncData(body, needHistory)
+	}
 	return result, body, xattrValues, err
 }
 
