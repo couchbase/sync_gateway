@@ -170,6 +170,11 @@ func (p *CouchbaseLiteMockPeer) TB() testing.TB {
 	return p.t
 }
 
+// UpdateTB updates the testing.TB for the peer.
+func (p *CouchbaseLiteMockPeer) UpdateTB(t *testing.T) {
+	p.t = t
+}
+
 // GetBackingBucket returns the backing bucket for the peer. This is always nil.
 func (p *CouchbaseLiteMockPeer) GetBackingBucket() base.Bucket {
 	return nil
