@@ -36,6 +36,11 @@ func (rt *RestTester) Run(name string, test func(*testing.T)) {
 	})
 }
 
+func (rt *RestTester) UpdateTB(t *testing.T) {
+	var tb testing.TB = t
+	rt.testingTB.Store(&tb)
+}
+
 // GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocBody(docID string) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")

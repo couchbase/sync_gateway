@@ -150,7 +150,7 @@ func (p *SyncGatewayPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID s
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		if err == nil {
-			assert.True(c, doc.IsDeleted(), "expected %s on %s to be deleted", doc, p)
+			assert.True(c, doc.IsDeleted(), "expected %+v on %s to be deleted", doc, p)
 			return
 		}
 		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s on %s to be deleted, found err=%v", docID, p, err)
@@ -198,6 +198,11 @@ func (p *SyncGatewayPeer) Context() context.Context {
 // TB returns the testing.TB for the peer.
 func (p *SyncGatewayPeer) TB() testing.TB {
 	return p.rt.TB()
+}
+
+// UpdateTB updates the testing.TB for the peer.
+func (p *SyncGatewayPeer) UpdateTB(t *testing.T) {
+	p.rt.UpdateTB(t)
 }
 
 // GetBackingBucket returns the backing bucket for the peer.

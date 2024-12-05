@@ -10,7 +10,6 @@ package topologytest
 
 import (
 	"slices"
-	"testing"
 
 	"golang.org/x/exp/maps"
 )
@@ -20,7 +19,6 @@ type Topology struct {
 	description  string
 	peers        map[string]PeerOptions
 	replications []PeerReplicationDefinition
-	skipIf       func(t *testing.T, activePeerID string, peers map[string]Peer) // allow temporary skips while the code is being ironed out
 }
 
 // PeerNames returns a sorted list of peers.

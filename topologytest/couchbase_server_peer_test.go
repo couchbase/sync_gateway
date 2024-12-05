@@ -276,6 +276,10 @@ func (p *CouchbaseServerPeer) TB() testing.TB {
 	return p.tb
 }
 
+func (p *CouchbaseServerPeer) UpdateTB(tb *testing.T) {
+	p.tb = tb
+}
+
 // getDocVersion returns a DocVersion from a cas and xattrs with _vv (hlv) and _sync (RevTreeID).
 func getDocVersion(docID string, peer Peer, cas uint64, xattrs map[string][]byte) DocMetadata {
 	docVersion := DocMetadata{

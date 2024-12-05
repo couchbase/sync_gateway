@@ -22,10 +22,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	totalWaitTime = 10 * time.Second
-	pollInterval  = 50 * time.Millisecond
-)
+// totalWaitTime is the time to wait for a document on a peer. This time is low for rosmar and high for Couchbase Server.
+var totalWaitTime = 3 * time.Second
+
+// pollInterval is the time to poll to see if a document is updated on a peer
+var pollInterval = 50 * time.Millisecond
+
+func init() {
+	if !base.UnitTestUrlIsWalrus() {
+		totalWaitTime = 40 * time.Second
+	}
+}
 
 // Peer represents a peer in an Mobile workflow. The types of Peers are Couchbase Server, Sync Gateway, or Couchbase Lite.
 type Peer interface {
@@ -69,6 +76,9 @@ type internalPeer interface {
 
 	// TB returns the testing.TB for the peer.
 	TB() testing.TB
+
+	// UpdateTB updates the testing.TB for the peer.
+	UpdateTB(*testing.T)
 
 	// Context returns the context for the peer.
 	Context() context.Context
@@ -239,14 +249,19 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) map[string]P
 	return peers
 }
 
+func updatePeersT(t *testing.T, peers map[string]Peer) {
+	for _, peer := range peers {
+		oldTB := peer.TB().(*testing.T)
+		t.Cleanup(func() { peer.UpdateTB(oldTB) })
+		peer.UpdateTB(t)
+	}
+}
+
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
-func setupTests(t *testing.T, topology Topology, activePeerID string) (map[string]Peer, []PeerReplication) {
+func setupTests(t *testing.T, topology Topology) (map[string]Peer, []PeerReplication) {
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
 
-	if topology.skipIf != nil {
-		topology.skipIf(t, activePeerID, peers)
-	}
 	for _, replication := range replications {
 		// temporarily start the replication before writing the document, limitation of CouchbaseLiteMockPeer as active peer since WriteDocument is calls PushRev
 		replication.Start()
