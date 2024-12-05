@@ -22,10 +22,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	totalWaitTime = 10 * time.Second
-	pollInterval  = 50 * time.Millisecond
-)
+// totalWaitTime is the time to wait for a document on a peer. This time is low for rosmar and high for Couchbase Server.
+var totalWaitTime = 3 * time.Second
+
+// pollInterval is the time to poll to see if a document is updated on a peer
+var pollInterval = 50 * time.Millisecond
+
+func init() {
+	if !base.UnitTestUrlIsWalrus() {
+		totalWaitTime = 40 * time.Second
+	}
+}
 
 // Peer represents a peer in an Mobile workflow. The types of Peers are Couchbase Server, Sync Gateway, or Couchbase Lite.
 type Peer interface {
