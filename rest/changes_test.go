@@ -235,7 +235,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// push non-winning branch
 	wg.Add(1)
-	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-buzzzzz"), version1, `{"foo":"buzzzzz"}`)
+	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-buzzzzz"), &version1, `{"foo":"buzzzzz"}`)
 	RequireStatus(t, res, http.StatusCreated)
 
 	wg.Wait()
