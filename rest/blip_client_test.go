@@ -1084,11 +1084,7 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 			btcc.TB().Logf("Starting push replication iteration with since=%v", seq)
 			for doc := range btcc.docsSince(btcc.ctx, seq, opts.Continuous) {
 				select {
-				case <-btcc.parent.rt.Context().Done():
-					btcc.TB().Logf("Stopping push replication by RestTester context close")
-					return
 				case <-btcc.ctx.Done():
-					btcc.TB().Logf("Stopping push replication by BlipTesterCollectionClient context close")
 					return
 				default:
 				}
