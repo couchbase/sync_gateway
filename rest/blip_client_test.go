@@ -1338,7 +1338,7 @@ func (btc *BlipTesterCollectionClient) Close() {
 	// wake up changes feeds to exit
 	btc._seqCond.Broadcast()
 
-	// emtpy storage
+	// empty storage
 	btc._seqStore = make(map[clientSeq]*clientDoc, 0)
 	btc._seqFromDocID = make(map[string]clientSeq, 0)
 
