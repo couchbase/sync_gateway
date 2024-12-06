@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"iter"
+	"log"
 	"net/http"
 	"slices"
 	"strconv"
@@ -86,7 +87,9 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 		for c._seqLast <= since {
 			// block until new seq
 			c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - waiting for new sequence", since, c._seqLast)
+			log.Printf("before _seqCond.Wait")
 			c._seqCond.Wait()
+			log.Printf("after _seqCond.Wait")
 			// Check to see if we were woken because of Close()
 			if ctx.Err() != nil {
 				c.seqLock.Unlock()
@@ -118,18 +121,24 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 
 func (c *BlipTesterCollectionClient) docsSince(ctx context.Context, since clientSeq, continuous bool) chan *clientDoc {
 	ch := make(chan *clientDoc)
+	c.goroutineWg.Add(1)
 	go func() {
+		defer c.goroutineWg.Done()
 		sinceVal := since
 		for {
 			c.TB().Logf("docsSince: sinceVal=%d", sinceVal)
 			for _, doc := range c.OneShotDocsSince(ctx, sinceVal) {
+				log.Printf("got doc")
 				select {
 				case <-ctx.Done():
+					log.Printf("closing docsSince channel")
+					close(ch)
 					return
 				case ch <- doc:
 					c.TB().Logf("sent doc %q to changes feed", doc.id)
 					sinceVal = doc.latestSeq()
 				}
+				log.Printf("end of doc loop")
 			}
 			if !continuous {
 				c.TB().Logf("opts.Continuous=false, breaking changes loop")
@@ -1086,6 +1095,7 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 			changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
 			btcc.TB().Logf("Starting push replication iteration with since=%v", seq)
 			for doc := range btcc.docsSince(btcc.ctx, seq, opts.Continuous) {
+				log.Printf("4")
 				select {
 				case <-btcc.ctx.Done():
 					return
@@ -1232,11 +1242,14 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 							btcc.TB().Errorf("unexpected status %d for doc %s / %s", status, change.docID, change.version)
 							return
 						}
+						log.Printf("1")
 					}
+					log.Printf("2")
 
 					// empty batch
 					changesBatch = changesBatch[:0]
 				}
+				log.Printf("3")
 			}
 		}
 	}()
@@ -1333,11 +1346,18 @@ func (btc *BlipTesterCollectionClient) UnsubPushChanges() (response []byte, err 
 func (btc *BlipTesterCollectionClient) Close() {
 	btc.ctxCancel()
 
-	btc.seqLock.Lock()
-	defer btc.seqLock.Unlock()
+	btc.seqLock.RLock()
 	// wake up changes feeds to exit
+	log.Printf("_seqCond.Broadcast() from Close")
 	btc._seqCond.Broadcast()
 
+	log.Printf("_seqCond.Broadcast() from Close - done")
+	btc.seqLock.RUnlock()
+
+	log.Printf("waiting for seqLock.Lock")
+	btc.seqLock.Lock()
+	log.Printf("after seqLock.Lock")
+	defer btc.seqLock.Unlock()
 	// empty storage
 	btc._seqStore = make(map[clientSeq]*clientDoc, 0)
 	btc._seqFromDocID = make(map[string]clientSeq, 0)
@@ -1347,7 +1367,9 @@ func (btc *BlipTesterCollectionClient) Close() {
 	btc._attachments = make(map[string][]byte, 0)
 
 	// wait for goroutines to exit
+	log.Printf("Waiting for goroutines to exit")
 	btc.goroutineWg.Wait()
+	log.Printf("after wg")
 }
 
 func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
@@ -1413,6 +1435,7 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 	delete(btc._seqStore, oldSeq)
 
 	// new sequence written, wake up changes feeds
+	log.Printf("_seqCond.Broadcast() from upsert")
 	btc._seqCond.Broadcast()
 
 	return &rev, nil
