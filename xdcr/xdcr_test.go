@@ -120,7 +120,9 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	// stats are not updated in real time, so we need to wait a bit
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
-		assert.NoError(t, err)
+		if !assert.NoError(c, err) {
+			assert.NoError(c, err)
+		}
 		assert.Equal(c, totalDocsFiltered+1, stats.MobileDocsFiltered)
 		assert.Equal(c, totalDocsWritten+2, stats.DocsWritten)
 
@@ -346,7 +348,7 @@ func TestVVObeyMou(t *testing.T) {
 	require.Equal(t, expectedVV, vv)
 
 	stats, err := xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		DocsWritten:   1,
 		DocsProcessed: 1,
@@ -372,7 +374,7 @@ func TestVVObeyMou(t *testing.T) {
 
 	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
 	stats, err = xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		TargetNewerDocs: 1,
 		DocsWritten:     1,
@@ -431,7 +433,7 @@ func TestVVMouImport(t *testing.T) {
 	require.Equal(t, expectedVV, vv)
 
 	stats, err := xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		DocsWritten:   1,
 		DocsProcessed: 1,
@@ -457,7 +459,7 @@ func TestVVMouImport(t *testing.T) {
 
 	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
 	stats, err = xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		TargetNewerDocs: 1,
 		DocsWritten:     1,
@@ -475,7 +477,7 @@ func TestVVMouImport(t *testing.T) {
 	requireWaitForXDCRDocsProcessed(t, xdcr, 3)
 
 	stats, err = xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		TargetNewerDocs: 1,
 		DocsWritten:     2,
@@ -730,7 +732,9 @@ func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsPro
 	ctx := base.TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
-		assert.NoError(t, err)
+		if !assert.NoError(c, err) {
+			return
+		}
 		assert.Equal(c, expectedDocsProcessed, stats.DocsProcessed)
 	}, time.Second*5, time.Millisecond*100)
 }
