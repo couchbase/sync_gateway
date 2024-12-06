@@ -79,7 +79,7 @@ func (c *BlipTesterCollectionClient) getClientDocForSeq(seq clientSeq) (*clientD
 }
 
 // OneShotDocsSince is an iterator that yields client sequence and document pairs that are newer than the given since value.
-func (c *BlipTesterCollectionClient) OneShotDocsSince(since clientSeq) iter.Seq2[clientSeq, *clientDoc] {
+func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since clientSeq) iter.Seq2[clientSeq, *clientDoc] {
 	return func(yield func(clientSeq, *clientDoc) bool) {
 		c.seqLock.Lock()
 		seqLast := c._seqLast
@@ -87,7 +87,11 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(since clientSeq) iter.Seq2
 			// block until new seq
 			c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - waiting for new sequence", since, c._seqLast)
 			c._seqCond.Wait()
-			// FIXME: context check and return - release lock - broadcast from Close()
+			// Check to see if we were woken because of Close()
+			if ctx.Err() != nil {
+				c.seqLock.Unlock()
+				return
+			}
 			seqLast = c._seqLast
 			c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - woke up", since, c._seqLast)
 		}
@@ -118,7 +122,7 @@ func (c *BlipTesterCollectionClient) docsSince(ctx context.Context, since client
 		sinceVal := since
 		for {
 			c.TB().Logf("docsSince: sinceVal=%d", sinceVal)
-			for _, doc := range c.OneShotDocsSince(sinceVal) {
+			for _, doc := range c.OneShotDocsSince(ctx, sinceVal) {
 				select {
 				case <-ctx.Done():
 					return
@@ -237,6 +241,9 @@ func (cd *clientDoc) getRev(version DocVersion) clientDocRev {
 
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
+
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 
 	collection    string
 	collectionIdx int
@@ -943,7 +950,10 @@ func (btc *BlipTesterClient) createBlipTesterReplications() error {
 		}
 	} else {
 		l := sync.RWMutex{}
+		ctx, ctxCancel := context.WithCancel(btc.rt.Context())
 		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
+			ctx:           ctx,
+			ctxCancel:     ctxCancel,
 			seqLock:       &l,
 			_seqStore:     make(map[clientSeq]*clientDoc),
 			_seqFromDocID: make(map[string]clientSeq),
@@ -961,7 +971,10 @@ func (btc *BlipTesterClient) createBlipTesterReplications() error {
 
 func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) error {
 	l := sync.RWMutex{}
+	ctx, ctxCancel := context.WithCancel(btc.rt.Context())
 	btcReplicator := &BlipTesterCollectionClient{
+		ctx:           ctx,
+		ctxCancel:     ctxCancel,
 		seqLock:       &l,
 		_seqStore:     make(map[clientSeq]*clientDoc),
 		_seqCond:      sync.NewCond(&l),
@@ -1069,9 +1082,13 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 			// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
 			changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
 			btcc.TB().Logf("Starting push replication iteration with since=%v", seq)
-			for doc := range btcc.docsSince(btcc.parent.rt.Context(), seq, opts.Continuous) {
+			for doc := range btcc.docsSince(btcc.ctx, seq, opts.Continuous) {
 				select {
 				case <-btcc.parent.rt.Context().Done():
+					btcc.TB().Logf("Stopping push replication by RestTester context close")
+					return
+				case <-btcc.ctx.Done():
+					btcc.TB().Logf("Stopping push replication by BlipTesterCollectionClient context close")
 					return
 				default:
 				}
@@ -1315,14 +1332,20 @@ func (btc *BlipTesterCollectionClient) UnsubPushChanges() (response []byte, err 
 
 // Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterCollectionClient) Close() {
+	btc.ctxCancel()
+
 	btc.seqLock.Lock()
+	defer btc.seqLock.Unlock()
+	// wake up changes feeds to exit
+	btc._seqCond.Broadcast()
+
+	// emtpy storage
 	btc._seqStore = make(map[clientSeq]*clientDoc, 0)
 	btc._seqFromDocID = make(map[string]clientSeq, 0)
-	btc.seqLock.Unlock()
 
 	btc.attachmentsLock.Lock()
+	defer btc.attachmentsLock.Unlock()
 	btc._attachments = make(map[string][]byte, 0)
-	btc.attachmentsLock.Unlock()
 }
 
 func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
