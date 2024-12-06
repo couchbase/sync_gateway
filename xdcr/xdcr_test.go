@@ -735,7 +735,7 @@ func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsPro
 		if !assert.NoError(c, err) {
 			return
 		}
-		assert.Equal(c, expectedDocsProcessed, stats.DocsProcessed)
+		assert.Equal(c, expectedDocsProcessed, stats.DocsProcessed, "all stats=%+v", stats)
 	}, time.Second*5, time.Millisecond*100)
 }
 
