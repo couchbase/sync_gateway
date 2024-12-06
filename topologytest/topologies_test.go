@@ -208,28 +208,28 @@ var Topologies = []Topology{
 		},
 	},
 	// topology 1.4 not present, no P2P supported yet
-	{
-		/*
-				Test topology 1.5
+	/*
+		{
+					Test topology 1.5
 
-				+ - - - - - - +      +- - - - - - -+
-				'  cluster A  '      '  cluster B  '
-				' +---------+ '      ' +---------+ '
-				' |  cbs1   | ' <--> ' |  cbs2   | '
-				' +---------+ '      ' +---------+ '
-				' +---------+ '      ' +---------+ '
-				' |   sg1   | '      ' |   sg2   | '
-				' +---------+ '      ' +---------+ '
-				+ - - - - - - +      +- - - - - - -+
-			   	      ^ 	         ^
-				      |                  |
-				      |                  |
-				      |                  |
-				      |     +------+     |
-				      +---> | cbl1 | <---+
-				            +------+
-		*/
-		/* This test doesn't work yet, CouchbaseLiteMockPeer doesn't support writing data to multiple Sync Gateway peers yet
+					+ - - - - - - +      +- - - - - - -+
+					'  cluster A  '      '  cluster B  '
+					' +---------+ '      ' +---------+ '
+					' |  cbs1   | ' <--> ' |  cbs2   | '
+					' +---------+ '      ' +---------+ '
+					' +---------+ '      ' +---------+ '
+					' |   sg1   | '      ' |   sg2   | '
+					' +---------+ '      ' +---------+ '
+					+ - - - - - - +      +- - - - - - -+
+				   	      ^ 	         ^
+					      |                  |
+					      |                  |
+					      |                  |
+					      |     +------+     |
+					      +---> | cbl1 | <---+
+					            +------+
+	*/
+	/* This test doesn't work yet, CouchbaseLiteMockPeer doesn't support writing data to multiple Sync Gateway peers yet
 				description: "Sync Gateway -> Couchbase Server -> Couchbase Server",
 				peers: map[string]PeerOptions{
 					"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
@@ -283,8 +283,8 @@ var Topologies = []Topology{
 						},
 					},
 				},
-		*/
 	},
+	*/
 }
 
 // simpleTopologies represents simplified topologies to make testing the integration test code easier.

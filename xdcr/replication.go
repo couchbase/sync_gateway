@@ -18,6 +18,9 @@ import (
 	"github.com/couchbaselabs/rosmar"
 )
 
+var ErrReplicationNotRunning = fmt.Errorf("Replication is not running")
+var ErrReplicationAlreadyRunning = fmt.Errorf("Replication is already running")
+
 // Manager represents a bucket to bucket replication.
 type Manager interface {
 	// Start starts the replication.

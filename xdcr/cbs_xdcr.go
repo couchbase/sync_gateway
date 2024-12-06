@@ -116,6 +116,9 @@ func newCouchbaseServerManager(ctx context.Context, fromBucket *base.GocbV2Bucke
 
 // Start starts the XDCR replication.
 func (x *couchbaseServerManager) Start(ctx context.Context) error {
+	if x.replicationID != "" {
+		return ErrReplicationAlreadyRunning
+	}
 	method := http.MethodPost
 	body := url.Values{}
 	body.Add("name", fmt.Sprintf("%s_%s", x.fromBucket.GetName(), x.toBucket.GetName()))
@@ -156,7 +159,7 @@ func (x *couchbaseServerManager) Start(ctx context.Context) error {
 func (x *couchbaseServerManager) Stop(ctx context.Context) error {
 	// replication is not started
 	if x.replicationID == "" {
-		return nil
+		return ErrReplicationNotRunning
 	}
 	method := http.MethodDelete
 	url := "/controller/cancelXDCR/" + url.PathEscape(x.replicationID)
