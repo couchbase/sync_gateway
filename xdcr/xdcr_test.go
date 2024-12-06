@@ -643,7 +643,7 @@ func TestVVMultiActor(t *testing.T) {
 		assert.NoError(t, xdcrSource.Stop(ctx))
 		assert.NoError(t, xdcrTarget.Stop(ctx))
 	}()
-	requireWaitForXDCRDocsProcessed(t, xdcrSource, 1)
+	requireWaitForXDCRDocsWritten(t, xdcrSource, 1)
 
 	// Verify HLV on remote.
 	// expected HLV:
@@ -657,7 +657,7 @@ func TestVVMultiActor(t *testing.T) {
 	// Update document on remote
 	toCAS, err := toDs.WriteCas(docID, 0, fromCAS, []byte(`{"ver":2}`), 0)
 	require.NoError(t, err)
-	requireWaitForXDCRDocsProcessed(t, xdcrTarget, 2)
+	requireWaitForXDCRDocsWritten(t, xdcrTarget, 1)
 
 	// Verify HLV on source.
 	// expected HLV:
@@ -674,7 +674,7 @@ func TestVVMultiActor(t *testing.T) {
 	// Update document on remote again.  Verifies that another update to cv doesn't affect pv.
 	toCAS2, err := toDs.WriteCas(docID, 0, toCAS, []byte(`{"ver":3}`), 0)
 	require.NoError(t, err)
-	requireWaitForXDCRDocsProcessed(t, xdcrTarget, 3)
+	requireWaitForXDCRDocsWritten(t, xdcrTarget, 2)
 
 	// Verify HLV on source bucket.
 	// expected HLV:
@@ -691,7 +691,7 @@ func TestVVMultiActor(t *testing.T) {
 	// Update document on source bucket.  Verifies that local source is moved from pv to cv, target source from cv to pv.
 	fromCAS2, err := fromDs.WriteCas(docID, 0, toCAS2, []byte(`{"ver":4}`), 0)
 	require.NoError(t, err)
-	requireWaitForXDCRDocsProcessed(t, xdcrTarget, 4)
+	requireWaitForXDCRDocsWritten(t, xdcrTarget, 2)
 
 	// Verify HLV on target
 	// expected HLV:
@@ -724,6 +724,18 @@ func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsPro
 		stats, err := xdcr.Stats(ctx)
 		assert.NoError(t, err)
 		assert.Equal(c, expectedDocsProcessed, stats.DocsProcessed)
+	}, time.Second*5, time.Millisecond*100)
+}
+
+// requireWaitForXDCRDocsWritten waits for the replication to write the exact number of documents.
+func requireWaitForXDCRDocsWritten(t *testing.T, xdcr Manager, expectedDocsWritten uint64) {
+	ctx := base.TestCtx(t)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		stats, err := xdcr.Stats(ctx)
+		if !assert.NoError(c, err) {
+			return
+		}
+		assert.Equal(c, expectedDocsWritten, stats.DocsWritten, "all stats=%+v", stats)
 	}, time.Second*5, time.Millisecond*100)
 }
 
