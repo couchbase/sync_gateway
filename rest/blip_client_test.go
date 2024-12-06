@@ -242,8 +242,9 @@ func (cd *clientDoc) getRev(version DocVersion) clientDocRev {
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	ctx         context.Context
+	ctxCancel   context.CancelFunc
+	goroutineWg sync.WaitGroup
 
 	collection    string
 	collectionIdx int
@@ -1077,7 +1078,9 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 	sinceFromStr, err := db.ParsePlainSequenceID(opts.Since)
 	require.NoError(btcc.TB(), err)
 	seq := clientSeq(sinceFromStr.SafeSequence())
+	btcc.goroutineWg.Add(1)
 	go func() {
+		defer btcc.goroutineWg.Done()
 		for {
 			// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
 			changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
@@ -1342,6 +1345,9 @@ func (btc *BlipTesterCollectionClient) Close() {
 	btc.attachmentsLock.Lock()
 	defer btc.attachmentsLock.Unlock()
 	btc._attachments = make(map[string][]byte, 0)
+
+	// wait for goroutines to exit
+	btc.goroutineWg.Wait()
 }
 
 func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
