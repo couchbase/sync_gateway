@@ -75,7 +75,6 @@ func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, 
 		replicationID:       fmt.Sprintf("%s-%s", fromBucket.GetName(), toBucket.GetName()),
 		toBucketCollections: make(map[uint32]*rosmar.Collection),
 		fromBucketKeyspaces: make(map[uint32]string),
-		terminator:          make(chan bool),
 		filterFunc:          mobileXDCRFilter,
 	}, nil
 
@@ -209,6 +208,10 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 // Start starts the replication for all existing replications. Errors if there aren't corresponding named collections on each bucket.
 func (r *rosmarManager) Start(ctx context.Context) error {
+	if r.terminator != nil {
+		return ErrReplicationAlreadyRunning
+	}
+	r.terminator = make(chan bool)
 	// set up replication to target all existing collections, and map to other collections
 	scopes := make(map[string][]string)
 	fromDataStores, err := r.fromBucket.ListDataStores()
@@ -259,6 +262,9 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 
 // Stop terminates the replication.
 func (r *rosmarManager) Stop(_ context.Context) error {
+	if r.terminator == nil {
+		return ErrReplicationNotRunning
+	}
 	close(r.terminator)
 	r.terminator = nil
 	return nil

@@ -45,11 +45,16 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	}
 	xdcr, err := NewXDCR(ctx, fromBucket, toBucket, opts)
 	require.NoError(t, err)
-	err = xdcr.Start(ctx)
-	require.NoError(t, err)
+	require.NoError(t, xdcr.Start(ctx))
+
 	defer func() {
-		assert.NoError(t, xdcr.Stop(ctx))
+		// stop XDCR, will already be stopped if test doesn't fail early
+		err := xdcr.Stop(ctx)
+		if err != nil {
+			assert.Equal(t, ErrReplicationNotRunning, err)
+		}
 	}()
+	require.ErrorIs(t, xdcr.Start(ctx), ErrReplicationAlreadyRunning)
 	const (
 		syncDoc       = "_sync:doc1doc2"
 		attachmentDoc = "_sync:att2:foo"
@@ -120,6 +125,9 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		assert.Equal(c, totalDocsWritten+2, stats.DocsWritten)
 
 	}, time.Second*5, time.Millisecond*100)
+
+	require.NoError(t, xdcr.Stop(ctx))
+	require.ErrorIs(t, xdcr.Stop(ctx), ErrReplicationNotRunning)
 }
 
 // getTwoBucketDataStores creates two data stores in separate buckets to run xdcr within. Returns a named collection or a default collection based on the global test configuration.
