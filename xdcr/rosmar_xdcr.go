@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"golang.org/x/exp/maps"
@@ -47,6 +48,7 @@ func (r replicatedDocLocation) String() string {
 type rosmarManager struct {
 	filterFunc          xdcrFilterFunc
 	terminator          chan bool
+	collectionsLock     sync.RWMutex
 	fromBucketKeyspaces map[uint32]string
 	toBucketCollections map[uint32]*rosmar.Collection
 	fromBucket          *rosmar.Bucket
@@ -84,6 +86,8 @@ func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, 
 func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEvent) bool {
 	docID := string(event.Key)
 	base.TracefCtx(ctx, base.KeyVV, "Got event %s, opcode: %s", docID, event.Opcode)
+	r.collectionsLock.RLock()
+	defer r.collectionsLock.RUnlock()
 	col, ok := r.toBucketCollections[event.CollectionID]
 	if !ok {
 		base.ErrorfCtx(ctx, "This violates the assumption that all collections are mapped to a target collection. This should not happen. Found event=%+v", event)
@@ -211,6 +215,8 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 	if r.terminator != nil {
 		return ErrReplicationAlreadyRunning
 	}
+	r.collectionsLock.Lock()
+	defer r.collectionsLock.Unlock()
 	r.terminator = make(chan bool)
 	// set up replication to target all existing collections, and map to other collections
 	scopes := make(map[string][]string)
