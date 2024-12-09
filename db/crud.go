@@ -2606,10 +2606,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 		doc.HLV.CurrentVersionCAS = casOut
 	}
 	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for delta generation purposes
-	backupRev := db.deltaSyncEnabled()
-	if backupRev {
-		backupRev = db.deltaSyncRevMaxAgeSeconds() != 0
-	}
+	backupRev := db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() != 0
 	if db.UseXattrs() && backupRev {
 		var newBodyWithAtts = doc._rawBody
 		if len(doc.Attachments) > 0 {
