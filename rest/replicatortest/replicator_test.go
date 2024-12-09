@@ -7553,6 +7553,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 		})
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
+	collection, _ := activeRT.GetSingleTestDatabaseCollection()
 
 	docID := t.Name()
 	// Create the docs //
@@ -7569,7 +7570,8 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	require.NoError(t, activeRT.WaitForVersion(docID, version3))
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
-	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevTreeID), version2.RevTreeID))
+	cvHash := base.Crc32cHashString([]byte(version2.CV.String()))
+	err := collection.PurgeOldRevisionJSON(activeCtx, docID, cvHash)
 	require.NoError(t, err)
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")

@@ -772,7 +772,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	if bh.sgCanUseDeltas {
+	// Disable delta sync for protocol versions < 4, CBG-3748 (backwards compatibility for revID delta sync)
+	if bh.sgCanUseDeltas && bh.useHLV() {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 		bh.replicationStats.HandleChangesDeltaRequestedCount.Add(int64(nRequested))
@@ -865,7 +866,8 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	if bh.sgCanUseDeltas {
+	// Disable delta sync for protocol versions < 4, CBG-3748 (backwards compatibility for revID delta sync)
+	if bh.sgCanUseDeltas && bh.useHLV() {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 	}
@@ -1082,6 +1084,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta && !revMessage.Deleted() {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
+		} else if !bh.useHLV() {
+			// Disable delta sync for protocol versions < 4, CBG-3748 (backwards compatibility for revID delta sync)
+			return base.HTTPErrorf(http.StatusBadRequest, "backwards compatibility for revTree deltas not yet implemented")
 		}
 
 		//  TODO: Doing a GetRevCopy here duplicates some rev cache retrieval effort, since deltaRevSrc is always
