@@ -879,19 +879,13 @@ func (db *DatabaseCollectionWithUser) getAvailableRevAttachments(ctx context.Con
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
 func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDoc *Document) {
-	newBodyBytes, err := newDoc.BodyBytes(ctx)
-	if err != nil {
-		base.WarnfCtx(ctx, "Error getting body bytes when backing up ancestor revs")
-		return
-	}
 
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
 	ancestorRevId := newDoc.RevID
 	for {
 		if ancestorRevId = doc.History.getParent(ancestorRevId); ancestorRevId == "" {
-			// No ancestors with JSON found.  Check if we need to back up current rev for delta sync, then return
-			db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, "", newBodyBytes, nil, doc.Attachments)
+			// No ancestors with JSON found. Return early
 			return
 		} else if json = doc.getRevisionBodyJSON(ctx, ancestorRevId, db.RevisionBodyLoader); json != nil {
 			break
@@ -899,7 +893,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, ancestorRevId, newBodyBytes, json, doc.Attachments)
+	db.backupRevisionJSON(ctx, doc.ID, doc.HLV.GetCurrentVersionString(), json)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.CurrentRev {
@@ -2612,7 +2606,11 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 		doc.HLV.CurrentVersionCAS = casOut
 	}
 	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for delta generation purposes
-	if db.UseXattrs() {
+	backupRev := db.deltaSyncEnabled()
+	if backupRev {
+		backupRev = db.deltaSyncRevMaxAgeSeconds() != 0
+	}
+	if db.UseXattrs() && backupRev {
 		var newBodyWithAtts = doc._rawBody
 		if len(doc.Attachments) > 0 {
 			var err error

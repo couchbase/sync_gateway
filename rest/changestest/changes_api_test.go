@@ -1824,9 +1824,15 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err, "Error updating doc")
 	// Generate more revs than revs_limit (3)
 	revid = prunedRevId
+	var cvs []string
 	for i := 0; i < 5; i++ {
-		revid, err = updateTestDoc(rt, "doc_pruned", revid, `{"type": "pruned", "channels":["gamma"]}`)
-		assert.NoError(t, err, "Error updating doc")
+		body := db.Body{
+			"type":     "pruned",
+			"channels": []string{"gamma"},
+		}
+		docVersion := rt.UpdateDocDirectly("doc_pruned", db.DocVersion{RevTreeID: revid}, body)
+		revid = docVersion.RevTreeID
+		cvs = append(cvs, docVersion.CV.String())
 	}
 
 	// Doc w/ attachment
@@ -1889,13 +1895,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
 	rt.GetDatabase().FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
-	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc_pruned?show_cv=true", "")
-	var r struct {
-		CV *string `json:"_cv"`
-	}
-	require.NoError(rt.TB(), base.JSONUnmarshal(resp.Body.Bytes(), &r))
 	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
-	cvHash := base.Crc32cHashString([]byte(*r.CV))
+	cvHash := base.Crc32cHashString([]byte(cvs[0]))
 	err = collection.PurgeOldRevisionJSON(ctx, "doc_pruned", cvHash)
 	require.NoError(t, err)
 	postFlushChanges := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "user1")

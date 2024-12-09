@@ -254,7 +254,7 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 //	   - new revision stored (as duplicate), with expiry rev_max_age_seconds
 //	delta=true && shared_bucket_access=false
 //	   - old revision stored, with expiry rev_max_age_seconds
-func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, newRev, oldRev string, newBody, oldBody []byte, newAtts AttachmentsMeta) {
+func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, oldRev string, oldBody []byte) {
 
 	// Without delta sync, store the old rev for in-flight replication purposes
 	if !db.deltaSyncEnabled() || db.deltaSyncRevMaxAgeSeconds() == 0 {
@@ -270,7 +270,8 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 	// Special handling for Xattrs so that SG still has revisions that were updated by an SDK write
 	if db.UseXattrs() {
 		// Refresh the expiry on the previous revision backup
-		_ = db.refreshPreviousRevisionBackup(ctx, docId, oldRev, oldBody, db.deltaSyncRevMaxAgeSeconds())
+		oldRevHash := base.Crc32cHashString([]byte(oldRev))
+		_ = db.refreshPreviousRevisionBackup(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
 		return
 	}
 
@@ -279,7 +280,6 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 		oldRevHash := base.Crc32cHashString([]byte(oldRev))
 		_ = db.setOldRevisionJSON(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
 	}
-	return
 }
 
 func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, docid string, rev string, body []byte, expiry uint32) error {
