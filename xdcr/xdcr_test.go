@@ -633,6 +633,9 @@ func TestReplicateXattrs(t *testing.T) {
 // TestVVMultiActor verifies that updates by multiple actors (updates to different clusters/buckets) are properly
 // reflected in the HLV (cv and pv).
 func TestVVMultiActor(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test can fail with CBS due to CBS-4334 since a document without xattrs will be written to the target bucket, even if it is otherwise up to date")
+	}
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
 	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
