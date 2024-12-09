@@ -851,6 +851,12 @@ func LogLevelPtr(value LogLevel) *LogLevel {
 	return &value
 }
 
+// Ptr returns a pointer to the given literal.
+// This is useful for wrapping around function calls that return a value, where you can't just use `&`.
+func Ptr[T any](v T) *T {
+	return &v
+}
+
 // StringPtr returns a pointer to the given string literal.
 func StringPtr(value string) *string {
 	return &value
@@ -887,6 +893,14 @@ func UintPtr(u uint) *uint {
 // IntPtr returns a pointer to the given int literal.
 func IntPtr(i int) *int {
 	return &i
+}
+
+// IntDefault returns ifNil if i is nil, or else returns dereferenced value of i
+func IntDefault(i *int, ifNil int) int {
+	if i != nil {
+		return *i
+	}
+	return ifNil
 }
 
 // BoolPtr returns a pointer to the given bool literal.
