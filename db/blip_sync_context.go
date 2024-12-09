@@ -354,10 +354,20 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 				knownRevsByDoc[docID] = knownRevs
 			}
 
-			// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc
+			// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc for
+			// revtree clients, for HLV clients the first element is the HLV
 			if bsc.useDeltas && len(knownRevsArray) > 0 {
 				if revID, ok := knownRevsArray[0].(string); ok {
-					deltaSrcRevID = revID
+					if bsc.useHLV() {
+						msgHLV, err := extractHLVFromBlipMessage(revID)
+						if err != nil {
+							base.ErrorfCtx(ctx, "Invalid known rev format for hlv on doc: %s", docID)
+							return nil
+						}
+						deltaSrcRevID = msgHLV.GetCurrentVersionString()
+					} else {
+						deltaSrcRevID = revID
+					}
 				}
 			}
 
@@ -372,7 +382,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 
 			var err error
 
-			if deltaSrcRevID != "" {
+			// fallback to sending full revisions for non hlv aware peers, CBG-3748
+			if deltaSrcRevID != "" && bsc.useHLV() {
 				err = bsc.sendRevAsDelta(ctx, sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
 				err = bsc.sendRevision(ctx, sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)

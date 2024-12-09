@@ -1782,7 +1782,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	testDB := rt.GetDatabase()
 	testDB.RevsLimit = 3
 	defer rt.Close()
-	collection, _ := rt.GetSingleTestDatabaseCollection()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("user1", []string{"alpha", "beta"})
 
@@ -1889,9 +1889,15 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
 	rt.GetDatabase().FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
-	data := collection.GetCollectionDatastore()
-	assert.NoError(t, data.Delete(base.RevPrefix+"doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
-
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc_pruned?show_cv=true", "")
+	var r struct {
+		CV *string `json:"_cv"`
+	}
+	require.NoError(rt.TB(), base.JSONUnmarshal(resp.Body.Bytes(), &r))
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	cvHash := base.Crc32cHashString([]byte(*r.CV))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc_pruned", cvHash)
+	require.NoError(t, err)
 	postFlushChanges := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "user1")
 
 	assert.Equal(t, len(expectedResults), len(postFlushChanges.Results))

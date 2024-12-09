@@ -2448,7 +2448,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				doc.MetadataOnlyUpdate.HexCAS = base.CasToString(casOut)
 			}
 			// update the doc's HLV defined post macro expansion
-			doc = postWriteUpdateHLV(doc, casOut)
+			doc = db.postWriteUpdateHLV(ctx, doc, casOut)
 		}
 	}
 
@@ -2601,7 +2601,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	return doc, newRevID, nil
 }
 
-func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
+func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, doc *Document, casOut uint64) *Document {
 	if doc.HLV == nil {
 		return doc
 	}
@@ -2610,6 +2610,23 @@ func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
 	}
 	if doc.HLV.CurrentVersionCAS == expandMacroCASValueUint64 {
 		doc.HLV.CurrentVersionCAS = casOut
+	}
+	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for delta generation purposes
+	if db.UseXattrs() {
+		var newBodyWithAtts = doc._rawBody
+		if len(doc.Attachments) > 0 {
+			var err error
+			newBodyWithAtts, err = base.InjectJSONProperties(doc._rawBody, base.KVPair{
+				Key: BodyAttachments,
+				Val: doc.Attachments,
+			})
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), doc.CurrentRev, doc.HLV.GetCurrentVersionString(), err)
+				return doc
+			}
+		}
+		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
 	}
 	return doc
 }

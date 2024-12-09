@@ -259,7 +259,8 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 	// Without delta sync, store the old rev for in-flight replication purposes
 	if !db.deltaSyncEnabled() || db.deltaSyncRevMaxAgeSeconds() == 0 {
 		if len(oldBody) > 0 {
-			_ = db.setOldRevisionJSON(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds())
+			oldRevHash := base.Crc32cHashString([]byte(oldRev))
+			_ = db.setOldRevisionJSON(ctx, docId, oldRevHash, oldBody, db.oldRevExpirySeconds())
 		}
 		return
 	}
@@ -268,20 +269,6 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 
 	// Special handling for Xattrs so that SG still has revisions that were updated by an SDK write
 	if db.UseXattrs() {
-		var newBodyWithAtts = newBody
-		if len(newAtts) > 0 {
-			var err error
-			newBodyWithAtts, err = base.InjectJSONProperties(newBody, base.KVPair{
-				Key: BodyAttachments,
-				Val: newAtts,
-			})
-			if err != nil {
-				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRev, err)
-				return
-			}
-		}
-		_ = db.setOldRevisionJSON(ctx, docId, newRev, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
-
 		// Refresh the expiry on the previous revision backup
 		_ = db.refreshPreviousRevisionBackup(ctx, docId, oldRev, oldBody, db.deltaSyncRevMaxAgeSeconds())
 		return
@@ -289,7 +276,8 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 
 	// Non-xattr only need to store the previous revision, as all writes come through SG
 	if len(oldBody) > 0 {
-		_ = db.setOldRevisionJSON(ctx, docId, oldRev, oldBody, db.deltaSyncRevMaxAgeSeconds())
+		oldRevHash := base.Crc32cHashString([]byte(oldRev))
+		_ = db.setOldRevisionJSON(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
 	}
 	return
 }
