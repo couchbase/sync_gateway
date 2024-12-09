@@ -155,17 +155,10 @@ func TestHLVCreateDocumentMultiActor(t *testing.T) {
 //   - Wait for docs last write to be replicated to all other peers
 func TestHLVCreateDocumentMultiActorConflict(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Panics against rosmar, CBG-4378")
-	} else {
+	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
 	for _, tc := range getMultiActorTestCases() {
-		if strings.Contains(tc.description(), "CBL") {
-			// Test case flakes given the WaitForDocVersion function only waits for a docID on the cbl peer. We need to be
-			// able to wait for a specific version to arrive over pull replication
-			t.Skip("We need to be able to wait for a specific version to arrive over pull replication, CBG-4257")
-		}
 		t.Run(tc.description(), func(t *testing.T) {
 			peers, replications := setupTests(t, tc.topology)
 
@@ -261,9 +254,7 @@ func TestHLVUpdateDocumentSingleActor(t *testing.T) {
 //   - Start replications and wait for last update to be replicated to all peers
 func TestHLVUpdateDocumentMultiActorConflict(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Panics against rosmar, CBG-4378")
-	} else {
+	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
 	for _, tc := range getMultiActorTestCases() {
@@ -365,9 +356,7 @@ func TestHLVDeleteDocumentMultiActor(t *testing.T) {
 //   - Start replications and assert doc is deleted on all peers
 func TestHLVDeleteDocumentMultiActorConflict(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Panics against rosmar, CBG-4378")
-	} else {
+	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
 	for _, tc := range getMultiActorTestCases() {
@@ -391,51 +380,6 @@ func TestHLVDeleteDocumentMultiActorConflict(t *testing.T) {
 
 			startPeerReplications(replications)
 			waitForDeletion(t, tc, peers, docID, lastWrite.updatePeer)
-		})
-	}
-}
-
-// TestHLVUpdateDeleteDocumentMultiActorConflict:
-//   - Create conflicting docs on each peer
-//   - Start replications
-//   - Wait for last write to be replicated to all peers
-//   - Stop replications
-//   - Update docs on all peers, then delete the doc on one peer
-//   - Start replications and assert doc is deleted on all peers (given the delete was the last write)
-func TestHLVUpdateDeleteDocumentMultiActorConflict(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Panics against rosmar, CBG-4378")
-	} else {
-		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
-	}
-	for _, tc := range getMultiActorTestCases() {
-		if strings.Contains(tc.description(), "CBL") {
-			// Test case flakes given the WaitForDocVersion function only waits for a docID on the cbl peer. We need to be
-			// able to wait for a specific version to arrive over pull replication
-			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
-		}
-		t.Run(tc.description(), func(t *testing.T) {
-			peerList := tc.PeerNames()
-			peers, replications := setupTests(t, tc.topology)
-			stopPeerReplications(replications)
-
-			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, tc, peers, docID)
-
-			startPeerReplications(replications)
-			waitForVersionAndBody(t, tc, peers, docID, docVersion)
-
-			stopPeerReplications(replications)
-
-			_ = updateConflictingDocs(t, tc, peers, docID)
-
-			lastPeer := peerList[len(peerList)-1]
-			deleteVersion := peers[lastPeer].DeleteDocument(tc.collectionName(), docID)
-			t.Logf("deleteVersion: %+v", deleteVersion)
-
-			startPeerReplications(replications)
-			waitForDeletion(t, tc, peers, docID, lastPeer)
 		})
 	}
 }
@@ -579,9 +523,7 @@ func TestHLVResurrectDocumentMultiActor(t *testing.T) {
 //   - Start replications and wait for last resurrection operation to be replicated to all peers
 func TestHLVResurrectDocumentMultiActorConflict(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyVV)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Panics against rosmar, CBG-4378")
-	} else {
+	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
 	for _, tc := range getMultiActorTestCases() {

@@ -45,11 +45,16 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	}
 	xdcr, err := NewXDCR(ctx, fromBucket, toBucket, opts)
 	require.NoError(t, err)
-	err = xdcr.Start(ctx)
-	require.NoError(t, err)
+	require.NoError(t, xdcr.Start(ctx))
+
 	defer func() {
-		assert.NoError(t, xdcr.Stop(ctx))
+		// stop XDCR, will already be stopped if test doesn't fail early
+		err := xdcr.Stop(ctx)
+		if err != nil {
+			assert.Equal(t, ErrReplicationNotRunning, err)
+		}
 	}()
+	require.ErrorIs(t, xdcr.Start(ctx), ErrReplicationAlreadyRunning)
 	const (
 		syncDoc       = "_sync:doc1doc2"
 		attachmentDoc = "_sync:att2:foo"
@@ -115,11 +120,16 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	// stats are not updated in real time, so we need to wait a bit
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
-		assert.NoError(t, err)
+		if !assert.NoError(c, err) {
+			assert.NoError(c, err)
+		}
 		assert.Equal(c, totalDocsFiltered+1, stats.MobileDocsFiltered)
 		assert.Equal(c, totalDocsWritten+2, stats.DocsWritten)
 
 	}, time.Second*5, time.Millisecond*100)
+
+	require.NoError(t, xdcr.Stop(ctx))
+	require.ErrorIs(t, xdcr.Stop(ctx), ErrReplicationNotRunning)
 }
 
 // getTwoBucketDataStores creates two data stores in separate buckets to run xdcr within. Returns a named collection or a default collection based on the global test configuration.
@@ -338,7 +348,7 @@ func TestVVObeyMou(t *testing.T) {
 	require.Equal(t, expectedVV, vv)
 
 	stats, err := xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		DocsWritten:   1,
 		DocsProcessed: 1,
@@ -364,7 +374,7 @@ func TestVVObeyMou(t *testing.T) {
 
 	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
 	stats, err = xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		TargetNewerDocs: 1,
 		DocsWritten:     1,
@@ -423,7 +433,7 @@ func TestVVMouImport(t *testing.T) {
 	require.Equal(t, expectedVV, vv)
 
 	stats, err := xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		DocsWritten:   1,
 		DocsProcessed: 1,
@@ -449,7 +459,7 @@ func TestVVMouImport(t *testing.T) {
 
 	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
 	stats, err = xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		TargetNewerDocs: 1,
 		DocsWritten:     1,
@@ -467,7 +477,7 @@ func TestVVMouImport(t *testing.T) {
 	requireWaitForXDCRDocsProcessed(t, xdcr, 3)
 
 	stats, err = xdcr.Stats(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, Stats{
 		TargetNewerDocs: 1,
 		DocsWritten:     2,
@@ -623,6 +633,9 @@ func TestReplicateXattrs(t *testing.T) {
 // TestVVMultiActor verifies that updates by multiple actors (updates to different clusters/buckets) are properly
 // reflected in the HLV (cv and pv).
 func TestVVMultiActor(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test can fail with CBS due to CBS-4334 since a document without xattrs will be written to the target bucket, even if it is otherwise up to date")
+	}
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
 	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
@@ -722,8 +735,10 @@ func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsPro
 	ctx := base.TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
-		assert.NoError(t, err)
-		assert.Equal(c, expectedDocsProcessed, stats.DocsProcessed)
+		if !assert.NoError(c, err) {
+			return
+		}
+		assert.Equal(c, expectedDocsProcessed, stats.DocsProcessed, "all stats=%+v", stats)
 	}, time.Second*5, time.Millisecond*100)
 }
 
