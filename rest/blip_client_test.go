@@ -127,16 +127,15 @@ func (c *BlipTesterCollectionClient) docsSince(ctx context.Context, since client
 	go func() {
 		defer c.goroutineWg.Done()
 		sinceVal := since
+		defer close(ch)
 		for {
 			if ctx.Err() != nil {
-				close(ch)
 				return
 			}
-			base.DebugfCtx(ctx, base.KeySGTest, "docsSince: sinceVal=%d", sinceVal)
+			base.DebugfCtx(ctx, base.KeySGTest, "OneShotDocsSince: sinceVal=%d", sinceVal)
 			for _, doc := range c.OneShotDocsSince(ctx, sinceVal) {
 				select {
 				case <-ctx.Done():
-					close(ch)
 					return
 				case ch <- doc:
 					base.DebugfCtx(ctx, base.KeySGTest, "sent doc %q to changes feed", doc.id)
@@ -1090,163 +1089,155 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 	btcc.goroutineWg.Add(1)
 	go func() {
 		defer btcc.goroutineWg.Done()
-		for {
-			if btcc.ctx.Err() != nil {
-				return
-			}
-			// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
-			changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
-			base.DebugfCtx(ctx, base.KeySGTest, "Starting push replication iteration with since=%v", seq)
-			for doc := range btcc.docsSince(btcc.ctx, seq, opts.Continuous) {
-				if btcc.ctx.Err() != nil {
-					return
-				}
-				changesBatch = append(changesBatch, proposeChangesEntryForDoc(doc))
-				if len(changesBatch) >= changesBatchSize {
-					base.DebugfCtx(ctx, base.KeySGTest, "Sending batch of %d changes", len(changesBatch))
-					proposeChangesRequest := blip.NewRequest()
-					proposeChangesRequest.SetProfile(db.MessageProposeChanges)
+		// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
+		changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
+		base.DebugfCtx(ctx, base.KeySGTest, "Starting push replication iteration with since=%v", seq)
+		for doc := range btcc.docsSince(btcc.ctx, seq, opts.Continuous) {
+			changesBatch = append(changesBatch, proposeChangesEntryForDoc(doc))
+			if len(changesBatch) >= changesBatchSize {
+				base.DebugfCtx(ctx, base.KeySGTest, "Sending batch of %d changes", len(changesBatch))
+				proposeChangesRequest := blip.NewRequest()
+				proposeChangesRequest.SetProfile(db.MessageProposeChanges)
 
-					proposeChangesRequestBody := bytes.NewBufferString(`[`)
-					for i, change := range changesBatch {
-						if i > 0 {
-							proposeChangesRequestBody.WriteString(",")
-						}
-						proposeChangesRequestBody.WriteString(fmt.Sprintf(`["%s","%s"`, change.docID, change.version.RevID))
-						// write last known server version to support no-conflict mode
-						if serverVersion, ok := btcc.getLastReplicatedRev(change.docID); ok {
-							base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version for doc %s = %v", change.docID, serverVersion)
-							proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.RevID))
-						}
-						proposeChangesRequestBody.WriteString(`]`)
+				proposeChangesRequestBody := bytes.NewBufferString(`[`)
+				for i, change := range changesBatch {
+					if i > 0 {
+						proposeChangesRequestBody.WriteString(",")
+					}
+					proposeChangesRequestBody.WriteString(fmt.Sprintf(`["%s","%s"`, change.docID, change.version.RevID))
+					// write last known server version to support no-conflict mode
+					if serverVersion, ok := btcc.getLastReplicatedRev(change.docID); ok {
+						base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version for doc %s = %v", change.docID, serverVersion)
+						proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.RevID))
 					}
 					proposeChangesRequestBody.WriteString(`]`)
-					proposeChangesRequestBodyBytes := proposeChangesRequestBody.Bytes()
-					proposeChangesRequest.SetBody(proposeChangesRequestBodyBytes)
+				}
+				proposeChangesRequestBody.WriteString(`]`)
+				proposeChangesRequestBodyBytes := proposeChangesRequestBody.Bytes()
+				proposeChangesRequest.SetBody(proposeChangesRequestBodyBytes)
 
-					base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges request: %s", string(proposeChangesRequestBodyBytes))
+				base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges request: %s", string(proposeChangesRequestBodyBytes))
 
-					btcc.addCollectionProperty(proposeChangesRequest)
+				btcc.addCollectionProperty(proposeChangesRequest)
 
-					if err := btcc.sendPushMsg(proposeChangesRequest); err != nil {
-						btcc.TB().Errorf("Error sending proposeChanges: %v", err)
-						return
+				if err := btcc.sendPushMsg(proposeChangesRequest); err != nil {
+					btcc.TB().Errorf("Error sending proposeChanges: %v", err)
+					return
+				}
+
+				proposeChangesResponse := proposeChangesRequest.Response()
+				rspBody, err := proposeChangesResponse.Body()
+				if err != nil {
+					btcc.TB().Errorf("Error reading proposeChanges response body: %v", err)
+					return
+				}
+				errorDomain := proposeChangesResponse.Properties["Error-Domain"]
+				errorCode := proposeChangesResponse.Properties["Error-Code"]
+				if errorDomain != "" && errorCode != "" {
+					btcc.TB().Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
+					return
+				}
+
+				base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges response: %s", string(rspBody))
+
+				var serverDeltas bool
+				if proposeChangesResponse.Properties[db.ChangesResponseDeltas] == "true" {
+					base.DebugfCtx(ctx, base.KeySGTest, "server supports deltas")
+					serverDeltas = true
+				}
+
+				var response []int
+				err = base.JSONUnmarshal(rspBody, &response)
+				require.NoError(btcc.TB(), err)
+				for i, change := range changesBatch {
+					var status int
+					if i >= len(response) {
+						// trailing zeros are removed - treat as 0 from now on
+						status = 0
+					} else {
+						status = response[i]
 					}
+					switch status {
+					case 0:
+						// send
+						revRequest := blip.NewRequest()
+						revRequest.SetProfile(db.MessageRev)
+						revRequest.Properties[db.RevMessageID] = change.docID
+						revRequest.Properties[db.RevMessageRev] = change.version.RevID
+						revRequest.Properties[db.RevMessageHistory] = change.historyStr()
 
-					proposeChangesResponse := proposeChangesRequest.Response()
-					rspBody, err := proposeChangesResponse.Body()
-					if err != nil {
-						btcc.TB().Errorf("Error reading proposeChanges response body: %v", err)
-						return
-					}
-					errorDomain := proposeChangesResponse.Properties["Error-Domain"]
-					errorCode := proposeChangesResponse.Properties["Error-Code"]
-					if errorDomain != "" && errorCode != "" {
-						btcc.TB().Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
-						return
-					}
-
-					base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges response: %s", string(rspBody))
-
-					var serverDeltas bool
-					if proposeChangesResponse.Properties[db.ChangesResponseDeltas] == "true" {
-						base.DebugfCtx(ctx, base.KeySGTest, "server supports deltas")
-						serverDeltas = true
-					}
-
-					var response []int
-					err = base.JSONUnmarshal(rspBody, &response)
-					require.NoError(btcc.TB(), err)
-					for i, change := range changesBatch {
-						var status int
-						if i >= len(response) {
-							// trailing zeros are removed - treat as 0 from now on
-							status = 0
-						} else {
-							status = response[i]
-						}
-						switch status {
-						case 0:
-							// send
-							revRequest := blip.NewRequest()
-							revRequest.SetProfile(db.MessageRev)
-							revRequest.Properties[db.RevMessageID] = change.docID
-							revRequest.Properties[db.RevMessageRev] = change.version.RevID
-							revRequest.Properties[db.RevMessageHistory] = change.historyStr()
-
-							doc, ok := btcc.getClientDoc(change.docID)
-							if !ok {
-								btcc.TB().Errorf("doc %s not found in _seqFromDocID", change.docID)
-								return
-							}
-							doc.lock.RLock()
-							serverRev := doc._revisionsBySeq[doc._seqsByVersions[change.latestServerVersion]]
-							docBody := doc._revisionsBySeq[doc._seqsByVersions[change.version]].body
-							doc.lock.RUnlock()
-
-							if serverDeltas && btcc.parent.ClientDeltas && ok && !serverRev.isDelete {
-								base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version as deltaSrc for doc %s = %v", change.docID, change.latestServerVersion)
-								revRequest.Properties[db.RevMessageDeltaSrc] = change.latestServerVersion.RevID
-								var parentBodyUnmarshalled db.Body
-								if err := parentBodyUnmarshalled.Unmarshal(serverRev.body); err != nil {
-									require.FailNow(btcc.TB(), "Error unmarshalling parent body: %v", err)
-									return
-								}
-								var newBodyUnmarshalled db.Body
-								if err := newBodyUnmarshalled.Unmarshal(docBody); err != nil {
-									require.FailNow(btcc.TB(), "Error unmarshalling new body: %v", err)
-									return
-								}
-								delta, err := base.Diff(parentBodyUnmarshalled, newBodyUnmarshalled)
-								if err != nil {
-									require.FailNow(btcc.TB(), "Error creating delta: %v", err)
-									return
-								}
-								revRequest.SetBody(delta)
-							} else {
-								revRequest.SetBody(docBody)
-							}
-
-							btcc.addCollectionProperty(revRequest)
-							if err := btcc.sendPushMsg(revRequest); err != nil {
-								btcc.TB().Errorf("Error sending rev: %v", err)
-								return
-							}
-							base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %v", change.docID, change.version)
-							// block until remote has actually processed the rev and sent a response
-							revResp := revRequest.Response()
-							if revResp.Properties[db.BlipErrorCode] != "" {
-								btcc.TB().Errorf("error response from rev: %s", revResp.Properties["Error-Domain"])
-								return
-							}
-							base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
-							btcc.updateLastReplicatedRev(change.docID, change.version)
-							doc, ok = btcc.getClientDoc(change.docID)
-							if !ok {
-								btcc.TB().Errorf("doc %s not found in _seqFromDocID", change.docID)
-								return
-							}
-							doc.lock.Lock()
-							rev := doc._revisionsBySeq[doc._seqsByVersions[change.version]]
-							rev.message = revRequest
-							doc.lock.Unlock()
-						case 304:
-							// peer already has doc version
-							base.DebugfCtx(ctx, base.KeySGTest, "peer already has doc %s / %v", change.docID, change.version)
-							continue
-						case 409:
-							// conflict - puller will need to resolve (if enabled) - resolution pushed independently so we can ignore this one
-							base.DebugfCtx(ctx, base.KeySGTest, "conflict for doc %s clientVersion:%v serverVersion:%v", change.docID, change.version, change.latestServerVersion)
-							continue
-						default:
-							btcc.TB().Errorf("unexpected status %d for doc %s / %s", status, change.docID, change.version)
+						doc, ok := btcc.getClientDoc(change.docID)
+						if !ok {
+							btcc.TB().Errorf("doc %s not found in _seqFromDocID", change.docID)
 							return
 						}
-					}
+						doc.lock.RLock()
+						serverRev := doc._revisionsBySeq[doc._seqsByVersions[change.latestServerVersion]]
+						docBody := doc._revisionsBySeq[doc._seqsByVersions[change.version]].body
+						doc.lock.RUnlock()
 
-					// empty batch
-					changesBatch = changesBatch[:0]
+						if serverDeltas && btcc.parent.ClientDeltas && ok && !serverRev.isDelete {
+							base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version as deltaSrc for doc %s = %v", change.docID, change.latestServerVersion)
+							revRequest.Properties[db.RevMessageDeltaSrc] = change.latestServerVersion.RevID
+							var parentBodyUnmarshalled db.Body
+							if err := parentBodyUnmarshalled.Unmarshal(serverRev.body); err != nil {
+								require.FailNow(btcc.TB(), "Error unmarshalling parent body: %v", err)
+								return
+							}
+							var newBodyUnmarshalled db.Body
+							if err := newBodyUnmarshalled.Unmarshal(docBody); err != nil {
+								require.FailNow(btcc.TB(), "Error unmarshalling new body: %v", err)
+								return
+							}
+							delta, err := base.Diff(parentBodyUnmarshalled, newBodyUnmarshalled)
+							if err != nil {
+								require.FailNow(btcc.TB(), "Error creating delta: %v", err)
+								return
+							}
+							revRequest.SetBody(delta)
+						} else {
+							revRequest.SetBody(docBody)
+						}
+
+						btcc.addCollectionProperty(revRequest)
+						if err := btcc.sendPushMsg(revRequest); err != nil {
+							btcc.TB().Errorf("Error sending rev: %v", err)
+							return
+						}
+						base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %v", change.docID, change.version)
+						// block until remote has actually processed the rev and sent a response
+						revResp := revRequest.Response()
+						if revResp.Properties[db.BlipErrorCode] != "" {
+							btcc.TB().Errorf("error response from rev: %s", revResp.Properties["Error-Domain"])
+							return
+						}
+						base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
+						btcc.updateLastReplicatedRev(change.docID, change.version)
+						doc, ok = btcc.getClientDoc(change.docID)
+						if !ok {
+							btcc.TB().Errorf("doc %s not found in _seqFromDocID", change.docID)
+							return
+						}
+						doc.lock.Lock()
+						rev := doc._revisionsBySeq[doc._seqsByVersions[change.version]]
+						rev.message = revRequest
+						doc.lock.Unlock()
+					case 304:
+						// peer already has doc version
+						base.DebugfCtx(ctx, base.KeySGTest, "peer already has doc %s / %v", change.docID, change.version)
+						continue
+					case 409:
+						// conflict - puller will need to resolve (if enabled) - resolution pushed independently so we can ignore this one
+						base.DebugfCtx(ctx, base.KeySGTest, "conflict for doc %s clientVersion:%v serverVersion:%v", change.docID, change.version, change.latestServerVersion)
+						continue
+					default:
+						btcc.TB().Errorf("unexpected status %d for doc %s / %s", status, change.docID, change.version)
+						return
+					}
 				}
+
+				// empty batch
+				changesBatch = changesBatch[:0]
 			}
 		}
 	}()
