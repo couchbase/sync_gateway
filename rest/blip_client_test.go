@@ -72,6 +72,7 @@ type BlipTesterClient struct {
 	nonCollectionAwareClient *BlipTesterCollectionClient
 }
 
+// getClientDocForSeq returns the clientDoc for the given sequence number, if it exists.
 func (c *BlipTesterCollectionClient) getClientDocForSeq(seq clientSeq) (*clientDoc, bool) {
 	c.seqLock.RLock()
 	defer c.seqLock.RUnlock()
@@ -121,6 +122,8 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 	}
 }
 
+// docsSince returns a channel which will yield client documents that are newer than the given since value.
+// The channel will be closed when the iteration is finished. In the case of a continuous iteration, the channel will remain open until the context is cancelled.
 func (c *BlipTesterCollectionClient) docsSince(ctx context.Context, since clientSeq, continuous bool) chan *clientDoc {
 	ch := make(chan *clientDoc)
 	c.goroutineWg.Add(1)
@@ -190,6 +193,7 @@ func (cd *clientDoc) _docRevSeqsNewestToOldest() []clientSeq {
 	return seqs
 }
 
+// latestRev returns the latest revision of the document.
 func (cd *clientDoc) latestRev() (*clientDocRev, error) {
 	cd.lock.RLock()
 	defer cd.lock.RUnlock()
@@ -200,6 +204,7 @@ func (cd *clientDoc) latestRev() (*clientDocRev, error) {
 	return &rev, nil
 }
 
+// addNewRev adds a new revision to the document.
 func (cd *clientDoc) addNewRev(rev clientDocRev) {
 	cd.lock.Lock()
 	defer cd.lock.Unlock()
@@ -208,12 +213,14 @@ func (cd *clientDoc) addNewRev(rev clientDocRev) {
 	cd._seqsByVersions[rev.version] = rev.clientSeq
 }
 
+// latestSeq returns the latest sequence number for a document known to the client.
 func (cd *clientDoc) latestSeq() clientSeq {
 	cd.lock.RLock()
 	defer cd.lock.RUnlock()
 	return cd._latestSeq
 }
 
+// revisionBySeq returns the revision associated with the given sequence number.
 func (cd *clientDoc) revisionBySeq(seq clientSeq) (*clientDocRev, error) {
 	cd.lock.RLock()
 	defer cd.lock.RUnlock()
@@ -224,12 +231,14 @@ func (cd *clientDoc) revisionBySeq(seq clientSeq) (*clientDocRev, error) {
 	return &rev, nil
 }
 
+// setLatestServerVersion sets the latest server version for the document.
 func (cd *clientDoc) setLatestServerVersion(version DocVersion) {
 	cd.lock.Lock()
 	defer cd.lock.Unlock()
 	cd._latestServerVersion = version
 }
 
+// getRev returns the revision associated with the given version.
 func (cd *clientDoc) getRev(version DocVersion) (*clientDocRev, error) {
 	cd.lock.RLock()
 	defer cd.lock.RUnlock()
@@ -271,6 +280,7 @@ type BlipTesterCollectionClient struct {
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
 }
 
+// getClientDoc returns the clientDoc for the given docID, if it exists.
 func (btcc *BlipTesterCollectionClient) getClientDoc(docID string) (*clientDoc, bool) {
 	btcc.seqLock.RLock()
 	defer btcc.seqLock.RUnlock()
