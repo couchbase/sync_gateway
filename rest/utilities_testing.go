@@ -2450,15 +2450,12 @@ func (v DocVersion) Equal(o DocVersion) bool {
 }
 
 // RevIDGeneration returns the Rev ID generation for the current version
-func (v *DocVersion) RevIDGeneration() int {
+func (v *DocVersion) RevIDGeneration(tb testing.TB) int {
 	if v == nil {
 		return 0
 	}
 	gen, err := strconv.ParseInt(strings.Split(v.RevID, "-")[0], 10, 64)
-	if err != nil {
-		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevID, err)
-		return 0
-	}
+	require.NoError(tb, err)
 	return int(gen)
 }
 

@@ -44,11 +44,9 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// update doc1 on client
-		newRev, err := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
-		assert.NoError(t, err)
-
+		newRev := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 		// wait for update to arrive on SG
-		require.NoError(t, rt.WaitForVersion(docID, newRev))
+		rt.WaitForVersion(docID, newRev)
 
 		body := rt.GetDocVersion("doc1", newRev)
 		require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])

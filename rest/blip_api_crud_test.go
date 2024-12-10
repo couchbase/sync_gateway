@@ -2100,7 +2100,7 @@ func TestBlipNorev(t *testing.T) {
 		// Request that the handler used to process the message is sent back in the response
 		norevMsg.Properties[db.SGShowHandler] = "true"
 
-		assert.NoError(t, btc.pushReplication.sendMsg(norevMsg.Message))
+		btc.pushReplication.sendMsg(norevMsg.Message)
 
 		// Check that the response we got back was processed by the norev handler
 		resp := norevMsg.Response()
@@ -2554,13 +2554,13 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 				require.NoError(t, err)
 
 				// push each rev manually so we can error check the replication synchronously
-				_, err = btcRunner.PushUnsolicitedRev(client.id, docID, nil, rawBody)
+				message := btcRunner.PushUnsolicitedRev(client.id, docID, nil, rawBody)
 				if test.expectReject {
-					assert.Error(t, err)
+					require.Equal(t, blip.ErrorType, message.Type())
 					return
+				} else {
+					require.NotEqual(t, blip.ErrorType, message.Type())
 				}
-				require.NoError(t, err)
-
 				// Wait for rev to be received on RT
 				rt.WaitForPendingChanges()
 				changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
@@ -2623,8 +2623,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	defer func() { require.NoError(t, ar.Stop()) }()
 
 	activeRT.WaitForPendingChanges()
-	err = activeRT.WaitForVersion(docID, version)
-	require.NoError(t, err)
+	activeRT.WaitForVersion(docID, version)
 
 	base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)
 	assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())
@@ -2792,9 +2791,7 @@ func TestUnsubChanges(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 		// Confirm no error message or panic is returned in response
-		response, err := btcRunner.UnsubPullChanges(btc.id)
-		assert.NoError(t, err)
-		assert.Empty(t, response)
+		btcRunner.UnsubPullChanges(btc.id)
 
 		// Sub changes
 		btcRunner.StartPull(btc.id)
@@ -2805,25 +2802,20 @@ func TestUnsubChanges(t *testing.T) {
 		activeReplStat := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplActiveContinuous
 		require.EqualValues(t, 1, activeReplStat.Value())
 
-		// Unsub changes
-		response, err = btcRunner.UnsubPullChanges(btc.id)
-		assert.NoError(t, err)
-		assert.Empty(t, response)
+		btcRunner.UnsubPullChanges(btc.id)
 		// Wait for unsub changes to stop the sub changes being sent before sending document up
 		base.RequireWaitForStat(t, activeReplStat.Value, 0)
 
 		// Confirm no more changes are being sent
 		doc2Version := rt.PutDoc(doc2ID, `{"key":"val1"}`)
-		err = rt.WaitForConditionWithOptions(func() bool {
+		err := rt.WaitForConditionWithOptions(func() bool {
 			_, found := btcRunner.GetVersion(btc.id, "doc2", doc2Version)
 			return found
 		}, 10, 100)
 		assert.Error(t, err)
 
 		// Confirm no error message is still returned when no subchanges active
-		response, err = btcRunner.UnsubPullChanges(btc.id)
-		assert.NoError(t, err)
-		assert.Empty(t, response)
+		btcRunner.UnsubPullChanges(btc.id)
 
 		// Confirm the pull replication can be restarted and it syncs doc2
 		btcRunner.StartPull(btc.id)
@@ -3009,8 +3001,7 @@ func TestBlipRefreshUser(t *testing.T) {
 		unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
 		btc.addCollectionProperty(unsubChangesRequest)
 
-		err := btc.pullReplication.sendMsg(unsubChangesRequest)
-		require.NoError(t, err)
+		btc.pullReplication.sendMsg(unsubChangesRequest)
 
 		testResponse := unsubChangesRequest.Response()
 		require.Equal(t, strconv.Itoa(db.CBLReconnectErrorCode), testResponse.Properties[db.BlipErrorCode])
