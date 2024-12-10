@@ -355,16 +355,17 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			}
 
 			// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc for
-			// revtree clients, for HLV clients the first element is the HLV
+			// revtree clients. For HLV clients, use the cv as deltaSrc
 			if bsc.useDeltas && len(knownRevsArray) > 0 {
 				if revID, ok := knownRevsArray[0].(string); ok {
 					if bsc.useHLV() {
 						msgHLV, err := extractHLVFromBlipMessage(revID)
 						if err != nil {
-							base.ErrorfCtx(ctx, "Invalid known rev format for hlv on doc: %s", docID)
-							return nil
+							base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication.", docID)
+							deltaSrcRevID = "" // will force falling back to full body replication below
+						} else {
+							deltaSrcRevID = msgHLV.GetCurrentVersionString()
 						}
-						deltaSrcRevID = msgHLV.GetCurrentVersionString()
 					} else {
 						deltaSrcRevID = revID
 					}
@@ -373,6 +374,13 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 
 			for _, rev := range knownRevsArray {
 				if revID, ok := rev.(string); ok {
+					msgHLV, err := extractHLVFromBlipMessage(revID)
+					if err == nil {
+						// extract cv as string
+						revID = msgHLV.GetCurrentVersionString()
+					}
+					// we can assume here that if we fail to parse hlv, we have received a rev id in known revs. If we don't fail to parse hlv
+					// then we have extracted cv from it and can assign the cv string to known revs here
 					knownRevs[revID] = true
 				} else {
 					base.ErrorfCtx(ctx, "Invalid response to 'changes' message")

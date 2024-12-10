@@ -453,6 +453,7 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 		base.ErrorfCtx(ctx, "pending CBG-3814 support of channel removal for CV: %v", err)
 	}
 
+	deleted = doc.Deleted
 	channels = doc.SyncData.getCurrentChannels()
 	revid = doc.CurrentRev
 	hlv = doc.HLV
@@ -462,7 +463,7 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 
 func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document, cv Version) (bodyBytes []byte, attachments AttachmentsMeta, err error) {
 	if err = doc.HasCurrentVersion(ctx, cv); err != nil {
-		bodyBytes, err = c.getOldRevisionJSON(ctx, doc.ID, doc.CurrentRev)
+		bodyBytes, err = c.getOldRevisionJSON(ctx, doc.ID, cv.String())
 		if err != nil || bodyBytes == nil {
 			return nil, nil, err
 		}
