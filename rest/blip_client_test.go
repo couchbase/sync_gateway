@@ -53,6 +53,7 @@ type BlipTesterClientOpts struct {
 	sendReplacementRevs bool
 
 	revsLimit *int // defaults to 20
+
 }
 
 // defaultBlipTesterClientRevsLimit is the number of revisions sent as history when the client replicates - older revisions are not sent, and may not be stored.
@@ -89,7 +90,7 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 				return
 			}
 			// block until new seq
-			c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - waiting for new sequence", since, c._seqLast)
+			base.DebugfCtx(ctx, base.KeySGTest, "OneShotDocsSince: since=%d, _seqLast=%d - waiting for new sequence", since, c._seqLast)
 			c._seqCond.Wait()
 			// Check to see if we were woken because of Close()
 			if ctx.Err() != nil {
@@ -97,10 +98,10 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 				return
 			}
 			seqLast = c._seqLast
-			c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - woke up", since, c._seqLast)
+			base.DebugfCtx(ctx, base.KeySGTest, "OneShotDocsSince: since=%d, _seqLast=%d - woke up", since, c._seqLast)
 		}
 		c.seqLock.Unlock()
-		c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - iterating", since, seqLast)
+		base.DebugfCtx(ctx, base.KeySGTest, "OneShotDocsSince: since=%d, _seqLast=%d - iterating", since, seqLast)
 		for seq := since; seq <= seqLast; seq++ {
 			doc, ok := c.getClientDocForSeq(seq)
 			// filter non-latest entries in cases where we haven't pruned _seqStore
@@ -108,15 +109,15 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 				continue
 			} else if latestDocSeq := doc.latestSeq(); latestDocSeq != seq {
 				// this entry should've been cleaned up from _seqStore
-				base.AssertfCtx(base.TestCtx(c.TB()), "seq %d found in _seqStore but latestSeq for doc %d - this should've been pruned out!", seq, latestDocSeq)
+				require.FailNow(c.TB(), "seq %d found in _seqStore but latestSeq for doc %d - this should've been pruned out!", seq, latestDocSeq)
 				continue
 			}
 			if !yield(seq, doc) {
-				c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - stopping iteration", since, seqLast)
+				base.DebugfCtx(ctx, base.KeySGTest, "OneShotDocsSince: since=%d, _seqLast=%d - stopping iteration", since, seqLast)
 				return
 			}
 		}
-		c.TB().Logf("OneShotDocsSince: since=%d, _seqLast=%d - done", since, seqLast)
+		base.DebugfCtx(ctx, base.KeySGTest, "OneShotDocsSince: since=%d, _seqLast=%d - done", since, seqLast)
 	}
 }
 
@@ -131,19 +132,19 @@ func (c *BlipTesterCollectionClient) docsSince(ctx context.Context, since client
 				close(ch)
 				return
 			}
-			c.TB().Logf("docsSince: sinceVal=%d", sinceVal)
+			base.DebugfCtx(ctx, base.KeySGTest, "docsSince: sinceVal=%d", sinceVal)
 			for _, doc := range c.OneShotDocsSince(ctx, sinceVal) {
 				select {
 				case <-ctx.Done():
 					close(ch)
 					return
 				case ch <- doc:
-					c.TB().Logf("sent doc %q to changes feed", doc.id)
+					base.DebugfCtx(ctx, base.KeySGTest, "sent doc %q to changes feed", doc.id)
 					sinceVal = doc.latestSeq()
 				}
 			}
 			if !continuous {
-				c.TB().Logf("opts.Continuous=false, breaking changes loop")
+				base.DebugfCtx(ctx, base.KeySGTest, "opts.Continuous=false, breaking changes loop")
 				break
 			}
 		}
@@ -181,8 +182,6 @@ func (cd *clientDoc) docRevSeqsNewestToOldest() []clientSeq {
 }
 
 func (cd *clientDoc) _docRevSeqsNewestToOldest() []clientSeq {
-	cd.lock.RLock()
-	defer cd.lock.RUnlock()
 	seqs := make([]clientSeq, 0, len(cd._revisionsBySeq))
 	for _, rev := range cd._revisionsBySeq {
 		seqs = append(seqs, rev.clientSeq)
@@ -192,15 +191,14 @@ func (cd *clientDoc) _docRevSeqsNewestToOldest() []clientSeq {
 	return seqs
 }
 
-func (cd *clientDoc) latestRev() *clientDocRev {
+func (cd *clientDoc) latestRev() (*clientDocRev, error) {
 	cd.lock.RLock()
 	defer cd.lock.RUnlock()
 	rev, ok := cd._revisionsBySeq[cd._latestSeq]
 	if !ok {
-		base.AssertfCtx(context.TODO(), "latestSeq %d not found in revisionsBySeq", cd._latestSeq)
-		return nil
+		return nil, fmt.Errorf("latestSeq %d not found in revisionsBySeq", cd._latestSeq)
 	}
-	return &rev
+	return &rev, nil
 }
 
 func (cd *clientDoc) addNewRev(rev clientDocRev) {
@@ -217,15 +215,14 @@ func (cd *clientDoc) latestSeq() clientSeq {
 	return cd._latestSeq
 }
 
-func (cd *clientDoc) revisionBySeq(seq clientSeq) *clientDocRev {
+func (cd *clientDoc) revisionBySeq(seq clientSeq) (*clientDocRev, error) {
 	cd.lock.RLock()
 	defer cd.lock.RUnlock()
 	rev, ok := cd._revisionsBySeq[seq]
 	if !ok {
-		base.AssertfCtx(context.TODO(), "seq %d not found in revisionsBySeq", seq)
-		return nil
+		return nil, fmt.Errorf("seq %d not found in revisionsBySeq", seq)
 	}
-	return &rev
+	return &rev, nil
 }
 
 func (cd *clientDoc) setLatestServerVersion(version DocVersion) {
@@ -234,20 +231,18 @@ func (cd *clientDoc) setLatestServerVersion(version DocVersion) {
 	cd._latestServerVersion = version
 }
 
-func (cd *clientDoc) getRev(version DocVersion) clientDocRev {
+func (cd *clientDoc) getRev(version DocVersion) (*clientDocRev, error) {
 	cd.lock.RLock()
 	defer cd.lock.RUnlock()
 	seq, ok := cd._seqsByVersions[version]
 	if !ok {
-		base.AssertfCtx(context.TODO(), "version %v not found in seqsByVersions", version)
-		return clientDocRev{}
+		return nil, fmt.Errorf("version %v not found in seqsByVersions", version)
 	}
 	rev, ok := cd._revisionsBySeq[seq]
 	if !ok {
-		base.AssertfCtx(context.TODO(), "seq %d not found in revisionsBySeq", seq)
-		return clientDocRev{}
+		return nil, fmt.Errorf("seq %d not found in revisionsBySeq", seq)
 	}
-	return rev
+	return &rev, nil
 }
 
 type BlipTesterCollectionClient struct {
@@ -290,7 +285,7 @@ func (btcc *BlipTesterCollectionClient) _getClientDoc(docID string) (*clientDoc,
 	}
 	clientDoc, ok := btcc._seqStore[seq]
 	if !ok {
-		base.AssertfCtx(base.TestCtx(btcc.TB()), "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
+		require.FailNow(btcc.TB(), "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
 		return nil, false
 	}
 	return clientDoc, ok
@@ -411,7 +406,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 							continue
 						}
 
-						rev := doc.revisionBySeq(seq)
+						rev, err := doc.revisionBySeq(seq)
+						require.NoError(btr.TB(), err)
 
 						if revID == rev.version.RevID {
 							knownRevs[i] = nil // Send back null to signal we don't need this change
@@ -535,10 +531,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			var old db.Body
 			doc, ok := btcr.getClientDoc(docID)
 			if !ok {
-				base.AssertfCtx(base.TestCtx(btc.TB()), "docID %q not found in _seqFromDocID", docID)
+				require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
 				return
 			}
-			oldRev := doc.getRev(DocVersion{RevID: deltaSrc})
+			oldRev, err := doc.getRev(DocVersion{RevID: deltaSrc})
+			require.NoError(btc.TB(), err)
 			err = old.Unmarshal(oldRev.body)
 			require.NoError(btc.TB(), err)
 
@@ -815,7 +812,7 @@ func (btc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ver
 	defer btc.seqLock.Unlock()
 	doc, ok := btc._getClientDoc(docID)
 	if !ok {
-		base.AssertfCtx(base.TestCtx(btc.TB()), "docID %q not found in _seqFromDocID", docID)
+		require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
 		return
 	}
 	doc.setLatestServerVersion(version)
@@ -826,7 +823,7 @@ func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (versi
 	defer btc.seqLock.Unlock()
 	doc, ok := btc._getClientDoc(docID)
 	if !ok {
-		base.AssertfCtx(base.TestCtx(btc.TB()), "docID %q not found in _seqFromDocID", docID)
+		require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
 		return DocVersion{}, false
 	}
 	doc.lock.RLock()
@@ -1086,6 +1083,7 @@ func proposeChangesEntryForDoc(doc *clientDoc) proposeChangeBatchEntry {
 
 // StartPull will begin a push replication with the given options between the client and server
 func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
+	ctx := btcc.ctx
 	sinceFromStr, err := db.ParsePlainSequenceID(opts.Since)
 	require.NoError(btcc.TB(), err)
 	seq := clientSeq(sinceFromStr.SafeSequence())
@@ -1098,14 +1096,14 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 			}
 			// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
 			changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
-			btcc.TB().Logf("Starting push replication iteration with since=%v", seq)
+			base.DebugfCtx(ctx, base.KeySGTest, "Starting push replication iteration with since=%v", seq)
 			for doc := range btcc.docsSince(btcc.ctx, seq, opts.Continuous) {
 				if btcc.ctx.Err() != nil {
 					return
 				}
 				changesBatch = append(changesBatch, proposeChangesEntryForDoc(doc))
 				if len(changesBatch) >= changesBatchSize {
-					btcc.TB().Logf("Sending batch of %d changes", len(changesBatch))
+					base.DebugfCtx(ctx, base.KeySGTest, "Sending batch of %d changes", len(changesBatch))
 					proposeChangesRequest := blip.NewRequest()
 					proposeChangesRequest.SetProfile(db.MessageProposeChanges)
 
@@ -1117,7 +1115,7 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 						proposeChangesRequestBody.WriteString(fmt.Sprintf(`["%s","%s"`, change.docID, change.version.RevID))
 						// write last known server version to support no-conflict mode
 						if serverVersion, ok := btcc.getLastReplicatedRev(change.docID); ok {
-							btcc.TB().Logf("specifying last known server version for doc %s = %v", change.docID, serverVersion)
+							base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version for doc %s = %v", change.docID, serverVersion)
 							proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.RevID))
 						}
 						proposeChangesRequestBody.WriteString(`]`)
@@ -1126,7 +1124,7 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 					proposeChangesRequestBodyBytes := proposeChangesRequestBody.Bytes()
 					proposeChangesRequest.SetBody(proposeChangesRequestBodyBytes)
 
-					btcc.TB().Logf("proposeChanges request: %s", string(proposeChangesRequestBodyBytes))
+					base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges request: %s", string(proposeChangesRequestBodyBytes))
 
 					btcc.addCollectionProperty(proposeChangesRequest)
 
@@ -1148,11 +1146,11 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 						return
 					}
 
-					btcc.TB().Logf("proposeChanges response: %s", string(rspBody))
+					base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges response: %s", string(rspBody))
 
 					var serverDeltas bool
 					if proposeChangesResponse.Properties[db.ChangesResponseDeltas] == "true" {
-						btcc.TB().Logf("server supports deltas")
+						base.DebugfCtx(ctx, base.KeySGTest, "server supports deltas")
 						serverDeltas = true
 					}
 
@@ -1187,21 +1185,21 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 							doc.lock.RUnlock()
 
 							if serverDeltas && btcc.parent.ClientDeltas && ok && !serverRev.isDelete {
-								btcc.TB().Logf("specifying last known server version as deltaSrc for doc %s = %v", change.docID, change.latestServerVersion)
+								base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version as deltaSrc for doc %s = %v", change.docID, change.latestServerVersion)
 								revRequest.Properties[db.RevMessageDeltaSrc] = change.latestServerVersion.RevID
 								var parentBodyUnmarshalled db.Body
 								if err := parentBodyUnmarshalled.Unmarshal(serverRev.body); err != nil {
-									base.AssertfCtx(base.TestCtx(btcc.TB()), "Error unmarshalling parent body: %v", err)
+									require.FailNow(btcc.TB(), "Error unmarshalling parent body: %v", err)
 									return
 								}
 								var newBodyUnmarshalled db.Body
 								if err := newBodyUnmarshalled.Unmarshal(docBody); err != nil {
-									base.AssertfCtx(base.TestCtx(btcc.TB()), "Error unmarshalling new body: %v", err)
+									require.FailNow(btcc.TB(), "Error unmarshalling new body: %v", err)
 									return
 								}
 								delta, err := base.Diff(parentBodyUnmarshalled, newBodyUnmarshalled)
 								if err != nil {
-									base.AssertfCtx(base.TestCtx(btcc.TB()), "Error creating delta: %v", err)
+									require.FailNow(btcc.TB(), "Error creating delta: %v", err)
 									return
 								}
 								revRequest.SetBody(delta)
@@ -1214,14 +1212,14 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 								btcc.TB().Errorf("Error sending rev: %v", err)
 								return
 							}
-							btcc.TB().Logf("sent doc %s / %v", change.docID, change.version)
+							base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %v", change.docID, change.version)
 							// block until remote has actually processed the rev and sent a response
 							revResp := revRequest.Response()
 							if revResp.Properties[db.BlipErrorCode] != "" {
 								btcc.TB().Errorf("error response from rev: %s", revResp.Properties["Error-Domain"])
 								return
 							}
-							btcc.TB().Logf("peer acked rev %s / %v", change.docID, change.version)
+							base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
 							btcc.updateLastReplicatedRev(change.docID, change.version)
 							doc, ok = btcc.getClientDoc(change.docID)
 							if !ok {
@@ -1234,11 +1232,11 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 							doc.lock.Unlock()
 						case 304:
 							// peer already has doc version
-							btcc.TB().Logf("peer already has doc %s / %v", change.docID, change.version)
+							base.DebugfCtx(ctx, base.KeySGTest, "peer already has doc %s / %v", change.docID, change.version)
 							continue
 						case 409:
 							// conflict - puller will need to resolve (if enabled) - resolution pushed independently so we can ignore this one
-							btcc.TB().Logf("conflict for doc %s clientVersion:%v serverVersion:%v", change.docID, change.version, change.latestServerVersion)
+							base.DebugfCtx(ctx, base.KeySGTest, "conflict for doc %s clientVersion:%v serverVersion:%v", change.docID, change.version, change.latestServerVersion)
 							continue
 						default:
 							btcc.TB().Errorf("unexpected status %d for doc %s / %s", status, change.docID, change.version)
@@ -1380,7 +1378,7 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 		}
 		doc, ok = btc._seqStore[oldSeq]
 		if !ok {
-			base.AssertfCtx(base.TestCtx(btc.TB()), "seq %q for docID %q found but no doc in _seqStore", oldSeq, docID)
+			require.FailNow(btc.TB(), "seq %q for docID %q found but no doc in _seqStore", oldSeq, docID)
 			return nil, fmt.Errorf("seq %q for docID %q found but no doc in _seqStore", oldSeq, docID)
 		}
 	} else {
@@ -1397,7 +1395,9 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 	newGen := 1
 	if parentVersion != nil {
 		// grab latest version for this doc and make sure we're doing an upsert on top of it to avoid branching revisions
-		latestVersion := doc.latestRev().version
+		latestRev, err := doc.latestRev()
+		require.NoError(btc.TB(), err)
+		latestVersion := latestRev.version
 		if *parentVersion != latestVersion {
 			return nil, fmt.Errorf("latest version for docID: %v is %v, expected parentVersion: %v", docID, latestVersion, parentVersion)
 		}
@@ -1628,7 +1628,7 @@ func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVe
 
 	rev, ok := doc._revisionsBySeq[revSeq]
 	if !ok {
-		base.AssertfCtx(base.TestCtx(btc.TB()), "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
+		require.FailNow(btc.TB(), "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
 		return nil, false
 	}
 
@@ -1655,7 +1655,8 @@ func (btc *BlipTesterCollectionClient) GetDoc(docID string) (data []byte, found 
 		return nil, false
 	}
 
-	latestRev := doc.latestRev()
+	latestRev, err := doc.latestRev()
+	require.NoError(btc.TB(), err)
 	if latestRev == nil {
 		return nil, false
 	}
