@@ -221,5 +221,6 @@ func deleteConflictDocs(t *testing.T, tc multiActorTest, peers map[string]Peer, 
 
 // getDocID returns a unique doc ID for the test case
 func getDocID(t *testing.T) string {
-	return fmt.Sprintf("doc_%s", strings.ReplaceAll(t.Name(), " ", "_"))
+	name := strings.TrimPrefix(strings.ReplaceAll(t.Name(), " ", "_"), "Test")
+	return fmt.Sprintf("doc_%s", name)
 }

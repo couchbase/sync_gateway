@@ -48,7 +48,7 @@ var Topologies = []Topology{
 			  |   cbl1  |
 			  +---------+
 		*/
-		description: "CBL <-> Sync Gateway <-> CBS 1.1",
+		description: "CBL<->SG<->CBS 1.1",
 		peers: map[string]PeerOptions{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
@@ -297,7 +297,7 @@ var simpleTopologies = []Topology{
 			| cbs1 | <--> | cbs2 |
 			+------+      +------+
 		*/
-		description: "Couchbase Server -> Couchbase Server",
+		description: "CBS<->CBS",
 		peers: map[string]PeerOptions{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2}},
@@ -330,7 +330,7 @@ var simpleTopologies = []Topology{
 			' +---------+ '
 			+ - - - - - - +
 		*/
-		description: "Couchbase Server (with SG) -> Couchbase Server",
+		description: "CBS+SG<->CBS",
 		peers: map[string]PeerOptions{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},

@@ -153,7 +153,7 @@ func (p *SyncGatewayPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID s
 			assert.True(c, doc.IsDeleted(), "expected %+v on %s to be deleted", doc, p)
 			return
 		}
-		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s on %s to be deleted, found err=%v", docID, p, err)
+		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s on %s to be deleted, found doc=%#v err=%v", docID, p, doc, err)
 	}, totalWaitTime, pollInterval)
 }
 
