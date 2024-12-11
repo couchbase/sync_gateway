@@ -34,7 +34,10 @@ const (
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
-func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
+func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelFunc) (*BlipSyncContext, error) {
+	if ctxCancelFunc == nil {
+		return nil, errors.New("cancelCtxFunc is required")
+	}
 	maxInFlightChangesBatches := DefaultMaxConcurrentChangesBatches
 	if db.Options.MaxConcurrentChangesBatches != nil {
 		maxInFlightChangesBatches = *db.Options.MaxConcurrentChangesBatches
@@ -55,6 +58,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 		inFlightRevsThrottle:    make(chan struct{}, maxInFlightRevs),
 		collections:             &blipCollections{},
+		ctxCancelFunc:           ctxCancelFunc,
 	}
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
@@ -86,7 +90,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 			bsc.register(profile, handlerFn)
 		}
 	}
-	return bsc
+	return bsc, nil
 }
 
 // BlipSyncContext represents one BLIP connection (socket) opened by a client.
@@ -133,6 +137,8 @@ type BlipSyncContext struct {
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
 
 	stats blipSyncStats // internal structure to store stats
+
+	ctxCancelFunc context.CancelFunc // function to cancel a blip replication
 }
 
 // blipSyncStats has support structures to support reporting stats at regular interval
@@ -248,6 +254,7 @@ func (bsc *BlipSyncContext) Close() {
 		}
 		bsc.reportStats(true)
 		close(bsc.terminator)
+		bsc.ctxCancelFunc()
 	})
 }
 

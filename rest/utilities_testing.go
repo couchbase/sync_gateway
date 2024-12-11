@@ -60,7 +60,7 @@ type RestTesterConfig struct {
 	EnableNoConflictsMode           bool                        // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
 	CustomTestBucket                *base.TestBucket            // If set, use this bucket instead of requesting a new one.
-	leakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	LeakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
 	adminInterface                  string                      // adminInterface overrides the default admin interface.
 	SgReplicateEnabled              bool                        // SgReplicateManager disabled by default for RestTester
 	AutoImport                      *bool
@@ -178,14 +178,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
 		testBucket = base.GetTestBucket(rt.TB())
-		if rt.leakyBucketConfig != nil {
-			leakyConfig := *rt.leakyBucketConfig
+		if rt.LeakyBucketConfig != nil {
+			leakyConfig := *rt.LeakyBucketConfig
 			// Ignore closures to avoid double closing panics
 			leakyConfig.IgnoreClose = true
 			testBucket = testBucket.LeakyBucketClone(leakyConfig)
 		}
-	} else if rt.leakyBucketConfig != nil {
-		rt.TB().Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
+	} else if rt.LeakyBucketConfig != nil {
+		rt.TB().Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a LeakyBucketConfig")
 	}
 	rt.TestBucket = testBucket
 
@@ -361,7 +361,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
 		var err error
-		if rt.leakyBucketConfig != nil || isLeaky {
+		if rt.LeakyBucketConfig != nil || isLeaky {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB(), *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
@@ -449,11 +449,11 @@ func GetDataStoreNamesFromScopesConfig(config ScopesConfig) []sgbucket.DataStore
 }
 
 // LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
-// The RestTester must have been set up to create and use a leaky bucket by setting leakyBucketConfig in the RT
+// The RestTester must have been set up to create and use a leaky bucket by setting LeakyBucketConfig in the RT
 // config when calling NewRestTester.
 func (rt *RestTester) LeakyBucket() *base.LeakyDataStore {
-	if rt.leakyBucketConfig == nil {
-		rt.TB().Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
+	if rt.LeakyBucketConfig == nil {
+		rt.TB().Fatalf("Cannot get leaky bucket when LeakyBucketConfig was not set on RestTester initialisation")
 	}
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	if !ok {
