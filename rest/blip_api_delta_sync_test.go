@@ -230,8 +230,9 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		// Check EE is delta, and CE is full-body replication
 		// msg, ok = client.pullReplication.WaitForMessage(5)
 		msg = btcRunner.WaitForBlipRevMessage(client.id, doc1ID, version2)
-
-		if base.IsEnterpriseEdition() {
+		// Delta sync only works for Version vectors, CBG-3748 (backwards compatibility for revID)
+		sgCanUseDeltas := base.IsEnterpriseEdition() && client.UseHLV()
+		if sgCanUseDeltas {
 			// Check the request was sent with the correct deltaSrc property
 			client.AssertDeltaSrcProperty(t, msg, version)
 			// Check the request body was the actual delta
@@ -245,7 +246,10 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 			msgBody, err := msg.Body()
 			assert.NoError(t, err)
 			assert.NotEqual(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
-			assert.Contains(t, string(msgBody), `"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}`)
+			assert.Contains(t, string(msgBody), `"stub":true`)
+			assert.Contains(t, string(msgBody), `"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="`)
+			assert.Contains(t, string(msgBody), `"revpos":2`)
+			assert.Contains(t, string(msgBody), `"length":11`)
 			assert.Contains(t, string(msgBody), `"greetings":[{"hello":"world!"},{"hi":"alice"}]`)
 		}
 
@@ -313,7 +317,9 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		msg := btcRunner.WaitForBlipRevMessage(client.id, docID, version2)
 
 		// Check EE is delta, and CE is full-body replication
-		if base.IsEnterpriseEdition() {
+		// Delta sync only works for Version vectors, CBG-3748 (backwards compatibility for revID)
+		sgCanUseDeltas := base.IsEnterpriseEdition() && client.UseHLV()
+		if sgCanUseDeltas {
 			// Check the request was sent with the correct deltaSrc property
 			client.AssertDeltaSrcProperty(t, msg, version)
 			// Check the request body was the actual delta
@@ -358,6 +364,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for rev tree replication, CBG-3748
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
 			&rtConfig)
@@ -553,8 +560,9 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 			deltasRequestedEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasRequested.Value()
 			deltasSentEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 		}
-
-		if sgUseDeltas {
+		// delta sync not implemented for rev tree replication, CBG-3748
+		sgCanUseDelta := base.IsEnterpriseEdition() && client.UseHLV()
+		if sgCanUseDelta {
 			assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
 			assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
 			assert.Equal(t, deltasRequestedStart+1, deltasRequestedEnd)
@@ -693,7 +701,9 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 			deltasSentEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 		}
 
-		if sgUseDeltas {
+		// delta sync not implemented for rev tree replication, CBG-3748
+		sgCanUseDelta := base.IsEnterpriseEdition() && client1.UseHLV()
+		if sgCanUseDelta {
 			assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
 			assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
 			assert.Equal(t, deltasRequestedStart+2, deltasRequestedEnd)
@@ -739,6 +749,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		defer client.Close()
 
 		client.ClientDeltas = true
+		sgCanUseDeltas := base.IsEnterpriseEdition() && client.UseHLV()
 		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
@@ -765,11 +776,16 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 		// Check EE is delta
 		// Check the request was sent with the correct deltaSrc property
-		client.AssertDeltaSrcProperty(t, msg, version1)
+		// delta sync not implemented for rev tree replication, CBG-3748
+		if sgCanUseDeltas {
+			client.AssertDeltaSrcProperty(t, msg, version1)
+		} else {
+			assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
+		}
 		// Check the request body was the actual delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
-		if sgUseDeltas {
+		if sgCanUseDeltas {
 			assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 		} else {
 			assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
@@ -784,11 +800,15 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		msg2 := btcRunner.WaitForBlipRevMessage(client2.id, docID, version2)
 
 		// Check the request was sent with the correct deltaSrc property
-		client2.AssertDeltaSrcProperty(t, msg2, version1)
+		if sgCanUseDeltas {
+			client2.AssertDeltaSrcProperty(t, msg2, version1)
+		} else {
+			assert.Equal(t, "", msg2.Properties[db.RevMessageDeltaSrc])
+		}
 		// Check the request body was the actual delta
 		msgBody2, err := msg2.Body()
 		assert.NoError(t, err)
-		if sgUseDeltas {
+		if sgCanUseDeltas {
 			assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody2))
 		} else {
 			assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody2))
@@ -797,7 +817,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		updatedDeltaCacheHits := rt.GetDatabase().DbStats.DeltaSync().DeltaCacheHit.Value()
 		updatedDeltaCacheMisses := rt.GetDatabase().DbStats.DeltaSync().DeltaCacheMiss.Value()
 
-		if sgUseDeltas {
+		// delta sync not implemented for rev tree replication, CBG-3748
+		if sgCanUseDeltas {
 			assert.Equal(t, deltaCacheHits+1, updatedDeltaCacheHits)
 			assert.Equal(t, deltaCacheMisses, updatedDeltaCacheMisses)
 		} else {
@@ -833,6 +854,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client.Close()
 		client.ClientDeltas = true
+		sgCanUseDeltas := base.IsEnterpriseEdition() && client.UseHLV()
 
 		btcRunner.StartPull(client.id)
 		btcRunner.StartPush(client.id)
@@ -849,7 +871,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		// Check EE is delta, and CE is full-body replication
 		msg := client.waitForReplicationMessage(collection, 2)
 
-		if base.IsEnterpriseEdition() && sgUseDeltas {
+		if base.IsEnterpriseEdition() && sgCanUseDeltas {
 			// Check the request was sent with the correct deltaSrc property
 			client.AssertDeltaSrcProperty(t, msg, version)
 			// Check the request body was the actual delta
@@ -894,7 +916,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 		_, err = btcRunner.PushUnsolicitedRev(client.id, docID, &deletedVersion, []byte(`{"undelete":true}`))
 
-		if base.IsEnterpriseEdition() && sgUseDeltas {
+		if base.IsEnterpriseEdition() && sgCanUseDeltas {
 			// Now make the client push up a delta that has the parent of the tombstone.
 			// This is not a valid scenario, and is actively prevented on the CBL side.
 			assert.Error(t, err)

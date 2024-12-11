@@ -179,15 +179,17 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	// 1. Create revision with history
 	docID := t.Name()
 	version := rt.PutDocDirectly(docID, rest.JsonToMap(t, `{"val":-1}`))
-	revID := version.RevTreeID
+	cv := version.CV.String()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	for i := 0; i < 10; i++ {
 		version = rt.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"val":%d}`, i)))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
-		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, revID)
+		// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+		cvHash := base.Crc32cHashString([]byte(cv))
+		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, cvHash)
 		require.NoError(t, purgeErr)
-		revID = version.RevTreeID
+		cv = version.CV.String()
 	}
 
 	// 2. Modify doc via SDK

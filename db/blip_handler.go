@@ -772,7 +772,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	if bh.sgCanUseDeltas {
+	// Disable delta sync for protocol versions < 4, CBG-3748 (backwards compatibility for revID delta sync)
+	if bh.sgCanUseDeltas && bh.useHLV() {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 		bh.replicationStats.HandleChangesDeltaRequestedCount.Add(int64(nRequested))
@@ -865,7 +866,8 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	if bh.sgCanUseDeltas {
+	// Disable delta sync for protocol versions < 4, CBG-3748 (backwards compatibility for revID delta sync)
+	if bh.sgCanUseDeltas && bh.useHLV() {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 	}
