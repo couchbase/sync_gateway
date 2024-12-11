@@ -43,9 +43,6 @@ func TestLegacyProposeChanges(t *testing.T) {
 	proposeChangesRequest.SetProfile("proposeChanges")
 	proposeChangesRequest.SetCompressed(true)
 
-	// According to proposeChanges spec:
-	// proposedChanges entries are of the form: [docID, revID, serverRevID]
-	// where serverRevID is optional
 	changesBody := `
 [["foo", "1-abc"],
 ["foo2", "1-abc"]]
@@ -55,11 +52,11 @@ func TestLegacyProposeChanges(t *testing.T) {
 	assert.True(t, sent)
 	proposeChangesResponse := proposeChangesRequest.Response()
 	body, err := proposeChangesResponse.Body()
-	assert.NoError(t, err, "Error getting changes response body")
+	require.NoError(t, err)
 
 	var changeList [][]interface{}
 	err = base.JSONUnmarshal(body, &changeList)
-	assert.NoError(t, err, "Error getting changes response body")
+	require.NoError(t, err)
 
 	assert.Len(t, changeList, 0)
 }
@@ -177,8 +174,6 @@ func TestProcessLegacyRev(t *testing.T) {
 	rt := bt.restTester
 	collection, _ := rt.GetSingleTestDatabaseCollection()
 
-	// simulate a doc being updated on CBL pre upgrade ad that new change being pushed to SGW in legacy mode
-
 	// add doc to SGW
 	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
 	rev1ID := docVersion.RevTreeID
@@ -226,7 +221,7 @@ func TestProcessLegacyRev(t *testing.T) {
 //   - Have custom rev handler to assert the subsequent rev message is as expected with cv as rev + full rev
 //     tree in history. No hlv in history is expected here.
 func TestChangesResponseLegacyRev(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
@@ -241,7 +236,8 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 	rev1ID := docVersion.RevTreeID
 
 	docVersion2 := rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
-
+	// wait for pending change to avoid flakes where changes feed didn't pick up this change
+	rt.WaitForPendingChanges()
 	receivedChangesRequestWg := sync.WaitGroup{}
 	revsFinishedWg := sync.WaitGroup{}
 
@@ -288,7 +284,6 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 		}
 
 		if !request.NoReply() {
-			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
 			emptyResponseValBytes, err := base.JSONMarshal(knownRevs)
 			require.NoError(t, err)
@@ -311,10 +306,10 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
-	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*5)
+	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*10)
 	require.NoError(t, timeoutErr, "Timed out waiting")
 
-	timeoutErr = WaitWithTimeout(&revsFinishedWg, time.Second*5)
+	timeoutErr = WaitWithTimeout(&revsFinishedWg, time.Second*10)
 	require.NoError(t, timeoutErr, "Timed out waiting")
 
 }
@@ -326,7 +321,7 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 //   - Have custom rev handler to asser the subsequent rev message is as expected with cv as rev and pv + full rev
 //     tree in history
 func TestChangesResponseWithHLVInHistory(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
@@ -347,8 +342,11 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "newSource", base.VvXattrName)
 	_ = agent.UpdateWithHLV(ctx, "doc1", newDoc.Cas, newDoc.HLV)
 
+	// force import
 	newDoc, err = collection.GetDocument(ctx, "doc1", db.DocUnmarshalAll)
 	require.NoError(t, err)
+	// wait for pending change to avoid flakes where changes feed didn't pick up this change
+	rt.WaitForPendingChanges()
 
 	receivedChangesRequestWg := sync.WaitGroup{}
 	revsFinishedWg := sync.WaitGroup{}
@@ -397,7 +395,6 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 		}
 
 		if !request.NoReply() {
-			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
 			emptyResponseValBytes, err := base.JSONMarshal(knownRevs)
 			require.NoError(t, err)
@@ -420,9 +417,9 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
-	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*5)
+	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*10)
 	require.NoError(t, timeoutErr, "Timed out waiting")
 
-	timeoutErr = WaitWithTimeout(&revsFinishedWg, time.Second*5)
+	timeoutErr = WaitWithTimeout(&revsFinishedWg, time.Second*10)
 	require.NoError(t, timeoutErr, "Timed out waiting")
 }
