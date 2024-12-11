@@ -340,6 +340,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 	if err != nil {
 		return err
 	}
+	versionVectorProtocol := bsc.useHLV()
 
 	for i, knownRevsArrayInterface := range answer {
 		seq := changeArray[i][0].(SequenceID)
@@ -347,6 +348,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 		rev := changeArray[i][2].(string)
 
 		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
+			legacyRev := false
 			deltaSrcRevID := ""
 			knownRevs := knownRevsByDoc[docID]
 			if knownRevs == nil {
@@ -358,7 +360,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			// revtree clients. For HLV clients, use the cv as deltaSrc
 			if bsc.useDeltas && len(knownRevsArray) > 0 {
 				if revID, ok := knownRevsArray[0].(string); ok {
-					if bsc.useHLV() {
+					if versionVectorProtocol {
 						msgHLV, err := extractHLVFromBlipMessage(revID)
 						if err != nil {
 							base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication.", docID)
@@ -375,7 +377,12 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			for _, rev := range knownRevsArray {
 				if revID, ok := rev.(string); ok {
 					msgHLV, err := extractHLVFromBlipMessage(revID)
-					if err == nil {
+					if err != nil {
+						// assume we have received legacy rev if we cannot parse hlv from known revs, and we are in vv replication
+						if versionVectorProtocol {
+							legacyRev = true
+						}
+					} else {
 						// extract cv as string
 						revID = msgHLV.GetCurrentVersionString()
 					}
@@ -394,7 +401,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			if deltaSrcRevID != "" && bsc.useHLV() {
 				err = bsc.sendRevAsDelta(ctx, sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
-				err = bsc.sendRevision(ctx, sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+				err = bsc.sendRevision(ctx, sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx, legacyRev)
 			}
 			if err != nil {
 				return err
@@ -652,11 +659,11 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
+func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int, legacyRev bool) error {
 
 	var originalErr error
 	var docRev DocumentRevision
-	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+	if !bsc.useHLV() {
 		docRev, originalErr = handleChangesResponseCollection.GetRev(ctx, docID, revID, true, nil)
 	} else {
 		// extract CV string rev representation
@@ -743,12 +750,18 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		bsc.replicationStats.SendReplacementRevCount.Add(1)
 	}
 	var history []string
-	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+	if !bsc.useHLV() {
 		history = toHistory(docRev.History, knownRevs, maxHistory)
 	} else {
 		if docRev.hlvHistory != "" {
 			history = append(history, docRev.hlvHistory)
 		}
+	}
+	if legacyRev {
+		// append rev tree with the rev tree history and the current rev id
+		revTreeHistory := toHistory(docRev.History, knownRevs, maxHistory)
+		history = append(history, docRev.RevID)
+		history = append(history, revTreeHistory...)
 	}
 
 	properties := blipRevMessageProperties(history, docRev.Deleted, seq, replacedRevID)
