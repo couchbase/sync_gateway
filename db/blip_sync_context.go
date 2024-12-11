@@ -758,7 +758,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		}
 	}
 	if legacyRev {
-		// append rev tree with the rev tree history and the current rev id
+		// append current revID and rest of rev tree after hlv history
 		revTreeHistory := toHistory(docRev.History, knownRevs, maxHistory)
 		history = append(history, docRev.RevID)
 		history = append(history, revTreeHistory...)
