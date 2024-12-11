@@ -272,7 +272,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	version3a := rt.UpdateDoc(testDocID, version2a, `{"`+testdataKey+`":3,"syncOldDocBodyCheck":true}`)
 
 	// rev 2-b
-	version2b := rt.PutNewEditsFalse(testDocID, NewDocVersionFromFakeRev("2-b"), version1a, `{}`)
+	version2b := rt.PutNewEditsFalse(testDocID, NewDocVersionFromFakeRev("2-b"), &version1a, `{}`)
 
 	// tombstone at 4-a
 	rt.DeleteDoc(testDocID, version3a)
@@ -280,7 +280,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 	// tombstone at 3-b
-	rt.DeleteDoc(testDocID, version2b)
+	rt.DeleteDoc(testDocID, *version2b)
 
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)

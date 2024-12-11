@@ -43,7 +43,7 @@ type PutDocResponse struct {
 
 // PutNewEditsFalse builds a new_edits=false style put to create a revision with the specified revID.
 // If parentRevID is not specified, treated as insert
-func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, parentVersion DocVersion, bodyString string) DocVersion {
+func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, parentVersion *DocVersion, bodyString string) *DocVersion {
 
 	var body db.Body
 	marshalErr := base.JSONUnmarshal([]byte(bodyString), &body)
@@ -55,8 +55,9 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 	revisions := make(map[string]interface{})
 	revisions["start"] = newRevGeneration
 	ids := []string{newRevDigest}
-	if parentVersion.RevID != "" {
-		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB()), parentVersion.RevID)
+	if parentVersion != nil {
+		parentVersionCopy := *parentVersion
+		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB()), parentVersionCopy.RevID)
 		ids = append(ids, parentDigest)
 	}
 	revisions["ids"] = ids
@@ -69,7 +70,7 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 
 	rt.WaitForPendingChanges()
 
-	return DocVersionFromPutResponse(rt.TB(), resp)
+	return base.Ptr(DocVersionFromPutResponse(rt.TB(), resp))
 }
 
 func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) ChangesResults {

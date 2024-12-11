@@ -69,7 +69,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 		go func() {
 			for i := 0; shouldCreateDocs.IsTrue(); i++ {
 				// this will begin to error when the database is reloaded underneath the replication
-				_, err := btcRunner.PushRev(client.id, fmt.Sprintf("doc%d", i), EmptyDocVersion(), []byte(fmt.Sprintf(`{"i":%d}`, i)))
+				_, err := btcRunner.AddRev(client.id, fmt.Sprintf("doc%d", i), EmptyDocVersion(), []byte(fmt.Sprintf(`{"i":%d}`, i)))
 				if err != nil {
 					lastPushRevErr.Store(err)
 				}
