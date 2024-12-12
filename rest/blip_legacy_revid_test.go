@@ -86,6 +86,9 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 	resp = rt.PutDoc("newUpdate", `{"version":1}`)
 	newUpdateRev1 := resp.RevTreeID
 
+	resp = rt.PutDoc("existingDoc", `{"version":1}`)
+	existingDocRev := resp.RevTreeID
+
 	type proposeChangesCase struct {
 		key           string
 		revID         string
@@ -117,6 +120,12 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 			revID:         "2-abc",
 			parentRevID:   newUpdateRev1,
 			expectedValue: float64(db.ProposedRev_OK),
+		},
+		proposeChangesCase{
+			key:           "existingDoc",
+			revID:         existingDocRev,
+			parentRevID:   "",
+			expectedValue: float64(db.ProposedRev_Exists),
 		},
 	}
 
