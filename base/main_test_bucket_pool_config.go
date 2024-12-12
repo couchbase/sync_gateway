@@ -61,6 +61,9 @@ const (
 
 	// Creates buckets with a specific number of number of replicas
 	tbpEnvBucketNumReplicas = "SG_TEST_BUCKET_NUM_REPLICAS"
+
+	// Environment variable to specify the topology tests to run
+	TbpEnvTopologyTests = "SG_TEST_TOPOLOGY_TESTS"
 )
 
 // TestsUseNamedCollections returns true if the tests use named collections.
