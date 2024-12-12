@@ -100,6 +100,22 @@ var _ PeerReplication = &CouchbaseLiteMockReplication{}
 var _ PeerReplication = &CouchbaseServerReplication{}
 var _ PeerReplication = &CouchbaseServerReplication{}
 
+type Replications []PeerReplication
+
+// Stop stops all replications.
+func (r Replications) Stop() {
+	for _, replication := range r {
+		replication.Stop()
+	}
+}
+
+// Start starts all replications.
+func (r Replications) Start() {
+	for _, replication := range r {
+		replication.Start()
+	}
+}
+
 // PeerReplicationDirection represents the direction of a replication from the active peer.
 type PeerReplicationDirection int
 
@@ -258,7 +274,8 @@ func updatePeersT(t *testing.T, peers map[string]Peer) {
 }
 
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
-func setupTests(t *testing.T, topology Topology) (map[string]Peer, []PeerReplication) {
+func setupTests(t *testing.T, topology Topology) (map[string]Peer, Replications) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
 
