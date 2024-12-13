@@ -10,7 +10,6 @@ package topologytest
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
@@ -21,15 +20,14 @@ import (
 func TestSingleActorCreate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
-			peers, _ := setupTests(t, topology)
-			for _, activePeerID := range topology.PeerNames() {
+			collectionName, peers, _ := setupTests(t, topology)
+			for activePeerID, activePeer := range peers.SortedPeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
-					tc := singleActorTest{topology: topology, activePeerID: activePeerID}
 					docID := getDocID(t)
-					docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, activePeerID, tc.description()))
-					docVersion := peers[activePeerID].CreateDocument(getSingleDsName(), docID, docBody)
-					waitForVersionAndBody(t, tc, peers, docID, docVersion)
+					docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
+					docVersion := activePeer.CreateDocument(collectionName, docID, docBody)
+					waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
 				})
 			}
 		})
@@ -45,27 +43,26 @@ func TestSingleActorCreate(t *testing.T) {
 func TestSingleActorUpdate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
-			peers, _ := setupTests(t, topology)
-			for _, activePeerID := range topology.PeerNames() {
+			collectionName, peers, _ := setupTests(t, topology)
+			for activePeerID, activePeer := range peers {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
-					tc := singleActorTest{topology: topology, activePeerID: activePeerID}
-					if strings.HasPrefix(tc.activePeerID, "cbl") {
+					if activePeer.Type() == PeerTypeCouchbaseLite {
 						t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
 					}
 
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
-					createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
+					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
+					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
 
-					waitForVersionAndBody(t, tc, peers, docID, createVersion)
+					waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
 
-					body2 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 2}`, tc.activePeerID, tc.description()))
-					updateVersion := peers[tc.activePeerID].WriteDocument(tc.collectionName(), docID, body2)
+					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, activePeerID, topology.description))
+					updateVersion := activePeer.WriteDocument(collectionName, docID, body2)
 					t.Logf("createVersion: %+v, updateVersion: %+v", createVersion.docMeta, updateVersion.docMeta)
 					t.Logf("waiting for document version 2 on all peers")
 
-					waitForVersionAndBody(t, tc, peers, docID, updateVersion)
+					waitForVersionAndBody(t, collectionName, peers, docID, updateVersion)
 				})
 			}
 		})
@@ -81,26 +78,24 @@ func TestSingleActorUpdate(t *testing.T) {
 func TestSingleActorDelete(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
-			peers, _ := setupTests(t, topology)
-			for _, activePeerID := range topology.PeerNames() {
+			collectionName, peers, _ := setupTests(t, topology)
+			for activePeerID, activePeer := range peers {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
-					tc := singleActorTest{topology: topology, activePeerID: activePeerID}
-
-					if strings.HasPrefix(tc.activePeerID, "cbl") {
+					if activePeer.Type() == PeerTypeCouchbaseLite {
 						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 					}
 
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
-					createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
+					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
+					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
 
-					waitForVersionAndBody(t, tc, peers, docID, createVersion)
+					waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
 
-					deleteVersion := peers[tc.activePeerID].DeleteDocument(tc.collectionName(), docID)
+					deleteVersion := activePeer.DeleteDocument(collectionName, docID)
 					t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion.docMeta, deleteVersion)
 					t.Logf("waiting for document deletion on all peers")
-					waitForDeletion(t, tc, peers, docID, tc.activePeerID)
+					waitForDeletion(t, collectionName, peers, docID, activePeerID)
 				})
 			}
 		})
@@ -118,39 +113,30 @@ func TestSingleActorDelete(t *testing.T) {
 func TestSingleActorResurrect(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
-			peers, _ := setupTests(t, topology)
-			for _, activePeerID := range topology.PeerNames() {
+			collectionName, peers, _ := setupTests(t, topology)
+			for activePeerID, activePeer := range peers.SortedPeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
-					tc := singleActorTest{topology: topology, activePeerID: activePeerID}
-
-					if strings.HasPrefix(tc.activePeerID, "cbl") {
+					if activePeer.Type() == PeerTypeCouchbaseLite {
 						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
 					}
 
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 1}`, tc.activePeerID, tc.description()))
-					createVersion := peers[tc.activePeerID].CreateDocument(tc.collectionName(), docID, body1)
-					waitForVersionAndBody(t, tc, peers, docID, createVersion)
+					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
+					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
+					waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
 
-					deleteVersion := peers[tc.activePeerID].DeleteDocument(tc.collectionName(), docID)
+					deleteVersion := activePeer.DeleteDocument(collectionName, docID)
 					t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion, deleteVersion)
 					t.Logf("waiting for document deletion on all peers")
-					waitForDeletion(t, tc, peers, docID, tc.activePeerID)
+					waitForDeletion(t, collectionName, peers, docID, activePeerID)
 
-					body2 := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": "resurrection"}`, tc.activePeerID, tc.description()))
-					resurrectVersion := peers[tc.activePeerID].WriteDocument(tc.collectionName(), docID, body2)
+					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "resurrect"}`, activePeerID, topology.description))
+					resurrectVersion := activePeer.WriteDocument(collectionName, docID, body2)
 					t.Logf("createVersion: %+v, deleteVersion: %+v, resurrectVersion: %+v", createVersion.docMeta, deleteVersion, resurrectVersion.docMeta)
 					t.Logf("waiting for document resurrection on all peers")
 
-					// Couchbase Lite peers do not know how to push a deletion yet, so we need to filter them out CBG-4257
-					nonCBLPeers := make(map[string]Peer)
-					for peerName, peer := range peers {
-						if !strings.HasPrefix(peerName, "cbl") {
-							nonCBLPeers[peerName] = peer
-						}
-					}
-					waitForVersionAndBody(t, tc, peers, docID, resurrectVersion)
+					waitForVersionAndBody(t, collectionName, peers, docID, resurrectVersion)
 				})
 			}
 		})

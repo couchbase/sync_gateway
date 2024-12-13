@@ -220,6 +220,11 @@ func (p *CouchbaseServerPeer) Close() {
 	}
 }
 
+// Type returns PeerTypeCouchbaseServer.
+func (p *CouchbaseServerPeer) Type() PeerType {
+	return PeerTypeCouchbaseServer
+}
+
 // CreateReplication creates an XDCR manager.
 func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerReplicationConfig) PeerReplication {
 	switch config.direction {
