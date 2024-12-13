@@ -70,12 +70,14 @@ func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, do
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseLiteMockPeer) WriteDocument(_ sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
+	p.TB().Logf("%s: Writing document %s", p, docID)
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
 	// set an HLV here.
 	docVersion, err := client.btcRunner.PushRev(client.ID(), docID, rest.EmptyDocVersion(), body)
 	require.NoError(client.btcRunner.TB(), err)
-	docMetadata := DocMetadataFromDocVersion(docID, docVersion)
+	// FIXME: CBG-4257, this should read the existing HLV on doc, until this happens, pv is always missing
+	docMetadata := DocMetadataFromDocVersion(client.btc.TB(), docID, docVersion)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -95,7 +97,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docI
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var found bool
-		data, found = client.btcRunner.GetVersion(client.ID(), docID, rest.DocVersion{CV: docVersion.CV()})
+		data, found = client.btcRunner.GetVersion(client.ID(), docID, rest.DocVersion{CV: docVersion.CV(c)})
 		if !assert.True(c, found, "Could not find docID:%+v on %p\nVersion %#v", docID, p, docVersion) {
 			return
 		}
