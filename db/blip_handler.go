@@ -822,6 +822,8 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	defer func() {
 		bh.replicationStats.HandleChangesTime.Add(time.Since(startTime).Nanoseconds())
 	}()
+	changesContainLegacyRevs := false // keep track if proposed changes have legacy revs for delta sync purposes
+	versionVectorProtocol := bh.useHLV()
 
 	for i, change := range changeList {
 		docID := change[0].(string)
@@ -832,9 +834,16 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		}
 		var status ProposedRevStatus
 		var currentRev string
-		if bh.useHLV() {
+
+		changeIsVector := false
+		if versionVectorProtocol {
+			// only check if rev is vector in VV replication mode
+			changeIsVector = strings.Contains(rev, "@")
+		}
+		if versionVectorProtocol && changeIsVector {
 			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, rev, parentRevID)
 		} else {
+			changesContainLegacyRevs = true
 			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, rev, parentRevID)
 		}
 		if status == ProposedRev_OK_IsNew {
@@ -866,8 +875,8 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	// Disable delta sync for protocol versions < 4, CBG-3748 (backwards compatibility for revID delta sync)
-	if bh.sgCanUseDeltas && bh.useHLV() {
+	// Disable delta sync for protocol versions < 4 or changes batches that have legacy revs in them, CBG-3748 (backwards compatibility for revID delta sync)
+	if bh.sgCanUseDeltas && bh.useHLV() && !changesContainLegacyRevs {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 	}
@@ -887,13 +896,13 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(ctx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	} else if err == base.ErrDeltaSourceIsTombstone {
 		base.TracefCtx(ctx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	} else if err != nil {
 		base.DebugfCtx(ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	}
 
 	if redactedRev != nil {
@@ -909,12 +918,12 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 
 	if revDelta == nil {
 		base.DebugfCtx(ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	}
 
 	resendFullRevisionFunc := func() error {
 		base.InfofCtx(ctx, base.KeySync, "Resending revision as full body. Peer couldn't process delta %s from %s to %s for key %s", base.UD(revDelta.DeltaBytes), deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	}
 
 	base.TracefCtx(ctx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
@@ -1059,7 +1068,8 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	historyStr := rq.Properties[RevMessageHistory]
 	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
-	if !bh.useHLV() {
+	changeIsVector := strings.Contains(rev, "@")
+	if !bh.useHLV() || !changeIsVector {
 		newDoc.RevID = rev
 		history = []string{rev}
 		if historyStr != "" {
@@ -1287,7 +1297,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
-	if bh.useHLV() {
+	if bh.useHLV() && changeIsVector {
 		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc)
 	} else if bh.conflictResolver != nil {
 		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
