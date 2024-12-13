@@ -12,6 +12,9 @@ package topologytest
 import (
 	"context"
 	"fmt"
+	"iter"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -82,6 +85,9 @@ type internalPeer interface {
 
 	// Context returns the context for the peer.
 	Context() context.Context
+
+	// Type returns the type of the peer.
+	Type() PeerType
 }
 
 // PeerReplication represents a replication between two peers. This replication is unidirectional since all bi-directional replications are represented by two unidirectional instances.
@@ -96,10 +102,27 @@ type PeerReplication interface {
 	Stop()
 }
 
+// Peers represents a set of peers. The peers are indexed by name.
+type Peers map[string]Peer
+
+// SortedPeers returns a sorted list of peers by name, for deterministic output.
+func (p Peers) SortedPeers() iter.Seq2[string, Peer] {
+	keys := slices.Collect(maps.Keys(p))
+	slices.Sort(keys)
+	return func(yield func(k string, v Peer) bool) {
+		for _, peerName := range keys {
+			if !yield(peerName, p[peerName]) {
+				return
+			}
+		}
+	}
+}
+
 var _ PeerReplication = &CouchbaseLiteMockReplication{}
 var _ PeerReplication = &CouchbaseServerReplication{}
 var _ PeerReplication = &CouchbaseServerReplication{}
 
+// Replications are a collection of PeerReplications.
 type Replications []PeerReplication
 
 // Stop stops all replications.
@@ -251,9 +274,9 @@ func getPeerBuckets(t *testing.T, peerOptions map[string]PeerOptions) map[PeerBu
 }
 
 // createPeers will create a sets of peers. The underlying buckets will be created. The peers will be closed and the buckets will be destroyed.
-func createPeers(t *testing.T, peersOptions map[string]PeerOptions) map[string]Peer {
+func createPeers(t *testing.T, peersOptions map[string]PeerOptions) Peers {
 	buckets := getPeerBuckets(t, peersOptions)
-	peers := make(map[string]Peer, len(peersOptions))
+	peers := make(Peers, len(peersOptions))
 	for id, peerOptions := range peersOptions {
 		peer := NewPeer(t, id, buckets, peerOptions)
 		t.Logf("TopologyTest: created peer %s", peer)
@@ -274,7 +297,7 @@ func updatePeersT(t *testing.T, peers map[string]Peer) {
 }
 
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
-func setupTests(t *testing.T, topology Topology) (map[string]Peer, Replications) {
+func setupTests(t *testing.T, topology Topology) (base.ScopeAndCollectionName, Peers, Replications) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
@@ -283,7 +306,7 @@ func setupTests(t *testing.T, topology Topology) (map[string]Peer, Replications)
 		// temporarily start the replication before writing the document, limitation of CouchbaseLiteMockPeer as active peer since WriteDocument is calls PushRev
 		replication.Start()
 	}
-	return peers, replications
+	return getSingleDsName(), peers, replications
 }
 
 func TestPeerImplementation(t *testing.T) {
