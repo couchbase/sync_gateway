@@ -22,6 +22,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// dummySystemXattr is created for XDCR testing. This prevents a document echo after an initial write. The dummy xattr also means that the document will always have xattrs when deleting it, which is necessary for WriteUpdateWithXattrs.
+const dummySystemXattr = "_dummysystemxattr"
+
+var metadataXattrNames = []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName, dummySystemXattr}
+
 // CouchbaseServerPeer represents an instance of a backing server (bucket). This is rosmar unless SG_TEST_BACKING_STORE=couchbase is set.
 type CouchbaseServerPeer struct {
 	tb               testing.TB
@@ -96,20 +101,19 @@ func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID s
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
-	p.tb.Logf("%s: Creating document %s in bucket %s", p, docID, p.bucket.GetName())
+	p.tb.Logf("%s: Creating document %s", p, docID)
 	// create document with xattrs to prevent XDCR from doing a round trip replication in this scenario:
 	// CBS1: write document (cas1, no _vv)
 	// CBS1->CBS2: XDCR replication
 	// CBS2->CBS1: XDCR replication, creates a new _vv
-	cas, err := p.getCollection(dsName).WriteWithXattrs(p.Context(), docID, 0, 0, body, map[string][]byte{"userxattr": []byte(`{"dummy": "xattr"}`)}, nil, nil)
+	cas, err := p.getCollection(dsName).WriteWithXattrs(p.Context(), docID, 0, 0, body, map[string][]byte{dummySystemXattr: []byte(`{"dummy": "xattr"}`)}, nil, nil)
 	require.NoError(p.tb, err)
+	implicitHLV := db.NewHybridLogicalVector()
+	require.NoError(p.tb, implicitHLV.AddVersion(db.Version{SourceID: p.SourceID(), Value: cas}))
 	docMetadata := DocMetadata{
-		DocID: docID,
-		Cas:   cas,
-		ImplicitCV: &db.Version{
-			SourceID: p.SourceID(),
-			Value:    cas,
-		},
+		DocID:       docID,
+		Cas:         cas,
+		ImplicitHLV: implicitHLV,
 	}
 	return BodyAndVersion{
 		docMeta:    docMetadata,
@@ -121,23 +125,16 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	p.tb.Logf("%s: Writing document %s", p, docID)
+	var lastXattrs map[string][]byte
 	// write the document LWW, ignoring any in progress writes
-	callback := func(_ []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
-		return body, nil, false, nil
+	callback := func(_ []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+		lastXattrs = xattrs
+		return sgbucket.UpdatedDoc{Doc: body}, nil
 	}
-	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
+	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
 	require.NoError(p.tb, err)
-	docMetadata := DocMetadata{
-		DocID: docID,
-		// FIXME: this should actually probably show the HLV persisted, and then also the implicit CV
-		Cas: cas,
-		ImplicitCV: &db.Version{
-			SourceID: p.SourceID(),
-			Value:    cas,
-		},
-	}
 	return BodyAndVersion{
-		docMeta:    docMetadata,
+		docMeta:    getDocVersion(docID, p, cas, lastXattrs),
 		body:       body,
 		updatePeer: p.name,
 	}
@@ -146,19 +143,15 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata {
 	// delete the document, ignoring any in progress writes. We are allowed to delete a document that does not exist.
-	callback := func(_ []byte) (updated []byte, expiry *uint32, shouldDelete bool, err error) {
-		return nil, nil, true, nil
+	var lastXattrs map[string][]byte
+	// write the document LWW, ignoring any in progress writes
+	callback := func(_ []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+		lastXattrs = xattrs
+		return sgbucket.UpdatedDoc{Doc: nil, IsTombstone: true, Xattrs: xattrs}, nil
 	}
-	cas, err := p.getCollection(dsName).Update(docID, 0, callback)
+	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
 	require.NoError(p.tb, err)
-	return DocMetadata{
-		DocID: docID,
-		Cas:   cas,
-		ImplicitCV: &db.Version{
-			SourceID: p.SourceID(),
-			Value:    cas,
-		},
-	}
+	return getDocVersion(docID, p, cas, lastXattrs)
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
@@ -191,14 +184,14 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		var err error
 		var xattrs map[string][]byte
 		var cas uint64
-		docBytes, xattrs, cas, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, []string{base.VvXattrName})
+		docBytes, xattrs, cas, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, metadataXattrNames)
 		if !assert.NoError(c, err) {
 			return
 		}
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(docID, p, cas, xattrs)
 
-		assert.Equal(c, expected.CV(), version.CV(), "Could not find matching CV on %s for peer %s\nexpected: %#v\nactual:   %#v\n          body: %#v\n", docID, p, expected, version, string(docBytes))
+		assert.Equal(c, expected.CV(c), version.CV(c), "Could not find matching CV on %s for peer %s\nexpected: %#v\nactual:   %#v\n          body: %#v\n", docID, p, expected, version, string(docBytes))
 
 	}, totalWaitTime, pollInterval)
 	return docBytes
@@ -285,6 +278,20 @@ func (p *CouchbaseServerPeer) UpdateTB(tb *testing.T) {
 	p.tb = tb
 }
 
+// useImplicitHLV returns true if the document's HLV is not up to date and an HLV should be composed of current sourceID and cas.
+func useImplicitHLV(doc DocMetadata) bool {
+	if doc.HLV == nil {
+		return true
+	}
+	if doc.HLV.CurrentVersionCAS == doc.Cas {
+		return false
+	}
+	if doc.Mou == nil {
+		return true
+	}
+	return doc.Mou.CAS() != doc.Cas
+}
+
 // getDocVersion returns a DocVersion from a cas and xattrs with _vv (hlv) and _sync (RevTreeID).
 func getDocVersion(docID string, peer Peer, cas uint64, xattrs map[string][]byte) DocMetadata {
 	docVersion := DocMetadata{
@@ -298,11 +305,15 @@ func getDocVersion(docID string, peer Peer, cas uint64, xattrs map[string][]byte
 	hlvBytes, ok := xattrs[base.VvXattrName]
 	if ok {
 		require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &docVersion.HLV))
-	} else {
-		docVersion.ImplicitCV = &db.Version{
-			SourceID: peer.SourceID(),
-			Value:    cas,
+	}
+	if useImplicitHLV(docVersion) {
+		if docVersion.HLV == nil {
+			docVersion.ImplicitHLV = db.NewHybridLogicalVector()
+		} else {
+			require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &docVersion.ImplicitHLV))
+			docVersion.ImplicitHLV = docVersion.HLV
 		}
+		require.NoError(peer.TB(), docVersion.ImplicitHLV.AddVersion(db.Version{SourceID: peer.SourceID(), Value: cas}))
 	}
 	sync, ok := xattrs[base.SyncXattrName]
 	if ok {
@@ -315,7 +326,7 @@ func getDocVersion(docID string, peer Peer, cas uint64, xattrs map[string][]byte
 
 // getBodyAndVersion returns the body and version of a document from a sgbucket.DataStore.
 func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (DocMetadata, db.Body) {
-	docBytes, xattrs, cas, err := collection.GetWithXattrs(peer.Context(), docID, []string{base.VvXattrName})
+	docBytes, xattrs, cas, err := collection.GetWithXattrs(peer.Context(), docID, metadataXattrNames)
 	require.NoError(peer.TB(), err)
 	// get hlv to construct DocVersion
 	var body db.Body

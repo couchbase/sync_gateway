@@ -58,8 +58,7 @@ func TestMultiActorUpdate(t *testing.T) {
 			for peerName := range peers.SortedPeers() {
 				docID := getDocID(t) + "_" + peerName
 				docBodyAndVersion := docVersionList[peerName]
-				// FIXME: CBG-4417 this can be replaced with waitForVersionAndBody when implicit HLV exists
-				waitForVersionAndBodyOnNonActivePeers(t, collectionName, docID, peers, docBodyAndVersion)
+				waitForVersionAndBody(t, collectionName, peers, docID, docBodyAndVersion)
 			}
 
 		})
@@ -126,8 +125,7 @@ func TestMultiActorResurrect(t *testing.T) {
 			for updatePeerName := range peers {
 				docID := getDocID(t) + "_" + updatePeerName
 				docVersion := docVersionList[updatePeerName]
-				// FIXME: CBG-4417 this can be replaced with waitForVersionAndBody when implicit HLV exists
-				waitForVersionAndBodyOnNonActivePeers(t, collectionName, docID, peers, docVersion)
+				waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
 			}
 		})
 	}
