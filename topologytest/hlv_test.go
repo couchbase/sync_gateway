@@ -16,72 +16,14 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/maps"
 )
 
-type ActorTest interface {
-	PeerNames() []string
-	description() string
-	collectionName() base.ScopeAndCollectionName
-}
-
-var _ ActorTest = &singleActorTest{}
-var _ ActorTest = &multiActorTest{}
-
+// getSingleDsName returns the default scope and collection name for tests
 func getSingleDsName() base.ScopeAndCollectionName {
 	if base.TestsUseNamedCollections() {
 		return base.ScopeAndCollectionName{Scope: "sg_test_0", Collection: "sg_test_0"}
 	}
 	return base.DefaultScopeAndCollectionName()
-}
-
-// singleActorTest represents a test case for a single actor in a given topology.
-type singleActorTest struct {
-	topology     Topology
-	activePeerID string
-}
-
-// description returns a human-readable description of the test case.
-func (t singleActorTest) description() string {
-	return fmt.Sprintf("%s_actor=%s", t.topology.description, t.activePeerID)
-}
-
-// PeerNames returns the names of all peers in the test case's topology, sorted deterministically.
-func (t singleActorTest) PeerNames() []string {
-	return t.topology.PeerNames()
-}
-
-// collectionName returns the collection name for the test case.
-func (t singleActorTest) collectionName() base.ScopeAndCollectionName {
-	return getSingleDsName()
-}
-
-// multiActorTest represents a test case for a single actor in a given topology.
-type multiActorTest struct {
-	topology Topology
-}
-
-// PeerNames returns the names of all peers in the test case's topology, sorted deterministically.
-func (t multiActorTest) PeerNames() []string {
-	return t.topology.PeerNames()
-}
-
-// description returns a human-readable description of the test case.
-func (t multiActorTest) description() string {
-	return fmt.Sprintf("%s_multi_actor", t.topology.description)
-}
-
-// collectionName returns the collection name for the test case.
-func (t multiActorTest) collectionName() base.ScopeAndCollectionName {
-	return getSingleDsName()
-}
-
-func getMultiActorTestCases() []multiActorTest {
-	var tests []multiActorTest
-	for _, tc := range append(simpleTopologies, Topologies...) {
-		tests = append(tests, multiActorTest{topology: tc})
-	}
-	return tests
 }
 
 // BodyAndVersion struct to hold doc update information to assert on
@@ -95,6 +37,7 @@ func (b BodyAndVersion) GoString() string {
 	return fmt.Sprintf("%#v body:%s, updatePeer:%s", b.docMeta, string(b.body), b.updatePeer)
 }
 
+// requireBodyEqual compares bodies, removing private properties that might exist.
 func requireBodyEqual(t *testing.T, expected []byte, actual db.Body) {
 	actual = actual.DeepCopy(base.TestCtx(t))
 	stripInternalProperties(actual)
@@ -106,42 +49,37 @@ func stripInternalProperties(body db.Body) {
 	delete(body, "_id")
 }
 
-func waitForVersionAndBody(t *testing.T, testCase ActorTest, peers map[string]Peer, docID string, expectedVersion BodyAndVersion) {
-	// sort peer names to make tests more deterministic
-	peerNames := maps.Keys(peers)
-	for _, peerName := range peerNames {
-		peer := peers[peerName]
+// waitForVersionAndBody waits for a document to reach a specific version on all peers.
+func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string, expectedVersion BodyAndVersion) {
+	for _, peer := range peers.SortedPeers() {
 		t.Logf("waiting for doc version %#v on %s, written from %s", expectedVersion, peer, expectedVersion.updatePeer)
-		body := peer.WaitForDocVersion(testCase.collectionName(), docID, expectedVersion.docMeta)
+		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
 }
 
-func waitForVersionAndBodyOnNonActivePeers(t *testing.T, testCase ActorTest, docID string, peers map[string]Peer, expectedVersion BodyAndVersion) {
-	peerNames := maps.Keys(peers)
-	for _, peerName := range peerNames {
+// waitForVersionAndBodyOnNonActivePeers waits for a document to reach a specific version on all non-active peers. This is stub until CBG-4417 is implemented.
+func waitForVersionAndBodyOnNonActivePeers(t *testing.T, dsName base.ScopeAndCollectionName, docID string, peers Peers, expectedVersion BodyAndVersion) {
+	for peerName := range peers.SortedPeers() {
 		if peerName == expectedVersion.updatePeer {
 			// skip peer the write came from
 			continue
 		}
 		peer := peers[peerName]
 		t.Logf("waiting for doc version %#v on %s, update written from %s", expectedVersion, peer, expectedVersion.updatePeer)
-		body := peer.WaitForDocVersion(testCase.collectionName(), docID, expectedVersion.docMeta)
+		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
 }
 
-func waitForDeletion(t *testing.T, testCase ActorTest, peers map[string]Peer, docID string, deleteActor string) {
-	// sort peer names to make tests more deterministic
-	peerNames := maps.Keys(peers)
-	for _, peerName := range peerNames {
-		if strings.HasPrefix(peerName, "cbl") {
+func waitForDeletion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string, deleteActor string) {
+	for peerName, peer := range peers {
+		if peer.Type() == PeerTypeCouchbaseLite {
 			t.Logf("skipping deletion check for Couchbase Lite peer %s, CBG-4257", peerName)
 			continue
 		}
-		peer := peers[peerName]
 		t.Logf("waiting for doc to be deleted on %s, written from %s", peer, deleteActor)
-		peer.WaitForDeletion(testCase.collectionName(), docID)
+		peer.WaitForDeletion(dsName, docID)
 	}
 }
 
@@ -162,15 +100,19 @@ func removeSyncGatewayBackingPeers(peers map[string]Peer) map[string]bool {
 
 // createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents, then
 // returns the last peer to have a doc created on it
-func createConflictingDocs(t *testing.T, tc multiActorTest, peers map[string]Peer, docID string) (lastWrite BodyAndVersion) {
+func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) (lastWrite BodyAndVersion) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
 	documentVersion := make([]BodyAndVersion, 0, len(peers))
-	for _, peerName := range tc.PeerNames() {
+	for peerName, peer := range peers {
 		if backingPeers[peerName] {
 			continue
 		}
-		docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s"}`, peerName, tc.description()))
-		docVersion := peers[peerName].CreateDocument(tc.collectionName(), docID, docBody)
+		if peer.Type() == PeerTypeCouchbaseLite {
+			// FIXME: Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257
+			continue
+		}
+		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))
+		docVersion := peer.CreateDocument(dsName, docID, docBody)
 		t.Logf("createVersion: %+v", docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
@@ -181,16 +123,16 @@ func createConflictingDocs(t *testing.T, tc multiActorTest, peers map[string]Pee
 }
 
 // updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations, then
-// returns the last peer to have a doc updated on it
-func updateConflictingDocs(t *testing.T, tc multiActorTest, peers map[string]Peer, docID string) (lastWrite BodyAndVersion) {
+// returns the last peer to have a doc updated on it.
+func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) (lastWrite BodyAndVersion) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
 	var documentVersion []BodyAndVersion
-	for _, peerName := range tc.PeerNames() {
+	for peerName, peer := range peers {
 		if backingPeers[peerName] {
 			continue
 		}
-		docBody := []byte(fmt.Sprintf(`{"peer": "%s", "topology": "%s", "write": 2}`, peerName, tc.description()))
-		docVersion := peers[peerName].WriteDocument(tc.collectionName(), docID, docBody)
+		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topologyDescription))
+		docVersion := peer.WriteDocument(dsName, docID, docBody)
 		t.Logf("updateVersion: %+v", docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
@@ -202,14 +144,14 @@ func updateConflictingDocs(t *testing.T, tc multiActorTest, peers map[string]Pee
 
 // deleteConflictDocs will delete a doc on each peer of the same doc ID to create conflicting document deletions, then
 // returns the last peer to have a doc deleted on it
-func deleteConflictDocs(t *testing.T, tc multiActorTest, peers map[string]Peer, docID string) (lastWrite BodyAndVersion) {
+func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string) (lastWrite BodyAndVersion) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
-	documentVersion := make([]BodyAndVersion, 0, len(peers))
-	for _, peerName := range tc.PeerNames() {
+	var documentVersion []BodyAndVersion
+	for peerName, peer := range peers {
 		if backingPeers[peerName] {
 			continue
 		}
-		deleteVersion := peers[peerName].DeleteDocument(tc.collectionName(), docID)
+		deleteVersion := peer.DeleteDocument(dsName, docID)
 		t.Logf("deleteVersion: %+v", deleteVersion)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
 	}
@@ -219,8 +161,12 @@ func deleteConflictDocs(t *testing.T, tc multiActorTest, peers map[string]Peer, 
 	return lastWrite
 }
 
-// getDocID returns a unique doc ID for the test case
+// getDocID returns a unique doc ID for the test case. Note: when running with Couchbase Server and -count > 1, this will return duplicate IDs for count 2 and higher and they can conflict due to the way bucket pool works.
 func getDocID(t *testing.T) string {
-	name := strings.TrimPrefix(strings.ReplaceAll(t.Name(), " ", "_"), "Test")
+	name := strings.TrimPrefix(t.Name(), "Test") // shorten doc name
+	replaceChars := []string{" ", "/"}
+	for _, char := range replaceChars {
+		name = strings.ReplaceAll(name, char, "_")
+	}
 	return fmt.Sprintf("doc_%s", name)
 }

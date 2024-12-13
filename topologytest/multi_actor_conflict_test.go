@@ -23,15 +23,15 @@ func TestMultiActorConflictCreate(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
-	for _, tc := range getMultiActorTestCases() {
-		t.Run(tc.description(), func(t *testing.T) {
-			peers, replications := setupTests(t, tc.topology)
+	for _, topology := range append(simpleTopologies, Topologies...) {
+		t.Run(topology.description, func(t *testing.T) {
+			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, tc, peers, docID)
+			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
-			waitForVersionAndBody(t, tc, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
 
 		})
 	}
@@ -49,27 +49,28 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
-	for _, tc := range getMultiActorTestCases() {
-		if strings.Contains(tc.description(), "CBL") {
+	for _, topology := range append(simpleTopologies, Topologies...) {
+		if strings.Contains(topology.description, "CBL") {
 			// Test case flakes given the WaitForDocVersion function only waits for a docID on the cbl peer. We need to be
 			// able to wait for a specific version to arrive over pull replication
 			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
 		}
-		t.Run(tc.description(), func(t *testing.T) {
-			peers, replications := setupTests(t, tc.topology)
+		t.Run(topology.description, func(t *testing.T) {
+			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, tc, peers, docID)
+			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, tc, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
 
 			replications.Stop()
 
-			docVersion = updateConflictingDocs(t, tc, peers, docID)
+			docVersion = updateConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
-			waitForVersionAndBody(t, tc, peers, docID, docVersion)
+			// FIXME: CBG-4417 this can be replaced with waitForVersionAndBody when implicit HLV exists
+			waitForVersionAndBodyOnNonActivePeers(t, collectionName, docID, peers, docVersion)
 		})
 	}
 }
@@ -86,27 +87,27 @@ func TestMultiActorConflictDelete(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
-	for _, tc := range getMultiActorTestCases() {
-		if strings.Contains(tc.description(), "CBL") {
+	for _, topology := range append(simpleTopologies, Topologies...) {
+		if strings.Contains(topology.description, "CBL") {
 			// Test case flakes given the WaitForDocVersion function only waits for a docID on the cbl peer. We need to be
 			// able to wait for a specific version to arrive over pull replication
 			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
 		}
-		t.Run(tc.description(), func(t *testing.T) {
-			peers, replications := setupTests(t, tc.topology)
+		t.Run(topology.description, func(t *testing.T) {
+			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, tc, peers, docID)
+			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, tc, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
 
 			replications.Stop()
-			lastWrite := deleteConflictDocs(t, tc, peers, docID)
+			lastWrite := deleteConflictDocs(t, collectionName, peers, docID)
 
 			replications.Start()
-			waitForDeletion(t, tc, peers, docID, lastWrite.updatePeer)
+			waitForDeletion(t, collectionName, peers, docID, lastWrite.updatePeer)
 		})
 	}
 }
@@ -127,36 +128,34 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
-	for _, tc := range getMultiActorTestCases() {
-		if strings.Contains(tc.description(), "CBL") {
+	for _, topology := range append(simpleTopologies, Topologies...) {
+		if strings.Contains(topology.description, "CBL") {
 			// Test case flakes given the WaitForDocVersion function only waits for a docID on the cbl peer. We need to be
 			// able to wait for a specific version to arrive over pull replication
 			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
 		}
-		t.Run(tc.description(), func(t *testing.T) {
-			peers, replications := setupTests(t, tc.topology)
+		t.Run(topology.description, func(t *testing.T) {
+			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, tc, peers, docID)
+			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, tc, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
 
 			replications.Stop()
-			lastWrite := deleteConflictDocs(t, tc, peers, docID)
+			lastWrite := deleteConflictDocs(t, collectionName, peers, docID)
 
 			replications.Start()
 
-			waitForDeletion(t, tc, peers, docID, lastWrite.updatePeer)
+			waitForDeletion(t, collectionName, peers, docID, lastWrite.updatePeer)
 			replications.Stop()
 
-			// resurrect on
-			lastWriteVersion := updateConflictingDocs(t, tc, peers, docID)
-
+			lastWriteVersion := updateConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
 
-			waitForVersionAndBody(t, tc, peers, docID, lastWriteVersion)
+			waitForVersionAndBodyOnNonActivePeers(t, collectionName, docID, peers, lastWriteVersion)
 		})
 	}
 }

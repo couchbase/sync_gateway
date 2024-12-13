@@ -129,6 +129,11 @@ func (p *CouchbaseLiteMockPeer) Close() {
 	}
 }
 
+// Type returns PeerTypeCouchbaseLite.
+func (p *CouchbaseLiteMockPeer) Type() PeerType {
+	return PeerTypeCouchbaseLite
+}
+
 // CreateReplication creates a replication instance
 func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, _ PeerReplicationConfig) PeerReplication {
 	sg, ok := peer.(*SyncGatewayPeer)
