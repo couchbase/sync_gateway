@@ -69,8 +69,7 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 
 			docVersion = updateConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
-			// FIXME: CBG-4417 this can be replaced with waitForVersionAndBody when implicit HLV exists
-			waitForVersionAndBodyOnNonActivePeers(t, collectionName, docID, peers, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
 		})
 	}
 }
@@ -155,7 +154,7 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 			lastWriteVersion := updateConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
 
-			waitForVersionAndBodyOnNonActivePeers(t, collectionName, docID, peers, lastWriteVersion)
+			waitForVersionAndBody(t, collectionName, peers, docID, lastWriteVersion)
 		})
 	}
 }

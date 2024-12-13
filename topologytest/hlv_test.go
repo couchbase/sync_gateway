@@ -58,20 +58,6 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, pee
 	}
 }
 
-// waitForVersionAndBodyOnNonActivePeers waits for a document to reach a specific version on all non-active peers. This is stub until CBG-4417 is implemented.
-func waitForVersionAndBodyOnNonActivePeers(t *testing.T, dsName base.ScopeAndCollectionName, docID string, peers Peers, expectedVersion BodyAndVersion) {
-	for peerName := range peers.SortedPeers() {
-		if peerName == expectedVersion.updatePeer {
-			// skip peer the write came from
-			continue
-		}
-		peer := peers[peerName]
-		t.Logf("waiting for doc version %#v on %s, update written from %s", expectedVersion, peer, expectedVersion.updatePeer)
-		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta)
-		requireBodyEqual(t, expectedVersion.body, body)
-	}
-}
-
 func waitForDeletion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string, deleteActor string) {
 	for peerName, peer := range peers {
 		if peer.Type() == PeerTypeCouchbaseLite {

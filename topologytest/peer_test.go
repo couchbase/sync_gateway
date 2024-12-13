@@ -358,7 +358,7 @@ func TestPeerImplementation(t *testing.T) {
 			updateBody := []byte(`{"op": "update"}`)
 			updateVersion := peer.WriteDocument(collectionName, docID, updateBody)
 			require.NotEmpty(t, updateVersion.docMeta.CV)
-			require.NotEqual(t, updateVersion.docMeta.CV(), createVersion.docMeta.CV())
+			require.NotEqual(t, updateVersion.docMeta.CV(t), createVersion.docMeta.CV(t))
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
 				require.Empty(t, updateVersion.docMeta.RevTreeID)
 			} else {
@@ -374,9 +374,9 @@ func TestPeerImplementation(t *testing.T) {
 
 			// Delete
 			deleteVersion := peer.DeleteDocument(collectionName, docID)
-			require.NotEmpty(t, deleteVersion.CV())
-			require.NotEqual(t, deleteVersion.CV(), updateVersion.docMeta.CV())
-			require.NotEqual(t, deleteVersion.CV(), createVersion.docMeta.CV())
+			require.NotEmpty(t, deleteVersion.CV(t))
+			require.NotEqual(t, deleteVersion.CV(t), updateVersion.docMeta.CV(t))
+			require.NotEqual(t, deleteVersion.CV(t), createVersion.docMeta.CV(t))
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
 				require.Empty(t, deleteVersion.RevTreeID)
 			} else {
@@ -390,10 +390,10 @@ func TestPeerImplementation(t *testing.T) {
 
 			resurrectionBody := []byte(`{"op": "resurrection"}`)
 			resurrectionVersion := peer.WriteDocument(collectionName, docID, resurrectionBody)
-			require.NotEmpty(t, resurrectionVersion.docMeta.CV())
-			require.NotEqual(t, resurrectionVersion.docMeta.CV(), deleteVersion.CV())
-			require.NotEqual(t, resurrectionVersion.docMeta.CV(), updateVersion.docMeta.CV())
-			require.NotEqual(t, resurrectionVersion.docMeta.CV(), createVersion.docMeta.CV())
+			require.NotEmpty(t, resurrectionVersion.docMeta.CV(t))
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), deleteVersion.CV(t))
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), updateVersion.docMeta.CV(t))
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), createVersion.docMeta.CV(t))
 			if tc.peerOption.Type == PeerTypeCouchbaseServer {
 				require.Empty(t, resurrectionVersion.docMeta.RevTreeID)
 			} else {
