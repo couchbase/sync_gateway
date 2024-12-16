@@ -34,9 +34,10 @@ func (p *PeerBlipTesterClient) ID() uint32 {
 
 // CouchbaseLiteMockPeer represents an in-memory Couchbase Lite peer. This utilizes BlipTesterClient from the rest package to send and receive blip messages.
 type CouchbaseLiteMockPeer struct {
-	t           *testing.T
-	blipClients map[string]*PeerBlipTesterClient
-	name        string
+	t                  *testing.T
+	blipClients        map[string]*PeerBlipTesterClient
+	name               string
+	symmetricRedundant bool // there is another peer that is symmetric to this one
 }
 
 func (p *CouchbaseLiteMockPeer) String() string {
@@ -134,6 +135,11 @@ func (p *CouchbaseLiteMockPeer) Close() {
 // Type returns PeerTypeCouchbaseLite.
 func (p *CouchbaseLiteMockPeer) Type() PeerType {
 	return PeerTypeCouchbaseLite
+}
+
+// IsSymmetricRedundant returns true if there is another peer set up that is identical to this one, and this peer doesn't need to participate in unique actions.
+func (p *CouchbaseLiteMockPeer) IsSymmetricRedundant() bool {
+	return p.symmetricRedundant
 }
 
 // CreateReplication creates a replication instance
