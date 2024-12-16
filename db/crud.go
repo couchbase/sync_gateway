@@ -1176,7 +1176,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *Version, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
 		doc, unmarshalErr := db.unmarshalDocumentWithXattrs(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs, existingDoc.Cas, DocUnmarshalRev)
@@ -1248,6 +1248,20 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		// populate merge versions
 		if newDocHLV.MergeVersions != nil {
 			doc.HLV.MergeVersions = newDocHLV.MergeVersions
+		}
+		// rev tree conflict check if we have rev tree history to check against
+		if len(revTreeHistory) > 0 {
+			parent := ""
+			for _, revid := range revTreeHistory {
+				if doc.History.contains(revid) {
+					parent = revid
+					break
+				}
+			}
+			// conflict check on rev tree history
+			if db.IsIllegalConflict(ctx, doc, parent, newDoc.Deleted, true, revTreeHistory) {
+				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			}
 		}
 
 		// Process the attachments, replacing bodies with digests.

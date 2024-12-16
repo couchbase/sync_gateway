@@ -534,13 +534,13 @@ func TestHLVMapToCBLString(t *testing.T) {
 func TestInvalidHLVInBlipMessageForm(t *testing.T) {
 	hlvStr := "25@def; 22@def,21@eff; 20@abc,18@hij; 222@hiowdwdew, 5555@dhsajidfgd"
 
-	hlv, err := extractHLVFromBlipMessage(hlvStr)
+	hlv, _, err := extractHLVFromBlipMessage(hlvStr)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid hlv in changes message received")
 	assert.Equal(t, &HybridLogicalVector{}, hlv)
 
 	hlvStr = ""
-	hlv, err = extractHLVFromBlipMessage(hlvStr)
+	hlv, _, err = extractHLVFromBlipMessage(hlvStr)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid hlv in changes message received")
 	assert.Equal(t, &HybridLogicalVector{}, hlv)
@@ -615,7 +615,7 @@ func TestExtractHLVFromChangesMessage(t *testing.T) {
 			// TODO: When CBG-3662 is done, should be able to simplify base64 handling to treat source as a string
 			//       that may represent a base64 encoding
 			base64EncodedHlvString := EncodeTestHistory(test.hlvString)
-			hlv, err := extractHLVFromBlipMessage(base64EncodedHlvString)
+			hlv, _, err := extractHLVFromBlipMessage(base64EncodedHlvString)
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedVector.SourceID, hlv.SourceID)
@@ -634,7 +634,7 @@ func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
 	for _, bm := range extractHLVFromBlipMsgBMarkCases {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, _ = extractHLVFromBlipMessage(bm.hlvString)
+				_, _, _ = extractHLVFromBlipMessage(bm.hlvString)
 			}
 		})
 	}
