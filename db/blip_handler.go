@@ -1068,6 +1068,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	historyStr := rq.Properties[RevMessageHistory]
 	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
+	var legacyRevList []string
 	changeIsVector := strings.Contains(rev, "@")
 	if !bh.useHLV() || !changeIsVector {
 		newDoc.RevID = rev
@@ -1080,7 +1081,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if historyStr != "" {
 			versionVectorStr += ";" + historyStr
 		}
-		incomingHLV, err = ExtractHLVFromBlipMessage(versionVectorStr)
+		incomingHLV, legacyRevList, err = ExtractHLVFromBlipMessage(versionVectorStr)
 		if err != nil {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v.  HLV:%v Error: %v", base.UD(docID), versionVectorStr, err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
@@ -1298,7 +1299,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.useHLV() && changeIsVector {
-		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc)
+		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList)
 	} else if bh.conflictResolver != nil {
 		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	} else {

@@ -420,75 +420,76 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 //  2. cv and pv:  		cv;pv
 //  3. cv, pv, and mv: 	cv;mv;pv
 //
+// Function will return list of revIDs if legacy rev ID was found in the HLV history section (PV)
 // TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
-func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, error) {
+func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, []string, error) {
 	hlv := &HybridLogicalVector{}
 
 	vectorFields := strings.Split(versionVectorStr, ";")
 	vectorLength := len(vectorFields)
 	if (vectorLength == 1 && vectorFields[0] == "") || vectorLength > 3 {
-		return &HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
+		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid hlv in changes message received")
 	}
 
 	// add current version (should always be present)
 	cvStr := vectorFields[0]
 	version := strings.Split(cvStr, "@")
 	if len(version) < 2 {
-		return &HybridLogicalVector{}, fmt.Errorf("invalid version in changes message received")
+		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid version in changes message received")
 	}
 
 	vrs, err := strconv.ParseUint(version[0], 16, 64)
 	if err != nil {
-		return &HybridLogicalVector{}, err
+		return &HybridLogicalVector{}, nil, err
 	}
 	err = hlv.AddVersion(Version{SourceID: version[1], Value: vrs})
 	if err != nil {
-		return &HybridLogicalVector{}, err
+		return &HybridLogicalVector{}, nil, err
 	}
 
 	switch vectorLength {
 	case 1:
 		// cv only
-		return hlv, nil
+		return hlv, nil, nil
 	case 2:
 		// only cv and pv present
-		sourceVersionListPV, err := parseVectorValues(vectorFields[1])
+		sourceVersionListPV, legacyRev, err := parseVectorValues(vectorFields[1])
 		if err != nil {
-			return &HybridLogicalVector{}, err
+			return &HybridLogicalVector{}, nil, err
 		}
 		hlv.PreviousVersions = make(HLVVersions)
 		for _, v := range sourceVersionListPV {
 			hlv.PreviousVersions[v.SourceID] = v.Value
 		}
-		return hlv, nil
+		return hlv, legacyRev, nil
 	case 3:
 		// cv, mv and pv present
-		sourceVersionListPV, err := parseVectorValues(vectorFields[2])
+		sourceVersionListPV, legacyRev, err := parseVectorValues(vectorFields[2])
 		hlv.PreviousVersions = make(HLVVersions)
 		if err != nil {
-			return &HybridLogicalVector{}, err
+			return &HybridLogicalVector{}, nil, err
 		}
 		for _, pv := range sourceVersionListPV {
 			hlv.PreviousVersions[pv.SourceID] = pv.Value
 		}
 
-		sourceVersionListMV, err := parseVectorValues(vectorFields[1])
+		sourceVersionListMV, _, err := parseVectorValues(vectorFields[1])
 		hlv.MergeVersions = make(HLVVersions)
 		if err != nil {
-			return &HybridLogicalVector{}, err
+			return &HybridLogicalVector{}, nil, err
 		}
 		for _, mv := range sourceVersionListMV {
 			hlv.MergeVersions[mv.SourceID] = mv.Value
 		}
-		return hlv, nil
+		return hlv, legacyRev, nil
 	default:
-		return &HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
+		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid hlv in changes message received")
 	}
 }
 
 // parseVectorValues takes an HLV section (cv, pv or mv) in string form and splits into
-// source and version pairs
-func parseVectorValues(vectorStr string) (versions []Version, err error) {
+// source and version pairs. Also returns legacyRev list if legacy revID's are found in the input string.
+func parseVectorValues(vectorStr string) (versions []Version, legacyRevList []string, err error) {
 	versionsStr := strings.Split(vectorStr, ",")
 	versions = make([]Version, 0, len(versionsStr))
 
@@ -500,12 +501,38 @@ func parseVectorValues(vectorStr string) (versions []Version, err error) {
 		}
 		version, err := ParseVersion(v)
 		if err != nil {
-			return nil, err
+			// If v is a legacy rev ID, ignore when constructing the HLV.
+			if isLegacyRev(v) {
+				legacyRevList = append(legacyRevList, v)
+				continue
+			}
+			return nil, nil, err
 		}
 		versions = append(versions, version)
 	}
 
-	return versions, nil
+	return versions, legacyRevList, nil
+}
+
+// isLegacyRev returns true if the given string is a revID, false otherwise. Has the same functionality as ParseRevID
+// but doesn't warn for malformed revIDs
+func isLegacyRev(rev string) bool {
+	if rev == "" {
+		return false
+	}
+
+	idx := strings.Index(rev, "-")
+	if idx == -1 {
+		return false
+	}
+
+	gen, err := strconv.Atoi(rev[:idx])
+	if err != nil {
+		return false
+	} else if gen < 1 {
+		return false
+	}
+	return true
 }
 
 // Helper functions for version source and value encoding
