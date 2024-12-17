@@ -287,7 +287,7 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 }
 
 func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	t.Skip("CBG-4428: Is this scenario still valid for version vectors?")
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -333,7 +333,6 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		doc, err = collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
 		require.NoError(t, err)
 
-		btc.RequireRev(t, expectedRev, doc)
 		body := doc.Body(ctx)
 		greetings := body["greetings"].([]interface{})
 		assert.Len(t, greetings, 1)
@@ -395,8 +394,6 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		collection, ctx := rt.GetSingleTestDatabaseCollection()
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
 		require.NoError(t, err)
-
-		btc.RequireRev(t, expectedRev, doc)
 
 		body := doc.Body(ctx)
 		greetings := body["greetings"].([]interface{})

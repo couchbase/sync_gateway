@@ -128,15 +128,23 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
 func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
-	require.NotEqual(rt.TB(), "", version.RevTreeID)
+	if version.RevTreeID == "" {
+		require.NotEqualf(rt.TB(), "", version.CV.String(), "Expeted CV if RevTreeID is empty in WaitForVersion")
+	}
 	return rt.WaitForCondition(func() bool {
-		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
+		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?show_cv=true", "")
 		if rawResponse.Code != 200 && rawResponse.Code != 201 {
 			return false
 		}
 		var body db.Body
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		return body.ExtractRev() == version.RevTreeID
+		if version.RevTreeID != "" && body.ExtractRev() != version.RevTreeID {
+			return false
+		}
+		if !version.CV.IsEmpty() && body["_cv"].(string) != version.CV.String() {
+			return false
+		}
+		return true
 	})
 }
 
@@ -440,6 +448,7 @@ func (rt *RestTester) UpdateDocDirectly(docID string, version DocVersion, body d
 
 func (rt *RestTester) DeleteDocDirectly(docID string, version DocVersion) DocVersion {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	// TODO: CBG-4426 - DeleteDocDirectly does not support CV
 	rev, doc, err := collection.DeleteDoc(ctx, docID, version.RevTreeID)
 	require.NoError(rt.TB(), err)
 	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}

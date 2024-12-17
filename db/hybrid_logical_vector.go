@@ -144,6 +144,11 @@ func (v Version) String() string {
 	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 
+// IsEmpty returns true if the version is empty/zero value.
+func (v Version) IsEmpty() bool {
+	return v.SourceID == "" && v.Value == 0
+}
+
 // StringForVersionDelta will take a version struct and convert the value to delta format
 // (encoding it to LE hex, stripping any 0's off the end and stripping leading 0x)
 func (v Version) StringForVersionDelta() string {
@@ -409,14 +414,14 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 
 }
 
-// extractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
+// ExtractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
 // blip string may be the following formats
 //  1. cv only:    		cv
 //  2. cv and pv:  		cv;pv
 //  3. cv, pv, and mv: 	cv;mv;pv
 //
 // TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
-func extractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, error) {
+func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, error) {
 	hlv := &HybridLogicalVector{}
 
 	vectorFields := strings.Split(versionVectorStr, ";")

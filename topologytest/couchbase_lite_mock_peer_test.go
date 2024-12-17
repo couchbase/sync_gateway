@@ -73,7 +73,7 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(_ sgbucket.DataStoreName, docID st
 	// this isn't yet collection aware, using single default collection
 	client := p.getSingleBlipClient()
 	// set an HLV here.
-	docVersion, err := client.btcRunner.PushRev(client.ID(), docID, rest.EmptyDocVersion(), body)
+	docVersion, err := client.btcRunner.AddRev(client.ID(), docID, rest.EmptyDocVersion(), body)
 	require.NoError(client.btcRunner.TB(), err)
 	docMetadata := DocMetadataFromDocVersion(docID, docVersion)
 	return BodyAndVersion{
@@ -202,6 +202,7 @@ func (r *CouchbaseLiteMockReplication) PassivePeer() Peer {
 func (r *CouchbaseLiteMockReplication) Start() {
 	r.btc.TB().Logf("starting CBL replication: %s", r)
 	r.btcRunner.StartPull(r.btc.ID())
+	r.btcRunner.StartPush(r.btc.ID())
 }
 
 // Stop halts the replication. The replication can be restarted after it is stopped.

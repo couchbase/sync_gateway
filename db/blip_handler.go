@@ -1070,7 +1070,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if historyStr != "" {
 			versionVectorStr += ";" + historyStr
 		}
-		incomingHLV, err = extractHLVFromBlipMessage(versionVectorStr)
+		incomingHLV, err = ExtractHLVFromBlipMessage(versionVectorStr)
 		if err != nil {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v.  HLV:%v Error: %v", base.UD(docID), versionVectorStr, err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")

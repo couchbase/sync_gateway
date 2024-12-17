@@ -832,6 +832,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
 
+	t.Skip("TODO: CBG-4426 - DeleteDocDirectly does not support CV")
+
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{

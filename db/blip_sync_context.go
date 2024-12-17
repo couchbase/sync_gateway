@@ -359,7 +359,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			if bsc.useDeltas && len(knownRevsArray) > 0 {
 				if revID, ok := knownRevsArray[0].(string); ok {
 					if bsc.useHLV() {
-						msgHLV, err := extractHLVFromBlipMessage(revID)
+						msgHLV, err := ExtractHLVFromBlipMessage(revID)
 						if err != nil {
 							base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication.", docID)
 							deltaSrcRevID = "" // will force falling back to full body replication below
@@ -374,7 +374,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 
 			for _, rev := range knownRevsArray {
 				if revID, ok := rev.(string); ok {
-					msgHLV, err := extractHLVFromBlipMessage(revID)
+					msgHLV, err := ExtractHLVFromBlipMessage(revID)
 					if err == nil {
 						// extract cv as string
 						revID = msgHLV.GetCurrentVersionString()

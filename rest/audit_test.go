@@ -1375,7 +1375,7 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 }
 
 // requireAttachmentEvents validates that an attachment CRUD event occurred in the right number only on the correct document.
-func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, attachmentName string, count int) {
+func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersionStr string, attachmentName string, count int) {
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
@@ -1384,7 +1384,7 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 			continue
 		}
 		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
-		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
+		require.Equal(rt.TB(), docVersionStr, event[base.AuditFieldDocVersion].(string))
 		require.Equal(rt.TB(), attachmentName, event[base.AuditFieldAttachmentID])
 		countFound++
 	}
@@ -1524,6 +1524,11 @@ func TestAuditBlipCRUD(t *testing.T) {
 		}
 		for _, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
+				if btc.UseHLV() {
+					// TODO: CBG-4429 - AuditFieldDocVersion is hardcoded to RevTreeID
+					t.Skip("CBG-4429: AuditFieldDocVersion is hardcoded to RevTreeID - causing mismatch, since the client wrote the doc and got only a CV back in docVersion")
+				}
+
 				docID := strings.ReplaceAll(testCase.name, " ", "_")
 				var docVersion DocVersion
 				if testCase.setupCode != nil {

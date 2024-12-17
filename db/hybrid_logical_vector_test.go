@@ -530,17 +530,17 @@ func TestHLVMapToCBLString(t *testing.T) {
 // TestInvalidHLVOverChangesMessage:
 //   - Test hlv string that has too many sections to it (parts delimited by ;)
 //   - Test hlv string that is empty
-//   - Assert that extractHLVFromBlipMessage will return error in both cases
+//   - Assert that ExtractHLVFromBlipMessage will return error in both cases
 func TestInvalidHLVInBlipMessageForm(t *testing.T) {
 	hlvStr := "25@def; 22@def,21@eff; 20@abc,18@hij; 222@hiowdwdew, 5555@dhsajidfgd"
 
-	hlv, err := extractHLVFromBlipMessage(hlvStr)
+	hlv, err := ExtractHLVFromBlipMessage(hlvStr)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid hlv in changes message received")
 	assert.Equal(t, &HybridLogicalVector{}, hlv)
 
 	hlvStr = ""
-	hlv, err = extractHLVFromBlipMessage(hlvStr)
+	hlv, err = ExtractHLVFromBlipMessage(hlvStr)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid hlv in changes message received")
 	assert.Equal(t, &HybridLogicalVector{}, hlv)
@@ -605,7 +605,7 @@ var extractHLVFromBlipMsgBMarkCases = []struct {
 //   - Test case 2: CV entry and 2 PV entries
 //   - Test case 3: CV entry, 2 MV entries and 2 PV entries
 //   - Test case 4: just CV entry
-//   - Each test case gets run through extractHLVFromBlipMessage and assert that the resulting HLV
+//   - Each test case gets run through ExtractHLVFromBlipMessage and assert that the resulting HLV
 //     is correct to what is expected
 func TestExtractHLVFromChangesMessage(t *testing.T) {
 	for _, test := range extractHLVFromBlipMsgBMarkCases {
@@ -615,7 +615,7 @@ func TestExtractHLVFromChangesMessage(t *testing.T) {
 			// TODO: When CBG-3662 is done, should be able to simplify base64 handling to treat source as a string
 			//       that may represent a base64 encoding
 			base64EncodedHlvString := EncodeTestHistory(test.hlvString)
-			hlv, err := extractHLVFromBlipMessage(base64EncodedHlvString)
+			hlv, err := ExtractHLVFromBlipMessage(base64EncodedHlvString)
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedVector.SourceID, hlv.SourceID)
@@ -634,7 +634,7 @@ func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
 	for _, bm := range extractHLVFromBlipMsgBMarkCases {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, _ = extractHLVFromBlipMessage(bm.hlvString)
+				_, _ = ExtractHLVFromBlipMessage(bm.hlvString)
 			}
 		})
 	}
