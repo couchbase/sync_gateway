@@ -226,6 +226,8 @@ func TestProcessLegacyRev(t *testing.T) {
 // TestProcessRevWithLegacyHistory:
 //   - 1. CBL sends rev=1010@CBL1, history=1-abc when SGW has current rev 1-abc (document underwent an update before being pushed to SGW)
 //   - 2. CBL sends rev=1010@CBL1, history=1000@CBL2,1-abc when SGW has current rev 1-abc (document underwent multiple p2p updates before being pushed to SGW)
+//   - 3. CBL sends rev=1010@CBL1, history=1000@CBL2,2-abc,1-abc when SGW has current rev 1-abc (document underwent multiple legacy and p2p updates before being pushed to SGW)
+//   - 4. CBL sends rev=1010@CBL1, history=1-abc when SGW does not have the doc (document underwent multiple legacy and p2p updates before being pushed to SGW)
 //   - Assert that the bucket doc resulting on each operation is as expected
 func TestProcessRevWithLegacyHistory(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
@@ -243,6 +245,8 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	const (
 		docID  = "doc1"
 		docID2 = "doc2"
+		docID3 = "doc3"
+		docID4 = "doc4"
 	)
 
 	// 1. CBL sends rev=1010@CBL1, history=1-abc when SGW has current rev 1-abc (document underwent an update before being pushed to SGW)
@@ -275,7 +279,7 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 
 	// Have CBL send an update to that doc, with history in HLV + revTreeID format
 	history = []string{"1000@CBL2", rev1ID}
-	sent, _, _, err = bt.SendRevWithHistory("doc2", "1001@CBL1", history, []byte(`{"some": "update"}`), blip.Properties{})
+	sent, _, _, err = bt.SendRevWithHistory(docID2, "1001@CBL1", history, []byte(`{"some": "update"}`), blip.Properties{})
 	assert.True(t, sent)
 	require.NoError(t, err)
 
@@ -285,11 +289,47 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	assert.Equal(t, "1001@CBL1", bucketDoc.HLV.GetCurrentVersionString())
 	assert.Equal(t, uint64(4096), bucketDoc.HLV.PreviousVersions["CBL2"])
 	assert.NotNil(t, bucketDoc.History[rev1ID])
+
+	// 3. CBL sends rev=1010@CBL1, history=1000@CBL2,2-abc,1-abc when SGW has current rev 1-abc (document underwent multiple legacy and p2p updates before being pushed to SGW)
+	docVersion = rt.PutDocDirectly(docID3, db.Body{"test": "doc"})
+	rev1ID = docVersion.RevTreeID
+
+	// remove hlv here to simulate a legacy rev
+	require.NoError(t, ds.RemoveXattrs(ctx, docID3, []string{base.VvXattrName}, docVersion.CV.Value))
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	history = []string{"1000@CBL2", "2-abc", rev1ID}
+	sent, _, _, err = bt.SendRevWithHistory(docID3, "1010@CBL1", history, []byte(`{"some": "update"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.NoError(t, err)
+
+	// assert that the bucket doc is as expected
+	bucketDoc, _, err = collection.GetDocWithXattrs(ctx, docID3, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, "1010@CBL1", bucketDoc.HLV.GetCurrentVersionString())
+	assert.Equal(t, uint64(4096), bucketDoc.HLV.PreviousVersions["CBL2"])
+	assert.NotNil(t, bucketDoc.History[rev1ID])
+	assert.NotNil(t, bucketDoc.History["2-abc"])
+
+	// 4. CBL sends rev=1010@CBL1, history=1-abc when SGW does not have the doc (document underwent multiple legacy and p2p updates before being pushed to SGW)
+	history = []string{"1000@CBL2", "1-abc"}
+	sent, _, _, err = bt.SendRevWithHistory(docID4, "1010@CBL1", history, []byte(`{"some": "update"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.NoError(t, err)
+
+	// assert that the bucket doc is as expected
+	bucketDoc, _, err = collection.GetDocWithXattrs(ctx, docID4, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, "1010@CBL1", bucketDoc.HLV.GetCurrentVersionString())
+	assert.Equal(t, uint64(4096), bucketDoc.HLV.PreviousVersions["CBL2"])
+	assert.NotNil(t, bucketDoc.History["1-abc"])
 }
 
 // TestProcessRevWithLegacyHistoryConflict:
 //   - 1. conflicting changes with legacy rev on both sides of communication (no upgrade of doc at all)
 //   - 2. conflicting changes with legacy rev on client side and HLV on SGW side
+//   - 3. CBL sends rev=1010@CBL1, history=1000@CBL2,1-abc when SGW has current rev 2-abc (document underwent multiple p2p updates before being pushed to SGW)
+//   - 4. CBL sends rev=1010@CBL1, history=2-abc and SGW has 1000@CBL2, 2-abc
 func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCRUD, base.KeyChanges, base.KeyImport)
 
@@ -305,9 +345,11 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	const (
 		docID  = "doc1"
 		docID2 = "doc2"
+		docID3 = "doc3"
+		docID4 = "doc4"
 	)
 
-	// Test case: conflicting changes with legacy rev on both sides of communication (no upgrade of doc at all)
+	// 1. conflicting changes with legacy rev on both sides of communication (no upgrade of doc at all)
 	docVersion := rt.PutDocDirectly(docID, db.Body{"test": "doc"})
 	rev1ID := docVersion.RevTreeID
 
@@ -320,12 +362,12 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	require.NoError(t, ds.RemoveXattrs(base.TestCtx(t), docID, []string{base.VvXattrName}, docVersion.CV.Value))
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
-	// Test case: same as above but not having the rev be legacy on SGW side (don't remove the hlv)
 	history := []string{rev2ID, rev1ID}
 	sent, _, _, err := bt.SendRevWithHistory(docID, "3-abc", history, []byte(`{"key": "val"}`), blip.Properties{})
 	assert.True(t, sent)
 	require.ErrorContains(t, err, "Document revision conflict")
 
+	// 2. same as above but not having the rev be legacy on SGW side (don't remove the hlv)
 	docVersion = rt.PutDocDirectly(docID2, db.Body{"test": "doc"})
 	rev1ID = docVersion.RevTreeID
 
@@ -335,7 +377,37 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	docVersion = rt.UpdateDocDirectly(docID2, docVersion, db.Body{"some": "update2"})
 
 	history = []string{rev2ID, rev1ID}
-	sent, _, _, err = bt.SendRevWithHistory(docID, "3-abc", history, []byte(`{"key": "val"}`), blip.Properties{})
+	sent, _, _, err = bt.SendRevWithHistory(docID2, "3-abc", history, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.ErrorContains(t, err, "Document revision conflict")
+
+	// 3. CBL sends rev=1010@CBL1, history=1000@CBL2,1-abc when SGW has current rev 2-abc (document underwent multiple p2p updates before being pushed to SGW)
+	docVersion = rt.PutDocDirectly(docID3, db.Body{"test": "doc"})
+	rev1ID = docVersion.RevTreeID
+
+	docVersion = rt.UpdateDocDirectly(docID3, docVersion, db.Body{"some": "update"})
+
+	// remove hlv here to simulate a legacy rev
+	require.NoError(t, ds.RemoveXattrs(base.TestCtx(t), docID3, []string{base.VvXattrName}, docVersion.CV.Value))
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	history = []string{"1000@CBL2", rev1ID}
+	sent, _, _, err = bt.SendRevWithHistory(docID3, "1010@CBL1", history, []byte(`{"some": "update"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.ErrorContains(t, err, "Document revision conflict")
+
+	// 4. CBL sends rev=1010@CBL1, history=2-abc and SGW has 1000@CBL2, 2-abc
+	docVersion = rt.PutDocDirectly(docID4, db.Body{"test": "doc"})
+
+	docVersion = rt.UpdateDocDirectly(docID4, docVersion, db.Body{"some": "update"})
+	version := docVersion.CV.Value
+	pushedRev := db.Version{
+		Value:    version + 1000,
+		SourceID: "CBL1",
+	}
+
+	history = []string{"2-abc"}
+	sent, _, _, err = bt.SendRevWithHistory(docID4, pushedRev.String(), history, []byte(`{"some": "update"}`), blip.Properties{})
 	assert.True(t, sent)
 	require.ErrorContains(t, err, "Document revision conflict")
 }
@@ -548,4 +620,224 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 
 	timeoutErr = WaitWithTimeout(&revsFinishedWg, time.Second*10)
 	require.NoError(t, timeoutErr, "Timed out waiting")
+}
+
+// test case 2 of non conflict plan
+func TestCBLHasPreUpgradeMutationThatHasNotBeenReplicated(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
+
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode: true,
+		GuestEnabled:    true,
+		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+	rt := bt.restTester
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
+
+	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	rev1ID := docVersion.RevTreeID
+
+	// remove hlv here to simulate a legacy rev
+	require.NoError(t, ds.RemoveXattrs(ctx, "doc1", []string{base.VvXattrName}, docVersion.CV.Value))
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	history := []string{rev1ID}
+	sent, _, _, err := bt.SendRevWithHistory("doc1", "2-abc", history, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.NoError(t, err)
+
+	// assert that the bucket doc is as expected
+	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	// assert a cv was assigned
+	assert.NotEqual(t, "", bucketDoc.HLV.GetCurrentVersionString())
+	assert.NotNil(t, bucketDoc.History[rev1ID])
+	assert.Equal(t, "2-abc", bucketDoc.CurrentRev)
+}
+
+// test case 3 of non conflict plan
+func TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
+
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode: true,
+		GuestEnabled:    true,
+		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+	rt := bt.restTester
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
+
+	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	rev1ID := docVersion.RevTreeID
+
+	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	rev2ID := docVersion.RevTreeID
+
+	// remove hlv here to simulate a legacy rev
+	require.NoError(t, ds.RemoveXattrs(ctx, "doc1", []string{base.VvXattrName}, docVersion.CV.Value))
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	history := []string{rev1ID}
+	sent, _, _, err := bt.SendRevWithHistory("doc1", rev2ID, history, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.NoError(t, err)
+
+	// assert that the bucket doc is as expected
+	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, rev2ID, bucketDoc.CurrentRev)
+	assert.NotNil(t, bucketDoc.History[rev1ID])
+	assert.NotNil(t, bucketDoc.History[rev2ID])
+}
+
+// test case 6 of non conflict plan
+func TestPushOfPostUpgradeMutationThatHasCommonAncestorToSGWVersion(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
+
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode: true,
+		GuestEnabled:    true,
+		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+	rt := bt.restTester
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
+
+	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	rev1ID := docVersion.RevTreeID
+
+	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	rev2ID := docVersion.RevTreeID
+
+	// remove hlv here to simulate a legacy rev
+	require.NoError(t, ds.RemoveXattrs(ctx, "doc1", []string{base.VvXattrName}, docVersion.CV.Value))
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// send 100@CBL1
+	sent, _, _, err := bt.SendRevWithHistory("doc1", "100@CBL1", nil, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.NoError(t, err)
+
+	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.NotEqual(t, rev2ID, bucketDoc.CurrentRev)
+	assert.NotNil(t, bucketDoc.History[rev1ID])
+	assert.NotNil(t, bucketDoc.History[rev2ID])
+	assert.Equal(t, "100@CBL1", bucketDoc.HLV.GetCurrentVersionString())
+}
+
+// case 1 of conflivt test plan
+func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPreUpgradeSGWMutation(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
+
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode: true,
+		GuestEnabled:    true,
+		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+	rt := bt.restTester
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	ds := rt.GetSingleDataStore()
+
+	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	rev1ID := docVersion.RevTreeID
+
+	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	rev2ID := docVersion.RevTreeID
+
+	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update1"})
+	rev3ID := docVersion.RevTreeID
+
+	// remove hlv here to simulate a legacy rev
+	require.NoError(t, ds.RemoveXattrs(ctx, "doc1", []string{base.VvXattrName}, docVersion.CV.Value))
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// send rev 3-def
+	history := []string{rev2ID, rev1ID}
+	sent, _, _, err := bt.SendRevWithHistory("doc1", "3-def", history, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.ErrorContains(t, err, "Document revision conflict")
+
+	// assert that the bucket doc is as expected
+	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, rev3ID, bucketDoc.CurrentRev)
+	assert.NotNil(t, bucketDoc.History[rev1ID])
+	assert.NotNil(t, bucketDoc.History[rev2ID])
+}
+
+// case 3 of oconflict test plan
+func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
+
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode: true,
+		GuestEnabled:    true,
+		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+	rt := bt.restTester
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	rev1ID := docVersion.RevTreeID
+
+	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	rev2ID := docVersion.RevTreeID
+
+	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update1"})
+	rev3ID := docVersion.RevTreeID
+
+	// send rev 3-def
+	history := []string{rev2ID, rev1ID}
+	sent, _, _, err := bt.SendRevWithHistory("doc1", "3-def", history, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.ErrorContains(t, err, "Document revision conflict")
+
+	// assert that the bucket doc is as expected
+	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, rev3ID, bucketDoc.CurrentRev)
+	assert.NotNil(t, bucketDoc.History[rev1ID])
+	assert.NotNil(t, bucketDoc.History[rev2ID])
+}
+
+// test case 6 of conlfuct plan
+func TestConflictBetweenPostUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
+
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode: true,
+		GuestEnabled:    true,
+		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+	rt := bt.restTester
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	rev1ID := docVersion.RevTreeID
+
+	history := []string{rev1ID}
+	sent, _, _, err := bt.SendRevWithHistory("doc1", "100@CBL1", history, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.ErrorContains(t, err, "Document revision conflict")
+
+	// assert that the bucket doc is as expected
+	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, rev1ID, bucketDoc.CurrentRev)
+	assert.Equal(t, docVersion.CV.String(), bucketDoc.HLV.GetCurrentVersionString())
 }

@@ -1216,9 +1216,18 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		}
 
 		// set up revTreeID for backward compatibility
-		previousRevTreeID := doc.CurrentRev
-		prevGeneration, _ := ParseRevID(ctx, previousRevTreeID)
-		newGeneration := prevGeneration + 1
+		var previousRevTreeID string
+		var prevGeneration int
+		var newGeneration int
+		if len(revTreeHistory) == 0 {
+			previousRevTreeID = doc.CurrentRev
+			prevGeneration, _ = ParseRevID(ctx, previousRevTreeID)
+			newGeneration = prevGeneration + 1
+		} else {
+			previousRevTreeID = revTreeHistory[0]
+			prevGeneration, _ = ParseRevID(ctx, previousRevTreeID)
+			newGeneration = prevGeneration + 1
+		}
 
 		// Conflict check here
 		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
@@ -1250,10 +1259,12 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			doc.HLV.MergeVersions = newDocHLV.MergeVersions
 		}
 		// rev tree conflict check if we have rev tree history to check against
-		if len(revTreeHistory) > 0 {
-			parent := ""
-			for _, revid := range revTreeHistory {
+		currentRevIndex := len(revTreeHistory)
+		parent := ""
+		if currentRevIndex > 0 {
+			for i, revid := range revTreeHistory {
 				if doc.History.contains(revid) {
+					currentRevIndex = i
 					parent = revid
 					break
 				}
@@ -1262,6 +1273,19 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			if db.IsIllegalConflict(ctx, doc, parent, newDoc.Deleted, true, revTreeHistory) {
 				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
+		}
+		// Add all the new revisions to the rev tree:
+		for i := currentRevIndex - 1; i >= 0; i-- {
+			err := doc.History.addRevision(newDoc.ID,
+				RevInfo{
+					ID:      revTreeHistory[i],
+					Parent:  parent,
+					Deleted: i == 0 && newDoc.Deleted})
+
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+			parent = revTreeHistory[i]
 		}
 
 		// Process the attachments, replacing bodies with digests.
