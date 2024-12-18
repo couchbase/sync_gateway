@@ -1278,7 +1278,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		// rev tree conflict check if we have rev tree history to check against + finds current rev index to allow us
 		// to add any new revision to rev tree below.
 		// Only check for rev tree conflicts if we haven't already checked above
-		if !revTreeConflictChecked {
+		if !revTreeConflictChecked && len(revTreeHistory) > 0 {
 			parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
 			if err != nil {
 				return nil, nil, false, nil, err
