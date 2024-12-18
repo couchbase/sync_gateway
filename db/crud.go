@@ -1228,6 +1228,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			prevGeneration, _ = ParseRevID(ctx, previousRevTreeID)
 			newGeneration = prevGeneration + 1
 		}
+		revTreeConflictChecked := false
+		var parent string
+		var currentRevIndex int
 
 		// Conflict check here
 		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
@@ -1249,29 +1252,35 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					return nil, nil, false, nil, addNewerVersionsErr
 				}
 			} else {
-				base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
-				// cancel rest of update, HLV needs to be sent back to client with merge versions populated
-				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+				if len(revTreeHistory) > 0 {
+					// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
+					parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
+					if err != nil {
+						return nil, nil, false, nil, err
+					}
+					revTreeConflictChecked = true
+					addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
+					if addNewerVersionsErr != nil {
+						return nil, nil, false, nil, addNewerVersionsErr
+					}
+				} else {
+					base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
+					// cancel rest of update, HLV needs to be sent back to client with merge versions populated
+					return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+				}
 			}
 		}
 		// populate merge versions
 		if newDocHLV.MergeVersions != nil {
 			doc.HLV.MergeVersions = newDocHLV.MergeVersions
 		}
-		// rev tree conflict check if we have rev tree history to check against
-		currentRevIndex := len(revTreeHistory)
-		parent := ""
-		if currentRevIndex > 0 {
-			for i, revid := range revTreeHistory {
-				if doc.History.contains(revid) {
-					currentRevIndex = i
-					parent = revid
-					break
-				}
-			}
-			// conflict check on rev tree history
-			if db.IsIllegalConflict(ctx, doc, parent, newDoc.Deleted, true, revTreeHistory) {
-				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+		// rev tree conflict check if we have rev tree history to check against + finds current rev index to allow us
+		// to add any new revision to rev tree below.
+		// Only check for rev tree conflicts if we haven't already checked above
+		if !revTreeConflictChecked {
+			parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
+			if err != nil {
+				return nil, nil, false, nil, err
 			}
 		}
 		// Add all the new revisions to the rev tree:
@@ -1558,6 +1567,27 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		MakeUserCtx(db.user, db.ScopeName, db.Name))
 
 	return output, nil, err
+}
+
+// revTreeConflictCheck checks for conflicts in the rev tree history and returns the parent revid, currentRevIndex
+// (index of parent rev), and an error if the document is in conflict
+func (db *DatabaseCollectionWithUser) revTreeConflictCheck(ctx context.Context, revTreeHistory []string, doc *Document, newDocDeleted bool) (string, int, error) {
+	currentRevIndex := len(revTreeHistory)
+	parent := ""
+	if currentRevIndex > 0 {
+		for i, revid := range revTreeHistory {
+			if doc.History.contains(revid) {
+				currentRevIndex = i
+				parent = revid
+				break
+			}
+		}
+		// conflict check on rev tree history
+		if db.IsIllegalConflict(ctx, doc, parent, newDocDeleted, true, revTreeHistory) {
+			return "", 0, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+		}
+	}
+	return parent, currentRevIndex, nil
 }
 
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
