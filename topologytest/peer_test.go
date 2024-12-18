@@ -32,7 +32,7 @@ var totalWaitTime = 3 * time.Second
 var pollInterval = 50 * time.Millisecond
 
 func init() {
-	if !base.UnitTestUrlIsWalrus() {
+	if !base.UnitTestUrlIsWalrus() || raceEnabled {
 		totalWaitTime = 40 * time.Second
 	}
 }
@@ -88,6 +88,9 @@ type internalPeer interface {
 
 	// Type returns the type of the peer.
 	Type() PeerType
+
+	// IsSymmetricRedundant returns true if the peer is symmetric and redundant in the topology and doesn't need to be tested as an uniquely active peer for writing.
+	IsSymmetricRedundant() bool
 }
 
 // PeerReplication represents a replication between two peers. This replication is unidirectional since all bi-directional replications are represented by two unidirectional instances.
@@ -112,6 +115,23 @@ func (p Peers) SortedPeers() iter.Seq2[string, Peer] {
 	return func(yield func(k string, v Peer) bool) {
 		for _, peerName := range keys {
 			if !yield(peerName, p[peerName]) {
+				return
+			}
+		}
+	}
+}
+
+// UniqueTopologyPeers returns a list of unique peers in the topology. If there is an identical symmetric peer, do not return it.
+func (p Peers) ActivePeers() iter.Seq2[string, Peer] {
+	keys := slices.Collect(maps.Keys(p))
+	slices.Sort(keys)
+	return func(yield func(k string, v Peer) bool) {
+		for _, peerName := range keys {
+			peer := p[peerName]
+			if peer.IsSymmetricRedundant() {
+				continue
+			}
+			if !yield(peerName, peer) {
 				return
 			}
 		}
@@ -202,8 +222,9 @@ const (
 
 // PeerOptions are options to create a peer.
 type PeerOptions struct {
-	Type     PeerType
-	BucketID PeerBucketID // BucketID is used to identify the bucket for a Couchbase Server or Sync Gateway peer. This option is ignored for Couchbase Lite peers.
+	Type      PeerType
+	Symmetric bool         // There is a peer identical to this one in the topology
+	BucketID  PeerBucketID // BucketID is used to identify the bucket for a Couchbase Server or Sync Gateway peer. This option is ignored for Couchbase Lite peers.
 }
 
 // NewPeer creates a new peer for replication. The buckets must be created before the peers are created.
@@ -215,26 +236,28 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 		sourceID, err := xdcr.GetSourceID(base.TestCtx(t), bucket)
 		require.NoError(t, err)
 		return &CouchbaseServerPeer{
-			name:             name,
-			tb:               t,
-			bucket:           bucket,
-			sourceID:         sourceID,
-			pullReplications: make(map[Peer]xdcr.Manager),
-			pushReplications: make(map[Peer]xdcr.Manager),
+			name:               name,
+			tb:                 t,
+			bucket:             bucket,
+			sourceID:           sourceID,
+			pullReplications:   make(map[Peer]xdcr.Manager),
+			pushReplications:   make(map[Peer]xdcr.Manager),
+			symmetricRedundant: opts.Symmetric,
 		}
 	case PeerTypeCouchbaseLite:
 		require.Equal(t, PeerBucketNoBackingBucket, opts.BucketID, "bucket should not be specified for Couchbase Lite peer %+v", opts)
 		_, ok := buckets[opts.BucketID]
 		require.False(t, ok, "bucket should not be specified for Couchbase Lite peer")
 		return &CouchbaseLiteMockPeer{
-			t:           t,
-			name:        name,
-			blipClients: make(map[string]*PeerBlipTesterClient),
+			t:                  t,
+			name:               name,
+			blipClients:        make(map[string]*PeerBlipTesterClient),
+			symmetricRedundant: opts.Symmetric,
 		}
 	case PeerTypeSyncGateway:
 		bucket, ok := buckets[opts.BucketID]
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)
-		return newSyncGatewayPeer(t, name, bucket)
+		return newSyncGatewayPeer(t, name, bucket, opts.Symmetric)
 	default:
 		require.Fail(t, fmt.Sprintf("unsupported peer type %T", opts.Type))
 	}

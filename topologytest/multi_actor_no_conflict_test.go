@@ -26,7 +26,7 @@ func TestMultiActorUpdate(t *testing.T) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, _ := setupTests(t, topology)
 
-			for createPeerName, createPeer := range peers {
+			for createPeerName, createPeer := range peers.ActivePeers() {
 				for updatePeerName, updatePeer := range peers {
 					if updatePeer.Type() == PeerTypeCouchbaseLite {
 						continue
@@ -58,7 +58,7 @@ func TestMultiActorDelete(t *testing.T) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, _ := setupTests(t, topology)
 
-			for createPeerName, createPeer := range peers {
+			for createPeerName, createPeer := range peers.ActivePeers() {
 				for deletePeerName, deletePeer := range peers {
 					if deletePeer.Type() == PeerTypeCouchbaseLite {
 						continue
@@ -94,7 +94,7 @@ func TestMultiActorResurrect(t *testing.T) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, _ := setupTests(t, topology)
 
-			for createPeerName, createPeer := range peers {
+			for createPeerName, createPeer := range peers.ActivePeers() {
 				for deletePeerName, deletePeer := range peers {
 					if deletePeer.Type() == PeerTypeCouchbaseLite {
 						continue

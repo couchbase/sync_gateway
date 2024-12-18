@@ -21,7 +21,7 @@ func TestSingleActorCreate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, _ := setupTests(t, topology)
-			for activePeerID, activePeer := range peers.SortedPeers() {
+			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
 					docID := getDocID(t)
@@ -44,7 +44,7 @@ func TestSingleActorUpdate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, _ := setupTests(t, topology)
-			for activePeerID, activePeer := range peers {
+			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
 					if activePeer.Type() == PeerTypeCouchbaseLite {
@@ -79,7 +79,7 @@ func TestSingleActorDelete(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, _ := setupTests(t, topology)
-			for activePeerID, activePeer := range peers {
+			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
 					if activePeer.Type() == PeerTypeCouchbaseLite {
@@ -114,7 +114,7 @@ func TestSingleActorResurrect(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, _ := setupTests(t, topology)
-			for activePeerID, activePeer := range peers.SortedPeers() {
+			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
 					if activePeer.Type() == PeerTypeCouchbaseLite {

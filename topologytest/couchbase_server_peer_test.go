@@ -29,12 +29,13 @@ var metadataXattrNames = []string{base.VvXattrName, base.MouXattrName, base.Sync
 
 // CouchbaseServerPeer represents an instance of a backing server (bucket). This is rosmar unless SG_TEST_BACKING_STORE=couchbase is set.
 type CouchbaseServerPeer struct {
-	tb               testing.TB
-	bucket           base.Bucket
-	sourceID         string
-	pullReplications map[Peer]xdcr.Manager
-	pushReplications map[Peer]xdcr.Manager
-	name             string
+	tb                 testing.TB
+	bucket             base.Bucket
+	sourceID           string
+	pullReplications   map[Peer]xdcr.Manager
+	pushReplications   map[Peer]xdcr.Manager
+	name               string
+	symmetricRedundant bool
 }
 
 // CouchbaseServerReplication represents a unidirectional replication between two CouchbaseServerPeers. These are two buckets, using bucket to bucket XDCR. A rosmar implementation is used if SG_TEST_BACKING_STORE is unset.
@@ -213,9 +214,18 @@ func (p *CouchbaseServerPeer) Close() {
 	}
 }
 
+func (p *CouchbaseServerPeer) GetReplications() map[Peer]xdcr.Manager {
+	return nil
+}
+
 // Type returns PeerTypeCouchbaseServer.
 func (p *CouchbaseServerPeer) Type() PeerType {
 	return PeerTypeCouchbaseServer
+}
+
+// IsSymmetricRedundant returns true if there is another peer set up that is identical to this one, and this peer doesn't need to participate in unique actions.
+func (p *CouchbaseServerPeer) IsSymmetricRedundant() bool {
+	return p.symmetricRedundant
 }
 
 // CreateReplication creates an XDCR manager.

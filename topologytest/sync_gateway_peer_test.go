@@ -24,11 +24,12 @@ import (
 )
 
 type SyncGatewayPeer struct {
-	rt   *rest.RestTester
-	name string
+	rt                 *rest.RestTester
+	name               string
+	symmetricRedundant bool
 }
 
-func newSyncGatewayPeer(t *testing.T, name string, bucket *base.TestBucket) Peer {
+func newSyncGatewayPeer(t *testing.T, name string, bucket *base.TestBucket, symmetricRedundant bool) Peer {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 		CustomTestBucket: bucket.NoCloseClone(),
@@ -37,8 +38,9 @@ func newSyncGatewayPeer(t *testing.T, name string, bucket *base.TestBucket) Peer
 	config.AutoImport = base.BoolPtr(true)
 	rest.RequireStatus(t, rt.CreateDatabase(rest.SafeDatabaseName(t, name), config), http.StatusCreated)
 	return &SyncGatewayPeer{
-		name: name,
-		rt:   rt,
+		name:               name,
+		rt:                 rt,
+		symmetricRedundant: symmetricRedundant,
 	}
 }
 
@@ -182,6 +184,11 @@ func (p *SyncGatewayPeer) Close() {
 // Type returns PeerTypeSyncGateway.
 func (p *SyncGatewayPeer) Type() PeerType {
 	return PeerTypeSyncGateway
+}
+
+// IsSymmetricRedundant returns true if there is another peer set up that is identical to this one, and this peer doesn't need to participate in unique actions.
+func (p *SyncGatewayPeer) IsSymmetricRedundant() bool {
+	return p.symmetricRedundant
 }
 
 // CreateReplication creates a replication instance. This is currently not supported for Sync Gateway peers. A future ISGR implementation will support this.

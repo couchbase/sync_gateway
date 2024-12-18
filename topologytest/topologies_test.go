@@ -142,12 +142,12 @@ var Topologies = []Topology{
 		description: "2x CBL<->SG<->CBS XDCR only 1.3",
 		peers: map[string]PeerOptions{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
-			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2},
+			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2, Symmetric: true},
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
-			"sg2":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID2},
+			"sg2":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID2, Symmetric: true},
 			"cbl1": {Type: PeerTypeCouchbaseLite},
 			// TODO: CBG-4270, push replication only exists empemerally
-			"cbl2": {Type: PeerTypeCouchbaseLite},
+			"cbl2": {Type: PeerTypeCouchbaseLite, Symmetric: true},
 		},
 		replications: []PeerReplicationDefinition{
 			{
@@ -287,7 +287,7 @@ var simpleTopologies = []Topology{
 		description: "CBS<->CBS",
 		peers: map[string]PeerOptions{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
-			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2}},
+			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2, Symmetric: true}},
 		replications: []PeerReplicationDefinition{
 			{
 				activePeer:  "cbs1",
@@ -322,6 +322,42 @@ var simpleTopologies = []Topology{
 			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
 			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2},
+		},
+		replications: []PeerReplicationDefinition{
+			{
+				activePeer:  "cbs1",
+				passivePeer: "cbs2",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				},
+			},
+			{
+				activePeer:  "cbs1",
+				passivePeer: "cbs2",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
+				},
+			},
+		},
+	},
+	{
+		/*
+			+ - - - - - - +      +- - - - - - -+
+			'  cluster A  '      '  cluster B  '
+			' +---------+ '      ' +---------+ '
+			' |  cbs1   | ' <--> ' |  cbs2   | '
+			' +---------+ '      ' +---------+ '
+			' +---------+ '      ' +---------+ '
+			' |   sg1   | '      ' |   sg2   | '
+			' +---------+ '      ' +---------+ '
+			+ - - - - - - +      +- - - - - - -+
+		*/
+		description: "CBS+SG<->CBS+SG",
+		peers: map[string]PeerOptions{
+			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
+			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
+			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2, Symmetric: true},
+			"sg2":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID2, Symmetric: true},
 		},
 		replications: []PeerReplicationDefinition{
 			{
