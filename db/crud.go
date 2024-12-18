@@ -1256,6 +1256,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
 					parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
 					if err != nil {
+						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s, current rev %s, incoming rev tree history %v", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString(), doc.CurrentRev, revTreeHistory)
 						return nil, nil, false, nil, err
 					}
 					revTreeConflictChecked = true
