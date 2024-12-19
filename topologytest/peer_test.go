@@ -411,40 +411,34 @@ func TestPeerImplementation(t *testing.T) {
 			require.Equal(t, updateVersion.docMeta, roundtripGetVersion)
 			require.JSONEq(t, string(updateBody), string(base.MustJSONMarshal(t, roundtripGetbody)))
 
-			if peer.Type() == PeerTypeCouchbaseLite {
-				// CBG-4432 Couchbase Lite peer does not support deletion yet
-				return
-			}
-
 			// Delete
 			deleteVersion := peer.DeleteDocument(collectionName, docID)
 			require.NotEmpty(t, deleteVersion.CV(t))
 			require.NotEqual(t, deleteVersion.CV(t), updateVersion.docMeta.CV(t))
 			require.NotEqual(t, deleteVersion.CV(t), createVersion.docMeta.CV(t))
-			if tc.peerOption.Type == PeerTypeCouchbaseServer {
-				require.Empty(t, deleteVersion.RevTreeID)
-			} else {
+			if tc.peerOption.Type == PeerTypeSyncGateway {
 				require.NotEmpty(t, deleteVersion.RevTreeID)
 				require.NotEqual(t, deleteVersion.RevTreeID, createVersion.docMeta.RevTreeID)
 				require.NotEqual(t, deleteVersion.RevTreeID, updateVersion.docMeta.RevTreeID)
+			} else {
+				require.Empty(t, deleteVersion.RevTreeID)
 			}
 			peer.RequireDocNotFound(collectionName, docID)
 
 			// Resurrection
-
 			resurrectionBody := []byte(`{"op": "resurrection"}`)
 			resurrectionVersion := peer.WriteDocument(collectionName, docID, resurrectionBody)
 			require.NotEmpty(t, resurrectionVersion.docMeta.CV(t))
 			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), deleteVersion.CV(t))
 			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), updateVersion.docMeta.CV(t))
 			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), createVersion.docMeta.CV(t))
-			if tc.peerOption.Type == PeerTypeCouchbaseServer {
-				require.Empty(t, resurrectionVersion.docMeta.RevTreeID)
-			} else {
+			if tc.peerOption.Type == PeerTypeSyncGateway {
 				require.NotEmpty(t, resurrectionVersion.docMeta.RevTreeID)
 				require.NotEqual(t, resurrectionVersion.docMeta.RevTreeID, createVersion.docMeta.RevTreeID)
 				require.NotEqual(t, resurrectionVersion.docMeta.RevTreeID, updateVersion.docMeta.RevTreeID)
 				require.NotEqual(t, resurrectionVersion.docMeta.RevTreeID, deleteVersion.RevTreeID)
+			} else {
+				require.Empty(t, resurrectionVersion.docMeta.RevTreeID)
 			}
 			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta)
 
