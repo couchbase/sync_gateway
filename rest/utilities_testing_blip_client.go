@@ -300,6 +300,20 @@ type BlipTesterCollectionClient struct {
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
 }
 
+// GetDoc returns the latest revision of a document stored on the client.
+func (btcc *BlipTesterCollectionClient) GetDoc(docID string) ([]byte, *DocVersion) {
+	doc, exists := btcc.getClientDoc(docID)
+	if !exists {
+		return nil, nil
+	}
+	latestRev, err := doc.latestRev()
+	require.NoError(btcc.TB(), err)
+	if latestRev == nil {
+		return nil, nil
+	}
+	return latestRev.body, &latestRev.version
+}
+
 // getClientDoc returns the clientDoc for the given docID, if it exists.
 func (btcc *BlipTesterCollectionClient) getClientDoc(docID string) (*clientDoc, bool) {
 	btcc.seqLock.RLock()
@@ -1850,33 +1864,17 @@ func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion D
 	return data
 }
 
-// GetDoc returns the current body stored in the Client for the given docID.
-func (btc *BlipTesterCollectionClient) GetDoc(docID string) (data []byte, found bool) {
-	doc, ok := btc.getClientDoc(docID)
-	if !ok {
-		return nil, false
-	}
-
-	latestRev, err := doc.latestRev()
-	require.NoError(btc.TB(), err)
-	if latestRev == nil {
-		return nil, false
-	}
-
-	return latestRev.body, true
-}
-
 // WaitForDoc blocks until any document with the doc ID has been stored by the client, and returns the document body when found. If a document will be reported multiple times, the latest copy of the document is returned (not necessarily the first). The test will fail after 10 seconds if the document
 func (btc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte) {
 
-	if data, found := btc.GetDoc(docID); found {
+	if data, version := btc.GetDoc(docID); version != nil {
 		return data
 	}
 	timeout := 10 * time.Second
 	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
-		var found bool
-		data, found = btc.GetDoc(docID)
-		assert.True(c, found, "Could not find docID:%+v", docID)
+		var version *DocVersion
+		data, version = btc.GetDoc(docID)
+		assert.NotNil(c, version, "Could not find docID:%+v", docID)
 	}, timeout, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v after %s", docID, timeout)
 	return data
 }

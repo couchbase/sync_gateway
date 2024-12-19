@@ -32,6 +32,10 @@ func (p *PeerBlipTesterClient) ID() uint32 {
 	return p.btc.ID()
 }
 
+func (p *PeerBlipTesterClient) CollectionClient(dsName sgbucket.DataStoreName) *rest.BlipTesterCollectionClient {
+	return p.btcRunner.Collection(p.ID(), fmt.Sprintf("%s.%s", dsName.ScopeName(), dsName.CollectionName()))
+}
+
 // CouchbaseLiteMockPeer represents an in-memory Couchbase Lite peer. This utilizes BlipTesterClient from the rest package to send and receive blip messages.
 type CouchbaseLiteMockPeer struct {
 	t                  *testing.T
@@ -44,18 +48,30 @@ func (p *CouchbaseLiteMockPeer) String() string {
 	return fmt.Sprintf("%s (sourceid:%s)", p.name, p.SourceID())
 }
 
-// GetDocument returns the latest version of a document. The test will fail the document does not exist.
-func (p *CouchbaseLiteMockPeer) GetDocument(_ sgbucket.DataStoreName, _ string) (DocMetadata, db.Body) {
-	// this isn't yet collection aware, using single default collection
-	return DocMetadata{}, nil
+// getLatestDocVersion returns the latest body and version of a document. If the document does not exist, it will return nil.
+func (p *CouchbaseLiteMockPeer) getLatestDocVersion(dsName sgbucket.DataStoreName, docID string) ([]byte, *DocMetadata) {
+	client := p.getSingleSGBlipClient().CollectionClient(dsName)
+	body, version := client.GetDoc(docID)
+	if version == nil {
+		return nil, nil
+	}
+	meta := DocMetadataFromDocVersion(p.TB(), docID, *version)
+	return body, &meta
 }
 
-// getSingleBlipClient returns the single blip client for the peer. If there are multiple clients, or not clients it will fail the test. This is temporary to stub support for multiple Sync Gateway peers.
-func (p *CouchbaseLiteMockPeer) getSingleBlipClient() *PeerBlipTesterClient {
-	// this isn't yet collection aware, using single default collection
-	if len(p.blipClients) != 1 {
-		require.Fail(p.t, "blipClients haven't been created for %s, a temporary limitation of CouchbaseLiteMockPeer", p)
-	}
+// GetDocument returns the latest version of a document. The test will fail the document does not exist.
+func (p *CouchbaseLiteMockPeer) GetDocument(dsName sgbucket.DataStoreName, docID string) (DocMetadata, db.Body) {
+	bodyBytes, meta := p.getLatestDocVersion(dsName, docID)
+	require.NotNil(p.TB(), meta, "docID:%s not found on %s", docID, p)
+	var body db.Body
+	require.NoError(p.TB(), base.JSONUnmarshal(bodyBytes, &body))
+	return *meta, body
+}
+
+// getSingleSGBlipClient returns the single blip client for the peer. If there are multiple clients, or no clients it will fail the test. This is temporary to stub support for multiple Sync Gateway peers, see CBG-4433.
+func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
+	// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
+	require.Len(p.TB(), p.blipClients, 1, "blipClients haven't been created for %s, a temporary limitation of CouchbaseLiteMockPeer", p)
 	for _, c := range p.blipClients {
 		return c
 	}
@@ -66,19 +82,29 @@ func (p *CouchbaseLiteMockPeer) getSingleBlipClient() *PeerBlipTesterClient {
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	p.t.Logf("%s: Creating document %s", p, docID)
-	return p.WriteDocument(dsName, docID, body)
+	client := p.getSingleSGBlipClient().CollectionClient(dsName)
+	docVersion, err := client.AddRev(docID, rest.EmptyDocVersion(), body)
+	require.NoError(p.TB(), err)
+	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, docVersion)
+	return BodyAndVersion{
+		docMeta:    docMetadata,
+		body:       body,
+		updatePeer: p.name,
+	}
 }
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
-func (p *CouchbaseLiteMockPeer) WriteDocument(_ sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
+func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	p.TB().Logf("%s: Writing document %s", p, docID)
-	// this isn't yet collection aware, using single default collection
-	client := p.getSingleBlipClient()
-	// set an HLV here.
-	docVersion, err := client.btcRunner.AddRev(client.ID(), docID, rest.EmptyDocVersion(), body)
-	require.NoError(client.btcRunner.TB(), err)
-	// FIXME: CBG-4257, this should read the existing HLV on doc, until this happens, pv is always missing
-	docMetadata := DocMetadataFromDocVersion(client.btc.TB(), docID, docVersion)
+	client := p.getSingleSGBlipClient().CollectionClient(dsName)
+	_, parentMeta := p.getLatestDocVersion(dsName, docID)
+	parentVersion := rest.EmptyDocVersion()
+	if parentMeta != nil {
+		parentVersion = &db.DocVersion{CV: parentMeta.CV(p.TB())}
+	}
+	docVersion, err := client.AddRev(docID, parentVersion, body)
+	require.NoError(p.TB(), err)
+	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, docVersion)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -92,17 +118,17 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(sgbucket.DataStoreName, string) D
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForDocVersion(_ sgbucket.DataStoreName, docID string, docVersion DocMetadata) db.Body {
-	// this isn't yet collection aware, using single default collection
-	client := p.getSingleBlipClient()
+func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) db.Body {
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
-		var found bool
-		data, found = client.btcRunner.GetVersion(client.ID(), docID, rest.DocVersion{CV: docVersion.CV(c)})
-		if !assert.True(c, found, "Could not find docID:%+v on %p\nVersion %#v", docID, p, docVersion) {
+		var actual *DocMetadata
+		data, actual = p.getLatestDocVersion(dsName, docID)
+		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
 			return
 		}
-	}, totalWaitTime, pollInterval, "BlipTesterClient timed out waiting for doc %+v Version %#v", docID, docVersion)
+		assert.Equal(c, expected.CV(c), actual.CV(c), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %#v\nactual:   %#v\n          body: %+v\n", docID, p, p.SourceID(), expected, actual, string(data))
+
+	}, totalWaitTime, pollInterval)
 	var body db.Body
 	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))
 	return body

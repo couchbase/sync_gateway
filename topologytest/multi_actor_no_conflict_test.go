@@ -28,10 +28,6 @@ func TestMultiActorUpdate(t *testing.T) {
 
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for updatePeerName, updatePeer := range peers {
-					if updatePeer.Type() == PeerTypeCouchbaseLite {
-						continue
-					}
-
 					docID := getDocID(t) + "_create=" + createPeerName + ",update=" + updatePeerName
 					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, updatePeer, topology.description))
 					createVersion := createPeer.CreateDocument(collectionName, docID, body1)
@@ -60,6 +56,7 @@ func TestMultiActorDelete(t *testing.T) {
 
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for deletePeerName, deletePeer := range peers {
+					// CBG-4432: implement delete document in blip tester
 					if deletePeer.Type() == PeerTypeCouchbaseLite {
 						continue
 					}
@@ -96,6 +93,7 @@ func TestMultiActorResurrect(t *testing.T) {
 
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for deletePeerName, deletePeer := range peers {
+					// CBG-4432: implement delete document in blip tester
 					if deletePeer.Type() == PeerTypeCouchbaseLite {
 						continue
 					}
