@@ -123,7 +123,7 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
-		if strings.Contains(topology.description, "1.3") {
+		if strings.Contains(topology.description, "1.") {
 			t.Skip("CBG-4434 fail due to CBL issues, specifically for multi-actor tests")
 		}
 		t.Run(topology.description, func(t *testing.T) {
