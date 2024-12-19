@@ -87,11 +87,6 @@ func TestMultiActorConflictDelete(t *testing.T) {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
-		if strings.Contains(topology.description, "CBL") {
-			// Test case flakes given the WaitForDocVersion function only waits for a docID on the cbl peer. We need to be
-			// able to wait for a specific version to arrive over pull replication
-			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
-		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
@@ -128,10 +123,8 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
-		if strings.Contains(topology.description, "CBL") {
-			// Test case flakes given the WaitForDocVersion function only waits for a docID on the cbl peer. We need to be
-			// able to wait for a specific version to arrive over pull replication
-			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
+		if strings.Contains(topology.description, "1.3") {
+			t.Skip("CBG-4434 fail due to CBL issues, specifically for multi-actor tests")
 		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)

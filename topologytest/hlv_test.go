@@ -61,7 +61,7 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, pee
 func waitForDeletion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string, deleteActor string) {
 	for peerName, peer := range peers {
 		if peer.Type() == PeerTypeCouchbaseLite {
-			t.Logf("skipping deletion check for Couchbase Lite peer %s, CBG-4257", peerName)
+			t.Logf("skipping deletion check for Couchbase Lite peer %s, CBG-4432", peerName)
 			continue
 		}
 		t.Logf("waiting for doc to be deleted on %s, written from %s", peer, deleteActor)
@@ -94,7 +94,7 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 			continue
 		}
 		if peer.Type() == PeerTypeCouchbaseLite {
-			// FIXME: Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257
+			// FIXME: Skipping Couchbase Lite tests for multi actor conflicts, CBG-4434
 			continue
 		}
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))

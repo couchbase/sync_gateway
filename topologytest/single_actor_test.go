@@ -47,9 +47,6 @@ func TestSingleActorUpdate(t *testing.T) {
 			for activePeerID, activePeer := range peers {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
-					if activePeer.Type() == PeerTypeCouchbaseLite {
-						t.Skip("Skipping Couchbase Lite test, returns unexpected body in proposeChanges: [304], CBG-4257")
-					}
 
 					docID := getDocID(t)
 					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
@@ -83,7 +80,7 @@ func TestSingleActorDelete(t *testing.T) {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
 					if activePeer.Type() == PeerTypeCouchbaseLite {
-						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4433")
 					}
 
 					docID := getDocID(t)
@@ -118,7 +115,7 @@ func TestSingleActorResurrect(t *testing.T) {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
 					if activePeer.Type() == PeerTypeCouchbaseLite {
-						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4257")
+						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4433")
 					}
 
 					docID := getDocID(t)

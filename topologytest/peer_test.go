@@ -328,11 +328,27 @@ func TestPeerImplementation(t *testing.T) {
 				BucketID: PeerBucketID1,
 			},
 		},
+		{
+			name: "cbl",
+			peerOption: PeerOptions{
+				Type: PeerTypeCouchbaseLite,
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			peers := createPeers(t, map[string]PeerOptions{tc.name: tc.peerOption})
+			opts := map[string]PeerOptions{tc.name: tc.peerOption}
+			// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
+			if tc.peerOption.Type == PeerTypeCouchbaseLite {
+				opts["sg"] = PeerOptions{Type: PeerTypeSyncGateway, BucketID: PeerBucketID1}
+			}
+			peers := createPeers(t, opts)
 			peer := peers[tc.name]
+			// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
+			if peer.Type() == PeerTypeCouchbaseLite {
+				replication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{})
+				defer replication.Stop()
+			}
 
 			docID := t.Name()
 			collectionName := getSingleDsName()
@@ -342,10 +358,10 @@ func TestPeerImplementation(t *testing.T) {
 			createBody := []byte(`{"op": "creation"}`)
 			createVersion := peer.CreateDocument(collectionName, docID, []byte(`{"op": "creation"}`))
 			require.NotEmpty(t, createVersion.docMeta.CV)
-			if tc.peerOption.Type == PeerTypeCouchbaseServer {
-				require.Empty(t, createVersion.docMeta.RevTreeID)
-			} else {
+			if tc.peerOption.Type == PeerTypeSyncGateway {
 				require.NotEmpty(t, createVersion.docMeta.RevTreeID)
+			} else {
+				require.Empty(t, createVersion.docMeta.RevTreeID)
 			}
 
 			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta)
@@ -359,11 +375,11 @@ func TestPeerImplementation(t *testing.T) {
 			updateVersion := peer.WriteDocument(collectionName, docID, updateBody)
 			require.NotEmpty(t, updateVersion.docMeta.CV)
 			require.NotEqual(t, updateVersion.docMeta.CV(t), createVersion.docMeta.CV(t))
-			if tc.peerOption.Type == PeerTypeCouchbaseServer {
-				require.Empty(t, updateVersion.docMeta.RevTreeID)
-			} else {
+			if peer.Type() == PeerTypeSyncGateway {
 				require.NotEmpty(t, updateVersion.docMeta.RevTreeID)
 				require.NotEqual(t, updateVersion.docMeta.RevTreeID, createVersion.docMeta.RevTreeID)
+			} else {
+				require.Empty(t, updateVersion.docMeta.RevTreeID)
 			}
 			peer.WaitForDocVersion(collectionName, docID, updateVersion.docMeta)
 
@@ -371,6 +387,11 @@ func TestPeerImplementation(t *testing.T) {
 			roundtripGetVersion, roundtripGetbody = peer.GetDocument(collectionName, docID)
 			require.Equal(t, updateVersion.docMeta, roundtripGetVersion)
 			require.JSONEq(t, string(updateBody), string(base.MustJSONMarshal(t, roundtripGetbody)))
+
+			if peer.Type() == PeerTypeCouchbaseLite {
+				// CBG-4432 Couchbase Lite peer does not support deletion yet
+				return
+			}
 
 			// Delete
 			deleteVersion := peer.DeleteDocument(collectionName, docID)
