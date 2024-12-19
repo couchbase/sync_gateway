@@ -208,9 +208,10 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
 	var originPatterns []string // no origin headers for ISGR
-	// NewSGBlipContext doesn't set cancellation context - active replication cancellation on db close is handled independently
-	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns, nil)
+	cancelCtx, cancelFunc := context.WithCancel(context.Background())
+	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns, cancelCtx)
 	if err != nil {
+		cancelFunc()
 		return nil, nil, err
 	}
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
@@ -221,7 +222,10 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		}
 	}
 
-	bsc = NewBlipSyncContext(arc.ctx, blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats)
+	bsc, err = NewBlipSyncContext(arc.ctx, blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats, cancelFunc)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	bsc.loggingCtx = base.CorrelationIDLogCtx(
 		arc.config.ActiveDB.AddDatabaseLogContext(base.NewNonCancelCtx().Ctx),
