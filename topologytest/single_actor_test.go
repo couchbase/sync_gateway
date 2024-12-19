@@ -92,7 +92,7 @@ func TestSingleActorDelete(t *testing.T) {
 					deleteVersion := activePeer.DeleteDocument(collectionName, docID)
 					t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion.docMeta, deleteVersion)
 					t.Logf("waiting for document deletion on all peers")
-					waitForDeletion(t, collectionName, peers, docID, activePeerID)
+					waitForTombstoneVersion(t, collectionName, peers, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: activePeerID})
 				})
 			}
 		})
@@ -126,7 +126,7 @@ func TestSingleActorResurrect(t *testing.T) {
 					deleteVersion := activePeer.DeleteDocument(collectionName, docID)
 					t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion, deleteVersion)
 					t.Logf("waiting for document deletion on all peers")
-					waitForDeletion(t, collectionName, peers, docID, activePeerID)
+					waitForTombstoneVersion(t, collectionName, peers, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: activePeerID})
 
 					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "resurrect"}`, activePeerID, topology.description))
 					resurrectVersion := activePeer.WriteDocument(collectionName, docID, body2)

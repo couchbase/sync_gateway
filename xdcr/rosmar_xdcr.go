@@ -111,6 +111,11 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 			base.WarnfCtx(ctx, "Skipping replicating doc %s, could not perform a kv op get doc in toBucket: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
+		} else if base.IsDocNotFoundError(err) {
+			// Log if the target document exists as tombstone but doesn't have xattrs we care about
+			if actualTargetCas != 0 {
+				base.DebugfCtx(ctx, base.KeyVV, "Target document exists as a tombstone, but does not have _vv, _mou, _sync")
+			}
 		}
 
 		sourceHLV, sourceMou, nonMobileXattrs, body, err := processDCPEvent(&event)
@@ -284,7 +289,8 @@ func opWithMeta(ctx context.Context, collection *rosmar.Collection, originalCas 
 	}
 
 	if event.Opcode == sgbucket.FeedOpDeletion {
-		return collection.DeleteWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes)
+		delError := collection.DeleteWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes)
+		return delError
 	}
 
 	return collection.SetWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes, body, event.DataType)

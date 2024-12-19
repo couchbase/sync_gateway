@@ -67,8 +67,8 @@ func TestMultiActorDelete(t *testing.T) {
 					waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
 
 					deleteVersion := deletePeer.DeleteDocument(collectionName, docID)
-					t.Logf("deleteVersion: %+v\n", deleteVersion) // FIXME: verify hlv in CBG-4416
-					waitForDeletion(t, collectionName, peers, docID, deletePeerName)
+					t.Logf("deleteVersion: %+v\n", deleteVersion)
+					waitForTombstoneVersion(t, collectionName, peers, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName})
 				}
 			}
 		})
@@ -104,8 +104,8 @@ func TestMultiActorResurrect(t *testing.T) {
 						waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
 
 						deleteVersion := deletePeer.DeleteDocument(collectionName, docID)
-						t.Logf("deleteVersion: %+v\n", deleteVersion) // FIXME: verify hlv in CBG-4416
-						waitForDeletion(t, collectionName, peers, docID, deletePeerName)
+						t.Logf("deleteVersion: %+v\n", deleteVersion)
+						waitForTombstoneVersion(t, collectionName, peers, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName})
 
 						resBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.description))
 						resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
