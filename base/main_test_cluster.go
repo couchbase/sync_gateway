@@ -17,14 +17,6 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
-// firstServerVersionToSupportMobileXDCR this is the first server version to support Mobile XDCR feature
-var firstServerVersionToSupportMobileXDCR = &ComparableBuildVersion{
-	epoch: 0,
-	major: 7,
-	minor: 6,
-	patch: 2,
-}
-
 type clusterLogFunc func(ctx context.Context, format string, args ...interface{})
 
 // tbpCluster represents a gocb v2 cluster
@@ -204,33 +196,4 @@ func (c *tbpCluster) supportsMobileRBAC() (bool, error) {
 		return false, err
 	}
 	return major >= 7 && minor >= 1, nil
-}
-
-// mobileXDCRCompatible checks if a cluster is mobile XDCR compatible, a cluster must be enterprise edition AND > 7.6.1
-func (c *tbpCluster) mobileXDCRCompatible(ctx context.Context) (bool, error) {
-	enterprise, err := c.isServerEnterprise()
-	if err != nil {
-		return false, err
-	}
-	if !enterprise {
-		return false, nil
-	}
-
-	// take server version, server version will be the first 5 character of version string
-	// in the form of x.x.x
-	vrs := c.version[:5]
-
-	// convert the above string into a comparable string
-	version, err := NewComparableBuildVersionFromString(vrs)
-	if err != nil {
-		return false, err
-	}
-
-	if !version.Less(firstServerVersionToSupportMobileXDCR) {
-		c.supportsHLV = true
-		return true, nil
-	}
-	c.logger(ctx, "cluster does not support mobile XDCR")
-
-	return false, nil
 }
