@@ -59,11 +59,7 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, pee
 }
 
 func waitForDeletion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string, deleteActor string) {
-	for peerName, peer := range peers {
-		if peer.Type() == PeerTypeCouchbaseLite {
-			t.Logf("skipping deletion check for Couchbase Lite peer %s, CBG-4432", peerName)
-			continue
-		}
+	for _, peer := range peers {
 		t.Logf("waiting for doc to be deleted on %s, written from %s", peer, deleteActor)
 		peer.WaitForDeletion(dsName, docID)
 	}

@@ -146,7 +146,6 @@ var Topologies = []Topology{
 			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
 			"sg2":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID2, Symmetric: true},
 			"cbl1": {Type: PeerTypeCouchbaseLite},
-			// TODO: CBG-4270, push replication only exists empemerally
 			"cbl2": {Type: PeerTypeCouchbaseLite, Symmetric: true},
 		},
 		replications: []PeerReplicationDefinition{
