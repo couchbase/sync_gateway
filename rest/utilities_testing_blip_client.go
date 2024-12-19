@@ -314,6 +314,32 @@ func (btcc *BlipTesterCollectionClient) GetDoc(docID string) ([]byte, *DocVersio
 	return latestRev.body, &latestRev.version
 }
 
+// IsTombstoned returns true if the latest version of the doc is a tombstone.
+func (btcc *BlipTesterCollectionClient) IsTombstoned(docID string) (bool, error) {
+	doc, exists := btcc.getClientDoc(docID)
+	if !exists {
+		return false, base.ErrNotFound
+	}
+	rev, err := doc.latestRev()
+	if err != nil {
+		return false, err
+	}
+	return rev.isDelete, nil
+}
+
+// IsVersionTombstone returns true if the given version is found and is a tombstone.
+func (btcc *BlipTesterCollectionClient) IsVersionTombstone(docID string, version DocVersion) (bool, error) {
+	doc, exists := btcc.getClientDoc(docID)
+	if !exists {
+		return false, base.ErrNotFound
+	}
+	rev, err := doc.getRev(version)
+	if err != nil {
+		return false, err
+	}
+	return rev.isDelete, nil
+}
+
 // getClientDoc returns the clientDoc for the given docID, if it exists.
 func (btcc *BlipTesterCollectionClient) getClientDoc(docID string) (*clientDoc, bool) {
 	btcc.seqLock.RLock()
@@ -1175,6 +1201,7 @@ type proposeChangeBatchEntry struct {
 	revTreeIDHistory    []string
 	hlvHistory          db.HybridLogicalVector
 	latestServerVersion DocVersion
+	isDelete            bool
 }
 
 func (e proposeChangeBatchEntry) historyStr() string {
@@ -1200,7 +1227,7 @@ func proposeChangesEntryForDoc(doc *clientDoc) proposeChangeBatchEntry {
 		}
 		revisionHistory = append(revisionHistory, doc._revisionsBySeq[seq].version.RevTreeID)
 	}
-	return proposeChangeBatchEntry{docID: doc.id, version: latestRev.version, revTreeIDHistory: revisionHistory, hlvHistory: latestRev.HLV, latestServerVersion: doc._latestServerVersion}
+	return proposeChangeBatchEntry{docID: doc.id, version: latestRev.version, revTreeIDHistory: revisionHistory, hlvHistory: latestRev.HLV, latestServerVersion: doc._latestServerVersion, isDelete: latestRev.isDelete}
 }
 
 // StartPull will begin a push replication with the given options between the client and server
@@ -1317,6 +1344,12 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 						serverRev := doc._revisionsBySeq[doc._seqsByVersions[change.latestServerVersion]]
 						docBody := doc._revisionsBySeq[doc._seqsByVersions[change.version]].body
 						doc.lock.RUnlock()
+
+						if change.isDelete {
+							revRequest.Properties[db.RevMessageDeleted] = "1"
+							// SG doesn't like nil bodies - transform the tombstone into an empty body
+							docBody = []byte(base.EmptyDocument)
+						}
 
 						if serverDeltas && btcc.parent.ClientDeltas && ok && !serverRev.isDelete {
 							base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version as deltaSrc for doc %s = %v", change.docID, change.latestServerVersion)
@@ -1511,6 +1544,7 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 }
 
 // upsertDoc will create or update the doc based on whether parentVersion is passed or not. Enforces MVCC update.
+// body can be nil and the update will be treated as a tombstone/delete.
 func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *DocVersion, body []byte) (*clientDocRev, error) {
 	btc.seqLock.Lock()
 	defer btc.seqLock.Unlock()
@@ -1574,7 +1608,7 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 
 	btc._seqLast++
 	newSeq := btc._seqLast
-	rev := clientDocRev{clientSeq: newSeq, version: docVersion, body: body, HLV: hlv}
+	rev := clientDocRev{clientSeq: newSeq, version: docVersion, body: body, HLV: hlv, isDelete: body == nil}
 	doc.addNewRev(rev)
 
 	btc._seqStore[newSeq] = doc
@@ -1585,6 +1619,15 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 	btc._seqCond.Broadcast()
 
 	return &rev, nil
+}
+
+// Delete creates a tombstone for the document.
+func (btc *BlipTesterCollectionClient) Delete(docID string, parentVersion *DocVersion) (DocVersion, error) {
+	newRev, err := btc.upsertDoc(docID, parentVersion, nil)
+	if err != nil {
+		return DocVersion{}, err
+	}
+	return newRev.version, nil
 }
 
 // AddRev creates a revision on the client.
@@ -1741,11 +1784,6 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID string, parentVe
 
 	btc.updateLastReplicatedVersion(docID, newRev.version)
 	return &newRev.version, nil
-}
-
-func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID string, parentVersion *DocVersion, body []byte) error {
-	_, err := btc.upsertDoc(docID, parentVersion, body)
-	return err
 }
 
 func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte, err error) {
@@ -1999,6 +2037,10 @@ func (btcRunner *BlipTestClientRunner) AddRev(clientID uint32, docID string, ver
 	return btcRunner.SingleCollection(clientID).AddRev(docID, version, body)
 }
 
+func (btcRunner *BlipTestClientRunner) Delete(clientID uint32, docID string, version *DocVersion) (DocVersion, error) {
+	return btcRunner.SingleCollection(clientID).Delete(docID, version)
+}
+
 func (btcRunner *BlipTestClientRunner) PushUnsolicitedRev(clientID uint32, docID string, parentVersion *DocVersion, body []byte) (*DocVersion, error) {
 	return btcRunner.SingleCollection(clientID).PushUnsolicitedRev(docID, parentVersion, body)
 }
@@ -2013,10 +2055,6 @@ func (btcRunner *BlipTestClientRunner) GetVersion(clientID uint32, docID string,
 
 func (btcRunner *BlipTestClientRunner) saveAttachment(clientID uint32, contentType string, attachmentData string) (int, string, error) {
 	return btcRunner.SingleCollection(clientID).saveAttachment(contentType, attachmentData)
-}
-
-func (btcRunner *BlipTestClientRunner) StoreRevOnClient(clientID uint32, docID string, parentVersion *DocVersion, body []byte) error {
-	return btcRunner.SingleCollection(clientID).StoreRevOnClient(docID, parentVersion, body)
 }
 
 func (btcRunner *BlipTestClientRunner) PushRevWithHistory(clientID uint32, docID string, parentVersion *DocVersion, body []byte, revCount, prunedRevCount int) (*DocVersion, error) {

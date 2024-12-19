@@ -59,11 +59,7 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, pee
 }
 
 func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string, expectedVersion BodyAndVersion) {
-	for peerName, peer := range peers.SortedPeers() {
-		if peer.Type() == PeerTypeCouchbaseLite {
-			t.Logf("skipping deletion check for Couchbase Lite peer %s, CBG-4432", peerName)
-			continue
-		}
+	for _, peer := range peers.SortedPeers() {
 		t.Logf("waiting for tombstone version %#v on %s, written from %s", expectedVersion, peer, expectedVersion.updatePeer)
 		peer.WaitForTombstoneVersion(dsName, docID, expectedVersion.docMeta)
 	}
@@ -138,11 +134,7 @@ func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers 
 			continue
 		}
 		deleteVersion := peer.DeleteDocument(dsName, docID)
-		if peer.Type() == PeerTypeCouchbaseLite {
-			t.Logf("Don't include deleteVersion from Couchbase Lite peers when determining lastWrite %s, CBG-4432", peerName)
-			continue
-		}
-		t.Logf("deleteVersion on peer %s: %+v", peerName, deleteVersion)
+		t.Logf("deleteVersion: %+v", deleteVersion)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
 	}
 	index := len(documentVersion) - 1
