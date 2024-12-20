@@ -1593,12 +1593,10 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 		return nil, err
 	}
 
-	btc._seqLast++
-	newSeq := btc._seqLast
-
 	var docVersion DocVersion
 	if btc.UseHLV() {
-		newVersion := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.parent.id), Value: uint64(newSeq)}
+		// TODO: CBG-4440 Construct a HLC for Value - UnixNano is not accurate enough on Windows to generate unique values, and seq is not comparable across clients.
+		newVersion := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.parent.id), Value: uint64(time.Now().UnixNano())}
 		if err := hlv.AddVersion(newVersion); err != nil {
 			return nil, err
 		}
@@ -1609,6 +1607,8 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 		docVersion = DocVersion{RevTreeID: newRevID}
 	}
 
+	btc._seqLast++
+	newSeq := btc._seqLast
 	rev := clientDocRev{clientSeq: newSeq, version: docVersion, body: body, HLV: hlv, isDelete: body == nil}
 	doc.addNewRev(rev)
 
