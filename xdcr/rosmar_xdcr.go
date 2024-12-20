@@ -289,8 +289,7 @@ func opWithMeta(ctx context.Context, collection *rosmar.Collection, originalCas 
 	}
 
 	if event.Opcode == sgbucket.FeedOpDeletion {
-		delError := collection.DeleteWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes)
-		return delError
+		return collection.DeleteWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes)
 	}
 
 	return collection.SetWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes, body, event.DataType)
