@@ -1593,9 +1593,12 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 		return nil, err
 	}
 
+	btc._seqLast++
+	newSeq := btc._seqLast
+
 	var docVersion DocVersion
 	if btc.UseHLV() {
-		newVersion := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.parent.id), Value: uint64(time.Now().UnixNano())}
+		newVersion := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.parent.id), Value: uint64(newSeq)}
 		if err := hlv.AddVersion(newVersion); err != nil {
 			return nil, err
 		}
@@ -1606,8 +1609,6 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 		docVersion = DocVersion{RevTreeID: newRevID}
 	}
 
-	btc._seqLast++
-	newSeq := btc._seqLast
 	rev := clientDocRev{clientSeq: newSeq, version: docVersion, body: body, HLV: hlv, isDelete: body == nil}
 	doc.addNewRev(rev)
 
