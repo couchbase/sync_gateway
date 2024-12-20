@@ -101,7 +101,7 @@ func TestMultiActorConflictDelete(t *testing.T) {
 			lastWrite := deleteConflictDocs(t, collectionName, peers, docID)
 
 			replications.Start()
-			waitForDeletion(t, collectionName, peers, docID, lastWrite.updatePeer)
+			waitForTombstoneVersion(t, collectionName, peers, docID, lastWrite)
 		})
 	}
 }
@@ -141,7 +141,7 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 
 			replications.Start()
 
-			waitForDeletion(t, collectionName, peers, docID, lastWrite.updatePeer)
+			waitForTombstoneVersion(t, collectionName, peers, docID, lastWrite)
 			replications.Stop()
 
 			lastWriteVersion := updateConflictingDocs(t, collectionName, peers, docID, topology.description)

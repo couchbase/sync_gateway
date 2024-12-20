@@ -162,7 +162,7 @@ func (p *SyncGatewayPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID s
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) {
 	docBytes := p.WaitForDocVersion(dsName, docID, expected)
-	require.Nil(p.TB(), docBytes, "expected tombstone for docID %s, got %s", docID, docBytes)
+	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s", docID, docBytes)
 }
 
 // RequireDocNotFound asserts that a document does not exist on the peer.

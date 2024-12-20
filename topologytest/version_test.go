@@ -34,7 +34,7 @@ func (v DocMetadata) CV(t require.TestingT) db.Version {
 	} else if v.HLV != nil {
 		return *v.HLV.ExtractCurrentVersionFromHLV()
 	}
-	require.FailNow(t, "no hlv available %#v", v)
+	require.FailNowf(t, "no hlv available", "%#v", v)
 	return db.Version{}
 }
 
