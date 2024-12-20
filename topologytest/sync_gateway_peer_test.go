@@ -146,34 +146,10 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 	return doc.Body(ctx)
 }
 
-// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
-func (p *SyncGatewayPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID string) {
-	collection, ctx := p.getCollection(dsName)
-	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
-		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-		if err == nil {
-			assert.True(c, doc.IsDeleted(), "expected %+v on %s to be deleted", doc, p)
-			return
-		}
-		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s on %s to be deleted, found doc=%#v err=%v", docID, p, doc, err)
-	}, totalWaitTime, pollInterval)
-}
-
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) {
 	docBytes := p.WaitForDocVersion(dsName, docID, expected)
 	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s", docID, docBytes)
-}
-
-// RequireDocNotFound asserts that a document does not exist on the peer.
-func (p *SyncGatewayPeer) RequireDocNotFound(dsName sgbucket.DataStoreName, docID string) {
-	collection, ctx := p.getCollection(dsName)
-	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-	if err == nil {
-		require.True(p.TB(), doc.IsDeleted(), "expected %s to be deleted", doc)
-		return
-	}
-	base.RequireDocNotFoundError(p.TB(), err)
 }
 
 // Close will shut down the peer and close any active replications on the peer.

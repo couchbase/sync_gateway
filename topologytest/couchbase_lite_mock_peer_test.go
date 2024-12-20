@@ -10,7 +10,6 @@ package topologytest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -144,16 +143,6 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 	return body
 }
 
-// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
-func (p *CouchbaseLiteMockPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID string) {
-	client := p.getSingleSGBlipClient().CollectionClient(dsName)
-	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
-		isTombstone, err := client.IsTombstoned(docID)
-		require.NoError(c, err)
-		require.True(c, isTombstone, "expected docID %s on peer %s to be deleted", docID, p)
-	}, totalWaitTime, pollInterval)
-}
-
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) {
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
@@ -163,18 +152,6 @@ func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStor
 		require.NoError(c, err)
 		require.True(c, isTombstone, "expected docID %s on peer %s to be deleted", docID, p)
 	}, totalWaitTime, pollInterval)
-}
-
-// RequireDocNotFound asserts that a document does not exist on the peer.
-func (p *CouchbaseLiteMockPeer) RequireDocNotFound(dsName sgbucket.DataStoreName, docID string) {
-	client := p.getSingleSGBlipClient().CollectionClient(dsName)
-	isTombstone, err := client.IsTombstoned(docID)
-	if err == nil {
-		require.True(p.TB(), isTombstone, "expected docID %s on peer %s to be deleted or not exist", docID, p)
-	}
-	if !errors.Is(err, base.ErrNotFound) {
-		require.NoError(p.TB(), err)
-	}
 }
 
 // Close will shut down the peer and close any active replications on the peer.
