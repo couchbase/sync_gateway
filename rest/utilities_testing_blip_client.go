@@ -1623,6 +1623,9 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 
 // Delete creates a tombstone for the document.
 func (btc *BlipTesterCollectionClient) Delete(docID string, parentVersion *DocVersion) (DocVersion, error) {
+	if parentVersion == nil {
+		return DocVersion{}, fmt.Errorf("parentVersion must be provided for delete operation")
+	}
 	newRev, err := btc.upsertDoc(docID, parentVersion, nil)
 	if err != nil {
 		return DocVersion{}, err
