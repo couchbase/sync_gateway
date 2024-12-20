@@ -142,7 +142,7 @@ func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers 
 			t.Logf("Don't include deleteVersion from Couchbase Lite peers when determining lastWrite %s, CBG-4432", peerName)
 			continue
 		}
-		t.Logf("deleteVersion on peer %s: %+v, implicit version: %+v", peerName, deleteVersion, deleteVersion.ImplicitHLV)
+		t.Logf("deleteVersion on peer %s: %+v", peerName, deleteVersion)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
 	}
 	index := len(documentVersion) - 1
