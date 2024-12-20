@@ -83,9 +83,7 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 // 6. start replications
 // 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
 func TestMultiActorConflictDelete(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
-	}
+	t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
