@@ -75,6 +75,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	resp := rt.PutDoc("conflictingInsert", `{"version":1}`)
 	conflictingInsertRev := resp.RevTreeID
@@ -82,6 +83,8 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 	resp = rt.PutDoc("conflictingUpdate", `{"version":1}`)
 	conflictingUpdateRev1 := resp.RevTreeID
 	conflictingUpdateRev2 := rt.UpdateDocRev("conflictingUpdate", resp.RevTreeID, `{"version":2}`)
+	source, value := collection.GetDocumentCurrentVersion(t, "conflictingUpdate")
+	conflictingUpdateVersion2 := db.Version{SourceID: source, Value: value}
 
 	resp = rt.PutDoc("newUpdate", `{"version":1}`)
 	newUpdateRev1 := resp.RevTreeID
@@ -90,6 +93,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 	existingDocRev := resp.RevTreeID
 
 	type proposeChangesCase struct {
+		description   string
 		key           string
 		revID         string
 		parentRevID   string
@@ -98,33 +102,59 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 
 	proposeChangesCases := []proposeChangesCase{
 		proposeChangesCase{
+			description:   "conflicting insert, legacy rev",
 			key:           "conflictingInsert",
 			revID:         "1-abc",
 			parentRevID:   "",
 			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingInsertRev},
 		},
 		proposeChangesCase{
+			description:   "successful insert, legacy rev",
 			key:           "newInsert",
 			revID:         "1-abc",
 			parentRevID:   "",
 			expectedValue: float64(db.ProposedRev_OK),
 		},
 		proposeChangesCase{
+			description:   "conflicting update, legacy rev",
 			key:           "conflictingUpdate",
 			revID:         "2-abc",
 			parentRevID:   conflictingUpdateRev1,
 			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateRev2},
 		},
 		proposeChangesCase{
+			description:   "successful update, legacy rev",
 			key:           "newUpdate",
 			revID:         "2-abc",
 			parentRevID:   newUpdateRev1,
 			expectedValue: float64(db.ProposedRev_OK),
 		},
 		proposeChangesCase{
+			description:   "insert, existing doc, legacy rev",
 			key:           "existingDoc",
 			revID:         existingDocRev,
 			parentRevID:   "",
+			expectedValue: float64(db.ProposedRev_Exists),
+		},
+		proposeChangesCase{
+			description:   "successful update, new version, legacy parent",
+			key:           "newUpdate",
+			revID:         "1000@CBL1",
+			parentRevID:   newUpdateRev1,
+			expectedValue: float64(db.ProposedRev_OK),
+		},
+		proposeChangesCase{
+			description:   "conflicting update, new version, legacy parent",
+			key:           "conflictingUpdate",
+			revID:         "1000@CBL1",
+			parentRevID:   conflictingUpdateRev1,
+			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateVersion2.String()},
+		},
+		proposeChangesCase{
+			description:   "already known, existing version, legacy parent is ancestor",
+			key:           "conflictingUpdate",
+			revID:         conflictingUpdateVersion2.String(),
+			parentRevID:   conflictingUpdateRev1,
 			expectedValue: float64(db.ProposedRev_Exists),
 		},
 	}
@@ -161,7 +191,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 	require.NoError(t, decodeErr)
 
 	for i, entry := range changeList {
-		assert.Equal(t, proposeChangesCases[i].expectedValue, entry)
+		assert.Equal(t, proposeChangesCases[i].expectedValue, entry, "mismatch in expected value for case %q", proposeChangesCases[i].description)
 	}
 }
 

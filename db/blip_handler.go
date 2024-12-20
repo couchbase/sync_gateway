@@ -837,7 +837,6 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 		changeIsVector := false
 		if versionVectorProtocol {
-			// only check if rev is vector in VV replication mode
 			changeIsVector = strings.Contains(rev, "@")
 		}
 		if versionVectorProtocol && changeIsVector {
