@@ -180,6 +180,32 @@ func NewHybridLogicalVector() *HybridLogicalVector {
 	}
 }
 
+func (hlv *HybridLogicalVector) Equals(other *HybridLogicalVector) bool {
+	if hlv.SourceID != other.SourceID {
+		return false
+	}
+	if hlv.Version != other.Version {
+		return false
+	}
+	if len(hlv.PreviousVersions) != len(other.PreviousVersions) {
+		return false
+	}
+	for k, v := range hlv.PreviousVersions {
+		if other.PreviousVersions[k] != v {
+			return false
+		}
+	}
+	if len(hlv.MergeVersions) != len(other.MergeVersions) {
+		return false
+	}
+	for k, v := range hlv.MergeVersions {
+		if other.MergeVersions[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
 // GetCurrentVersion returns the current version from the HLV in memory.
 func (hlv *HybridLogicalVector) GetCurrentVersion() (string, uint64) {
 	return hlv.SourceID, hlv.Version
