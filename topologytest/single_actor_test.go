@@ -79,9 +79,6 @@ func TestSingleActorDelete(t *testing.T) {
 			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
-					if activePeer.Type() == PeerTypeCouchbaseLite {
-						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4433")
-					}
 
 					docID := getDocID(t)
 					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
@@ -114,9 +111,6 @@ func TestSingleActorResurrect(t *testing.T) {
 			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
-					if activePeer.Type() == PeerTypeCouchbaseLite {
-						t.Skip("Skipping Couchbase Lite test, does not know how to push a deletion yet CBG-4433")
-					}
 
 					docID := getDocID(t)
 					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))

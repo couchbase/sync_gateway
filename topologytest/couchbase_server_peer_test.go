@@ -163,14 +163,6 @@ func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, d
 	return body
 }
 
-// WaitForDeletion waits for a document to be deleted. This document must be a tombstone. The test will fail if the document still exists after 20s.
-func (p *CouchbaseServerPeer) WaitForDeletion(dsName sgbucket.DataStoreName, docID string) {
-	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
-		_, err := p.getCollection(dsName).Get(docID, nil)
-		assert.True(c, base.IsDocNotFoundError(err), "expected docID %s to be deleted from peer %s, found err=%v", docID, p.name, err)
-	}, totalWaitTime, pollInterval)
-}
-
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseServerPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) {
 	docBytes := p.waitForDocVersion(dsName, docID, expected)
@@ -196,12 +188,6 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 
 	}, totalWaitTime, pollInterval)
 	return docBytes
-}
-
-// RequireDocNotFound asserts that a document does not exist on the peer.
-func (p *CouchbaseServerPeer) RequireDocNotFound(dsName sgbucket.DataStoreName, docID string) {
-	_, err := p.getCollection(dsName).Get(docID, nil)
-	base.RequireDocNotFoundError(p.tb, err)
 }
 
 // Close will shut down the peer and close any active replications on the peer.
