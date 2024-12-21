@@ -3211,7 +3211,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 }
 
 // CheckProposedVersion - given DocID and a version in string form, check whether it can be added without conflict.
-func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousVersionStr string) (status ProposedRevStatus, currentVersion string) {
+func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousRev string) (status ProposedRevStatus, currentVersion string) {
 
 	proposedVersion, err := ParseVersion(proposedVersionStr)
 	if err != nil {
@@ -3219,12 +3219,17 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		return ProposedRev_Error, ""
 	}
 
+	// previousRev may be revTreeID or version
 	var previousVersion Version
-	if previousVersionStr != "" {
+	previousRevFormat := "version"
+	if !strings.Contains(previousRev, "@") {
+		previousRevFormat = "revTreeID"
+	}
+	if previousRev != "" && previousRevFormat == "version" {
 		var err error
-		previousVersion, err = ParseVersion(previousVersionStr)
+		previousVersion, err = ParseVersion(previousRev)
 		if err != nil {
-			base.WarnfCtx(ctx, "Couldn't parse previous version for doc %q / %q: %v", base.UD(docid), previousVersionStr, err)
+			base.WarnfCtx(ctx, "Couldn't parse previous version for doc %q / %q: %v", base.UD(docid), previousRev, err)
 			return ProposedRev_Error, ""
 		}
 	}
@@ -3241,7 +3246,10 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		}
 		// New document not found on server
 		return ProposedRev_OK_IsNew, ""
-	} else if localDocCV == previousVersion {
+	} else if previousRevFormat == "revTreeID" && doc.CurrentRev == previousRev {
+		// Non-conflicting update, client's previous legacy revTreeID is server's currentRev
+		return ProposedRev_OK, ""
+	} else if previousRevFormat == "version" && localDocCV == previousVersion {
 		// Non-conflicting update, client's previous version is server's CV
 		return ProposedRev_OK, ""
 	} else if doc.HLV.DominatesSource(proposedVersion) {
