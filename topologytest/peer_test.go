@@ -30,7 +30,7 @@ import (
 var totalWaitTime = 3 * time.Second
 
 // pollInterval is the time to poll to see if a document is updated on a peer
-var pollInterval = 50 * time.Millisecond
+var pollInterval = 1 * time.Millisecond
 
 func init() {
 	if !base.UnitTestUrlIsWalrus() || raceEnabled {
