@@ -58,6 +58,9 @@ const (
 
 	// Creates buckets with a specific number of number of replicas
 	tbpEnvBucketNumReplicas = "SG_TEST_BUCKET_NUM_REPLICAS"
+
+	// bucket op timeout is the number of seconds that kv operations will retry. Increasing this can be necessary when flushing buckets rapidly.
+	tbpEnvBucketOpTimeout = "SG_TEST_BUCKET_OP_TIMEOUT"
 )
 
 // TestsUseNamedCollections returns true if the tests use named collections.
