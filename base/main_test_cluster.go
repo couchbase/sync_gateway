@@ -11,6 +11,8 @@ package base
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,11 +56,17 @@ func newTestCluster(ctx context.Context, server string, tbp *TestBucketPool) *tb
 // getGocbClusterForTest makes cluster connection. Callers must close. Returns the cluster and the connection string used to connect.
 func getGocbClusterForTest(ctx context.Context, server string) (*gocb.Cluster, string) {
 
-	testClusterTimeout := 10 * time.Second
 	spec := BucketSpec{
-		Server:          server,
-		TLSSkipVerify:   true,
-		BucketOpTimeout: &testClusterTimeout,
+		Server:        server,
+		TLSSkipVerify: true,
+	}
+	bucketOpTimeout := os.Getenv(tbpEnvBucketOpTimeout)
+	if bucketOpTimeout != "" {
+		secs, err := strconv.Atoi(bucketOpTimeout)
+		if err != nil {
+			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketOpTimeout, err)
+		}
+		spec.BucketOpTimeout = Ptr(time.Duration(secs) * time.Second)
 	}
 	connStr, err := spec.GetGoCBConnString()
 	if err != nil {
