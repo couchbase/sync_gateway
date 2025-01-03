@@ -39,6 +39,13 @@ const (
 	minCompressibleJSONSize = 1000
 )
 
+var _ http.Flusher = &CountedResponseWriter{}
+var _ http.Flusher = &NonCountedResponseWriter{}
+var _ http.Flusher = &EncodedResponseWriter{}
+
+var _ http.Hijacker = &CountedResponseWriter{}
+var _ http.Hijacker = &NonCountedResponseWriter{}
+
 var ErrInvalidLogin = base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 var ErrLoginRequired = base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 
@@ -671,6 +678,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}
 	h.updateResponseWriter()
+	// ensure wrapped ResponseWriter implements http.Flusher
+	_, ok := h.response.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("http.ResponseWriter %T does not implement Flusher interface", h.response)
+	}
 	return nil
 }
 
