@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.3.9
 	github.com/couchbase/clog v0.1.0
-	github.com/couchbase/go-blip v0.0.0-20241014142134-cc8d8ebf1949
+	github.com/couchbase/go-blip v0.0.0-20241014144256-13a798c348fd
 	github.com/couchbase/gocb/v2 v2.9.1
 	github.com/couchbase/gocbcore/v10 v10.5.1
 	github.com/couchbase/gomemcached v0.2.1
@@ -105,5 +105,5 @@ require (
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	nhooyr.io/websocket v1.8.10 // indirect
+	nhooyr.io/websocket v1.8.17 // indirect
 )
