@@ -671,6 +671,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}
 	h.updateResponseWriter()
+	// ensure wrapped ResponseWriter implements http.Flusher
+	_, ok := h.response.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("ResponseWriter does not implement Flusher interface")
+	}
 	return nil
 }
 
