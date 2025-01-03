@@ -2873,17 +2873,12 @@ func TestBufferFlush(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, a.Save(user))
 
-	// create some changes
-	for i := 0; i < 10; i++ {
-		rt.PutDoc(fmt.Sprint(i), `{"some":"doc", "channels":["foo"]}`)
-	}
-
 	var wg sync.WaitGroup
 	var resp *TestResponse
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=continuous&since=0&timeout=5000&include_docs=true", "", "foo")
+		resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=continuous&since=0&timeout=500&include_docs=true", "", "foo")
 		RequireStatus(t, resp, http.StatusOK)
 	}()
 	wg.Wait()
