@@ -2857,3 +2857,37 @@ func TestAllDbs(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 }
+
+// TestBufferFlush will test for http.ResponseWriter implements Flusher interface
+func TestBufferFlush(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
+	defer rt.Close()
+	ctx := base.TestCtx(t)
+
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+
+	// Create a test user
+	user, err := a.NewUser("foo", "letmein", channels.BaseSetOf(t, "foo"))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(user))
+
+	// create some changes
+	for i := 0; i < 10; i++ {
+		rt.PutDoc(fmt.Sprint(i), `{"some":"doc", "channels":["foo"]}`)
+	}
+
+	var wg sync.WaitGroup
+	var resp *TestResponse
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=continuous&since=0&timeout=5000&include_docs=true", "", "foo")
+		RequireStatus(t, resp, http.StatusOK)
+	}()
+	wg.Wait()
+
+	// assert that the response is a flushed response
+	assert.True(t, resp.Flushed)
+}
