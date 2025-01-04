@@ -37,7 +37,7 @@ const (
 	tbpEnvBucketPoolSize     = "SG_TEST_BUCKET_POOL_SIZE"
 
 	// Creates and prepares this many collections in each bucket in the backing store.
-	tbpDefaultCollectionPoolSize = 3 // (per bucket)
+	tbpDefaultCollectionPoolSize = 2 // (per bucket)
 	tbpEnvCollectionPoolSize     = "SG_TEST_COLLECTION_POOL_SIZE"
 
 	// Allocate this much memory to each bucket.
