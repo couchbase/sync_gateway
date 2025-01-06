@@ -51,11 +51,12 @@ func (p *CouchbaseLiteMockPeer) String() string {
 // getLatestDocVersion returns the latest body and version of a document. If the document does not exist, it will return nil.
 func (p *CouchbaseLiteMockPeer) getLatestDocVersion(dsName sgbucket.DataStoreName, docID string) ([]byte, *DocMetadata) {
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
-	body, version := client.GetDoc(docID)
+	body, hlv, version := client.GetDoc(docID)
 	if version == nil {
 		return nil, nil
 	}
-	meta := DocMetadataFromDocVersion(p.TB(), docID, *version)
+	meta := DocMetadataFromDocVersion(p.TB(), docID, hlv, *version)
+	meta.HLV = hlv
 	return body, &meta
 }
 
@@ -83,9 +84,8 @@ func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
 func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	p.t.Logf("%s: Creating document %s", p, docID)
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
-	docVersion, err := client.AddRev(docID, rest.EmptyDocVersion(), body)
-	require.NoError(p.TB(), err)
-	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, docVersion)
+	docVersion, hlv := client.AddHLVRev(docID, rest.EmptyDocVersion(), body)
+	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -102,9 +102,8 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 	if parentMeta != nil {
 		parentVersion = &db.DocVersion{CV: parentMeta.CV(p.TB())}
 	}
-	docVersion, err := client.AddRev(docID, parentVersion, body)
-	require.NoError(p.TB(), err)
-	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, docVersion)
+	docVersion, hlv := client.AddHLVRev(docID, parentVersion, body)
+	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -121,9 +120,8 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, do
 	if parentMeta != nil {
 		parentVersion = &db.DocVersion{CV: parentMeta.CV(p.TB())}
 	}
-	docVersion, err := client.Delete(docID, parentVersion)
-	require.NoError(p.TB(), err)
-	return DocMetadataFromDocVersion(p.TB(), docID, docVersion)
+	docVersion, hlv := client.Delete(docID, parentVersion)
+	return DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
@@ -136,7 +134,6 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 			return
 		}
 		assert.Equal(c, expected.CV(c), actual.CV(c), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %#v\nactual:   %#v\n          body: %+v\n", docID, p, p.SourceID(), expected, actual, string(data))
-
 	}, totalWaitTime, pollInterval)
 	var body db.Body
 	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))

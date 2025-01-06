@@ -54,13 +54,17 @@ func (v DocMetadata) GoString() string {
 }
 
 // DocMetadataFromDocVersion returns metadata DocVersion from the given document and version.
-func DocMetadataFromDocVersion(t testing.TB, docID string, version rest.DocVersion) DocMetadata {
-	// FIXME: CBG-4257, this should read the existing HLV on doc, until this happens, pv is always missing
-	hlv := db.NewHybridLogicalVector()
-	require.NoError(t, hlv.AddVersion(version.CV))
-	return DocMetadata{
+func DocMetadataFromDocVersion(t testing.TB, docID string, hlv *db.HybridLogicalVector, version rest.DocVersion) DocMetadata {
+	m := DocMetadata{
 		DocID:       docID,
 		RevTreeID:   version.RevTreeID,
 		ImplicitHLV: hlv,
 	}
+	if hlv != nil {
+		m.HLV = hlv
+	} else {
+		m.HLV = db.NewHybridLogicalVector()
+		require.NoError(t, m.HLV.AddVersion(version.CV))
+	}
+	return m
 }

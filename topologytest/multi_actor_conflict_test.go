@@ -51,9 +51,7 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		if strings.Contains(topology.description, "CBL") {
-			// Test case flakes given the WaitForDocVersion function only waits for a docID on the cbl peer. We need to be
-			// able to wait for a specific version to arrive over pull replication
-			t.Skip("We need to be able to wait for a specific version to arrive over pull replication + unexpected body in proposeChanges: [304] issue, CBG-4257")
+			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
 		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
@@ -83,8 +81,10 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 // 6. start replications
 // 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
 func TestMultiActorConflictDelete(t *testing.T) {
-	t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	for _, topology := range append(simpleTopologies, Topologies...) {
+		if strings.Contains(topology.description, "CBL") {
+			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
+		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
@@ -121,8 +121,8 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
 	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
-		if strings.Contains(topology.description, "1.") {
-			t.Skip("CBG-4434 fail due to CBL issues, specifically for multi-actor tests")
+		if strings.Contains(topology.description, "CBL") {
+			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
 		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
