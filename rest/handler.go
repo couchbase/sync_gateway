@@ -1607,10 +1607,8 @@ func (h *handler) writeMultipart(subtype string, callback func(*multipart.Writer
 }
 
 func (h *handler) flush() {
-	switch r := h.response.(type) {
-	case http.Flusher:
-		r.Flush()
-	}
+	r, _ := h.response.(http.Flusher)
+	r.Flush()
 }
 
 // If the error parameter is non-nil, sets the response status code appropriately and

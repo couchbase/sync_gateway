@@ -94,8 +94,6 @@ func (w *CountedResponseWriter) isHijackable() bool {
 }
 
 func (w *CountedResponseWriter) Flush() {
-	f, ok := w.writer.(http.Flusher)
-	if ok {
-		f.Flush()
-	}
+	f, _ := w.writer.(http.Flusher)
+	f.Flush()
 }
