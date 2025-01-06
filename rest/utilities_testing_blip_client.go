@@ -301,17 +301,17 @@ type BlipTesterCollectionClient struct {
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
-func (btcc *BlipTesterCollectionClient) GetDoc(docID string) ([]byte, *DocVersion) {
+func (btcc *BlipTesterCollectionClient) GetDoc(docID string) ([]byte, *db.HybridLogicalVector, *DocVersion) {
 	doc, exists := btcc.getClientDoc(docID)
 	if !exists {
-		return nil, nil
+		return nil, nil, nil
 	}
 	latestRev, err := doc.latestRev()
 	require.NoError(btcc.TB(), err)
 	if latestRev == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return latestRev.body, &latestRev.version
+	return latestRev.body, &latestRev.HLV, &latestRev.version
 }
 
 // IsTombstoned returns true if the latest version of the doc is a tombstone.
@@ -1622,16 +1622,12 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 	return &rev, nil
 }
 
-// Delete creates a tombstone for the document.
-func (btc *BlipTesterCollectionClient) Delete(docID string, parentVersion *DocVersion) (DocVersion, error) {
-	if parentVersion == nil {
-		return DocVersion{}, fmt.Errorf("parentVersion must be provided for delete operation")
-	}
+// Delete creates a tombstone for the document and returns a the current DocVersion and hlv. If the BlipTesterCollectionClient is using revtrees, hlv will be nil.
+func (btc *BlipTesterCollectionClient) Delete(docID string, parentVersion *DocVersion) (DocVersion, *db.HybridLogicalVector) {
+	require.NotNil(btc.TB(), parentVersion, "parentVersion must be provided for delete operation")
 	newRev, err := btc.upsertDoc(docID, parentVersion, nil)
-	if err != nil {
-		return DocVersion{}, err
-	}
-	return newRev.version, nil
+	require.NoError(btc.TB(), err)
+	return newRev.version, &newRev.HLV
 }
 
 // AddRev creates a revision on the client.
@@ -1642,6 +1638,13 @@ func (btc *BlipTesterCollectionClient) AddRev(docID string, parentVersion *DocVe
 		return DocVersion{}, err
 	}
 	return newRev.version, nil
+}
+
+// AddHLVRev creates a revision on the client. This returns an HLV in addition to DocVersion and is otherwise identical to AddRev
+func (btc *BlipTesterCollectionClient) AddHLVRev(docID string, parentVersion *DocVersion, body []byte) (DocVersion, *db.HybridLogicalVector) {
+	newRev, err := btc.upsertDoc(docID, parentVersion, body)
+	require.NoError(btc.TB(), err)
+	return newRev.version, &newRev.HLV
 }
 
 // GetDocVersion fetches revid and cv directly from the bucket.  Used to support REST-based verification in btc tests
@@ -1909,13 +1912,13 @@ func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion D
 // WaitForDoc blocks until any document with the doc ID has been stored by the client, and returns the document body when found. If a document will be reported multiple times, the latest copy of the document is returned (not necessarily the first). The test will fail after 10 seconds if the document
 func (btc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte) {
 
-	if data, version := btc.GetDoc(docID); version != nil {
+	if data, _, version := btc.GetDoc(docID); version != nil {
 		return data
 	}
 	timeout := 10 * time.Second
 	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
 		var version *DocVersion
-		data, version = btc.GetDoc(docID)
+		data, _, version = btc.GetDoc(docID)
 		assert.NotNil(c, version, "Could not find docID:%+v", docID)
 	}, timeout, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v after %s", docID, timeout)
 	return data
@@ -2041,7 +2044,8 @@ func (btcRunner *BlipTestClientRunner) AddRev(clientID uint32, docID string, ver
 	return btcRunner.SingleCollection(clientID).AddRev(docID, version, body)
 }
 
-func (btcRunner *BlipTestClientRunner) Delete(clientID uint32, docID string, version *DocVersion) (DocVersion, error) {
+// Delete creates a tombstone for the document and returns a the current DocVersion and hlv. If the BlipTesterCollectionClient is using revtrees, hlv will be nil.
+func (btcRunner *BlipTestClientRunner) Delete(clientID uint32, docID string, version *DocVersion) (DocVersion, *db.HybridLogicalVector) {
 	return btcRunner.SingleCollection(clientID).Delete(docID, version)
 }
 

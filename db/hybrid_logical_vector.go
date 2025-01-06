@@ -624,3 +624,7 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 	}
 	return nil
 }
+
+func (hlv *HybridLogicalVector) GoString() string {
+	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%+v, MergeVersions:%+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
+}
