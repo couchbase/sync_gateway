@@ -123,6 +123,7 @@ if [ "${MULTI_NODE:-}" == "true" ]; then
 else
     # single node
     ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
+    export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME="couchbase"
 fi
 
 # Set up test environment variables for CBS runs
