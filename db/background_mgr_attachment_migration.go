@@ -100,18 +100,15 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	}
 	defer persistClusterStatus()
 
-	var processFailure error
-	failProcess := func(err error, format string, args ...interface{}) bool {
-		processFailure = err
-		terminator.Close()
-		base.WarnfCtx(ctx, format, args...)
-		return false
-	}
-
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		collection := db.CollectionByID[event.CollectionID]
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", migrationLoggingID, event.Opcode, base.UD(docID))
+
+		// Ignore non-mutation events: Deletion, Backfill, etc.
+		if event.Opcode != sgbucket.FeedOpMutation {
+			return true
+		}
 
 		// Ignore documents without xattrs, to avoid processing unnecessary documents
 		if event.DataType&base.MemcachedDataTypeXattr == 0 {
@@ -132,7 +129,8 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		a.DocsProcessed.Add(1)
 		syncData, _, _, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 		if err != nil {
-			failProcess(err, "[%s] error unmarshaling document %s: %v, stopping attachment migration.", migrationLoggingID, base.UD(docID), err)
+			base.WarnfCtx(ctx, "[%s] error unmarshaling document %s: %v, stopping attachment migration.", migrationLoggingID, base.UD(docID), err)
+			return false
 		}
 
 		if syncData == nil || syncData.Attachments == nil {
@@ -147,7 +145,8 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		// xattr migration to take place
 		err = collWithUser.MigrateAttachmentMetadata(collCtx, docID, event.Cas, syncData)
 		if err != nil {
-			failProcess(err, "[%s] error migrating document attachment metadata for doc: %s: %v", migrationLoggingID, base.UD(docID), err)
+			base.WarnfCtx(ctx, "[%s] error migrating document attachment metadata for doc: %s: %v", migrationLoggingID, base.UD(docID), err)
+			return false
 		}
 		a.DocsChanged.Add(1)
 		return true
@@ -195,9 +194,6 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was finished %v", migrationLoggingID, err)
 		}
-		if processFailure != nil {
-			return processFailure
-		}
 		updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(db.CollectionByID))
 		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
@@ -223,9 +219,6 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was terminated %v", migrationLoggingID, err)
 			return err
-		}
-		if processFailure != nil {
-			return processFailure
 		}
 		err = <-doneChan
 		if err != nil {
