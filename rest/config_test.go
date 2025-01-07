@@ -3150,12 +3150,15 @@ func TestUserUpdatedAtField(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
 
+	metaKeys := rt.GetDatabase().MetadataKeys
+
 	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_user/", `{"name":"user1","password":"password"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	ds := rt.MetadataStore()
 	var user map[string]interface{}
-	_, err := ds.Get("_sync:user:db1:user1", &user)
+	userKey := metaKeys.UserKey("user1")
+	_, err := ds.Get(userKey, &user)
 	require.NoError(t, err)
 
 	// Check that the user has an updatedAt field
@@ -3168,7 +3171,7 @@ func TestUserUpdatedAtField(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	user = map[string]interface{}{}
-	_, err = ds.Get("_sync:user:db1:user1", &user)
+	_, err = ds.Get(userKey, &user)
 	require.NoError(t, err)
 	newTimeStr := user["updated_at"].(string)
 	newTime, err := time.Parse(time.RFC3339, newTimeStr)
@@ -3191,8 +3194,10 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	ds := rt.MetadataStore()
+	metaKeys := rt.GetDatabase().MetadataKeys
+	roleKey := metaKeys.RoleKey("role1")
 	var user map[string]interface{}
-	_, err := ds.Get("_sync:role:db1:role1", &user)
+	_, err := ds.Get(roleKey, &user)
 	require.NoError(t, err)
 
 	// Check that the user has an updatedAt field
@@ -3205,7 +3210,7 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	user = map[string]interface{}{}
-	_, err = ds.Get("_sync:role:db1:role1", &user)
+	_, err = ds.Get(roleKey, &user)
 	require.NoError(t, err)
 	newTimeStr := user["updated_at"].(string)
 	newTime, err := time.Parse(time.RFC3339, newTimeStr)
