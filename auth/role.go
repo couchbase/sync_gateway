@@ -279,7 +279,7 @@ func (role *roleImpl) Name() string {
 }
 
 func (role *roleImpl) setUpdatedAt() {
-	role.UpdatedAt = time.Now()
+	role.UpdatedAt = time.Now().UTC()
 }
 
 func (role *roleImpl) Sequence() uint64 {

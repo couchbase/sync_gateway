@@ -336,7 +336,7 @@ func (rc *ReplicationConfig) Upsert(ctx context.Context, c *ReplicationUpsertCon
 		rc.RunAs = *c.RunAs
 	}
 
-	timeNow := time.Now()
+	timeNow := time.Now().UTC()
 	rc.UpdatedAt = &timeNow
 
 	if c.QueryParams != nil {

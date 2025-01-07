@@ -106,7 +106,7 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		}
 
 		// Persist registry
-		registry.UpdatedAt = time.Now()
+		registry.UpdatedAt = time.Now().UTC()
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Registry updated successfully")
@@ -133,7 +133,7 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		return 0, fmt.Errorf("InsertConfig failed to persist registry after %d attempts", configUpdateMaxRetryAttempts)
 	}
 	// Step 3. Write the database config
-	timeUpdated := time.Now()
+	timeUpdated := time.Now().UTC()
 	config.UpdatedAt = &timeUpdated
 	cas, configErr := b.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), config)
 	if configErr != nil {
@@ -199,7 +199,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		}
 
 		// Persist registry
-		registry.UpdatedAt = time.Now()
+		registry.UpdatedAt = time.Now().UTC()
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig persisted updated registry successfully")
@@ -227,7 +227,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	}
 
 	// Step 2. Update the config document
-	timeUpdated := time.Now()
+	timeUpdated := time.Now().UTC()
 	updatedConfig.UpdatedAt = &timeUpdated
 	docID := PersistentConfigKey(ctx, groupID, dbName)
 	casOut, err := b.Connection.WriteMetadataDocument(ctx, bucketName, docID, updatedConfig.cfgCas, updatedConfig)
