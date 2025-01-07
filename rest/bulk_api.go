@@ -184,7 +184,6 @@ func (h *handler) handleAllDocs() error {
 			}
 			totalRows++
 			var err error
-			fmt.Printf("row: %+v value=%+v\n", row, row.Value)
 			err = h.addJSON(row)
 			if err != nil {
 				return false, err
