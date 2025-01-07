@@ -46,6 +46,9 @@ func TestDbConfigUpdatedAtField(t *testing.T) {
 	require.NotNil(t, unmarshaledConfig.UpdatedAt)
 	currTime := unmarshaledConfig.UpdatedAt
 
+	// avoid flake where update at seems to be the same (possibly running to fast)
+	time.Sleep(500 * time.Nanosecond)
+
 	// Update the config
 	dbConfig = rt.NewDbConfig()
 	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)

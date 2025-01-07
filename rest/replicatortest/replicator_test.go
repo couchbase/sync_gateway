@@ -8598,6 +8598,9 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 	require.NotNil(t, configResponse.UpdatedAt)
 	currTime := configResponse.UpdatedAt
 
+	// avoid flake where update at seems to be the same (possibly running to fast)
+	time.Sleep(500 * time.Nanosecond)
+
 	resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
