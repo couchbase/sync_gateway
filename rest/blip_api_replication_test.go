@@ -52,11 +52,10 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// update doc1 on client
-		_, err := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
-		assert.NoError(t, err)
+		_ = btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 
 		// wait for update to arrive on SG
-		_, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", seq), "", true)
+		_, err := rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", seq), "", true)
 		require.NoError(t, err)
 
 		body := rt.GetDocBody(docID)

@@ -222,7 +222,7 @@ func TestProcessLegacyRev(t *testing.T) {
 	sent, _, _, err := bt.SendRevWithHistory("doc1", "2-bcd", history, []byte(`{"key": "val"}`), blip.Properties{})
 	assert.True(t, sent)
 	assert.NoError(t, err)
-	require.NoError(t, rt.WaitForVersion("doc1", DocVersion{RevTreeID: "2-bcd"}))
+	rt.WaitForVersion("doc1", DocVersion{RevTreeID: "2-bcd"})
 
 	// assert we can fetch this doc rev
 	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?rev=2-bcd", "")
@@ -242,7 +242,7 @@ func TestProcessLegacyRev(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	require.NoError(t, rt.WaitForVersion("foo", DocVersion{RevTreeID: "1-abc"}))
+	rt.WaitForVersion("foo", DocVersion{RevTreeID: "1-abc"})
 	// assert we can fetch this doc rev
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/foo?rev=1-abc", "")
 	RequireStatus(t, resp, 200)

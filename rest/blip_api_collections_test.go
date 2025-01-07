@@ -17,7 +17,6 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -125,7 +124,7 @@ func TestBlipGetCollections(t *testing.T) {
 				getCollectionsRequest, err := db.NewGetCollectionsMessage(testCase.requestBody)
 				require.NoError(t, err)
 
-				require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
+				btc.pushReplication.sendMsg(getCollectionsRequest)
 
 				// Check that the response we got back was processed by the norev handler
 				resp := getCollectionsRequest.Response()
@@ -172,7 +171,7 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 		subChangesRequest := blip.NewRequest()
 		subChangesRequest.SetProfile(db.MessageSubChanges)
 
-		require.NoError(t, btc.pullReplication.sendMsg(subChangesRequest))
+		btc.pullReplication.sendMsg(subChangesRequest)
 		resp := subChangesRequest.Response()
 		require.Equal(t, strconv.Itoa(http.StatusBadRequest), resp.Properties[db.BlipErrorCode])
 	})
@@ -208,7 +207,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 		require.NoError(t, err)
 
-		require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
+		btc.pushReplication.sendMsg(getCollectionsRequest)
 
 		// Check that the response we got back was processed by the GetCollections
 		resp := getCollectionsRequest.Response()
@@ -227,7 +226,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 		requestGetCheckpoint.SetProfile(db.MessageGetCheckpoint)
 		requestGetCheckpoint.Properties[db.BlipClient] = checkpointID1
 		requestGetCheckpoint.Properties[db.BlipCollection] = "0"
-		require.NoError(t, btc.pushReplication.sendMsg(requestGetCheckpoint))
+		btc.pushReplication.sendMsg(requestGetCheckpoint)
 		resp = requestGetCheckpoint.Response()
 		require.NotNil(t, resp)
 		errorCode, hasErrorCode = resp.Properties[db.BlipErrorCode]
@@ -301,8 +300,7 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 		}
 
 		for _, collectionClient := range btc.collectionClients {
-			resp, err := collectionClient.UnsubPullChanges()
-			assert.NoError(t, err, "Error unsubing: %+v", resp)
+			collectionClient.UnsubPullChanges()
 		}
 	})
 }
@@ -355,8 +353,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 		}
 
 		for _, collectionClient := range btc.collectionClients {
-			resp, err := collectionClient.UnsubPullChanges()
-			assert.NoError(t, err, "Error unsubing: %+v", resp)
+			collectionClient.UnsubPullChanges()
 		}
 	})
 }
