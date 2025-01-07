@@ -3167,6 +3167,9 @@ func TestUserUpdatedAtField(t *testing.T) {
 	currTime, err := time.Parse(time.RFC3339, currTimeStr)
 	require.NoError(t, err)
 
+	// avoid flake where update at seems to be the same (possibly running to fast)
+	time.Sleep(500 * time.Nanosecond)
+
 	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_user/user1", `{"name":"user1","password":"password1"}`)
 	RequireStatus(t, resp, http.StatusOK)
 
@@ -3205,6 +3208,9 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	currTimeStr := user["updated_at"].(string)
 	currTime, err := time.Parse(time.RFC3339, currTimeStr)
 	require.NoError(t, err)
+
+	// avoid flake where update at seems to be the same (possibly running to fast)
+	time.Sleep(500 * time.Nanosecond)
 
 	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_role/role1", `{"name":"role1","admin_channels":["ABC"]}`)
 	RequireStatus(t, resp, http.StatusOK)
