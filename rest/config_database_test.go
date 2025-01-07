@@ -9,10 +9,14 @@
 package rest
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,4 +25,35 @@ func TestDefaultDbConfig(t *testing.T) {
 	sc := DefaultStartupConfig("")
 	compactIntervalDays := *(DefaultDbConfig(&sc, useXattrs).CompactIntervalDays)
 	require.Equal(t, db.DefaultCompactInterval, time.Duration(compactIntervalDays)*time.Hour*24)
+}
+
+func TestDbConfigUpdatedAtField(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var unmarshaledConfig DbConfig
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &unmarshaledConfig))
+
+	// Check that the config has an updatedAt field
+	require.NotNil(t, unmarshaledConfig.UpdatedAt)
+	currTime := unmarshaledConfig.UpdatedAt
+
+	// Update the config
+	dbConfig = rt.NewDbConfig()
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+	unmarshaledConfig = DbConfig{}
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &unmarshaledConfig))
+
+	assert.Greater(t, unmarshaledConfig.UpdatedAt.UnixNano(), currTime.UnixNano())
 }

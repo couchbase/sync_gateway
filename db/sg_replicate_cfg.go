@@ -115,6 +115,7 @@ type ReplicationConfig struct {
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
 	BatchSize              int                       `json:"batch_size,omitempty"`
 	RunAs                  string                    `json:"run_as,omitempty"`
+	UpdatedAt              *time.Time                `json:"updated_at,omitempty"`
 }
 
 func DefaultReplicationConfig() ReplicationConfig {
@@ -334,6 +335,9 @@ func (rc *ReplicationConfig) Upsert(ctx context.Context, c *ReplicationUpsertCon
 	if c.RunAs != nil {
 		rc.RunAs = *c.RunAs
 	}
+
+	timeNow := time.Now()
+	rc.UpdatedAt = &timeNow
 
 	if c.QueryParams != nil {
 		// QueryParams can be either []interface{} or map[string]interface{}, so requires type-specific copying

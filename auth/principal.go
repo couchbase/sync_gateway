@@ -52,6 +52,9 @@ type Principal interface {
 	setDeleted(bool)
 	IsDeleted() bool
 
+	// sets the updated time for the principal document
+	setUpdatedAt()
+
 	// Principal includes the PrincipalCollectionAccess interface for operations against
 	// the _default._default collection (stored directly on the principal for backward
 	// compatibility)

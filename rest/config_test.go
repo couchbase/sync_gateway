@@ -3139,3 +3139,77 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	assert.Equal(t, uint32(100), *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount)
 	assert.Equal(t, uint32(0), *dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
 }
+
+func TestUserUpdatedAtField(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_user/", `{"name":"user1","password":"password"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	ds := rt.MetadataStore()
+	var user map[string]interface{}
+	_, err := ds.Get("_sync:user:db1:user1", &user)
+	require.NoError(t, err)
+
+	// Check that the user has an updatedAt field
+	require.NotNil(t, user["updated_at"])
+	currTimeStr := user["updated_at"].(string)
+	currTime, err := time.Parse(time.RFC3339, currTimeStr)
+	require.NoError(t, err)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_user/user1", `{"name":"user1","password":"password1"}`)
+	RequireStatus(t, resp, http.StatusOK)
+
+	user = map[string]interface{}{}
+	_, err = ds.Get("_sync:user:db1:user1", &user)
+	require.NoError(t, err)
+	newTimeStr := user["updated_at"].(string)
+	newTime, err := time.Parse(time.RFC3339, newTimeStr)
+	require.NoError(t, err)
+
+	assert.Greater(t, newTime.UnixNano(), currTime.UnixNano())
+}
+
+func TestRoleUpdatedAtField(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_role/", `{"name":"role1","admin_channels":["test"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	ds := rt.MetadataStore()
+	var user map[string]interface{}
+	_, err := ds.Get("_sync:role:db1:role1", &user)
+	require.NoError(t, err)
+
+	// Check that the user has an updatedAt field
+	require.NotNil(t, user["updated_at"])
+	currTimeStr := user["updated_at"].(string)
+	currTime, err := time.Parse(time.RFC3339, currTimeStr)
+	require.NoError(t, err)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_role/role1", `{"name":"role1","admin_channels":["ABC"]}`)
+	RequireStatus(t, resp, http.StatusOK)
+
+	user = map[string]interface{}{}
+	_, err = ds.Get("_sync:role:db1:role1", &user)
+	require.NoError(t, err)
+	newTimeStr := user["updated_at"].(string)
+	newTime, err := time.Parse(time.RFC3339, newTimeStr)
+	require.NoError(t, err)
+
+	assert.Greater(t, newTime.UnixNano(), currTime.UnixNano())
+}

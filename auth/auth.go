@@ -407,6 +407,8 @@ func (auth *Authenticator) Save(p Principal) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
+	// Add updated at time
+	p.setUpdatedAt()
 
 	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {

@@ -8580,3 +8580,35 @@ func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
 	require.NoError(t, base.JSONUnmarshal([]byte(expected), &expectedBody))
 	require.Equal(t, expectedBody, doc.Body(base.TestCtx(t)))
 }
+
+func TestReplicationConfigUpdatedAt(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	activeRT, _, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// create a replication and assert the updated at field is present in the config
+	activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+
+	resp := activeRT.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
+	var configResponse db.ReplicationConfig
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
+
+	// Check that the config has an updated_at field
+	require.NotNil(t, configResponse.UpdatedAt)
+	currTime := configResponse.UpdatedAt
+
+	resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// update the config
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{"name":"replication1","source":"%s","type":"push", "continuous":true}`, remoteURLString))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Check that the updated_at field is updated when the config is updated
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
+	configResponse = db.ReplicationConfig{}
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
+
+	assert.Greater(t, configResponse.UpdatedAt.UnixNano(), currTime.UnixNano())
+}

@@ -33,6 +33,7 @@ type roleImpl struct {
 	ChannelInvalSeq   uint64                                  `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
 	Deleted           bool                                    `json:"deleted,omitempty"`
 	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
+	UpdatedAt         time.Time                               `json:"updated_at"`
 	cas               uint64
 	docID             string // key used to store the roleImpl
 }
@@ -275,6 +276,10 @@ func (role *roleImpl) accessViewKey() string {
 
 func (role *roleImpl) Name() string {
 	return role.Name_
+}
+
+func (role *roleImpl) setUpdatedAt() {
+	role.UpdatedAt = time.Now()
 }
 
 func (role *roleImpl) Sequence() uint64 {
