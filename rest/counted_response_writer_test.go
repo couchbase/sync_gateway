@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -168,4 +169,18 @@ func TestCountableResponseWriterWithDelay(t *testing.T) {
 		})
 	}
 
+}
+
+func TestResponseWriterSupportsFLush(t *testing.T) {
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+
+			stat, err := base.NewIntStat(base.SubsystemDatabaseKey, "http_bytes_written", base.StatUnitBytes, base.PublicRestBytesWrittenDesc, base.StatAddedVersion3dot1dot0, base.StatDeprecatedVersionNotDeprecated, base.StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+			require.NoError(t, err)
+			responseWriter := getResponseWriter(t, stat, test.name, 0)
+
+			_, ok := responseWriter.(http.Flusher)
+			assert.True(t, ok)
+		})
+	}
 }
