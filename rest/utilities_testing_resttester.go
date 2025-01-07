@@ -16,10 +16,12 @@ import (
 	"net/url"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -127,30 +129,24 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 }
 
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
-func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
+func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	if version.RevTreeID == "" {
 		require.NotEqualf(rt.TB(), "", version.CV.String(), "Expeted CV if RevTreeID is empty in WaitForVersion")
 	}
-	return rt.WaitForCondition(func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?show_cv=true", "")
-		if rawResponse.Code != 200 && rawResponse.Code != 201 {
-			return false
+		if !assert.Contains(c, []int{http.StatusOK, http.StatusCreated}, rawResponse.Code) {
+			return
 		}
 		var body db.Body
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		if version.RevTreeID != "" && body.ExtractRev() != version.RevTreeID {
-			return false
+		if version.RevTreeID != "" {
+			assert.Equal(c, version.RevTreeID, body.ExtractRev())
 		}
-		if !version.CV.IsEmpty() && body["_cv"].(string) != version.CV.String() {
-			return false
+		if !version.CV.IsEmpty() {
+			assert.Equal(c, version.CV.String(), body["_cv"].(string))
 		}
-		return true
-	})
-}
-
-// WaitForRev retries a GET until it returns 200 or 201. If revision is not found, the test will fail. This function is deprecated for RestTester.WaitForVersion
-func (rt *RestTester) WaitForRev(docID, revID string) error {
-	return rt.WaitForVersion(docID, DocVersion{RevTreeID: revID})
+	}, 10*time.Second, 50*time.Millisecond)
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {

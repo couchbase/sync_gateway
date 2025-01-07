@@ -247,8 +247,7 @@ func (r *CouchbaseLiteMockReplication) Start() {
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseLiteMockReplication) Stop() {
 	r.btc.TB().Logf("stopping CBL replication: %s", r)
-	_, err := r.btcRunner.UnsubPullChanges(r.btc.ID())
-	require.NoError(r.btcRunner.TB(), err)
+	r.btcRunner.UnsubPullChanges(r.btc.ID())
 }
 
 func (r *CouchbaseLiteMockReplication) String() string {
