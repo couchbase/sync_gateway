@@ -1607,8 +1607,7 @@ func (h *handler) writeMultipart(subtype string, callback func(*multipart.Writer
 }
 
 func (h *handler) flush() {
-	r, _ := h.response.(http.Flusher)
-	r.Flush()
+	h.response.(http.Flusher).Flush()
 }
 
 // If the error parameter is non-nil, sets the response status code appropriately and
