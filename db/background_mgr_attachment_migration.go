@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -21,10 +22,11 @@ import (
 )
 
 type AttachmentMigrationManager struct {
-	DocsProcessed base.AtomicInt
-	DocsChanged   base.AtomicInt
-	MigrationID   string
-	CollectionIDs []uint32
+	docsProcessed atomic.Int64
+	docsChanged   atomic.Int64
+	docsFailed    atomic.Int64
+	migrationID   string
+	collectionIDs []uint32
 	databaseCtx   *DatabaseContext
 	lock          sync.RWMutex
 }
@@ -57,8 +59,8 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 			return err
 		}
 
-		a.MigrationID = uniqueUUID.String()
-		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Starting new migration run with migration ID: %s", a.MigrationID)
+		a.migrationID = uniqueUUID.String()
+		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Starting new migration run with migration ID: %s", a.migrationID)
 		return nil
 	}
 
@@ -76,11 +78,15 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || reset {
 			return newRunInit()
 		}
-		a.MigrationID = statusDoc.MigrationID
-		a.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
-		a.SetCollectionIDs(statusDoc.CollectionIDs)
+		a.lock.Lock()
+		defer a.lock.Unlock()
+		a.migrationID = statusDoc.MigrationID
+		a.docsProcessed.Store(statusDoc.DocsProcessed)
+		a.docsChanged.Store(statusDoc.DocsChanged)
+		a.docsFailed.Store(statusDoc.DocsFailed)
+		a.collectionIDs = statusDoc.CollectionIDs
 
-		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resuming migration with migration ID: %s, %d already processed", a.MigrationID, a.DocsProcessed.Value())
+		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resuming migration with migration ID: %s, %d already processed", a.migrationID, a.docsProcessed.Load())
 
 		return nil
 	}
@@ -90,7 +96,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 
 func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db := a.databaseCtx
-	migrationLoggingID := "Migration: " + a.MigrationID
+	migrationLoggingID := "Migration: " + a.migrationID
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback(ctx)
@@ -126,10 +132,11 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 			return true
 		}
 
-		a.DocsProcessed.Add(1)
+		a.docsProcessed.Add(1)
 		syncData, _, _, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] error unmarshaling document %s: %v, stopping attachment migration.", migrationLoggingID, base.UD(docID), err)
+			a.docsFailed.Add(1)
 			return false
 		}
 
@@ -146,9 +153,10 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		err = collWithUser.MigrateAttachmentMetadata(collCtx, docID, event.Cas, syncData)
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] error migrating document attachment metadata for doc: %s: %v", migrationLoggingID, base.UD(docID), err)
+			a.docsFailed.Add(1)
 			return false
 		}
-		a.DocsChanged.Add(1)
+		a.docsChanged.Add(1)
 		return true
 	}
 
@@ -161,7 +169,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	if err != nil {
 		return err
 	}
-	dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(a.MigrationID)
+	dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(a.migrationID)
 	dcpPrefix := db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
@@ -171,7 +179,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		return err
 	}
 
-	a.SetCollectionIDs(currCollectionIDs)
+	a.setCollectionIDs(currCollectionIDs)
 	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, db.Options.GroupID, dcpPrefix)
 	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *dcpOptions, bucket)
 	if err != nil {
@@ -212,8 +220,12 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 			}
 		}
 		db.RequireAttachmentMigration = collectionsRequiringMigration
-
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished migrating attachment metadata from sync data to global sync data. %d/%d docs changed", migrationLoggingID, a.DocsChanged.Value(), a.DocsProcessed.Value())
+		msg := fmt.Sprintf("[%s] Finished migrating attachment metadata from sync data to global sync data. %d/%d docs changed", migrationLoggingID, a.docsChanged.Load(), a.docsProcessed.Load())
+		failedDocs := a.docsFailed.Load()
+		if failedDocs > 0 {
+			msg += fmt.Sprintf(" with %d docs failed", failedDocs)
+		}
+		base.InfofCtx(ctx, base.KeyAll, msg)
 	case <-terminator.Done():
 		err = dcpClient.Close()
 		if err != nil {
@@ -224,31 +236,33 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		if err != nil {
 			return err
 		}
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Attachment Migration was terminated. Docs changed: %d Docs Processed: %d", migrationLoggingID, a.DocsChanged.Value(), a.DocsProcessed.Value())
+		msg := fmt.Sprintf("[%s] Attachment Migration was terminated. %d/%d docs changed", migrationLoggingID, a.docsChanged.Load(), a.docsProcessed.Load())
+		failedDocs := a.docsFailed.Load()
+		if failedDocs > 0 {
+			msg += fmt.Sprintf(" with %d docs failed", failedDocs)
+		}
+		base.InfofCtx(ctx, base.KeyAll, msg)
 	}
 	return nil
 }
 
-func (a *AttachmentMigrationManager) SetStatus(docChanged, docProcessed int64) {
-
-	a.DocsChanged.Set(docChanged)
-	a.DocsProcessed.Set(docProcessed)
-}
-
-func (a *AttachmentMigrationManager) SetCollectionIDs(collectionID []uint32) {
+// setCollectionIDs sets the collection IDs that are undergoing migration.
+func (a *AttachmentMigrationManager) setCollectionIDs(collectionIDs []uint32) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-
-	a.CollectionIDs = collectionID
+	a.collectionIDs = collectionIDs
 }
 
+// ResetStatus is called to reset all the local variables for AttachmentMigrationManager.
 func (a *AttachmentMigrationManager) ResetStatus() {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	a.DocsProcessed.Set(0)
-	a.DocsChanged.Set(0)
-	a.CollectionIDs = nil
+	a.docsProcessed.Store(0)
+	a.docsChanged.Store(0)
+	a.docsFailed.Store(0)
+	a.collectionIDs = nil
+	a.migrationID = ""
 }
 
 func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
@@ -257,13 +271,14 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 
 	response := AttachmentMigrationManagerResponse{
 		BackgroundManagerStatus: status,
-		MigrationID:             a.MigrationID,
-		DocsChanged:             a.DocsChanged.Value(),
-		DocsProcessed:           a.DocsProcessed.Value(),
+		MigrationID:             a.migrationID,
+		DocsChanged:             a.docsChanged.Load(),
+		DocsProcessed:           a.docsProcessed.Load(),
+		DocsFailed:              a.docsFailed.Load(),
 	}
 
 	meta := AttachmentMigrationMeta{
-		CollectionIDs: a.CollectionIDs,
+		CollectionIDs: a.collectionIDs,
 	}
 
 	statusJSON, err := base.JSONMarshal(response)
@@ -295,6 +310,7 @@ type AttachmentMigrationManagerResponse struct {
 	MigrationID   string `json:"migration_id"`
 	DocsChanged   int64  `json:"docs_changed"`
 	DocsProcessed int64  `json:"docs_processed"`
+	DocsFailed    int64  `json:"docs_failed"`
 }
 
 type AttachmentMigrationMeta struct {
@@ -317,23 +333,23 @@ func GenerateAttachmentMigrationDCPStreamName(migrationID string) string {
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
 func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
 	// if we are on our first run, no collections will be defined on the manager yet
-	if len(a.CollectionIDs) == 0 {
+	if len(a.collectionIDs) == 0 {
 		return nil
 	}
-	if len(a.CollectionIDs) != len(collectionIDs) {
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+	if len(a.collectionIDs) != len(collectionIDs) {
+		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.migrationID)
+		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.migrationID)
 		if err != nil {
 			return err
 		}
 		return nil
 	}
 	slices.Sort(collectionIDs)
-	slices.Sort(a.CollectionIDs)
-	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
+	slices.Sort(a.collectionIDs)
+	purgeNeeded := slices.Compare(collectionIDs, a.collectionIDs)
 	if purgeNeeded != 0 {
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.migrationID)
+		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.migrationID)
 		if err != nil {
 			return err
 		}
