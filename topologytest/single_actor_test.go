@@ -56,7 +56,7 @@ func TestSingleActorUpdate(t *testing.T) {
 
 					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, activePeerID, topology.description))
 					updateVersion := activePeer.WriteDocument(collectionName, docID, body2)
-					t.Logf("createVersion: %+v, updateVersion: %+v", createVersion.docMeta, updateVersion.docMeta)
+					t.Logf("createVersion: %#v, updateVersion: %#v", createVersion.docMeta, updateVersion.docMeta)
 					t.Logf("waiting for document version 2 on all peers")
 
 					waitForVersionAndBody(t, collectionName, peers, docID, updateVersion)
