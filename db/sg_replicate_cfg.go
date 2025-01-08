@@ -116,6 +116,7 @@ type ReplicationConfig struct {
 	BatchSize              int                       `json:"batch_size,omitempty"`
 	RunAs                  string                    `json:"run_as,omitempty"`
 	UpdatedAt              *time.Time                `json:"updated_at,omitempty"`
+	CreatedAt              *time.Time                `json:"created_at,omitempty"`
 }
 
 func DefaultReplicationConfig() ReplicationConfig {
@@ -1110,6 +1111,8 @@ func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication 
 		} else {
 			// Add a new replication to the cfg.  Set targetState based on initialState when specified.
 			replicationConfig := DefaultReplicationConfig()
+			createdAt := time.Now().UTC()
+			replicationConfig.CreatedAt = &createdAt
 			replicationConfig.ID = replication.ID
 			targetState := ReplicationStateRunning
 			if replication.InitialState != nil && *replication.InitialState == ReplicationStateStopped {

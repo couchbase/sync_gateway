@@ -28,23 +28,36 @@ func TestDefaultDbConfig(t *testing.T) {
 }
 
 func TestDbConfigUpdatedAtField(t *testing.T) {
+	b := base.GetTestBucket(t)
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: b,
 		PersistentConfig: true,
 	})
 	defer rt.Close()
+	ctx := base.TestCtx(t)
 
 	dbConfig := rt.NewDbConfig()
 	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	sc := rt.ServerContext()
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	RequireStatus(t, resp, http.StatusOK)
 	var unmarshaledConfig DbConfig
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &unmarshaledConfig))
 
+	registry := &GatewayRegistry{}
+	bName := b.GetName()
+	_, err := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bName, base.SGRegistryKey, registry)
+	require.NoError(t, err)
+
 	// Check that the config has an updatedAt field
 	require.NotNil(t, unmarshaledConfig.UpdatedAt)
-	currTime := unmarshaledConfig.UpdatedAt
+	require.NotNil(t, unmarshaledConfig.CreatedAt)
+	currUpdatedTime := unmarshaledConfig.UpdatedAt
+	currCreatedTime := unmarshaledConfig.CreatedAt
+	registryUpdated := registry.UpdatedAt
+	registryCreated := registry.CreatedAt
 
 	// avoid flake where update at seems to be the same (possibly running to fast)
 	time.Sleep(500 * time.Nanosecond)
@@ -58,5 +71,14 @@ func TestDbConfigUpdatedAtField(t *testing.T) {
 	unmarshaledConfig = DbConfig{}
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &unmarshaledConfig))
 
-	assert.Greater(t, unmarshaledConfig.UpdatedAt.UnixNano(), currTime.UnixNano())
+	registry = &GatewayRegistry{}
+	_, err = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, b.GetName(), base.SGRegistryKey, registry)
+	require.NoError(t, err)
+
+	// asser that the db config timestamps are as expected
+	assert.Greater(t, unmarshaledConfig.UpdatedAt.UnixNano(), currUpdatedTime.UnixNano())
+	assert.Equal(t, unmarshaledConfig.CreatedAt.UnixNano(), currCreatedTime.UnixNano())
+	// assert that registry timestamps are as expected
+	assert.Equal(t, registry.CreatedAt.UnixNano(), registryCreated.UnixNano())
+	assert.Greater(t, registry.UpdatedAt.UnixNano(), registryUpdated.UnixNano())
 }

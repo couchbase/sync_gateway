@@ -8596,7 +8596,9 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 
 	// Check that the config has an updated_at field
 	require.NotNil(t, configResponse.UpdatedAt)
+	require.NotNil(t, configResponse.CreatedAt)
 	currTime := configResponse.UpdatedAt
+	createdAtTime := configResponse.CreatedAt
 
 	// avoid flake where update at seems to be the same (possibly running to fast)
 	time.Sleep(500 * time.Nanosecond)
@@ -8614,4 +8616,5 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
 
 	assert.Greater(t, configResponse.UpdatedAt.UnixNano(), currTime.UnixNano())
+	assert.Equal(t, configResponse.CreatedAt.UnixNano(), createdAtTime.UnixNano())
 }

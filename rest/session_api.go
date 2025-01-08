@@ -278,6 +278,7 @@ func (h *handler) deleteUserSessions() error {
 		return nil
 	}
 	user.UpdateSessionUUID()
+	user.SetUpdatedAt()
 	err = auth.Save(user)
 	if err == nil {
 		base.Audit(h.ctx(), base.AuditIDPublicUserSessionDeleteAll, base.AuditFields{base.AuditFieldUserName: userName})

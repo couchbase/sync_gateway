@@ -34,6 +34,7 @@ type roleImpl struct {
 	Deleted           bool                                    `json:"deleted,omitempty"`
 	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
 	UpdatedAt         time.Time                               `json:"updated_at"`
+	CreatedAt         time.Time                               `json:"created_at"`
 	cas               uint64
 	docID             string // key used to store the roleImpl
 }
@@ -278,8 +279,16 @@ func (role *roleImpl) Name() string {
 	return role.Name_
 }
 
-func (role *roleImpl) setUpdatedAt() {
+func (role *roleImpl) SetUpdatedAt() {
 	role.UpdatedAt = time.Now().UTC()
+}
+
+func (role *roleImpl) SetCreatedAt(t time.Time) {
+	role.CreatedAt = t
+}
+
+func (role *roleImpl) GetCreatedAt() time.Time {
+	return role.CreatedAt
 }
 
 func (role *roleImpl) Sequence() uint64 {

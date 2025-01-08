@@ -49,6 +49,7 @@ type GatewayRegistry struct {
 	ConfigGroups map[string]*RegistryConfigGroup `json:"config_groups"` // Map of config groups, keyed by config group ID
 	SGVersion    base.ComparableBuildVersion     `json:"sg_version"`    // Latest patch version of Sync Gateway that touched the registry
 	UpdatedAt    time.Time                       `json:"updated_at"`    // Time the registry was last updated
+	CreatedAt    time.Time                       `json:"created_at"`    // Time the registry was created
 }
 
 const GatewayRegistryVersion = "1.0"
@@ -113,6 +114,7 @@ func NewGatewayRegistry(syncGatewayVersion base.ComparableBuildVersion) *Gateway
 		ConfigGroups: make(map[string]*RegistryConfigGroup),
 		Version:      GatewayRegistryVersion,
 		SGVersion:    syncGatewayVersion,
+		CreatedAt:    time.Now().UTC(),
 	}
 }
 

@@ -1001,7 +1001,8 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 	delete(scopesConfig[scope].Collections, collection1)
 	assert.Equal(t, scopesConfig, dbCfg.Scopes)
 	originalDBCfg.Server = nil
-	dbCfg.UpdatedAt = nil // originalDBCfg fetch is from memory so has no update at time
+	dbCfg.UpdatedAt = nil // originalDBCfg fetch is from memory so has no update/create at time
+	dbCfg.CreatedAt = nil
 	assert.Equal(t, originalDBCfg, dbCfg)
 
 	// now assert that _config shows the same

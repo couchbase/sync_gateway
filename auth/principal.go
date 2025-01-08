@@ -53,7 +53,11 @@ type Principal interface {
 	IsDeleted() bool
 
 	// sets the updated time for the principal document
-	setUpdatedAt()
+	SetUpdatedAt()
+
+	// gets and sets the created time for the principal document
+	SetCreatedAt(t time.Time)
+	GetCreatedAt() time.Time
 
 	// Principal includes the PrincipalCollectionAccess interface for operations against
 	// the _default._default collection (stored directly on the principal for backward

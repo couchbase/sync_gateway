@@ -3166,6 +3166,10 @@ func TestUserUpdatedAtField(t *testing.T) {
 	currTimeStr := user["updated_at"].(string)
 	currTime, err := time.Parse(time.RFC3339, currTimeStr)
 	require.NoError(t, err)
+	require.NotNil(t, user["created_at"])
+	currTimeCreatedStr := user["created_at"].(string)
+	timeCreated, err := time.Parse(time.RFC3339, currTimeCreatedStr)
+	require.NoError(t, err)
 
 	// avoid flake where update at seems to be the same (possibly running to fast)
 	time.Sleep(500 * time.Nanosecond)
@@ -3179,8 +3183,12 @@ func TestUserUpdatedAtField(t *testing.T) {
 	newTimeStr := user["updated_at"].(string)
 	newTime, err := time.Parse(time.RFC3339, newTimeStr)
 	require.NoError(t, err)
+	newCreatedStr := user["created_at"].(string)
+	newCreated, err := time.Parse(time.RFC3339, newCreatedStr)
+	require.NoError(t, err)
 
 	assert.Greater(t, newTime.UnixNano(), currTime.UnixNano())
+	assert.Equal(t, timeCreated.UnixNano(), newCreated.UnixNano())
 }
 
 func TestRoleUpdatedAtField(t *testing.T) {
@@ -3208,6 +3216,10 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	currTimeStr := user["updated_at"].(string)
 	currTime, err := time.Parse(time.RFC3339, currTimeStr)
 	require.NoError(t, err)
+	require.NotNil(t, user["created_at"])
+	currTimeCreatedStr := user["created_at"].(string)
+	timeCreated, err := time.Parse(time.RFC3339, currTimeCreatedStr)
+	require.NoError(t, err)
 
 	// avoid flake where update at seems to be the same (possibly running to fast)
 	time.Sleep(500 * time.Nanosecond)
@@ -3221,6 +3233,10 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	newTimeStr := user["updated_at"].(string)
 	newTime, err := time.Parse(time.RFC3339, newTimeStr)
 	require.NoError(t, err)
+	newCreatedStr := user["created_at"].(string)
+	newCreated, err := time.Parse(time.RFC3339, newCreatedStr)
+	require.NoError(t, err)
 
 	assert.Greater(t, newTime.UnixNano(), currTime.UnixNano())
+	assert.Equal(t, timeCreated.UnixNano(), newCreated.UnixNano())
 }
