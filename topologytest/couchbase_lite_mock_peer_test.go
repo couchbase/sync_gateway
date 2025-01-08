@@ -133,8 +133,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
 			return
 		}
-		assert.True(c, actual.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %s, Actual: %s", docID, p, expected.HLV, actual.HLV)
-		assert.Equal(c, expected.CV(c), actual.CV(c), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %#v\nactual:   %#v\n          body: %+v\n", docID, p, p.SourceID(), expected, actual, string(data))
+		assert.True(c, actual.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v", docID, p, expected.HLV, actual.HLV)
 	}, totalWaitTime, pollInterval)
 	var body db.Body
 	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))

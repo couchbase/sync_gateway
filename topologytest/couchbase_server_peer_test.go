@@ -188,8 +188,6 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(docID, p, cas, xattrs)
 		assert.True(c, version.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v", docID, p, expected, version)
-		assert.Equal(c, expected.CV(c), version.CV(c), "Could not find matching CV on %s for peer %s\nexpected: %#v\nactual:   %#v\n          body: %#v\n", docID, p, expected, version, string(docBytes))
-
 	}, totalWaitTime, pollInterval)
 	return docBytes
 }

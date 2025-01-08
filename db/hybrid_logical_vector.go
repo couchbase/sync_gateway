@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -187,22 +188,15 @@ func (hlv *HybridLogicalVector) Equals(other *HybridLogicalVector) bool {
 	if hlv.Version != other.Version {
 		return false
 	}
-	if len(hlv.PreviousVersions) != len(other.PreviousVersions) {
+
+	if !maps.Equal(hlv.PreviousVersions, other.PreviousVersions) {
 		return false
 	}
-	for k, v := range hlv.PreviousVersions {
-		if other.PreviousVersions[k] != v {
-			return false
-		}
-	}
-	if len(hlv.MergeVersions) != len(other.MergeVersions) {
+
+	if !maps.Equal(hlv.MergeVersions, other.MergeVersions) {
 		return false
 	}
-	for k, v := range hlv.MergeVersions {
-		if other.MergeVersions[k] != v {
-			return false
-		}
-	}
+
 	return true
 }
 
@@ -234,7 +228,7 @@ func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 
 }
 
-// AddVersion adds newVersion to the in memory representation of the HLV.
+// AddVersion adds newVersion as the current version to the in memory representation of the HLV.
 func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	var newVersionCAS uint64
 	hlvVersionCAS := hlv.Version
@@ -275,9 +269,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	}
 
 	// If new version already exists PV, need to remove it
-	if _, ok := hlv.PreviousVersions[newVersion.SourceID]; ok {
-		delete(hlv.PreviousVersions, newVersion.SourceID)
-	}
+	delete(hlv.PreviousVersions, newVersion.SourceID)
 
 	hlv.Version = newVersion.Value
 	hlv.SourceID = newVersion.SourceID
