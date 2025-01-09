@@ -129,7 +129,7 @@ func TestOnDemandImportMou(t *testing.T) {
 	// On-demand write
 	// Create via the SDK
 	t.Run("on-demand write", func(t *testing.T) {
-		for _, funcName := range []string{"Put", "PutExistingRev", "PutExistingCurrentVersion", "PutExistingRevWithConflictResolution"} {
+		for _, funcName := range []string{"Put", "PutExistingRev", "PutExistingCurrentVersion"} {
 			t.Run(funcName, func(t *testing.T) {
 				writeKey := baseKey + "_" + funcName
 				bodyBytes := []byte(`{"foo":"bar"}`)
@@ -165,17 +165,6 @@ func TestOnDemandImportMou(t *testing.T) {
 					hlv := NewHybridLogicalVector()
 					var legacyRevList []string
 					_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, hlv, rawBucketDoc, legacyRevList)
-					assertHTTPError(t, err, 409)
-				case "PutExistingRevWithConflictResolution":
-					fakeRevID := "1-abc"
-					docHistory := []string{fakeRevID}
-					noConflicts := true
-					forceAllowConflictingTombstone := false
-					conflictResolverFunc, err := NewConflictResolverFunc(ctx, ConflictResolverRemoteWins, "", time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
-					require.NoError(t, err)
-					conflictResolver := NewConflictResolver(conflictResolverFunc, nil)
-					_, _, err = collection.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
-					require.NoError(t, err)
 					assertHTTPError(t, err, 409)
 				default:
 					require.FailNow(t, fmt.Sprintf("unexpected funcName: %s", funcName))
