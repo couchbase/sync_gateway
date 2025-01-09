@@ -6515,13 +6515,13 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				expectedRevID = "1-e5d43a9cdc4a2d4e258800dfc37e9d77"
 			}
 
+			version := rest.DocVersion{RevID: expectedRevID}
 			// Wait for doc to show up on side that the resurrection was done
 			if test.resurrectLocal {
-				err = localActiveRT.WaitForRev(doc2ID, expectedRevID)
+				localActiveRT.WaitForVersion(doc2ID, version)
 			} else {
-				err = remotePassiveRT.WaitForRev(doc2ID, expectedRevID)
+				remotePassiveRT.WaitForVersion(doc2ID, version)
 			}
-			require.NoError(t, err)
 
 			// Start the replication
 			_ = localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", "")
@@ -6529,11 +6529,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for doc to replicate from side resurrection was done on to the other side
 			if test.resurrectLocal {
-				err = remotePassiveRT.WaitForRev(doc2ID, expectedRevID)
+				remotePassiveRT.WaitForVersion(doc2ID, version)
 			} else {
-				err = localActiveRT.WaitForRev(doc2ID, expectedRevID)
+				localActiveRT.WaitForVersion(doc2ID, version)
 			}
-			assert.NoError(t, err)
 		})
 	}
 }
@@ -6979,7 +6978,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins)
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			assert.NoError(t, remoteRT.WaitForVersion(docID, newVersion))
+			remoteRT.WaitForVersion(docID, newVersion)
 
 			// Stop the replication
 			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
@@ -7187,7 +7186,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			assert.NoError(t, remoteRT.WaitForVersion(docID, newVersion))
+			remoteRT.WaitForVersion(docID, newVersion)
 
 			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 			rest.RequireStatus(t, response, http.StatusOK)
@@ -7218,10 +7217,8 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			response = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			waitErr := activeRT.WaitForVersion(docID, test.expectedFinalVersion)
-			assert.NoError(t, waitErr)
-			waitErr = remoteRT.WaitForVersion(docID, test.expectedFinalVersion)
-			require.NoError(t, waitErr)
+			activeRT.WaitForVersion(docID, test.expectedFinalVersion)
+			remoteRT.WaitForVersion(docID, test.expectedFinalVersion)
 
 			localDoc := activeRT.GetDocBody(docID)
 			localVersion := localDoc.ExtractRev()
@@ -7355,7 +7352,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Create a document //
 	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
-	require.NoError(t, activeRT.WaitForVersion("test", version))
+	activeRT.WaitForVersion("test", version)
 
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
@@ -7383,7 +7380,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	assert.NoError(t, ar.Start(activeCtx))
 
 	// Wait for active to replicate to passive
-	require.NoError(t, passiveRT.WaitForVersion("test", version))
+	passiveRT.WaitForVersion("test", version)
 
 	// Delete active document
 	deletedVersion := activeRT.DeleteDocReturnVersion("test", version)
@@ -7416,8 +7413,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	resurrectedVersion := activeRT.UpdateDoc("test", deletedVersion, `{"field2":"f2_2"}`)
 
 	// Replicate resurrection to passive
-	err = passiveRT.WaitForVersion("test", resurrectedVersion)
-	assert.NoError(t, err) // If error, problem not fixed
+	passiveRT.WaitForVersion("test", resurrectedVersion)
 
 	// Shutdown replicator to close out
 	require.NoError(t, ar.Stop())
@@ -7474,7 +7470,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Create a document //
 	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
-	require.NoError(t, activeRT.WaitForVersion("test", version))
+	activeRT.WaitForVersion("test", version)
 
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
@@ -7502,7 +7498,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	assert.NoError(t, ar.Start(activeCtx))
 
-	require.NoError(t, passiveRT.WaitForVersion("test", version))
+	passiveRT.WaitForVersion("test", version)
 
 	assert.NoError(t, ar.Stop())
 
@@ -7520,8 +7516,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	assert.NoError(t, ar.Start(activeCtx))
 	// Check if it replicated
-	err = passiveRT.WaitForVersion("test", version2)
-	assert.NoError(t, err)
+	passiveRT.WaitForVersion("test", version2)
 
 	assert.NoError(t, ar.Stop())
 }
@@ -7560,15 +7555,15 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	// Create the docs //
 	// Doc rev 1
 	version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
-	require.NoError(t, activeRT.WaitForVersion(docID, version1))
+	activeRT.WaitForVersion(docID, version1)
 
 	// doc rev 2
 	version2 := activeRT.UpdateDoc(docID, version1, `{"key":"12","channels":["rev2+3chan"]}`)
-	require.NoError(t, activeRT.WaitForVersion(docID, version2))
+	activeRT.WaitForVersion(docID, version2)
 
 	// Doc rev 3
 	version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
-	require.NoError(t, activeRT.WaitForVersion(docID, version3))
+	activeRT.WaitForVersion(docID, version3)
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
 	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevID), version2.RevID))
@@ -7855,8 +7850,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
-	err = passiveRT.WaitForVersion(docID, version)
-	require.NoError(t, err)
+	passiveRT.WaitForVersion(docID, version)
 
 	resp = activeRT.SendAdminRequest("GET", "/{{.db}}/_replication/"+t.Name(), "")
 	rest.RequireStatus(t, resp, 200)
@@ -7896,8 +7890,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	activeRT.CreateReplication(t.Name(), remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
-	err = passiveRT.WaitForRev("test", rev)
-	require.NoError(t, err)
+	passiveRT.WaitForVersion("test", rest.DocVersion{RevID: rev})
 
 	// assert on the processed seq list being updated before stopping the active replicator
 	ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, t.Name())
