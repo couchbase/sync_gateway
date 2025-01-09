@@ -165,12 +165,13 @@ func TestOnDemandImportMou(t *testing.T) {
 					hlv := NewHybridLogicalVector()
 					var legacyRevList []string
 					_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, hlv, rawBucketDoc, legacyRevList)
+					assertHTTPError(t, err, 409)
 				case "PutExistingRevWithConflictResolution":
 					fakeRevID := "1-abc"
 					docHistory := []string{fakeRevID}
 					noConflicts := true
 					forceAllowConflictingTombstone := false
-					conflictResolverFunc, err := NewConflictResolverFunc(ctx, ConflictResolverLocalWins, "", time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
+					conflictResolverFunc, err := NewConflictResolverFunc(ctx, ConflictResolverRemoteWins, "", time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
 					require.NoError(t, err)
 					conflictResolver := NewConflictResolver(conflictResolverFunc, nil)
 					_, _, err = collection.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
