@@ -193,6 +193,8 @@ type DbConfig struct {
 	ChangesRequestPlus               *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
 	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`                                 // Per-database CORS config
 	Logging                          *DbLoggingConfig                 `json:"logging,omitempty"`                              // Per-database Logging config
+	UpdatedAt                        *time.Time                       `json:"updated_at,omitempty"`                           // Time at which the database config was last updated
+	CreatedAt                        *time.Time                       `json:"created_at,omitempty"`                           // Time at which the database config was created
 }
 
 type ScopesConfig map[string]ScopeConfig
