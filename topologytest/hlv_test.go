@@ -95,7 +95,7 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		}
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))
 		docVersion := peer.CreateDocument(dsName, docID, docBody)
-		t.Logf("createVersion: %+v", docVersion.docMeta)
+		t.Logf("createVersion: %#v", docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
 	index := len(documentVersion) - 1
@@ -115,7 +115,7 @@ func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		}
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topologyDescription))
 		docVersion := peer.WriteDocument(dsName, docID, docBody)
-		t.Logf("updateVersion: %+v", docVersion.docMeta)
+		t.Logf("updateVersion: %#v", docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
 	index := len(documentVersion) - 1
@@ -134,7 +134,7 @@ func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers 
 			continue
 		}
 		deleteVersion := peer.DeleteDocument(dsName, docID)
-		t.Logf("deleteVersion: %+v", deleteVersion)
+		t.Logf("deleteVersion: %#v", deleteVersion)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
 	}
 	index := len(documentVersion) - 1
