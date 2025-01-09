@@ -66,6 +66,13 @@ func TestImportFeed(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// CBG-4233 rosmar does not yet support RevSeqNo
+	if !base.UnitTestUrlIsWalrus() {
+		xattrs, _, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
+		require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
+	}
 	// Attempt to get the document via Sync Gateway.
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
@@ -619,9 +626,13 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
 
-	// Go get the cas for the doc to use for update
-	_, cas, getErr := dataStore.GetRaw(mobileKey)
-	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
+	// CBG-4233 rosmar does not yet support RevSeqNo
+	xattrs, cas, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	if !base.UnitTestUrlIsWalrus() {
+		require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
+		require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
+	}
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
@@ -2418,13 +2429,8 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	xattrs, _, err := dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
 
-	var mou *db.MetadataOnlyUpdate
-	mouXattr, ok := xattrs[base.MouXattrName]
-	require.True(t, ok)
-	docxattr, ok := xattrs[base.VirtualXattrRevSeqNo]
-	require.True(t, ok)
-	require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-	revNo := db.RetrieveDocRevSeqNo(t, docxattr)
+	revNo := db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+	mou := getMou(t, xattrs[base.MouXattrName])
 	// curr rev no should be 2, so prev rev is 1
 	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
 
@@ -2438,13 +2444,8 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	xattrs, _, err = dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
 
-	mou = nil
-	mouXattr, ok = xattrs[base.MouXattrName]
-	require.True(t, ok)
-	docxattr, ok = xattrs[base.VirtualXattrRevSeqNo]
-	require.True(t, ok)
-	require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-	revNo = db.RetrieveDocRevSeqNo(t, docxattr)
+	revNo = db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+	mou = getMou(t, xattrs[base.MouXattrName])
 	// curr rev no should be 4, so prev rev is 3
 	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
 
@@ -2680,4 +2681,11 @@ func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
 	assert.Nil(t, syncData.Attachments)
 	att = attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
 	assert.Equal(t, float64(11), att["length"])
+}
+
+func getMou(t *testing.T, mouBytes []byte) db.MetadataOnlyUpdate {
+	var mou db.MetadataOnlyUpdate
+	err := base.JSONUnmarshal(mouBytes, &mou)
+	require.NoError(t, err)
+	return mou
 }

@@ -73,7 +73,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, doc.RevSeqNo, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, nil, importErr
 			}
@@ -163,7 +163,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		if !isSgWrite {
 			var importErr error
 
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawDoc, xattrs, cas)
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawDoc, doc.RevSeqNo, xattrs, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
@@ -240,7 +240,7 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 
 // OnDemandImportForGet. Attempts to import the doc based on the provided id, contents and cas. ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
+func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, revSeqNo uint64, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
 	var importErr error
@@ -248,11 +248,10 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	importOpts := importDocOptions{
 		isDelete: isDelete,
 		mode:     ImportOnDemand,
-		revSeqNo: 0, // pending work in CBG-4203
+		revSeqNo: revSeqNo,
 		expiry:   nil,
 	}
 
-	// RevSeqNo is 0 here pending work in CBG-4203
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, importOpts, cas)
 
 	if importErr == base.ErrImportCancelledFilter {
@@ -921,7 +920,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 		expiry:   nil,
 		mode:     ImportOnDemand,
 		isDelete: isDelete,
-		revSeqNo: 0, // pending work in CBG-4203
+		revSeqNo: doc.RevSeqNo,
 	}
 	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, importOpts) // nolint:staticcheck
 
