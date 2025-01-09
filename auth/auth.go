@@ -632,7 +632,6 @@ func (auth *Authenticator) UpdateUserEmail(u User, email string) error {
 			return nil, err
 		}
 		currentUser.SetUpdatedAt()
-		currentUser.SetCreatedAt(currentUser.GetCreatedAt())
 
 		return currentUser, nil
 	}
@@ -666,7 +665,6 @@ func (auth *Authenticator) rehashPassword(user User, password string) error {
 				return nil, err
 			}
 			currentUserImpl.SetUpdatedAt()
-			currentUserImpl.SetCreatedAt(currentUserImpl.GetCreatedAt())
 			return currentUserImpl, nil
 		} else {
 			return nil, base.ErrUpdateCancel
@@ -746,7 +744,6 @@ func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) e
 		p.setDeleted(true)
 		p.SetSequence(deleteSeq)
 		p.SetUpdatedAt()
-		p.SetCreatedAt(p.GetCreatedAt())
 
 		// Update channel history for default collection
 		channelHistory := auth.calculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory())

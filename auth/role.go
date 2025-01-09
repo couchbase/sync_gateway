@@ -287,10 +287,6 @@ func (role *roleImpl) SetCreatedAt(t time.Time) {
 	role.CreatedAt = t
 }
 
-func (role *roleImpl) GetCreatedAt() time.Time {
-	return role.CreatedAt
-}
-
 func (role *roleImpl) Sequence() uint64 {
 	return role.Sequence_
 }
