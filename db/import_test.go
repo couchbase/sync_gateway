@@ -129,38 +129,77 @@ func TestOnDemandImportMou(t *testing.T) {
 	// On-demand write
 	// Create via the SDK
 	t.Run("on-demand write", func(t *testing.T) {
-		writeKey := baseKey + "write"
-		bodyBytes := []byte(`{"foo":"bar"}`)
-		body := Body{}
-		err := body.Unmarshal(bodyBytes)
-		assert.NoError(t, err, "Error unmarshalling body")
-		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		writeCas, err := collection.dataStore.WriteCas(writeKey, 0, 0, bodyBytes, 0)
-		require.NoError(t, err)
+		for _, funcName := range []string{"Put", "PutExistingRev", "PutExistingCurrentVersion", "PutExistingRevWithConflictResolution"} {
+			t.Run(funcName, func(t *testing.T) {
+				writeKey := baseKey + "_" + funcName
+				bodyBytes := []byte(`{"foo":"bar"}`)
+				body := Body{}
+				err := body.Unmarshal(bodyBytes)
+				assert.NoError(t, err, "Error unmarshalling body")
+				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+				writeCas, err := collection.dataStore.WriteCas(writeKey, 0, 0, bodyBytes, 0)
+				require.NoError(t, err)
 
-		// Update the document to trigger on-demand import.  Write will be a conflict, but import should be performed
-		_, doc, err := collection.Put(ctx, writeKey, Body{"foo": "baz"})
-		require.Nil(t, doc)
-		assertHTTPError(t, err, 409)
+				newDoc := &Document{
+					ID: writeKey,
+				}
+				newDoc.UpdateBodyBytes([]byte(`{"foo": "baz"}`))
 
-		// fetch the mou xattr directly doc to confirm import (to avoid triggering on-demand get import)
-		// verify mou
-		xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName})
-		if db.UseMou() {
-			require.NoError(t, err)
-			mouXattr, mouOk := xattrs[base.MouXattrName]
-			var mou *MetadataOnlyUpdate
-			require.True(t, mouOk)
-			require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-			require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
-			require.Equal(t, base.CasToString(importCas), mou.HexCAS)
-			// CBG-4233: revSeqNo not implemented yet in rosmar
-			if !base.UnitTestUrlIsWalrus() {
-				require.Equal(t, uint64(1), mou.PreviousRevSeqNo)
-			}
-		} else {
-			// expect not found fetching mou xattr
-			require.Error(t, err)
+				_, rawBucketDoc, err := collection.GetDocumentWithRaw(ctx, writeKey, DocUnmarshalSync)
+				require.NoError(t, err)
+
+				switch funcName {
+				case "Put":
+					// Update the document to trigger on-demand import.  Write will be a conflict, but import should be performed
+					_, doc, err := collection.Put(ctx, writeKey, Body{"foo": "baz"})
+					require.Nil(t, doc)
+					assertHTTPError(t, err, 409)
+				case "PutExistingRev":
+					fakeRevID := "1-abc"
+					docHistory := []string{fakeRevID}
+					noConflicts := true
+					forceAllowConflictingTombstone := false
+					_, _, err := collection.PutExistingRev(ctx, newDoc, docHistory, noConflicts, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
+					assertHTTPError(t, err, 409)
+				case "PutExistingCurrentVersion":
+					hlv := NewHybridLogicalVector()
+					var legacyRevList []string
+					_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, hlv, rawBucketDoc, legacyRevList)
+				case "PutExistingRevWithConflictResolution":
+					fakeRevID := "1-abc"
+					docHistory := []string{fakeRevID}
+					noConflicts := true
+					forceAllowConflictingTombstone := false
+					conflictResolverFunc, err := NewConflictResolverFunc(ctx, ConflictResolverLocalWins, "", time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
+					require.NoError(t, err)
+					conflictResolver := NewConflictResolver(conflictResolverFunc, nil)
+					_, _, err = collection.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
+					require.NoError(t, err)
+					assertHTTPError(t, err, 409)
+				default:
+					require.FailNow(t, fmt.Sprintf("unexpected funcName: %s", funcName))
+				}
+
+				// fetch the mou xattr directly doc to confirm import (to avoid triggering on-demand get import)
+				// verify mou
+				xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName})
+				if db.UseMou() {
+					require.NoError(t, err)
+					mouXattr, mouOk := xattrs[base.MouXattrName]
+					var mou *MetadataOnlyUpdate
+					require.True(t, mouOk)
+					require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+					require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+					require.Equal(t, base.CasToString(importCas), mou.HexCAS)
+					// CBG-4233: revSeqNo not implemented yet in rosmar
+					if !base.UnitTestUrlIsWalrus() {
+						require.Equal(t, uint64(1), mou.PreviousRevSeqNo)
+					}
+				} else {
+					// expect not found fetching mou xattr
+					require.Error(t, err)
+				}
+			})
 		}
 	})
 
