@@ -115,6 +115,8 @@ type ReplicationConfig struct {
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
 	BatchSize              int                       `json:"batch_size,omitempty"`
 	RunAs                  string                    `json:"run_as,omitempty"`
+	UpdatedAt              *time.Time                `json:"updated_at,omitempty"`
+	CreatedAt              *time.Time                `json:"created_at,omitempty"`
 }
 
 func DefaultReplicationConfig() ReplicationConfig {
@@ -334,6 +336,9 @@ func (rc *ReplicationConfig) Upsert(ctx context.Context, c *ReplicationUpsertCon
 	if c.RunAs != nil {
 		rc.RunAs = *c.RunAs
 	}
+
+	timeNow := time.Now().UTC()
+	rc.UpdatedAt = &timeNow
 
 	if c.QueryParams != nil {
 		// QueryParams can be either []interface{} or map[string]interface{}, so requires type-specific copying
@@ -1106,6 +1111,8 @@ func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication 
 		} else {
 			// Add a new replication to the cfg.  Set targetState based on initialState when specified.
 			replicationConfig := DefaultReplicationConfig()
+			createdAt := time.Now().UTC()
+			replicationConfig.CreatedAt = &createdAt
 			replicationConfig.ID = replication.ID
 			targetState := ReplicationStateRunning
 			if replication.InitialState != nil && *replication.InitialState == ReplicationStateStopped {
