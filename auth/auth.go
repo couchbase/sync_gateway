@@ -631,6 +631,8 @@ func (auth *Authenticator) UpdateUserEmail(u User, email string) error {
 		if err != nil {
 			return nil, err
 		}
+		currentUser.SetUpdatedAt()
+
 		return currentUser, nil
 	}
 
@@ -662,6 +664,7 @@ func (auth *Authenticator) rehashPassword(user User, password string) error {
 			if err != nil {
 				return nil, err
 			}
+			currentUserImpl.SetUpdatedAt()
 			return currentUserImpl, nil
 		} else {
 			return nil, base.ErrUpdateCancel
@@ -740,6 +743,7 @@ func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) e
 		}
 		p.setDeleted(true)
 		p.SetSequence(deleteSeq)
+		p.SetUpdatedAt()
 
 		// Update channel history for default collection
 		channelHistory := auth.calculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory())
@@ -953,6 +957,8 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 			base.WarnfCtx(auth.LogCtx, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(username), base.UD(email))
 		}
 	}
+	user.SetUpdatedAt()
+	user.SetCreatedAt(time.Now().UTC())
 
 	err = auth.Save(user)
 	if base.IsCasMismatch(err) {

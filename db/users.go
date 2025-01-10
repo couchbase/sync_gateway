@@ -86,6 +86,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if err != nil {
 				return replaced, princ, fmt.Errorf("Error creating user/role: %w", err)
 			}
+			princ.SetCreatedAt(time.Now().UTC())
 			changed = true
 		} else if !allowReplace {
 			err = base.HTTPErrorf(http.StatusConflict, "Already exists")
@@ -214,6 +215,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 				user.SetJWTLastUpdated(time.Now())
 			}
 		}
+		princ.SetUpdatedAt()
 		err = authenticator.Save(princ)
 		// On cas error, retry.  Otherwise break out of loop
 		if base.IsCasMismatch(err) {
