@@ -8599,6 +8599,8 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 	resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
+	activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateStopped)
+
 	// update the config
 	resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{"name":"replication1","source":"%s","type":"push", "continuous":true}`, remoteURLString))
 	rest.RequireStatus(t, resp, http.StatusOK)
