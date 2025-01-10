@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -21,8 +22,9 @@ import (
 )
 
 type AttachmentMigrationManager struct {
-	DocsProcessed base.AtomicInt
-	DocsChanged   base.AtomicInt
+	docsProcessed atomic.Int64
+	docsChanged   atomic.Int64
+	docsFailed    atomic.Int64
 	MigrationID   string
 	CollectionIDs []uint32
 	databaseCtx   *DatabaseContext
@@ -77,10 +79,12 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 			return newRunInit()
 		}
 		a.MigrationID = statusDoc.MigrationID
-		a.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
+		a.docsProcessed.Store(statusDoc.DocsProcessed)
+		a.docsChanged.Store(statusDoc.DocsChanged)
+		a.docsFailed.Store(statusDoc.DocsFailed)
 		a.SetCollectionIDs(statusDoc.CollectionIDs)
 
-		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resuming migration with migration ID: %s, %d already processed", a.MigrationID, a.DocsProcessed.Value())
+		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resuming migration with migration ID: %s, %d already processed", a.MigrationID, a.docsProcessed.Load())
 
 		return nil
 	}
@@ -100,18 +104,15 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	}
 	defer persistClusterStatus()
 
-	var processFailure error
-	failProcess := func(err error, format string, args ...interface{}) bool {
-		processFailure = err
-		terminator.Close()
-		base.WarnfCtx(ctx, format, args...)
-		return false
-	}
-
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		collection := db.CollectionByID[event.CollectionID]
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", migrationLoggingID, event.Opcode, base.UD(docID))
+
+		// Ignore non-mutation events: Deletion, Backfill, etc.
+		if event.Opcode != sgbucket.FeedOpMutation {
+			return true
+		}
 
 		// Ignore documents without xattrs, to avoid processing unnecessary documents
 		if event.DataType&base.MemcachedDataTypeXattr == 0 {
@@ -129,10 +130,12 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 			return true
 		}
 
-		a.DocsProcessed.Add(1)
+		a.docsProcessed.Add(1)
 		syncData, _, _, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 		if err != nil {
-			failProcess(err, "[%s] error unmarshaling document %s: %v, stopping attachment migration.", migrationLoggingID, base.UD(docID), err)
+			base.WarnfCtx(ctx, "[%s] error unmarshaling document %s: %v, stopping attachment migration.", migrationLoggingID, base.UD(docID), err)
+			a.docsFailed.Add(1)
+			return false
 		}
 
 		if syncData == nil || syncData.Attachments == nil {
@@ -147,9 +150,11 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		// xattr migration to take place
 		err = collWithUser.MigrateAttachmentMetadata(collCtx, docID, event.Cas, syncData)
 		if err != nil {
-			failProcess(err, "[%s] error migrating document attachment metadata for doc: %s: %v", migrationLoggingID, base.UD(docID), err)
+			base.WarnfCtx(ctx, "[%s] error migrating document attachment metadata for doc: %s: %v", migrationLoggingID, base.UD(docID), err)
+			a.docsFailed.Add(1)
+			return false
 		}
-		a.DocsChanged.Add(1)
+		a.docsChanged.Add(1)
 		return true
 	}
 
@@ -195,9 +200,6 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was finished %v", migrationLoggingID, err)
 		}
-		if processFailure != nil {
-			return processFailure
-		}
 		updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(db.CollectionByID))
 		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
@@ -216,46 +218,49 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 			}
 		}
 		db.RequireAttachmentMigration = collectionsRequiringMigration
-
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished migrating attachment metadata from sync data to global sync data. %d/%d docs changed", migrationLoggingID, a.DocsChanged.Value(), a.DocsProcessed.Value())
+		msg := fmt.Sprintf("[%s] Finished migrating attachment metadata from sync data to global sync data. %d/%d docs changed", migrationLoggingID, a.docsChanged.Load(), a.docsProcessed.Load())
+		failedDocs := a.docsFailed.Load()
+		if failedDocs > 0 {
+			msg += fmt.Sprintf(" with %d docs failed", failedDocs)
+		}
+		base.InfofCtx(ctx, base.KeyAll, msg)
 	case <-terminator.Done():
 		err = dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was terminated %v", migrationLoggingID, err)
 			return err
 		}
-		if processFailure != nil {
-			return processFailure
-		}
 		err = <-doneChan
 		if err != nil {
 			return err
 		}
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Attachment Migration was terminated. Docs changed: %d Docs Processed: %d", migrationLoggingID, a.DocsChanged.Value(), a.DocsProcessed.Value())
+		msg := fmt.Sprintf("[%s] Attachment Migration was terminated. %d/%d docs changed", migrationLoggingID, a.docsChanged.Load(), a.docsProcessed.Load())
+		failedDocs := a.docsFailed.Load()
+		if failedDocs > 0 {
+			msg += fmt.Sprintf(" with %d docs failed", failedDocs)
+		}
+		base.InfofCtx(ctx, base.KeyAll, msg)
 	}
 	return nil
 }
 
-func (a *AttachmentMigrationManager) SetStatus(docChanged, docProcessed int64) {
-
-	a.DocsChanged.Set(docChanged)
-	a.DocsProcessed.Set(docProcessed)
-}
-
-func (a *AttachmentMigrationManager) SetCollectionIDs(collectionID []uint32) {
+// SetCollectionIDs sets the collection IDs that are undergoing migration.
+func (a *AttachmentMigrationManager) SetCollectionIDs(collectionIDs []uint32) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-
-	a.CollectionIDs = collectionID
+	a.CollectionIDs = collectionIDs
 }
 
+// ResetStatus is called to reset all the local variables for AttachmentMigrationManager.
 func (a *AttachmentMigrationManager) ResetStatus() {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	a.DocsProcessed.Set(0)
-	a.DocsChanged.Set(0)
+	a.docsProcessed.Store(0)
+	a.docsChanged.Store(0)
+	a.docsFailed.Store(0)
 	a.CollectionIDs = nil
+	a.MigrationID = ""
 }
 
 func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
@@ -265,8 +270,9 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 	response := AttachmentMigrationManagerResponse{
 		BackgroundManagerStatus: status,
 		MigrationID:             a.MigrationID,
-		DocsChanged:             a.DocsChanged.Value(),
-		DocsProcessed:           a.DocsProcessed.Value(),
+		DocsChanged:             a.docsChanged.Load(),
+		DocsProcessed:           a.docsProcessed.Load(),
+		DocsFailed:              a.docsFailed.Load(),
 	}
 
 	meta := AttachmentMigrationMeta{
@@ -302,6 +308,7 @@ type AttachmentMigrationManagerResponse struct {
 	MigrationID   string `json:"migration_id"`
 	DocsChanged   int64  `json:"docs_changed"`
 	DocsProcessed int64  `json:"docs_processed"`
+	DocsFailed    int64  `json:"docs_failed"`
 }
 
 type AttachmentMigrationMeta struct {

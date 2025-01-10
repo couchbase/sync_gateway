@@ -2127,6 +2127,9 @@ Attachment-Migration-status:
     docs_processed:
       description: The amount of docs that have been processed through the attachment migration operation.
       type: integer
+    docs_failed:
+      description: The amount of docs that have failed to be processed through the attachment migration operation.
+      type: integer
   required:
     - status
     - start_time
