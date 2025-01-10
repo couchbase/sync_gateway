@@ -340,6 +340,8 @@ func getBodyAndVersion(peer Peer, collection sgbucket.DataStore, docID string) (
 	require.NoError(peer.TB(), err)
 	// get hlv to construct DocVersion
 	var body db.Body
-	require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body))
+	if len(docBytes) > 0 {
+		require.NoError(peer.TB(), base.JSONUnmarshal(docBytes, &body))
+	}
 	return getDocVersion(docID, peer, cas, xattrs), body
 }

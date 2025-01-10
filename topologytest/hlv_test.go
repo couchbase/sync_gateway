@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,6 +68,26 @@ func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, p
 	}
 }
 
+// waitForConvergingVersion waits for the same document version to reach all peers.
+func waitForConvergingVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string) {
+	t.Logf("waiting for converged doc versions across all peers")
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		for peerAid, peerA := range peers.SortedPeers() {
+			docMetaA, bodyA := peerA.GetDocument(dsName, docID)
+			for peerBid, peerB := range peers.SortedPeers() {
+				if peerAid == peerBid {
+					continue
+				}
+				docMetaB, bodyB := peerB.GetDocument(dsName, docID)
+				cvA, cvB := docMetaA.CV(t), docMetaB.CV(t)
+				rStats := replications.Stats()
+				require.Equalf(c, cvA, cvB, "CV mismatch: %s:%#v != %s:%#v. Replications:\n%s", peerAid, docMetaA, peerBid, docMetaB, rStats)
+				require.Equalf(c, bodyA, bodyB, "body mismatch: %s:%s != %s:%s. Replications:\n%s", peerAid, bodyA, peerBid, bodyB, rStats)
+			}
+		}
+	}, totalWaitTime, pollInterval)
+}
+
 // removeSyncGatewayBackingPeers will check if there is sync gateway in topology, if so will track the backing CBS
 // so we can skip creating docs on these peers (avoiding conflicts between docs created on the SGW and cbs)
 func removeSyncGatewayBackingPeers(peers map[string]Peer) map[string]bool {
@@ -82,9 +103,9 @@ func removeSyncGatewayBackingPeers(peers map[string]Peer) map[string]bool {
 	return peersToRemove
 }
 
-// createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents, then
-// returns the last peer to have a doc created on it
-func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) (lastWrite BodyAndVersion) {
+// createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents.
+// It is not known at this stage which write the "winner" will be, since conflict resolution can happen at replication time which may not be LWW, or may be LWW but with a new value.
+func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
 	documentVersion := make([]BodyAndVersion, 0, len(peers))
 	for peerName, peer := range peers {
@@ -96,15 +117,10 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		t.Logf("%s - createVersion: %#v", peerName, docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
-	index := len(documentVersion) - 1
-	lastWrite = documentVersion[index]
-
-	return lastWrite
 }
 
-// updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations, then
-// returns the last peer to have a doc updated on it.
-func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) (lastWrite BodyAndVersion) {
+// updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations
+func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range peers {
@@ -116,15 +132,10 @@ func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		t.Logf("updateVersion: %#v", docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
-	index := len(documentVersion) - 1
-	lastWrite = documentVersion[index]
-
-	return lastWrite
 }
 
-// deleteConflictDocs will delete a doc on each peer of the same doc ID to create conflicting document deletions, then
-// returns the last peer to have a doc deleted on it
-func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string) (lastWrite BodyAndVersion) {
+// deleteConflictDocs will delete a doc on each peer of the same doc ID to create conflicting document deletions
+func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range peers {
@@ -135,10 +146,6 @@ func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers 
 		t.Logf("deleteVersion: %#v", deleteVersion)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
 	}
-	index := len(documentVersion) - 1
-	lastWrite = documentVersion[index]
-
-	return lastWrite
 }
 
 // getDocID returns a unique doc ID for the test case. Note: when running with Couchbase Server and -count > 1, this will return duplicate IDs for count 2 and higher and they can conflict due to the way bucket pool works.

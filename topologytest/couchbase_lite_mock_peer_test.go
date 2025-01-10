@@ -65,7 +65,11 @@ func (p *CouchbaseLiteMockPeer) GetDocument(dsName sgbucket.DataStoreName, docID
 	bodyBytes, meta := p.getLatestDocVersion(dsName, docID)
 	require.NotNil(p.TB(), meta, "docID:%s not found on %s", docID, p)
 	var body db.Body
-	require.NoError(p.TB(), base.JSONUnmarshal(bodyBytes, &body))
+	// it's easier if all clients can return consistent bodies for tombstones
+	// lets just settle on nil, since we still need special handling anyway for `` vs `{}` so unmarshal doesn't barf
+	if len(bodyBytes) > 0 && string(bodyBytes) != base.EmptyDocument {
+		require.NoError(p.TB(), base.JSONUnmarshal(bodyBytes, &body))
+	}
 	return *meta, body
 }
 
