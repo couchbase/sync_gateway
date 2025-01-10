@@ -16,7 +16,7 @@ require (
 	github.com/couchbase/sg-bucket v0.0.0-20241018143914-45ef51a0c1be
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
-	github.com/couchbaselabs/rosmar v0.0.0-20241219222419-f9921fccab90
+	github.com/couchbaselabs/rosmar v0.0.0-20250110001838-ab0121bb9242
 	github.com/elastic/gosigar v0.14.3
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.0.4
@@ -29,7 +29,7 @@ require (
 	github.com/prometheus/client_model v0.6.1
 	github.com/prometheus/common v0.55.0
 	github.com/quasilyte/go-ruleguard/dsl v0.3.22
-	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
+	github.com/robertkrimen/otto v0.5.1
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shirou/gopsutil/v3 v3.24.5

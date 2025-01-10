@@ -48,7 +48,7 @@ func realDocID(docid string) string {
 	return docid
 }
 
-// getRevSeqNo fetches the revSeqNo for a document, using the virtual xattr if available, otherwise the document body. Returns the cas from this fetch
+// getRevSeqNo fetches the revSeqNo for a document, using the virtual xattr if available. Returns the cas from this fetch.
 func (c *DatabaseCollection) getRevSeqNo(ctx context.Context, docID string) (revSeqNo, cas uint64, err error) {
 	xattrs, cas, err := c.dataStore.GetXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
 	if err != nil {
@@ -81,7 +81,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
-			// reload to get revseqno
+			// reload to get revseqno for on-demand import
 			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
 			if err != nil {
 				return nil, nil, err
@@ -927,6 +927,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 
 // ////// UPDATING DOCUMENTS:
 
+// OnDemandImportForWrite imports a document before a subsequent document is written to Sync Gateway on top of the import document. Returns base.ErrCasFailureShouldRetry in the case that this import nees to be retried. This function is expected to be called within a callback to WriteUpdateWithXattrs.
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
 	revSeqNo, cas, err := db.getRevSeqNo(ctx, docid)
 	if err != nil {
