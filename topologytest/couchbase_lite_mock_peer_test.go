@@ -169,7 +169,7 @@ func (p *CouchbaseLiteMockPeer) IsSymmetricRedundant() bool {
 }
 
 // CreateReplication creates a replication instance
-func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, _ PeerReplicationConfig) PeerReplication {
+func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicationConfig) PeerReplication {
 	sg, ok := peer.(*SyncGatewayPeer)
 	if !ok {
 		require.Fail(p.t, fmt.Sprintf("unsupported peer type %T for pull replication", peer))
@@ -178,6 +178,7 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, _ PeerReplicationCo
 		activePeer:  p,
 		passivePeer: peer,
 		btcRunner:   rest.NewBlipTesterClientRunner(sg.rt.TB().(*testing.T)),
+		direction:   config.direction,
 	}
 	replication.btc = replication.btcRunner.NewBlipTesterClientOptsWithRT(sg.rt, &rest.BlipTesterClientOpts{
 		Username:               "user",
@@ -221,10 +222,13 @@ func (p *CouchbaseLiteMockPeer) GetBackingBucket() base.Bucket {
 
 // CouchbaseLiteMockReplication represents a replication between Couchbase Lite and Sync Gateway. This can be a push or pull replication.
 type CouchbaseLiteMockReplication struct {
-	activePeer  Peer
-	passivePeer Peer
-	btc         *rest.BlipTesterClient
-	btcRunner   *rest.BlipTestClientRunner
+	activePeer    Peer
+	passivePeer   Peer
+	btc           *rest.BlipTesterClient
+	btcRunner     *rest.BlipTestClientRunner
+	direction     PeerReplicationDirection
+	pushCtx       context.Context
+	pushCtxCancel context.CancelFunc
 }
 
 // ActivePeer returns the peer sending documents
@@ -240,16 +244,31 @@ func (r *CouchbaseLiteMockReplication) PassivePeer() Peer {
 // Start starts the replication
 func (r *CouchbaseLiteMockReplication) Start() {
 	r.btc.TB().Logf("starting CBL replication: %s", r)
-	r.btcRunner.StartPull(r.btc.ID())
-	r.btcRunner.StartPush(r.btc.ID())
+	switch r.direction {
+	case PeerReplicationDirectionPush:
+		r.btcRunner.StartPush(r.btc.ID())
+	case PeerReplicationDirectionPull:
+		r.btcRunner.StartPull(r.btc.ID())
+	default:
+		require.Fail(r.btc.TB(), "unsupported replication direction %q", r.direction)
+	}
 }
 
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseLiteMockReplication) Stop() {
 	r.btc.TB().Logf("stopping CBL replication: %s", r)
-	r.btcRunner.UnsubPullChanges(r.btc.ID())
+	switch r.direction {
+	case PeerReplicationDirectionPush:
+		r.btcRunner.StopPush(r.btc.ID())
+	case PeerReplicationDirectionPull:
+		r.btcRunner.UnsubPullChanges(r.btc.ID())
+	}
 }
 
 func (r *CouchbaseLiteMockReplication) String() string {
-	return fmt.Sprintf("%s->%s", r.activePeer, r.passivePeer)
+	directionArrow := "->"
+	if r.direction == PeerReplicationDirectionPull {
+		directionArrow = "<-"
+	}
+	return fmt.Sprintf("%s%s%s", r.activePeer, directionArrow, r.passivePeer)
 }

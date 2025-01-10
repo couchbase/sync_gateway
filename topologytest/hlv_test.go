@@ -95,7 +95,7 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		}
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))
 		docVersion := peer.CreateDocument(dsName, docID, docBody)
-		t.Logf("createVersion: %#v", docVersion.docMeta)
+		t.Logf("%s - createVersion: %#v", peerName, docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
 	index := len(documentVersion) - 1
