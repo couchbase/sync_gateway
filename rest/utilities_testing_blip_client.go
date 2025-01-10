@@ -1266,6 +1266,11 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 
 				base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges response: %s", string(rspBody))
 
+				if len(rspBody) == 0 {
+					// replication was closed underneath proposeChanges request/response - abort
+					return
+				}
+
 				var serverDeltas bool
 				if proposeChangesResponse.Properties[db.ChangesResponseDeltas] == "true" {
 					base.DebugfCtx(ctx, base.KeySGTest, "server supports deltas")
