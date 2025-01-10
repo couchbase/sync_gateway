@@ -231,20 +231,19 @@ type APIEndpoints struct {
 
 // UnsupportedOptions are not supported for external use
 type UnsupportedOptions struct {
-	UserViews                  *UserViewsOptions        `json:"user_views,omitempty"`                    // Config settings for user views
-	OidcTestProvider           *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
-	APIEndpoints               *APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
-	WarningThresholds          *WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
-	DisableCleanSkippedQuery   bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check (deprecated: CBG-2672)
-	OidcTlsSkipVerify          bool                     `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
-	SgrTlsSkipVerify           bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
-	RemoteConfigTlsSkipVerify  bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
-	GuestReadOnly              bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
-	ForceAPIForbiddenErrors    bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
-	ConnectedClient            bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
-	UseQueryBasedResyncManager bool                     `json:"use_query_resync_manager,omitempty"`      // Config option to use Query based resync manager to perform Resync op
-	DCPReadBuffer              int                      `json:"dcp_read_buffer,omitempty"`               // Enables user to set their own DCP read buffer
-	KVBufferSize               int                      `json:"kv_buffer,omitempty"`                     // Enables user to set their own KV pool buffer
+	UserViews                 *UserViewsOptions        `json:"user_views,omitempty"`                    // Config settings for user views
+	OidcTestProvider          *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
+	APIEndpoints              *APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
+	WarningThresholds         *WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
+	DisableCleanSkippedQuery  bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check (deprecated: CBG-2672)
+	OidcTlsSkipVerify         bool                     `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
+	SgrTlsSkipVerify          bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
+	RemoteConfigTlsSkipVerify bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
+	GuestReadOnly             bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
+	ForceAPIForbiddenErrors   bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
+	ConnectedClient           bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
+	DCPReadBuffer             int                      `json:"dcp_read_buffer,omitempty"`               // Enables user to set their own DCP read buffer
+	KVBufferSize              int                      `json:"kv_buffer,omitempty"`                     // Enables user to set their own KV pool buffer
 }
 
 type WarningThresholds struct {
@@ -563,11 +562,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	if dbContext.UseQueryBasedResyncManager() {
-		dbContext.ResyncManager = NewResyncManager(metadataStore, metaKeys)
-	} else {
-		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
-	}
+	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
 
 	return dbContext, nil
 }
@@ -2005,14 +2000,6 @@ func (context *DatabaseContext) UseViews() bool {
 
 func (context *DatabaseContext) UseMou() bool {
 	return context.EnableMou
-}
-
-// UseQueryBasedResyncManager returns if query bases resync manager should be used for Resync operation
-func (context *DatabaseContext) UseQueryBasedResyncManager() bool {
-	if context.Options.UnsupportedOptions != nil {
-		return context.Options.UnsupportedOptions.UseQueryBasedResyncManager
-	}
-	return false
 }
 
 func (context *DatabaseContext) DeltaSyncEnabled() bool {

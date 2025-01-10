@@ -47,7 +47,7 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	// gocb pipeline bootstrap errors can occur before this stage
 	warningsBeforeResync := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
-	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	resyncStatus := rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 	require.Equal(t, int64(1), resyncStatus.DocsChanged)
 	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()-warningsBeforeResync)
 
