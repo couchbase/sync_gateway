@@ -91,10 +91,6 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		if backingPeers[peerName] {
 			continue
 		}
-		if peer.Type() == PeerTypeCouchbaseLite {
-			// FIXME: Skipping Couchbase Lite tests for multi actor conflicts, CBG-4434
-			continue
-		}
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))
 		docVersion := peer.CreateDocument(dsName, docID, docBody)
 		t.Logf("%s - createVersion: %#v", peerName, docVersion.docMeta)

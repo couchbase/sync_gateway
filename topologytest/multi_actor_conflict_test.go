@@ -9,7 +9,6 @@
 package topologytest
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -42,9 +41,6 @@ func TestMultiActorConflictCreate(t *testing.T) {
 // 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
 func TestMultiActorConflictUpdate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
-		if strings.Contains(topology.description, "CBL") {
-			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
-		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
@@ -74,9 +70,6 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 // 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
 func TestMultiActorConflictDelete(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
-		if strings.Contains(topology.description, "CBL") {
-			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
-		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
@@ -110,9 +103,6 @@ func TestMultiActorConflictDelete(t *testing.T) {
 // 11. assert that the documents are resurrected on all peers and have hlv sources equal to the number of active peers and the document body is equivalent to the last write
 func TestMultiActorConflictResurrect(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
-		if strings.Contains(topology.description, "CBL") {
-			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
-		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
