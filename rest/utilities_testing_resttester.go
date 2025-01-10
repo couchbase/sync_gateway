@@ -16,10 +16,12 @@ import (
 	"net/url"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -122,22 +124,17 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 }
 
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
-func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
+func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	require.NotEqual(rt.TB(), "", version.RevID)
-	return rt.WaitForCondition(func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-		if rawResponse.Code != 200 && rawResponse.Code != 201 {
-			return false
+		if !assert.Contains(c, []int{200, 201}, rawResponse.Code, "Unexpected status code for %s", rawResponse.Body.String()) {
+			return
 		}
 		var body db.Body
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		return body.ExtractRev() == version.RevID
-	})
-}
-
-// WaitForRev retries a GET until it returns 200 or 201. If revision is not found, the test will fail. This function is deprecated for RestTester.WaitForVersion
-func (rt *RestTester) WaitForRev(docID, revID string) error {
-	return rt.WaitForVersion(docID, DocVersion{RevID: revID})
+		assert.Equal(c, version.RevID, body.ExtractRev(), "Unexpected revision for %s", rawResponse.Body.String())
+	}, time.Second*10, time.Millisecond*10)
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {

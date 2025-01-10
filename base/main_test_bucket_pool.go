@@ -121,6 +121,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		unclosedBuckets:        make(map[string]map[string]struct{}),
 		useExistingBucket:      TestUseExistingBucket(),
 		useDefaultScope:        options.UseDefaultScope,
+		skipMobileXDCR:         true, // do not set up enableCrossClusterVersioning until Sync Gateway 4.x
 	}
 
 	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), &tbp)
@@ -130,12 +131,6 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		tbp.Fatalf(ctx, "%s", err)
 	}
 	tbp.skipCollections = !useCollections
-
-	useMobileXDCR, err := tbp.cluster.mobileXDCRCompatible(ctx)
-	if err != nil {
-		tbp.Fatalf(ctx, "%s", err)
-	}
-	tbp.skipMobileXDCR = !useMobileXDCR
 
 	tbp.verbose.Set(tbpVerbose())
 
@@ -450,6 +445,7 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 
 	tbp.Logf(ctx, "Setting crossClusterVersioningEnabled=true")
 
+	// retry for 1 minute to get this bucket setting, MB-63675
 	store, ok := AsCouchbaseBucketStore(bucket)
 	if !ok {
 		tbp.Fatalf(ctx, "unable to get server management endpoints. Underlying bucket type was not GoCBBucket")
@@ -459,12 +455,20 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 	posts.Add("enableCrossClusterVersioning", "true")
 
 	url := fmt.Sprintf("/pools/default/buckets/%s", store.GetName())
-	output, statusCode, err := store.MgmtRequest(ctx, http.MethodPost, url, "application/x-www-form-urlencoded", strings.NewReader(posts.Encode()))
+	// retry for 1 minute to get this bucket setting, MB-63675
+	_, err := RetryLoop(ctx, "setXDCRBucketSetting", func() (bool, error, interface{}) {
+		output, statusCode, err := store.MgmtRequest(ctx, http.MethodPost, url, "application/x-www-form-urlencoded", strings.NewReader(posts.Encode()))
+		if err != nil {
+			tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %w output: %s", statusCode, err, string(output))
+		}
+		if statusCode != http.StatusOK {
+			err := fmt.Errorf("request to mobile XDCR bucket setting failed with status code, %d, output: %s", statusCode, string(output))
+			return true, err, nil
+		}
+		return false, nil, nil
+	}, CreateMaxDoublingSleeperFunc(200, 500, 500))
 	if err != nil {
-		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %v output: %s", statusCode, err, string(output))
-	}
-	if statusCode != http.StatusOK {
-		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed with status code, %d, output: %s", statusCode, string(output))
+		tbp.Fatalf(ctx, "Couldn't set crossClusterVersioningEnabled: %v", err)
 	}
 }
 

@@ -11,6 +11,7 @@ package rest
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -105,6 +106,7 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		}
 
 		// Persist registry
+		registry.UpdatedAt = time.Now().UTC()
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Registry updated successfully")
@@ -131,6 +133,9 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		return 0, fmt.Errorf("InsertConfig failed to persist registry after %d attempts", configUpdateMaxRetryAttempts)
 	}
 	// Step 3. Write the database config
+	timeUpdated := time.Now().UTC()
+	config.UpdatedAt = &timeUpdated
+	config.CreatedAt = &timeUpdated
 	cas, configErr := b.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), config)
 	if configErr != nil {
 		base.InfofCtx(ctx, base.KeyConfig, "Insert for database config returned error %v", configErr)
@@ -150,6 +155,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	var updatedConfig *DatabaseConfig
 	var registry *GatewayRegistry
 	var previousVersion string
+	var createdAtTime *time.Time
 
 	registryUpdated := false
 	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
@@ -167,6 +173,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		if existingConfig == nil {
 			return 0, base.ErrNotFound
 		}
+		createdAtTime = existingConfig.CreatedAt
 
 		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig fetched registry and database successfully")
 
@@ -195,6 +202,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		}
 
 		// Persist registry
+		registry.UpdatedAt = time.Now().UTC()
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig persisted updated registry successfully")
@@ -222,6 +230,9 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	}
 
 	// Step 2. Update the config document
+	timeUpdated := time.Now().UTC()
+	updatedConfig.UpdatedAt = &timeUpdated
+	updatedConfig.CreatedAt = createdAtTime
 	docID := PersistentConfigKey(ctx, groupID, dbName)
 	casOut, err := b.Connection.WriteMetadataDocument(ctx, bucketName, docID, updatedConfig.cfgCas, updatedConfig)
 	if err != nil {

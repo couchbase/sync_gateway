@@ -486,7 +486,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				// If change is a removal and we're running with protocol V3 and change change is not a tombstone
 				// fall into 3.0 removal handling.
 				// Changes with change.Revoked=true have already evaluated UserHasDocAccess in changes.go, don't check again.
-				if change.allRemoved && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 && !change.Deleted && !change.Revoked {
+				if change.allRemoved && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 && !change.Deleted && !change.Revoked && !bh.db.Options.UnsupportedOptions.BlipSendDocsWithChannelRemoval {
 					// If client doesn't want removals / revocations, don't send change
 					if !opts.revocations {
 						continue
@@ -497,7 +497,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					if err == nil && userHasAccessToDoc {
 						continue
 					}
-
 					// If we can't determine user access due to an error, log error and fall through to send change anyway.
 					// In the event of an error we should be cautious and send a revocation anyway, even if the user
 					// may actually have an alternate access method. This is the safer approach security-wise and

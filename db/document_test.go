@@ -327,10 +327,10 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 
 	// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
 	result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
-	require.Error(t, err) // unexpected end of JSON input
+	require.NoError(t, err) // body will be nil, no xattrs are found
 	require.Nil(t, result)
 	require.Equal(t, emptyBody, rawBody)
-	require.Nil(t, rawXattrs[base.SyncXattrName])
+	require.Empty(t, rawXattrs)
 
 }
 

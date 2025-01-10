@@ -4239,7 +4239,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Create revision on rt2 (remote)
 			docID := test.name
 			rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, rest.EmptyDocVersion(), test.remoteRevisionBody)
-			rest.RequireDocVersionEqual(t, test.remoteVersion, rt2Version)
+			rest.RequireDocVersionEqual(t, test.remoteVersion, *rt2Version)
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 			srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -4258,7 +4258,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			// Create revision on rt1 (local)
 			rt1version := rt1.PutNewEditsFalse(docID, test.localVersion, rest.EmptyDocVersion(), test.localRevisionBody)
-			rest.RequireDocVersionEqual(t, test.localVersion, rt1version)
+			rest.RequireDocVersionEqual(t, test.localVersion, *rt1version)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
@@ -4371,7 +4371,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 		localVersion          rest.DocVersion
 		remoteRevisionBody    string
 		remoteVersion         rest.DocVersion
-		commonAncestorVersion rest.DocVersion
+		commonAncestorVersion *rest.DocVersion
 		conflictResolver      string
 		expectedBody          string
 		expectedVersion       rest.DocVersion
@@ -4420,7 +4420,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			localVersion:          rest.NewDocVersionFromFakeRev("2-a"),
 			remoteRevisionBody:    `{"_deleted": true}`,
 			remoteVersion:         rest.NewDocVersionFromFakeRev("2-b"),
-			commonAncestorVersion: rest.NewDocVersionFromFakeRev("1-a"),
+			commonAncestorVersion: base.Ptr(rest.NewDocVersionFromFakeRev("1-a")),
 			conflictResolver:      `function(conflict) {return conflict.LocalDocument;}`,
 			expectedBody:          `{"source": "local"}`,
 			expectedVersion:       rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 2-b
@@ -4442,15 +4442,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// Create revision on rt2 (remote)
 			docID := test.name
 
-			if !test.commonAncestorVersion.Equal(rest.EmptyDocVersion()) {
+			if test.commonAncestorVersion != nil {
 				t.Logf("Creating common ancestor revision on rt2")
-				rt2Version := rt2.PutNewEditsFalse(docID, test.commonAncestorVersion, rest.EmptyDocVersion(), test.remoteRevisionBody)
-				rest.RequireDocVersionEqual(t, test.commonAncestorVersion, rt2Version)
+				rt2Version := rt2.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
+				rest.RequireDocVersionEqual(t, *test.commonAncestorVersion, *rt2Version)
 			}
 
 			t.Logf("Creating remote revision on rt2")
 			rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, test.commonAncestorVersion, test.remoteRevisionBody)
-			rest.RequireDocVersionEqual(t, test.remoteVersion, rt2Version)
+			rest.RequireDocVersionEqual(t, test.remoteVersion, *rt2Version)
 
 			rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
 			remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalSync)
@@ -4472,15 +4472,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			ctx1 := rt1.Context()
 
 			// Create revision on rt1 (local)
-			if !test.commonAncestorVersion.Equal(rest.EmptyDocVersion()) {
+			if test.commonAncestorVersion != nil {
 				t.Logf("Creating common ancestor revision on rt1")
-				rt1version := rt1.PutNewEditsFalse(docID, test.commonAncestorVersion, rest.EmptyDocVersion(), test.localRevisionBody)
-				rest.RequireDocVersionEqual(t, test.commonAncestorVersion, rt1version)
+				rt1version := rt1.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.localRevisionBody)
+				rest.RequireDocVersionEqual(t, *test.commonAncestorVersion, *rt1version)
 			}
 
 			t.Logf("Creating local revision on rt1")
 			rt1Version := rt1.PutNewEditsFalse(docID, test.localVersion, test.commonAncestorVersion, test.localRevisionBody)
-			rest.RequireDocVersionEqual(t, test.localVersion, rt1Version)
+			rest.RequireDocVersionEqual(t, test.localVersion, *rt1Version)
 
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 			localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalSync)
@@ -5966,7 +5966,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	// scenarios
 	conflictResolutionTests := []struct {
 		name                  string
-		commonAncestorVersion rest.DocVersion
+		commonAncestorVersion *rest.DocVersion
 		localRevisionBody     string
 		localVersion          rest.DocVersion
 		remoteRevisionBody    string
@@ -6088,7 +6088,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 		{
 			name:                  "mergeReadIntlPropsDeletedWithLocalTombstone",
 			localRevisionBody:     `{"source": "local", "_deleted": true}`,
-			commonAncestorVersion: rest.NewDocVersionFromFakeRev("1-a"),
+			commonAncestorVersion: base.Ptr(rest.NewDocVersionFromFakeRev("1-a")),
 			localVersion:          rest.NewDocVersionFromFakeRev("2-a"),
 			remoteRevisionBody:    `{"source": "remote"}`,
 			remoteVersion:         rest.NewDocVersionFromFakeRev("2-b"),
@@ -6122,12 +6122,12 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 			// Create revision on rt2 (remote)
 			docID := test.name
-			if !test.commonAncestorVersion.Equal(rest.EmptyDocVersion()) {
-				_ = rt2.PutNewEditsFalse(docID, test.commonAncestorVersion, rest.EmptyDocVersion(), test.remoteRevisionBody)
+			if test.commonAncestorVersion != nil {
+				_ = rt2.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
 			}
 			fmt.Println("remoteRevisionBody:", test.remoteRevisionBody)
 			rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, test.commonAncestorVersion, test.remoteRevisionBody)
-			rest.RequireDocVersionEqual(t, test.remoteVersion, rt2Version)
+			rest.RequireDocVersionEqual(t, test.remoteVersion, *rt2Version)
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 			srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -6145,13 +6145,13 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			ctx1 := rt1.Context()
 
 			// Create revision on rt1 (local)
-			if !test.commonAncestorVersion.Equal(rest.EmptyDocVersion()) {
-				_ = rt1.PutNewEditsFalse(docID, test.commonAncestorVersion, rest.EmptyDocVersion(), test.remoteRevisionBody)
+			if test.commonAncestorVersion != nil {
+				_ = rt1.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
 				assert.NoError(t, err)
 			}
 			fmt.Println("localRevisionBody:", test.localRevisionBody)
 			rt1Version := rt1.PutNewEditsFalse(docID, test.localVersion, test.commonAncestorVersion, test.localRevisionBody)
-			rest.RequireDocVersionEqual(t, test.localVersion, rt1Version)
+			rest.RequireDocVersionEqual(t, test.localVersion, *rt1Version)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
@@ -6518,13 +6518,13 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				expectedRevID = "1-e5d43a9cdc4a2d4e258800dfc37e9d77"
 			}
 
+			version := rest.DocVersion{RevID: expectedRevID}
 			// Wait for doc to show up on side that the resurrection was done
 			if test.resurrectLocal {
-				err = localActiveRT.WaitForRev(doc2ID, expectedRevID)
+				localActiveRT.WaitForVersion(doc2ID, version)
 			} else {
-				err = remotePassiveRT.WaitForRev(doc2ID, expectedRevID)
+				remotePassiveRT.WaitForVersion(doc2ID, version)
 			}
-			require.NoError(t, err)
 
 			// Start the replication
 			_ = localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", "")
@@ -6532,11 +6532,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for doc to replicate from side resurrection was done on to the other side
 			if test.resurrectLocal {
-				err = remotePassiveRT.WaitForRev(doc2ID, expectedRevID)
+				remotePassiveRT.WaitForVersion(doc2ID, version)
 			} else {
-				err = localActiveRT.WaitForRev(doc2ID, expectedRevID)
+				localActiveRT.WaitForVersion(doc2ID, version)
 			}
-			assert.NoError(t, err)
 		})
 	}
 }
@@ -6969,7 +6968,8 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			// Create initial revision(s) on local
 			docID := test.name
 
-			var parentVersion, newVersion rest.DocVersion
+			var newVersion rest.DocVersion
+			var parentVersion *rest.DocVersion
 			for gen := 1; gen <= test.initialState.generation; gen++ {
 				newVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-initial", gen))
 				parentVersion = activeRT.PutNewEditsFalse(docID, newVersion, parentVersion,
@@ -6981,7 +6981,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins)
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			assert.NoError(t, remoteRT.WaitForVersion(docID, newVersion))
+			remoteRT.WaitForVersion(docID, newVersion)
 
 			// Stop the replication
 			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
@@ -6994,12 +6994,12 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			t.Logf("-- remote raw pre-update: %s", rawResponse.Body.Bytes())
 
 			// Update local and remote revisions
-			localParentVersion := newVersion
+			localParentVersion := &newVersion
 			var newLocalVersion rest.DocVersion
 			for localGen := test.initialState.generation + 1; localGen <= test.localMutation.generation; localGen++ {
 				// If deleted=true, tombstone on the last mutation
 				if test.localMutation.deleted == true && localGen == test.localMutation.generation {
-					activeRT.DeleteDoc(docID, localParentVersion)
+					activeRT.DeleteDoc(docID, newVersion)
 					continue
 				}
 
@@ -7012,12 +7012,12 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				localParentVersion = activeRT.PutNewEditsFalse(docID, newLocalVersion, localParentVersion, makeRevBody(test.localMutation.propertyValue, localRevPos, localGen))
 			}
 
-			remoteParentVersion := newVersion
+			remoteParentVersion := &newVersion
 			var newRemoteVersion rest.DocVersion
 			for remoteGen := test.initialState.generation + 1; remoteGen <= test.remoteMutation.generation; remoteGen++ {
 				// If deleted=true, tombstone on the last mutation
 				if test.remoteMutation.deleted == true && remoteGen == test.remoteMutation.generation {
-					remoteRT.DeleteDoc(docID, remoteParentVersion)
+					remoteRT.DeleteDoc(docID, newVersion)
 					continue
 				}
 				newRemoteVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
@@ -7178,7 +7178,8 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 
 			docID := test.name
 
-			var parentVersion, newVersion rest.DocVersion
+			var newVersion rest.DocVersion
+			var parentVersion *rest.DocVersion
 			for gen := 1; gen <= 3; gen++ {
 				newVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-initial", gen))
 				parentVersion = activeRT.PutNewEditsFalse(docID, newVersion, parentVersion, "{}")
@@ -7188,7 +7189,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			assert.NoError(t, remoteRT.WaitForVersion(docID, newVersion))
+			remoteRT.WaitForVersion(docID, newVersion)
 
 			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 			rest.RequireStatus(t, response, http.StatusOK)
@@ -7199,30 +7200,28 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			localGen := nextGen
 			localParentVersion := newVersion
 			newLocalVersion := rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-local", localGen))
-			_ = activeRT.PutNewEditsFalse(docID, newLocalVersion, localParentVersion, `{"_attachments": {"attach": {"data":"aGVsbG8gd29ybGQ="}}}`)
+			_ = activeRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, `{"_attachments": {"attach": {"data":"aGVsbG8gd29ybGQ="}}}`)
 			localParentVersion = newLocalVersion
 
 			localGen++
 			newLocalVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-local", localGen))
-			_ = activeRT.PutNewEditsFalse(docID, newLocalVersion, localParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`, localGen-1))
+			_ = activeRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`, localGen-1))
 
 			remoteGen := nextGen
 			remoteParentVersion := newVersion
 			newRemoteVersion := rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
-			_ = remoteRT.PutNewEditsFalse(docID, newRemoteVersion, remoteParentVersion, `{"_attachments": {"attach": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`)
+			_ = remoteRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, `{"_attachments": {"attach": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`)
 			remoteParentVersion = newRemoteVersion
 
 			remoteGen++
 			newRemoteVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
-			_ = remoteRT.PutNewEditsFalse(docID, newRemoteVersion, remoteParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
+			_ = remoteRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
 
 			response = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			waitErr := activeRT.WaitForVersion(docID, test.expectedFinalVersion)
-			assert.NoError(t, waitErr)
-			waitErr = remoteRT.WaitForVersion(docID, test.expectedFinalVersion)
-			require.NoError(t, waitErr)
+			activeRT.WaitForVersion(docID, test.expectedFinalVersion)
+			remoteRT.WaitForVersion(docID, test.expectedFinalVersion)
 
 			localDoc := activeRT.GetDocBody(docID)
 			localVersion := localDoc.ExtractRev()
@@ -7356,7 +7355,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Create a document //
 	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
-	require.NoError(t, activeRT.WaitForVersion("test", version))
+	activeRT.WaitForVersion("test", version)
 
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
@@ -7384,7 +7383,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	assert.NoError(t, ar.Start(activeCtx))
 
 	// Wait for active to replicate to passive
-	require.NoError(t, passiveRT.WaitForVersion("test", version))
+	passiveRT.WaitForVersion("test", version)
 
 	// Delete active document
 	deletedVersion := activeRT.DeleteDocReturnVersion("test", version)
@@ -7417,8 +7416,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	resurrectedVersion := activeRT.UpdateDoc("test", deletedVersion, `{"field2":"f2_2"}`)
 
 	// Replicate resurrection to passive
-	err = passiveRT.WaitForVersion("test", resurrectedVersion)
-	assert.NoError(t, err) // If error, problem not fixed
+	passiveRT.WaitForVersion("test", resurrectedVersion)
 
 	// Shutdown replicator to close out
 	require.NoError(t, ar.Stop())
@@ -7475,7 +7473,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Create a document //
 	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
-	require.NoError(t, activeRT.WaitForVersion("test", version))
+	activeRT.WaitForVersion("test", version)
 
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
@@ -7503,7 +7501,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	assert.NoError(t, ar.Start(activeCtx))
 
-	require.NoError(t, passiveRT.WaitForVersion("test", version))
+	passiveRT.WaitForVersion("test", version)
 
 	assert.NoError(t, ar.Stop())
 
@@ -7521,8 +7519,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	assert.NoError(t, ar.Start(activeCtx))
 	// Check if it replicated
-	err = passiveRT.WaitForVersion("test", version2)
-	assert.NoError(t, err)
+	passiveRT.WaitForVersion("test", version2)
 
 	assert.NoError(t, ar.Stop())
 }
@@ -7561,15 +7558,15 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	// Create the docs //
 	// Doc rev 1
 	version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
-	require.NoError(t, activeRT.WaitForVersion(docID, version1))
+	activeRT.WaitForVersion(docID, version1)
 
 	// doc rev 2
 	version2 := activeRT.UpdateDoc(docID, version1, `{"key":"12","channels":["rev2+3chan"]}`)
-	require.NoError(t, activeRT.WaitForVersion(docID, version2))
+	activeRT.WaitForVersion(docID, version2)
 
 	// Doc rev 3
 	version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
-	require.NoError(t, activeRT.WaitForVersion(docID, version3))
+	activeRT.WaitForVersion(docID, version3)
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
 	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevID), version2.RevID))
@@ -7856,8 +7853,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
-	err = passiveRT.WaitForVersion(docID, version)
-	require.NoError(t, err)
+	passiveRT.WaitForVersion(docID, version)
 
 	resp = activeRT.SendAdminRequest("GET", "/{{.db}}/_replication/"+t.Name(), "")
 	rest.RequireStatus(t, resp, 200)
@@ -7897,8 +7893,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	activeRT.CreateReplication(t.Name(), remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
-	err = passiveRT.WaitForRev("test", rev)
-	require.NoError(t, err)
+	passiveRT.WaitForVersion("test", rest.DocVersion{RevID: rev})
 
 	// assert on the processed seq list being updated before stopping the active replicator
 	ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, t.Name())
@@ -8663,4 +8658,42 @@ func passiveDBURLForAlice(rt *rest.RestTester, username string) *url.URL {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 	return passiveDBURL
+}
+
+func TestReplicationConfigUpdatedAt(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	activeRT, _, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// create a replication and assert the updated at field is present in the config
+	activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+
+	resp := activeRT.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
+	var configResponse db.ReplicationConfig
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
+
+	// Check that the config has an updated_at field
+	require.NotNil(t, configResponse.UpdatedAt)
+	require.NotNil(t, configResponse.CreatedAt)
+	currTime := configResponse.UpdatedAt
+	createdAtTime := configResponse.CreatedAt
+
+	// avoid flake where update at seems to be the same (possibly running to fast)
+	time.Sleep(500 * time.Nanosecond)
+
+	resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// update the config
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{"name":"replication1","source":"%s","type":"push", "continuous":true}`, remoteURLString))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Check that the updated_at field is updated when the config is updated
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
+	configResponse = db.ReplicationConfig{}
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
+
+	assert.Greater(t, configResponse.UpdatedAt.UnixNano(), currTime.UnixNano())
+	assert.Equal(t, configResponse.CreatedAt.UnixNano(), createdAtTime.UnixNano())
 }
