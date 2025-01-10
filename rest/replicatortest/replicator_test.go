@@ -8583,6 +8583,8 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 	// create a replication and assert the updated at field is present in the config
 	activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 
+	activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
+
 	resp := activeRT.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
 	var configResponse db.ReplicationConfig
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
@@ -8592,9 +8594,6 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 	require.NotNil(t, configResponse.CreatedAt)
 	currTime := configResponse.UpdatedAt
 	createdAtTime := configResponse.CreatedAt
-
-	// avoid flake where update at seems to be the same (possibly running to fast)
-	time.Sleep(500 * time.Nanosecond)
 
 	resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
