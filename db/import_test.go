@@ -61,10 +61,7 @@ func TestFeedImport(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
 	require.NotZero(t, syncData.Sequence, "Sequence should not be zero for imported doc")
 	revSeqNo := RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
-	// CBG-4233: revSeqNo not implemented yet in rosmar
-	if !base.UnitTestUrlIsWalrus() {
-		require.NotZero(t, revSeqNo, "RevSeqNo should not be zero for imported doc")
-	}
+	require.NotZero(t, revSeqNo, "RevSeqNo should not be zero for imported doc")
 
 	// verify mou and rev seqno
 	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
@@ -76,11 +73,8 @@ func TestFeedImport(t *testing.T) {
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
 		require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
 		require.Equal(t, base.CasToString(importCas), mou.HexCAS)
-		// CBG-4233: revSeqNo not implemented yet in rosmar
-		if !base.UnitTestUrlIsWalrus() {
-			// curr revSeqNo should be 2, so prev revSeqNo is 1
-			require.Equal(t, revSeqNo-1, mou.PreviousRevSeqNo)
-		}
+		// curr revSeqNo should be 2, so prev revSeqNo is 1
+		require.Equal(t, revSeqNo-1, mou.PreviousRevSeqNo)
 	} else {
 		// Expect not found fetching mou xattr
 		require.Error(t, err)
@@ -117,10 +111,7 @@ func TestOnDemandImportMou(t *testing.T) {
 			require.NotNil(t, doc.MetadataOnlyUpdate)
 			require.Equal(t, base.CasToString(writeCas), doc.MetadataOnlyUpdate.PreviousHexCAS)
 			require.Equal(t, base.CasToString(doc.Cas), doc.MetadataOnlyUpdate.HexCAS)
-			// CBG-4233: revSeqNo not implemented yet in rosmar
-			if !base.UnitTestUrlIsWalrus() {
-				require.Equal(t, uint64(1), doc.MetadataOnlyUpdate.PreviousRevSeqNo)
-			}
+			require.Equal(t, uint64(1), doc.MetadataOnlyUpdate.PreviousRevSeqNo)
 		} else {
 			require.Nil(t, doc.MetadataOnlyUpdate)
 		}
@@ -181,10 +172,7 @@ func TestOnDemandImportMou(t *testing.T) {
 					require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
 					require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
 					require.Equal(t, base.CasToString(importCas), mou.HexCAS)
-					// CBG-4233: revSeqNo not implemented yet in rosmar
-					if !base.UnitTestUrlIsWalrus() {
-						require.Equal(t, uint64(1), mou.PreviousRevSeqNo)
-					}
+					require.Equal(t, uint64(1), mou.PreviousRevSeqNo)
 				} else {
 					// expect not found fetching mou xattr
 					require.Error(t, err)

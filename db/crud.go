@@ -54,10 +54,6 @@ func (c *DatabaseCollection) getRevSeqNo(ctx context.Context, docID string) (rev
 	if err != nil {
 		return 0, 0, err
 	}
-	// CBG-4233: revSeqNo not implemented yet in rosmar
-	if c.dbCtx.BucketSpec.IsWalrusBucket() {
-		return 0, cas, err
-	}
 	revSeqNo, err = unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
 	return revSeqNo, cas, err
 }

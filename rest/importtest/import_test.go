@@ -66,13 +66,10 @@ func TestImportFeed(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// CBG-4233 rosmar does not yet support RevSeqNo
-	if !base.UnitTestUrlIsWalrus() {
-		xattrs, _, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
-		require.NoError(t, err)
-		require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
-		require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
-	}
+	xattrs, _, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
+	require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
 	// Attempt to get the document via Sync Gateway.
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
@@ -626,13 +623,10 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
 
-	// CBG-4233 rosmar does not yet support RevSeqNo
 	xattrs, cas, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
-	if !base.UnitTestUrlIsWalrus() {
-		require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
-		require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
-	}
+	require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
+	require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
@@ -2395,9 +2389,6 @@ func TestImportUpdateExpiry(t *testing.T) {
 
 func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skipf("test requires CBS for previous rev no assertion, CBG-4233")
-	}
 
 	rtConfig := rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
