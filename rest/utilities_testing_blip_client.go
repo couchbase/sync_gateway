@@ -1446,6 +1446,12 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 func (btc *BlipTesterCollectionClient) StopPush() {
 	require.True(btc.TB(), btc.pushRunning.CASRetry(true, false), "can't stop push replication - not running")
 	btc.pushCtxCancel()
+
+	// wait for push replication to stop running
+	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
+		assert.False(c, btc.pushRunning.IsTrue())
+	}, 10*time.Second, 1*time.Millisecond)
+
 }
 
 func (btc *BlipTesterCollectionClient) UnsubPullChanges() {
