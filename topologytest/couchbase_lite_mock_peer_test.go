@@ -222,13 +222,11 @@ func (p *CouchbaseLiteMockPeer) GetBackingBucket() base.Bucket {
 
 // CouchbaseLiteMockReplication represents a replication between Couchbase Lite and Sync Gateway. This can be a push or pull replication.
 type CouchbaseLiteMockReplication struct {
-	activePeer    Peer
-	passivePeer   Peer
-	btc           *rest.BlipTesterClient
-	btcRunner     *rest.BlipTestClientRunner
-	direction     PeerReplicationDirection
-	pushCtx       context.Context
-	pushCtxCancel context.CancelFunc
+	activePeer  Peer
+	passivePeer Peer
+	btc         *rest.BlipTesterClient
+	btcRunner   *rest.BlipTestClientRunner
+	direction   PeerReplicationDirection
 }
 
 // ActivePeer returns the peer sending documents
