@@ -364,8 +364,17 @@ func TestPeerImplementation(t *testing.T) {
 			peer := peers[tc.name]
 			// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
 			if peer.Type() == PeerTypeCouchbaseLite {
-				replication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{})
-				defer replication.Stop()
+				pullReplication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
+				})
+				pullReplication.Start()
+				defer pullReplication.Stop()
+
+				pushReplication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				})
+				pushReplication.Start()
+				defer pushReplication.Stop()
 			}
 
 			docID := t.Name()
