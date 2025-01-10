@@ -1244,8 +1244,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 					btcRunner.StartPull(btc.id)
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
-					_, err := btcRunner.UnsubPullChanges(btc.id)
-					require.NoError(t, err)
+					btcRunner.UnsubPullChanges(btc.id)
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldFeedType: "continuous",
@@ -1257,8 +1256,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 					btcRunner.StartOneshotPull(btc.id)
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
-					_, err := btcRunner.UnsubPullChanges(btc.id)
-					require.NoError(t, err)
+					btcRunner.UnsubPullChanges(btc.id)
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldFeedType: "normal",
@@ -1270,8 +1268,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", Channels: "A,B"})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
-					_, err := btcRunner.UnsubPullChanges(btc.id)
-					require.NoError(t, err)
+					btcRunner.UnsubPullChanges(btc.id)
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldChannels: []any{"A", "B"},
@@ -1285,8 +1282,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", DocIDs: []string{docID, "non_existent"}})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
-					_, err := btcRunner.UnsubPullChanges(btc.id)
-					require.NoError(t, err)
+					btcRunner.UnsubPullChanges(btc.id)
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldDocIDs:   []any{"blip_changes_with_docids", "non_existent"},
@@ -1301,8 +1297,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", DocIDs: []string{docID, "non_existent"}, Channels: "A,B"})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
-					_, err := btcRunner.UnsubPullChanges(btc.id)
-					require.NoError(t, err)
+					btcRunner.UnsubPullChanges(btc.id)
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldDocIDs:   []any{"blip_changes_with_docids_and_channels", "non_existent"},
@@ -1317,8 +1312,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "1:10"})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
-					_, err := btcRunner.UnsubPullChanges(btc.id)
-					require.NoError(t, err)
+					btcRunner.UnsubPullChanges(btc.id)
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldFeedType: "normal",
@@ -1509,14 +1503,12 @@ func TestAuditBlipCRUD(t *testing.T) {
 				attachmentName: "attachment1",
 				setupCode: func(t testing.TB, docID string) DocVersion {
 					attData := base64.StdEncoding.EncodeToString([]byte("attach"))
-					version, err := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment1":{"data":"`+attData+`"}}}`))
-					require.NoError(t, err)
-					return version
+					return btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment1":{"data":"`+attData+`"}}}`))
 				},
 				auditableCode: func(t testing.TB, docID string, version DocVersion) {
 					btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
 					// wait for the doc to be replicated, since that's what we're actually auditing
-					require.NoError(t, rt.WaitForVersion(docID, version))
+					rt.WaitForVersion(docID, version)
 				},
 				attachmentCreateCount: 1,
 			},

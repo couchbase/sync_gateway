@@ -53,16 +53,14 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 		btcRunner.StartPush(btc.id)
 
 		// Push first rev
-		version, err := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(`{"key":"val"}`))
-		require.NoError(t, err)
+		version := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(`{"key":"val"}`))
 
 		// Push second rev with an attachment (no delta yet)
 		attData := base64.StdEncoding.EncodeToString([]byte("attach"))
 
-		version, err = btcRunner.AddRev(btc.id, docID, &version, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
-		require.NoError(t, err)
+		version = btcRunner.AddRev(btc.id, docID, &version, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
 
-		require.NoError(t, rt.WaitForVersion(docID, version))
+		rt.WaitForVersion(docID, version)
 
 		collection, ctx := rt.GetSingleTestDatabaseCollection()
 		syncData, err := collection.GetDocSyncData(ctx, docID)
@@ -82,10 +80,9 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 		newBody, err := base.InjectJSONPropertiesFromBytes(body, base.KVPairBytes{Key: "update", Val: []byte(`true`)})
 		require.NoError(t, err)
 
-		version, err = btcRunner.AddRev(btc.id, docID, &version, newBody)
-		require.NoError(t, err)
+		version = btcRunner.AddRev(btc.id, docID, &version, newBody)
 
-		require.NoError(t, rt.WaitForVersion(docID, version))
+		rt.WaitForVersion(docID, version)
 
 		syncData, err = collection.GetDocSyncData(ctx, docID)
 		require.NoError(t, err)
@@ -141,8 +138,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 
 		// Update the replicated doc at client by adding another attachment.
 		bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
-		version, err := btcRunner.AddRev(btc.id, docID, &version, []byte(bodyText))
-		require.NoError(t, err)
+		version = btcRunner.AddRev(btc.id, docID, &version, []byte(bodyText))
 
 		// Wait for the document to be replicated at SG
 		btc.pushReplication.WaitForMessage(2)
@@ -825,8 +821,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 		// create doc1 rev 2-abc on client
-		newRev, err := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
-		assert.NoError(t, err)
+		newRev := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 
 		// Check EE is delta, and CE is full-body replication
 		msg := client.waitForReplicationMessage(collection, 2)
@@ -874,7 +869,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 			deltaPushDocCountStart = rt.GetDatabase().DbStats.DeltaSync().DeltaPushDocCount.Value()
 		}
 
-		_, err = btcRunner.PushUnsolicitedRev(client.id, docID, &deletedVersion, []byte(`{"undelete":true}`))
+		_, err := btcRunner.PushUnsolicitedRev(client.id, docID, &deletedVersion, []byte(`{"undelete":true}`))
 
 		if base.IsEnterpriseEdition() {
 			// Now make the client push up a delta that has the parent of the tombstone.
@@ -932,8 +927,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 		// create doc1 rev 2-abcxyz on client
-		newRev, err := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
-		assert.NoError(t, err)
+		newRev := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 		// Check EE is delta, and CE is full-body replication
 		msg := client.waitForReplicationMessage(collection, 2)
 
