@@ -206,6 +206,11 @@ func (cd *clientDoc) _docRevSeqsNewestToOldest() []clientSeq {
 func (cd *clientDoc) latestRev() (*clientDocRev, error) {
 	cd.lock.RLock()
 	defer cd.lock.RUnlock()
+	return cd._latestRev()
+}
+
+// _latestRev returns the latest revision of the document.
+func (cd *clientDoc) _latestRev() (*clientDocRev, error) {
 	if cd._latestSeq == 0 {
 		return nil, nil
 	}
@@ -220,6 +225,11 @@ func (cd *clientDoc) latestRev() (*clientDocRev, error) {
 func (cd *clientDoc) addNewRev(rev clientDocRev) {
 	cd.lock.Lock()
 	defer cd.lock.Unlock()
+	cd._addNewRev(rev)
+}
+
+// addNewRev adds a new revision to the document.
+func (cd *clientDoc) _addNewRev(rev clientDocRev) {
 	cd._latestSeq = rev.clientSeq
 	cd._revisionsBySeq[rev.clientSeq] = rev
 	cd._seqsByVersions[rev.version] = rev.clientSeq
@@ -550,6 +560,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				}
 			}
 
+			doc.lock.Lock()
+			defer doc.lock.Unlock()
+
 			var newVersion DocVersion
 			var hlv db.HybridLogicalVector
 			if btc.UseHLV() {
@@ -576,8 +589,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			}
 
 			// remove existing entry and replace with new seq
-			delete(btcr._seqStore, doc.latestSeq())
-			doc.addNewRev(docRev)
+			delete(btcr._seqStore, doc._latestSeq)
+			doc._addNewRev(docRev)
 			btcr._seqStore[newClientSeq] = doc
 			btcr._seqFromDocID[docID] = newClientSeq
 
@@ -591,11 +604,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					replacedVersion = DocVersion{RevTreeID: revID}
 				}
 				// store the new sequence for a replaced rev for tests waiting for this specific rev
-				doc.lock.Lock()
 				doc._seqsByVersions[replacedVersion] = newClientSeq
-				doc.lock.Unlock()
 			}
-			doc.setLatestServerVersion(newVersion)
+			doc._latestServerVersion = newVersion
 
 			if !msg.NoReply() {
 				response := msg.Response()
@@ -772,6 +783,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				_seqsByVersions: make(map[DocVersion]clientSeq),
 			}
 		}
+		doc.lock.Lock()
+		defer doc.lock.Unlock()
 
 		var newVersion DocVersion
 		var hlv db.HybridLogicalVector
@@ -797,8 +810,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 
 		// remove existing entry and replace with new seq
-		delete(btcr._seqStore, doc.latestSeq())
-		doc.addNewRev(docRev)
+		delete(btcr._seqStore, doc._latestSeq)
+		doc._addNewRev(docRev)
 		btcr._seqStore[newClientSeq] = doc
 		btcr._seqFromDocID[docID] = newClientSeq
 
@@ -812,11 +825,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				replacedVersion = DocVersion{RevTreeID: replacedRev}
 			}
 			// store the new sequence for a replaced rev for tests waiting for this specific rev
-			doc.lock.Lock()
 			doc._seqsByVersions[replacedVersion] = newClientSeq
-			doc.lock.Unlock()
 		}
-		doc.setLatestServerVersion(newVersion)
+		doc._latestServerVersion = newVersion
 
 		if !msg.NoReply() {
 			response := msg.Response()
@@ -1493,11 +1504,15 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 			_seqsByVersions: make(map[DocVersion]clientSeq, 1),
 		}
 	}
+
+	doc.lock.Lock()
+	defer doc.lock.Unlock()
+
 	newGen := 1
 	var hlv db.HybridLogicalVector
 	if parentVersion != nil {
 		// grab latest version for this doc and make sure we're doing an upsert on top of it to avoid branching revisions
-		latestRev, err := doc.latestRev()
+		latestRev, err := doc._latestRev()
 		require.NoError(btc.TB(), err)
 		latestVersion := latestRev.version
 		// CV or RevTreeID match is enough to ensure we're updating the latest revision
@@ -1526,7 +1541,7 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 	btc._seqLast++
 	newSeq := btc._seqLast
 	rev := clientDocRev{clientSeq: newSeq, version: docVersion, body: body, HLV: hlv, isDelete: body == nil}
-	doc.addNewRev(rev)
+	doc._addNewRev(rev)
 
 	btc._seqStore[newSeq] = doc
 	btc._seqFromDocID[docID] = newSeq
