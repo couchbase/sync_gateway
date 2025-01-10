@@ -174,6 +174,18 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 	if !ok {
 		require.Fail(p.t, fmt.Sprintf("unsupported peer type %T for pull replication", peer))
 	}
+
+	// check for existing blip runner/client and use if present - avoids creating multiple clients for the same peer
+	if pbtc, ok := p.blipClients[sg.String()]; ok {
+		return &CouchbaseLiteMockReplication{
+			activePeer:  p,
+			passivePeer: peer,
+			btc:         pbtc.btc,
+			btcRunner:   pbtc.btcRunner,
+			direction:   config.direction,
+		}
+	}
+
 	replication := &CouchbaseLiteMockReplication{
 		activePeer:  p,
 		passivePeer: peer,
