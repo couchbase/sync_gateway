@@ -316,7 +316,7 @@ func updatePeersT(t *testing.T, peers map[string]Peer) {
 
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
 func setupTests(t *testing.T, topology Topology) (base.ScopeAndCollectionName, Peers, Replications) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV, base.KeyCRUD)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV, base.KeyCRUD, base.KeySync)
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
 

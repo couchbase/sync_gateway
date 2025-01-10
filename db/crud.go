@@ -1242,7 +1242,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			}
 		} else {
 			if doc.HLV.isDominating(newDocHLV) {
-				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add", base.UD(newDoc.ID))
+				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
 				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 			}
 			if newDocHLV.isDominating(doc.HLV) {
