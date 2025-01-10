@@ -38,6 +38,27 @@ func (v DocMetadata) CV(t require.TestingT) db.Version {
 	return db.Version{}
 }
 
+func (v DocMetadata) IsHLVEqual(other DocMetadata) bool {
+	if v.ImplicitHLV != nil {
+		return other.hlvEquals(v.ImplicitHLV)
+	} else if v.HLV != nil {
+		return other.hlvEquals(v.HLV)
+	} else {
+		return other.ImplicitHLV == nil && other.HLV == nil
+	}
+}
+
+func (v DocMetadata) hlvEquals(hlv *db.HybridLogicalVector) bool {
+	if v.ImplicitHLV != nil {
+		return v.ImplicitHLV.Equals(hlv)
+	} else if v.HLV != nil {
+		return v.HLV.Equals(hlv)
+	} else {
+		return hlv == nil
+	}
+
+}
+
 // DocMetadataFromDocument returns a DocVersion from the given document.
 func DocMetadataFromDocument(doc *db.Document) DocMetadata {
 	return DocMetadata{

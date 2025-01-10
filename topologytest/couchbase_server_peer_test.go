@@ -128,8 +128,11 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 	p.tb.Logf("%s: Writing document %s", p, docID)
 	var lastXattrs map[string][]byte
 	// write the document LWW, ignoring any in progress writes
-	callback := func(_ []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
-		lastXattrs = xattrs
+	callback := func(existingBody []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+		// only set lastXattrs if existing document is not a tombstone, they will not be preserved if this is a resurrection
+		if len(existingBody) > 0 {
+			lastXattrs = xattrs
+		}
 		return sgbucket.UpdatedDoc{Doc: body}, nil
 	}
 	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
@@ -143,6 +146,7 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata {
+	p.tb.Logf("%s: Deleting document %s", p, docID)
 	// delete the document, ignoring any in progress writes. We are allowed to delete a document that does not exist.
 	var lastXattrs map[string][]byte
 	// write the document LWW, ignoring any in progress writes
@@ -183,8 +187,7 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		}
 		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(docID, p, cas, xattrs)
-		assert.Equal(c, expected.CV(c), version.CV(c), "Could not find matching CV on %s for peer %s\nexpected: %#v\nactual:   %#v\n          body: %#v\n", docID, p, expected, version, string(docBytes))
-
+		assert.True(c, version.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v", docID, p, expected, version)
 	}, totalWaitTime, pollInterval)
 	return docBytes
 }
@@ -306,7 +309,6 @@ func getDocVersion(docID string, peer Peer, cas uint64, xattrs map[string][]byte
 			docVersion.ImplicitHLV = db.NewHybridLogicalVector()
 		} else {
 			require.NoError(peer.TB(), json.Unmarshal(hlvBytes, &docVersion.ImplicitHLV))
-			docVersion.ImplicitHLV = docVersion.HLV
 		}
 		require.NoError(peer.TB(), docVersion.ImplicitHLV.AddVersion(db.Version{SourceID: peer.SourceID(), Value: cas}))
 	}
