@@ -1431,7 +1431,6 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 	if options.RequestPlus {
 		subChangesRequest.Properties[db.SubChangesRequestPlus] = "true"
 	}
-	subChangesRequest.SetNoReply(true)
 
 	if btc.parent.BlipTesterClientOpts.SendRevocations {
 		subChangesRequest.Properties[db.SubChangesRevocations] = "true"
@@ -1449,6 +1448,16 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 		))
 	}
 	btc.sendPullMsg(subChangesRequest)
+
+	// ensure subChanges was successful
+	subChangesResponse := subChangesRequest.Response()
+	rspBody, err := subChangesResponse.Body()
+	require.NoError(btc.TB(), err)
+	errorDomain := subChangesResponse.Properties["Error-Domain"]
+	errorCode := subChangesResponse.Properties["Error-Code"]
+	if errorDomain != "" && errorCode != "" {
+		require.FailNowf(btc.TB(), "error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody))
+	}
 }
 
 func (btc *BlipTesterCollectionClient) StopPush() {
