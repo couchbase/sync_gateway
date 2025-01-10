@@ -536,6 +536,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 			testCase.existingConfig.Upsert(base.TestCtx(t), testCase.updatedConfig)
+			testCase.existingConfig.UpdatedAt = nil // remove updated at field for comparison below
 			equal, err := testCase.existingConfig.Equals(testCase.expectedConfig)
 			assert.NoError(t, err)
 			assert.True(t, equal)
