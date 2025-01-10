@@ -469,6 +469,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				// The first element of each revision list must be the parent revision of the change
 				if doc, haveDoc := btcr.getClientDoc(docID); haveDoc {
 					if btc.UseHLV() {
+						changesVersion, err := db.ParseVersion(revID)
+						require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
+						currentRev, _ := doc.latestRev()
+						if currentRev != nil && currentRev.HLV.DominatesSource(changesVersion) {
+							knownRevs[i] = nil // Send back null to signal we don't need this change
+							continue outer
+						}
+
 						// HLV clients only need to send the current version
 						knownRevs[i] = []interface{}{doc.currentVersion(btc.TB()).String()}
 						continue
