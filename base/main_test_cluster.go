@@ -11,8 +11,6 @@ package base
 import (
 	"context"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -59,14 +57,8 @@ func getGocbClusterForTest(ctx context.Context, server string) (*gocb.Cluster, s
 	spec := BucketSpec{
 		Server:        server,
 		TLSSkipVerify: true,
-	}
-	bucketOpTimeout := os.Getenv(tbpEnvBucketOpTimeout)
-	if bucketOpTimeout != "" {
-		secs, err := strconv.Atoi(bucketOpTimeout)
-		if err != nil {
-			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketOpTimeout, err)
-		}
-		spec.BucketOpTimeout = Ptr(time.Duration(secs) * time.Second)
+		// use longer timeout than DefaultBucketOpTimeout to avoid timeouts in test harness from using buckets after flush, which takes some time to reinitialize
+		BucketOpTimeout: Ptr(time.Duration(30) * time.Second),
 	}
 	connStr, err := spec.GetGoCBConnString()
 	if err != nil {
