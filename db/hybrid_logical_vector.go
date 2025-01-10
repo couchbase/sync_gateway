@@ -346,13 +346,13 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
 			if hlv.PreviousVersions[i] == 0 {
-				hlv.setPreviousVersion(i, v)
+				hlv.SetPreviousVersion(i, v)
 			} else {
 				// if we get here then there is entry for this source in PV so we must check if its newer or not
 				otherHLVPVValue := v
 				localHLVPVValue := hlv.PreviousVersions[i]
 				if localHLVPVValue < otherHLVPVValue {
-					hlv.setPreviousVersion(i, v)
+					hlv.SetPreviousVersion(i, v)
 				}
 			}
 		}
@@ -384,8 +384,8 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 	return outputSpec
 }
 
-// setPreviousVersion will take a source/version pair and add it to the HLV previous versions map
-func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64) {
+// SetPreviousVersion will take a source/version pair and add it to the HLV previous versions map
+func (hlv *HybridLogicalVector) SetPreviousVersion(source string, version uint64) {
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(HLVVersions)
 	}

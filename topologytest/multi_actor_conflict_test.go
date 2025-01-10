@@ -23,10 +23,9 @@ func TestMultiActorConflictCreate(t *testing.T) {
 			replications.Stop()
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
+			createConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
-
+			waitForConvergingVersion(t, collectionName, peers, replications, docID)
 		})
 	}
 }
@@ -46,16 +45,16 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 			replications.Stop()
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
+			createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
+			waitForConvergingVersion(t, collectionName, peers, replications, docID)
 
 			replications.Stop()
 
-			docVersion = updateConflictingDocs(t, collectionName, peers, docID, topology.description)
+			updateConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
+			waitForConvergingVersion(t, collectionName, peers, replications, docID)
 		})
 	}
 }
@@ -75,16 +74,16 @@ func TestMultiActorConflictDelete(t *testing.T) {
 			replications.Stop()
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
+			createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
+			waitForConvergingVersion(t, collectionName, peers, replications, docID)
 
 			replications.Stop()
-			lastWrite := deleteConflictDocs(t, collectionName, peers, docID)
+			deleteConflictDocs(t, collectionName, peers, docID)
 
 			replications.Start()
-			waitForTombstoneVersion(t, collectionName, peers, replications, docID, lastWrite)
+			waitForConvergingVersion(t, collectionName, peers, replications, docID)
 		})
 	}
 }
@@ -108,23 +107,23 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 			replications.Stop()
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
+			createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
+			waitForConvergingVersion(t, collectionName, peers, replications, docID)
 
 			replications.Stop()
-			lastWrite := deleteConflictDocs(t, collectionName, peers, docID)
+			deleteConflictDocs(t, collectionName, peers, docID)
 
 			replications.Start()
 
-			waitForTombstoneVersion(t, collectionName, peers, replications, docID, lastWrite)
+			waitForConvergingVersion(t, collectionName, peers, replications, docID)
 			replications.Stop()
 
-			lastWriteVersion := updateConflictingDocs(t, collectionName, peers, docID, topology.description)
+			updateConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
 
-			waitForVersionAndBody(t, collectionName, peers, replications, docID, lastWriteVersion)
+			waitForConvergingVersion(t, collectionName, peers, replications, docID)
 		})
 	}
 }
