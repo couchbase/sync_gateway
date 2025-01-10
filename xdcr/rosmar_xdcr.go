@@ -48,6 +48,7 @@ func (r replicatedDocLocation) String() string {
 type rosmarManager struct {
 	filterFunc          xdcrFilterFunc
 	terminator          chan bool
+	doneChan            chan struct{}
 	collectionsLock     sync.RWMutex
 	fromBucketKeyspaces map[uint32]string
 	toBucketCollections map[uint32]*rosmar.Collection
@@ -223,6 +224,7 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 	r.collectionsLock.Lock()
 	defer r.collectionsLock.Unlock()
 	r.terminator = make(chan bool)
+	r.doneChan = make(chan struct{})
 	// set up replication to target all existing collections, and map to other collections
 	scopes := make(map[string][]string)
 	fromDataStores, err := r.fromBucket.ListDataStores()
@@ -261,6 +263,7 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 	args := sgbucket.FeedArguments{
 		ID:         "xdcr-" + r.replicationID,
 		Terminator: r.terminator,
+		DoneChan:   r.doneChan,
 		Scopes:     scopes,
 	}
 
@@ -277,6 +280,8 @@ func (r *rosmarManager) Stop(_ context.Context) error {
 		return ErrReplicationNotRunning
 	}
 	close(r.terminator)
+	<-r.doneChan
+	r.doneChan = nil
 	r.terminator = nil
 	return nil
 }
