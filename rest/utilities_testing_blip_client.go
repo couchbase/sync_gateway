@@ -469,6 +469,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				// The first element of each revision list must be the parent revision of the change
 				if doc, haveDoc := btcr.getClientDoc(docID); haveDoc {
 					if btc.UseHLV() {
+						changesVersion, err := db.ParseVersion(revID)
+						require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
+						currentRev, _ := doc.latestRev()
+						if currentRev != nil && currentRev.HLV.DominatesSource(changesVersion) {
+							knownRevs[i] = nil // Send back null to signal we don't need this change
+							continue outer
+						}
+
 						// HLV clients only need to send the current version
 						knownRevs[i] = []interface{}{doc.currentVersion(btc.TB()).String()}
 						continue
@@ -1436,8 +1444,17 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 }
 
 func (btc *BlipTesterCollectionClient) StopPush() {
-	require.True(btc.TB(), btc.pushRunning.CASRetry(true, false), "can't stop push replication - not running")
+	require.True(btc.TB(), btc.pushRunning.IsTrue(), "can't stop push replication - not running")
 	btc.pushCtxCancel()
+
+	// Wake up any waiting push loops to check for cancellation
+	btc._seqCond.Broadcast()
+
+	// wait for push replication to stop running
+	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
+		require.True(c, btc.pushRunning.IsTrue() == false)
+	}, 10*time.Second, 1*time.Millisecond)
+
 }
 
 func (btc *BlipTesterCollectionClient) UnsubPullChanges() {

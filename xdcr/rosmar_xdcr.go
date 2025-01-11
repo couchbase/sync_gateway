@@ -402,8 +402,10 @@ func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sour
 	if sourceMou != nil {
 		// removing _mou.cas and _mou.pRev matches cbs xdcr behavior.
 		// CBS xdcr maybe should clear _mou.pCas as well, but it is not a problem since all checks for _mou.cas should check current cas for _mou being up to date.
-		sourceMou.HexCAS = ""
-		sourceMou.PreviousRevSeqNo = 0
+		if sourceMou.CAS() != sourceCas {
+			sourceMou.HexCAS = ""
+			sourceMou.PreviousRevSeqNo = 0
+		}
 		var err error
 		xattrs[base.MouXattrName], err = json.Marshal(sourceMou)
 		if err != nil {

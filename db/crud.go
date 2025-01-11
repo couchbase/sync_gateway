@@ -968,7 +968,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 			d.HLV.CurrentVersionCAS = d.Cas
 			base.DebugfCtx(ctx, base.KeyVV, "Adding new version to HLV due to import for doc %s, updated HLV %+v", base.UD(d.ID), d.HLV)
 		} else {
-			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV to _mou.cas == doc.cas for doc %s, extant HLV %+v", base.UD(d.ID), d.HLV)
+			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV due to _mou.cas == doc.cas for doc %s, extant HLV %+v", base.UD(d.ID), d.HLV)
 		}
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
@@ -1242,7 +1242,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			}
 		} else {
 			if doc.HLV.isDominating(newDocHLV) {
-				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add", base.UD(newDoc.ID))
+				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
 				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 			}
 			if newDocHLV.isDominating(doc.HLV) {
