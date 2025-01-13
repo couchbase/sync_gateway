@@ -881,6 +881,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					// no conflict - accept incoming rev
 					versionToWrite = DocVersion{CV: incomingCV}
 				}
+			} else {
+				// no existing rev - accept incoming rev
+				versionToWrite = DocVersion{CV: incomingCV}
 			}
 			require.NoError(btc.TB(), hlv.AddVersion(versionToWrite.CV), "couldn't add new CV into doc HLV")
 		} else {
