@@ -384,7 +384,7 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 	return outputSpec
 }
 
-// SetPreviousVersion will take a source/version pair and add it to the HLV previous versions map
+// SetPreviousVersion will take a source/version pair and sets the value for the given source in the previous versions map
 func (hlv *HybridLogicalVector) SetPreviousVersion(source string, version uint64) {
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(HLVVersions)
