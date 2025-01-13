@@ -601,8 +601,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			if btc.UseHLV() {
 				var incomingHLV *db.HybridLogicalVector
 				if revHistory != "" {
-					incomingHLV, _, err = db.ExtractHLVFromBlipMessage(revHistory)
-					require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
+					incomingHLV, err = db.FromHistoryForHLV(revHistory)
+					require.NoError(btr.TB(), err, "error extracting HLV history %q: %v", revHistory, err)
 					hlv = *incomingHLV
 				}
 				incomingCV, err := db.ParseVersion(revID)
@@ -849,8 +849,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		if btc.UseHLV() {
 			var incomingHLV *db.HybridLogicalVector
 			if revHistory != "" {
-				incomingHLV, _, err = db.ExtractHLVFromBlipMessage(revHistory)
-				require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
+				incomingHLV, err = db.FromHistoryForHLV(revHistory)
+				require.NoError(btr.TB(), err, "error extracting HLV history %q: %v", revHistory, err)
 				hlv = *incomingHLV
 			}
 			incomingCV, err := db.ParseVersion(revID)

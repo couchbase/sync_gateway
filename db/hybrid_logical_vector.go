@@ -455,6 +455,41 @@ func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 	return s.String()
 }
 
+func FromHistoryForHLV(history string) (*HybridLogicalVector, error) {
+	hlv := NewHybridLogicalVector()
+	// split the history string into PV and MV
+	versionSets := strings.Split(history, ";")
+	switch len(versionSets) {
+	case 0:
+		// no versions present
+		return hlv, nil
+	case 2:
+		// MV
+		mvs := strings.Split(versionSets[1], ",")
+		for _, mv := range mvs {
+			v, err := ParseVersion(mv)
+			if err != nil {
+				return nil, err
+			}
+			hlv.MergeVersions[v.SourceID] = v.Value
+		}
+		fallthrough
+	case 1:
+		// PV
+		pvs := strings.Split(versionSets[0], ",")
+		for _, pv := range pvs {
+			v, err := ParseVersion(pv)
+			if err != nil {
+				return nil, err
+			}
+			hlv.PreviousVersions[v.SourceID] = v.Value
+		}
+	default:
+		return nil, fmt.Errorf("Invalid history string format")
+	}
+	return hlv, nil
+}
+
 // appendRevocationMacroExpansions adds macro expansions for the channel map.  Not strictly an HLV operation
 // but putting the function here as it's required when the HLV's current version is being macro expanded
 func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, channelNames []string) (updatedSpec []sgbucket.MacroExpansionSpec) {
