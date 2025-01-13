@@ -2209,7 +2209,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		mouMatch = doc.MetadataOnlyUpdate.CAS() == doc.Cas
 		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): _mou:%+v Metadata-only update match:%t", base.UD(doc.ID), doc.MetadataOnlyUpdate, mouMatch)
 	} else {
-		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou", base.UD(doc.ID))
+		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou or _mou.cas (%v) doesn't match doc.CAS (%v)", base.UD(doc.ID), doc.MetadataOnlyUpdate.CAS(), doc.Cas)
 	}
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
@@ -2346,13 +2346,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	skipObsoleteAttachmentsRemoval := false
 	isNewDocCreation := false
 
+	var casOut uint64
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
 		var initialExpiry uint32 // expiry before Update callback happens
 		if expiry != nil {
 			initialExpiry = *expiry
 		}
-		_, err = db.dataStore.Update(key, initialExpiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
+		casOut, err = db.dataStore.Update(key, initialExpiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
@@ -2390,7 +2391,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	}
 
 	if db.UseXattrs() || upgradeInProgress {
-		var casOut uint64
 		// Update the document, storing metadata in extended attribute
 		if opts == nil {
 			opts = &sgbucket.MutateInOptions{}
@@ -2616,7 +2616,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:
-	base.DebugfCtx(ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
+	base.DebugfCtx(ctx, base.KeyCRUD, "Stored doc %q / %q as #%v (cas=%v)", base.UD(docid), newRevID, doc.Sequence, casOut)
 
 	leafAttachments := make(map[string][]string)
 	if !skipObsoleteAttachmentsRemoval {

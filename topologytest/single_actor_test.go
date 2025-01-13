@@ -87,7 +87,7 @@ func TestSingleActorDelete(t *testing.T) {
 					waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
 
 					deleteVersion := activePeer.DeleteDocument(collectionName, docID)
-					t.Logf("createVersion: %+v, deleteVersion: %+v", createVersion.docMeta, deleteVersion)
+					t.Logf("createVersion: %#v, deleteVersion: %#v", createVersion.docMeta, deleteVersion)
 					t.Logf("waiting for document deletion on all peers")
 					waitForTombstoneVersion(t, collectionName, peers, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: activePeerID})
 				})

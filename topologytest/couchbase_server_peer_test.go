@@ -195,6 +195,7 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		version = getDocVersion(docID, p, cas, xattrs)
 		assert.True(c, version.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v", docID, p, expected, version)
 	}, totalWaitTime, pollInterval)
+	p.tb.Logf("waitForDocVersion successfully found doc %s for peer %s having version: %#v and body: %s", docID, p, version, docBytes)
 	return docBytes
 }
 
