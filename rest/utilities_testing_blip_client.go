@@ -863,6 +863,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			if latestClientRev != nil {
 				clientCV := latestClientRev.version.CV
 
+				// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
+				if clientCV.SourceID == incomingCV.SourceID && clientCV.Value == incomingCV.Value {
+					require.FailNow(btc.TB(), "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", incomingCV, clientCV)
+				}
+
 				// incoming rev older than stored client version and comes from a different source - need to resolve
 				if incomingCV.Value < clientCV.Value && incomingCV.SourceID != clientCV.SourceID {
 					btc.TB().Logf("Detected conflict on pull of doc %q (clientCV:%v - incomingCV:%v incomingHLV:%#v)", docID, clientCV, incomingCV, incomingHLV)
