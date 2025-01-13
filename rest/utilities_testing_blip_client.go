@@ -278,6 +278,10 @@ type BlipTesterCollectionClient struct {
 	ctxCancel   context.CancelFunc
 	goroutineWg sync.WaitGroup
 
+	pushRunning   base.AtomicBool
+	pushCtx       context.Context
+	pushCtxCancel context.CancelFunc
+
 	collection    string
 	collectionIdx int
 
@@ -465,6 +469,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				// The first element of each revision list must be the parent revision of the change
 				if doc, haveDoc := btcr.getClientDoc(docID); haveDoc {
 					if btc.UseHLV() {
+						changesVersion, err := db.ParseVersion(revID)
+						require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
+						currentRev, _ := doc.latestRev()
+						if currentRev != nil && currentRev.HLV.DominatesSource(changesVersion) {
+							knownRevs[i] = nil // Send back null to signal we don't need this change
+							continue outer
+						}
+
 						// HLV clients only need to send the current version
 						knownRevs[i] = []interface{}{doc.currentVersion(btc.TB()).String()}
 						continue
@@ -1187,17 +1199,21 @@ func proposeChangesEntryForDoc(doc *clientDoc) proposeChangeBatchEntry {
 
 // StartPull will begin a push replication with the given options between the client and server
 func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
-	ctx := btcc.ctx
+	require.True(btcc.TB(), btcc.pushRunning.CASRetry(false, true), "push replication already running")
+
+	btcc.pushCtx, btcc.pushCtxCancel = context.WithCancel(btcc.ctx)
+	ctx := btcc.pushCtx
 	sinceFromStr, err := db.ParsePlainSequenceID(opts.Since)
 	require.NoError(btcc.TB(), err)
 	seq := clientSeq(sinceFromStr.SafeSequence())
 	btcc.goroutineWg.Add(1)
 	go func() {
+		defer btcc.pushRunning.Set(false)
 		defer btcc.goroutineWg.Done()
 		// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
 		changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
 		base.DebugfCtx(ctx, base.KeySGTest, "Starting push replication iteration with since=%v", seq)
-		for doc := range btcc.docsSince(btcc.ctx, seq, opts.Continuous) {
+		for doc := range btcc.docsSince(ctx, seq, opts.Continuous) {
 			changesBatch = append(changesBatch, proposeChangesEntryForDoc(doc))
 			if len(changesBatch) >= changesBatchSize {
 				base.DebugfCtx(ctx, base.KeySGTest, "Sending batch of %d changes", len(changesBatch))
@@ -1425,6 +1441,20 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 		))
 	}
 	btc.sendPullMsg(subChangesRequest)
+}
+
+func (btc *BlipTesterCollectionClient) StopPush() {
+	require.True(btc.TB(), btc.pushRunning.IsTrue(), "can't stop push replication - not running")
+	btc.pushCtxCancel()
+
+	// Wake up any waiting push loops to check for cancellation
+	btc._seqCond.Broadcast()
+
+	// wait for push replication to stop running
+	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
+		require.True(c, btc.pushRunning.IsTrue() == false)
+	}, 10*time.Second, 1*time.Millisecond)
+
 }
 
 func (btc *BlipTesterCollectionClient) UnsubPullChanges() {
@@ -1952,6 +1982,10 @@ func (btc *BlipTesterCollectionClient) Attachments() map[string][]byte {
 
 func (btcRunner *BlipTestClientRunner) UnsubPullChanges(clientID uint32) {
 	btcRunner.SingleCollection(clientID).UnsubPullChanges()
+}
+
+func (btcRunner *BlipTestClientRunner) StopPush(clientID uint32) {
+	btcRunner.SingleCollection(clientID).StopPush()
 }
 
 func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) {

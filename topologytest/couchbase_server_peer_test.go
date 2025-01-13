@@ -23,7 +23,7 @@ import (
 )
 
 // dummySystemXattr is created for XDCR testing. This prevents a document echo after an initial write. The dummy xattr also means that the document will always have xattrs when deleting it, which is necessary for WriteUpdateWithXattrs.
-const dummySystemXattr = "_dummysystemxattr"
+const dummySystemXattr = "_dummyxattr"
 
 var metadataXattrNames = []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName, dummySystemXattr}
 

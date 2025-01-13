@@ -316,7 +316,7 @@ func updatePeersT(t *testing.T, peers map[string]Peer) {
 
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
 func setupTests(t *testing.T, topology Topology) (base.ScopeAndCollectionName, Peers, Replications) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV, base.KeyCRUD, base.KeySync)
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
 
@@ -364,8 +364,17 @@ func TestPeerImplementation(t *testing.T) {
 			peer := peers[tc.name]
 			// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
 			if peer.Type() == PeerTypeCouchbaseLite {
-				replication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{})
-				defer replication.Stop()
+				pullReplication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
+				})
+				pullReplication.Start()
+				defer pullReplication.Stop()
+
+				pushReplication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				})
+				pushReplication.Start()
+				defer pushReplication.Stop()
 			}
 
 			docID := t.Name()

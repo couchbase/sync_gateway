@@ -52,7 +52,7 @@ func stripInternalProperties(body db.Body) {
 // waitForVersionAndBody waits for a document to reach a specific version on all peers.
 func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string, expectedVersion BodyAndVersion) {
 	for _, peer := range peers.SortedPeers() {
-		t.Logf("waiting for doc version %#v on %s, written from %s", expectedVersion, peer, expectedVersion.updatePeer)
+		t.Logf("waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
 		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
@@ -60,7 +60,7 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, pee
 
 func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string, expectedVersion BodyAndVersion) {
 	for _, peer := range peers.SortedPeers() {
-		t.Logf("waiting for tombstone version %#v on %s, written from %s", expectedVersion, peer, expectedVersion.updatePeer)
+		t.Logf("waiting for tombstone version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
 		peer.WaitForTombstoneVersion(dsName, docID, expectedVersion.docMeta)
 	}
 }
@@ -95,7 +95,7 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		}
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))
 		docVersion := peer.CreateDocument(dsName, docID, docBody)
-		t.Logf("createVersion: %#v", docVersion.docMeta)
+		t.Logf("%s - createVersion: %#v", peerName, docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
 	index := len(documentVersion) - 1

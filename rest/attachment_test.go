@@ -2282,7 +2282,6 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 
 		initialVersion := btc.rt.PutDocWithAttachment(doc1ID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
 		btc.rt.WaitForPendingChanges()
-		btcRunner.StartOneshotPull(btc.id)
 		btcRunner.WaitForVersion(btc.id, doc1ID, initialVersion)
 
 		value, xattrs, cas, err := ds.GetWithXattrs(ctx, doc1ID, []string{base.SyncXattrName, base.GlobalXattrName})
