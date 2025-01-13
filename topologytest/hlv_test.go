@@ -107,7 +107,6 @@ func removeSyncGatewayBackingPeers(peers map[string]Peer) map[string]bool {
 // It is not known at this stage which write the "winner" will be, since conflict resolution can happen at replication time which may not be LWW, or may be LWW but with a new value.
 func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
-	documentVersion := make([]BodyAndVersion, 0, len(peers))
 	for peerName, peer := range peers {
 		if backingPeers[peerName] {
 			continue
@@ -115,14 +114,12 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))
 		docVersion := peer.CreateDocument(dsName, docID, docBody)
 		t.Logf("%s - createVersion: %#v", peerName, docVersion.docMeta)
-		documentVersion = append(documentVersion, docVersion)
 	}
 }
 
 // updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations
 func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
-	var documentVersion []BodyAndVersion
 	for peerName, peer := range peers {
 		if backingPeers[peerName] {
 			continue
@@ -130,21 +127,18 @@ func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topologyDescription))
 		docVersion := peer.WriteDocument(dsName, docID, docBody)
 		t.Logf("updateVersion: %#v", docVersion.docMeta)
-		documentVersion = append(documentVersion, docVersion)
 	}
 }
 
 // deleteConflictDocs will delete a doc on each peer of the same doc ID to create conflicting document deletions
 func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
-	var documentVersion []BodyAndVersion
 	for peerName, peer := range peers {
 		if backingPeers[peerName] {
 			continue
 		}
 		deleteVersion := peer.DeleteDocument(dsName, docID)
 		t.Logf("deleteVersion: %#v", deleteVersion)
-		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
 	}
 }
 
