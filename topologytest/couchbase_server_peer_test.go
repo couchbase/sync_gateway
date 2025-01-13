@@ -129,11 +129,17 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 	var lastXattrs map[string][]byte
 	// write the document LWW, ignoring any in progress writes
 	callback := func(existingBody []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+		doc := sgbucket.UpdatedDoc{Doc: body}
 		// only set lastXattrs if existing document is not a tombstone, they will not be preserved if this is a resurrection
 		if len(existingBody) > 0 {
 			lastXattrs = xattrs
+		} else {
+			// create resurrection document with xattrs to prevent XDCR from doing a round trip replication when one peer has a _vv xattr and the other does not.
+			doc.Xattrs = map[string][]byte{
+				dummySystemXattr: []byte(`{"dummy": "xattr"}`),
+			}
 		}
-		return sgbucket.UpdatedDoc{Doc: body}, nil
+		return doc, nil
 	}
 	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
 	require.NoError(p.tb, err)

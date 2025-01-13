@@ -449,6 +449,18 @@ func TestPeerImplementation(t *testing.T) {
 			}
 			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta)
 
+			ctx := peer.Context()
+			if peer.Type() != PeerTypeCouchbaseLite {
+				collection, err := peer.GetBackingBucket().NamedDataStore(collectionName)
+				require.NoError(t, err)
+				xattrs, _, err := collection.GetXattrs(ctx, docID, metadataXattrNames)
+				require.NoError(t, err)
+				require.NotEmpty(t, xattrs)
+				if tc.peerOption.Type == PeerTypeCouchbaseServer {
+					require.Contains(t, xattrs, dummySystemXattr)
+				}
+			}
+
 		})
 	}
 
