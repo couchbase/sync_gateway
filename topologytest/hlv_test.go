@@ -71,7 +71,7 @@ func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, p
 // waitForConvergingVersion waits for the same document version to reach all peers.
 func waitForConvergingVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string) {
 	t.Logf("waiting for converged doc versions across all peers")
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
+	require.EventuallyWithTf(t, func(c *assert.CollectT) {
 		for peerAid, peerA := range peers.SortedPeers() {
 			docMetaA, bodyA := peerA.GetDocument(dsName, docID)
 			for peerBid, peerB := range peers.SortedPeers() {
@@ -85,7 +85,19 @@ func waitForConvergingVersion(t *testing.T, dsName base.ScopeAndCollectionName, 
 				require.Equalf(c, bodyA, bodyB, "body mismatch: %s:%s != %s:%s. Replications:\n%s", peerAid, bodyA, peerBid, bodyB, rStats)
 			}
 		}
-	}, totalWaitTime, pollInterval)
+	}, totalWaitTime, pollInterval, "Peers did not converge on version for doc %q\nGlobal state for all peers:\n%s", docID, peers.PrintGlobalDocState(t, dsName, docID))
+}
+
+// PrintGlobalDocState returns the current state of a document across all peers, and also logs it on `t`.
+func (p Peers) PrintGlobalDocState(t testing.TB, dsName base.ScopeAndCollectionName, docID string) string {
+	var globalState strings.Builder
+	for peerName, peer := range p {
+		docMeta, body := peer.GetDocument(dsName, docID)
+		globalState.WriteString(fmt.Sprintf("====\npeer(%s)\n----\n%#v\nbody:%v\n", peerName, docMeta, body))
+	}
+	globalStateStr := globalState.String()
+	t.Logf("Global doc %q state for all peers:\n%s", docID, globalStateStr)
+	return globalStateStr
 }
 
 // removeSyncGatewayBackingPeers will check if there is sync gateway in topology, if so will track the backing CBS
@@ -126,7 +138,7 @@ func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 		}
 		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topologyDescription))
 		docVersion := peer.WriteDocument(dsName, docID, docBody)
-		t.Logf("updateVersion: %#v", docVersion.docMeta)
+		t.Logf("%s - updateVersion: %#v", peerName, docVersion.docMeta)
 	}
 }
 
@@ -138,7 +150,7 @@ func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers 
 			continue
 		}
 		deleteVersion := peer.DeleteDocument(dsName, docID)
-		t.Logf("deleteVersion: %#v", deleteVersion)
+		t.Logf("%s - deleteVersion: %#v", peerName, deleteVersion)
 	}
 }
 
