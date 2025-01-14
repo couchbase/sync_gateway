@@ -363,7 +363,7 @@ func TestCheckProposedVersion(t *testing.T) {
 			// proposed version is from a source not present in server HLV, and previousVersion matches server cv
 			//  Not a conflict, due to previousVersion match
 			name:            "new version,new source,prev matches",
-			newVersion:      Version{"other", incrementCas(cvValue, 100)},
+			newVersion:      Version{"otherq", incrementCas(cvValue, 100)},
 			previousVersion: &currentVersion,
 			expectedStatus:  ProposedRev_OK,
 			expectedRev:     "",
@@ -374,7 +374,7 @@ func TestCheckProposedVersion(t *testing.T) {
 			//  version and cv
 			name:            "new version,prev mismatch,new matches cv",
 			newVersion:      Version{cvSource, incrementCas(cvValue, 100)},
-			previousVersion: &Version{"other", incrementCas(cvValue, 50)},
+			previousVersion: &Version{"otherq", incrementCas(cvValue, 50)},
 			expectedStatus:  ProposedRev_OK,
 			expectedRev:     "",
 		},
@@ -388,7 +388,7 @@ func TestCheckProposedVersion(t *testing.T) {
 		{
 			// conflict - previous version is older than CV
 			name:            "conflict,same source,server updated",
-			newVersion:      Version{"other", incrementCas(cvValue, -100)},
+			newVersion:      Version{"otherq", incrementCas(cvValue, -100)},
 			previousVersion: &Version{cvSource, incrementCas(cvValue, -50)},
 			expectedStatus:  ProposedRev_Conflict,
 			expectedRev:     Version{cvSource, cvValue}.String(),
@@ -396,8 +396,8 @@ func TestCheckProposedVersion(t *testing.T) {
 		{
 			// conflict - previous version is older than CV
 			name:            "conflict,new source,server updated",
-			newVersion:      Version{"other", incrementCas(cvValue, 100)},
-			previousVersion: &Version{"other", incrementCas(cvValue, -50)},
+			newVersion:      Version{"otherq", incrementCas(cvValue, 100)},
+			previousVersion: &Version{"otherq", incrementCas(cvValue, -50)},
 			expectedStatus:  ProposedRev_Conflict,
 			expectedRev:     Version{cvSource, cvValue}.String(),
 		},
@@ -423,15 +423,15 @@ func TestCheckProposedVersion(t *testing.T) {
 
 	// New doc cases - standard insert
 	t.Run("new doc", func(t *testing.T) {
-		newVersion := Version{"other", 100}.String()
+		newVersion := Version{"otherq", 100}.String()
 		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, "")
 		assert.Equal(t, ProposedRev_OK_IsNew, status)
 	})
 
 	// New doc cases - insert with prev version (previous version purged from SGW)
 	t.Run("new doc with prev version", func(t *testing.T) {
-		newVersion := Version{"other", 100}.String()
-		prevVersion := Version{"another other", 50}.String()
+		newVersion := Version{"otherq", 100}.String()
+		prevVersion := Version{"2otherq", 50}.String()
 		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, prevVersion)
 		assert.Equal(t, ProposedRev_OK_IsNew, status)
 	})

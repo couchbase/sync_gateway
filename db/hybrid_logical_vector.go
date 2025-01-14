@@ -127,6 +127,10 @@ func ParseVersion(versionString string) (version Version, err error) {
 	if !found {
 		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
 	}
+	_, err = base64.RawStdEncoding.DecodeString(sourceBase64)
+	if err != nil {
+		return version, fmt.Errorf("Malformed version string %s, sourceID=%q is not base64 encoded", versionString, sourceBase64)
+	}
 	version.SourceID = sourceBase64
 	// remove any leading whitespace, this should be addressed in CBG-3662
 	if len(timestampString) > 0 && timestampString[0] == ' ' {
@@ -447,19 +451,22 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 // Function will return list of revIDs if legacy rev ID was found in the HLV history section (PV)
 // TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
 func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, []string, error) {
-	hlv := &HybridLogicalVector{}
+	hlv := NewHybridLogicalVector()
 
 	vectorFields := strings.Split(versionVectorStr, ";")
 	vectorLength := len(vectorFields)
-	if (vectorLength == 1 && vectorFields[0] == "") || vectorLength > 3 {
-		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid hlv in changes message received")
+	if vectorLength == 1 && vectorFields[0] == "" {
+		return &HybridLogicalVector{}, nil, fmt.Errorf("Empty HLV of length 1: %v", versionVectorStr)
+	}
+	if vectorLength > 3 {
+		return &HybridLogicalVector{}, nil, fmt.Errorf("hlv contains more than 3 parts for cv;mv;pv: %v", versionVectorStr)
 	}
 
 	// add current version (should always be present)
 	cvStr := vectorFields[0]
 	version := strings.Split(cvStr, "@")
 	if len(version) < 2 {
-		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid version in changes message received")
+		return &HybridLogicalVector{}, nil, fmt.Errorf("cv does not contain @: cv:%q hlv:%q", cvStr, versionVectorStr)
 	}
 
 	vrs, err := strconv.ParseUint(version[0], 16, 64)
@@ -470,44 +477,58 @@ func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, [
 	if err != nil {
 		return &HybridLogicalVector{}, nil, err
 	}
-
-	switch vectorLength {
-	case 1:
-		// cv only
+	if len(vectorFields) == 1 {
 		return hlv, nil, nil
-	case 2:
-		// only cv and pv present
-		sourceVersionListPV, legacyRev, err := parseVectorValues(vectorFields[1])
-		if err != nil {
-			return &HybridLogicalVector{}, nil, err
+	}
+	legacyRev, err := addPVMVToHLV(vectorFields[1:len(vectorFields)], hlv)
+	if err != nil {
+		return &HybridLogicalVector{}, nil, err
+	}
+	return hlv, legacyRev, nil
+}
+
+// addPVMVToHLV will take a HLV and add the previous and merge versions to it from the input string. This is a partial parsing from ExtractHLVFromBlipMessage
+//  1. empty string
+//  2. pv:  		pv
+//  2. pv, and mv: 	mv;pv
+func addPVMVToHLV(vectorFields []string, hlv *HybridLogicalVector) (legacyRev []string, err error) {
+	switch len(vectorFields) {
+	case 0:
+		return []string{}, nil
+	case 1:
+		// if strings.Split("", ";") was passed in as vectorFields, this will result in a one element array with an empty string
+		if vectorFields[0] == "" {
+			return nil, nil
 		}
-		hlv.PreviousVersions = make(HLVVersions)
+		// pv present
+		sourceVersionListPV, legacyRev, err := parseVectorValues(vectorFields[0])
+		if err != nil {
+			return nil, err
+		}
 		for _, v := range sourceVersionListPV {
 			hlv.PreviousVersions[v.SourceID] = v.Value
 		}
-		return hlv, legacyRev, nil
-	case 3:
+		return legacyRev, nil
+	case 2:
 		// cv, mv and pv present
-		sourceVersionListPV, legacyRev, err := parseVectorValues(vectorFields[2])
-		hlv.PreviousVersions = make(HLVVersions)
+		sourceVersionListPV, legacyRev, err := parseVectorValues(vectorFields[1])
 		if err != nil {
-			return &HybridLogicalVector{}, nil, err
+			return nil, err
 		}
 		for _, pv := range sourceVersionListPV {
 			hlv.PreviousVersions[pv.SourceID] = pv.Value
 		}
 
-		sourceVersionListMV, _, err := parseVectorValues(vectorFields[1])
-		hlv.MergeVersions = make(HLVVersions)
+		sourceVersionListMV, _, err := parseVectorValues(vectorFields[0])
 		if err != nil {
-			return &HybridLogicalVector{}, nil, err
+			return nil, err
 		}
 		for _, mv := range sourceVersionListMV {
 			hlv.MergeVersions[mv.SourceID] = mv.Value
 		}
-		return hlv, legacyRev, nil
+		return legacyRev, nil
 	default:
-		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid hlv in changes message received")
+		return nil, fmt.Errorf("invalid mv/pv, contains more than 2 extries %v", vectorFields)
 	}
 }
 
@@ -561,7 +582,7 @@ func isLegacyRev(rev string) bool {
 
 // Helper functions for version source and value encoding
 func EncodeSource(source string) string {
-	return base64.StdEncoding.EncodeToString([]byte(source))
+	return base64.RawStdEncoding.EncodeToString([]byte(source))
 }
 
 // EncodeValueStr converts a simplified number ("1") to a hex-encoded string

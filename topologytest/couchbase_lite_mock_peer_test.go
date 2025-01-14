@@ -10,6 +10,7 @@ package topologytest
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"testing"
 
@@ -209,7 +210,7 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 
 // SourceID returns the source ID for the peer used in <val>@<sourceID>.
 func (p *CouchbaseLiteMockPeer) SourceID() string {
-	return p.name
+	return base64.RawStdEncoding.EncodeToString([]byte(p.name))
 }
 
 // Context returns the context for the peer.

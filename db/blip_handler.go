@@ -1076,14 +1076,21 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			history = append(history, strings.Split(historyStr, ",")...)
 		}
 	} else {
-		versionVectorStr := rev
-		if historyStr != "" {
-			versionVectorStr += ";" + historyStr
-		}
-		incomingHLV, legacyRevList, err = ExtractHLVFromBlipMessage(versionVectorStr)
+		cv, err := ParseVersion(rev)
 		if err != nil {
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v.  HLV:%v Error: %v", base.UD(docID), versionVectorStr, err)
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v. Rev:%v Error: %v", base.UD(docID), rev, err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message, rev=%q error: %v", rev, err)
+		}
+		incomingHLV = NewHybridLogicalVector()
+		err = incomingHLV.AddVersion(cv)
+		if err != nil {
+			return err
+		}
+
+		legacyRevList, err = addPVMVToHLV(strings.Split(historyStr, ";"), incomingHLV)
+		if err != nil {
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev message for doc %v. Rev:%v History:%q Error: %v", base.UD(docID), rev, history, err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message history=%q, error: %v", historyStr, err)
 		}
 		newDoc.HLV = incomingHLV
 	}

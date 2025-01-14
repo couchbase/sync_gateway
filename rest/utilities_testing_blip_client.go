@@ -1362,8 +1362,9 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 								// conflict on write of rev - OK to ignore and let pull replication resolve
 								btcc.TB().Logf("conflict on write of rev %s / %v", change.docID, change.version)
 							} else {
-								btcc.TB().Errorf("error response from rev: %s %s", revResp.Properties["Error-Domain"], revResp.Properties["Error-Code"])
-								return
+								body, err := revResp.Body()
+								require.NoError(btcc.TB(), err)
+								require.FailNow(btcc.TB(), fmt.Sprintf("error response from rev: %s %s: %s, inputProperties: %+v", revResp.Properties["Error-Domain"], revResp.Properties["Error-Code"], body, revRequest.Properties))
 							}
 						}
 						base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
@@ -1560,7 +1561,8 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 	var docVersion DocVersion
 	if btc.UseHLV() {
 		// TODO: CBG-4440 Construct a HLC for Value - UnixNano is not accurate enough on Windows to generate unique values, and seq is not comparable across clients.
-		newVersion := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.parent.id), Value: uint64(time.Now().UnixNano())}
+		sourceID := base64.RawStdEncoding.EncodeToString([]byte(fmt.Sprintf("btc-%d", btc.parent.id)))
+		newVersion := db.Version{SourceID: sourceID, Value: uint64(time.Now().UnixNano())}
 		require.NoError(btc.TB(), hlv.AddVersion(newVersion))
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
 	} else {
