@@ -2209,7 +2209,11 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		mouMatch = doc.MetadataOnlyUpdate.CAS() == doc.Cas
 		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): _mou:%+v Metadata-only update match:%t", base.UD(doc.ID), doc.MetadataOnlyUpdate, mouMatch)
 	} else {
-		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou or _mou.cas (%v) doesn't match doc.CAS (%v)", base.UD(doc.ID), doc.MetadataOnlyUpdate.CAS(), doc.Cas)
+		if doc.MetadataOnlyUpdate == nil {
+			base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou", base.UD(doc.ID))
+		} else {
+			base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has _mou but _mou.cas (%v) doesn't match doc.CAS (%v)", base.UD(doc.ID), doc.MetadataOnlyUpdate.CAS(), doc.Cas)
+		}
 	}
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
