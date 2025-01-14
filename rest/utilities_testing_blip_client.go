@@ -299,12 +299,6 @@ func (cd *clientDoc) currentVersion(t testing.TB) *db.Version {
 	return &rev.version.CV
 }
 
-func (cd *clientDoc) _currentVersion(t testing.TB) *db.Version {
-	rev, err := cd._latestRev()
-	require.NoError(t, err)
-	return &rev.version.CV
-}
-
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
