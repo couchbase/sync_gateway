@@ -596,7 +596,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			defer doc.lock.Unlock()
 
 			var incomingVersion DocVersion
-			var newVersion DocVersion
+			var versionToWrite DocVersion
 			var hlv db.HybridLogicalVector
 			if btc.UseHLV() {
 				var incomingHLV *db.HybridLogicalVector
@@ -609,32 +609,48 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
 				incomingVersion = DocVersion{CV: incomingCV}
 
-				clientCV := doc._currentVersion(btc.TB())
-				// incoming rev older than stored client version and comes from a different source - need to resolve
-				if incomingCV.Value < clientCV.Value && incomingCV.SourceID != clientCV.SourceID {
-					btc.TB().Logf("Detected conflict on pull of doc %q (clientCV:%v - incomingCV:%v incomingHLV:%#v)", docID, clientCV, incomingCV, incomingHLV)
-					switch btc.BlipTesterClientOpts.ConflictResolver {
-					case ConflictResolverLastWriteWins:
-						// generate a new version for the resolution and write it to the remote HLV
-						v := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.id), Value: uint64(time.Now().UnixNano())}
-						require.NoError(btc.TB(), hlv.AddVersion(v), "couldn't add incoming HLV into client HLV")
-						newVersion = DocVersion{CV: v}
-						hlv.SetPreviousVersion(incomingCV.SourceID, incomingCV.Value)
-					default:
-						btc.TB().Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", btc.BlipTesterClientOpts.ConflictResolver)
+				// fetch client's latest version to do conflict check and resolution
+				latestClientRev, err := doc._latestRev()
+				require.NoError(btc.TB(), err, "couldn't get latest revision for doc %q", docID)
+				if latestClientRev != nil {
+					clientCV := latestClientRev.version.CV
+
+					// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
+					if clientCV.SourceID == incomingCV.SourceID && clientCV.Value == incomingCV.Value {
+						require.FailNow(btc.TB(), "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", incomingCV, clientCV)
+					}
+
+					// incoming rev older than stored client version and comes from a different source - need to resolve
+					if incomingCV.Value < clientCV.Value && incomingCV.SourceID != clientCV.SourceID {
+						btc.TB().Logf("Detected conflict on pull of doc %q (clientCV:%v - incomingCV:%v incomingHLV:%#v)", docID, clientCV, incomingCV, incomingHLV)
+						switch btc.BlipTesterClientOpts.ConflictResolver {
+						case ConflictResolverLastWriteWins:
+							// local wins so write the local body back as a new resolved version (based on incoming HLV) to push
+							body = latestClientRev.body
+							v := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.id), Value: uint64(time.Now().UnixNano())}
+							require.NoError(btc.TB(), hlv.AddVersion(v), "couldn't add incoming HLV into client HLV")
+							versionToWrite = DocVersion{CV: v}
+							hlv.SetPreviousVersion(incomingCV.SourceID, incomingCV.Value)
+						default:
+							btc.TB().Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", btc.BlipTesterClientOpts.ConflictResolver)
+						}
+					} else {
+						// no conflict - accept incoming rev
+						versionToWrite = DocVersion{CV: incomingCV}
 					}
 				} else {
-					newVersion = DocVersion{CV: incomingCV}
+					// no existing rev - accept incoming rev
+					versionToWrite = DocVersion{CV: incomingCV}
 				}
-				require.NoError(btc.TB(), hlv.AddVersion(newVersion.CV), "couldn't add newVersion CV into doc HLV")
+				require.NoError(btc.TB(), hlv.AddVersion(versionToWrite.CV), "couldn't add new CV into doc HLV")
 			} else {
-				newVersion = DocVersion{RevTreeID: revID}
-				incomingVersion = newVersion
+				versionToWrite = DocVersion{RevTreeID: revID}
+				incomingVersion = versionToWrite
 			}
-
 			docRev := clientDocRev{
+
 				clientSeq: newClientSeq,
-				version:   newVersion,
+				version:   versionToWrite,
 				body:      body,
 				HLV:       hlv,
 				isDelete:  true,
