@@ -592,6 +592,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			var incomingVersion DocVersion
 			var versionToWrite DocVersion
 			var hlv db.HybridLogicalVector
+			isDelete := true
 			if btc.UseHLV() {
 				var incomingHLV *db.HybridLogicalVector
 				if revHistory != "" {
@@ -619,8 +620,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 						btc.TB().Logf("Detected conflict on pull of doc %q (clientCV:%v - incomingCV:%v incomingHLV:%#v)", docID, clientCV, incomingCV, incomingHLV)
 						switch btc.BlipTesterClientOpts.ConflictResolver {
 						case ConflictResolverLastWriteWins:
-							// local wins so write the local body back as a new resolved version (based on incoming HLV) to push
+							// local wins so write the local back as a new resolved version (based on incoming HLV) to push
 							body = latestClientRev.body
+							isDelete = latestClientRev.isDelete
 							v := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.id), Value: uint64(time.Now().UnixNano())}
 							require.NoError(btc.TB(), hlv.AddVersion(v), "couldn't add incoming HLV into client HLV")
 							versionToWrite = DocVersion{CV: v}
@@ -647,7 +649,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				version:   versionToWrite,
 				body:      body,
 				HLV:       hlv,
-				isDelete:  true,
+				isDelete:  isDelete,
 				message:   msg,
 			}
 
