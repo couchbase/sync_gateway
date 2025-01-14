@@ -47,7 +47,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 				client := btcRunner.SingleCollection(btc.id)
 				const docID = "doc1"
 				version1 := rt.PutDoc("doc1", `{"channels":["A"]}`)
-				rt.WaitForPendingChanges()
+				require.NoError(t, rt.WaitForPendingChanges())
 
 				response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=0&channels=A&include_docs=true", "", "alice")
 				RequireStatus(t, response, http.StatusOK)
@@ -62,7 +62,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 }`, version1.RevID, version1.RevID)
 				require.JSONEq(t, expectedChanges1, string(response.BodyBytes()))
 
-				client.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: "A"})
+				require.NoError(t, client.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: "A"}))
 
 				btcRunner.WaitForVersion(btc.id, docID, version1)
 
@@ -70,7 +70,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 				version2 := rt.UpdateDoc(docID, version1, `{"channels":["B"]}`)
 				markerDocID := "marker"
 				markerDocVersion := rt.PutDoc(markerDocID, `{"channels":["A"]}`)
-				rt.WaitForPendingChanges()
+				require.NoError(t, rt.WaitForPendingChanges())
 
 				// alice will see doc1 rev2 with body
 				response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=2&channels=A&include_docs=true", "", "alice")
@@ -86,7 +86,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 }`, docID, docID, version2.RevID, version2.RevID, markerDocID, markerDocID, markerDocVersion.RevID, markerDocVersion.RevID)
 				require.JSONEq(t, aliceExpectedChanges2, string(response.BodyBytes()))
 
-				client.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: "A"})
+				require.NoError(t, client.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: "A"}))
 
 				if sendDocWithChannelRemoval {
 					data := btcRunner.WaitForVersion(btc.id, docID, version2)
