@@ -64,7 +64,8 @@ linters-settings:
       - ruleguard
     settings:
       ruleguard:
-        rules: '${configDir}/ruleguard/*.go'
+        rules: '${configDir}/ruleguard/rules-*.go'
+        failOn: all
 
 # Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.
 issues:

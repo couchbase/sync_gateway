@@ -1324,11 +1324,8 @@ func TestWriteWithXattrsInsertAndDeleteError(t *testing.T) {
 func requireXattrsEqual(t testing.TB, expected map[string][]byte, actual map[string][]byte) {
 	require.Len(t, actual, len(expected), "Expected xattrs to be the same length %v, got %v", expected, actual)
 	for k, v := range expected {
-		actualV, ok := actual[k]
-		if !ok {
-			require.Fail(t, "Missing expected xattr %s", k)
-		}
-		require.JSONEq(t, string(v), string(actualV))
+		require.Contains(t, actual, k)
+		require.JSONEq(t, string(v), string(actual[k]))
 	}
 }
 
