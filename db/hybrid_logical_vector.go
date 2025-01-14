@@ -121,15 +121,22 @@ func CreateVersion(source string, version uint64) Version {
 	}
 }
 
-// ParseVersion will parse source version pair from string format
+// ParseVersion turns a vrs@src string into a Version.
 func ParseVersion(versionString string) (version Version, err error) {
+	return parseVersion(versionString, true)
+}
+
+// parseVersion will parse source version pair from string format. If validateSourceID is true, validates the sourceID is base64 encoded.
+func parseVersion(versionString string, validateSourceID bool) (version Version, err error) {
 	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
 	if !found {
 		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
 	}
-	_, err = base64.RawStdEncoding.DecodeString(sourceBase64)
-	if err != nil {
-		return version, fmt.Errorf("Malformed version string %s, sourceID=%q is not base64 encoded", versionString, sourceBase64)
+	if validateSourceID {
+		_, err = base64.RawStdEncoding.DecodeString(sourceBase64)
+		if err != nil {
+			return version, fmt.Errorf("Malformed version string %s, sourceID=%q is not base64 encoded", versionString, sourceBase64)
+		}
 	}
 	version.SourceID = sourceBase64
 	// remove any leading whitespace, this should be addressed in CBG-3662
@@ -544,7 +551,9 @@ func parseVectorValues(vectorStr string) (versions []Version, legacyRevList []st
 		if len(v) > 0 && v[0] == ' ' {
 			v = v[1:]
 		}
-		version, err := ParseVersion(v)
+		// assume we don't need to validate sourceID when parsing a full history string since it has already been split on ; by caller and , in this function
+		validateSourceID := false
+		version, err := parseVersion(v, validateSourceID)
 		if err != nil {
 			// If v is a legacy rev ID, ignore when constructing the HLV.
 			if isLegacyRev(v) {
