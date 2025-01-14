@@ -136,7 +136,7 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 				continue
 			} else if latestDocSeq := doc.latestSeq(); latestDocSeq != seq {
 				// this entry should've been cleaned up from _seqStore
-				require.FailNow(c.TB(), "seq %d found in _seqStore but latestSeq for doc %d - this should've been pruned out!", seq, latestDocSeq)
+				require.FailNowf(c.TB(), "found old seq in _seqStore", "seq %d found in _seqStore but latestSeq for doc %d - this should've been pruned out!", seq, latestDocSeq)
 				continue
 			}
 			if !yield(seq, doc) {
@@ -384,7 +384,7 @@ func (btcc *BlipTesterCollectionClient) _getClientDoc(docID string) (*clientDoc,
 	}
 	clientDoc, ok := btcc._seqStore[seq]
 	if !ok {
-		require.FailNow(btcc.TB(), "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
+		require.FailNowf(btcc.TB(), "seq not found in _seqStore", "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
 		return nil, false
 	}
 	return clientDoc, ok
@@ -612,7 +612,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 					// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
 					if clientCV.SourceID == incomingCV.SourceID && clientCV.Value == incomingCV.Value {
-						require.FailNow(btc.TB(), "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", incomingCV, clientCV)
+						require.FailNowf(btc.TB(), "incoming revision is equal to client revision", "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", incomingCV, clientCV)
 					}
 
 					// incoming rev older than stored client version and comes from a different source - need to resolve
@@ -696,7 +696,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
 					return
 				}
-				require.FailNow(btr.TB(), "expected delta rev message to be sent without noreply flag: %+v", msg)
+				require.FailNowf(btr.TB(), "expected delta rev message to be sent without noreply flag", "msg: %+v", msg)
 			}
 
 			// unmarshal body to extract deltaSrc
@@ -707,7 +707,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			var old db.Body
 			doc, ok := btcr.getClientDoc(docID)
 			if !ok {
-				require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
+				require.FailNowf(btc.TB(), "doc not found", "docID %q not found", docID)
 				return
 			}
 			var deltaSrcVersion DocVersion
@@ -877,7 +877,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 				// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
 				if clientCV.SourceID == incomingCV.SourceID && clientCV.Value == incomingCV.Value {
-					require.FailNow(btc.TB(), "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", incomingCV, clientCV)
+					require.FailNowf(btc.TB(), "incoming revision is equal to client revision", "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", incomingCV, clientCV)
 				}
 
 				// incoming rev older than stored client version and comes from a different source - need to resolve
@@ -1045,7 +1045,7 @@ func (btc *BlipTesterCollectionClient) updateLastReplicatedVersion(docID string,
 	defer btc.seqLock.Unlock()
 	doc, ok := btc._getClientDoc(docID)
 	if !ok {
-		require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
+		require.FailNowf(btc.TB(), "doc not found", "docID %q", docID)
 		return
 	}
 	doc.setLatestServerVersion(version)
@@ -1056,7 +1056,7 @@ func (btc *BlipTesterCollectionClient) getLastReplicatedVersion(docID string) (v
 	defer btc.seqLock.Unlock()
 	doc, ok := btc._getClientDoc(docID)
 	if !ok {
-		require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
+		require.FailNowf(btc.TB(), "doc not found", "docID %q", docID)
 		return DocVersion{}, false
 	}
 	doc.lock.RLock()
@@ -1113,7 +1113,7 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 		opts.ConflictResolver = ConflictResolverDefault
 	}
 	if !opts.ConflictResolver.IsValid() {
-		require.FailNow(btcRunner.TB(), "invalid conflict resolver %q", opts.ConflictResolver)
+		require.FailNowf(btcRunner.TB(), "invalid conflict resolver", "invalid conflict resolver %q", opts.ConflictResolver)
 	}
 	if opts.SourceID == "" {
 		opts.SourceID = "blipclient"
@@ -1258,7 +1258,7 @@ func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionNam
 			return collectionClient
 		}
 	}
-	require.FailNow(btcRunner.clients[clientID].TB(), "Could not find collection %s in BlipTesterClient", collectionName)
+	require.FailNowf(btcRunner.clients[clientID].TB(), "unknown collection", "Could not find collection %s in BlipTesterClient", collectionName)
 	return nil
 }
 
@@ -1573,7 +1573,7 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 	errorDomain := subChangesResponse.Properties["Error-Domain"]
 	errorCode := subChangesResponse.Properties["Error-Code"]
 	if errorDomain != "" && errorCode != "" {
-		require.FailNowf(btc.TB(), "error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody))
+		require.FailNowf(btc.TB(), "error from subchanges", "error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody))
 	}
 }
 
@@ -1856,7 +1856,7 @@ func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte
 				// push the stub as-is
 				continue
 			}
-			require.FailNow(btc.TB(), "couldn't find data or stub property for inline attachment %s:%v", attachmentName, inlineAttachment)
+			require.FailNowf(btc.TB(), "couldn't find data or stub property for inline attachment", "att name %s:%v", attachmentName, inlineAttachment)
 		}
 
 		// Transform inline attachment data into metadata
@@ -1899,7 +1899,7 @@ func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVe
 
 	rev, ok := doc._revisionsBySeq[revSeq]
 	if !ok {
-		require.FailNow(btc.TB(), "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
+		require.FailNowf(btc.TB(), "no rev seq in _seqStore", "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
 		return nil, false
 	}
 
