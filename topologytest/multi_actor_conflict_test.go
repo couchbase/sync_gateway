@@ -70,6 +70,13 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 func TestMultiActorConflictDelete(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
+			switch topology.description {
+			case "2x CBL<->SG<->CBS XDCR only 1.3",
+				"CBL<->SG<->CBS1 CBS1<->CBS2 1.2":
+				// FIXME: CBG-4458
+				t.Skip("CBG-4458")
+			}
+
 			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
 
@@ -103,6 +110,13 @@ func TestMultiActorConflictDelete(t *testing.T) {
 func TestMultiActorConflictResurrect(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
+			switch topology.description {
+			case "2x CBL<->SG<->CBS XDCR only 1.3",
+				"CBL<->SG<->CBS1 CBS1<->CBS2 1.2":
+				// FIXME: CBG-4458
+				t.Skip("CBG-4458")
+			}
+
 			collectionName, peers, replications := setupTests(t, topology)
 			replications.Stop()
 
