@@ -3213,6 +3213,16 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 // CheckProposedVersion - given DocID and a version in string form, check whether it can be added without conflict.
 func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousRev string) (status ProposedRevStatus, currentVersion string) {
 
+	// CBG-4460 - Temporarily strip any trailing HLV content from proposedVersionStr
+	pvDelimiter := strings.Index(proposedVersionStr, ";")
+	if pvDelimiter > 0 {
+		proposedVersionStr = proposedVersionStr[:pvDelimiter]
+	}
+	mvDelimiter := strings.Index(proposedVersionStr, ",")
+	if mvDelimiter > 0 {
+		proposedVersionStr = proposedVersionStr[:mvDelimiter]
+	}
+
 	proposedVersion, err := ParseVersion(proposedVersionStr)
 	if err != nil {
 		base.WarnfCtx(ctx, "Couldn't parse proposed version for doc %q / %q: %v", base.UD(docid), proposedVersionStr, err)
