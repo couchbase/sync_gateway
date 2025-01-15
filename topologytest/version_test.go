@@ -14,6 +14,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,9 +44,8 @@ func (v DocMetadata) IsHLVEqual(other DocMetadata) bool {
 		return other.hlvEquals(v.ImplicitHLV)
 	} else if v.HLV != nil {
 		return other.hlvEquals(v.HLV)
-	} else {
-		return other.ImplicitHLV == nil && other.HLV == nil
 	}
+	return other.ImplicitHLV == nil && other.HLV == nil
 }
 
 func (v DocMetadata) hlvEquals(hlv *db.HybridLogicalVector) bool {
@@ -53,10 +53,8 @@ func (v DocMetadata) hlvEquals(hlv *db.HybridLogicalVector) bool {
 		return v.ImplicitHLV.Equals(hlv)
 	} else if v.HLV != nil {
 		return v.HLV.Equals(hlv)
-	} else {
-		return hlv == nil
 	}
-
+	return hlv == nil
 }
 
 // DocMetadataFromDocument returns a DocVersion from the given document.
@@ -88,4 +86,9 @@ func DocMetadataFromDocVersion(t testing.TB, docID string, hlv *db.HybridLogical
 		require.NoError(t, m.HLV.AddVersion(version.CV))
 	}
 	return m
+}
+
+// assertHLVEqual asserts that the HLV of the version is equal to the expected HLV.
+func assertHLVEqual(t assert.TestingT, docID string, p string, version DocMetadata, body []byte, expected DocMetadata, replications Replications) {
+	assert.True(t, version.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v\nActual Body: %s\nReplications:\n%s", docID, p, expected, version, body, replications.Stats())
 }

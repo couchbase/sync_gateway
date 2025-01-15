@@ -24,19 +24,19 @@ import (
 func TestMultiActorUpdate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
-			collectionName, peers, _ := setupTests(t, topology)
+			collectionName, peers, replications := setupTests(t, topology)
 
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for updatePeerName, updatePeer := range peers {
 					docID := getDocID(t) + "_create=" + createPeerName + ",update=" + updatePeerName
 					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, updatePeer, topology.description))
 					createVersion := createPeer.CreateDocument(collectionName, docID, body1)
-					waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
+					waitForVersionAndBody(t, collectionName, peers, replications, docID, createVersion)
 
 					newBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "update"}`, updatePeerName, createPeerName, updatePeerName, topology.description))
 					updateVersion := updatePeer.WriteDocument(collectionName, docID, newBody)
 
-					waitForVersionAndBody(t, collectionName, peers, docID, updateVersion)
+					waitForVersionAndBody(t, collectionName, peers, replications, docID, updateVersion)
 				}
 			}
 		})
@@ -52,18 +52,17 @@ func TestMultiActorUpdate(t *testing.T) {
 func TestMultiActorDelete(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
-			collectionName, peers, _ := setupTests(t, topology)
+			collectionName, peers, replications := setupTests(t, topology)
 
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for deletePeerName, deletePeer := range peers {
 					docID := getDocID(t) + "_create=" + createPeerName + ",update=" + deletePeerName
 					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, deletePeer, topology.description))
 					createVersion := createPeer.CreateDocument(collectionName, docID, body1)
-					waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
+					waitForVersionAndBody(t, collectionName, peers, replications, docID, createVersion)
 
 					deleteVersion := deletePeer.DeleteDocument(collectionName, docID)
-					t.Logf("deleteVersion: %+v\n", deleteVersion)
-					waitForTombstoneVersion(t, collectionName, peers, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName})
+					waitForTombstoneVersion(t, collectionName, peers, replications, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName})
 				}
 			}
 		})
@@ -84,7 +83,7 @@ func TestMultiActorResurrect(t *testing.T) {
 	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
-			collectionName, peers, _ := setupTests(t, topology)
+			collectionName, peers, replications := setupTests(t, topology)
 
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for deletePeerName, deletePeer := range peers {
@@ -92,15 +91,14 @@ func TestMultiActorResurrect(t *testing.T) {
 						docID := getDocID(t) + "_create=" + createPeerName + ",delete=" + deletePeerName + ",resurrect=" + resurrectPeerName
 						body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, deletePeer, resurrectPeer, topology.description))
 						createVersion := createPeer.CreateDocument(collectionName, docID, body1)
-						waitForVersionAndBody(t, collectionName, peers, docID, createVersion)
+						waitForVersionAndBody(t, collectionName, peers, replications, docID, createVersion)
 
 						deleteVersion := deletePeer.DeleteDocument(collectionName, docID)
-						t.Logf("deleteVersion: %+v\n", deleteVersion)
-						waitForTombstoneVersion(t, collectionName, peers, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName})
+						waitForTombstoneVersion(t, collectionName, peers, replications, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName})
 
 						resBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.description))
 						resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
-						waitForVersionAndBody(t, collectionName, peers, docID, resurrectVersion)
+						waitForVersionAndBody(t, collectionName, peers, replications, docID, resurrectVersion)
 					}
 				}
 			}

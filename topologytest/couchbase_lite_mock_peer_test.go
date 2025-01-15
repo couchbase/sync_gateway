@@ -82,10 +82,10 @@ func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
-	p.t.Logf("%s: Creating document %s", p, docID)
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	docVersion, hlv := client.AddHLVRev(docID, rest.EmptyDocVersion(), body)
 	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
+	p.TB().Logf("%s: Created document %s with %#v", p, docID, docMetadata)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -95,7 +95,6 @@ func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, do
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
-	p.TB().Logf("%s: Writing document %s", p, docID)
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	_, parentMeta := p.getLatestDocVersion(dsName, docID)
 	parentVersion := rest.EmptyDocVersion()
@@ -104,6 +103,7 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 	}
 	docVersion, hlv := client.AddHLVRev(docID, parentVersion, body)
 	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
+	p.TB().Logf("%s: Wrote document %s with %#+v", p, docID, docMetadata)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -113,7 +113,6 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata {
-	p.TB().Logf("%s: Deleting document %s", p, docID)
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	_, parentMeta := p.getLatestDocVersion(dsName, docID)
 	parentVersion := rest.EmptyDocVersion()
@@ -121,11 +120,13 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, do
 		parentVersion = &db.DocVersion{CV: parentMeta.CV(p.TB())}
 	}
 	docVersion, hlv := client.Delete(docID, parentVersion)
-	return DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
+	docMeta := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
+	p.TB().Logf("%s: Deleted document %s with %#+v", p, docID, docMeta)
+	return docMeta
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) db.Body {
+func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
@@ -133,7 +134,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
 			return
 		}
-		assert.True(c, actual.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v", docID, p, expected.HLV, actual.HLV)
+		assertHLVEqual(c, docID, p.name, *actual, data, expected, replications)
 	}, totalWaitTime, pollInterval)
 	var body db.Body
 	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))
@@ -141,13 +142,13 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 }
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) {
+func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) {
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	expectedVersion := db.DocVersion{CV: expected.CV(p.TB())}
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		isTombstone, err := client.IsVersionTombstone(docID, expectedVersion)
 		require.NoError(c, err)
-		require.True(c, isTombstone, "expected docID %s on peer %s to be deleted", docID, p)
+		assert.True(c, isTombstone, "expected docID %s on peer %s to be deleted. Replications:\n%s", docID, p, replications.Stats())
 	}, totalWaitTime, pollInterval)
 }
 
@@ -281,4 +282,8 @@ func (r *CouchbaseLiteMockReplication) String() string {
 		directionArrow = "<-"
 	}
 	return fmt.Sprintf("%s%s%s", r.activePeer, directionArrow, r.passivePeer)
+}
+
+func (r *CouchbaseLiteMockReplication) Stats() string {
+	return "No CBL stats yet"
 }
