@@ -1233,18 +1233,18 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
 				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid, is not a json object")
 				}
 
 				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
 				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid, does not contain digest")
 				}
 				currentDigests[name] = currentAttachmentDigest
 
 				incomingAttachmentMeta, ok := value.(map[string]interface{})
 				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment, expecting json object")
 				}
 
 				// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
@@ -1255,19 +1255,22 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 				incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
 				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment, does not have digest field")
 				}
+				// For revtree clients, can use revPos as an optimization.  HLV always compares incoming
+				// attachments with current attachments on the document
+				if !bh.useHLV() {
+					incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment, does not have revpos field")
+					}
 
-				incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
-
-				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
-				// digest is different we need to override the revpos and set it to the current revision to ensure
-				// the attachment is requested and stored
-				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
+					// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
+					// digest is different we need to override the revpos and set it to the current revision to ensure
+					// the attachment is requested and stored
+					if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
+						bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
+					}
 				}
 			}
 
