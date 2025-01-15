@@ -2228,33 +2228,6 @@ func TestImportFilterTimeout(t *testing.T) {
 	assert.NoError(t, timeoutErr)
 }
 
-func TestLol(t *testing.T) {
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close(ctx)
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: bucket.NoCloseClone(),
-	})
-	defer rt.Close()
-
-	vbNo, err := base.GetVbucketForKey(bucket, "someKey")
-	require.NoError(t, err)
-	fmt.Println("lol", vbNo)
-
-	prevKey := "someKey"
-	found := false
-	for !found {
-		t.Logf("he")
-		prevKey = prevKey + "1"
-		vbNo, err := base.GetVbucketForKey(bucket, prevKey)
-		require.NoError(t, err)
-		if vbNo == uint32(0) {
-			found = true
-			fmt.Println("prev", prevKey)
-		}
-	}
-}
-
 func TestImportRollback(t *testing.T) {
 
 	if !base.IsEnterpriseEdition() {
