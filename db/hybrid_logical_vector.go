@@ -511,6 +511,20 @@ func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, [
 	}
 }
 
+// ExtractCVFromProposeChangesRev strips any trailing HLV content from proposeChanges rev property(CBG-4460)
+func ExtractCVFromProposeChangesRev(rev string) string {
+	pvDelimiter := strings.Index(rev, ";")
+	if pvDelimiter > 0 {
+		rev = rev[:pvDelimiter]
+	}
+	mvDelimiter := strings.Index(rev, ",")
+	if mvDelimiter > 0 {
+		rev = rev[:mvDelimiter]
+	}
+
+	return strings.TrimSpace(rev)
+}
+
 // parseVectorValues takes an HLV section (cv, pv or mv) in string form and splits into
 // source and version pairs. Also returns legacyRev list if legacy revID's are found in the input string.
 func parseVectorValues(vectorStr string) (versions []Version, legacyRevList []string, err error) {

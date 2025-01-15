@@ -630,6 +630,64 @@ func TestExtractHLVFromChangesMessage(t *testing.T) {
 	}
 }
 
+// TestExtractCVFromProposeChangesRev
+func TestExtractCVFromProposeChangesRev(t *testing.T) {
+
+	var testCases = []struct {
+		name       string
+		inputRev   string
+		expectedCV string
+	}{
+		{
+			name:       "cv only",
+			inputRev:   "1000@abc",
+			expectedCV: "1000@abc",
+		},
+		{
+			name:       "cv trailing whitespace",
+			inputRev:   "1000@abc ",
+			expectedCV: "1000@abc",
+		},
+		{
+			name:       "cv and mv",
+			inputRev:   "1000@abc,900@abc,900@def",
+			expectedCV: "1000@abc",
+		},
+		{
+			name:       "cv and mv trailing whitespace",
+			inputRev:   "1000@abc ,900@abc,900@def",
+			expectedCV: "1000@abc",
+		},
+		{
+			name:       "cv trailing whitespace",
+			inputRev:   "1000@abc ",
+			expectedCV: "1000@abc",
+		},
+		{
+			name:       "cv and pv",
+			inputRev:   "1000@abc;900@def,800@ghi",
+			expectedCV: "1000@abc",
+		},
+		{
+			name:       "cv, mv, pv",
+			inputRev:   "1000@abc,900@abc,900@def;900@def,800@ghi",
+			expectedCV: "1000@abc",
+		},
+		{
+			name:       "cv, mv, pv, creative whitespace",
+			inputRev:   " 1000@abc ,900@abc, 900@def; 900@def,800@ghi  ",
+			expectedCV: "1000@abc",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			cv := ExtractCVFromProposeChangesRev(test.inputRev)
+			assert.Equal(t, test.expectedCV, cv)
+		})
+	}
+}
+
 func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
 	for _, bm := range extractHLVFromBlipMsgBMarkCases {
 		b.Run(bm.name, func(b *testing.B) {
