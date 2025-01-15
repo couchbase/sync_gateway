@@ -50,10 +50,10 @@ type Peer interface {
 	DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata
 
 	// WaitForDocVersion waits for a document to reach a specific version. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
-	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) db.Body
+	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body
 
 	// WaitForTombstoneVersion waits for a document to reach a specific version. This document must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata)
+	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications)
 
 	// CreateReplication creates a replication instance
 	CreateReplication(Peer, PeerReplicationConfig) PeerReplication
@@ -98,6 +98,8 @@ type PeerReplication interface {
 	Start()
 	// Stop halts the replication. The replication can be restarted after it is stopped.
 	Stop()
+	// Stats returns a string representation of the stats for the replication.
+	Stats() string
 }
 
 // Peers represents a set of peers. The peers are indexed by name.
@@ -152,6 +154,14 @@ func (r Replications) Start() {
 	for _, replication := range r {
 		replication.Start()
 	}
+}
+
+func (r Replications) Stats() string {
+	stats := ""
+	for _, replication := range r {
+		stats += fmt.Sprintf("%s: %s\n", replication, replication.Stats())
+	}
+	return stats
 }
 
 // PeerReplicationDirection represents the direction of a replication from the active peer.
@@ -362,6 +372,7 @@ func TestPeerImplementation(t *testing.T) {
 			}
 			peers := createPeers(t, opts)
 			peer := peers[tc.name]
+			var replications Replications
 			// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
 			if peer.Type() == PeerTypeCouchbaseLite {
 				pullReplication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{
@@ -370,11 +381,13 @@ func TestPeerImplementation(t *testing.T) {
 				pullReplication.Start()
 				defer pullReplication.Stop()
 
+				replications = append(replications, pullReplication)
 				pushReplication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{
 					direction: PeerReplicationDirectionPush,
 				})
 				pushReplication.Start()
 				defer pushReplication.Stop()
+				replications = append(replications, pushReplication)
 			}
 
 			docID := t.Name()
@@ -390,7 +403,7 @@ func TestPeerImplementation(t *testing.T) {
 				require.Empty(t, createVersion.docMeta.RevTreeID)
 			}
 
-			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta)
+			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta, replications)
 			// Check Get after creation
 			roundtripGetVersion, roundtripGetbody := peer.GetDocument(collectionName, docID)
 			require.Equal(t, createVersion.docMeta, roundtripGetVersion)
@@ -407,7 +420,7 @@ func TestPeerImplementation(t *testing.T) {
 			} else {
 				require.Empty(t, updateVersion.docMeta.RevTreeID)
 			}
-			peer.WaitForDocVersion(collectionName, docID, updateVersion.docMeta)
+			peer.WaitForDocVersion(collectionName, docID, updateVersion.docMeta, replications)
 
 			// Check Get after update
 			roundtripGetVersion, roundtripGetbody = peer.GetDocument(collectionName, docID)
@@ -426,7 +439,7 @@ func TestPeerImplementation(t *testing.T) {
 			} else {
 				require.Empty(t, deleteVersion.RevTreeID)
 			}
-			peer.WaitForTombstoneVersion(collectionName, docID, deleteVersion)
+			peer.WaitForTombstoneVersion(collectionName, docID, deleteVersion, replications)
 
 			// Resurrection
 			resurrectionBody := []byte(`{"op": "resurrection"}`)
@@ -447,7 +460,7 @@ func TestPeerImplementation(t *testing.T) {
 			} else {
 				require.Empty(t, resurrectionVersion.docMeta.RevTreeID)
 			}
-			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta)
+			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta, replications)
 
 			ctx := peer.Context()
 			if peer.Type() != PeerTypeCouchbaseLite {

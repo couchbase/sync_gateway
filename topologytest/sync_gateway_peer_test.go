@@ -68,8 +68,13 @@ func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID strin
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
-	p.TB().Logf("%s: Creating document %s", p, docID)
-	return p.WriteDocument(dsName, docID, body)
+	docMetadata := p.writeDocument(dsName, docID, body)
+	p.TB().Logf("%s: Created document %s with %#+v", p, docID, docMetadata)
+	return BodyAndVersion{
+		docMeta:    docMetadata,
+		body:       body,
+		updatePeer: p.name,
+	}
 }
 
 // writeDocument writes a document to the peer. The test will fail if the write does not succeed.
@@ -104,8 +109,8 @@ func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID str
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
-	p.TB().Logf("%s: Writing document %s", p, docID)
 	docMetadata := p.writeDocument(dsName, docID, body)
+	p.TB().Logf("%s: Wrote document %s with %#+v", p, docID, docMetadata)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -123,11 +128,13 @@ func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID st
 	}
 	_, doc, err = collection.DeleteDoc(ctx, docID, revID)
 	require.NoError(p.TB(), err)
-	return DocMetadataFromDocument(doc)
+	docMeta := DocMetadataFromDocument(doc)
+	p.TB().Logf("%s: Deleted document %s with %#+v", p, docID, docMeta)
+	return docMeta
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) db.Body {
+func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
 	collection, ctx := p.getCollection(dsName)
 	var doc *db.Document
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
@@ -141,15 +148,15 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 		// Only assert on CV since RevTreeID might not be present if this was a Couchbase Server write
 		bodyBytes, err := doc.BodyBytes(ctx)
 		assert.NoError(c, err)
-		assert.Equal(c, expected.CV(c), version.CV(c), "Could not find matching CV on %s for peer %s (sourceID:%s)\nexpected: %#v\nactual:   %#v\n          body: %+v\n", docID, p, p.SourceID(), expected, version, string(bodyBytes))
+		assertHLVEqual(c, docID, p.name, version, bodyBytes, expected, replications)
 	}, totalWaitTime, pollInterval)
 	return doc.Body(ctx)
 }
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) {
-	docBytes := p.WaitForDocVersion(dsName, docID, expected)
-	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s", docID, docBytes)
+func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) {
+	docBytes := p.WaitForDocVersion(dsName, docID, expected, replications)
+	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s. Replications:\n%s", docID, docBytes, replications.Stats())
 }
 
 // Close will shut down the peer and close any active replications on the peer.

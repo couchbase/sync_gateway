@@ -31,7 +31,7 @@ func TestMultiActorConflictCreate(t *testing.T) {
 			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
 
 		})
 	}
@@ -61,13 +61,13 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
 
 			replications.Stop()
 
 			docVersion = updateConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
 		})
 	}
 }
@@ -93,13 +93,13 @@ func TestMultiActorConflictDelete(t *testing.T) {
 			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
 
 			replications.Stop()
 			lastWrite := deleteConflictDocs(t, collectionName, peers, docID)
 
 			replications.Start()
-			waitForTombstoneVersion(t, collectionName, peers, docID, lastWrite)
+			waitForTombstoneVersion(t, collectionName, peers, replications, docID, lastWrite)
 		})
 	}
 }
@@ -132,20 +132,20 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
 			replications.Start()
-			waitForVersionAndBody(t, collectionName, peers, docID, docVersion)
+			waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
 
 			replications.Stop()
 			lastWrite := deleteConflictDocs(t, collectionName, peers, docID)
 
 			replications.Start()
 
-			waitForTombstoneVersion(t, collectionName, peers, docID, lastWrite)
+			waitForTombstoneVersion(t, collectionName, peers, replications, docID, lastWrite)
 			replications.Stop()
 
 			lastWriteVersion := updateConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
 
-			waitForVersionAndBody(t, collectionName, peers, docID, lastWriteVersion)
+			waitForVersionAndBody(t, collectionName, peers, replications, docID, lastWriteVersion)
 		})
 	}
 }

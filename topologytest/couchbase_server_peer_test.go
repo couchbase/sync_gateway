@@ -80,6 +80,12 @@ func (r *CouchbaseServerReplication) String() string {
 	return fmt.Sprintf("%s-%s (direction unknown)", r.activePeer, r.passivePeer)
 }
 
+func (r *CouchbaseServerReplication) Stats() string {
+	stats, err := r.manager.Stats(r.ctx)
+	require.NoError(r.t, err)
+	return fmt.Sprintf("%+v", *stats)
+}
+
 func (p *CouchbaseServerPeer) String() string {
 	return fmt.Sprintf("%s (bucket:%s,sourceid:%s)", p.name, p.bucket.GetName(), p.sourceID)
 }
@@ -102,7 +108,6 @@ func (p *CouchbaseServerPeer) GetDocument(dsName sgbucket.DataStoreName, docID s
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
-	p.tb.Logf("%s: Creating document %s", p, docID)
 	// create document with xattrs to prevent XDCR from doing a round trip replication in this scenario:
 	// CBS1: write document (cas1, no _vv)
 	// CBS1->CBS2: XDCR replication
@@ -116,6 +121,7 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 		Cas:         cas,
 		ImplicitHLV: implicitHLV,
 	}
+	p.tb.Logf("%s: Created document %s with %#v", p, docID, docMetadata)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -125,7 +131,6 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
-	p.tb.Logf("%s: Writing document %s", p, docID)
 	var lastXattrs map[string][]byte
 	// write the document LWW, ignoring any in progress writes
 	callback := func(existingBody []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
@@ -143,8 +148,10 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 	}
 	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
 	require.NoError(p.tb, err)
+	docMeta := getDocVersion(docID, p, cas, lastXattrs)
+	p.tb.Logf("%s: Wrote document %s with %#+v", p, docID, docMeta)
 	return BodyAndVersion{
-		docMeta:    getDocVersion(docID, p, cas, lastXattrs),
+		docMeta:    docMeta,
 		body:       body,
 		updatePeer: p.name,
 	}
@@ -152,7 +159,6 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata {
-	p.tb.Logf("%s: Deleting document %s", p, docID)
 	// delete the document, ignoring any in progress writes. We are allowed to delete a document that does not exist.
 	var lastXattrs map[string][]byte
 	// write the document LWW, ignoring any in progress writes
@@ -162,25 +168,27 @@ func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docI
 	}
 	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
 	require.NoError(p.tb, err)
-	return getDocVersion(docID, p, cas, lastXattrs)
+	version := getDocVersion(docID, p, cas, lastXattrs)
+	p.tb.Logf("%s: Deleted document %s with %#+v", p, docID, version)
+	return version
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) db.Body {
-	docBytes := p.waitForDocVersion(dsName, docID, expected)
+func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
+	docBytes := p.waitForDocVersion(dsName, docID, expected, replications)
 	var body db.Body
 	require.NoError(p.tb, base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
 	return body
 }
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseServerPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) {
-	docBytes := p.waitForDocVersion(dsName, docID, expected)
-	require.Empty(p.tb, docBytes, "expected tombstone for docID %s, got %s", docID, docBytes)
+func (p *CouchbaseServerPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) {
+	docBytes := p.waitForDocVersion(dsName, docID, expected, replications)
+	require.Empty(p.tb, docBytes, "expected tombstone for docID %s, got %s. Replications:\n%s", docID, docBytes, replications.Stats())
 }
 
 // waitForDocVersion waits for a document to reach a specific version and returns the body in bytes. The bytes will be nil if the document is a tombstone. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata) []byte {
+func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) []byte {
 	var docBytes []byte
 	var version DocMetadata
 	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
@@ -191,9 +199,8 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		if !assert.NoError(c, err) {
 			return
 		}
-		// have to use p.tb instead of c because of the assert.CollectT doesn't implement TB
 		version = getDocVersion(docID, p, cas, xattrs)
-		assert.True(c, version.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v", docID, p, expected, version)
+		assertHLVEqual(c, docID, p.name, version, docBytes, expected, replications)
 	}, totalWaitTime, pollInterval)
 	return docBytes
 }
