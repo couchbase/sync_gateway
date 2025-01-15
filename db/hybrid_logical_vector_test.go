@@ -164,7 +164,7 @@ func createHLVForTest(tb *testing.T, inputList []string) *HybridLogicalVector {
 
 	// first element will be current version and source pair
 	currentVersionPair := strings.Split(inputList[0], "@")
-	hlvOutput.SourceID = base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))
+	hlvOutput.SourceID = base64.RawStdEncoding.EncodeToString([]byte(currentVersionPair[0]))
 	value, err := strconv.ParseUint(currentVersionPair[1], 10, 64)
 	require.NoError(tb, err)
 	hlvOutput.Version = value
@@ -494,18 +494,18 @@ func TestHLVMapToCBLString(t *testing.T) {
 			name: "Both PV and mv",
 			inputHLV: []string{"cb06dc003846116d9b66d2ab23887a96@123456", "YZvBpEaztom9z5V/hDoeIw@1628620455135215600", "m_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700",
 				"m_LhRPsa7CpjEvP5zeXTXEBA@1628620455147864000"},
-			expectedStr: "169a05acd68c001c@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==,169a05acd705ffc0@TGhSUHNhN0NwakV2UDV6ZVhUWEVCQQ==;169a05acd644fff0@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
+			expectedStr: "169a05acd68c001c@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw,169a05acd705ffc0@TGhSUHNhN0NwakV2UDV6ZVhUWEVCQQ==;169a05acd644fff0@WVp2QnBFYXp0b205ejVWL2hEb2VJdw",
 			both:        true,
 		},
 		{
 			name:        "Just PV",
 			inputHLV:    []string{"cb06dc003846116d9b66d2ab23887a96@123456", "YZvBpEaztom9z5V/hDoeIw@1628620455135215600"},
-			expectedStr: "169a05acd644fff0@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
+			expectedStr: "169a05acd644fff0@WVp2QnBFYXp0b205ejVWL2hEb2VJdw",
 		},
 		{
 			name:        "Just MV",
 			inputHLV:    []string{"cb06dc003846116d9b66d2ab23887a96@123456", "m_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700"},
-			expectedStr: "169a05acd68c001c@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==",
+			expectedStr: "169a05acd68c001c@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw",
 		},
 	}
 	for _, test := range testCases {
@@ -532,18 +532,31 @@ func TestHLVMapToCBLString(t *testing.T) {
 //   - Test hlv string that is empty
 //   - Assert that ExtractHLVFromBlipMessage will return error in both cases
 func TestInvalidHLVInBlipMessageForm(t *testing.T) {
-	hlvStr := "25@def; 22@def,21@eff; 20@abc,18@hij; 222@hiowdwdew, 5555@dhsajidfgd"
+	testCases := []struct {
+		name   string
+		hlv    string
+		errMsg string
+	}{
+		{
+			name:   "Too many parts",
+			hlv:    "25@def; 22@def,21@eff; 20@abc,18@hij; 222@hiowdwdew, 5555@dhsajidfgd",
+			errMsg: "hlv contains more than 3 parts",
+		},
+		{
+			name:   "Empty HLV",
+			hlv:    "",
+			errMsg: "Empty HLV",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
 
-	hlv, _, err := ExtractHLVFromBlipMessage(hlvStr)
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "invalid hlv in changes message received")
-	assert.Equal(t, &HybridLogicalVector{}, hlv)
-
-	hlvStr = ""
-	hlv, _, err = ExtractHLVFromBlipMessage(hlvStr)
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "invalid hlv in changes message received")
-	assert.Equal(t, &HybridLogicalVector{}, hlv)
+			hlv, _, err := ExtractHLVFromBlipMessage(test.hlv)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, test.errMsg)
+			assert.Equal(t, &HybridLogicalVector{}, hlv)
+		})
+	}
 }
 
 var extractHLVFromBlipMsgBMarkCases = []struct {
@@ -616,7 +629,7 @@ func TestExtractHLVFromChangesMessage(t *testing.T) {
 			//       that may represent a base64 encoding
 			base64EncodedHlvString := EncodeTestHistory(test.hlvString)
 			hlv, _, err := ExtractHLVFromBlipMessage(base64EncodedHlvString)
-			require.NoError(t, err)
+			require.NoError(t, err, "hlv=%q", base64EncodedHlvString)
 
 			assert.Equal(t, expectedVector.SourceID, hlv.SourceID)
 			assert.Equal(t, expectedVector.Version, hlv.Version)
