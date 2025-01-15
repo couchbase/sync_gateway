@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.0
 	github.com/coreos/go-oidc/v3 v3.12.0
-	github.com/couchbase/cbgt v1.3.9
+	github.com/couchbase/cbgt v1.4.0
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20241014144256-13a798c348fd
 	github.com/couchbase/gocb/v2 v2.9.1
@@ -45,8 +45,8 @@ require (
 	github.com/aws/aws-sdk-go v1.44.299 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/couchbase/blance v0.1.5 // indirect
-	github.com/couchbase/cbauth v0.1.11 // indirect
+	github.com/couchbase/blance v0.1.6 // indirect
+	github.com/couchbase/cbauth v0.1.12 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/gocbcoreps v0.1.3 // indirect
 	github.com/couchbase/goprotostellar v1.0.2 // indirect
