@@ -3214,7 +3214,10 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 }
 
 // CheckProposedVersion - given DocID and a version in string form, check whether it can be added without conflict.
-func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousRev string) (status ProposedRevStatus, currentVersion string) {
+// proposedVersionStr is the string representation of the proposed version's CV.
+// previousRev is the string representation of the CV of the last known parent of the proposed version.
+// proposedHLVString is the string representation of the proposed version's full HLV.
+func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousRev string, proposedHLVString string) (status ProposedRevStatus, currentVersion string) {
 
 	proposedVersion, err := ParseVersion(proposedVersionStr)
 	if err != nil {
@@ -3262,8 +3265,19 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		// previousVersion didn't match, but proposed version and server CV have matching source, and proposed version is newer
 		return ProposedRev_OK, ""
 	} else {
-		// Conflict, return the current cv.  This may be a false positive conflict if the client has replicated
-		// the server cv via a different peer.  Client is responsible for performing this check based on the
+		// Temporary (CBG-4466): check the full HLV that's being sent by CBL with proposeChanges messages.
+		// If the current server cv is dominated by the incoming HLV (i.e. the incoming HLV has an entry for the same source
+		// with a version that's greater than or equal to the server's cv), then we can accept the proposed version.
+		proposedHLV, _, err := ExtractHLVFromBlipMessage(proposedHLVString)
+		if err != nil {
+			base.InfofCtx(ctx, base.KeyCRUD, "CheckProposedVersion for doc %s unable to extract proposedHLV from rev message, will be treated as conflict: %v", base.UD(docid), err)
+		} else if proposedHLV.DominatesSource(localDocCV) {
+			base.DebugfCtx(ctx, base.KeyCRUD, "CheckProposedVersion returning OK for doc %s because incoming HLV dominates cv", base.UD(docid))
+			return ProposedRev_OK, ""
+		}
+
+		// In conflict cases, return the current cv.  This may be a false positive conflict if the client has replicated
+		// the server cv via a different peer and so is not sending previousRev.  The client is responsible for performing this check based on the
 		// returned localDocCV
 		return ProposedRev_Conflict, localDocCV.String()
 	}

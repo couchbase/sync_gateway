@@ -841,7 +841,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		}
 		if versionVectorProtocol && changeIsVector {
 			proposedVersionStr := ExtractCVFromProposeChangesRev(rev)
-			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, proposedVersionStr, parentRevID)
+			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, proposedVersionStr, parentRevID, rev)
 		} else {
 			changesContainLegacyRevs = true
 			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, rev, parentRevID)

@@ -747,6 +747,32 @@ func (c *DatabaseCollection) GetDocumentCurrentVersion(t testing.TB, key string)
 	return doc.HLV.SourceID, doc.HLV.Version
 }
 
+// UpsertTestDocWithVersion upserts document 'key' with the specified body and version.  Used for testing with
+// version values specified by the test.
+func (c *DatabaseCollectionWithUser) UpsertTestDocWithVersion(ctx context.Context, t testing.TB, key string, body Body, versionString string) *Document {
+	currentDoc, currentBucketDoc, _ := c.GetDocumentWithRaw(ctx, key, DocUnmarshalSync)
+	var newDocHLV *HybridLogicalVector
+	var newDoc *Document
+	if currentDoc != nil {
+		newDoc = currentDoc
+		newDocHLV = currentDoc.HLV
+	} else {
+		newDoc = &Document{
+			ID:    key,
+			_body: body,
+		}
+		newDocHLV = NewHybridLogicalVector()
+	}
+
+	version, versionErr := ParseVersion(versionString)
+	require.NoError(t, versionErr)
+	require.NoError(t, newDocHLV.AddVersion(version))
+
+	doc, _, _, err := c.PutExistingCurrentVersion(ctx, newDoc, newDocHLV, currentBucketDoc, nil)
+	require.NoError(t, err)
+	return doc
+}
+
 // retrieveDocRevSeNo will take the $document xattr and return the revSeqNo defined in that xattr
 func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
 	// virtual xattr not implemented for rosmar CBG-4233
