@@ -993,7 +993,6 @@ func TestLegacyRevNotInConflict(t *testing.T) {
 		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	require.NoError(t, err, "Error creating BlipTester")
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -1002,8 +1001,14 @@ func TestLegacyRevNotInConflict(t *testing.T) {
 	docVersion := rt.PutDocDirectly(docID, db.Body{"test": "doc"})
 	rev1ID := docVersion.RevTreeID
 
-	history := []string{docVersion.CV.String(), "1-abc"}
+	// have two history entries, 1 rev from a different CBL and 1 legacy rev, should generate conflict
+	history := []string{"1-CBL2", "1-abc"}
 	sent, _, _, err := bt.SendRevWithHistory(docID, "100@CBL1", history, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.ErrorContains(t, err, "Document revision conflict")
+
+	history = []string{docVersion.CV.String(), "1-abc"}
+	sent, _, _, err = bt.SendRevWithHistory(docID, "100@CBL1", history, []byte(`{"key": "val"}`), blip.Properties{})
 	assert.True(t, sent)
 	require.NoError(t, err)
 
