@@ -1802,6 +1802,43 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 }
 
+func TestMaintainMinimumRecentSequences(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	const docID = "doc1"
+	allocSeq := uint64(0)
+
+	// Add 20 revisions of a single document to fill recent sequences up on the document
+	body := Body{"val": "one"}
+	for i := 0; i < 20; i++ {
+		revid, doc, err := collection.Put(ctx, docID, body)
+		require.NoError(t, err)
+		body[BodyId] = doc.ID
+		body[BodyRev] = revid
+		allocSeq++
+	}
+	// wait for the latest allocated seq to arrive at cache to move stable seq in place for recent sequence compaction
+	err := db.changeCache.waitForSequence(ctx, allocSeq, base.DefaultWaitForSequence)
+	require.NoError(t, err)
+
+	// assert that we have 20 entries in recent sequences for the above doc updates
+	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, 20, len(doc.RecentSequences))
+
+	// update the original doc to trigger recent sequence compaction on the doc
+	_, doc, err = collection.Put(ctx, docID, body)
+	require.NoError(t, err)
+	err = db.changeCache.waitForSequence(ctx, doc.Sequence, base.DefaultWaitForSequence)
+	require.NoError(t, err)
+
+	// Validate that the recent sequences are pruned to the minimum + recently assigned sequence
+	doc, err = collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, 6, len(doc.RecentSequences))
+}
+
 func TestChannelView(t *testing.T) {
 
 	db, ctx := setupTestDBWithViewsEnabled(t)
