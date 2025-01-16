@@ -166,8 +166,10 @@ func (h *HLVAgent) SourceID() string {
 // encodeTestHistory converts a simplified version history of the form "1@abc,2@def;3@ghi" to use hex-encoded versions and
 // base64 encoded sources
 func EncodeTestHistory(historyString string) (encodedString string) {
-	// possible versionSets are pv;mv
-	// possible versionSets are pv;mv
+	// possible versionSets:
+	// 	mv,mv;pv,pv
+	// 	mv,mv;
+	// 	pv,pv
 	versionSets := strings.Split(historyString, ";")
 	if len(versionSets) == 0 {
 		return ""
@@ -183,6 +185,7 @@ func EncodeTestHistory(historyString string) (encodedString string) {
 			if index > 0 {
 				encodedString += ","
 			}
+			fmt.Printf("version: %s encoded: %s\n", version, EncodeTestVersion(version))
 			encodedString += EncodeTestVersion(version)
 		}
 	}
