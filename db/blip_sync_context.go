@@ -296,6 +296,10 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 		return err
 	}
 
+	if base.LogTraceEnabled(ctx, base.KeySyncMsg) {
+		base.TracefCtx(ctx, base.KeySyncMsg, "Recv Rsp %s: Body: '%s' Properties: %v", response, base.UD(respBody), base.UD(response.Properties))
+	}
+
 	if response.Type() == blip.ErrorType {
 		return fmt.Errorf("Client returned error in changesResponse: %s", respBody)
 	}
