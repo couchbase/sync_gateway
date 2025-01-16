@@ -28,12 +28,21 @@ import (
 //   - Tests methods GetCurrentVersion, AddVersion and Remove
 func TestInternalHLVFunctions(t *testing.T) {
 	pv := make(HLVVersions)
-	currSourceId := EncodeSource("5pRi8Piv1yLcLJ1iVNJIsA")
+	currSourceId := "5pRi8Piv1yLcLJ1iVNJIsA"
 	currVersion := uint64(12345678)
-	pv[EncodeSource("YZvBpEaztom9z5V/hDoeIw")] = 64463204720
+	pvSourceID := "YZvBpEaztom9z5V/hDoeIw"
+	pv[pvSourceID] = 64463204720
 
-	inputHLV := []string{"5pRi8Piv1yLcLJ1iVNJIsA@12345678", "YZvBpEaztom9z5V/hDoeIw@64463204720", "m_NqiIe0LekFPLeX4JvTO6Iw@345454"}
-	hlv := createHLVForTest(t, inputHLV)
+	hlv := HybridLogicalVector{
+		SourceID: currSourceId,
+		Version:  12345678,
+		MergeVersions: map[string]uint64{
+			"NqiIe0LekFPLeX4JvTO6Iw": 345454,
+		},
+		PreviousVersions: map[string]uint64{
+			"YZvBpEaztom9z5V/hDoeIw": 64463204720,
+		},
+	}
 
 	newCAS := uint64(123456789)
 	const newSource = "s_testsource"
@@ -69,14 +78,14 @@ func TestInternalHLVFunctions(t *testing.T) {
 	require.NoError(t, hlv.AddVersion(newVersionVector))
 	assert.Equal(t, newCAS, hlv.Version)
 	assert.Equal(t, newSource, hlv.SourceID)
-	assert.True(t, reflect.DeepEqual(hlv.PreviousVersions, pv))
+	require.Equal(t, hlv.PreviousVersions, pv)
 
 	// remove garbage sourceID from PV and assert we get error
 	require.Error(t, hlv.Remove("testing"))
 	// Remove a sourceID CAS pair from previous versions section of the HLV structure (for compaction)
 	require.NoError(t, hlv.Remove(currSourceId))
 	delete(pv, currSourceId)
-	assert.True(t, reflect.DeepEqual(hlv.PreviousVersions, pv))
+	require.Equal(t, hlv.PreviousVersions, pv)
 }
 
 // TestConflictDetectionDominating:
@@ -546,86 +555,200 @@ func TestInvalidHLVInBlipMessageForm(t *testing.T) {
 	assert.Equal(t, &HybridLogicalVector{}, hlv)
 }
 
-var extractHLVFromBlipMsgBMarkCases = []struct {
-	name             string
-	hlvString        string
-	expectedHLV      []string
-	mergeVersions    bool
-	previousVersions bool
-}{
-	{
-		name:             "mv and pv, leading spaces",                                                                                                                                                         // with spaces
-		hlvString:        "25@def; 22@def, 21@eff, 500@x, 501@xx, 4000@xxx, 700@y, 701@yy, 702@yyy; 20@abc, 18@hij, 3@x, 4@xx, 5@xxx, 6@xxxx, 7@xxxxx, 3@y, 4@yy, 5@yyy, 6@yyyy, 7@yyyyy, 2@xy, 3@xyy, 4@xxy", // 15 pv 8 mv
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21", "m_x@500", "m_xx@501", "m_xxx@4000", "m_y@700", "m_yy@701", "m_yyy@702"},
-		previousVersions: true,
-		mergeVersions:    true,
-	},
-	{
-		name:             "mv and pv, no spaces",                                                                                                                                       // without spaces
-		hlvString:        "25@def;22@def,21@eff,500@x,501@xx,4000@xxx,700@y,701@yy,702@yyy;20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15 pv 8 mv
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21", "m_x@500", "m_xx@501", "m_xxx@4000", "m_y@700", "m_yy@701", "m_yyy@702"},
-		previousVersions: true,
-		mergeVersions:    true,
-	},
-	{
-		name:             "pv only",
-		hlvString:        "25@def; 20@abc,18@hij",
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18"},
-		previousVersions: true,
-	},
-	{
-		name:             "mv and pv, mixed spacing",
-		hlvString:        "25@def; 22@def,21@eff; 20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21"},
-		mergeVersions:    true,
-		previousVersions: true,
-	},
-	{
-		name:        "cv only",
-		hlvString:   "24@def",
-		expectedHLV: []string{"def@24"},
-	},
-	{
-		name:             "cv and mv,base64 encoded",
-		hlvString:        "1@Hell0CA; 1@1Hr0k43xS662TToxODDAxQ",
-		expectedHLV:      []string{"Hell0CA@1", "1Hr0k43xS662TToxODDAxQ@1"},
-		previousVersions: true,
-	},
-	{
-		name:             "cv and mv - small",
-		hlvString:        "25@def; 22@def,21@eff; 20@abc,18@hij",
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "m_def@22", "m_eff@21"},
-		mergeVersions:    true,
-		previousVersions: true,
-	},
+type extractHLVFromBlipMsgBMarkCases = struct {
+	name        string
+	hlvString   string
+	expectedHLV HybridLogicalVector
+	legacyRevs  []string
+}
+
+func getHLVTestCases(t testing.TB) []extractHLVFromBlipMsgBMarkCases {
+	return []extractHLVFromBlipMsgBMarkCases{
+		{
+			name:      "mv and pv, leading spaces",                                                                                                                                                         // with spaces
+			hlvString: "25@def; 22@def, 21@eff, 500@x, 501@xx, 4000@xxx, 700@y, 701@yy, 702@yyy; 20@abc, 18@hij, 3@x, 4@xx, 5@xxx, 6@xxxx, 7@xxxxx, 3@y, 4@yy, 5@yyy, 6@yyyy, 7@yyyyy, 2@xy, 3@xyy, 4@xxy", // 15 pv 8 mv
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+					"x":   stringHexToUint(t, "500"),
+					"xx":  stringHexToUint(t, "501"),
+					"xxx": stringHexToUint(t, "4000"),
+					"y":   stringHexToUint(t, "700"),
+					"yy":  stringHexToUint(t, "701"),
+					"yyy": stringHexToUint(t, "702"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc":   stringHexToUint(t, "20"),
+					"hij":   stringHexToUint(t, "18"),
+					"x":     stringHexToUint(t, "3"),
+					"xx":    stringHexToUint(t, "4"),
+					"xxx":   stringHexToUint(t, "5"),
+					"xxxx":  stringHexToUint(t, "6"),
+					"xxxxx": stringHexToUint(t, "7"),
+					"y":     stringHexToUint(t, "3"),
+					"yy":    stringHexToUint(t, "4"),
+					"yyy":   stringHexToUint(t, "5"),
+					"yyyy":  stringHexToUint(t, "6"),
+					"yyyyy": stringHexToUint(t, "7"),
+					"xy":    stringHexToUint(t, "2"),
+					"xyy":   stringHexToUint(t, "3"),
+					"xxy":   stringHexToUint(t, "4"),
+				},
+			},
+		},
+		{
+			name:      "mv and pv, no spaces",                                                                                                                                       // without spaces
+			hlvString: "25@def;22@def,21@eff,500@x,501@xx,4000@xxx,700@y,701@yy,702@yyy;20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15 pv 8 mv
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+					"x":   stringHexToUint(t, "500"),
+					"xx":  stringHexToUint(t, "501"),
+					"xxx": stringHexToUint(t, "4000"),
+					"y":   stringHexToUint(t, "700"),
+					"yy":  stringHexToUint(t, "701"),
+					"yyy": stringHexToUint(t, "702"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc":   stringHexToUint(t, "20"),
+					"hij":   stringHexToUint(t, "18"),
+					"x":     stringHexToUint(t, "3"),
+					"xx":    stringHexToUint(t, "4"),
+					"xxx":   stringHexToUint(t, "5"),
+					"xxxx":  stringHexToUint(t, "6"),
+					"xxxxx": stringHexToUint(t, "7"),
+					"y":     stringHexToUint(t, "3"),
+					"yy":    stringHexToUint(t, "4"),
+					"yyy":   stringHexToUint(t, "5"),
+					"yyyy":  stringHexToUint(t, "6"),
+					"yyyyy": stringHexToUint(t, "7"),
+					"xy":    stringHexToUint(t, "2"),
+					"xyy":   stringHexToUint(t, "3"),
+					"xxy":   stringHexToUint(t, "4"),
+				},
+			},
+		},
+		{
+			name:      "pv only",
+			hlvString: "25@def; 20@abc,18@hij",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				PreviousVersions: map[string]uint64{
+					"abc": stringHexToUint(t, "20"),
+					"hij": stringHexToUint(t, "18"),
+				},
+			},
+		},
+		{
+			name:      "mv and pv, mixed spacing",
+			hlvString: "25@def; 22@def,21@eff; 20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc":   stringHexToUint(t, "20"),
+					"hij":   stringHexToUint(t, "18"),
+					"x":     stringHexToUint(t, "3"),
+					"xx":    stringHexToUint(t, "4"),
+					"xxx":   stringHexToUint(t, "5"),
+					"xxxx":  stringHexToUint(t, "6"),
+					"xxxxx": stringHexToUint(t, "7"),
+					"y":     stringHexToUint(t, "3"),
+					"yy":    stringHexToUint(t, "4"),
+					"yyy":   stringHexToUint(t, "5"),
+					"yyyy":  stringHexToUint(t, "6"),
+					"yyyyy": stringHexToUint(t, "7"),
+					"xy":    stringHexToUint(t, "2"),
+					"xyy":   stringHexToUint(t, "3"),
+					"xxy":   stringHexToUint(t, "4"),
+				},
+			},
+		},
+		{
+			name:      "cv only",
+			hlvString: "24@def",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "24"),
+				SourceID:          "def",
+			},
+		},
+		{
+			name:      "cv and pv,base64 encoded",
+			hlvString: "1@Hell0CA; 1@1Hr0k43xS662TToxODDAxQ",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "1"),
+				SourceID:          "Hell0CA",
+				PreviousVersions: map[string]uint64{
+					"1Hr0k43xS662TToxODDAxQ": stringHexToUint(t, "1"),
+				},
+			},
+		},
+		{
+			name:      "cv;mv,mv;pv,pv - small",
+			hlvString: "25@def; 22@def,21@eff; 20@abc,18@hij",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc": stringHexToUint(t, "20"),
+					"hij": stringHexToUint(t, "18"),
+				},
+			},
+		},
+		{
+			name:      "cv;mv,mv;pv,pv,legacyrev",
+			hlvString: "25@def; 22@def,21@eff; 20@abc,18@hij,1-abc",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc": stringHexToUint(t, "20"),
+					"hij": stringHexToUint(t, "18"),
+				},
+			},
+			legacyRevs: []string{"1-abc"},
+		},
+	}
 }
 
 // TestExtractHLVFromChangesMessage:
-//   - Test case 1: CV entry and 1 PV entry
-//   - Test case 2: CV entry and 2 PV entries
-//   - Test case 3: CV entry, 2 MV entries and 2 PV entries
-//   - Test case 4: just CV entry
 //   - Each test case gets run through ExtractHLVFromBlipMessage and assert that the resulting HLV
 //     is correct to what is expected
 func TestExtractHLVFromChangesMessage(t *testing.T) {
-	for _, test := range extractHLVFromBlipMsgBMarkCases {
+	for _, test := range getHLVTestCases(t) {
 		t.Run(test.name, func(t *testing.T) {
-			expectedVector := createHLVForTest(t, test.expectedHLV)
-
-			// TODO: When CBG-3662 is done, should be able to simplify base64 handling to treat source as a string
-			//       that may represent a base64 encoding
-			base64EncodedHlvString := EncodeTestHistory(test.hlvString)
-			hlv, _, err := ExtractHLVFromBlipMessage(base64EncodedHlvString)
+			hlv, legacyRevs, err := ExtractHLVFromBlipMessage(test.hlvString)
 			require.NoError(t, err)
 
-			assert.Equal(t, expectedVector.SourceID, hlv.SourceID)
-			assert.Equal(t, expectedVector.Version, hlv.Version)
-			if test.previousVersions {
-				assert.True(t, reflect.DeepEqual(expectedVector.PreviousVersions, hlv.PreviousVersions))
-			}
-			if test.mergeVersions {
-				assert.True(t, reflect.DeepEqual(expectedVector.MergeVersions, hlv.MergeVersions))
-			}
+			require.Equal(t, test.expectedHLV, *hlv, "HLV not as expected for %s", test.hlvString)
+			require.Equal(t, test.legacyRevs, legacyRevs)
 		})
 	}
 }
@@ -689,7 +812,7 @@ func TestExtractCVFromProposeChangesRev(t *testing.T) {
 }
 
 func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
-	for _, bm := range extractHLVFromBlipMsgBMarkCases {
+	for _, bm := range getHLVTestCases(b) {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_, _, _ = ExtractHLVFromBlipMessage(bm.hlvString)
@@ -826,4 +949,10 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	assert.Equal(t, expCas, memHLV.CurrentVersionCAS)
 	assert.Len(t, memHLV.PreviousVersions, 0)
 	assert.Len(t, memHLV.MergeVersions, 0)
+}
+
+func stringHexToUint(t testing.TB, value string) uint64 {
+	intValue, err := strconv.ParseUint(value, 16, 64)
+	require.NoError(t, err)
+	return intValue
 }
