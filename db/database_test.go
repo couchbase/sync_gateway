@@ -1828,9 +1828,7 @@ func TestMaintainMinimumRecentSequences(t *testing.T) {
 	assert.Equal(t, 20, len(doc.RecentSequences))
 
 	// update the original doc to trigger recent sequence compaction on the doc
-	_, doc, err = collection.Put(ctx, docID, body)
-	require.NoError(t, err)
-	err = db.changeCache.waitForSequence(ctx, doc.Sequence, base.DefaultWaitForSequence)
+	_, _, err = collection.Put(ctx, docID, body)
 	require.NoError(t, err)
 
 	// Validate that the recent sequences are pruned to the minimum + recently assigned sequence

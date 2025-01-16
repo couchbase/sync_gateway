@@ -26,7 +26,7 @@ import (
 
 const (
 	kMaxRecentSequences            = 20    // Maximum number of sequences stored in RecentSequences before pruning is triggered
-	kMinRecentSequences            = 5     // Minimum number of sequences stored in RecentSequences before pruning is triggered
+	kMinRecentSequences            = 5     // Minimum number of sequences that should be left stored in RecentSequences during compaction
 	unusedSequenceWarningThreshold = 10000 // Warn when releasing more than this many sequences due to existing sequence on the document
 )
 
