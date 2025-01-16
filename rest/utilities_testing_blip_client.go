@@ -1362,8 +1362,9 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 								// conflict on write of rev - OK to ignore and let pull replication resolve
 								btcc.TB().Logf("conflict on write of rev %s / %v", change.docID, change.version)
 							} else {
-								btcc.TB().Errorf("error response from rev: %s %s", revResp.Properties["Error-Domain"], revResp.Properties["Error-Code"])
-								return
+								body, err := revResp.Body()
+								require.NoError(btcc.TB(), err)
+								require.FailNow(btcc.TB(), fmt.Sprintf("error response from rev: %s %s : %s", revResp.Properties["Error-Domain"], revResp.Properties["Error-Code"], body))
 							}
 						}
 						base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
@@ -1759,8 +1760,10 @@ func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte
 		attachmentMap[attachmentName] = map[string]interface{}{
 			"digest": digest,
 			"length": length,
-			"revpos": revGen,
 			"stub":   true,
+		}
+		if !btc.UseHLV() {
+			attachmentMap[attachmentName].(map[string]interface{})["revpos"] = revGen
 		}
 		newDocJSON[db.BodyAttachments] = attachmentMap
 	}
