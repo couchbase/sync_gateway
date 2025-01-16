@@ -409,7 +409,7 @@ func TestCheckProposedVersion(t *testing.T) {
 			if tc.previousVersion != nil {
 				previousVersionStr = tc.previousVersion.String()
 			}
-			status, rev := collection.CheckProposedVersion(ctx, "doc1", tc.newVersion.String(), previousVersionStr)
+			status, rev := collection.CheckProposedVersion(ctx, "doc1", tc.newVersion.String(), previousVersionStr, previousVersionStr)
 			assert.Equal(t, tc.expectedStatus, status)
 			assert.Equal(t, tc.expectedRev, rev)
 		})
@@ -417,14 +417,14 @@ func TestCheckProposedVersion(t *testing.T) {
 
 	t.Run("invalid hlv", func(t *testing.T) {
 		hlvString := ""
-		status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString, "")
+		status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString, "", "")
 		assert.Equal(t, ProposedRev_Error, status)
 	})
 
 	// New doc cases - standard insert
 	t.Run("new doc", func(t *testing.T) {
 		newVersion := Version{"other", 100}.String()
-		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, "")
+		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, "", "")
 		assert.Equal(t, ProposedRev_OK_IsNew, status)
 	})
 
@@ -432,10 +432,240 @@ func TestCheckProposedVersion(t *testing.T) {
 	t.Run("new doc with prev version", func(t *testing.T) {
 		newVersion := Version{"other", 100}.String()
 		prevVersion := Version{"another other", 50}.String()
-		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, prevVersion)
+		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, prevVersion, prevVersion)
 		assert.Equal(t, ProposedRev_OK_IsNew, status)
 	})
 
+}
+
+// TestCheckProposedVersionWithHLVRev tests CheckProposedVersion when the full HLV is provided in the rev element of the proposeChanges message
+func TestCheckProposedVersionWithHLVRev(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create singleVersionDoc with cv:1000@abc
+	body := Body{"key1": "value1", "key2": 1234}
+	singleVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "singleVersionDoc", body, "1000@abc")
+	log.Printf("created singleVersionDoc doc successfully with HLV: %#v", singleVersionDoc.HLV)
+
+	// create multiVersionDoc with cv:1000@abc, pv:900@def
+	collection.UpsertTestDocWithVersion(ctx, t, "multiVersionDoc", body, "900@def")
+	multiVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "multiVersionDoc", body, "1000@abc")
+	log.Printf("created multiVersionDoc doc successfully with HLV: %#v", multiVersionDoc.HLV)
+
+	testCases := []struct {
+		name            string // test name
+		key             string
+		proposedVersion string            // proposed version in CBL string format
+		previousRev     string            // previous revisions in CBL string format
+		proposedHLV     string            // proposed HLV in CBL string format
+		expectedStatus  ProposedRevStatus // Expected status from CheckProposedVersion call
+		expectedRev     string            // Expected rev from CheckProposedVersion call (for conflict cases)
+	}{
+		/*
+			Tests for existing doc with cv only (1000@abc)
+		*/
+		{
+			// already known, matches version
+			name:            "exists same version",
+			key:             "singleVersionDoc",
+			proposedVersion: "1000@abc",
+			previousRev:     "",
+			proposedHLV:     "1000@abc",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// already known, matches version
+			name:            "exists older version",
+			key:             "singleVersionDoc",
+			proposedVersion: "900@abc",
+			previousRev:     "",
+			proposedHLV:     "1000@abc",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// conflict, HLV has same source but is older than current
+			name:            "conflict HLV older",
+			key:             "singleVersionDoc",
+			proposedVersion: "1100@def",
+			previousRev:     "900@abc",
+			proposedHLV:     "1100@def;900@abc",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// conflict with cv only
+			name:            "conflict cv only",
+			key:             "singleVersionDoc",
+			proposedVersion: "1000@def",
+			previousRev:     "",
+			proposedHLV:     "1000@def",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// conflict, HLV has previous versions but not cv.source
+			name:            "conflict HLV no source",
+			key:             "singleVersionDoc",
+			proposedVersion: "1100@def",
+			previousRev:     "1000@ghi",
+			proposedHLV:     "1100@def;1000@ghi,900@jkl",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// ok, new version for same source
+			name:            "ok, cv only, same source",
+			key:             "singleVersionDoc",
+			proposedVersion: "1100@abc",
+			previousRev:     "",
+			proposedHLV:     "1100@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// ok, new version for new source, current cv dominated by pv
+			name:            "ok, new source",
+			key:             "singleVersionDoc",
+			proposedVersion: "1100@def",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1100@def;1000@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// ok, previous rev not known but current cv dominated by pv
+			name:            "ok, new source and unknown previous rev",
+			key:             "singleVersionDoc",
+			proposedVersion: "1200@def",
+			previousRev:     "1100@ghi",
+			proposedHLV:     "1200@def;1100@ghi,1000@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		/*
+			Tests for existing doc with cv:1000@abc, pv:900@def
+		*/
+		{
+			// ok, proposed HLV doesn't include server PV
+			name:            "ok, new source dominates cv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1100@abc",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1100@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// ok, newer version for pv source, cv in HLV
+			name:            "ok pv source",
+			key:             "multiVersionDoc",
+			proposedVersion: "1000@def",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1000@def;1000@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// exists matches cv - previous in pv
+			name:            "exists matches cv previous pv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1000@abc",
+			previousRev:     "900@def",
+			proposedHLV:     "1000@abc;900@def",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// exists matches cv - previous same source
+			name:            "exists matches cv same source",
+			key:             "multiVersionDoc",
+			proposedVersion: "1000@abc",
+			previousRev:     "900@abc",
+			proposedHLV:     "1000@abc;900@def",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// exists matches cv - previous same source
+			name:            "exists pv dominates incoming",
+			key:             "multiVersionDoc",
+			proposedVersion: "900@def",
+			previousRev:     "800@abc",
+			proposedHLV:     "900@def;800@abc",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// exists matches cv - previous same source
+			name:            "exists pv dominates incoming",
+			key:             "multiVersionDoc",
+			proposedVersion: "900@def",
+			previousRev:     "800@def",
+			proposedHLV:     "900@def",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// conflict with pv ignored because cv dominates
+			name:            "ok pv conflict",
+			key:             "multiVersionDoc",
+			proposedVersion: "1100@abc",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1100@abc;800@def",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// conflict current cv not in incoming HLV history
+			name:            "conflict pv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1100@ghi",
+			previousRev:     "900@abc",
+			proposedHLV:     "1100@ghi;900@abc,800@def",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// conflict, proposed HLV doesn't include server cv
+			name:            "conflict with cv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1100@def",
+			previousRev:     "900@def",
+			proposedHLV:     "1100@def",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// conflict, proposed HLV doesn't include server cv
+			name:            "conflict with cv and pv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1000@def",
+			previousRev:     "900@abc",
+			proposedHLV:     "1000@def;900@abc",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.key+"-"+tc.name, func(t *testing.T) {
+			// Test with previous rev present
+			status, rev := collection.CheckProposedVersion(ctx, tc.key, tc.proposedVersion, tc.previousRev, tc.proposedHLV)
+			assert.Equal(t, tc.expectedStatus, status, "expected status mismatch when previous rev present")
+			assert.Equal(t, tc.expectedRev, rev, "expected rev mismatch when previous rev omitted")
+
+			// Test with previous rev omitted
+			status, rev = collection.CheckProposedVersion(ctx, tc.key, tc.proposedVersion, "", tc.proposedHLV)
+			assert.Equal(t, tc.expectedStatus, status, "expected status mismatch when previous rev omitted")
+			assert.Equal(t, tc.expectedRev, rev, "expected rev mismatch when previous rev omitted")
+		})
+	}
 }
 
 func incrementCas(cas uint64, delta int) (casOut uint64) {
