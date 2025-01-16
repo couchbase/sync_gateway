@@ -3211,6 +3211,9 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 }
 
 // CheckProposedVersion - given DocID and a version in string form, check whether it can be added without conflict.
+// proposedVersionStr is the string representation of the proposed version's CV.
+// previousRev is the string representation of the CV of the last known parent of the proposed version.
+// proposedHLVString is the string representation of the proposed version's full HLV.
 func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousRev string, proposedHLVString string) (status ProposedRevStatus, currentVersion string) {
 
 	proposedVersion, err := ParseVersion(proposedVersionStr)
@@ -3264,16 +3267,14 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		// with a version that's greater than or equal to the server's cv), then we can accept the proposed version.
 		proposedHLV, _, err := ExtractHLVFromBlipMessage(proposedHLVString)
 		if err != nil {
-			base.DebugfCtx(ctx, base.KeyCRUD, "CheckProposedVersion for doc %s unable to extract proposedHLV from rev message, treating as conflict: %v", base.UD(docid), err)
-		} else {
-			if proposedHLV.DominatesSource(localDocCV) {
-				base.DebugfCtx(ctx, base.KeyCRUD, "CheckProposedVersion returning OK for doc %s because incoming HLV dominates cv", base.UD(docid))
-				return ProposedRev_OK, ""
-			}
+			base.InfofCtx(ctx, base.KeyCRUD, "CheckProposedVersion for doc %s unable to extract proposedHLV from rev message, will be treated as conflict: %v", base.UD(docid), err)
+		} else if proposedHLV.DominatesSource(localDocCV) {
+			base.DebugfCtx(ctx, base.KeyCRUD, "CheckProposedVersion returning OK for doc %s because incoming HLV dominates cv", base.UD(docid))
+			return ProposedRev_OK, ""
 		}
 
-		//Conflict, return the current cv.  This may be a false positive conflict if the client has replicated
-		// the server cv via a different peer.  Client is responsible for performing this check based on the
+		// In conflict cases, return the current cv.  This may be a false positive conflict if the client has replicated
+		// the server cv via a different peer and so is not sending previousRev.  The client is responsible for performing this check based on the
 		// returned localDocCV
 		return ProposedRev_Conflict, localDocCV.String()
 	}
