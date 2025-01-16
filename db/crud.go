@@ -1251,6 +1251,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				if addNewerVersionsErr != nil {
 					return nil, nil, false, nil, addNewerVersionsErr
 				}
+				// the new document has a dominating hlv, so we can ignore any legacy rev revtree information on the incoming document
+				revTreeConflictChecked = true
+				previousRevTreeID = doc.CurrentRev
 			} else {
 				if len(revTreeHistory) > 0 {
 					// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
