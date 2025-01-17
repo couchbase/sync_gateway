@@ -1111,7 +1111,6 @@ func TestHLVAddNewerVersionsWithMV(t *testing.T) {
 				Version:  4,
 				SourceID: "c",
 			},
-			// does not update with incoming versions?
 			finalHLV: HybridLogicalVector{
 				Version:  4,
 				SourceID: "c",

@@ -185,7 +185,6 @@ func EncodeTestHistory(historyString string) (encodedString string) {
 			if index > 0 {
 				encodedString += ","
 			}
-			fmt.Printf("version: %s encoded: %s\n", version, EncodeTestVersion(version))
 			encodedString += EncodeTestVersion(version)
 		}
 	}
