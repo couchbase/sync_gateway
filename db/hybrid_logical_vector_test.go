@@ -1260,3 +1260,156 @@ func TestInvalidateMV(t *testing.T) {
 		})
 	}
 }
+
+func TestAddVersion(t *testing.T) {
+	testCases := []struct {
+		name        string
+		initialHLV  string
+		newVersion  string
+		expectedHLV string
+	}{
+		{
+			name:        "cv only, same source",
+			initialHLV:  "100@a",
+			newVersion:  "110@a",
+			expectedHLV: "110@a",
+		},
+		{
+			name:        "cv only, different source",
+			initialHLV:  "100@a",
+			newVersion:  "110@b",
+			expectedHLV: "110@b;100@a",
+		},
+		{
+			name:        "single pv, cv source update",
+			initialHLV:  "100@b;90@a",
+			newVersion:  "110@b",
+			expectedHLV: "110@b;90@a",
+		},
+		{
+			name:        "single pv, pv source update",
+			initialHLV:  "100@b;90@a",
+			newVersion:  "110@a",
+			expectedHLV: "110@a;100@b",
+		},
+		{
+			name:        "single pv, new source update",
+			initialHLV:  "100@b;90@a",
+			newVersion:  "110@c",
+			expectedHLV: "110@c;90@a,100@b",
+		},
+		{
+			name:        "multiple pv, cv source update",
+			initialHLV:  "100@b;90@a,80@c",
+			newVersion:  "110@b",
+			expectedHLV: "110@b;90@a,80@c",
+		},
+		{
+			name:        "multiple pv, pv source update",
+			initialHLV:  "100@b;90@a,80@c",
+			newVersion:  "110@a",
+			expectedHLV: "110@a;100@b,80@c",
+		},
+		{
+			name:        "multiple pv, new source update",
+			initialHLV:  "100@b;90@a,80@c",
+			newVersion:  "110@d",
+			expectedHLV: "110@d;90@a,100@b,80@c",
+		},
+		{
+			name:        "mv only, cv source update",
+			initialHLV:  "100@b,90@b,80@a",
+			newVersion:  "110@b",
+			expectedHLV: "110@b;80@a",
+		},
+		{
+			name:        "mv only, mv source update",
+			initialHLV:  "100@b,90@b,80@a",
+			newVersion:  "110@a",
+			expectedHLV: "110@a;100@b",
+		},
+		{
+			name:        "mv only, cv not in mv, cv source update",
+			initialHLV:  "100@c,90@b,80@a",
+			newVersion:  "110@c",
+			expectedHLV: "110@c;90@b,80@a",
+		},
+		{
+			name:        "mv only, cv not in mv, mv source update",
+			initialHLV:  "100@c,90@b,80@a",
+			newVersion:  "110@b",
+			expectedHLV: "110@b;100@c,80@a",
+		},
+		{
+			name:        "mv only, cv not in mv, new source update",
+			initialHLV:  "100@c,90@b,80@a",
+			newVersion:  "110@d",
+			expectedHLV: "110@d;100@c,90@b,80@a",
+		},
+		{
+			name:        "mv and pv, cv source update",
+			initialHLV:  "100@c,90@b,80@a;70@d",
+			newVersion:  "110@c",
+			expectedHLV: "110@c;90@b,80@a,70@d",
+		},
+		{
+			name:        "mv and pv, mv source update",
+			initialHLV:  "100@c,90@b,80@a;70@d",
+			newVersion:  "110@b",
+			expectedHLV: "110@b;100@c,80@a,70@d",
+		},
+		{
+			name:        "mv and pv, pv source update",
+			initialHLV:  "100@c,90@b,80@a;70@d",
+			newVersion:  "110@d",
+			expectedHLV: "110@d;100@c,90@b,80@a",
+		},
+		{
+			name:        "mv and pv, new source update",
+			initialHLV:  "100@c,90@b,80@a;70@d",
+			newVersion:  "110@e",
+			expectedHLV: "110@e;100@c,90@b,80@a,70@d",
+		},
+		{
+			name:        "mv (with cv source) and pv, cv source update",
+			initialHLV:  "100@b,90@b,80@a;70@c",
+			newVersion:  "110@b",
+			expectedHLV: "110@b;80@a,70@c",
+		},
+		{
+			name:        "mv (with cv source) and pv, mv source update",
+			initialHLV:  "100@b,90@b,80@a;70@c",
+			newVersion:  "110@a",
+			expectedHLV: "110@a;100@b,70@c",
+		},
+		{
+			name:        "mv (with cv source) and pv, pv source update",
+			initialHLV:  "100@b,90@b,80@a;70@c",
+			newVersion:  "110@c",
+			expectedHLV: "110@c;100@b,80@a",
+		},
+		{
+			name:        "mv (with cv source) and pv, new source update",
+			initialHLV:  "100@b,90@b,80@a;70@c",
+			newVersion:  "110@d",
+			expectedHLV: "110@d;100@b,80@a,70@c",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			hlv, _, err := ExtractHLVFromBlipMessage(tc.initialHLV)
+			require.NoError(t, err, "unable to parse initialHLV")
+			newVersion, err := ParseVersion(tc.newVersion)
+			require.NoError(t, err)
+
+			err = hlv.AddVersion(newVersion)
+			require.NoError(t, err)
+
+			expectedHLV, _, err := ExtractHLVFromBlipMessage(tc.expectedHLV)
+			require.NoError(t, err)
+			require.True(t, hlv.Equals(expectedHLV), "expected %#v does not match actual %#v", expectedHLV, hlv)
+
+		})
+	}
+}

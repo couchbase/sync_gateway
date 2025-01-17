@@ -230,52 +230,40 @@ func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 
 // AddVersion adds newVersion as the current version to the in memory representation of the HLV.
 func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
-	var newVersionCAS uint64
-	hlvVersionCAS := hlv.Version
-	if newVersion.Value != expandMacroCASValueUint64 {
-		newVersionCAS = newVersion.Value
-	}
+
 	// check if this is the first time we're adding a source - version pair
 	if hlv.SourceID == "" {
 		hlv.Version = newVersion.Value
 		hlv.SourceID = newVersion.SourceID
-		hlv.InvalidateMV()
 		return nil
 	}
-	// if new entry has the same source we simple just update the version
+
+	// If the new version is older than an existing version for the same source, return error
+	existingValueForSource, found := hlv.GetValue(newVersion.SourceID)
+	if found && existingValueForSource > newVersion.Value {
+		return fmt.Errorf("attempting to add new version vector entry with a value that is less than the existing value for the same source. New version: %v, Existing HLV: %v", newVersion, hlv)
+	}
+
+	// Move existing mv to pv before adding the new version
+	hlv.InvalidateMV()
+
+	// If the new version has the same source as existing cv, we just update the cv value
 	if newVersion.SourceID == hlv.SourceID {
-		if newVersion.Value != expandMacroCASValueUint64 && newVersionCAS < hlvVersionCAS {
-			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value for the same source. Current cas: %d new cas %d", hlv.Version, newVersion.Value)
-		}
 		hlv.Version = newVersion.Value
-		hlv.InvalidateMV()
 		return nil
 	}
-	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
+
+	// If we get here this is a new version from a different sourceID.  Need to move existing cv to pv and update cv
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(HLVVersions)
 	}
-	// we need to check if source ID already exists in PV, if so we need to ensure we are only updating with the
-	// sourceID-version pair if incoming version is greater than version already there
-	if currPVVersion, ok := hlv.PreviousVersions[hlv.SourceID]; ok {
-		// if we get here source ID exists in PV, only replace version if it is less than the incoming version
-		currPVVersionCAS := currPVVersion
-		if currPVVersionCAS < hlvVersionCAS {
-			hlv.PreviousVersions[hlv.SourceID] = hlv.Version
-		} else {
-			return fmt.Errorf("local hlv has current source in previous version with version greater than current version. Current CAS: %d, PV CAS %d", hlv.Version, currPVVersion)
-		}
-	} else {
-		// source doesn't exist in PV so add
-		hlv.PreviousVersions[hlv.SourceID] = hlv.Version
-	}
 
-	// If new version already exists PV, need to remove it
+	hlv.PreviousVersions[hlv.SourceID] = hlv.Version
+
+	// If new version source already existed in PV, need to remove it
 	delete(hlv.PreviousVersions, newVersion.SourceID)
-
 	hlv.Version = newVersion.Value
 	hlv.SourceID = newVersion.SourceID
-	hlv.InvalidateMV()
 	return nil
 }
 
