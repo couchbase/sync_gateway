@@ -749,7 +749,7 @@ func (c *DatabaseCollection) GetDocumentCurrentVersion(t testing.TB, key string)
 
 // UpsertTestDocWithVersion upserts document 'key' with the specified body and version.  Used for testing with
 // version values specified by the test.
-func (c *DatabaseCollectionWithUser) UpsertTestDocWithVersion(ctx context.Context, t testing.TB, key string, body Body, versionString string) *Document {
+func (c *DatabaseCollectionWithUser) UpsertTestDocWithVersion(ctx context.Context, t testing.TB, key string, body Body, versionString string, mergeVersionsStr string) *Document {
 	currentDoc, currentBucketDoc, _ := c.GetDocumentWithRaw(ctx, key, DocUnmarshalSync)
 	var newDocHLV *HybridLogicalVector
 	var newDoc *Document
@@ -767,6 +767,13 @@ func (c *DatabaseCollectionWithUser) UpsertTestDocWithVersion(ctx context.Contex
 	version, versionErr := ParseVersion(versionString)
 	require.NoError(t, versionErr)
 	require.NoError(t, newDocHLV.AddVersion(version))
+	if mergeVersionsStr != "" {
+		versions, _, err := parseVectorValues(mergeVersionsStr)
+		require.NoError(t, err, "malformed mergeVersionsStr")
+		for _, version := range versions {
+			newDocHLV.setMergeVersion(version.SourceID, version.Value)
+		}
+	}
 
 	doc, _, _, err := c.PutExistingCurrentVersion(ctx, newDoc, newDocHLV, currentBucketDoc, nil)
 	require.NoError(t, err)

@@ -239,6 +239,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	if hlv.SourceID == "" {
 		hlv.Version = newVersion.Value
 		hlv.SourceID = newVersion.SourceID
+		hlv.InvalidateMV()
 		return nil
 	}
 	// if new entry has the same source we simple just update the version
@@ -247,6 +248,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value for the same source. Current cas: %d new cas %d", hlv.Version, newVersion.Value)
 		}
 		hlv.Version = newVersion.Value
+		hlv.InvalidateMV()
 		return nil
 	}
 	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
@@ -273,11 +275,22 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 
 	hlv.Version = newVersion.Value
 	hlv.SourceID = newVersion.SourceID
+	hlv.InvalidateMV()
 	return nil
 }
 
+// InvalidateMV will move all merge versions to PV, except merge version entries that share a source with cv
+func (hlv *HybridLogicalVector) InvalidateMV() {
+	for source, value := range hlv.MergeVersions {
+		if source == hlv.SourceID {
+			continue
+		}
+		hlv.setPreviousVersion(source, value)
+	}
+	hlv.MergeVersions = nil
+}
+
 // Remove removes a source from previous versions of the HLV.
-// TODO: Does this need to remove source from current version as well? Merge Versions?
 func (hlv *HybridLogicalVector) Remove(source string) error {
 	// if entry is not found in previous versions we return error
 	if hlv.PreviousVersions[source] == 0 {
@@ -335,7 +348,12 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 		return err
 	}
 
-	if otherVector.PreviousVersions != nil || len(otherVector.PreviousVersions) != 0 {
+	// Copy incoming merge versions (previously existing merge versions will have been moved to pv by AddVersion)
+	for i, v := range otherVector.MergeVersions {
+		hlv.setMergeVersion(i, v)
+	}
+
+	if len(otherVector.PreviousVersions) != 0 {
 		// Iterate through incoming vector previous versions, update with the version from other vector
 		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
@@ -351,10 +369,13 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 			}
 		}
 	}
-	// if current source exists in PV, delete it.
-	if _, ok := hlv.PreviousVersions[hlv.SourceID]; ok {
-		delete(hlv.PreviousVersions, hlv.SourceID)
+	// ensure no duplicates of cv, mv in pv
+	delete(hlv.PreviousVersions, hlv.SourceID)
+
+	for source := range hlv.MergeVersions {
+		delete(hlv.PreviousVersions, source)
 	}
+
 	return nil
 }
 
@@ -383,6 +404,14 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 	hlv.PreviousVersions[source] = version
 }
 
+// setMergeVersion will take a source/version pair and add it to the HLV merge versions map
+func (hlv *HybridLogicalVector) setMergeVersion(source string, version uint64) {
+	if hlv.MergeVersions == nil {
+		hlv.MergeVersions = make(HLVVersions)
+	}
+	hlv.MergeVersions[source] = version
+}
+
 func (hlv *HybridLogicalVector) IsVersionKnown(otherVersion Version) bool {
 	value, found := hlv.GetValue(otherVersion.SourceID)
 	if !found {
@@ -407,14 +436,13 @@ func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 			}
 			itemNo++
 		}
+		if itemNo > 1 {
+			s.WriteString(";")
+		}
 	}
 	if hlv.PreviousVersions != nil {
 		// We need to keep track of where we are in the map, so we don't add a trailing ',' to end of string
 		itemNo := 1
-		// only need ';' if we have MV and PV both defined
-		if len(hlv.MergeVersions) > 0 && len(hlv.PreviousVersions) > 0 {
-			s.WriteString(";")
-		}
 		for key, value := range hlv.PreviousVersions {
 			vrs := Version{SourceID: key, Value: value}
 			s.WriteString(vrs.String())
@@ -451,64 +479,62 @@ func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, [
 
 	vectorFields := strings.Split(versionVectorStr, ";")
 	vectorLength := len(vectorFields)
-	if (vectorLength == 1 && vectorFields[0] == "") || vectorLength > 3 {
-		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid hlv in changes message received")
+	if vectorLength == 1 && vectorFields[0] == "" {
+		return nil, nil, fmt.Errorf("invalid empty hlv in changes message received: %q", versionVectorStr)
+	}
+	if vectorLength > 2 {
+		return nil, nil, fmt.Errorf("invalid hlv in changes message received, more than one semi-colon: %q", versionVectorStr)
 	}
 
-	// add current version (should always be present)
-	cvStr := vectorFields[0]
-	version := strings.Split(cvStr, "@")
-	if len(version) < 2 {
-		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid version in changes message received")
-	}
-
-	vrs, err := strconv.ParseUint(version[0], 16, 64)
+	cvmvList, legacyRevs, err := parseVectorValues(vectorFields[0])
 	if err != nil {
-		return &HybridLogicalVector{}, nil, err
+		return nil, nil, err
 	}
-	err = hlv.AddVersion(Version{SourceID: version[1], Value: vrs})
-	if err != nil {
-		return &HybridLogicalVector{}, nil, err
+	if legacyRevs != nil {
+		return nil, nil, fmt.Errorf("invalid hlv in changes message received, legacys revID found in cv: %q", vectorFields[0])
 	}
-
-	switch vectorLength {
-	case 1:
-		// cv only
+	for i, v := range cvmvList {
+		switch i {
+		case 0:
+			err := hlv.AddVersion(v)
+			if err != nil {
+				return nil, nil, err
+			}
+			continue
+		case 1:
+			hlv.MergeVersions = make(HLVVersions)
+		}
+		if _, ok := hlv.MergeVersions[v.SourceID]; ok {
+			return nil, nil, fmt.Errorf("SourceID %q found multiple times in mv for %q", v.SourceID, versionVectorStr)
+		}
+		if v.SourceID == hlv.SourceID && v.Value == hlv.Version {
+			return nil, nil, fmt.Errorf("cv exists in mv for %q", versionVectorStr)
+		}
+		hlv.MergeVersions[v.SourceID] = v.Value
+	}
+	// no pv
+	if vectorLength == 1 {
 		return hlv, nil, nil
-	case 2:
-		// only cv and pv present
-		sourceVersionListPV, legacyRev, err := parseVectorValues(vectorFields[1])
-		if err != nil {
-			return &HybridLogicalVector{}, nil, err
-		}
-		hlv.PreviousVersions = make(HLVVersions)
-		for _, v := range sourceVersionListPV {
-			hlv.PreviousVersions[v.SourceID] = v.Value
-		}
-		return hlv, legacyRev, nil
-	case 3:
-		// cv, mv and pv present
-		sourceVersionListPV, legacyRev, err := parseVectorValues(vectorFields[2])
-		hlv.PreviousVersions = make(HLVVersions)
-		if err != nil {
-			return &HybridLogicalVector{}, nil, err
-		}
-		for _, pv := range sourceVersionListPV {
-			hlv.PreviousVersions[pv.SourceID] = pv.Value
-		}
-
-		sourceVersionListMV, _, err := parseVectorValues(vectorFields[1])
-		hlv.MergeVersions = make(HLVVersions)
-		if err != nil {
-			return &HybridLogicalVector{}, nil, err
-		}
-		for _, mv := range sourceVersionListMV {
-			hlv.MergeVersions[mv.SourceID] = mv.Value
-		}
-		return hlv, legacyRev, nil
-	default:
-		return &HybridLogicalVector{}, nil, fmt.Errorf("invalid hlv in changes message received")
+	} else if vectorFields[1] == "" { // trailing semi-colon
+		return hlv, nil, nil
 	}
+	pvList, legacyRevs, err := parseVectorValues(vectorFields[1])
+	if err != nil {
+		return nil, nil, err
+	}
+	for i, v := range pvList {
+		if i == 0 {
+			hlv.PreviousVersions = make(HLVVersions)
+		}
+		if _, ok := hlv.PreviousVersions[v.SourceID]; ok {
+			return nil, nil, fmt.Errorf("SourceID %q found multiple times in pv for %q", v.SourceID, versionVectorStr)
+		}
+		if _, ok := hlv.MergeVersions[v.SourceID]; ok {
+			return nil, nil, fmt.Errorf("SourceID %q found in pv and mv for %q", v.SourceID, versionVectorStr)
+		}
+		hlv.PreviousVersions[v.SourceID] = v.Value
+	}
+	return hlv, legacyRevs, nil
 }
 
 // ExtractCVFromProposeChangesRev strips any trailing HLV content from proposeChanges rev property(CBG-4460)

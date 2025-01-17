@@ -17,7 +17,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -1736,67 +1735,76 @@ func TestPutRevV4(t *testing.T) {
 	})
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
-	collection, _ := bt.restTester.GetSingleTestDatabaseCollection()
+	collection, ctx := bt.restTester.GetSingleTestDatabaseCollection()
 
 	docID := t.Name()
 
 	// 1. Send rev with history
-	history := "1@def, 2@abc"
-	sent, _, resp, err := bt.SendRev(docID, db.EncodeTestVersion("3@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(history)})
+	history := "1@b, 2@a"
+	sent, _, resp, err := bt.SendRev(docID, "3@c", []byte(`{"key": "val"}`), blip.Properties{"history": history})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Validate against the bucket doc's HLV
-	doc, _, err := collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
+	doc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
-	pv, _ := db.ParseTestHistory(t, history)
-	db.RequireCVEqual(t, doc.HLV, "3@efg")
-	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
-	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "c",
+		Version:           3,
+		PreviousVersions:  db.HLVVersions{"a": 2, "b": 1},
+	}, *doc.HLV)
 
 	// 2. Update the document with a non-conflicting revision, where only cv is updated
-	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("4@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(history)})
+	sent, _, resp, err = bt.SendRev(docID, "4@c", []byte(`{"key": "val"}`), blip.Properties{"history": history})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Validate against the bucket doc's HLV
-	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
+	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
-	db.RequireCVEqual(t, doc.HLV, "4@efg")
-	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
-	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "c",
+		Version:           4,
+		PreviousVersions:  db.HLVVersions{"a": 2, "b": 1},
+	}, *doc.HLV)
 
 	// 3. Update the document again with a non-conflicting revision from a different source (previous cv moved to pv)
-	updatedHistory := "1@def, 2@abc, 4@efg"
-	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("1@jkl"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
+	updatedHistory := "1@b, 2@a, 4@c"
+	sent, _, resp, err = bt.SendRev(docID, "1@d", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Validate against the bucket doc's HLV
-	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
+	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
-	pv, _ = db.ParseTestHistory(t, updatedHistory)
-	db.RequireCVEqual(t, doc.HLV, "1@jkl")
-	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
-	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "d",
+		Version:           1,
+		PreviousVersions:  db.HLVVersions{"c": 4, "a": 2, "b": 1},
+	}, *doc.HLV)
 
 	// 4. Update the document again with a non-conflicting revision from a different source, and additional sources in history (previous cv moved to pv, and pv expanded)
-	updatedHistory = "1@def, 2@abc, 4@efg, 1@jkl, 1@mmm"
-	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("1@nnn"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
+	updatedHistory = "1@b, 2@a, 4@c, 1@d, 1@e"
+	sent, _, resp, err = bt.SendRev(docID, "1@e", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Validate against the bucket doc's HLV
-	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
+	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
-	pv, _ = db.ParseTestHistory(t, updatedHistory)
-	db.RequireCVEqual(t, doc.HLV, "1@nnn")
-	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
-	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "e",
+		Version:           1,
+		PreviousVersions:  db.HLVVersions{"d": 1, "c": 4, "a": 2, "b": 1},
+	}, *doc.HLV)
 
 	// 5. Attempt to update the document again with a conflicting revision from a different source (previous cv not in pv), expect conflict
 	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("1@pqr"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
@@ -1806,21 +1814,23 @@ func TestPutRevV4(t *testing.T) {
 
 	// 6. Test sending rev with merge versions included in history (note new key)
 	newDocID := t.Name() + "_2"
-	mvHistory := "3@def, 3@abc; 1@def, 2@abc"
-	sent, _, resp, err = bt.SendRev(newDocID, db.EncodeTestVersion("3@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(mvHistory)})
+	mvHistory := "3@d, 3@e; 1@b, 2@a"
+	sent, _, resp, err = bt.SendRev(newDocID, "3@c", []byte(`{"key": "val"}`), blip.Properties{"history": mvHistory})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// assert on bucket doc
-	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), newDocID, db.DocUnmarshalNoHistory)
+	doc, _, err = collection.GetDocWithXattrs(ctx, newDocID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
-	pv, mv := db.ParseTestHistory(t, mvHistory)
-	db.RequireCVEqual(t, doc.HLV, "3@efg")
-	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
-	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
-	assert.True(t, reflect.DeepEqual(mv, doc.HLV.MergeVersions))
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "c",
+		Version:           3,
+		MergeVersions:     db.HLVVersions{"d": 3, "e": 3},
+		PreviousVersions:  db.HLVVersions{"a": 2, "b": 1},
+	}, *doc.HLV)
 }
 
 // Repro attempt for SG #3281
@@ -3375,4 +3385,86 @@ func TestPutRevBlip(t *testing.T) {
 		blip.Properties{},
 	)
 	require.NoError(t, err)
+}
+
+func TestBlipMergeVersions(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // requires hlv
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTesterPersistentConfig(t)
+		defer rt.Close()
+		username := "alice"
+		rt.CreateUser(username, []string{"*"})
+		opts := &BlipTesterClientOpts{
+			Username:               username,
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		docID := t.Name()
+		revRequest := blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "3@CBL1"
+		revRequest.Properties[db.RevMessageHistory] = "2@DEF,2@GHI;"
+		revRequest.SetBody([]byte(`{"key": "val"}`))
+		btc.addCollectionProperty(revRequest)
+		btc.pushReplication.sendMsg(revRequest)
+
+		resp := revRequest.Response()
+		respBody, err := resp.Body()
+		require.NoError(t, err)
+		require.Empty(t, string(respBody))
+
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		doc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
+		require.Equal(t, db.HybridLogicalVector{
+			CurrentVersionCAS: doc.Cas,
+			Version:           3,
+			SourceID:          "CBL1",
+			MergeVersions: db.HLVVersions{
+				"DEF": 2,
+				"GHI": 2,
+			}}, *doc.HLV)
+
+		btcRunner.StartPull(btc.id)
+		btcRunner.WaitForDoc(btc.id, docID)
+
+		// CBL -> SG: subChanges
+		// SG -> CBL: changes
+		// CBL -> SG: rev
+		messages := btc.pullReplication.GetMessages()
+		require.Len(t, messages, 3)
+		revMsg, ok := btc.pullReplication.GetMessage(3)
+		require.True(t, ok)
+		require.Equal(t, db.MessageRev, revMsg.Profile())
+		require.Equal(t, "3@CBL1", revMsg.Properties[db.RevMessageRev])
+		// mv is not ordered so either string is valid
+		require.Contains(t, []string{"2@DEF,2@GHI;", "2@GHI,2@DEF;"}, revMsg.Properties[db.RevMessageHistory])
+
+		revRequest = blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "4@CBL1"
+		revRequest.SetBody([]byte(`{"key": "val2"}`))
+		btc.addCollectionProperty(revRequest)
+		btc.pushReplication.sendMsg(revRequest)
+
+		resp = revRequest.Response()
+		respBody, err = resp.Body()
+		require.NoError(t, err)
+		require.Empty(t, string(respBody))
+		doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
+		require.Equal(t, db.HybridLogicalVector{
+			CurrentVersionCAS: doc.Cas,
+			Version:           4,
+			SourceID:          "CBL1",
+			PreviousVersions: db.HLVVersions{
+				"DEF": 2,
+				"GHI": 2,
+			}}, *doc.HLV)
+	})
 }

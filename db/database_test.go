@@ -438,6 +438,23 @@ func TestCheckProposedVersion(t *testing.T) {
 
 }
 
+func TestUpsertTestDocVersion(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create singleVersionDoc with cv:1000@abc
+	body := Body{"key1": "value1", "key2": 1234}
+	singleVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "singleVersionDoc", body, "1000@abc", "")
+	log.Printf("created singleVersionDoc doc successfully with HLV: %#v", singleVersionDoc.HLV)
+
+	// Attempt to upsert the same version, nil doc indicates no update
+	singleVersionDoc = collection.UpsertTestDocWithVersion(ctx, t, "singleVersionDoc", body, "1000@abc", "")
+	require.Nil(t, singleVersionDoc)
+}
+
 // TestCheckProposedVersionWithHLVRev tests CheckProposedVersion when the full HLV is provided in the rev element of the proposeChanges message
 func TestCheckProposedVersionWithHLVRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -448,13 +465,21 @@ func TestCheckProposedVersionWithHLVRev(t *testing.T) {
 
 	// create singleVersionDoc with cv:1000@abc
 	body := Body{"key1": "value1", "key2": 1234}
-	singleVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "singleVersionDoc", body, "1000@abc")
+	singleVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "singleVersionDoc", body, "1000@abc", "")
+	require.NotNil(t, singleVersionDoc)
 	log.Printf("created singleVersionDoc doc successfully with HLV: %#v", singleVersionDoc.HLV)
 
 	// create multiVersionDoc with cv:1000@abc, pv:900@def
-	collection.UpsertTestDocWithVersion(ctx, t, "multiVersionDoc", body, "900@def")
-	multiVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "multiVersionDoc", body, "1000@abc")
+	collection.UpsertTestDocWithVersion(ctx, t, "multiVersionDoc", body, "900@def", "")
+	multiVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "multiVersionDoc", body, "1000@abc", "")
+	require.NotNil(t, multiVersionDoc)
 	log.Printf("created multiVersionDoc doc successfully with HLV: %#v", multiVersionDoc.HLV)
+
+	// create multiVersionDoc with cv:1000@abc, mv:900@abc, 900@def, pv:900@ghi
+	collection.UpsertTestDocWithVersion(ctx, t, "mergeVersionDoc", body, "900@ghi", "")
+	docWithMV := collection.UpsertTestDocWithVersion(ctx, t, "mergeVersionDoc", body, "1000@abc", "900@abc, 900@def")
+	require.NotNil(t, docWithMV)
+	log.Printf("created mergeVersionDoc doc successfully with HLV: %#v", docWithMV.HLV)
 
 	testCases := []struct {
 		name            string // test name
@@ -479,7 +504,7 @@ func TestCheckProposedVersionWithHLVRev(t *testing.T) {
 			expectedRev:     "",
 		},
 		{
-			// already known, matches version
+			// already known, older version
 			name:            "exists older version",
 			key:             "singleVersionDoc",
 			proposedVersion: "900@abc",
@@ -650,6 +675,39 @@ func TestCheckProposedVersionWithHLVRev(t *testing.T) {
 			proposedHLV:     "1000@def;900@abc",
 			expectedStatus:  ProposedRev_Conflict,
 			expectedRev:     "1000@abc",
+		},
+		/*
+			Tests for existing doc with cv:1000@abc, mv:900@abc, 900@def; pv:900@ghi
+		*/
+		{
+			// exists, mv is newer than proposed version for source
+			name:            "exists based on mv",
+			key:             "mergeVersionDoc",
+			proposedVersion: "800@def",
+			previousRev:     "700@def",
+			proposedHLV:     "800@def;700@abc",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// exists, pv is newer than proposed version for source
+			name:            "exists based on pv",
+			key:             "mergeVersionDoc",
+			proposedVersion: "800@ghi",
+			previousRev:     "700@def",
+			proposedHLV:     "800@ghi;700@def",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// ok, proposed HLV doesn't include server PV
+			name:            "ok, new source dominates cv",
+			key:             "mergeVersionDoc",
+			proposedVersion: "1100@abc",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1100@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
 		},
 	}
 

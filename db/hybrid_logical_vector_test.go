@@ -27,13 +27,25 @@ import (
 //   - Tests internal api methods on the HLV work as expected
 //   - Tests methods GetCurrentVersion, AddVersion and Remove
 func TestInternalHLVFunctions(t *testing.T) {
-	pv := make(HLVVersions)
-	currSourceId := EncodeSource("5pRi8Piv1yLcLJ1iVNJIsA")
+	expectedPV := make(HLVVersions)
+	currSourceID := "5pRi8Piv1yLcLJ1iVNJIsA"
 	currVersion := uint64(12345678)
-	pv[EncodeSource("YZvBpEaztom9z5V/hDoeIw")] = 64463204720
+	pvSourceID := "YZvBpEaztom9z5V/hDoeIw"
+	pvVersion := uint64(64463204720)
+	expectedPV[pvSourceID] = pvVersion
+	mvSourceID := "NqiIe0LekFPLeX4JvTO6Iw"
+	mvVersion := uint64(345454)
 
-	inputHLV := []string{"5pRi8Piv1yLcLJ1iVNJIsA@12345678", "YZvBpEaztom9z5V/hDoeIw@64463204720", "m_NqiIe0LekFPLeX4JvTO6Iw@345454"}
-	hlv := createHLVForTest(t, inputHLV)
+	hlv := HybridLogicalVector{
+		SourceID: currSourceID,
+		Version:  12345678,
+		MergeVersions: map[string]uint64{
+			mvSourceID: mvVersion,
+		},
+		PreviousVersions: map[string]uint64{
+			pvSourceID: pvVersion,
+		},
+	}
 
 	newCAS := uint64(123456789)
 	const newSource = "s_testsource"
@@ -41,42 +53,44 @@ func TestInternalHLVFunctions(t *testing.T) {
 	// create a new version vector entry that will error method AddVersion
 	badNewVector := Version{
 		Value:    123345,
-		SourceID: currSourceId,
+		SourceID: currSourceID,
 	}
 	// create a new version vector entry that should be added to HLV successfully
 	newVersionVector := Version{
 		Value:    newCAS,
-		SourceID: currSourceId,
+		SourceID: currSourceID,
 	}
 
 	// Get current version vector, sourceID and CAS pair
 	source, version := hlv.GetCurrentVersion()
-	assert.Equal(t, currSourceId, source)
+	assert.Equal(t, currSourceID, source)
 	assert.Equal(t, currVersion, version)
 
-	// add new version vector with same sourceID as current sourceID and assert it doesn't add to previous versions then restore HLV to previous state
+	// add new version vector with same sourceID as current sourceID.  MV will move to PV but PV should not otherwise change
 	require.NoError(t, hlv.AddVersion(newVersionVector))
-	assert.Len(t, hlv.PreviousVersions, 1)
+	assert.Len(t, hlv.MergeVersions, 0)
+	assert.Len(t, hlv.PreviousVersions, 2)
 	hlv.Version = currVersion
+	expectedPV[mvSourceID] = mvVersion
 
 	// attempt to add new version vector to HLV that has a CAS value less than the current CAS value
 	require.Error(t, hlv.AddVersion(badNewVector))
 
 	// add current version and sourceID of HLV to pv map for assertions
-	pv[currSourceId] = currVersion
+	expectedPV[currSourceID] = currVersion
 	// Add a new version vector pair to the HLV structure and assert that it moves the current version vector pair to the previous versions section
 	newVersionVector.SourceID = newSource
 	require.NoError(t, hlv.AddVersion(newVersionVector))
 	assert.Equal(t, newCAS, hlv.Version)
 	assert.Equal(t, newSource, hlv.SourceID)
-	assert.True(t, reflect.DeepEqual(hlv.PreviousVersions, pv))
+	require.Equal(t, hlv.PreviousVersions, expectedPV)
 
 	// remove garbage sourceID from PV and assert we get error
 	require.Error(t, hlv.Remove("testing"))
 	// Remove a sourceID CAS pair from previous versions section of the HLV structure (for compaction)
-	require.NoError(t, hlv.Remove(currSourceId))
-	delete(pv, currSourceId)
-	assert.True(t, reflect.DeepEqual(hlv.PreviousVersions, pv))
+	require.NoError(t, hlv.Remove(currSourceID))
+	delete(expectedPV, currSourceID)
+	require.Equal(t, hlv.PreviousVersions, expectedPV)
 }
 
 // TestConflictDetectionDominating:
@@ -483,46 +497,111 @@ func TestHLVImport(t *testing.T) {
 //   - To protect against flake added some splitting of the result string in test case 1 as we cannot guarantee the
 //     order the string will be made in given map iteration is random
 func TestHLVMapToCBLString(t *testing.T) {
-
 	testCases := []struct {
-		name        string
-		inputHLV    []string
-		expectedStr string
-		both        bool
+		name           string
+		hlv            HybridLogicalVector
+		possibleOutput []string // more than one is possible since order of mv/pv not defined
 	}{
 		{
 			name: "Both PV and mv",
-			inputHLV: []string{"cb06dc003846116d9b66d2ab23887a96@123456", "YZvBpEaztom9z5V/hDoeIw@1628620455135215600", "m_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700",
-				"m_LhRPsa7CpjEvP5zeXTXEBA@1628620455147864000"},
-			expectedStr: "169a05acd68c001c@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==,169a05acd705ffc0@TGhSUHNhN0NwakV2UDV6ZVhUWEVCQQ==;169a05acd644fff0@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
-			both:        true,
+			hlv: HybridLogicalVector{
+				PreviousVersions: map[string]uint64{
+					"a": 1,
+					"b": 2,
+				},
+				MergeVersions: map[string]uint64{
+					"c": 3,
+					"d": 4,
+				},
+			},
+			possibleOutput: []string{
+				"3@c,4@d;1@a,2@b",
+				"3@c,4@d;2@b,1@a",
+				"4@d,3@c;1@a,2@b",
+				"4@d,3@c;2@b,1@a",
+			},
 		},
 		{
-			name:        "Just PV",
-			inputHLV:    []string{"cb06dc003846116d9b66d2ab23887a96@123456", "YZvBpEaztom9z5V/hDoeIw@1628620455135215600"},
-			expectedStr: "169a05acd644fff0@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
+			name: "Single PV",
+			hlv: HybridLogicalVector{
+				PreviousVersions: map[string]uint64{
+					"a": 1,
+				},
+			},
+			possibleOutput: []string{
+				"1@a",
+			},
 		},
 		{
-			name:        "Just MV",
-			inputHLV:    []string{"cb06dc003846116d9b66d2ab23887a96@123456", "m_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700"},
-			expectedStr: "169a05acd68c001c@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==",
+			name: "Multiple PV",
+			hlv: HybridLogicalVector{
+				PreviousVersions: map[string]uint64{
+					"a": 1,
+					"b": 2,
+				},
+			},
+			possibleOutput: []string{
+				"1@a,2@b",
+				"2@b,1@a",
+			},
+		},
+		{
+			name: "Single MV only",
+			hlv: HybridLogicalVector{
+				MergeVersions: map[string]uint64{
+					"a": 1,
+				},
+			},
+			possibleOutput: []string{
+				"1@a;",
+			},
+		},
+		{
+			name: "MV only",
+			hlv: HybridLogicalVector{
+				MergeVersions: map[string]uint64{
+					"a": 1,
+					"b": 2,
+				},
+			},
+			possibleOutput: []string{
+				"1@a,2@b;",
+				"2@b,1@a;",
+			},
+		},
+		{
+			name: "Long MV only",
+			hlv: HybridLogicalVector{
+				MergeVersions: map[string]uint64{
+					"a": 1,
+					"b": 2,
+					"c": 3,
+				},
+			},
+			possibleOutput: []string{
+				"1@a,2@b,3@c;",
+				"1@a,3@c,2@b;",
+				"2@b,1@a,3@c;",
+				"2@b,3@c,1@a;",
+				"3@c,1@a,2@b;",
+				"3@c,2@b,1@a;",
+			},
+		},
+		{
+			name: "CV only",
+			hlv: HybridLogicalVector{
+				SourceID: "a",
+				Version:  1,
+			},
+			possibleOutput: []string{
+				"",
+			},
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			hlv := createHLVForTest(t, test.inputHLV)
-			historyStr := hlv.ToHistoryForHLV()
-
-			if test.both {
-				initial := strings.Split(historyStr, ";")
-				mvSide := strings.Split(initial[0], ",")
-				assert.Contains(t, test.expectedStr, initial[1])
-				for _, v := range mvSide {
-					assert.Contains(t, test.expectedStr, v)
-				}
-			} else {
-				assert.Equal(t, test.expectedStr, historyStr)
-			}
+			// there is no guarantee of order in the map so all possible strings are listed
+			require.Contains(t, test.possibleOutput, test.hlv.ToHistoryForHLV(), "expected string not as expected for %#+v", test.hlv)
 		})
 	}
 }
@@ -532,100 +611,259 @@ func TestHLVMapToCBLString(t *testing.T) {
 //   - Test hlv string that is empty
 //   - Assert that ExtractHLVFromBlipMessage will return error in both cases
 func TestInvalidHLVInBlipMessageForm(t *testing.T) {
-	hlvStr := "25@def; 22@def,21@eff; 20@abc,18@hij; 222@hiowdwdew, 5555@dhsajidfgd"
-
-	hlv, _, err := ExtractHLVFromBlipMessage(hlvStr)
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "invalid hlv in changes message received")
-	assert.Equal(t, &HybridLogicalVector{}, hlv)
-
-	hlvStr = ""
-	hlv, _, err = ExtractHLVFromBlipMessage(hlvStr)
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "invalid hlv in changes message received")
-	assert.Equal(t, &HybridLogicalVector{}, hlv)
+	testCases := []struct {
+		name   string
+		hlv    string
+		errMsg string
+	}{
+		{
+			name:   "Too many sections",
+			hlv:    "25@def; 22@def,21@eff; 20@abc,18@hij; 222@hiowdwdew, 5555@dhsajidfgd",
+			errMsg: "invalid hlv in changes message received",
+		},
+		{
+			name:   "empty",
+			hlv:    "",
+			errMsg: "empty hlv",
+		},
+		{
+			name:   "cv,mv,mv (duplicate in mv)",
+			hlv:    "1@abc,1@abc,2@def",
+			errMsg: "cv exists in mv",
+		},
+		{
+			name:   "cv,mv,mv,pv (duplicate in mv)",
+			hlv:    "2@abc,1@abc,2@def;1@abc",
+			errMsg: "found in pv and mv",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			require.NotEmpty(t, testCase.errMsg) // make sure err msg is specified
+			hlv, legacyRevs, err := ExtractHLVFromBlipMessage(testCase.hlv)
+			require.ErrorContains(t, err, testCase.errMsg, "expected err for %s", testCase.hlv)
+			require.Nil(t, hlv)
+			require.Nil(t, legacyRevs)
+		})
+	}
 }
 
-var extractHLVFromBlipMsgBMarkCases = []struct {
-	name             string
-	hlvString        string
-	expectedHLV      []string
-	mergeVersions    bool
-	previousVersions bool
-}{
-	{
-		name:             "mv and pv, leading spaces",                                                                                                                                                         // with spaces
-		hlvString:        "25@def; 22@def, 21@eff, 500@x, 501@xx, 4000@xxx, 700@y, 701@yy, 702@yyy; 20@abc, 18@hij, 3@x, 4@xx, 5@xxx, 6@xxxx, 7@xxxxx, 3@y, 4@yy, 5@yyy, 6@yyyy, 7@yyyyy, 2@xy, 3@xyy, 4@xxy", // 15 pv 8 mv
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21", "m_x@500", "m_xx@501", "m_xxx@4000", "m_y@700", "m_yy@701", "m_yyy@702"},
-		previousVersions: true,
-		mergeVersions:    true,
-	},
-	{
-		name:             "mv and pv, no spaces",                                                                                                                                       // without spaces
-		hlvString:        "25@def;22@def,21@eff,500@x,501@xx,4000@xxx,700@y,701@yy,702@yyy;20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15 pv 8 mv
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21", "m_x@500", "m_xx@501", "m_xxx@4000", "m_y@700", "m_yy@701", "m_yyy@702"},
-		previousVersions: true,
-		mergeVersions:    true,
-	},
-	{
-		name:             "pv only",
-		hlvString:        "25@def; 20@abc,18@hij",
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18"},
-		previousVersions: true,
-	},
-	{
-		name:             "mv and pv, mixed spacing",
-		hlvString:        "25@def; 22@def,21@eff; 20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21"},
-		mergeVersions:    true,
-		previousVersions: true,
-	},
-	{
-		name:        "cv only",
-		hlvString:   "24@def",
-		expectedHLV: []string{"def@24"},
-	},
-	{
-		name:             "cv and mv,base64 encoded",
-		hlvString:        "1@Hell0CA; 1@1Hr0k43xS662TToxODDAxQ",
-		expectedHLV:      []string{"Hell0CA@1", "1Hr0k43xS662TToxODDAxQ@1"},
-		previousVersions: true,
-	},
-	{
-		name:             "cv and mv - small",
-		hlvString:        "25@def; 22@def,21@eff; 20@abc,18@hij",
-		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "m_def@22", "m_eff@21"},
-		mergeVersions:    true,
-		previousVersions: true,
-	},
+type extractHLVFromBlipMsgBMarkCases = struct {
+	name        string
+	hlvString   string
+	expectedHLV HybridLogicalVector
+	legacyRevs  []string
+}
+
+func getHLVTestCases(t testing.TB) []extractHLVFromBlipMsgBMarkCases {
+	return []extractHLVFromBlipMsgBMarkCases{
+		{
+			name:      "cv,mv,mv",
+			hlvString: "25@def, 22@def, 21@eff",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+				},
+			},
+		},
+		{
+			name:      "cv, mv and pv, leading spaces",                                                                                                                                                           // with spaces
+			hlvString: "25@def, 22@def, 21@eff, 500@x, 501@xx, 4000@xxx, 700@y, 701@yy, 702@yyy; 20@abc, 18@hij, 3@x2, 4@xx2, 5@xxx2, 6@xxxx, 7@xxxxx, 3@y2, 4@yy2, 5@yyy2, 6@yyyy, 7@yyyyy, 2@xy, 3@xyy, 4@xxy", // 15 pv 8 mv
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+					"x":   stringHexToUint(t, "500"),
+					"xx":  stringHexToUint(t, "501"),
+					"xxx": stringHexToUint(t, "4000"),
+					"y":   stringHexToUint(t, "700"),
+					"yy":  stringHexToUint(t, "701"),
+					"yyy": stringHexToUint(t, "702"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc":   stringHexToUint(t, "20"),
+					"hij":   stringHexToUint(t, "18"),
+					"x2":    stringHexToUint(t, "3"),
+					"xx2":   stringHexToUint(t, "4"),
+					"xxx2":  stringHexToUint(t, "5"),
+					"xxxx":  stringHexToUint(t, "6"),
+					"xxxxx": stringHexToUint(t, "7"),
+					"y2":    stringHexToUint(t, "3"),
+					"yy2":   stringHexToUint(t, "4"),
+					"yyy2":  stringHexToUint(t, "5"),
+					"yyyy":  stringHexToUint(t, "6"),
+					"yyyyy": stringHexToUint(t, "7"),
+					"xy":    stringHexToUint(t, "2"),
+					"xyy":   stringHexToUint(t, "3"),
+					"xxy":   stringHexToUint(t, "4"),
+				},
+			},
+		},
+		{
+			name:      "cv mv and pv, no spaces",                                                                                                                                          // without spaces
+			hlvString: "25@def,22@def,21@eff,500@x,501@xx,4000@xxx,700@y,701@yy,702@yyy;20@abc,18@hij,3@x2,4@xx2,5@xxx2,6@xxxx,7@xxxxx,3@y2,4@yy2,5@yyy2,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15 pv 8 mv
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+					"x":   stringHexToUint(t, "500"),
+					"xx":  stringHexToUint(t, "501"),
+					"xxx": stringHexToUint(t, "4000"),
+					"y":   stringHexToUint(t, "700"),
+					"yy":  stringHexToUint(t, "701"),
+					"yyy": stringHexToUint(t, "702"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc":   stringHexToUint(t, "20"),
+					"hij":   stringHexToUint(t, "18"),
+					"x2":    stringHexToUint(t, "3"),
+					"xx2":   stringHexToUint(t, "4"),
+					"xxx2":  stringHexToUint(t, "5"),
+					"xxxx":  stringHexToUint(t, "6"),
+					"xxxxx": stringHexToUint(t, "7"),
+					"y2":    stringHexToUint(t, "3"),
+					"yy2":   stringHexToUint(t, "4"),
+					"yyy2":  stringHexToUint(t, "5"),
+					"yyyy":  stringHexToUint(t, "6"),
+					"yyyyy": stringHexToUint(t, "7"),
+					"xy":    stringHexToUint(t, "2"),
+					"xyy":   stringHexToUint(t, "3"),
+					"xxy":   stringHexToUint(t, "4"),
+				},
+			},
+		},
+		{
+			name:      "cv; pv,pv",
+			hlvString: "25@def; 20@abc,18@hij",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				PreviousVersions: map[string]uint64{
+					"abc": stringHexToUint(t, "20"),
+					"hij": stringHexToUint(t, "18"),
+				},
+			},
+		},
+		{
+			name:      "cv,mv ;pv, mixed spacing",
+			hlvString: "25@def, 22@def,21@eff; 20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc":   stringHexToUint(t, "20"),
+					"hij":   stringHexToUint(t, "18"),
+					"x":     stringHexToUint(t, "3"),
+					"xx":    stringHexToUint(t, "4"),
+					"xxx":   stringHexToUint(t, "5"),
+					"xxxx":  stringHexToUint(t, "6"),
+					"xxxxx": stringHexToUint(t, "7"),
+					"y":     stringHexToUint(t, "3"),
+					"yy":    stringHexToUint(t, "4"),
+					"yyy":   stringHexToUint(t, "5"),
+					"yyyy":  stringHexToUint(t, "6"),
+					"yyyyy": stringHexToUint(t, "7"),
+					"xy":    stringHexToUint(t, "2"),
+					"xyy":   stringHexToUint(t, "3"),
+					"xxy":   stringHexToUint(t, "4"),
+				},
+			},
+		},
+		{
+			name:      "cv only",
+			hlvString: "24@def",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "24"),
+				SourceID:          "def",
+			},
+		},
+		{
+			name:      "cv; pv base64 encoded",
+			hlvString: "1@Hell0CA; 1@1Hr0k43xS662TToxODDAxQ",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "1"),
+				SourceID:          "Hell0CA",
+				PreviousVersions: map[string]uint64{
+					"1Hr0k43xS662TToxODDAxQ": stringHexToUint(t, "1"),
+				},
+			},
+		},
+		{
+			name:      "cv,mv,mv;pv,pv - small",
+			hlvString: "25@def, 22@def,21@eff; 20@abc,18@hij",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc": stringHexToUint(t, "20"),
+					"hij": stringHexToUint(t, "18"),
+				},
+			},
+		},
+		{
+			name:      "cv,mv,mv;pv,pv,legacyrev",
+			hlvString: "25@def, 22@def,21@eff; 20@abc,18@hij,1-abc",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+				},
+				PreviousVersions: map[string]uint64{
+					"abc": stringHexToUint(t, "20"),
+					"hij": stringHexToUint(t, "18"),
+				},
+			},
+			legacyRevs: []string{"1-abc"},
+		},
+		{
+			name:      "cv; trailing semicolon",
+			hlvString: "25@def;",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+			},
+		},
+	}
 }
 
 // TestExtractHLVFromChangesMessage:
-//   - Test case 1: CV entry and 1 PV entry
-//   - Test case 2: CV entry and 2 PV entries
-//   - Test case 3: CV entry, 2 MV entries and 2 PV entries
-//   - Test case 4: just CV entry
 //   - Each test case gets run through ExtractHLVFromBlipMessage and assert that the resulting HLV
 //     is correct to what is expected
 func TestExtractHLVFromChangesMessage(t *testing.T) {
-	for _, test := range extractHLVFromBlipMsgBMarkCases {
+	for _, test := range getHLVTestCases(t) {
 		t.Run(test.name, func(t *testing.T) {
-			expectedVector := createHLVForTest(t, test.expectedHLV)
-
-			// TODO: When CBG-3662 is done, should be able to simplify base64 handling to treat source as a string
-			//       that may represent a base64 encoding
-			base64EncodedHlvString := EncodeTestHistory(test.hlvString)
-			hlv, _, err := ExtractHLVFromBlipMessage(base64EncodedHlvString)
+			hlv, legacyRevs, err := ExtractHLVFromBlipMessage(test.hlvString)
 			require.NoError(t, err)
 
-			assert.Equal(t, expectedVector.SourceID, hlv.SourceID)
-			assert.Equal(t, expectedVector.Version, hlv.Version)
-			if test.previousVersions {
-				assert.True(t, reflect.DeepEqual(expectedVector.PreviousVersions, hlv.PreviousVersions))
-			}
-			if test.mergeVersions {
-				assert.True(t, reflect.DeepEqual(expectedVector.MergeVersions, hlv.MergeVersions))
-			}
+			require.Equal(t, test.expectedHLV, *hlv, "HLV not parsed correctly for %s", test.hlvString)
+			require.Equal(t, test.legacyRevs, legacyRevs)
 		})
 	}
 }
@@ -689,7 +927,7 @@ func TestExtractCVFromProposeChangesRev(t *testing.T) {
 }
 
 func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
-	for _, bm := range extractHLVFromBlipMsgBMarkCases {
+	for _, bm := range getHLVTestCases(b) {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_, _, _ = ExtractHLVFromBlipMessage(bm.hlvString)
@@ -826,4 +1064,199 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	assert.Equal(t, expCas, memHLV.CurrentVersionCAS)
 	assert.Len(t, memHLV.PreviousVersions, 0)
 	assert.Len(t, memHLV.MergeVersions, 0)
+}
+
+func stringHexToUint(t testing.TB, value string) uint64 {
+	intValue, err := strconv.ParseUint(value, 16, 64)
+	require.NoError(t, err)
+	return intValue
+}
+
+func TestHLVAddNewerVersionsWithMV(t *testing.T) {
+	testCases := []struct {
+		name        string
+		existingHLV HybridLogicalVector
+		incomingHLV HybridLogicalVector
+		finalHLV    HybridLogicalVector
+	}{
+		{
+			name:        "Add new MV",
+			existingHLV: HybridLogicalVector{},
+			incomingHLV: HybridLogicalVector{
+				SourceID: "b",
+				Version:  1,
+				MergeVersions: map[string]uint64{
+					"a": 1,
+				},
+			},
+			finalHLV: HybridLogicalVector{
+				SourceID: "b",
+				Version:  1,
+				MergeVersions: map[string]uint64{
+					"a": 1,
+				},
+			},
+		},
+		{
+			name: "existing mv, move to pv",
+			existingHLV: HybridLogicalVector{
+				Version:  3,
+				SourceID: "c",
+				MergeVersions: map[string]uint64{
+					"a": 1,
+					"b": 2,
+				},
+			},
+			incomingHLV: HybridLogicalVector{
+				Version:  4,
+				SourceID: "c",
+			},
+			finalHLV: HybridLogicalVector{
+				Version:  4,
+				SourceID: "c",
+				PreviousVersions: map[string]uint64{
+					"a": 1,
+					"b": 2,
+				},
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			inputHLV := testCase.existingHLV // note this is destructive to input
+			require.NoError(t, inputHLV.AddNewerVersions(&testCase.incomingHLV))
+			require.Equal(t, testCase.finalHLV, inputHLV)
+		})
+	}
+}
+
+func TestInvalidateMV(t *testing.T) {
+	testCases := []struct {
+		name        string
+		existingHLV HybridLogicalVector
+		expectedHLV HybridLogicalVector
+	}{
+		{
+			name: "cv",
+			existingHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+			},
+			expectedHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+			},
+		},
+		{
+			name: "cv mv, unique source",
+			existingHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				MergeVersions: map[string]uint64{
+					"b": 2,
+					"c": 3,
+				},
+			},
+			expectedHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				PreviousVersions: map[string]uint64{
+					"b": 2,
+					"c": 3,
+				},
+			},
+		},
+		{
+			name: "cv mv, duplicate source",
+			existingHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				MergeVersions: map[string]uint64{
+					"a": 1,
+					"b": 2,
+				},
+			},
+			expectedHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				PreviousVersions: map[string]uint64{
+					"b": 2,
+				},
+			},
+		},
+		{
+			name: "cv pv",
+			existingHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				PreviousVersions: map[string]uint64{
+					"b": 1,
+					"c": 2,
+				},
+			},
+			expectedHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				PreviousVersions: map[string]uint64{
+					"b": 1,
+					"c": 2,
+				},
+			},
+		},
+		{
+			name: "cv mv pv, unique sources",
+			existingHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				MergeVersions: map[string]uint64{
+					"b": 1,
+					"c": 2,
+				},
+				PreviousVersions: map[string]uint64{
+					"d": 1,
+					"e": 2,
+				},
+			},
+			expectedHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				PreviousVersions: map[string]uint64{
+					"b": 1,
+					"c": 2,
+					"d": 1,
+					"e": 2,
+				},
+			},
+		},
+		{
+			name: "cv mv pv, duplicate sources",
+			existingHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				MergeVersions: map[string]uint64{
+					"a": 1,
+					"b": 2,
+				},
+				PreviousVersions: map[string]uint64{
+					"b": 1,
+					"d": 1,
+				},
+			},
+			expectedHLV: HybridLogicalVector{
+				SourceID: "a",
+				Version:  2,
+				PreviousVersions: map[string]uint64{
+					"b": 2,
+					"d": 1,
+				},
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			inputHLV := testCase.existingHLV // note this is destructive to input
+			inputHLV.InvalidateMV()
+			require.Equal(t, testCase.expectedHLV, inputHLV)
+		})
+	}
 }

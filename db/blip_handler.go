@@ -1079,7 +1079,12 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	} else {
 		versionVectorStr := rev
 		if historyStr != "" {
-			versionVectorStr += ";" + historyStr
+			// this means that there is a mv
+			if strings.Contains(historyStr, ";") {
+				versionVectorStr += "," + historyStr
+			} else {
+				versionVectorStr += ";" + historyStr
+			}
 		}
 		incomingHLV, legacyRevList, err = ExtractHLVFromBlipMessage(versionVectorStr)
 		if err != nil {
