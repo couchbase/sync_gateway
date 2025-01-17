@@ -348,7 +348,7 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 		return err
 	}
 
-	// Copy incoming merge versions (existing merge versions will have been moved to pv by AddVersion)
+	// Copy incoming merge versions (previously existing merge versions will have been moved to pv by AddVersion)
 	for i, v := range otherVector.MergeVersions {
 		hlv.setMergeVersion(i, v)
 	}
@@ -370,10 +370,9 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 		}
 	}
 	// ensure no duplicates of cv, mv in pv
-	if _, ok := hlv.PreviousVersions[hlv.SourceID]; ok {
-		delete(hlv.PreviousVersions, hlv.SourceID)
-	}
-	for source, _ := range hlv.MergeVersions {
+	delete(hlv.PreviousVersions, hlv.SourceID)
+
+	for source := range hlv.MergeVersions {
 		delete(hlv.PreviousVersions, source)
 	}
 
