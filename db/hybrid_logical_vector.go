@@ -239,6 +239,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	if hlv.SourceID == "" {
 		hlv.Version = newVersion.Value
 		hlv.SourceID = newVersion.SourceID
+		hlv.InvalidateMV()
 		return nil
 	}
 	// if new entry has the same source we simple just update the version
@@ -247,6 +248,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value for the same source. Current cas: %d new cas %d", hlv.Version, newVersion.Value)
 		}
 		hlv.Version = newVersion.Value
+		hlv.InvalidateMV()
 		return nil
 	}
 	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
@@ -273,11 +275,22 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 
 	hlv.Version = newVersion.Value
 	hlv.SourceID = newVersion.SourceID
+	hlv.InvalidateMV()
 	return nil
 }
 
+// InvalidateMV will move all merge versions to PV, except merge version entries that share a source with cv
+func (hlv *HybridLogicalVector) InvalidateMV() {
+	for source, value := range hlv.MergeVersions {
+		if source == hlv.SourceID {
+			continue
+		}
+		hlv.setPreviousVersion(source, value)
+	}
+	hlv.MergeVersions = nil
+}
+
 // Remove removes a source from previous versions of the HLV.
-// TODO: Does this need to remove source from current version as well? Merge Versions?
 func (hlv *HybridLogicalVector) Remove(source string) error {
 	// if entry is not found in previous versions we return error
 	if hlv.PreviousVersions[source] == 0 {
@@ -335,7 +348,12 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 		return err
 	}
 
-	if otherVector.PreviousVersions != nil || len(otherVector.PreviousVersions) != 0 {
+	// Copy incoming merge versions (existing merge versions will have been moved to pv by AddVersion)
+	for i, v := range otherVector.MergeVersions {
+		hlv.setMergeVersion(i, v)
+	}
+
+	if len(otherVector.PreviousVersions) != 0 {
 		// Iterate through incoming vector previous versions, update with the version from other vector
 		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
@@ -351,10 +369,14 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 			}
 		}
 	}
-	// if current source exists in PV, delete it.
+	// ensure no duplicates of cv, mv in pv
 	if _, ok := hlv.PreviousVersions[hlv.SourceID]; ok {
 		delete(hlv.PreviousVersions, hlv.SourceID)
 	}
+	for source, _ := range hlv.MergeVersions {
+		delete(hlv.PreviousVersions, source)
+	}
+
 	return nil
 }
 
@@ -381,6 +403,14 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 		hlv.PreviousVersions = make(HLVVersions)
 	}
 	hlv.PreviousVersions[source] = version
+}
+
+// setMergeVersion will take a source/version pair and add it to the HLV merge versions map
+func (hlv *HybridLogicalVector) setMergeVersion(source string, version uint64) {
+	if hlv.MergeVersions == nil {
+		hlv.MergeVersions = make(HLVVersions)
+	}
+	hlv.MergeVersions[source] = version
 }
 
 func (hlv *HybridLogicalVector) IsVersionKnown(otherVersion Version) bool {
