@@ -567,7 +567,7 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 
 func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 	if e.err == nil {
-		//DebugfCtx(dc.ctx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
+		DebugfCtx(dc.ctx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
 		dc.deactivateVbucket(e.vbID)
 		return
 	}
