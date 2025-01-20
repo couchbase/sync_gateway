@@ -1007,11 +1007,11 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 	if !opts.AllowCreationWithoutBlipTesterClientRunner && !btcRunner.initialisedInsideRunnerCode {
 		require.FailNow(btcRunner.TB(), "must initialise BlipTesterClient inside Run() method")
 	}
-	if opts.SourceID == "" {
-		opts.SourceID = "blipclient"
-	}
 	id, err := uuid.NewRandom()
 	require.NoError(btcRunner.TB(), err)
+	if opts.SourceID == "" {
+		opts.SourceID = fmt.Sprintf("btc-%d", id.ID())
+	}
 
 	client = &BlipTesterClient{
 		BlipTesterClientOpts: *opts,
@@ -1561,7 +1561,7 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 	var docVersion DocVersion
 	if btc.UseHLV() {
 		// TODO: CBG-4440 Construct a HLC for Value - UnixNano is not accurate enough on Windows to generate unique values, and seq is not comparable across clients.
-		newVersion := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.parent.id), Value: uint64(time.Now().UnixNano())}
+		newVersion := db.Version{SourceID: btc.parent.SourceID, Value: uint64(time.Now().UnixNano())}
 		require.NoError(btc.TB(), hlv.AddVersion(newVersion))
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
 	} else {

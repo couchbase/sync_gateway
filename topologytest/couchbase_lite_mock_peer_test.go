@@ -198,7 +198,7 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 		Channels:               []string{"*"},
 		SupportedBLIPProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()},
 		AllowCreationWithoutBlipTesterClientRunner: true,
-		SourceID: peer.SourceID(),
+		SourceID: p.SourceID(),
 	},
 	)
 	p.blipClients[sg.String()] = &PeerBlipTesterClient{
