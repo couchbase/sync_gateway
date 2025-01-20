@@ -17,11 +17,9 @@ get:
     * External Stats Reader
   responses:
     '200':
-      description: Successfully returned stats
-      content:
-        text/plain:
-          schema:
-            type: string
+      description: |-
+          Successfully returned statistics.
+          For details, see [Prometheus Metrics](stats-monitoring-prometheus.html).
   tags:
     - Prometheus
   operationId: get_metrics

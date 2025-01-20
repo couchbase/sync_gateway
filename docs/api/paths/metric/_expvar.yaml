@@ -7,7 +7,7 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 get:
-  summary: Get all Sync Gateway statistics
+  summary: Get all Sync Gateway statistics in JSON format
   description: |-
     This returns a snapshot of all metrics in Sync Gateway for debugging and monitoring purposes.
 
@@ -18,9 +18,13 @@ get:
     * Sync Gateway Architect
     * Sync Gateway Dev Ops
     * External Stats Reader
+  tags:
+    - JSON
   responses:
     '200':
-      description: Returned statistics
+      description: |-
+          Successfully returned statistics.
+          For details, see [JSON Metrics](stats-monitoring-json.html).
       content:
         application/javascript:
           schema:

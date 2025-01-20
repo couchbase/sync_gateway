@@ -8,8 +8,12 @@
 
 openapi: 3.0.3
 info:
-  title: Sync Gateway
-  description: Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server
+  title: Sync Gateway Metrics REST API
+  description: |-
+    # Introduction
+
+    Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server.
+    The Sync Gateway Metrics REST API returns Sync Gateway metrics, in JSON or Prometheus-compatible formats, for performance monitoring and diagnostic purposes.
   version: '3.3'
   license:
     name: Business Source License 1.1 (BSL)
@@ -30,8 +34,6 @@ servers:
 paths:
   /_ping:
     $ref: ./paths/common/_ping.yaml
-  /_metrics:
-    $ref: ./paths/metric/metrics.yaml
   /metrics:
     $ref: ./paths/metric/metrics.yaml
   /_expvar:
@@ -39,6 +41,10 @@ paths:
 tags:
   - name: Prometheus
     description: Endpoints for use with Prometheus
+  - name: JSON
+    description: Endpoints for use with JSON metrics
+  - name: Server
+    description: Endpoints for managing the REST API
 externalDocs:
-  description: Sync Gateway Quickstart | Couchbase Docs
-  url: 'https://docs.couchbase.com/sync-gateway/current/index.html'
+  description: ⬆️ Metrics REST API Overview
+  url: rest-api-metrics.html
