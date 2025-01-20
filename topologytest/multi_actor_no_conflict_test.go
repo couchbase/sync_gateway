@@ -11,8 +11,6 @@ package topologytest
 import (
 	"fmt"
 	"testing"
-
-	"github.com/couchbase/sync_gateway/base"
 )
 
 // TestMultiActorUpdate tests that a single actor can update a document that was created on a different peer.
@@ -78,9 +76,6 @@ func TestMultiActorDelete(t *testing.T) {
 // 6. resurrect each document on a single peer
 // 7. wait for the hlv for updated documents to be synchronized
 func TestMultiActorResurrect(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBG-4419: this test fails xdcr with: could not write doc: cas mismatch: expected 0, really 1 -- xdcr.(*rosmarManager).processEvent() at rosmar_xdcr.go:201")
-	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)

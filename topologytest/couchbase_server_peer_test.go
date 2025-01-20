@@ -82,7 +82,9 @@ func (r *CouchbaseServerReplication) String() string {
 
 func (r *CouchbaseServerReplication) Stats() string {
 	stats, err := r.manager.Stats(r.ctx)
-	require.NoError(r.t, err)
+	if err != nil {
+		return fmt.Sprintf("error getting stats: %v", err)
+	}
 	return fmt.Sprintf("%+v", *stats)
 }
 

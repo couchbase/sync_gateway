@@ -11,8 +11,6 @@ package topologytest
 import (
 	"strings"
 	"testing"
-
-	"github.com/couchbase/sync_gateway/base"
 )
 
 // TestMultiActorConflictCreate
@@ -20,9 +18,6 @@ import (
 // 2. start replications
 // 3. wait for documents to exist with hlv sources equal to the number of active peers
 func TestMultiActorConflictCreate(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
-	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
@@ -46,9 +41,6 @@ func TestMultiActorConflictCreate(t *testing.T) {
 // 6. start replications
 // 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
 func TestMultiActorConflictUpdate(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
-	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		if strings.Contains(topology.description, "CBL") {
 			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
@@ -117,9 +109,6 @@ func TestMultiActorConflictDelete(t *testing.T) {
 // 10. start replications
 // 11. assert that the documents are resurrected on all peers and have hlv sources equal to the number of active peers and the document body is equivalent to the last write
 func TestMultiActorConflictResurrect(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Flakey failures on multi actor conflicting writes, CBG-4379")
-	}
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		if strings.Contains(topology.description, "CBL") {
 			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
