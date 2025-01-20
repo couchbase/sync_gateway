@@ -34,6 +34,9 @@ servers:
 paths:
   /_ping:
     $ref: ./paths/common/_ping.yaml
+  /_metrics:
+    $ref: ./paths/metric/_metrics.yaml
+    x-internal: true
   /metrics:
     $ref: ./paths/metric/metrics.yaml
   /_expvar:
