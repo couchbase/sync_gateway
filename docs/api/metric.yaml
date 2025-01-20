@@ -35,7 +35,7 @@ paths:
   /_ping:
     $ref: ./paths/common/_ping.yaml
   /_metrics:
-    $ref: ./paths/metric/_metrics.yaml
+    $ref: ./paths/metric/metrics.yaml
     x-internal: true
   /metrics:
     $ref: ./paths/metric/metrics.yaml
