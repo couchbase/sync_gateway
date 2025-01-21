@@ -45,11 +45,11 @@ func (t *TombstoneCompactionManager) Run(ctx context.Context, options map[string
 	database := options["database"].(*Database)
 
 	defer atomic.CompareAndSwapUint32(&database.CompactState, DBCompactRunning, DBCompactNotRunning)
-	callback := func(docsPurged *int) {
+	updateStatusCallback := func(docsPurged *int) {
 		atomic.StoreInt64(&t.PurgedDocCount, int64(*docsPurged))
 	}
 
-	_, err := database.Compact(ctx, true, callback, terminator)
+	_, err := database.Compact(ctx, true, updateStatusCallback, terminator, false)
 	if err != nil {
 		return err
 	}
