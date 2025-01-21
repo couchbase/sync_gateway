@@ -15,9 +15,11 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	dto "github.com/prometheus/client_model/go"
@@ -35,11 +37,12 @@ var errNoXDCRMetrics = errors.New("No metric found")
 
 // couchbaseServerManager implements a XDCR setup cluster on Couchbase Server.
 type couchbaseServerManager struct {
-	fromBucket    *base.GocbV2Bucket
-	toBucket      *base.GocbV2Bucket
-	replicationID string
-	filter        string
-	mobileSetting MobileSetting
+	fromBucket        *base.GocbV2Bucket
+	toBucket          *base.GocbV2Bucket
+	replicationID     string
+	filter            string
+	mobileSetting     MobileSetting
+	startingTimestamp string
 }
 
 // isClusterPresent returns true if the XDCR cluster is present, false if it is not present, and an error if it could not be determined.
@@ -160,6 +163,11 @@ func (x *couchbaseServerManager) Start(ctx context.Context) error {
 	if x.replicationID != "" {
 		return ErrReplicationAlreadyRunning
 	}
+	var err error
+	x.startingTimestamp, err = x.lastTimestampOfLogFile()
+	if err != nil {
+		return err
+	}
 	method := http.MethodPost
 	body := url.Values{}
 	body.Add("name", fmt.Sprintf("%s_%s", x.fromBucket.GetName(), x.toBucket.GetName()))
@@ -216,6 +224,7 @@ func (x *couchbaseServerManager) Stop(ctx context.Context) error {
 		return err
 	}
 	x.replicationID = ""
+	x.startingTimestamp = ""
 	return err
 }
 
@@ -275,35 +284,77 @@ outer:
 	return 0, errNoXDCRMetrics
 }
 
-// waitForStoppedInLogFile waits for the replication to stop by checking the log file.
-func (x *couchbaseServerManager) waitForStoppedInLogFile(ctx context.Context) error {
-	// magic string to indicate that the replication has stopped
-	grepStr := fmt.Sprintf("%s status is finished shutting down", x.replicationID)
-	usingDocker, dockerName := base.TestUseCouchbaseServerDockerName()
-	cmdLine := ""
-	logFile := "/opt/couchbase/var/lib/couchbase/logs/goxdcr.log"
-	if usingDocker {
-		cmdLine = fmt.Sprintf(`docker exec -t %s cat "%s" | grep "%s"`, dockerName, logFile, grepStr)
-	} else {
-		if runtime.GOOS == "darwin" {
-			logFile = "$HOME/Library/Application Support/Couchbase/var/lib/couchbase/logs/goxdcr.log"
-		}
-		cmdLine = fmt.Sprintf(`cat "%s" | grep "%s"`, logFile, grepStr)
+// lineCountOfLogFile returns the number of lines in the goxdcr.log file. This is used to determine the offset when re-reading the log file.
+func (x *couchbaseServerManager) lastTimestampOfLogFile() (string, error) {
+	logFile := x.xdcrLogFilePath()
+	// not all lines start with a timestamp, so we need to find the last line that does 2000-01-01T01:01:01.000Z
+	cmdLine := fmt.Sprintf(`tail -n100 "%s"`, logFile)
+	output, err := x.runCommandOnCBS(cmdLine)
+	if err != nil {
+		return "", err
 	}
-	err, _ := base.RetryLoop(ctx, "ReadLogFileUntilStopped", func() (shouldRetry bool, err error, value any) {
-		cmd := exec.Command("bash", "-c", cmdLine)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return true, fmt.Errorf("Failed to run %s (%w) Output: %s", cmd, err, output), nil
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	slices.Reverse(lines)
+	for _, line := range lines {
+		re := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`)
+		if re.MatchString(line) {
+			timestamp := strings.Split(line, " ")[0]
+			return timestamp, nil
 		}
-		return false, nil, nil
-	}, base.CreateMaxDoublingSleeperFunc(10, 10, 1000))
+	}
+	return "", fmt.Errorf("Could not find a timestamp in the last 100 lines of %s: %s", logFile, output)
+}
+
+// xdcrLogFilePath returns the path of the goxdcr.log file.
+func (x *couchbaseServerManager) xdcrLogFilePath() string {
+	usingDocker, _ := base.TestUseCouchbaseServerDockerName()
+	if runtime.GOOS == "darwin" && !usingDocker {
+		return "$HOME/Library/Application Support/Couchbase/var/lib/couchbase/logs/goxdcr.log"
+	}
+	return "/opt/couchbase/var/lib/couchbase/logs/goxdcr.log"
+}
+
+// runCommandOnCBS executes a command against in the same machine of couchbase server. This is aware of CBS running locally or locally within docker.
+func (x *couchbaseServerManager) runCommandOnCBS(cmdLine string) (string, error) {
+	usingDocker, dockerName := base.TestUseCouchbaseServerDockerName()
+	var fullCmdLine []string
+	if usingDocker {
+		fullCmdLine = append(fullCmdLine, []string{"docker", "exec", "-t", dockerName}...)
+	}
+	fullCmdLine = append(fullCmdLine, []string{"bash", "-c", cmdLine}...)
+	cmd := exec.Command(fullCmdLine[0], fullCmdLine[1:]...) // nolint: gosec
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		suffix := ""
 		if !usingDocker {
 			suffix = fmt.Sprintf(". If you are running in docker, you may need to set the environment variable %s=<name of the container>", base.TestEnvCouchbaseServerDockerName)
 		}
-		return fmt.Errorf("Could not find %s in %s. %w%s", grepStr, logFile, err, suffix)
+		return string(output), fmt.Errorf("Failed to run %s (%w) Output: %s%s", cmd, err, output, suffix)
+	}
+	return string(output), nil
+}
+
+// waitForStoppedInLogFile waits for the replication to stop by checking the log file.
+func (x *couchbaseServerManager) waitForStoppedInLogFile(ctx context.Context) error {
+	// magic string to indicate that the replication has stopped
+	grepStr := fmt.Sprintf("%s status is finished shutting down", x.replicationID)
+	logFile := x.xdcrLogFilePath()
+	cmdLine := fmt.Sprintf(`grep -I -h "%s" "%s"*`, grepStr, logFile)
+	err, _ := base.RetryLoop(ctx, "ReadLogFileUntilStopped", func() (shouldRetry bool, err error, value any) {
+		output, err := x.runCommandOnCBS(cmdLine)
+		if err != nil {
+			return true, err, nil
+		}
+		for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+			timestamp := strings.Split(line, " ")[0]
+			if timestamp > x.startingTimestamp {
+				return false, nil, nil
+			}
+		}
+		return true, fmt.Errorf("Could not find line newer than %s in %s", x.startingTimestamp, output), nil
+	}, base.CreateSleeperFunc(int((5*time.Minute).Milliseconds()), int((1*time.Second).Milliseconds())))
+	if err != nil {
+		return fmt.Errorf("Could not find %s in %s. %w", grepStr, logFile, err)
 	}
 	return nil
 }
