@@ -64,21 +64,18 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 
 		// Create doc revision with attachment on SG.
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-		version := btc.rt.PutDoc(docID, bodyText)
+		version1 := btc.rt.PutDoc(docID, bodyText)
 
-		data := btcRunner.WaitForVersion(btc.id, docID, version)
+		data := btcRunner.WaitForVersion(btc.id, docID, version1)
 		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		require.JSONEq(t, bodyTextExpected, string(data))
 
 		// Update the replicated doc at client along with keeping the same attachment stub.
 		bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-		version = btcRunner.AddRev(btc.id, docID, &version, []byte(bodyText))
+		version2 := btcRunner.AddRev(btc.id, docID, &version1, []byte(bodyText))
 
-		// TODO: Replace with rt.WaitForVersion
-		// Wait for the document to be replicated at SG
-		btc.pushReplication.WaitForMessage(2)
-
-		respBody := btc.rt.GetDocVersion(docID, version)
+		rt.WaitForVersion(docID, version2)
+		respBody := btc.rt.GetDocVersion(docID, version2)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]interface{})
@@ -135,20 +132,19 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 		// Create doc revision with attachment on SG.
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-		version := btc.rt.PutDoc(docID, bodyText)
+		version1 := btc.rt.PutDoc(docID, bodyText)
 
-		data := btcRunner.WaitForVersion(btc.id, docID, version)
+		data := btcRunner.WaitForVersion(btc.id, docID, version1)
 		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		require.JSONEq(t, bodyTextExpected, string(data))
 
 		// Update the replicated doc at client along with keeping the same attachment stub.
 		bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-		version = btcRunner.AddRev(btc.id, docID, &version, []byte(bodyText))
+		version2 := btcRunner.AddRev(btc.id, docID, &version1, []byte(bodyText))
 
-		// Wait for the document to be replicated at SG
-		btc.pushReplication.WaitForMessage(2)
+		rt.WaitForVersion(docID, version2)
 
-		respBody := btc.rt.GetDocVersion(docID, version)
+		respBody := btc.rt.GetDocVersion(docID, version2)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]interface{})
