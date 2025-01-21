@@ -1440,15 +1440,19 @@ func (db *DatabaseContext) GetRoleIDs(ctx context.Context, useViews, includeDele
 	return roles, nil
 }
 
-// Trigger tombstone compaction from view and/or GSI indexes.  Several Sync Gateway indexes server tombstones (deleted documents with an xattr).
+type compactProgressCallbackFunc func(purgedDocCount *int)
+
+// Compact runs tombstone compaction from view and/or GSI indexes - ensuring there's nothing left in the indexes for tombstoned documents that have been purged by the server.
+//
+// Several Sync Gateway indexes server tombstones (deleted documents with an xattr).
 // There currently isn't a mechanism for server to remove these docs from the index when the tombstone is purged by the server during
 // metadata purge, because metadata purge doesn't trigger a DCP event.
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
-type compactCallbackFunc func(purgedDocCount *int)
-
-func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, callback compactCallbackFunc, terminator *base.SafeTerminator) (int, error) {
+//
+// The `isScheduledBackgroundTask` parameter is used to indicate if the compaction is being run as part of a scheduled background task, or an ad-hoc user-initiated `/{db}/_compact` request.
+func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, optionalProgressCallback compactProgressCallbackFunc, terminator *base.SafeTerminator, isScheduledBackgroundTask bool) (purgedDocCount int, err error) {
 	if !skipRunningStateCheck {
 		if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
 			return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
@@ -1469,12 +1473,13 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	startTime := time.Now()
 	purgeOlderThan := startTime.Add(-purgeInterval)
 
-	purgedDocCount := 0
 	purgeErrorCount := 0
 	addErrorCount := 0
 	deleteErrorCount := 0
 
-	defer callback(&purgedDocCount)
+	if optionalProgressCallback != nil {
+		defer optionalProgressCallback(&purgedDocCount)
+	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting compaction of purged tombstones for %s ...", base.MD(db.Name))
 
@@ -1493,6 +1498,9 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 		for {
 			purgedDocs := make([]string, 0)
 			results, err := collection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
+			if isScheduledBackgroundTask {
+				base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Add(1)
+			}
 			if err != nil {
 				return 0, err
 			}
@@ -1513,11 +1521,17 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 				base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 				// First, attempt to purge.
 				purgeErr := collection.Purge(ctx, tombstonesRow.Id, false)
+				if isScheduledBackgroundTask {
+					base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
+				}
 				if purgeErr == nil {
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 				} else if base.IsDocNotFoundError(purgeErr) {
 					// If key no longer exists, need to add and remove to trigger removal from view
 					_, addErr := collection.dataStore.Add(tombstonesRow.Id, 0, purgeBody)
+					if isScheduledBackgroundTask {
+						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
+					}
 					if addErr != nil {
 						addErrorCount++
 						base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (add): %v", base.UD(tombstonesRow.Id), addErr)
@@ -1528,7 +1542,11 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 					// so mark it to be removed from cache, even if the subsequent delete fails
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
-					if delErr := collection.dataStore.Delete(tombstonesRow.Id); delErr != nil {
+					delErr := collection.dataStore.Delete(tombstonesRow.Id)
+					if isScheduledBackgroundTask {
+						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
+					}
+					if delErr != nil {
 						deleteErrorCount++
 						base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (delete): %v", base.UD(tombstonesRow.Id), delErr)
 					}
@@ -1552,7 +1570,9 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 			}
 			base.InfofCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
-			callback(&purgedDocCount)
+			if optionalProgressCallback != nil {
+				optionalProgressCallback(&purgedDocCount)
+			}
 
 			if resultCount < QueryTombstoneBatch {
 				break
@@ -2442,7 +2462,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 					bgtTerminator.Close()
 				}()
 				bgt, err := NewBackgroundTask(ctx, "Compact", func(ctx context.Context) error {
-					_, err := db.Compact(ctx, false, func(purgedDocCount *int) {}, bgtTerminator)
+					_, err := db.Compact(ctx, false, nil, bgtTerminator, true)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", db.Name, err)
 					}
