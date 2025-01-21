@@ -596,6 +596,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			if btc.UseHLV() {
 				var incomingHLV *db.HybridLogicalVector
 				if revHistory != "" {
+					// TODO: Replace with new Beta version/handling
 					incomingHLV, err = db.FromHistoryForHLV(revHistory)
 					require.NoError(btr.TB(), err, "error extracting HLV history %q: %v", revHistory, err)
 					hlv = *incomingHLV
@@ -1115,11 +1116,11 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 	if !opts.ConflictResolver.IsValid() {
 		require.FailNowf(btcRunner.TB(), "invalid conflict resolver", "invalid conflict resolver %q", opts.ConflictResolver)
 	}
-	if opts.SourceID == "" {
-		opts.SourceID = "blipclient"
-	}
 	id, err := uuid.NewRandom()
 	require.NoError(btcRunner.TB(), err)
+	if opts.SourceID == "" {
+		opts.SourceID = fmt.Sprintf("btc-%d", id.ID())
+	}
 
 	client = &BlipTesterClient{
 		BlipTesterClientOpts: *opts,
