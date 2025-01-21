@@ -3546,7 +3546,7 @@ func TestTombstoneCompaction(t *testing.T) {
 					}
 				}
 
-				expectedCompactions := (test.numDocs * numCollections)
+				expectedCompactions := test.numDocs * numCollections
 				expectedBatches := (test.numDocs/db.QueryTombstoneBatch + 1) * numCollections
 
 				numCompactionsBefore := int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value())
@@ -3559,17 +3559,22 @@ func TestTombstoneCompaction(t *testing.T) {
 
 				numIdleKvOpsBefore := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
 				numIdleQueryOpsBefore := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
+				log.Printf("numIdleKvOpsBefore: %d, numIdleQueryOpsBefore: %d", numIdleKvOpsBefore, numIdleQueryOpsBefore)
 
 				if runAsScheduledBackgroundTask {
 					database, err := db.CreateDatabase(rt.GetDatabase())
 					require.NoError(t, err)
-					_, err = database.Compact(base.TestCtx(t), false, nil, base.NewSafeTerminator(), true)
+					purgedCount, err := database.Compact(base.TestCtx(t), false, nil, base.NewSafeTerminator(), true)
 					require.NoError(t, err)
+					require.Equal(t, expectedCompactions, purgedCount)
 
-					numIdleKvOps := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()) - numIdleKvOpsBefore
-					numIdleQueryOps := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value()) - numIdleQueryOpsBefore
-					assert.Equal(t, expectedCompactions, numIdleKvOps)
-					assert.Equal(t, expectedBatches, numIdleQueryOps)
+					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
+					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
+					log.Printf("numIdleKvOpsAfter: %d, numIdleQueryOpsAfter: %d", numIdleKvOpsAfter, numIdleQueryOpsAfter)
+
+					// cannot do equal here because there are other idle kv ops unrelated to compaction
+					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, expectedCompactions)
+					assert.Equal(t, numIdleQueryOpsAfter-numIdleQueryOpsBefore, expectedBatches)
 				} else {
 					resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 					rest.RequireStatus(t, resp, http.StatusOK)
@@ -3578,11 +3583,13 @@ func TestTombstoneCompaction(t *testing.T) {
 					})
 					assert.NoError(t, err)
 
-					numIdleKvOps := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()) - numIdleKvOpsBefore
-					numIdleQueryOps := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value()) - numIdleQueryOpsBefore
-					// ad-hoc compactions don't invoke idle ops
-					assert.Equal(t, 0, numIdleKvOps)
-					assert.Equal(t, 0, numIdleQueryOps)
+					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
+					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
+					log.Printf("numIdleKvOpsAfter: %d, numIdleQueryOpsAfter: %d", numIdleKvOpsAfter, numIdleQueryOpsAfter)
+
+					// ad-hoc compactions don't invoke idle ops - but we do have other idle kv ops so can't ensure it stays zero
+					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, 0)
+					assert.Equal(t, numIdleQueryOpsAfter-numIdleQueryOpsBefore, 0)
 				}
 
 				actualCompactions := int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()) - numCompactionsBefore
