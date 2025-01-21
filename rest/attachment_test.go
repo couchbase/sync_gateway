@@ -2355,6 +2355,8 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 }
 
 func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeyChanges, base.KeyHTTP)
+
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
