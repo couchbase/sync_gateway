@@ -3559,7 +3559,6 @@ func TestTombstoneCompaction(t *testing.T) {
 
 				numIdleKvOpsBefore := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
 				numIdleQueryOpsBefore := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
-				log.Printf("numIdleKvOpsBefore: %d, numIdleQueryOpsBefore: %d", numIdleKvOpsBefore, numIdleQueryOpsBefore)
 
 				if runAsScheduledBackgroundTask {
 					database, err := db.CreateDatabase(rt.GetDatabase())
@@ -3570,7 +3569,6 @@ func TestTombstoneCompaction(t *testing.T) {
 
 					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
 					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
-					log.Printf("numIdleKvOpsAfter: %d, numIdleQueryOpsAfter: %d", numIdleKvOpsAfter, numIdleQueryOpsAfter)
 
 					// cannot do equal here because there are other idle kv ops unrelated to compaction
 					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, expectedCompactions)
@@ -3585,7 +3583,6 @@ func TestTombstoneCompaction(t *testing.T) {
 
 					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
 					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
-					log.Printf("numIdleKvOpsAfter: %d, numIdleQueryOpsAfter: %d", numIdleKvOpsAfter, numIdleQueryOpsAfter)
 
 					// ad-hoc compactions don't invoke idle ops - but we do have other idle kv ops so can't ensure it stays zero
 					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, 0)
