@@ -26,6 +26,7 @@ import (
 
 const (
 	kMaxRecentSequences            = 20    // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	kMinRecentSequences            = 5     // Minimum number of sequences that should be left stored in RecentSequences during compaction
 	unusedSequenceWarningThreshold = 10000 // Warn when releasing more than this many sequences due to existing sequence on the document
 )
 
@@ -1712,6 +1713,9 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
 		stableSequence := db.changeCache.GetStableSequence(doc.ID).Seq
 		count := 0
+		// we want to keep at least kMinRecentSequences recent sequences in the recent sequences list to reduce likelihood
+		// races between compaction of resent sequences and a coalesced DCP mutation resulting in skipped/abandoned sequences
+		maxToCompact := len(doc.RecentSequences) - kMinRecentSequences
 		for _, seq := range doc.RecentSequences {
 			// Only remove sequences if they are higher than a sequence that's been seen on the
 			// feed. This is valid across SG nodes (which could each have a different nextSequence),
@@ -1719,6 +1723,9 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			// to each node.
 			if seq < stableSequence {
 				count++
+				if count == maxToCompact {
+					break
+				}
 			} else {
 				break
 			}
