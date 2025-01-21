@@ -69,7 +69,7 @@ func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, p
 }
 
 // waitForConvergingVersion waits for the same document version to reach all peers.
-func waitForConvergingVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string) {
+func waitForConvergingVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string) {
 	t.Logf("waiting for converged doc versions across all peers")
 	if !assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		for peerAid, peerA := range peers.SortedPeers() {
@@ -86,7 +86,7 @@ func waitForConvergingVersion(t *testing.T, dsName base.ScopeAndCollectionName, 
 		}
 	}, totalWaitTime, pollInterval) {
 		// do if !assert->require pattern so we can delay PrintGlobalDocState evaluation
-		require.FailNowf(t, "Peers did not converge on version", "Global state for doc %q on all peers:\n%s", docID, peers.PrintGlobalDocState(t, dsName, docID))
+		require.FailNowf(t, "Peers did not converge on version", "Global state for doc %q on all peers:\n%s\nReplications: %s", docID, peers.PrintGlobalDocState(t, dsName, docID), replications)
 	}
 }
 

@@ -273,7 +273,7 @@ func (hlv *HybridLogicalVector) InvalidateMV() {
 		if source == hlv.SourceID {
 			continue
 		}
-		hlv.setPreviousVersion(source, value)
+		hlv.SetPreviousVersion(source, value)
 	}
 	hlv.MergeVersions = nil
 }
