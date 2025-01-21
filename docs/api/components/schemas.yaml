@@ -138,6 +138,9 @@ ExpVars:
                 num_idle_kv_ops:
                   type: integer
                   description: "The total number of idle kv operations."
+                num_idle_query_ops:
+                  type: integer
+                  description: "The total number of idle query operations."
                 process_cpu_percent_utilization:
                   type: number
                   format: float
