@@ -125,7 +125,12 @@ type LeakyBucketConfig struct {
 
 	// Returns a partial error the first time ViewCustom is called
 	FirstTimeViewCustomPartialError bool
-	PostQueryCallback               func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
+
+	// QueryCallback allows tests to set a callback that will be issued prior to issuing a view query
+	QueryCallback     func(ddoc, viewName string, params map[string]any) error
+	PostQueryCallback func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
+
+	N1QLQueryCallback func(ctx context.Context, statement string, params map[string]any, consistency ConsistencyMode, adhoc bool) error
 
 	PostN1QLQueryCallback func()
 

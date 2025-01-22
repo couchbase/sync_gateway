@@ -268,7 +268,7 @@ func (apr *ActivePushReplicator) Stop() error {
 		return err
 	}
 	teardownStart := time.Now()
-	for apr.activeSendChanges.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
+	for apr.activeSendChanges.Load() != 0 && (time.Since(teardownStart) < time.Second*10) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return nil
@@ -298,8 +298,17 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	bh.collection = dbCollectionWithUser
 	bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 
+	return apr._startSendingChanges(bh, apr.defaultCollection.Checkpointer.lastCheckpointSeq)
+}
+
+// _startSendingChanges starts a changes feed for a given collection in a goroutine and starts sending changes to the passive peer from a starting sequence value.
+func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since SequenceID) error {
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
 	var channels base.Set
-	if filteredChannels := apr.config.getFilteredChannels(nil); len(filteredChannels) > 0 {
+	if filteredChannels := apr.config.getFilteredChannels(bh.collectionIdx); len(filteredChannels) > 0 {
 		channels = base.SetFromArray(filteredChannels)
 	}
 
@@ -320,17 +329,12 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 		// No special handling for error
 	}
 
-	collectionCtx, err := bh.collections.get(nil)
-	if err != nil {
-		return err
-	}
-
-	apr.activeSendChanges.Set(true)
+	apr.activeSendChanges.Add(1)
 	go func(s *blip.Sender) {
-		defer apr.activeSendChanges.Set(false)
-		isComplete := bh.sendChanges(s, &sendChangesOptions{
+		defer apr.activeSendChanges.Add(-1)
+		isComplete, err := bh.sendChanges(s, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,
-			since:             apr.defaultCollection.Checkpointer.lastCheckpointSeq,
+			since:             since,
 			continuous:        apr.config.Continuous,
 			activeOnly:        apr.config.ActiveOnly,
 			batchSize:         int(apr.config.ChangesBatchSize),
@@ -340,11 +344,17 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
 			changesCtx:        collectionCtx.changesCtx,
 		})
-		// On a normal completion, call complete for the replication
+		if err != nil {
+			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
+			bh.ctxCancelFunc()
+			_ = apr.setError(err)
+			apr.publishStatus()
+			return
+		}
 		if isComplete {
+			// On a normal completion, call complete for the replication
 			apr.Complete()
 		}
 	}(apr.blipSender)
-
 	return nil
 }
