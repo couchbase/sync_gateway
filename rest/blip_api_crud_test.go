@@ -3236,7 +3236,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 		}
 
 		shouldChannelQueryError.Store(true)
-		btcRunner.StartPull(btc.id)
+		require.NoError(t, btcRunner.StartPull(btc.id))
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			assert.True(c, blipContextClosed.Load())
