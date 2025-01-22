@@ -9,6 +9,7 @@
 package base
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -150,9 +151,9 @@ func (ed *EventDescriptor) expandOptionalFieldGroups(groups []fieldGroup) {
 	}
 }
 
-func (i AuditID) MustValidateFields(f AuditFields) {
+func (i AuditID) MustValidateFields(ctx context.Context, f AuditFields) {
 	if err := i.ValidateFields(f); err != nil {
-		panic(fmt.Errorf("audit event %q (%s) invalid:\n%v", i, AuditEvents[i].Name, err))
+		AssertfCtx(ctx, "audit event %q (%s) invalid:\n%v", i, AuditEvents[i].Name, err)
 	}
 }
 

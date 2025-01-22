@@ -8,7 +8,10 @@
 
 package base
 
-import "context"
+import (
+	"context"
+	"sync/atomic"
+)
 
 // IsDevMode returns true when compiled with the `cb_sg_devmode` build tag, and false otherwise.
 //
@@ -17,6 +20,9 @@ import "context"
 func IsDevMode() bool {
 	return cbSGDevModeBuildTagSet
 }
+
+// DevModeAssertionFailures is a counter of the number of assertion failures that have occurred in dev mode. This will always be zero in non-dev mode.
+var DevModeAssertionFailures atomic.Uint32
 
 // AssertfCtx panics when compiled with the `cb_sg_devmode` build tag, and just warns otherwise.
 // Callers must be aware that they are responsible for handling returns to cover the non-devmode warn case.
