@@ -15,6 +15,7 @@ import (
 	"errors"
 	"expvar"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -52,7 +53,7 @@ type activeReplicatorCommon struct {
 	ctxCancel             context.CancelFunc
 	reconnectActive       base.AtomicBool                                             // Tracks whether reconnect goroutine is active
 	replicatorConnectFn   func() error                                                // the function called inside reconnectLoop.
-	activeSendChanges     base.AtomicBool                                             // Tracks whether sendChanges goroutine is active.
+	activeSendChanges     atomic.Int32                                                // Tracks whether sendChanges goroutines are active, there is one per collection.
 	namedCollections      map[base.ScopeAndCollectionName]*activeReplicatorCollection // set only if the replicator is running with collections - access with forEachCollection
 	defaultCollection     *activeReplicatorCollection                                 // set only if the replicator is not running with collections - access with forEachCollection
 }
@@ -312,8 +313,9 @@ func (a *activeReplicatorCommon) getState() string {
 	return a.state
 }
 
-// requires a.stateErrorLock
 func (a *activeReplicatorCommon) _getStateWithErrorMessage() (state string, lastErrorMessage string) {
+	a.stateErrorLock.RLock()
+	defer a.stateErrorLock.RUnlock()
 	if a.lastError == nil {
 		return a.state, ""
 	}
@@ -356,6 +358,14 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 	return highSeqStr
 }
 
+// publishStatus updates the replication status document in the metadata store.
+func (a *activeReplicatorCommon) publishStatus() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a._publishStatus()
+}
+
+// _publishStatus updates the replication status document in the metadata store. Requires holding a.lock before calling.
 func (a *activeReplicatorCommon) _publishStatus() {
 	status := a._getStatusCallback()
 	err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.statusKey, status, int(a.config.ActiveDB.Options.LocalDocExpirySecs))

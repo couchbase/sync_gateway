@@ -51,9 +51,11 @@ func (h *handler) handleBLIPSync() error {
 	// error is checked at the time of database load, and ignored at this time
 	originPatterns, _ := hostOnlyCORS(h.db.CORS.Origin)
 
+	cancelCtx, cancelCtxFunc := context.WithCancel(h.db.DatabaseContext.CancelContext)
 	// Create a BLIP context:
-	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns, h.db.DatabaseContext.CancelContext)
+	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns, cancelCtx)
 	if err != nil {
+		cancelCtxFunc()
 		return err
 	}
 
@@ -61,7 +63,10 @@ func (h *handler) handleBLIPSync() error {
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))
 	h.response.Header().Set(db.BLIPCorrelationIDResponseHeader, blipContext.ID)
 	// Create a new BlipSyncContext attached to the given blipContext.
-	ctx := db.NewBlipSyncContext(h.rqCtx, blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats))
+	ctx, err := db.NewBlipSyncContext(h.rqCtx, blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats), cancelCtxFunc)
+	if err != nil {
+		return err
+	}
 	defer ctx.Close()
 
 	auditFields := base.AuditFields{base.AuditFieldReplicationID: base.FormatBlipContextID(blipContext.ID)}
