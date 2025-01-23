@@ -466,7 +466,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 			case <-terminatorChan:
 				context.Manager.Stop()
 			case <-time.After(20 * time.Second):
-				assert.Fail(t, "manager goroutine not terminated: %v", managerUUID)
+				require.Fail(t, fmt.Sprintf("manager goroutine not terminated: %v", managerUUID))
 			}
 
 		}(i, terminator)

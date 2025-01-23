@@ -105,4 +105,5 @@ linters-settings:
       - wrapperFunc
     settings:
       ruleguard:
-        rules: '${configDir}/ruleguard/*.go'
+        rules: '${configDir}/ruleguard/rules-*.go'
+        failOn: all

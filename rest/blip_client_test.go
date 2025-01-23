@@ -108,11 +108,9 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 			// filter non-latest entries in cases where we haven't pruned _seqStore
 			if !ok {
 				continue
-			} else if latestDocSeq := doc.latestSeq(); latestDocSeq != seq {
-				// this entry should've been cleaned up from _seqStore
-				require.FailNow(c.TB(), "seq %d found in _seqStore but latestSeq for doc %d - this should've been pruned out!", seq, latestDocSeq)
-				continue
 			}
+			// make sure that seq is latestseq
+			require.Equal(c.TB(), doc.latestSeq(), seq, "this should've been pruned out!")
 			if !yield(seq, doc) {
 				base.DebugfCtx(ctx, base.KeySGTest, "OneShotDocsSince: since=%d, _seqLast=%d - stopping iteration", since, seqLast)
 				return
@@ -293,10 +291,7 @@ func (btcc *BlipTesterCollectionClient) _getClientDoc(docID string) (*clientDoc,
 		return nil, false
 	}
 	clientDoc, ok := btcc._seqStore[seq]
-	if !ok {
-		require.FailNow(btcc.TB(), "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
-		return nil, false
-	}
+	require.True(btcc.TB(), ok, "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
 	return clientDoc, ok
 }
 
@@ -523,12 +518,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		// If deltas are enabled, and we see a deltaSrc property, we'll need to patch it before storing
 		if btc.ClientDeltas && deltaSrc != "" {
 			if btc.rejectDeltasForSrcRev == deltaSrc {
-				if !msg.NoReply() {
-					response := msg.Response()
-					response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
-					return
-				}
-				require.FailNow(btr.TB(), "expected delta rev message to be sent without noreply flag: %+v", msg)
+				require.False(btr.TB(), msg.NoReply(), "expected delta rev message to be sent without noreply flag: %+v", msg)
+				response := msg.Response()
+				response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
 			}
 
 			// unmarshal body to extract deltaSrc
@@ -538,10 +530,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 			var old db.Body
 			doc, ok := btcr.getClientDoc(docID)
-			if !ok {
-				require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
-				return
-			}
+			require.True(btc.TB(), ok, "docID %q not found in _seqFromDocID", docID)
 			oldRev, err := doc.getRev(DocVersion{RevID: deltaSrc})
 			require.NoError(btc.TB(), err)
 			err = old.Unmarshal(oldRev.body)
@@ -807,10 +796,7 @@ func (btc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ver
 	btc.seqLock.Lock()
 	defer btc.seqLock.Unlock()
 	doc, ok := btc._getClientDoc(docID)
-	if !ok {
-		require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
-		return
-	}
+	require.True(btc.TB(), ok, "docID %q not found in _seqFromDocID", docID)
 	doc.setLatestServerVersion(version)
 }
 
@@ -818,10 +804,7 @@ func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (versi
 	btc.seqLock.Lock()
 	defer btc.seqLock.Unlock()
 	doc, ok := btc._getClientDoc(docID)
-	if !ok {
-		require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
-		return DocVersion{}, false
-	}
+	require.True(btc.TB(), ok, "docID %q not found in _seqFromDocID", docID)
 	doc.lock.RLock()
 	latestServerVersion := doc._latestServerVersion
 	doc.lock.RUnlock()
@@ -866,9 +849,7 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 }
 
 func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
-	if !btcRunner.initialisedInsideRunnerCode {
-		require.FailNow(btcRunner.TB(), "must initialise BlipTesterClient inside Run() method")
-	}
+	require.True(btcRunner.TB(), btcRunner.initialisedInsideRunnerCode, "must call BlipTestClientRunner.NewBlipTesterClientRunner from inside BlipTestClientRunner.Run() method")
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
@@ -1007,7 +988,7 @@ func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionNam
 			return collectionClient
 		}
 	}
-	require.FailNow(btcRunner.clients[clientID].TB(), "Could not find collection %s in BlipTesterClient", collectionName)
+	require.FailNow(btcRunner.clients[clientID].TB(), fmt.Sprintf("Could not find collection %s in BlipTesterClient", collectionName))
 	return nil
 }
 
@@ -1108,12 +1089,8 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 				proposeChangesResponse := proposeChangesRequest.Response()
 				rspBody, err := proposeChangesResponse.Body()
 				require.NoError(btcc.TB(), err)
-				errorDomain := proposeChangesResponse.Properties["Error-Domain"]
-				errorCode := proposeChangesResponse.Properties["Error-Code"]
-				if errorDomain != "" && errorCode != "" {
-					btcc.TB().Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
-					return
-				}
+				require.NotContains(btcc.TB(), proposeChangesResponse.Properties, "Error-Domain", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
+				require.NotContains(btcc.TB(), proposeChangesResponse.Properties, "Error-Code", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
 
 				base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges response: %s", string(rspBody))
 
@@ -1144,10 +1121,7 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 						revRequest.Properties[db.RevMessageHistory] = change.historyStr()
 
 						doc, ok := btcc.getClientDoc(change.docID)
-						if !ok {
-							btcc.TB().Errorf("doc %s not found in _seqFromDocID", change.docID)
-							return
-						}
+						require.True(btcc.TB(), ok, "docID %q not found in _seqFromDocID", change.docID)
 						doc.lock.RLock()
 						serverRev := doc._revisionsBySeq[doc._seqsByVersions[change.latestServerVersion]]
 						docBody := doc._revisionsBySeq[doc._seqsByVersions[change.version]].body
@@ -1172,17 +1146,11 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 						base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %v", change.docID, change.version)
 						// block until remote has actually processed the rev and sent a response
 						revResp := revRequest.Response()
-						if revResp.Properties[db.BlipErrorCode] != "" {
-							btcc.TB().Errorf("error response from rev: %s", revResp.Properties["Error-Domain"])
-							return
-						}
+						require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %v: %s", revResp)
 						base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
 						btcc.updateLastReplicatedRev(change.docID, change.version)
 						doc, ok = btcc.getClientDoc(change.docID)
-						if !ok {
-							btcc.TB().Errorf("doc %s not found in _seqFromDocID", change.docID)
-							return
-						}
+						require.True(btcc.TB(), ok, "docID %q not found in _seqFromDocID", change.docID)
 						doc.lock.Lock()
 						rev := doc._revisionsBySeq[doc._seqsByVersions[change.version]]
 						rev.message = revRequest
@@ -1409,14 +1377,9 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID string, parentVe
 	proposeChangesResponse := proposeChangesRequest.Response()
 	rspBody, err := proposeChangesResponse.Body()
 	require.NoError(btc.TB(), err)
-	errorDomain := proposeChangesResponse.Properties["Error-Domain"]
-	errorCode := proposeChangesResponse.Properties["Error-Code"]
-	if errorDomain != "" && errorCode != "" {
-		return nil, fmt.Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
-	}
-	if string(rspBody) != `[]` {
-		return nil, fmt.Errorf("unexpected body in proposeChangesResponse: %s", string(rspBody))
-	}
+	require.NotContains(btc.TB(), proposeChangesResponse.Properties, "Error-Domain", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
+	require.NotContains(btc.TB(), proposeChangesResponse.Properties, "Error-Code", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
+	require.Equal(btc.TB(), "[]", string(rspBody))
 
 	// send msg rev with new doc
 	revRequest := blip.NewRequest()
@@ -1512,15 +1475,12 @@ func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVe
 	}
 
 	rev, ok := doc._revisionsBySeq[revSeq]
-	if !ok {
-		require.FailNow(btc.TB(), "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
-		return nil, false
-	}
+	require.True(btc.TB(), ok, "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
 
 	return rev.body, true
 }
 
-// WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found. The test will fail after 10 seocnds if a matching document is not found.
+// WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found. The test will fail after 10 seconds if a matching document is not found.
 func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion DocVersion) (data []byte) {
 	if data, found := btc.GetVersion(docID, docVersion); found {
 		return data
@@ -1529,7 +1489,7 @@ func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion D
 		var found bool
 		data, found = btc.GetVersion(docID, docVersion)
 		assert.True(c, found, "Could not find docID:%+v Version %+v", docID, docVersion)
-	}, 10*time.Second, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v Version %+v", docID, docVersion)
+	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v Version %+v", docID, docVersion)
 	return data
 }
 
@@ -1559,7 +1519,7 @@ func (btc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte) {
 		var found bool
 		data, found = btc.GetDoc(docID)
 		assert.True(c, found, "Could not find docID:%+v", docID)
-	}, 10*time.Second, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v", docID)
+	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v", docID)
 	return data
 }
 
@@ -1596,7 +1556,7 @@ func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber)
 		var ok bool
 		msg, ok = btr.GetMessage(serialNumber)
 		assert.True(c, ok)
-	}, 10*time.Second, 50*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message: %v", serialNumber)
+	}, 10*time.Second, 5*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message: %v", serialNumber)
 	return msg
 }
 
@@ -1612,7 +1572,8 @@ func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVe
 		var ok bool
 		msg, ok = btc.GetBlipRevMessage(docID, docVersion)
 		assert.True(c, ok, "Could not find docID:%+v, RevID: %+v", docID, docVersion.RevID)
-	}, 10*time.Second, 50*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message")
+	}, 10*time.Second, 5*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message")
+	require.NotNil(btc.TB(), msg)
 	return msg
 }
 
@@ -1626,6 +1587,7 @@ func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID string, version D
 		defer doc.lock.RUnlock()
 		if seq, ok := doc._seqsByVersions[version]; ok {
 			if rev, ok := doc._revisionsBySeq[seq]; ok {
+				require.NotNil(btc.TB(), rev.message, "rev.message is nil for docID:%+v, version: %+v", docID, version)
 				return rev.message, true
 			}
 		}
