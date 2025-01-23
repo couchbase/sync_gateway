@@ -116,9 +116,9 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
 			changed = true
 		}
-		collectionAccessChanged, err := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
-		if err != nil {
-			return false, princ, err
+		collectionAccessChanged, collectionAccessErr := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
+		if collectionAccessErr != nil {
+			return false, princ, collectionAccessErr
 		} else if collectionAccessChanged {
 			changed = true
 		}
