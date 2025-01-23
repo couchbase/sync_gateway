@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -1066,23 +1065,40 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(base.TestCtx(t))
 
-	// Issue 1-10 CAS retries
-	casRetryTotalCount := rand.Intn(10) + 1
+	tests := []struct {
+		numCASRetries int32
+		expectError   bool
+	}{
+		{numCASRetries: 0},
+		{numCASRetries: 1},
+		{numCASRetries: 2},
+		{numCASRetries: 5},
+		{numCASRetries: 10},
+		{numCASRetries: auth.PrincipalUpdateMaxCasRetries - 1},
+		{numCASRetries: auth.PrincipalUpdateMaxCasRetries},
+		{numCASRetries: auth.PrincipalUpdateMaxCasRetries + 1, expectError: true},
+	}
 
-	casRetryCount := 0
-	var enableCASRetry bool
+	var (
+		casRetryCount   atomic.Int32
+		totalCASRetries atomic.Int32
+		enableCASRetry  base.AtomicBool
+	)
+
 	lb := base.NewLeakyBucket(tb, base.LeakyBucketConfig{
 		UpdateCallback: func(key string) {
-			if enableCASRetry && casRetryCount < casRetryTotalCount {
-				casRetryCount++
-				t.Logf("foreceCASRetry %d/%d: Forcing CAS retry for key: %q", casRetryCount, casRetryTotalCount, key)
+			casRetryCountInt, totalCASRetriesInt := casRetryCount.Load(), totalCASRetries.Load()
+			if enableCASRetry.IsTrue() && casRetryCountInt < totalCASRetriesInt {
+				casRetryCount.Add(1)
+				casRetryCountInt = casRetryCount.Load()
+				t.Logf("foreceCASRetry %d/%d: Forcing CAS retry for key: %q", casRetryCountInt, totalCASRetriesInt, key)
 				body, originalCAS, err := tb.GetMetadataStore().GetRaw(key)
 				require.NoError(t, err)
 				err = tb.GetMetadataStore().SetRaw(key, 0, nil, body)
 				require.NoError(t, err)
 				_, newCAS, err := tb.GetMetadataStore().GetRaw(key)
 				require.NoError(t, err)
-				t.Logf("foreceCASRetry %d/%d: Doc %q CAS changed from %d to %d", casRetryCount, casRetryTotalCount, key, originalCAS, newCAS)
+				t.Logf("foreceCASRetry %d/%d: Doc %q CAS changed from %d to %d", casRetryCountInt, totalCASRetriesInt, key, originalCAS, newCAS)
 			}
 		},
 		IgnoreClose: true,
@@ -1095,21 +1111,41 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
-	assert.NoError(t, authenticator.Save(user))
+	require.NoError(t, authenticator.Save(user))
 
-	// Write an update that'll be forced into a CAS retry from the leaky bucket callback
-	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
-	require.NoError(t, err)
-	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("numCASRetries=%d", test.numCASRetries), func(t *testing.T) {
+			// Write an update that'll be forced into a CAS retry from the leaky bucket callback
+			userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
+			require.NoError(t, err)
+			userInfo.ExplicitChannels = base.SetOf("ABC", "PBS", fmt.Sprintf("testi:%d", i))
 
-	enableCASRetry = true
-	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
-	assert.NoError(t, err, "Unable to update principal")
+			// reset callback for subtest
+			enableCASRetry.Set(true)
+			casRetryCount.Store(0)
+			totalCASRetries.Store(test.numCASRetries)
+			sequenceReleasedCountBefore := db.sequences.dbStats.SequenceReleasedCount.Value()
 
-	// Ensure we released the sequences for all of the CAS retries we made
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, int64(casRetryCount), db.sequences.dbStats.SequenceReleasedCount.Value())
-	}, 5*time.Second, 100*time.Millisecond)
+			_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+			if test.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err, "Unable to update principal")
+			}
+
+			// cap to max retries if we're doing more
+			expectedReleasedSequences := test.numCASRetries
+			if test.numCASRetries > auth.PrincipalUpdateMaxCasRetries {
+				expectedReleasedSequences = auth.PrincipalUpdateMaxCasRetries
+			}
+
+			// Ensure we released the sequences for all the CAS retries we expected to make
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				sequenceReleasedCountAfter := db.sequences.dbStats.SequenceReleasedCount.Value()
+				assert.Equal(c, int64(expectedReleasedSequences), sequenceReleasedCountAfter-sequenceReleasedCountBefore)
+			}, 5*time.Second, 100*time.Millisecond)
+		})
+	}
 }
 
 // Re-apply one of the conflicting changes to make sure that PutExistingRevWithBody() treats it as a no-op (SG Issue #3048)
