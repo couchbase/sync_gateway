@@ -222,7 +222,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			base.InfofCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s - will retry", base.UD(princ.Name()))
 			// release the sequence number we allocated in the failed update to avoid an abandoned sequence
 			if err := dbc.sequences.releaseSequence(ctx, nextSeq); err != nil {
-				base.InfofCtx(ctx, base.KeyAuth, "Error releasing sequence number %d: %v", nextSeq, err)
+				base.InfofCtx(ctx, base.KeyAuth, "Error releasing unused sequence %d after CAS retry: %v", nextSeq, err)
 			}
 		} else {
 			return replaced, princ, err
