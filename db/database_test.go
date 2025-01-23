@@ -1128,7 +1128,7 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 
 			_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 			if test.expectError {
-				require.Error(t, err)
+				require.ErrorContains(t, err, "cas mismatch")
 			} else {
 				require.NoError(t, err, "Unable to update principal")
 			}
