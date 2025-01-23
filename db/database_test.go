@@ -1057,7 +1057,7 @@ func TestUpdatePrincipal(t *testing.T) {
 }
 
 func TestUpdatePrincipalCASRetry(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyCRUD)
 
 	// ensure we don't batch sequences so that the number of released sequences is deterministic
 	defer SuspendSequenceBatching()()
