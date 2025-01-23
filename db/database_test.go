@@ -1075,7 +1075,7 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 		{numCASRetries: 5},
 		{numCASRetries: 10},
 		{numCASRetries: auth.PrincipalUpdateMaxCasRetries - 1},
-		{numCASRetries: auth.PrincipalUpdateMaxCasRetries},
+		{numCASRetries: auth.PrincipalUpdateMaxCasRetries, expectError: true},
 		{numCASRetries: auth.PrincipalUpdateMaxCasRetries + 1, expectError: true},
 	}
 
