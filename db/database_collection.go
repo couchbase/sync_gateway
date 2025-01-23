@@ -251,7 +251,7 @@ func (c *DatabaseCollection) syncGlobalSyncAndUserXattrKeys() []string {
 func (c *DatabaseCollection) syncGlobalSyncMouRevSeqNoAndUserXattrKeys() []string {
 	xattrKeys := []string{base.SyncXattrName, base.VvXattrName}
 	if c.useMou() {
-		xattrKeys = append(xattrKeys, base.MouXattrName, base.VirtualXattrRevSeqNo, base.GlobalXattrName)
+		xattrKeys = append(xattrKeys, base.MouXattrName, base.GlobalXattrName)
 	}
 	userXattrKey := c.userXattrKey()
 	if userXattrKey != "" {

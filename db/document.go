@@ -430,14 +430,19 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	return doc, nil
 }
 
-func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data, syncXattrData, hlvXattrData, mouXattrData, userXattrData, virtualXattr []byte, globalSyncData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-
+func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data, syncXattrData, hlvXattrData, mouXattrData, userXattrData, revSeqNo []byte, globalSyncData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	if len(syncXattrData) == 0 && len(hlvXattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
+		if doc != nil {
+			doc.RevSeqNo, err = unmarshalRevSeqNo(revSeqNo)
+			if err != nil {
+				return nil, pkgerrors.WithStack(base.RedactErrorf("Failed convert rev seq number during UnmarshalWithXattrs() doc with id: %s. Error: %v", base.UD(doc.ID), err))
+			}
+		}
 	} else {
 		doc = NewDocument(docid)
-		err = doc.UnmarshalWithXattrs(ctx, data, syncXattrData, hlvXattrData, virtualXattr, globalSyncData, unmarshalLevel)
+		err = doc.UnmarshalWithXattrs(ctx, data, syncXattrData, hlvXattrData, revSeqNo, globalSyncData, unmarshalLevel)
 	}
 	if err != nil {
 		return nil, err
@@ -1117,7 +1122,7 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 // unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
 // lazy unmarshalling as needed.
 // Must handle cases where document body and hlvXattrData are present without syncXattrData for all DocumentUnmarshalLevel
-func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrData, hlvXattrData, virtualXattr []byte, globalSyncData []byte, unmarshalLevel DocumentUnmarshalLevel) error {
+func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrData, hlvXattrData, revSeqNo []byte, globalSyncData []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
 		base.WarnfCtx(ctx, "Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
@@ -1140,18 +1145,11 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
 		}
-		if virtualXattr != nil {
-			var revSeqNo string
-			err := base.JSONUnmarshal(virtualXattr, &revSeqNo)
+		if revSeqNo != nil {
+			var err error
+			doc.RevSeqNo, err = unmarshalRevSeqNo(revSeqNo)
 			if err != nil {
-				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal doc virtual revSeqNo xattr during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
-			}
-			if revSeqNo != "" {
-				revNo, err := strconv.ParseUint(revSeqNo, 10, 64)
-				if err != nil {
-					return pkgerrors.WithStack(base.RedactErrorf("Failed convert rev seq number %q during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", revSeqNo, base.UD(doc.ID), err))
-				}
-				doc.RevSeqNo = revNo
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal RevSeqNo during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
 			}
 		}
 		if len(globalSyncData) > 0 {
@@ -1384,4 +1382,21 @@ func (s *SyncData) GetRevAndVersion() (rav channels.RevAndVersion) {
 		rav.CurrentVersion = string(base.Uint64CASToLittleEndianHex(s.HLV.Version))
 	}
 	return rav
+}
+
+// unmarshalRevSeqNo unmarshals the rev seq number from the provided bytes, expects a string representation of the uint64.
+func unmarshalRevSeqNo(revSeqNoBytes []byte) (uint64, error) {
+	if len(revSeqNoBytes) == 0 {
+		return 0, nil
+	}
+	var revSeqNoString string
+	err := base.JSONUnmarshal(revSeqNoBytes, &revSeqNoString)
+	if err != nil {
+		return 0, fmt.Errorf("Failed to unmarshal rev seq number %s", revSeqNoBytes)
+	}
+	revSeqNo, err := strconv.ParseUint(revSeqNoString, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("Failed convert rev seq number %s", revSeqNoBytes)
+	}
+	return revSeqNo, nil
 }

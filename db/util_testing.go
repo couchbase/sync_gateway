@@ -782,10 +782,6 @@ func (c *DatabaseCollectionWithUser) UpsertTestDocWithVersion(ctx context.Contex
 
 // retrieveDocRevSeNo will take the $document xattr and return the revSeqNo defined in that xattr
 func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
-	// virtual xattr not implemented for rosmar CBG-4233
-	if base.UnitTestUrlIsWalrus() {
-		return 0
-	}
 	require.NotNil(t, docxattr)
 	var retrievedDocumentRevNo string
 	require.NoError(t, base.JSONUnmarshal(docxattr, &retrievedDocumentRevNo))

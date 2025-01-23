@@ -48,6 +48,16 @@ func realDocID(docid string) string {
 	return docid
 }
 
+// getRevSeqNo fetches the revSeqNo for a document, using the virtual xattr if available. Returns the cas from this fetch.
+func (c *DatabaseCollection) getRevSeqNo(ctx context.Context, docID string) (revSeqNo, cas uint64, err error) {
+	xattrs, cas, err := c.dataStore.GetXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
+	if err != nil {
+		return 0, 0, err
+	}
+	revSeqNo, err = unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	return revSeqNo, cas, err
+}
+
 func (c *DatabaseCollection) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	doc, _, err = c.GetDocumentWithRaw(ctx, docid, unmarshalLevel)
 	return doc, err
@@ -64,7 +74,6 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		if err != nil {
 			return nil, nil, err
 		}
-
 		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
 		if crc32Match {
 			c.dbStats().Database().Crc32MatchCount.Add(1)
@@ -72,14 +81,22 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
-			var importErr error
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
-			if importErr != nil {
-				return nil, nil, importErr
+			// reload to get revseqno for on-demand import
+			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
+			if err != nil {
+				return nil, nil, err
 			}
-			// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
-			if doc == nil {
-				return nil, nil, base.ErrNotFound
+			isSgWrite, _, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
+			if !isSgWrite {
+				var importErr error
+				doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, doc.RevSeqNo, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
+				if importErr != nil {
+					return nil, nil, importErr
+				}
+				// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
+				if doc == nil {
+					return nil, nil, base.ErrNotFound
+				}
 			}
 		}
 		if !doc.HasValidSyncData() {
@@ -114,10 +131,16 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 	return doc, rawBucketDoc, nil
 }
 
+// GetDocWithXattrs retrieves a document from the bucket, including sync gateway metadta xattrs, and the user xattr, if specified.
 func (c *DatabaseCollection) GetDocWithXattrs(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+	return c.getDocWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys(), unmarshalLevel)
+}
+
+// GetDocWithXattrs retrieves a document from the bucket, including sync gateway metadta xattrs, and the user xattr, if specified. Arbitrary xattrs can be passed into this function to allow VirtualXattrRevSeqNo to be returned and set on Document.
+func (c *DatabaseCollection) getDocWithXattrs(ctx context.Context, key string, xattrKeys []string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
+	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -163,7 +186,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		if !isSgWrite {
 			var importErr error
 
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawDoc, xattrs, cas)
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawDoc, doc.RevSeqNo, xattrs, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
@@ -240,7 +263,7 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 
 // OnDemandImportForGet. Attempts to import the doc based on the provided id, contents and cas. ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
+func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, revSeqNo uint64, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
 	var importErr error
@@ -248,11 +271,10 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	importOpts := importDocOptions{
 		isDelete: isDelete,
 		mode:     ImportOnDemand,
-		revSeqNo: 0, // pending work in CBG-4203
+		revSeqNo: revSeqNo,
 		expiry:   nil,
 	}
 
-	// RevSeqNo is 0 here pending work in CBG-4203
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, importOpts, cas)
 
 	if importErr == base.ErrImportCancelledFilter {
@@ -905,7 +927,15 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 
 // ////// UPDATING DOCUMENTS:
 
+// OnDemandImportForWrite imports a document before a subsequent document is written to Sync Gateway on top of the import document. Returns base.ErrCasFailureShouldRetry in the case that this import nees to be retried. This function is expected to be called within a callback to WriteUpdateWithXattrs.
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
+	revSeqNo, cas, err := db.getRevSeqNo(ctx, docid)
+	if err != nil {
+		return err
+	}
+	if cas != doc.Cas {
+		return base.ErrCasFailureShouldRetry
+	}
 
 	// Check whether the doc requiring import is an SDK delete
 	isDelete := false
@@ -921,7 +951,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 		expiry:   nil,
 		mode:     ImportOnDemand,
 		isDelete: isDelete,
-		revSeqNo: 0, // pending work in CBG-4203
+		revSeqNo: revSeqNo,
 	}
 	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, importOpts) // nolint:staticcheck
 
@@ -2408,6 +2438,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			if doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll); err != nil {
 				return
 			}
+
 			prevCurrentRev = doc.CurrentRev
 
 			// Check whether Sync Data originated in body
