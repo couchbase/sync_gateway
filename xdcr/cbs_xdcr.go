@@ -41,8 +41,8 @@ type couchbaseServerManager struct {
 	toBucket          *base.GocbV2Bucket
 	replicationID     string
 	filter            string
-	mobileSetting     MobileSetting
 	startingTimestamp string
+	mobileSetting     MobileSetting
 }
 
 // isClusterPresent returns true if the XDCR cluster is present, false if it is not present, and an error if it could not be determined.
@@ -287,7 +287,7 @@ outer:
 // lineCountOfLogFile returns the number of lines in the goxdcr.log file. This is used to determine the offset when re-reading the log file.
 func (x *couchbaseServerManager) lastTimestampOfLogFile() (string, error) {
 	logFile := x.xdcrLogFilePath()
-	// not all lines start with a timestamp, so we need to find the last line that does 2000-01-01T01:01:01.000Z
+	// most, but not all lines start with a timestamp, so we need to find the last line that does 2000-01-01T01:01:01.000Z
 	cmdLine := fmt.Sprintf(`tail -n100 "%s"`, logFile)
 	output, err := x.runCommandOnCBS(cmdLine)
 	if err != nil {
@@ -339,7 +339,8 @@ func (x *couchbaseServerManager) waitForStoppedInLogFile(ctx context.Context) er
 	// magic string to indicate that the replication has stopped
 	grepStr := fmt.Sprintf("%s status is finished shutting down", x.replicationID)
 	logFile := x.xdcrLogFilePath()
-	cmdLine := fmt.Sprintf(`grep -I -h "%s" "%s"*`, grepStr, logFile)
+	// look for log files that are goxcdr.log[.[0-9]][.gz], the message may be in a rotated log
+	cmdLine := fmt.Sprintf(`zgrep --no-filename "%s" "%s"*`, grepStr, logFile)
 	err, _ := base.RetryLoop(ctx, "ReadLogFileUntilStopped", func() (shouldRetry bool, err error, value any) {
 		output, err := x.runCommandOnCBS(cmdLine)
 		if err != nil {
