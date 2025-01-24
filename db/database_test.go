@@ -166,6 +166,33 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
+func setupTestDBWithLeakyBucket(t testing.TB, leakyBucket *base.LeakyBucket) (*Database, context.Context) {
+	ctx := base.TestCtx(t)
+	testBucket, ok := leakyBucket.GetUnderlyingBucket().(*base.TestBucket)
+	require.True(t, ok)
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, testBucket, 1),
+	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
+	if err != nil {
+		leakyBucket.Close(ctx)
+		t.Fatalf("Unable to create database context: %v", err)
+	}
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
+	err = dbCtx.StartOnlineProcesses(ctx)
+	if err != nil {
+		dbCtx.Close(ctx)
+		t.Fatalf("Unable to start online processes: %v", err)
+	}
+	db, err := CreateDatabase(dbCtx)
+	if err != nil {
+		dbCtx.Close(ctx)
+		t.Fatalf("Unable to create database: %v", err)
+	}
+	return db, addDatabaseAndTestUserContext(ctx, db)
+}
+
 func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
 	cacheOptions := DefaultCacheOptions()
 	dbcOptions := DatabaseContextOptions{
@@ -1027,6 +1054,98 @@ func TestUpdatePrincipal(t *testing.T) {
 	nextSeq, err = db.sequences.nextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(3), nextSeq)
+}
+
+func TestUpdatePrincipalCASRetry(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyCRUD)
+
+	// ensure we don't batch sequences so that the number of released sequences is deterministic
+	defer SuspendSequenceBatching()()
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close(base.TestCtx(t))
+
+	tests := []struct {
+		numCASRetries int32
+		expectError   bool
+	}{
+		{numCASRetries: 0},
+		{numCASRetries: 1},
+		{numCASRetries: 2},
+		{numCASRetries: 5},
+		{numCASRetries: 10},
+		{numCASRetries: auth.PrincipalUpdateMaxCasRetries - 1},
+		{numCASRetries: auth.PrincipalUpdateMaxCasRetries, expectError: true},
+		{numCASRetries: auth.PrincipalUpdateMaxCasRetries + 1, expectError: true},
+	}
+
+	var (
+		casRetryCount   atomic.Int32
+		totalCASRetries atomic.Int32
+		enableCASRetry  base.AtomicBool
+	)
+
+	lb := base.NewLeakyBucket(tb, base.LeakyBucketConfig{
+		UpdateCallback: func(key string) {
+			casRetryCountInt, totalCASRetriesInt := casRetryCount.Load(), totalCASRetries.Load()
+			if enableCASRetry.IsTrue() && casRetryCountInt < totalCASRetriesInt {
+				casRetryCount.Add(1)
+				casRetryCountInt = casRetryCount.Load()
+				t.Logf("foreceCASRetry %d/%d: Forcing CAS retry for key: %q", casRetryCountInt, totalCASRetriesInt, key)
+				body, originalCAS, err := tb.GetMetadataStore().GetRaw(key)
+				require.NoError(t, err)
+				err = tb.GetMetadataStore().SetRaw(key, 0, nil, body)
+				require.NoError(t, err)
+				_, newCAS, err := tb.GetMetadataStore().GetRaw(key)
+				require.NoError(t, err)
+				t.Logf("foreceCASRetry %d/%d: Doc %q CAS changed from %d to %d", casRetryCountInt, totalCASRetriesInt, key, originalCAS, newCAS)
+			}
+		},
+		IgnoreClose: true,
+	})
+
+	db, ctx := setupTestDBWithLeakyBucket(t, lb)
+	defer db.Close(ctx)
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator(ctx)
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("numCASRetries=%d", test.numCASRetries), func(t *testing.T) {
+			// Write an update that'll be forced into a CAS retry from the leaky bucket callback
+			userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
+			require.NoError(t, err)
+			userInfo.ExplicitChannels = base.SetOf("ABC", "PBS", fmt.Sprintf("testi:%d", i))
+
+			// reset callback for subtest
+			enableCASRetry.Set(true)
+			casRetryCount.Store(0)
+			totalCASRetries.Store(test.numCASRetries)
+			sequenceReleasedCountBefore := db.sequences.dbStats.SequenceReleasedCount.Value()
+
+			_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+			if test.expectError {
+				require.ErrorContains(t, err, "cas mismatch")
+			} else {
+				require.NoError(t, err, "Unable to update principal")
+			}
+
+			// cap to max retries if we're doing more
+			expectedReleasedSequences := test.numCASRetries
+			if test.numCASRetries > auth.PrincipalUpdateMaxCasRetries {
+				expectedReleasedSequences = auth.PrincipalUpdateMaxCasRetries
+			}
+
+			// Ensure we released the sequences for all the CAS retries we expected to make
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				sequenceReleasedCountAfter := db.sequences.dbStats.SequenceReleasedCount.Value()
+				assert.Equal(c, int64(expectedReleasedSequences), sequenceReleasedCountAfter-sequenceReleasedCountBefore)
+			}, 5*time.Second, 100*time.Millisecond)
+		})
+	}
 }
 
 // Re-apply one of the conflicting changes to make sure that PutExistingRevWithBody() treats it as a no-op (SG Issue #3048)
