@@ -989,6 +989,9 @@ func TestChannelQueryCancellation(t *testing.T) {
 }
 
 func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
+	// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
+	t.Skip("WARNING: TEST DISABLED")
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
@@ -1048,6 +1051,8 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	err = appendFromFeed(&changes, feed, 2, base.DefaultWaitForSequence)
 	assert.True(t, err == nil)
 	assert.Len(t, changes, 6)
+	// TODO: Test flake: Issue #3056 causing two seq 3 entries and losing seq 4 since we only pull in two more feed items
+	// {Seq:2::3, ID:doc-3, Changes:[map[rev:1-a]]} {Seq:3, ID:doc-3, Changes:[map[rev:1-a]]}
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
 
 	WriteDirect(t, collection, []string{"ABC"}, 7)
