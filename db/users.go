@@ -116,9 +116,9 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
 			changed = true
 		}
-		collectionAccessChanged, err := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
-		if err != nil {
-			return false, princ, err
+		collectionAccessChanged, collectionAccessErr := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
+		if collectionAccessErr != nil {
+			return false, princ, collectionAccessErr
 		} else if collectionAccessChanged {
 			changed = true
 		}
@@ -220,6 +220,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		// On cas error, retry.  Otherwise break out of loop
 		if base.IsCasMismatch(err) {
 			base.InfofCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s - will retry", base.UD(princ.Name()))
+			// release the sequence number we allocated in the failed update to avoid an abandoned sequence
+			if err := dbc.sequences.releaseSequence(ctx, nextSeq); err != nil {
+				base.InfofCtx(ctx, base.KeyAuth, "Error releasing unused sequence %d after CAS retry for principal %s: %v", nextSeq, base.UD(princ.Name()), err)
+			}
 		} else {
 			return replaced, princ, err
 		}
