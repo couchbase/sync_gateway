@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -1215,6 +1216,47 @@ func TestRevCacheCapacityStat(t *testing.T) {
 	// Assert num items goes back to 0
 	assert.Equal(t, int64(0), cacheNumItems.Value())
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
+}
+
+func TestRevCacheOnDemand(t *testing.T) {
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2, // 3.2.1
+			// Size:       2, // 3.2.0
+			ShardCount: 1,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := "doc1"
+	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
+	require.NoError(t, err)
+
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				// 3.2.1
+				db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta)
+				// 3.2.0
+				//db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), true, RevCacheOmitDelta)
+			}
+		}()
+	}
+
+	log.Printf("Updating doc to trigger on-demand import")
+	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"ver": "2"}`))
+	require.NoError(t, err)
+
+	log.Printf("Calling getRev for %s, %s", docID, revID)
+	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
+	require.Error(t, err)
+	require.Nil(t, rev)
+
 }
 
 func BenchmarkRevisionCacheRead(b *testing.B) {
