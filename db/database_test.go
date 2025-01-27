@@ -1092,11 +1092,12 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 				casRetryCount.Add(1)
 				casRetryCountInt = casRetryCount.Load()
 				t.Logf("foreceCASRetry %d/%d: Forcing CAS retry for key: %q", casRetryCountInt, totalCASRetriesInt, key)
-				body, originalCAS, err := tb.GetMetadataStore().GetRaw(key)
+				var body []byte
+				originalCAS, err := tb.GetMetadataStore().Get(key, &body)
 				require.NoError(t, err)
-				err = tb.GetMetadataStore().SetRaw(key, 0, nil, body)
+				err = tb.GetMetadataStore().Set(key, 0, nil, body)
 				require.NoError(t, err)
-				_, newCAS, err := tb.GetMetadataStore().GetRaw(key)
+				newCAS, err := tb.GetMetadataStore().Get(key, &body)
 				require.NoError(t, err)
 				t.Logf("foreceCASRetry %d/%d: Doc %q CAS changed from %d to %d", casRetryCountInt, totalCASRetriesInt, key, originalCAS, newCAS)
 			}
