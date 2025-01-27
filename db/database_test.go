@@ -1097,7 +1097,7 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 				require.NoError(t, err)
 				err = tb.GetMetadataStore().Set(key, 0, nil, body)
 				require.NoError(t, err)
-				_, newCAS, err := tb.GetMetadataStore().GetRaw(key)
+				newCAS, err := tb.GetMetadataStore().Get(key, &body)
 				require.NoError(t, err)
 				t.Logf("foreceCASRetry %d/%d: Doc %q CAS changed from %d to %d", casRetryCountInt, totalCASRetriesInt, key, originalCAS, newCAS)
 			}
