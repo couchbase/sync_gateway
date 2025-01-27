@@ -313,19 +313,14 @@ func (a *activeReplicatorCommon) getState() string {
 	return a.state
 }
 
-func (a *activeReplicatorCommon) _getStateWithErrorMessage() (state string, lastErrorMessage string) {
+// getStateWithErrorMessage returns the current state and last error message for the replicator.
+func (a *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastErrorMessage string) {
 	a.stateErrorLock.RLock()
 	defer a.stateErrorLock.RUnlock()
 	if a.lastError == nil {
 		return a.state, ""
 	}
 	return a.state, a.lastError.Error()
-}
-
-func (a *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastErrorMessage string) {
-	a.stateErrorLock.RLock()
-	defer a.stateErrorLock.RUnlock()
-	return a._getStateWithErrorMessage()
 }
 
 func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
