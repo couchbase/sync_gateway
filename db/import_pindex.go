@@ -39,9 +39,26 @@ func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
 			New:       getNewPIndexImplType(ctx),
 			Open:      OpenImportPIndexImpl,
 			OpenUsing: getOpenImportPIndexImplUsing(ctx),
+			Rollback:  getPIndexImplRollbackCallback(ctx),
 			Description: "general/syncGateway-import " +
 				" - import processing for shared bucket access",
 		})
+}
+
+func getPIndexImplRollbackCallback(ctx context.Context) func(indexType, indexParams, sourceParams, path string, mgr *cbgt.Manager,
+	restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	rollback := func(indexType, indexParams, sourceParams, path string, mgr *cbgt.Manager,
+		restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+		go mgr.JanitorKick("rollback from PIndexImpl.Rollback")
+		importDest, err := getListenerImportDest(ctx, indexParams, restart)
+		if err != nil {
+			base.InfofCtx(ctx, base.KeyDCP, "No importDest found for indexParams on rollback. sourceParams=%v indexParams=%v %v. Not able to start import feed", err, base.MD(sourceParams), base.MD(indexParams))
+			return nil, nil, err
+		}
+		return nil, importDest, nil
+	}
+	return rollback
 }
 
 // getListenerForIndex looks up the importListener for the dbName specified in the index params

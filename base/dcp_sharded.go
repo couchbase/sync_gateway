@@ -337,16 +337,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		sourceUUID:    bucketUUID,
 	}
 
-	// Define rollback hook to be called by cbgt during rollback. This is used to kick the janitor to reassign feeds
-	// after a full rollback of a pindex
-	cbgt.RollbackHook = func(phase cbgt.RollbackPhase, pindex *cbgt.PIndex) (err error) {
-		if phase == cbgt.RollbackCompleted {
-			InfofCtx(ctx, KeyDCP, "Kicking janitor after rollback of pIndex: %s", pindex.Name)
-			err = mgr.JanitorOnce("Adding feeds after full rollback of pindex: " + pindex.Name)
-		}
-		return err
-	}
-
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
 		username, password, _ := spec.Auth.GetCredentials()
 		addCbgtCredentials(dbName, bucket.GetName(), username, password, spec.Certpath, spec.Keypath)

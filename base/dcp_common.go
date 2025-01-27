@@ -163,7 +163,7 @@ func (c *DCPCommon) getMetaData(vbucketId uint16) (
 
 // rollbackEx is called when a DCP stream issues a rollback. The metadata persisted for a given uuid and sequence number and then cbgt.Mgr JANITOR_ROLLBACK_PINDEX is issued via janitorRollback function.
 func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64, rollbackMetaData []byte, janitorRollback func()) error {
-	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %d.", vbucketId, rollbackSeq)
+	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, rollbackSeq, false)
 	err := c.setMetaData(vbucketId, rollbackMetaData, true)
