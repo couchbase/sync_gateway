@@ -314,7 +314,8 @@ const (
 
 	SyncProcessComputeDesc = "The compute unit for syncing with clients measured through cpu time and memory used for sync"
 
-	NumIdleKvOpsDesc = "The total number of idle kv operations."
+	NumIdleKvOpsDesc    = "The total number of idle kv operations."
+	NumIdleQueryOpsDesc = "The total number of idle query operations."
 )
 
 // Delta Sync stats descriptions
