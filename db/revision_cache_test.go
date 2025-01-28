@@ -1349,6 +1349,8 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 }
 
 func TestRevCacheOnDemandImportNoCache(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
