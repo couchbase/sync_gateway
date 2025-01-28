@@ -14,6 +14,7 @@ import (
 	"container/list"
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -108,7 +109,7 @@ type revCacheValue struct {
 	lock        sync.RWMutex
 	deleted     bool
 	removed     bool
-	itemBytes   int64
+	itemBytes   atomic.Int64
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -265,13 +266,13 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	}
 
 	// Purge oldest item if over number capacity
-	var numItemsRemoved int
-	for len(rc.cache) > int(rc.capacity) {
-		rc.purgeOldest_()
-		numItemsRemoved++
+	numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
+	if numBytesEvicted > 0 {
+		rc.updateRevCacheMemoryUsage(-numBytesEvicted)
 	}
+	rc.lock.Unlock() // release lock after eviction finished
 	if numItemsRemoved > 0 {
-		rc.cacheNumItems.Add(int64(-numItemsRemoved))
+		rc.cacheNumItems.Add(-numItemsRemoved)
 	}
 
 	docRev.CalculateBytes()
@@ -280,16 +281,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	value.store(docRev)
 
 	// check we aren't over memory capacity, if so perform eviction
-	numItemsRemoved = 0
-	if rc.memoryCapacity > 0 {
-		for rc.currMemoryUsage.Value() > rc.memoryCapacity {
-			rc.purgeOldest_()
-			numItemsRemoved++
-		}
-		rc.cacheNumItems.Add(int64(-numItemsRemoved))
-	}
-
-	rc.lock.Unlock()
+	rc.revCacheMemoryBasedEviction()
 }
 
 func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, create bool) (value *revCacheValue) {
@@ -307,15 +299,16 @@ func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, c
 		rc.cache[key] = rc.lruList.PushFront(value)
 		rc.cacheNumItems.Add(1)
 
-		// evict if over number capacity
-		var numItemsRemoved int
-		for len(rc.cache) > int(rc.capacity) {
-			rc.purgeOldest_()
-			numItemsRemoved++
+		numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
+		if numBytesEvicted > 0 {
+			rc.updateRevCacheMemoryUsage(-numBytesEvicted)
 		}
+		rc.lock.Unlock() // release lock as eviction is finished
 		if numItemsRemoved > 0 {
-			rc.cacheNumItems.Add(int64(-numItemsRemoved))
+			rc.cacheNumItems.Add(-numItemsRemoved)
 		}
+		// return early as rev cache mutex has been released at this point
+		return
 	}
 	rc.lock.Unlock()
 	return
@@ -349,11 +342,16 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 	rc.lock.Unlock()
 }
 
-func (rc *LRURevisionCache) purgeOldest_() {
-	value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
-	delete(rc.cache, value.key)
-	// decrement memory overall size
-	rc.updateRevCacheMemoryUsage(-value.getItemBytes())
+// _numberCapacityEviction will iterate removing the last element in cache til we fall below the maximum number of items
+// threshold for this shard, retuning the bytes evicted and number of items evicted
+func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, numBytesEvicted int64) {
+	for len(rc.cache) > int(rc.capacity) {
+		value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
+		delete(rc.cache, value.key)
+		numItemsEvicted++
+		numBytesEvicted += value.getItemBytes()
+	}
+	return numItemsEvicted, numBytesEvicted
 }
 
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
@@ -396,7 +394,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	// if not cache hit, we loaded from bucket. Calculate doc rev size and assign to rev cache value
 	if !cacheHit {
 		docRev.CalculateBytes()
-		value.itemBytes = docRev.MemoryBytes
+		value.itemBytes.Store(docRev.MemoryBytes) //= docRev.MemoryBytes
 	}
 	value.lock.Unlock()
 
@@ -448,7 +446,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 	// if not cache hit, we loaded from bucket. Calculate doc rev size and assign to rev cache value
 	if !cacheHit {
 		docRev.CalculateBytes()
-		value.itemBytes = docRev.MemoryBytes
+		value.itemBytes.Store(docRev.MemoryBytes) //= docRev.MemoryBytes
 	}
 	value.lock.Unlock()
 	return docRev, cacheHit, err
@@ -466,7 +464,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.attachments = docRev.Attachments.ShallowCopy() // Don't store attachments the caller might later mutate
 		value.deleted = docRev.Deleted
 		value.err = nil
-		value.itemBytes = docRev.MemoryBytes
+		value.itemBytes.Store(docRev.MemoryBytes)
 	}
 	value.lock.Unlock()
 }
@@ -481,17 +479,15 @@ func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int6
 	diffInBytes = toDelta.totalDeltaBytes - previousDeltaBytes
 	value.delta = &toDelta
 	if diffInBytes != 0 {
-		value.itemBytes += diffInBytes
+		value.itemBytes.Add(diffInBytes) //+= diffInBytes
 	}
 	value.lock.Unlock()
 	return diffInBytes
 }
 
-// getItemBytes acquires read lock and retrieves the rev cache items overall memory footprint
+// getItemBytes atomically retrieves the rev cache items overall memory footprint
 func (value *revCacheValue) getItemBytes() int64 {
-	value.lock.RLock()
-	defer value.lock.RUnlock()
-	return value.itemBytes
+	return value.itemBytes.Load()
 }
 
 // CalculateBytes will calculate the bytes from revisions in the document, body and channels on the document
@@ -539,13 +535,22 @@ func (rc *LRURevisionCache) revCacheMemoryBasedEviction() {
 
 // performEviction will evict the oldest items in the cache till we are below the memory threshold
 func (rc *LRURevisionCache) performEviction() {
-	rc.lock.Lock()
-	defer rc.lock.Unlock()
-	var numItemsRemoved int64
-	for rc.currMemoryUsage.Value() > rc.memoryCapacity {
-		rc.purgeOldest_()
-		numItemsRemoved++
+	var numItemsRemoved, numBytesRemoved int64
+	rc.lock.Lock() // hold rev cache lock to remove items from cache until we're below memory threshold for the shard
+	// check if we are over memory capacity after holding rev cache mutex (protect against another goroutine evicting whilst waiting for mutex above)
+	if rc.currMemoryUsage.Value() > rc.memoryCapacity {
+		// find amount of bytes needed to evict till below threshold
+		bytesNeededToRemove := rc.currMemoryUsage.Value() - rc.memoryCapacity
+		for bytesNeededToRemove > numBytesRemoved {
+			value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
+			delete(rc.cache, value.key)
+			numItemsRemoved++
+			valueBytes := value.getItemBytes()
+			numBytesRemoved += valueBytes
+		}
 	}
+	rc.updateRevCacheMemoryUsage(-numBytesRemoved) // need update rev cache memory stats before release lock to stop other goroutines evicting based on outdated stats
+	rc.lock.Unlock()                               // release lock after removing items from cache
 	rc.cacheNumItems.Add(-numItemsRemoved)
 }
 
