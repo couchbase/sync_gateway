@@ -394,7 +394,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	// if not cache hit, we loaded from bucket. Calculate doc rev size and assign to rev cache value
 	if !cacheHit {
 		docRev.CalculateBytes()
-		value.itemBytes.Store(docRev.MemoryBytes) //= docRev.MemoryBytes
+		value.itemBytes.Store(docRev.MemoryBytes)
 	}
 	value.lock.Unlock()
 
@@ -446,7 +446,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 	// if not cache hit, we loaded from bucket. Calculate doc rev size and assign to rev cache value
 	if !cacheHit {
 		docRev.CalculateBytes()
-		value.itemBytes.Store(docRev.MemoryBytes) //= docRev.MemoryBytes
+		value.itemBytes.Store(docRev.MemoryBytes)
 	}
 	value.lock.Unlock()
 	return docRev, cacheHit, err
@@ -479,7 +479,7 @@ func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int6
 	diffInBytes = toDelta.totalDeltaBytes - previousDeltaBytes
 	value.delta = &toDelta
 	if diffInBytes != 0 {
-		value.itemBytes.Add(diffInBytes) //+= diffInBytes
+		value.itemBytes.Add(diffInBytes)
 	}
 	value.lock.Unlock()
 	return diffInBytes
