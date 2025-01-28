@@ -74,9 +74,6 @@ var (
 
 	// ErrReplicationLimitExceeded is returned when then replication connection threshold is exceeded
 	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try again later."}
-
-	// ErrSkippedSequencesMissing is returned when attempting to remove a sequence range form the skipped sequence list and at least one sequence in that range is not present
-	ErrSkippedSequencesMissing = &sgError{"Sequence range has sequences that aren't present in skipped list"}
 )
 
 func (e *sgError) Error() string {
