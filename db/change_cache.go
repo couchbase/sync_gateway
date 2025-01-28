@@ -573,6 +573,7 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 	} else {
 		changedChannels.Add(unusedSeq)
 	}
+	c.channelCache.AddUnusedSequence(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(ctx, changedChannels)
 	}
@@ -595,6 +596,7 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 		}
 		changedChannels := c.processEntry(ctx, change)
 		allChangedChannels = allChangedChannels.Update(changedChannels)
+		c.channelCache.AddUnusedSequence(change)
 		if c.notifyChange != nil {
 			c.notifyChange(ctx, allChangedChannels)
 		}
@@ -603,6 +605,9 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 
 	// push unused range to either pending or skipped lists based on current state of the change cache
 	allChangedChannels = c.processUnusedRange(ctx, fromSequence, toSequence, allChangedChannels, timeReceived)
+
+	// update high seq cached
+	c.channelCache.AddUnusedSequence(&LogEntry{Sequence: toSequence})
 
 	if c.notifyChange != nil {
 		c.notifyChange(ctx, allChangedChannels)
@@ -844,9 +849,8 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []chann
 	}
 	delete(c.receivedSeqs, change.Sequence)
 
-	// If unused sequence, notify the cache and return
+	// If unused sequence or principal, we're done after updating sequence
 	if change.DocID == "" {
-		c.channelCache.AddUnusedSequence(change)
 		return nil
 	}
 
