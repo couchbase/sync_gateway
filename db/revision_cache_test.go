@@ -1219,6 +1219,8 @@ func TestRevCacheCapacityStat(t *testing.T) {
 }
 
 func TestRevCacheOnDemand(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxItemCount: 2,
@@ -1247,12 +1249,17 @@ func TestRevCacheOnDemand(t *testing.T) {
 	log.Printf("Calling getRev for %s, %s", docID, revID)
 	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
 	require.Error(t, err)
+	if base.IsEnterpriseEdition() {
+		fmt.Println("here")
+	}
 	require.ErrorContains(t, err, "missing")
 	// returns empty doc rev
 	assert.Equal(t, "", rev.DocID)
 }
 
 func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxItemCount: 20,
