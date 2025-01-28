@@ -1239,7 +1239,7 @@ func TestRevCacheOnDemand(t *testing.T) {
 		require.NoError(t, err)
 		go func() {
 			for {
-				db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
 			}
 		}()
 	}
@@ -1279,7 +1279,7 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 		require.NoError(t, err)
 		go func() {
 			for {
-				db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
 			}
 		}()
 	}
