@@ -649,9 +649,7 @@ def make_os_tasks(processes):
         UnixTask("time and TZ", "date; date -u"),
         UnixTask(
             "ntp time",
-            "ntpdate -q pool.ntp.org || "
-            "nc time.nist.gov 13 || "
-            "netcat time.nist.gov 13",
+            "ntpdate -q pool.ntp.org || nc time.nist.gov 13 || netcat time.nist.gov 13",
             timeout=60,
         ),
         UnixTask("ntp peers", "ntpq -p"),
