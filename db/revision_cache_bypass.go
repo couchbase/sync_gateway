@@ -33,7 +33,7 @@ func NewBypassRevisionCache(backingStores map[uint32]RevisionCacheBackingStore, 
 // Get fetches the revision for the given docID and revID immediately from the bucket.
 func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
 
-	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
+	doc, err := rc.backingStores[collectionID].getDocumentWithoutCacheUpdate(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -54,7 +54,7 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, col
 // GetActive fetches the active revision for the given docID immediately from the bucket.
 func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
 
-	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
+	doc, err := rc.backingStores[collectionID].getDocumentWithoutCacheUpdate(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
 	}

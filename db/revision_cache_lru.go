@@ -190,7 +190,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 
 	// Look up active rev for doc.  Note - can't rely on DocUnmarshalAll here when includeBody=true, because for a
 	// cache hit we don't want to do that work (yet).
-	bucketDoc, getErr := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
+	bucketDoc, getErr := rc.backingStores[collectionID].getDocumentWithoutCacheUpdate(ctx, docID, DocUnmarshalSync)
 	if getErr != nil {
 		return DocumentRevision{}, getErr
 	}

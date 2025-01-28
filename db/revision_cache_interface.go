@@ -106,7 +106,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 
 // RevisionCacheBackingStore is the interface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
 type RevisionCacheBackingStore interface {
-	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
+	getDocumentWithoutCacheUpdate(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
 	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error)
 }
 
@@ -346,7 +346,7 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 // Its job is to load a revision from the bucket when there's a cache miss.
 func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
 	var doc *Document
-	if doc, err = backingStore.GetDocument(ctx, id.DocID, DocUnmarshalSync); doc == nil {
+	if doc, err = backingStore.getDocumentWithoutCacheUpdate(ctx, id.DocID, DocUnmarshalSync); doc == nil {
 		return bodyBytes, history, channels, removed, attachments, deleted, expiry, err
 	}
 

@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -31,7 +32,7 @@ type testBackingStore struct {
 	getRevisionCounter *base.SgwIntStat
 }
 
-func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func (t *testBackingStore) getDocumentWithoutCacheUpdate(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	t.getDocumentCounter.Add(1)
 
 	for _, d := range t.notFoundDocIDs {
@@ -68,7 +69,7 @@ func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid
 
 type noopBackingStore struct{}
 
-func (*noopBackingStore) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func (*noopBackingStore) getDocumentWithoutCacheUpdate(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	return nil, nil
 }
 
@@ -1276,4 +1277,81 @@ func createDocAndReturnSizeAndRev(t *testing.T, ctx context.Context, docID strin
 	}
 
 	return expectedSize, rev
+}
+
+func TestRevCacheOnDemand(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2,
+			ShardCount:   1,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
+	require.NoError(t, err)
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+			}
+		}()
+	}
+	log.Printf("Updating doc to trigger on-demand import")
+	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"ver": "2"}`))
+	require.NoError(t, err)
+	log.Printf("Calling getRev for %s, %s", docID, revID)
+	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
+	require.Error(t, err)
+	if base.IsEnterpriseEdition() {
+		fmt.Println("here")
+	}
+	require.ErrorContains(t, err, "missing")
+	// returns empty doc rev
+	assert.Equal(t, "", rev.DocID)
+}
+
+func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 20,
+			ShardCount:   1,
+			MaxBytes:     112, // equivalent to max size 2 items
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
+	require.NoError(t, err)
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+			}
+		}()
+	}
+	log.Printf("Updating doc to trigger on-demand import")
+	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"ver": "2"}`))
+	require.NoError(t, err)
+	log.Printf("Calling getRev for %s, %s", docID, revID)
+	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "missing")
+	// returns empty doc rev
+	assert.Equal(t, "", rev.DocID)
+
 }

@@ -305,7 +305,8 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
-			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, existingBucketDoc, ImportOnDemand)
+			updateRevCacheAfterImport := true
+			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, existingBucketDoc, ImportOnDemand, updateRevCacheAfterImport)
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
@@ -454,9 +455,9 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err, "Error unmarshalling body")
 
 			runOnce = true
-
+			updateRevCacheAfterImport := true
 			// Trigger import
-			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
+			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand, updateRevCacheAfterImport)
 			assert.NoError(t, err)
 
 			// Check document has the rev and new body
@@ -526,8 +527,10 @@ func TestImportNullDoc(t *testing.T) {
 	rawNull := []byte("null")
 	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
+	updateRevCacheAfterImport := true
+
 	// Import a null document
-	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, existingDoc, ImportOnDemand, updateRevCacheAfterImport)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -545,7 +548,8 @@ func TestImportNullDocRaw(t *testing.T) {
 	xattrs := map[string][]byte{
 		base.SyncXattrName: []byte("{}"),
 	}
-	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, ImportFromFeed)
+	updateRevCacheAfterImport := true
+	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, ImportFromFeed, updateRevCacheAfterImport)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -646,7 +650,8 @@ func TestImportStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	existingDoc := &sgbucket.BucketDocument{Body: bodyBytes, Cas: cas}
 
-	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand)
+	updateRevCacheAfterImport := true
+	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand, updateRevCacheAfterImport)
 	require.NoError(t, err)
 	if assert.NotNil(t, importedDoc) {
 		require.Len(t, importedDoc.ClusterUUID, 32)

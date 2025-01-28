@@ -32,7 +32,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrs map[string][]byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrs map[string][]byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode, updateRevCacheAfterImport bool) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -58,7 +58,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 		Cas:    cas,
 	}
 
-	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode, updateRevCacheAfterImport)
 }
 
 // Import a document, given the existing state of the doc in *document format.
@@ -98,7 +98,8 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		return nil, err
 	}
 
-	return db.importDoc(ctx, docid, existingDoc.Body(ctx), expiry, isDelete, existingBucketDoc, mode)
+	allowRevCachePut := true
+	return db.importDoc(ctx, docid, existingDoc.Body(ctx), expiry, isDelete, existingBucketDoc, mode, allowRevCachePut)
 }
 
 // Import document
@@ -108,7 +109,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 //	isDelete - whether the document to be imported is a delete
 //	existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
 //	mode - ImportMode - ImportFromFeed or ImportOnDemand
-func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode, updateRevCacheAfterImport bool) (docOut *Document, err error) {
 
 	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
@@ -146,7 +147,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		existingDoc.Expiry = *expiry
 	}
 
-	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, true, func(doc *Document) (resultDocument *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, true, updateRevCacheAfterImport, func(doc *Document) (resultDocument *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
