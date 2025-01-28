@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -32,7 +31,7 @@ type testBackingStore struct {
 	getRevisionCounter *base.SgwIntStat
 }
 
-func (t *testBackingStore) getDocumentWithoutCacheUpdate(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	t.getDocumentCounter.Add(1)
 
 	for _, d := range t.notFoundDocIDs {
@@ -69,7 +68,7 @@ func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid
 
 type noopBackingStore struct{}
 
-func (*noopBackingStore) getDocumentWithoutCacheUpdate(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func (*noopBackingStore) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	return nil, nil
 }
 
@@ -1279,7 +1278,7 @@ func createDocAndReturnSizeAndRev(t *testing.T, ctx context.Context, docID strin
 	return expectedSize, rev
 }
 
-func TestRevCacheOnDemand(t *testing.T) {
+func TestRevCacheOnDemandImport(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 
 	dbcOptions := DatabaseContextOptions{
@@ -1304,15 +1303,10 @@ func TestRevCacheOnDemand(t *testing.T) {
 			}
 		}()
 	}
-	log.Printf("Updating doc to trigger on-demand import")
 	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"ver": "2"}`))
 	require.NoError(t, err)
-	log.Printf("Calling getRev for %s, %s", docID, revID)
 	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
 	require.Error(t, err)
-	if base.IsEnterpriseEdition() {
-		fmt.Println("here")
-	}
 	require.ErrorContains(t, err, "missing")
 	// returns empty doc rev
 	assert.Equal(t, "", rev.DocID)
@@ -1344,14 +1338,39 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 			}
 		}()
 	}
-	log.Printf("Updating doc to trigger on-demand import")
 	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"ver": "2"}`))
 	require.NoError(t, err)
-	log.Printf("Calling getRev for %s, %s", docID, revID)
 	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "missing")
 	// returns empty doc rev
 	assert.Equal(t, "", rev.DocID)
 
+}
+
+func TestRevCacheOnDemandImportNoCache(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := "doc1"
+	revID1, _, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	_, exists := collection.revisionCache.Peek(ctx, docID, revID1)
+	require.True(t, exists)
+
+	require.NoError(t, collection.dataStore.Set(docID, 0, nil, []byte(`{"foo": "baz"}`)))
+
+	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalSync)
+	require.NoError(t, err)
+	require.Equal(t, Body{"foo": "baz"}, doc.Body(ctx))
+
+	// rev1 still exists in cache but not on server
+	_, exists = collection.revisionCache.Peek(ctx, docID, revID1)
+	require.True(t, exists)
+
+	// rev2 is not in cache but is on server
+	_, exists = collection.revisionCache.Peek(ctx, docID, doc.CurrentRev)
+	require.False(t, exists)
 }

@@ -55,22 +55,8 @@ func (c *DatabaseCollection) GetDocument(ctx context.Context, docid string, unma
 	return doc, err
 }
 
-// getDocumentWithoutCacheUpdate returns the document from the bucket. This may perform an on-demand import, but this will not put that document into the rev cache.
-func (c *DatabaseCollection) getDocumentWithoutCacheUpdate(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-	updateRevCacheAfterImport := false
-	doc, _, err = c.getDocumentWithRaw(ctx, docid, unmarshalLevel, updateRevCacheAfterImport)
-	return doc, err
-}
-
-// getDocumentWithRaw returns the document from the bucket. This may perform an on-demand import.
+// GetDocumentWithRaw returns the document from the bucket. This may perform an on-demand import.
 func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
-	updateRevCacheAfterImport := false
-	return c.getDocumentWithRaw(ctx, docid, unmarshalLevel, updateRevCacheAfterImport)
-}
-
-// getDocumentWithRaw returns the document from the bucket. This may perform an on-demand import. updateRevCacheAfterImport controls whether the document is put into the rev cache in the case of an on-demand import.
-func (c *DatabaseCollection) getDocumentWithRaw(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel, updateRevCacheAfterImport bool) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
-
 	key := realDocID(docid)
 	if key == "" {
 		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
@@ -89,7 +75,7 @@ func (c *DatabaseCollection) getDocumentWithRaw(ctx context.Context, docid strin
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, updateRevCacheAfterImport)
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, nil, importErr
 			}
@@ -179,8 +165,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		if !isSgWrite {
 			var importErr error
 
-			allowRevCachePut := true
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawDoc, xattrs, cas, allowRevCachePut)
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawDoc, xattrs, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
@@ -251,12 +236,13 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, xattrs map[string][]byte, cas uint64, updateRevCacheAfterImport bool) (docOut *Document, err error) {
+func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
 	var importErr error
 
-	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand, updateRevCacheAfterImport)
+	updateRevCache := false
+	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand, updateRevCache)
 
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as 404 not imported
@@ -902,8 +888,8 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	allowImport := db.UseXattrs()
-	updateRevCacheAfterImport := true
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, updateRevCacheAfterImport, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	updateRevCache := true
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1028,8 +1014,8 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	}
 
 	allowImport := db.UseXattrs()
-	updateRevCacheAfterImport := true
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, updateRevCacheAfterImport, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	updateRevCache := true
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1947,7 +1933,7 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
 //  3. If isImport=true, document body will not be updated - only metadata xattr(s)
-func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, isImport bool, updateRevCacheAfterImport bool, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, isImport bool, updateRevCache bool, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -2191,7 +2177,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Deleted:     doc.History[newRevID].Deleted,
 		}
 
-		if updateRevCacheAfterImport {
+		if updateRevCache {
 			if createNewRevIDSkipped {
 				db.revisionCache.Upsert(ctx, documentRevision)
 			} else {
