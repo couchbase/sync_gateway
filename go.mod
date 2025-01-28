@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.3.9
 	github.com/couchbase/clog v0.1.0
-	github.com/couchbase/go-blip v0.0.0-20241014142134-cc8d8ebf1949
+	github.com/couchbase/go-blip v0.0.0-20241014144256-13a798c348fd
 	github.com/couchbase/gocb/v2 v2.9.1
 	github.com/couchbase/gocbcore/v10 v10.5.1
 	github.com/couchbase/gomemcached v0.2.1
@@ -69,7 +69,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/pprof v0.0.0-20240227163752-401108e1b7e7 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
-	github.com/klauspost/compress v1.17.3 // indirect
+	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
@@ -105,5 +105,5 @@ require (
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	nhooyr.io/websocket v1.8.10 // indirect
+	nhooyr.io/websocket v1.8.17 // indirect
 )
