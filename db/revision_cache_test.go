@@ -1327,16 +1327,18 @@ func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			err = collection.dataStore.Set(docID, 0, nil, []byte(fmt.Sprintf(`{"ver": "%d"}`, i)))
 			require.NoError(t, err)
-			docRev, err := db.revisionCache.GetActive(ctx, docID, collection.GetCollectionID())
-			require.NoError(t, err)
+			_, err := db.revisionCache.GetActive(ctx, docID, collection.GetCollectionID())
+			if err != nil {
+				break
+			}
 		}
 		wg.Done()
 	}()
 	wg.Wait()
+	require.NoError(t, err)
 }
 
 func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
 
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -1378,7 +1380,6 @@ func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
 }
 
 func TestPutRevHighRevCacheChurn(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
 
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
