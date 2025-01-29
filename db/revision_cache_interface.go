@@ -44,7 +44,7 @@ type RevisionCache interface {
 	Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32)
 
 	// Remove eliminates a revision in the cache.
-	Remove(docID, revID string, collectionID uint32)
+	Remove(ctx context.Context, docID, revID string, collectionID uint32)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta)
@@ -150,8 +150,8 @@ func (c *collectionRevisionCache) Upsert(ctx context.Context, docRev DocumentRev
 }
 
 // Remove is for per collection access to Remove method
-func (c *collectionRevisionCache) Remove(docID, revID string) {
-	(*c.revCache).Remove(docID, revID, c.collectionID)
+func (c *collectionRevisionCache) Remove(ctx context.Context, docID, revID string) {
+	(*c.revCache).Remove(ctx, docID, revID, c.collectionID)
 }
 
 // UpdateDelta is for per collection access to UpdateDelta method

@@ -49,12 +49,13 @@ func realDocID(docid string) string {
 	return docid
 }
 
+// GetDocument with raw returns the document from the bucket. This may perform an on-demand import.
 func (c *DatabaseCollection) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	doc, _, err = c.GetDocumentWithRaw(ctx, docid, unmarshalLevel)
 	return doc, err
 }
 
-// Lowest-level method that reads a document from the bucket
+// GetDocumentWithRaw returns the document from the bucket. This may perform an on-demand import.
 func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	key := realDocID(docid)
 	if key == "" {
@@ -886,7 +887,8 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	updateRevCache := true
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1011,7 +1013,8 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	updateRevCache := true
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1929,7 +1932,7 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
 //  3. If isImport=true, document body will not be updated - only metadata xattr(s)
-func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, isImport bool, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, isImport bool, updateRevCache bool, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -2078,7 +2081,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Prior to saving doc, remove the revision in cache
 			if createNewRevIDSkipped {
-				db.revisionCache.Remove(doc.ID, doc.CurrentRev)
+				db.revisionCache.Remove(ctx, doc.ID, doc.CurrentRev)
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
@@ -2173,10 +2176,12 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Deleted:     doc.History[newRevID].Deleted,
 		}
 
-		if createNewRevIDSkipped {
-			db.revisionCache.Upsert(ctx, documentRevision)
-		} else {
-			db.revisionCache.Put(ctx, documentRevision)
+		if updateRevCache {
+			if createNewRevIDSkipped {
+				db.revisionCache.Upsert(ctx, documentRevision)
+			} else {
+				db.revisionCache.Put(ctx, documentRevision)
+			}
 		}
 
 		if db.eventMgr().HasHandlerForEvent(DocumentChange) {
