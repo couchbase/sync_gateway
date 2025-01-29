@@ -138,11 +138,11 @@ const (
 
 	RevCacheMemoryDesc = "The approximation of total memory taken up by rev cache for documents. This is measured by the raw document body, the channels allocated to a document and its revision history."
 
-	SkippedSeqLengthDesc = "The current length of the pending skipped sequence slice."
+	SkippedSeqLengthDesc = "The current length of the pending skipped sequence queue. This is equivalent to current_skipped_seq_count."
 
-	SkippedSeqCapDesc = "The current capacity of the skipped sequence slice."
+	SkippedSeqCapDesc = "This stat is unused."
 
-	NumCurrentSkippedSeq = "The number of sequences currently in the skipped sequence slice."
+	NumCurrentSkippedSeq = "The current number of items in the pending skipped sequence queue"
 
 	ViewQueriesDesc = "The total view_queries."
 

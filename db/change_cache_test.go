@@ -9,7 +9,6 @@
 package db
 
 import (
-	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -72,6 +71,45 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string, col
 	}
 	entry.Channels = channelMap
 	return entry
+}
+
+func TestSkippedSequenceList(t *testing.T) {
+
+	skipList := NewSkippedSequenceList()
+	// Push values
+	assert.NoError(t, skipList.Push(&SkippedSequence{4, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{7, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{8, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{12, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{18, time.Now().Unix()}))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{4, 7, 8, 12, 18}))
+
+	// Retrieval of low value
+	assert.Equal(t, uint64(4), skipList.getOldest())
+
+	// Removal of first value
+	assert.NoError(t, skipList.Remove(4))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 8, 12, 18}))
+
+	// Removal of middle values
+	assert.NoError(t, skipList.Remove(8))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 12, 18}))
+
+	assert.NoError(t, skipList.Remove(12))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 18}))
+
+	// Removal of last value
+	assert.NoError(t, skipList.Remove(18))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7}))
+
+	// Removal of non-existent returns error
+	assert.Error(t, skipList.Remove(25))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7}))
+
+	// Add an out-of-sequence entry (make sure bad sequencing doesn't throw us into an infinite loop)
+	assert.Error(t, skipList.Push(&SkippedSequence{6, time.Now().Unix()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{9, time.Now().Unix()}))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 9}))
 }
 
 func TestLateSequenceHandling(t *testing.T) {
@@ -1201,7 +1239,9 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(t, collection, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	db.changeCache.skippedSeqs.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(3, time.Now().Unix()-7200))
+	timeAdded := time.Now().Add(time.Hour * -2)
+	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, timeAdded.Unix()})
+	require.NoError(t, err)
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
 	db.Close(ctx)
@@ -1209,6 +1249,84 @@ func TestStopChangeCache(t *testing.T) {
 	// Hang around a while to see if the housekeeping tasks fire and panic
 	time.Sleep(1 * time.Second)
 
+}
+
+// TestSkippedSequenceCompaction:
+//   - Add skipped sequence with time added that is above the max wait for skipped threshold
+//   - Run clean skipped task and assert the sequence is cleaned
+//   - Add new skipped sequence with current timestamp on it
+//   - Run clean skipped task and assert that that sequence still exists in list
+func TestSkippedSequenceCompaction(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	testChangeCache := &changeCache{}
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: 2 * time.Minute,
+		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxNum:  0,
+	}, dbContext.MetadataKeys); err != nil {
+		log.Printf("Init failed for testChangeCache: %v", err)
+		t.Fail()
+	}
+
+	if err := testChangeCache.Start(0); err != nil {
+		log.Printf("Start error for testChangeCache: %v", err)
+		t.Fail()
+	}
+	defer testChangeCache.Stop(ctx)
+	require.NoError(t, err)
+
+	// push entry on skipped list with time added over two minutes (tests max wait for skipped) in the past
+	timeAdded := time.Now().Add(time.Minute * -3)
+	err = testChangeCache.skippedSeqs.Push(&SkippedSequence{3, timeAdded.Unix()})
+	require.NoError(t, err)
+
+	// run clean skipped sequence task
+	require.NoError(t, testChangeCache.CleanSkippedSequenceQueue(ctx))
+
+	// assert that sequence 3 doesn't exists on list
+	assert.False(t, testChangeCache.WasSkipped(3))
+
+	// assert that the skipped sequence 3 is removed
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().AbandonedSeqs.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// push new skipped sequence with current time
+	testChangeCache.PushSkipped(ctx, 4)
+
+	// assert that length is 1
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().DeprecatedSkippedSeqLen.Value()) //nolint
+		assert.Equal(c, int64(0), dbContext.DbStats.Cache().DeprecatedSkippedSeqCap.Value()) //nolint
+	}, time.Second*10, time.Millisecond*100)
+
+	// run clean skipped sequence task
+	require.NoError(t, testChangeCache.CleanSkippedSequenceQueue(ctx))
+
+	// assert that the above skipped sequence (4) is remains in list, abandoned sequences should still be 1
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().DeprecatedSkippedSeqLen.Value()) //nolint
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().AbandonedSeqs.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.Cache().DeprecatedSkippedSeqCap.Value()) //nolint
+	}, time.Second*10, time.Millisecond*100)
+
+	// assert that sequence 4 still exists on list
+	assert.True(t, testChangeCache.WasSkipped(4))
 }
 
 // Test size config
@@ -1260,6 +1378,31 @@ func shortWaitCache() CacheOptions {
 	cacheOptions.CachePendingSeqMaxNum = 50
 	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
 	return cacheOptions
+}
+
+func verifySkippedSequences(list *SkippedSequenceList, sequences []uint64) bool {
+	if len(list.skippedMap) != len(sequences) {
+		log.Printf("verifySkippedSequences: skippedMap size (%v) not equals to sequences size (%v)",
+			len(list.skippedMap), len(sequences))
+		return false
+	}
+
+	i := -1
+	for e := list.skippedList.Front(); e != nil; e = e.Next() {
+		i++
+		skippedSeq := e.Value.(*SkippedSequence)
+		if skippedSeq.seq != sequences[i] {
+			log.Printf("verifySkippedSequences: sequence mismatch at index %v, queue=%v, sequences=%v",
+				i, skippedSeq.seq, sequences[i])
+			return false
+		}
+	}
+	if i != len(sequences)-1 {
+		log.Printf("verifySkippedSequences: skippedList size (%d) not equals to sequences size (%d)",
+			i+1, len(sequences))
+		return false
+	}
+	return true
 }
 
 func verifyCacheSequences(singleCache SingleChannelCache, sequences []uint64) bool {
@@ -2000,858 +2143,6 @@ func BenchmarkDocChanged(b *testing.B) {
 	}
 }
 
-// TestProcessSkippedEntry:
-//   - Creates change cache with minimal pending seq wait time to push sequences to skipped quick
-//   - Push a sequence higher than expected to cache
-//   - Have NewTestProcessEntryFeed push sequences to the cache and assert that the current skipped sequence count decrements each time
-//   - Iterate through the skipped slice and cumulative add number of sequences currently in the slice, assert this is
-//     equal to the corresponding stat
-//   - Assert that the length of slice stat is equal to the length of the skipped sequence slice + assert that number of
-//     sequences skipped overall stat is correct
-func TestProcessSkippedEntry(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 5 * time.Millisecond,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	feed := NewTestProcessEntryFeed(1, 5)
-
-	// add cache entry that is higher than expected
-	highEntry := &LogEntry{
-		Sequence:     20,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, highEntry)
-
-	// update cache stats for assertions
-	testChangeCache.updateStats(ctx)
-
-	// assert this pushes an entry on the skipped sequence slice
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
-	}, time.Second*10, time.Millisecond*100)
-
-	// process some sequences over cache
-	currNumSkippedSeqs := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
-	for j := 0; j < 10; j++ {
-		en := feed.Next()
-		_ = testChangeCache.processEntry(ctx, en)
-		testChangeCache.updateStats(ctx)
-		assert.Equal(t, currNumSkippedSeqs-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		currNumSkippedSeqs = dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
-	}
-
-	// assert on skipped sequence slice stats after above operations on cache
-	var numSeqsInList int64
-	for _, v := range testChangeCache.skippedSeqs.list {
-		numSeqsInList = numSeqsInList + v.getNumSequencesInEntry()
-	}
-	assert.Equal(t, numSeqsInList, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-	assert.Equal(t, int64(len(testChangeCache.skippedSeqs.list)), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-	assert.Equal(t, int64(19), dbContext.DbStats.CacheStats.NumSkippedSeqs.Value())
-}
-
-// TestProcessSkippedEntryStats:
-//   - Creates change cache with minimal pending seq wait time to push sequences to skipped quick
-//   - Push a sequence higher than expected to cache
-//   - Push some sequences that are skipped onto the cache and assert that the stats: number of current skipped sequences,
-//     length of slice, cumulative number of skipped sequences and capacity of slice are all updated as expected
-func TestProcessSkippedEntryStats(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 5 * time.Millisecond,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// add cache entry that is higher than expected
-	highEntry := &LogEntry{
-		Sequence:     20,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, highEntry)
-
-	// update cache stats for assertions
-	testChangeCache.updateStats(ctx)
-
-	// assert this pushes an entry on the skipped sequence slice
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
-	}, time.Second*10, time.Millisecond*100)
-
-	// expected values for stats on skipped slice
-	arrivingSeqs := []uint64{3, 15, 18, 2, 1}
-	expSliceLen := []int64{2, 3, 4, 4, 3}
-	expSliceCap := []int64{2, 4, 4, 4, 4}
-
-	numSeqsInList := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
-	for j := 0; j < len(arrivingSeqs); j++ {
-		newEntry := &LogEntry{
-			DocID:    fmt.Sprintf("doc_%d", arrivingSeqs),
-			RevID:    "1-abcdefabcdefabcdef",
-			Sequence: arrivingSeqs[j],
-		}
-
-		_ = testChangeCache.processEntry(ctx, newEntry)
-		// assert on skipped sequence slice stats
-		testChangeCache.updateStats(ctx)
-		assert.Equal(t, numSeqsInList-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(t, expSliceLen[j], dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(t, int64(19), dbContext.DbStats.CacheStats.NumSkippedSeqs.Value())
-		assert.Equal(t, expSliceCap[j], dbContext.DbStats.CacheStats.SkippedSeqCap.Value())
-		numSeqsInList = dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
-	}
-
-}
-
-// TestSkippedSequenceCompact:
-//   - Creates change cache with minimal pending seq wait time to push sequences to skipped quick but with
-//     small max wait on skipped sequences
-//   - Push a sequence higher than expected to cache
-//   - Assert that the skipped slice eventually ends up with 0 length and the number of abandoned sequences are as expected
-func TestSkippedSequenceCompact(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 5 * time.Millisecond,
-		CacheSkippedSeqMaxWait: 2 * time.Second,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// add cache entry that is higher than expected
-	highEntry := &LogEntry{
-		Sequence:     20,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, highEntry)
-
-	// assert this pushes an entry on the skipped sequence slice
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
-	}, time.Second*10, time.Millisecond*100)
-
-	// assert that compaction empties the skipped slice and we have correct value for abandoned sequences
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.AbandonedSeqs.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestReleasedSequenceRangeHandlingEverythingSkipped:
-//   - Test release of an unused sequence range when all sequences in the range are skipped sequences
-func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 5 * time.Millisecond,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// add cache entry that is higher than expected
-	highEntry := &LogEntry{
-		Sequence:     20,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, highEntry)
-
-	// assert that skipped list is filled and next seq at cache is updated
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
-	}, time.Second*10, time.Millisecond*100)
-
-	// process unused sequence range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, time.Now())
-
-	// assert on cache stats after removal from, skipped list
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, uint64(20), testChangeCache._getMaxStableCached(ctx))
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestReleasedSequenceRangeHandlingEverythingPending:
-//   - Test release of an unused sequence range when all range sequences will be pushed top pending
-func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 20 * time.Minute,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-		CachePendingSeqMaxNum:  5,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// add cache entry
-	entry := &LogEntry{
-		Sequence:     1,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// process unused sequence range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 21, 25, time.Now())
-
-	// assert that whole range is processed onto pending
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, uint64(2), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending:
-//   - Test release of an unused sequence range when all sequences in the range are pushed to pending.
-//   - Then add a sequence to unblock pending and assert that the sequence range is processed off pending
-func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 20 * time.Minute,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-		CachePendingSeqMaxNum:  5,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// process unused sequence range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 25, time.Now())
-
-	// assert that we have pending as expected
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// add cache entry to unblock pending
-	entry := &LogEntry{
-		Sequence:     1,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// assert on stats after unblocking pending
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(25), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-		assert.Equal(c, uint64(26), testChangeCache.nextSequence)
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity:
-//   - Test release of an unused sequence range when all sequences in the range are pushed to pending.
-//   - Then add another pending entry to take over pending capacity and assert that the range is processed correctly
-//   - Then add another range to completely unblock pending
-func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 20 * time.Minute,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-		CachePendingSeqMaxNum:  1,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// process unused sequence range, will be sent to pending.  Triggers seq 1 being sent to skipped
-	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 25, time.Now())
-
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// add cache entry that will be pushed to pending
-	entry := &LogEntry{
-		Sequence:     30,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// assert on cache stats:
-	// - Sequence 1 should be skipped
-	// - Pending should hold sequence 30
-	// - Range 2-25 should've been processed pushing nextSeq up to 26
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, uint64(26), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(25), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// add a new contiguous sequence
-	entry = &LogEntry{
-		Sequence:     26,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// assert we update cache as expected
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(26), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-		assert.Equal(c, uint64(27), testChangeCache.nextSequence)
-	}, time.Second*10, time.Millisecond*100)
-
-	// process unused sequence range to catch up with pending seq in cache
-	testChangeCache.releaseUnusedSequenceRange(ctx, 27, 29, time.Now())
-
-	// assert on cache state after cache is caught up with pending
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, uint64(31), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(30), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestReleasedSequenceRangeHandlingSingleSequence:
-//   - Test release of single sequence range being pushed to pending
-//   - Assert this single range is processed off pending after new entry is added taking pending over the limit
-//   - Test release of another single range that is now skipped and assert that skipped is emptied
-func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 20 * time.Minute,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-		CachePendingSeqMaxNum:  1,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// process single unused sequence range that should end up going to pending
-	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 2, time.Now())
-
-	// assert single sequence range is pending
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, uint64(1), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// process change that should overload pending and push sequence 1 to skipped
-	entry := &LogEntry{
-		Sequence:     4,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, uint64(3), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// process single unused sequence range that should empty skipped list
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 1, time.Now())
-
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, uint64(3), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestReleasedSequenceRangeHandlingEdgeCase1:
-//   - Test releasing unused sequence range with everything in range being pushed to pending
-//   - Test the handling at the cache when endSeq on unused sequence range is in the pending list
-//   - This test is lower level version of TestJumpInSequencesAtAllocatorRangeInPending
-func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 20 * time.Minute,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-		CachePendingSeqMaxNum:  1,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// process change that should push pending and subsequently be cached
-	entry := &LogEntry{
-		Sequence:     20,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// assert that the pending list + next sequence is as we expect (not immediately hitting skipped sequence handling)
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(1), testChangeCache.nextSequence)
-	}, time.Second*10, time.Millisecond*100)
-
-	// process unusedSeq range with pending seq equal to end
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, time.Now())
-
-	// assert that the pending list is empty + high seq cached + next seq is as expected
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestReleasedSequenceRangeHandlingEdgeCase2:
-//   - Test releasing unused sequence range with everything startSeq to endSeq - 1 in skipped
-//   - Test the handling at the cache when endSeq on unused sequence range is in the pending list
-//   - This test is lower level version of TestJumpInSequencesAtAllocatorSkippedSequenceFill
-func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 100 * time.Millisecond,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-		CachePendingSeqMaxNum:  1,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// process change that should push pending and subsequently be cached
-	entry := &LogEntry{
-		Sequence:     20,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// assert that the skipped list is filled
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// process unusedSeq range with pending seq equal to end
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, time.Now())
-
-	// assert that the pending list is empty + high seq cached + next seq is as expected
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-}
-
-// TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped:
-//   - Test releasing unused sequence range that has duplicate sequences in skipped sequence list
-//   - Assert sequences in the range are removed from skipped
-//   - Empty skipped through unused sequence release
-//   - Add new contiguous sequence and assert it is processed correctly
-func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testChangeCache := &changeCache{}
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 20 * time.Minute,
-		CacheSkippedSeqMaxWait: 20 * time.Minute,
-		CachePendingSeqMaxNum:  0,
-	}, dbContext.MetadataKeys); err != nil {
-		log.Printf("Init failed for testChangeCache: %v", err)
-		t.Fail()
-	}
-
-	if err := testChangeCache.Start(0); err != nil {
-		log.Printf("Start error for testChangeCache: %v", err)
-		t.Fail()
-	}
-	defer testChangeCache.Stop(ctx)
-	require.NoError(t, err)
-
-	// push two entries that will be pushed to pending and subsequently skipped will be filled with sequence gaps
-	entry := &LogEntry{
-		Sequence:     14,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	entry = &LogEntry{
-		Sequence:     18,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// assert skipped is filled
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(16), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// process unusedSeq range with range containing duplicate sipped sequences
-	// Skipped should contain: (1-13), (15-17) before processing this range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 10, 17, time.Now())
-
-	// assert skipped list altered to reflect the above range is processed
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(9), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// Skipped should contain: (1-9) before processing this range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 9, time.Now())
-
-	// assert skipped list is emptied after the above range is processed
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-
-	// assert a new contiguous sequence is processed correctly
-	entry = &LogEntry{
-		Sequence:     19,
-		DocID:        fmt.Sprintf("doc_%d", 50),
-		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
-	}
-	_ = testChangeCache.processEntry(ctx, entry)
-
-	// assert on stats
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, uint64(20), testChangeCache.nextSequence)
-		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.HighSeqCached.Value())
-	}, time.Second*10, time.Millisecond*100)
-}
-
 // getChanges is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
 func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
 	require.NotNil(t, options.ChangesCtx)
@@ -2864,230 +2155,4 @@ func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels b
 		changes = append(changes, entry)
 	}
 	return changes
-}
-
-// TestAddPendingLogs:
-//   - Test age-based eviction of sequences and ranges from pending logs.
-//   - Adds to pending logs directly via heap.Push with backdated TimeReceived,
-//     triggers eviction with call to _addPendingLogs
-//   - tests duplicate handling when popping pending entries
-//   - reproduces CBG-4215
-func TestAddPendingLogs(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	require.NoError(t, err)
-	defer dbContext.Close(ctx)
-
-	ctx = dbContext.AddDatabaseLogContext(ctx)
-	err = dbContext.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	testCases := []struct {
-		incoming             []sequenceRange // test simulates adding these to pending in the order found in the slice
-		channelName          string          // non-range values (endSeq=0) will be assigned to this channel for verification of proper caching
-		expectedCached       []uint64        // expected cached sequences
-		expectedSkipped      []sequenceRange // expected skipped sequence ranges
-		expectedNextSequence uint64          // expected cache.nextSequence
-	}{
-		{
-			// single range
-			incoming:             []sequenceRange{{2, 4}},
-			expectedNextSequence: 5,
-			expectedSkipped:      []sequenceRange{{1, 1}},
-		},
-		{
-			// multiple non-overlapping ranges arriving out of sequence order
-			incoming:             []sequenceRange{{2, 4}, {9, 10}, {6, 8}, {14, 20}, {11, 13}, {5, 5}},
-			expectedNextSequence: 21,
-			expectedSkipped:      []sequenceRange{{1, 1}},
-		},
-		{
-			// non overlapping ranges, arrive in sequence order
-			incoming:             []sequenceRange{{2, 4}, {5, 8}},
-			expectedNextSequence: 9,
-			expectedSkipped:      []sequenceRange{{1, 1}},
-		},
-		{
-			// non overlapping ranges, arrive out of sequence order
-			incoming:             []sequenceRange{{5, 8}, {2, 4}},
-			expectedNextSequence: 9,
-			expectedSkipped:      []sequenceRange{{1, 1}},
-		},
-		{
-			// range overlaps single, range arrives first
-			incoming:             []sequenceRange{{2, 4}, {3, 0}},
-			channelName:          "A",
-			expectedNextSequence: 4,
-			expectedCached:       []uint64{3},
-			expectedSkipped:      []sequenceRange{{1, 1}},
-		},
-		{
-			// single arrives then range overlaps single both sides
-			incoming:             []sequenceRange{{3, 3}, {2, 4}},
-			expectedNextSequence: 4,
-			expectedSkipped:      []sequenceRange{{1, 1}},
-		},
-		{
-			// range arrives then another that completely covers range in the pending list
-			incoming:             []sequenceRange{{4, 8}, {2, 10}},
-			expectedNextSequence: 9,
-			expectedSkipped:      []sequenceRange{{1, 1}},
-		},
-		{
-			// overlapping ranges, low range arrives first
-			incoming:             []sequenceRange{{4, 8}, {6, 10}},
-			expectedNextSequence: 11,
-			expectedSkipped:      []sequenceRange{{1, 3}},
-		},
-		{
-			// completely overlapping ranges, larger range arrives first
-			incoming:             []sequenceRange{{4, 8}, {6, 8}},
-			expectedNextSequence: 9,
-			expectedSkipped:      []sequenceRange{{1, 3}},
-		},
-		{
-			// range arrives then partly overlapping range arrives
-			incoming:             []sequenceRange{{4, 8}, {6, 10}},
-			expectedNextSequence: 11,
-			expectedSkipped:      []sequenceRange{{1, 3}},
-		},
-		{
-			// range arrives, partly overlapping range arrives the single overlapping range
-			incoming:             []sequenceRange{{4, 8}, {8, 10}, {9, 0}},
-			channelName:          "B",
-			expectedNextSequence: 10,
-			expectedCached:       []uint64{9},
-			expectedSkipped:      []sequenceRange{{1, 3}},
-		},
-		{
-			// single range arrives, left side overlapping range arrives
-			incoming:             []sequenceRange{{4, 0}, {2, 4}},
-			expectedNextSequence: 5,
-			expectedCached:       []uint64{4},
-			expectedSkipped:      []sequenceRange{{1, 1}},
-		},
-		{
-			// single sequence arrives, right side overlapping range arrives
-			incoming:             []sequenceRange{{4, 0}, {4, 5}},
-			channelName:          "C",
-			expectedNextSequence: 6,
-			expectedSkipped:      []sequenceRange{{1, 3}},
-		},
-		{
-			// range arrives, lower end overlapping range arrives
-			incoming:             []sequenceRange{{6, 10}, {4, 8}},
-			expectedNextSequence: 11,
-			expectedSkipped:      []sequenceRange{{1, 3}},
-		},
-	}
-
-	for index, testCase := range testCases {
-		t.Run(fmt.Sprintf("case_%d", index), func(t *testing.T) {
-			testChannelID := channels.NewID(testCase.channelName, GetSingleDatabaseCollection(t, dbContext).GetCollectionID())
-			testChangeCache := &changeCache{}
-			if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-				CachePendingSeqMaxWait: 1 * time.Minute,
-				CacheSkippedSeqMaxWait: 20 * time.Minute,
-				CachePendingSeqMaxNum:  10,
-			}, dbContext.MetadataKeys); err != nil {
-				log.Printf("Init failed for testChangeCache: %v", err)
-				t.Fail()
-			}
-
-			if err := testChangeCache.Start(0); err != nil {
-				log.Printf("Start error for testChangeCache: %v", err)
-				t.Fail()
-			}
-			defer testChangeCache.Stop(ctx)
-			require.NoError(t, err)
-
-			// If we expect cached entries, perform a get to warm the cache for the channel
-			if len(testCase.expectedCached) > 0 {
-				cachedEntries, err := testChangeCache.getChannelCache().GetCachedChanges(ctx, testChannelID)
-				require.NoError(t, err)
-				require.Equal(t, 0, len(cachedEntries))
-			}
-
-			// process overlapping unused sequence ranges that should end up going to pending without duplicates
-			// acquire cache lock to push to pending logs
-			testChangeCache.lock.Lock()
-			backdatedTimeReceived := time.Now().Add(-1 * time.Hour)
-			for i, incomingRange := range testCase.incoming {
-				if incomingRange.end == 0 {
-					// treat as a document pushed to pending
-					logEntry := logEntry(incomingRange.start, fmt.Sprintf("doc%d", i), "1-abc", []string{testChannelID.Name}, testChannelID.CollectionID)
-					logEntry.TimeReceived = backdatedTimeReceived
-					heap.Push(&testChangeCache.pendingLogs, logEntry)
-				} else {
-					testChangeCache._pushRangeToPending(ctx, incomingRange.start, incomingRange.end, backdatedTimeReceived)
-				}
-			}
-			// Call _addPendingLogs to trigger eviction from pendingLogs based on age
-			_ = testChangeCache._addPendingLogs(ctx)
-			assert.Equal(t, int(testCase.expectedNextSequence), int(testChangeCache.nextSequence), "Cache nextSequence doesn't match expected")
-			testChangeCache.lock.Unlock()
-			if len(testCase.expectedCached) > 0 {
-				cachedEntries, err := testChangeCache.getChannelCache().GetCachedChanges(ctx, testChannelID)
-				require.NoError(t, err)
-				require.Equal(t, len(testCase.expectedCached), len(cachedEntries))
-			}
-			if len(testCase.expectedSkipped) > 0 {
-				require.Equal(t, len(testCase.expectedSkipped), len(testChangeCache.skippedSeqs.list), "Number of skipped sequence entries doesn't match expected")
-				for i, skippedEntry := range testChangeCache.skippedSeqs.list {
-					expectedEntry := testCase.expectedSkipped[i]
-					assert.Equal(t, expectedEntry.start, skippedEntry.start, "skipped entry start mismatch")
-					assert.Equal(t, expectedEntry.end, skippedEntry.end, "skipped entry end mismatch")
-				}
-			}
-
-		})
-	}
-
-}
-
-type sequenceRange struct {
-	start uint64
-	end   uint64
-}
-
-func ExpectedRange(start, end uint64) sequenceRange {
-	return sequenceRange{
-		start: start,
-		end:   end,
-	}
-}
-
-// AssertPendingLogs validates the ordering of the provided LogPriorityQueue against the ordered expectedPending slice.
-// We don't want to modify the incoming LogPriorityQueue, so makes a copy and then performs heap removal
-func AssertPendingLogs(t *testing.T, pendingLogs LogPriorityQueue, expectedPending []sequenceRange) {
-
-	pendingCopy := make(LogPriorityQueue, len(pendingLogs))
-	_ = copy(pendingCopy, pendingLogs)
-	if len(pendingCopy) != len(expectedPending) {
-		t.Errorf("Mismatch between length of pendingLogs and expectedPending.  pendingLogs: %s, expectedPending: %v", pendingLogsAsString(pendingCopy), expectedPending)
-		return
-	}
-
-	for i, expectedEntry := range expectedPending {
-		pendingEntry := heap.Pop(&pendingCopy).(*LogEntry)
-		assert.True(t, expectedEntry.start == pendingEntry.Sequence && expectedEntry.end == pendingEntry.EndSequence, "entry #%d, expected [%d,%d], got [%d,%d]", i, expectedEntry.start, expectedEntry.end, pendingEntry.Sequence, pendingEntry.EndSequence)
-	}
-}
-
-func pendingLogsAsString(pendingLogs LogPriorityQueue) string {
-	count := len(pendingLogs)
-	result := "{"
-	delimiter := ""
-	for i := 0; i < count; i++ {
-		pendingEntry := heap.Pop(&pendingLogs).(*LogEntry)
-		result += fmt.Sprintf("%s[%d, %d]", delimiter, pendingEntry.Sequence, pendingEntry.EndSequence)
-		delimiter = ","
-	}
-	result += "}"
-	return result
 }
