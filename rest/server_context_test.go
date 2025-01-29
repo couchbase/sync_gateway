@@ -940,6 +940,9 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 }
 
 func TestDatabaseStartupFailure(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("EE only test, requires heartbeater error")
+	}
 	touchErr := errors.New("touch error")
 	rt := NewRestTester(t, &RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{
