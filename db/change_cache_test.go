@@ -1325,7 +1325,7 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(t, db, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	timeAdded := time.Now().Add(time.Duration(time.Hour * -2))
+	timeAdded := time.Now().Add(time.Hour * -2)
 	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, timeAdded.Unix()})
 	require.NoError(t, err)
 
@@ -1395,7 +1395,9 @@ func TestSkippedSequenceCompaction(t *testing.T) {
 
 	// assert that length is 1
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, int64(1), dbContext.DbStats.Cache().SkippedSeqLen.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().DeprecatedSkippedSeqLen.Value()) //nolint
+		assert.Equal(c, int64(0), dbContext.DbStats.Cache().DeprecatedSkippedSeqCap.Value()) //nolint
 	}, time.Second*10, time.Millisecond*100)
 
 	// run clean skipped sequence task
@@ -1403,8 +1405,10 @@ func TestSkippedSequenceCompaction(t *testing.T) {
 
 	// assert that the above skipped sequence (4) is remains in list, abandoned sequences should still be 1
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, int64(1), dbContext.DbStats.Cache().SkippedSeqLen.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.Cache().DeprecatedSkippedSeqLen.Value()) //nolint
 		assert.Equal(c, int64(1), dbContext.DbStats.Cache().AbandonedSeqs.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.Cache().DeprecatedSkippedSeqCap.Value()) //nolint
 	}, time.Second*10, time.Millisecond*100)
 
 	// assert that sequence 4 still exists on list
