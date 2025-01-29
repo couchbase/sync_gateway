@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.0
 	github.com/coreos/go-oidc/v3 v3.12.0
-	github.com/couchbase/cbgt v1.3.9
+	github.com/couchbase/cbgt v1.3.10-0.20250128173458-04138cb9d33d
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20241014144256-13a798c348fd
 	github.com/couchbase/gocb/v2 v2.9.1
