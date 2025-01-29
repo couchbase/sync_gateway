@@ -887,12 +887,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}()
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
-		defer func() {
-			if returnedError != nil {
-				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
-			}
-		}()
 	}
 
 	// Register it so HTTP handlers can find it:
@@ -909,6 +903,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	// If asyncOnline wasn't specified, block until db init is completed, then start online processes
 	if !options.asyncOnline || !isAsync {
+		defer func() {
+			if returnedError != nil {
+				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
+				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
+			}
+		}()
+
 		dbcontext.WasInitializedSynchronously = true
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete...")
 		if dbInitDoneChan != nil {
