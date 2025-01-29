@@ -1602,13 +1602,16 @@ func TestImportRevisionCopy(t *testing.T) {
 	_, err := dataStore.Add(key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
-	// 2. Trigger import via SG retrieval
+	// 2. Trigger import via SG retrieval, this will not populate the rev cache.
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	assert.Equal(t, 200, response.Code)
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
+
+	// Populate rev cache by getting the doc again
+	rt.GetDoc(key)
 
 	// 3. Update via SDK
 	updatedBody := make(map[string]interface{})
