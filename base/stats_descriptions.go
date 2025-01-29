@@ -140,9 +140,9 @@ const (
 
 	SkippedSeqLengthDesc = "The current length of the pending skipped sequence slice."
 
-	SkippedSeqCapDesc = "The current capacity of the skipped sequence slice."
+	SkippedSeqCapDesc = "This stat is unused."
 
-	NumCurrentSkippedSeq = "The number of sequences currently in the skipped sequence slice."
+	NumCurrentSkippedSeq = "This stat is unused."
 
 	ViewQueriesDesc = "The total view_queries."
 

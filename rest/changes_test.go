@@ -324,7 +324,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		rt.GetDatabase().UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.DeprecatedNumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
 	}, time.Second*10, time.Millisecond*100)
 
@@ -394,8 +394,8 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	// assert that nothing has been pushed to skipped
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		rt.GetDatabase().UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.DeprecatedSkippedSeqCap.Value())
-		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.DeprecatedNumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqCap.Value())
+		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
 	}, time.Second*10, time.Millisecond*100)
 
