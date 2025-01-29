@@ -197,7 +197,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 	assert.Equal(t, expValue, currMem)
 
 	// remove doc "1" to give headroom for memory based eviction
-	db.revisionCache.Remove("1", rev, collection.GetCollectionID())
+	db.revisionCache.Remove(ctx, "1", rev, collection.GetCollectionID())
 	docRev, ok = db.revisionCache.Peek(ctx, "1", rev, collection.GetCollectionID())
 	assert.False(t, ok)
 	assert.Nil(t, docRev.BodyBytes)
@@ -911,13 +911,13 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Remove with something in cache, assert stat decrements by expected value
-	db.revisionCache.Remove("doc5", "1-abc", collctionID)
+	db.revisionCache.Remove(ctx, "doc5", "1-abc", collctionID)
 	expMem -= 14
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Remove with item not in cache, assert stat is unchanged
 	prevMemStat = cacheStats.RevisionCacheTotalMemory.Value()
-	db.revisionCache.Remove("doc6", "1-abc", collctionID)
+	db.revisionCache.Remove(ctx, "doc6", "1-abc", collctionID)
 	assert.Equal(t, prevMemStat, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Test Update Delta, assert stat increases as expected
@@ -927,9 +927,9 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 	assert.Equal(t, expMem, cacheStats.RevisionCacheTotalMemory.Value())
 
 	// Empty cache and see memory stat is 0
-	db.revisionCache.Remove("doc3", revIDDoc3, collctionID)
-	db.revisionCache.Remove("doc2", revIDDoc2, collctionID)
-	db.revisionCache.Remove("doc1", revIDDoc1, collctionID)
+	db.revisionCache.Remove(ctx, "doc3", revIDDoc3, collctionID)
+	db.revisionCache.Remove(ctx, "doc2", revIDDoc2, collctionID)
+	db.revisionCache.Remove(ctx, "doc1", revIDDoc1, collctionID)
 
 	// TODO: pending CBG-4135 assert rev cache had 0 items in it
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
@@ -990,7 +990,7 @@ func TestRevisionCacheRemove(t *testing.T) {
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	collection.revisionCache.Remove("doc", rev1id)
+	collection.revisionCache.Remove(ctx, "doc", rev1id)
 
 	docRev, err = collection.revisionCache.Get(ctx, "doc", rev1id, true)
 	assert.NoError(t, err)
@@ -1208,10 +1208,10 @@ func TestRevCacheCapacityStat(t *testing.T) {
 	assert.Equal(t, int64(len(cache.cache)), cacheNumItems.Value())
 
 	// Empty cache
-	cache.Remove("doc1", "1-abc", testCollectionID)
-	cache.Remove("doc4", "1-abc", testCollectionID)
-	cache.Remove("doc5", "1-abc", testCollectionID)
-	cache.Remove("doc6", "1-abc", testCollectionID)
+	cache.Remove(ctx, "doc1", "1-abc", testCollectionID)
+	cache.Remove(ctx, "doc4", "1-abc", testCollectionID)
+	cache.Remove(ctx, "doc5", "1-abc", testCollectionID)
+	cache.Remove(ctx, "doc6", "1-abc", testCollectionID)
 
 	// Assert num items goes back to 0
 	assert.Equal(t, int64(0), cacheNumItems.Value())
@@ -1447,7 +1447,7 @@ func createThenRemoveFromRevCache(t *testing.T, ctx context.Context, docID strin
 	revIDDoc, _, err := collection.Put(ctx, docID, Body{"test": "doc"})
 	require.NoError(t, err)
 
-	db.revisionCache.Remove(docID, revIDDoc, collection.GetCollectionID())
+	db.revisionCache.Remove(ctx, docID, revIDDoc, collection.GetCollectionID())
 
 	return revIDDoc
 }
