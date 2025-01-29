@@ -571,9 +571,9 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
 // Pass in a bucketFromBucketSpecFn to replace the default ConnectToBucket function. This will cause the failFast argument to be ignored
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (dbcontext *db.DatabaseContext, returnedError error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (returnedDBContext *db.DatabaseContext, returnedError error) {
 	var bucket base.Bucket
-
+	var dbcontext *db.DatabaseContext // do not use returnedDBContext directly, as it may be nil if an error is returned
 	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(ctx, &config, sc.Config)
 	if err != nil {
@@ -887,6 +887,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}()
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
+		defer func() {
+			if returnedError != nil {
+				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
+				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
+			}
+		}()
 	}
 
 	// Register it so HTTP handlers can find it:
