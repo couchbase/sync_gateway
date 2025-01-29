@@ -1233,13 +1233,22 @@ func TestRevCacheOnDemand(t *testing.T) {
 	docID := "doc1"
 	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
 	require.NoError(t, err)
+
+	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	defer testCtxCancel()
+
 	for i := 0; i < 2; i++ {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
 		go func() {
 			for {
-				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				select {
+				case <-testCtx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
 			}
 		}()
 	}
@@ -1273,13 +1282,22 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 	docID := "doc1"
 	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
 	require.NoError(t, err)
+
+	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	defer testCtxCancel()
+
 	for i := 0; i < 2; i++ {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
 		go func() {
 			for {
-				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				select {
+				case <-testCtx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
 			}
 		}()
 	}
@@ -1312,13 +1330,22 @@ func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
 	_, _, err := collection.Put(ctx, docID, Body{"ver": "0"})
 	require.NoError(t, err)
 	wg.Add(1)
+
+	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	defer testCtxCancel()
+
 	for i := 0; i < 2; i++ {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
 		go func() {
 			for {
-				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				select {
+				case <-testCtx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
 			}
 		}()
 	}
@@ -1354,19 +1381,28 @@ func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
 	rev1ID, _, err := collection.Put(ctx, docID, Body{"ver": "0"})
 	require.NoError(t, err)
 	wg.Add(1)
+
+	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	defer testCtxCancel()
+
 	for i := 0; i < 2; i++ {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
 		go func() {
 			for {
-				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				select {
+				case <-testCtx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
 			}
 		}()
 	}
 
 	var getErr error
-	go func(t *testing.T) {
+	go func() {
 		for i := 0; i < 100; i++ {
 			_, getErr = db.revisionCache.Get(ctx, docID, rev1ID, collection.GetCollectionID(), true)
 			if getErr != nil {
@@ -1374,7 +1410,7 @@ func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
 			}
 		}
 		wg.Done()
-	}(t)
+	}()
 	wg.Wait()
 	require.NoError(t, getErr)
 }
@@ -1393,13 +1429,22 @@ func TestPutRevHighRevCacheChurn(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	docID := "doc1"
 	wg.Add(1)
+
+	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	defer testCtxCancel()
+
 	for i := 0; i < 2; i++ {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
 		go func() {
 			for {
-				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				select {
+				case <-testCtx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
 			}
 		}()
 	}
