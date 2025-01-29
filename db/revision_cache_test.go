@@ -1295,6 +1295,124 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 
 }
 
+func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2,
+			ShardCount:   1,
+		},
+	}
+	var wg sync.WaitGroup
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	_, _, err := collection.Put(ctx, docID, Body{"ver": "0"})
+	require.NoError(t, err)
+	wg.Add(1)
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+			}
+		}()
+	}
+
+	go func() {
+		for i := 0; i < 100; i++ {
+			err = collection.dataStore.Set(docID, 0, nil, []byte(fmt.Sprintf(`{"ver": "%d"}`, i)))
+			require.NoError(t, err)
+			docRev, err := db.revisionCache.GetActive(ctx, docID, collection.GetCollectionID())
+			require.NoError(t, err)
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+}
+
+func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2,
+			ShardCount:   1,
+		},
+	}
+	var wg sync.WaitGroup
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	rev1ID, _, err := collection.Put(ctx, docID, Body{"ver": "0"})
+	require.NoError(t, err)
+	wg.Add(1)
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+			}
+		}()
+	}
+
+	var getErr error
+	go func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			_, getErr = db.revisionCache.Get(ctx, docID, rev1ID, collection.GetCollectionID(), true)
+			if getErr != nil {
+				break
+			}
+		}
+		wg.Done()
+	}(t)
+	wg.Wait()
+	require.NoError(t, getErr)
+}
+
+func TestPutRevHighRevCacheChurn(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2,
+			ShardCount:   1,
+		},
+	}
+	var wg sync.WaitGroup
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	wg.Add(1)
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+			}
+		}()
+	}
+
+	go func() {
+		for i := 0; i < 100; i++ {
+			docRev := DocumentRevision{DocID: docID, RevID: fmt.Sprintf("1-%d", i), BodyBytes: []byte(fmt.Sprintf(`{"ver": "%d"}`, i)), History: Revisions{"start": 1}}
+			db.revisionCache.Put(ctx, docRev, collection.GetCollectionID())
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+}
+
 func BenchmarkRevisionCacheRead(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelDebug, base.KeyAll)
 

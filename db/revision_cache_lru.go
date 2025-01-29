@@ -153,7 +153,8 @@ func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string
 	if value != nil {
 		outGoingBytes := value.updateDelta(toDelta)
 		if outGoingBytes != 0 {
-			rc.updateRevCacheMemoryUsage(outGoingBytes)
+			rc.currMemoryUsage.Add(outGoingBytes)
+			rc.cacheMemoryBytesStat.Add(outGoingBytes)
 		}
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction()
@@ -171,7 +172,7 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 
 	if !statEvent && err == nil {
 		// cache miss so we had to load doc, increment memory count
-		rc.updateRevCacheMemoryUsage(value.getItemBytes())
+		rc.incrRevCacheMemoryUsage(value.getItemBytes())
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction()
 	}
@@ -207,7 +208,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 
 	if !statEvent && err == nil {
 		// cache miss so we had to load doc, increment memory count
-		rc.updateRevCacheMemoryUsage(value.getItemBytes())
+		rc.incrRevCacheMemoryUsage(value.getItemBytes())
 		// check for rev cache memory based eviction
 		rc.revCacheMemoryBasedEviction()
 	}
@@ -236,7 +237,7 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 	value := rc.getValue(docRev.DocID, docRev.RevID, collectionID, true)
 	// increment incoming bytes
 	docRev.CalculateBytes()
-	rc.updateRevCacheMemoryUsage(docRev.MemoryBytes)
+	rc.incrRevCacheMemoryUsage(docRev.MemoryBytes)
 	value.store(docRev)
 	// check for rev cache memory based eviction
 	rc.revCacheMemoryBasedEviction()
@@ -252,7 +253,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	if elem := rc.cache[key]; elem != nil {
 		revItem := elem.Value.(*revCacheValue)
 		// decrement item bytes by the removed item
-		rc.updateRevCacheMemoryUsage(-revItem.getItemBytes())
+		rc._decrRevCacheMemoryUsage(-revItem.getItemBytes())
 		rc.lruList.Remove(elem)
 		newItem = false
 	}
@@ -268,7 +269,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	// Purge oldest item if over number capacity
 	numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
 	if numBytesEvicted > 0 {
-		rc.updateRevCacheMemoryUsage(-numBytesEvicted)
+		rc._decrRevCacheMemoryUsage(-numBytesEvicted)
 	}
 	rc.lock.Unlock() // release lock after eviction finished
 	if numItemsRemoved > 0 {
@@ -277,7 +278,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 
 	docRev.CalculateBytes()
 	// add new item bytes to overall count
-	rc.updateRevCacheMemoryUsage(docRev.MemoryBytes)
+	rc.incrRevCacheMemoryUsage(docRev.MemoryBytes)
 	value.store(docRev)
 
 	// check we aren't over memory capacity, if so perform eviction
@@ -301,7 +302,7 @@ func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, c
 
 		numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
 		if numBytesEvicted > 0 {
-			rc.updateRevCacheMemoryUsage(-numBytesEvicted)
+			rc._decrRevCacheMemoryUsage(-numBytesEvicted)
 		}
 		rc.lock.Unlock() // release lock as eviction is finished
 		if numItemsRemoved > 0 {
@@ -326,7 +327,7 @@ func (rc *LRURevisionCache) Remove(docID, revID string, collectionID uint32) {
 	rc.lruList.Remove(element)
 	// decrement the overall memory bytes count
 	revItem := element.Value.(*revCacheValue)
-	rc.updateRevCacheMemoryUsage(-revItem.getItemBytes())
+	rc._decrRevCacheMemoryUsage(-revItem.getItemBytes())
 	delete(rc.cache, key)
 	rc.cacheNumItems.Add(-1)
 }
@@ -538,9 +539,9 @@ func (rc *LRURevisionCache) performEviction() {
 	var numItemsRemoved, numBytesRemoved int64
 	rc.lock.Lock() // hold rev cache lock to remove items from cache until we're below memory threshold for the shard
 	// check if we are over memory capacity after holding rev cache mutex (protect against another goroutine evicting whilst waiting for mutex above)
-	if rc.currMemoryUsage.Value() > rc.memoryCapacity {
+	if currMemoryUsage := rc.currMemoryUsage.Value(); currMemoryUsage > rc.memoryCapacity {
 		// find amount of bytes needed to evict till below threshold
-		bytesNeededToRemove := rc.currMemoryUsage.Value() - rc.memoryCapacity
+		bytesNeededToRemove := currMemoryUsage - rc.memoryCapacity
 		for bytesNeededToRemove > numBytesRemoved {
 			value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
 			delete(rc.cache, value.key)
@@ -549,17 +550,37 @@ func (rc *LRURevisionCache) performEviction() {
 			numBytesRemoved += valueBytes
 		}
 	}
-	rc.updateRevCacheMemoryUsage(-numBytesRemoved) // need update rev cache memory stats before release lock to stop other goroutines evicting based on outdated stats
-	rc.lock.Unlock()                               // release lock after removing items from cache
+	rc._decrRevCacheMemoryUsage(-numBytesRemoved) // need update rev cache memory stats before release lock to stop other goroutines evicting based on outdated stats
+	rc.lock.Unlock()                              // release lock after removing items from cache
 	rc.cacheNumItems.Add(-numItemsRemoved)
 }
 
-// updateRevCacheMemoryUsage atomically increases overall memory usage for cache and the actual rev cache objects usage
-func (rc *LRURevisionCache) updateRevCacheMemoryUsage(bytesCount int64) {
+// _decrRevCacheMemoryUsage atomically decreases overall memory usage for cache and the actual rev cache objects usage.
+// You should be holding rev cache lock in using this function to avoid eviction processes over evicting items
+func (rc *LRURevisionCache) _decrRevCacheMemoryUsage(bytesCount int64) {
 	// We need to keep track of the current LRURevisionCache memory usage AND the overall usage of the cache. We need
 	// overall memory usage for the stat added to show rev cache usage plus we need the current rev cache capacity of the
 	// LRURevisionCache object for sharding the rev cache. This way we can perform eviction on per shard basis much like
 	// we do with the number of items capacity eviction
+	if bytesCount > 0 {
+		// function is for decrementing memory usage, so return if incrementing
+		return
+	}
+	rc.currMemoryUsage.Add(bytesCount)
+	rc.cacheMemoryBytesStat.Add(bytesCount)
+}
+
+// incrRevCacheMemoryUsage atomically increases overall memory usage for cache and the actual rev cache objects usage.
+// You do not need to hold rev cache lock when using this function
+func (rc *LRURevisionCache) incrRevCacheMemoryUsage(bytesCount int64) {
+	// We need to keep track of the current LRURevisionCache memory usage AND the overall usage of the cache. We need
+	// overall memory usage for the stat added to show rev cache usage plus we need the current rev cache capacity of the
+	// LRURevisionCache object for sharding the rev cache. This way we can perform eviction on per shard basis much like
+	// we do with the number of items capacity eviction
+	if bytesCount < 0 {
+		// function is for incrementing memory usage, so return if decrementing
+		return
+	}
 	rc.currMemoryUsage.Add(bytesCount)
 	rc.cacheMemoryBytesStat.Add(bytesCount)
 }
