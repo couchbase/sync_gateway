@@ -181,7 +181,7 @@ func (apr *ActivePushReplicator) _initCheckpointer(remoteCheckpoints []replicati
 // requires apr.lock
 func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
 	status := &ReplicationStatus{}
-	status.Status, status.ErrorMessage = apr._getStateWithErrorMessage()
+	status.Status, status.ErrorMessage = apr.getStateWithErrorMessage()
 
 	pushStats := apr.replicationStats
 	status.DocsWritten = pushStats.SendRevCount.Value()
