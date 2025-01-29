@@ -273,7 +273,7 @@ func (hlv *HybridLogicalVector) InvalidateMV() {
 		if source == hlv.SourceID {
 			continue
 		}
-		hlv.setPreviousVersion(source, value)
+		hlv.SetPreviousVersion(source, value)
 	}
 	hlv.MergeVersions = nil
 }
@@ -346,13 +346,13 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
 			if hlv.PreviousVersions[i] == 0 {
-				hlv.setPreviousVersion(i, v)
+				hlv.SetPreviousVersion(i, v)
 			} else {
 				// if we get here then there is entry for this source in PV so we must check if its newer or not
 				otherHLVPVValue := v
 				localHLVPVValue := hlv.PreviousVersions[i]
 				if localHLVPVValue < otherHLVPVValue {
-					hlv.setPreviousVersion(i, v)
+					hlv.SetPreviousVersion(i, v)
 				}
 			}
 		}
@@ -384,8 +384,8 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 	return outputSpec
 }
 
-// setPreviousVersion will take a source/version pair and add it to the HLV previous versions map
-func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64) {
+// SetPreviousVersion will take a source/version pair and sets the value for the given source in the previous versions map
+func (hlv *HybridLogicalVector) SetPreviousVersion(source string, version uint64) {
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(HLVVersions)
 	}
@@ -443,6 +443,41 @@ func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 	return s.String()
 }
 
+func FromHistoryForHLV(history string) (*HybridLogicalVector, error) {
+	hlv := NewHybridLogicalVector()
+	// split the history string into PV and MV
+	versionSets := strings.Split(history, ";")
+	switch len(versionSets) {
+	case 0:
+		// no versions present
+		return hlv, nil
+	case 2:
+		// MV
+		mvs := strings.Split(versionSets[1], ",")
+		for _, mv := range mvs {
+			v, err := ParseVersion(mv)
+			if err != nil {
+				return nil, err
+			}
+			hlv.MergeVersions[v.SourceID] = v.Value
+		}
+		fallthrough
+	case 1:
+		// PV
+		pvs := strings.Split(versionSets[0], ",")
+		for _, pv := range pvs {
+			v, err := ParseVersion(pv)
+			if err != nil {
+				return nil, err
+			}
+			hlv.PreviousVersions[v.SourceID] = v.Value
+		}
+	default:
+		return nil, fmt.Errorf("Invalid history string format")
+	}
+	return hlv, nil
+}
+
 // appendRevocationMacroExpansions adds macro expansions for the channel map.  Not strictly an HLV operation
 // but putting the function here as it's required when the HLV's current version is being macro expanded
 func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, channelNames []string) (updatedSpec []sgbucket.MacroExpansionSpec) {
@@ -456,9 +491,9 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 
 // ExtractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
 // blip string may be the following formats
-//  1. cv only:    		cv
-//  2. cv and pv:  		cv;pv
-//  3. cv, pv, and mv: 	cv;mv;pv
+//  1. cv only:			cv
+//  2. cv and pv:		cv;pv1,pv2
+//  3. cv+mv and pv:	cv,mv1,mv2;pv1,pv2
 //
 // Function will return list of revIDs if legacy rev ID was found in the HLV history section (PV)
 // TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL

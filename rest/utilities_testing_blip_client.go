@@ -37,6 +37,22 @@ const (
 	RevtreeSubtestName       = "revTree"
 )
 
+type BlipTesterClientConflictResolverType string
+
+const (
+	ConflictResolverLastWriteWins BlipTesterClientConflictResolverType = "lww"
+
+	ConflictResolverDefault = ConflictResolverLastWriteWins
+)
+
+func (c BlipTesterClientConflictResolverType) IsValid() bool {
+	switch c {
+	case ConflictResolverLastWriteWins:
+		return true
+	}
+	return false
+}
+
 type BlipTesterClientOpts struct {
 	ClientDeltas                  bool // Support deltas on the client side
 	Username                      string
@@ -62,6 +78,8 @@ type BlipTesterClientOpts struct {
 
 	// SourceID is used to define the SourceID for the blip client
 	SourceID string
+
+	ConflictResolver BlipTesterClientConflictResolverType
 }
 
 // defaultBlipTesterClientRevsLimit is the number of revisions sent as history when the client replicates - older revisions are not sent, and may not be stored.
@@ -118,7 +136,7 @@ func (c *BlipTesterCollectionClient) OneShotDocsSince(ctx context.Context, since
 				continue
 			} else if latestDocSeq := doc.latestSeq(); latestDocSeq != seq {
 				// this entry should've been cleaned up from _seqStore
-				require.FailNow(c.TB(), "seq %d found in _seqStore but latestSeq for doc %d - this should've been pruned out!", seq, latestDocSeq)
+				require.FailNowf(c.TB(), "found old seq in _seqStore", "seq %d found in _seqStore but latestSeq for doc %d - this should've been pruned out!", seq, latestDocSeq)
 				continue
 			}
 			if !yield(seq, doc) {
@@ -366,7 +384,7 @@ func (btcc *BlipTesterCollectionClient) _getClientDoc(docID string) (*clientDoc,
 	}
 	clientDoc, ok := btcc._seqStore[seq]
 	if !ok {
-		require.FailNow(btcc.TB(), "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
+		require.FailNowf(btcc.TB(), "seq not found in _seqStore", "docID %q found in _seqFromDocID but seq %d not in _seqStore %v", docID, seq, btcc._seqStore)
 		return nil, false
 	}
 	return clientDoc, ok
@@ -571,28 +589,68 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			doc.lock.Lock()
 			defer doc.lock.Unlock()
 
-			var newVersion DocVersion
+			var incomingVersion DocVersion
+			var versionToWrite DocVersion
 			var hlv db.HybridLogicalVector
+			isDelete := true
 			if btc.UseHLV() {
+				var incomingHLV *db.HybridLogicalVector
 				if revHistory != "" {
-					existingVersion, _, err := db.ExtractHLVFromBlipMessage(revHistory)
-					require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
-					hlv = *existingVersion
+					// TODO: Replace with new Beta version/handling
+					incomingHLV, err = db.FromHistoryForHLV(revHistory)
+					require.NoError(btr.TB(), err, "error extracting HLV history %q: %v", revHistory, err)
+					hlv = *incomingHLV
 				}
-				v, err := db.ParseVersion(revID)
+				incomingCV, err := db.ParseVersion(revID)
 				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
-				newVersion = DocVersion{CV: v}
-				require.NoError(btr.TB(), hlv.AddVersion(v))
-			} else {
-				newVersion = DocVersion{RevTreeID: revID}
-			}
+				incomingVersion = DocVersion{CV: incomingCV}
 
+				// fetch client's latest version to do conflict check and resolution
+				latestClientRev, err := doc._latestRev()
+				require.NoError(btc.TB(), err, "couldn't get latest revision for doc %q", docID)
+				if latestClientRev != nil {
+					clientCV := latestClientRev.version.CV
+
+					// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
+					if clientCV.SourceID == incomingCV.SourceID && clientCV.Value == incomingCV.Value {
+						require.FailNowf(btc.TB(), "incoming revision is equal to client revision", "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", incomingCV, clientCV)
+					}
+
+					// incoming rev older than stored client version and comes from a different source - need to resolve
+					if incomingCV.Value < clientCV.Value && incomingCV.SourceID != clientCV.SourceID {
+						btc.TB().Logf("Detected conflict on pull of doc %q (clientCV:%v - incomingCV:%v incomingHLV:%#v)", docID, clientCV, incomingCV, incomingHLV)
+						switch btc.BlipTesterClientOpts.ConflictResolver {
+						case ConflictResolverLastWriteWins:
+							// local wins so write the local back as a new resolved version (based on incoming HLV) to push
+							body = latestClientRev.body
+							isDelete = latestClientRev.isDelete
+							v := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.id), Value: uint64(time.Now().UnixNano())}
+							require.NoError(btc.TB(), hlv.AddVersion(v), "couldn't add incoming HLV into client HLV")
+							versionToWrite = DocVersion{CV: v}
+							hlv.SetPreviousVersion(incomingCV.SourceID, incomingCV.Value)
+						default:
+							btc.TB().Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", btc.BlipTesterClientOpts.ConflictResolver)
+						}
+					} else {
+						// no conflict - accept incoming rev
+						versionToWrite = DocVersion{CV: incomingCV}
+					}
+				} else {
+					// no existing rev - accept incoming rev
+					versionToWrite = DocVersion{CV: incomingCV}
+				}
+				require.NoError(btc.TB(), hlv.AddVersion(versionToWrite.CV), "couldn't add new CV into doc HLV")
+			} else {
+				versionToWrite = DocVersion{RevTreeID: revID}
+				incomingVersion = versionToWrite
+			}
 			docRev := clientDocRev{
+
 				clientSeq: newClientSeq,
-				version:   newVersion,
+				version:   versionToWrite,
 				body:      body,
 				HLV:       hlv,
-				isDelete:  true,
+				isDelete:  isDelete,
 				message:   msg,
 			}
 
@@ -614,12 +672,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				// store the new sequence for a replaced rev for tests waiting for this specific rev
 				doc._seqsByVersions[replacedVersion] = newClientSeq
 			}
-			doc._latestServerVersion = newVersion
+			// store the _incoming_ version - not newVersion - since we may have written a resolved conflict which will need pushing back
+			doc._latestServerVersion = incomingVersion
 
 			if !msg.NoReply() {
 				response := msg.Response()
 				response.SetBody([]byte(`[]`))
 			}
+
+			// new sequence written, wake up changes feeds for push
+			btcr._seqCond.Broadcast()
 			return
 		}
 
@@ -635,7 +697,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
 					return
 				}
-				require.FailNow(btr.TB(), "expected delta rev message to be sent without noreply flag: %+v", msg)
+				require.FailNowf(btr.TB(), "expected delta rev message to be sent without noreply flag", "msg: %+v", msg)
 			}
 
 			// unmarshal body to extract deltaSrc
@@ -646,7 +708,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			var old db.Body
 			doc, ok := btcr.getClientDoc(docID)
 			if !ok {
-				require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
+				require.FailNowf(btc.TB(), "doc not found", "docID %q not found", docID)
 				return
 			}
 			var deltaSrcVersion DocVersion
@@ -794,24 +856,61 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		doc.lock.Lock()
 		defer doc.lock.Unlock()
 
-		var newVersion DocVersion
+		var incomingVersion DocVersion
+		var versionToWrite DocVersion
 		var hlv db.HybridLogicalVector
 		if btc.UseHLV() {
+			var incomingHLV *db.HybridLogicalVector
 			if revHistory != "" {
-				existingVersion, _, err := db.ExtractHLVFromBlipMessage(revHistory)
-				require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
-				hlv = *existingVersion
+				incomingHLV, err = db.FromHistoryForHLV(revHistory)
+				require.NoError(btr.TB(), err, "error extracting HLV history %q: %v", revHistory, err)
+				hlv = *incomingHLV
 			}
-			v, err := db.ParseVersion(revID)
+			incomingCV, err := db.ParseVersion(revID)
 			require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
-			newVersion = DocVersion{CV: v}
-			require.NoError(btr.TB(), hlv.AddVersion(v))
+			incomingVersion = DocVersion{CV: incomingCV}
+
+			// fetch client's latest version to do conflict check and resolution
+			latestClientRev, err := doc._latestRev()
+			require.NoError(btc.TB(), err, "couldn't get latest revision for doc %q", docID)
+			if latestClientRev != nil {
+				clientCV := latestClientRev.version.CV
+
+				// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
+				if clientCV.SourceID == incomingCV.SourceID && clientCV.Value == incomingCV.Value {
+					require.FailNowf(btc.TB(), "incoming revision is equal to client revision", "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", incomingCV, clientCV)
+				}
+
+				// incoming rev older than stored client version and comes from a different source - need to resolve
+				if incomingCV.Value < clientCV.Value && incomingCV.SourceID != clientCV.SourceID {
+					btc.TB().Logf("Detected conflict on pull of doc %q (clientCV:%v - incomingCV:%v incomingHLV:%#v)", docID, clientCV, incomingCV, incomingHLV)
+					switch btc.BlipTesterClientOpts.ConflictResolver {
+					case ConflictResolverLastWriteWins:
+						// local wins so write the local body back as a new resolved version (based on incoming HLV) to push
+						body = latestClientRev.body
+						v := db.Version{SourceID: fmt.Sprintf("btc-%d", btc.id), Value: uint64(time.Now().UnixNano())}
+						require.NoError(btc.TB(), hlv.AddVersion(v), "couldn't add incoming HLV into client HLV")
+						versionToWrite = DocVersion{CV: v}
+						hlv.SetPreviousVersion(incomingCV.SourceID, incomingCV.Value)
+					default:
+						btc.TB().Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", btc.BlipTesterClientOpts.ConflictResolver)
+					}
+				} else {
+					// no conflict - accept incoming rev
+					versionToWrite = DocVersion{CV: incomingCV}
+				}
+			} else {
+				// no existing rev - accept incoming rev
+				versionToWrite = DocVersion{CV: incomingCV}
+			}
+			require.NoError(btc.TB(), hlv.AddVersion(versionToWrite.CV), "couldn't add new CV into doc HLV")
 		} else {
-			newVersion = DocVersion{RevTreeID: revID}
+			versionToWrite = DocVersion{RevTreeID: revID}
+			incomingVersion = versionToWrite
 		}
 		docRev := clientDocRev{
 			clientSeq: newClientSeq,
-			version:   newVersion,
+			version:   versionToWrite,
 			HLV:       hlv,
 			body:      body,
 			message:   msg,
@@ -835,12 +934,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			// store the new sequence for a replaced rev for tests waiting for this specific rev
 			doc._seqsByVersions[replacedVersion] = newClientSeq
 		}
-		doc._latestServerVersion = newVersion
+		// store the _incoming_ version - not versionToWrite - since we may have written a resolved conflict which will need pushing back
+		doc._latestServerVersion = incomingVersion
 
 		if !msg.NoReply() {
 			response := msg.Response()
 			response.SetBody([]byte(`[]`))
 		}
+
+		// new sequence written, wake up changes feeds for push
+		btcr._seqCond.Broadcast()
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageGetAttachment] = func(msg *blip.Message) {
@@ -943,7 +1046,7 @@ func (btc *BlipTesterCollectionClient) updateLastReplicatedVersion(docID string,
 	defer btc.seqLock.Unlock()
 	doc, ok := btc._getClientDoc(docID)
 	if !ok {
-		require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
+		require.FailNowf(btc.TB(), "doc not found", "docID %q", docID)
 		return
 	}
 	doc.setLatestServerVersion(version)
@@ -954,7 +1057,7 @@ func (btc *BlipTesterCollectionClient) getLastReplicatedVersion(docID string) (v
 	defer btc.seqLock.Unlock()
 	doc, ok := btc._getClientDoc(docID)
 	if !ok {
-		require.FailNow(btc.TB(), "docID %q not found in _seqFromDocID", docID)
+		require.FailNowf(btc.TB(), "doc not found", "docID %q", docID)
 		return DocVersion{}, false
 	}
 	doc.lock.RLock()
@@ -1006,6 +1109,12 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 	}
 	if !opts.AllowCreationWithoutBlipTesterClientRunner && !btcRunner.initialisedInsideRunnerCode {
 		require.FailNow(btcRunner.TB(), "must initialise BlipTesterClient inside Run() method")
+	}
+	if opts.ConflictResolver == "" {
+		opts.ConflictResolver = ConflictResolverDefault
+	}
+	if !opts.ConflictResolver.IsValid() {
+		require.FailNowf(btcRunner.TB(), "invalid conflict resolver", "invalid conflict resolver %q", opts.ConflictResolver)
 	}
 	id, err := uuid.NewRandom()
 	require.NoError(btcRunner.TB(), err)
@@ -1150,7 +1259,7 @@ func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionNam
 			return collectionClient
 		}
 	}
-	require.FailNow(btcRunner.clients[clientID].TB(), "Could not find collection %s in BlipTesterClient", collectionName)
+	require.FailNowf(btcRunner.clients[clientID].TB(), "unknown collection", "Could not find collection %s in BlipTesterClient", collectionName)
 	return nil
 }
 
@@ -1465,7 +1574,7 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 	errorDomain := subChangesResponse.Properties["Error-Domain"]
 	errorCode := subChangesResponse.Properties["Error-Code"]
 	if errorDomain != "" && errorCode != "" {
-		require.FailNowf(btc.TB(), "error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody))
+		require.FailNowf(btc.TB(), "error from subchanges", "error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody))
 	}
 }
 
@@ -1748,7 +1857,7 @@ func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte
 				// push the stub as-is
 				continue
 			}
-			require.FailNow(btc.TB(), "couldn't find data or stub property for inline attachment %s:%v", attachmentName, inlineAttachment)
+			require.FailNowf(btc.TB(), "couldn't find data or stub property for inline attachment", "att name %s:%v", attachmentName, inlineAttachment)
 		}
 
 		// Transform inline attachment data into metadata
@@ -1791,7 +1900,7 @@ func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVe
 
 	rev, ok := doc._revisionsBySeq[revSeq]
 	if !ok {
-		require.FailNow(btc.TB(), "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
+		require.FailNowf(btc.TB(), "no rev seq in _seqStore", "seq %q for docID %q found but no rev in _seqStore", revSeq, docID)
 		return nil, false
 	}
 

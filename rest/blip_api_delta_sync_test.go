@@ -960,18 +960,22 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		defer client.Close()
 
 		client.ClientDeltas = false
-		btcRunner.StartPull(client.id)
-		btcRunner.StartPush(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
 
+		btcRunner.StartOneshotPull(client.id)
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
 		// create doc1 rev 2-abcxyz on client
 		newRev := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
-		// Check EE is delta, and CE is full-body replication
+
+		btcRunner.StartPushWithOpts(client.id, BlipTesterPushOptions{Continuous: false, Since: "0"})
+
 		msg := client.waitForReplicationMessage(collection, 2)
+		// ensure message is type rev
+		require.Equal(t, db.MessageRev, msg.Profile())
 
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
