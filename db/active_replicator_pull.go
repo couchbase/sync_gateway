@@ -227,7 +227,7 @@ func (apr *ActivePullReplicator) _getStatus() *ReplicationStatus {
 		ID: apr.CheckpointID,
 	}
 
-	status.Status, status.ErrorMessage = apr._getStateWithErrorMessage()
+	status.Status, status.ErrorMessage = apr.getStateWithErrorMessage()
 
 	pullStats := apr.replicationStats
 	status.DocsRead = pullStats.HandleRevCount.Value()
