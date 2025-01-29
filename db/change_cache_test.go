@@ -1239,7 +1239,7 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(t, collection, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	timeAdded := time.Now().Add(time.Duration(time.Hour * -2))
+	timeAdded := time.Now().Add(time.Hour * -2)
 	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, timeAdded.Unix()})
 	require.NoError(t, err)
 
