@@ -1486,7 +1486,7 @@ func TestRevCacheOnDemandImport(t *testing.T) {
 	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
 	require.NoError(t, err)
 
-	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	ctx, testCtxCancel := context.WithCancel(ctx)
 	defer testCtxCancel()
 
 	for i := 0; i < 2; i++ {
@@ -1496,7 +1496,7 @@ func TestRevCacheOnDemandImport(t *testing.T) {
 		go func() {
 			for {
 				select {
-				case <-testCtx.Done():
+				case <-ctx.Done():
 					return
 				default:
 					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
@@ -1530,7 +1530,7 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
 	require.NoError(t, err)
 
-	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	ctx, testCtxCancel := context.WithCancel(ctx)
 	defer testCtxCancel()
 
 	for i := 0; i < 2; i++ {
@@ -1540,7 +1540,7 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 		go func() {
 			for {
 				select {
-				case <-testCtx.Done():
+				case <-ctx.Done():
 					return
 				default:
 					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
