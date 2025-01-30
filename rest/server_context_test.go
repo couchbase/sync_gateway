@@ -943,6 +943,10 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("EE only test, requires heartbeater error")
 	}
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("LeakyBucketConfig not supported on CBS")
+	}
+	
 	touchErr := errors.New("touch error")
 	rt := NewRestTester(t, &RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{

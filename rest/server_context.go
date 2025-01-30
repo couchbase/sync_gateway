@@ -571,9 +571,8 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
 // Pass in a bucketFromBucketSpecFn to replace the default ConnectToBucket function. This will cause the failFast argument to be ignored
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (returnedDBContext *db.DatabaseContext, returnedError error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (dbcontext *db.DatabaseContext, returnedError error) {
 	var bucket base.Bucket
-	var dbcontext *db.DatabaseContext // do not use returnedDBContext directly, as it may be nil if an error is returned
 	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(ctx, &config, sc.Config)
 	if err != nil {
@@ -903,23 +902,20 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	// If asyncOnline wasn't specified, block until db init is completed, then start online processes
 	if !options.asyncOnline || !isAsync {
-		defer func() {
-			if returnedError != nil {
-				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
-			}
-		}()
-
 		dbcontext.WasInitializedSynchronously = true
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete...")
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
 			if initError != nil {
+				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
+				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 				return nil, initError
 			}
 		}
 		base.InfofCtx(ctx, base.KeyAll, "Database init completed, starting online processes")
 		if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
+			atomic.StoreUint32(&dbcontext.State, db.DBOffline)
+			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 			return nil, err
 		}
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
