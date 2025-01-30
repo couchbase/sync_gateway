@@ -584,6 +584,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		dbName = spec.BucketName
 	}
 
+	// we do not have per database logging parameters, but it is still useful to have the database name in the log context. This must be set again after dbcOptionsFromConfig is called.
+	ctx = base.DatabaseLogCtx(ctx, dbName, nil)
+
 	defer func() {
 		if returnedError == nil {
 			return
