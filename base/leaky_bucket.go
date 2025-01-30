@@ -148,6 +148,9 @@ type LeakyBucketConfig struct {
 	// IncrCallback issues a callback during incr.  Used for sequence allocation race tests
 	IncrCallback func()
 
+	// TouchCallback issues a callback during touch.
+	TouchCallback func(key string) error
+
 	// When IgnoreClose is set to true, bucket.Close() is a no-op.  Used when multiple references to a bucket are active.
 	IgnoreClose bool
 }

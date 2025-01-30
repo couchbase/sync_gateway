@@ -119,6 +119,12 @@ func (lds *LeakyDataStore) GetAndTouchRaw(k string, exp uint32) (v []byte, cas u
 	return lds.dataStore.GetAndTouchRaw(k, exp)
 }
 func (lds *LeakyDataStore) Touch(k string, exp uint32) (cas uint64, err error) {
+	if lds.config.TouchCallback != nil {
+		err := lds.config.TouchCallback(k)
+		if err != nil {
+			return 0, err
+		}
+	}
 	return lds.dataStore.Touch(k, exp)
 }
 func (lds *LeakyDataStore) Add(k string, exp uint32, v interface{}) (added bool, err error) {
