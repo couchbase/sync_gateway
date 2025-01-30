@@ -296,7 +296,7 @@ func getCbgtCredentials(dbName string) (cbgtCreds, bool) {
 	return creds, found
 }
 
-// See the comment of cbgtRootCAsProvider for usage details.
+// setCbgtRootCertsForBucket creates root certificates for a given bucket. If TLS should be used, this function must be called. If tls certificate verification is skipped, then this function should be called with pool as nil. See the comment of cbgtRootCAsProvider for usage details.
 func setCbgtRootCertsForBucket(bucketUUID string, pool *x509.CertPool) {
 	cbgtGlobalsLock.Lock()
 	defer cbgtGlobalsLock.Unlock()
