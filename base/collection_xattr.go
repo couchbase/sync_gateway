@@ -235,7 +235,6 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 				xattrContentErr := res.ContentAt(uint(i), &xattr)
 				if xattrContentErr != nil {
 					xattrErrors = append(xattrErrors, xattrContentErr)
-					DebugfCtx(ctx, KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 					continue
 				}
 				xattrs[xattrKey] = xattr
@@ -252,10 +251,6 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 				return false, ErrXattrNotFound, cas
 			}
 
-			if docContentErr != nil {
-				DebugfCtx(ctx, KeyCRUD, "No document body found for key=%s, xattrKeys=%s: %v", UD(k), UD(xattrKeys), docContentErr)
-			}
-
 		case gocbcore.ErrMemdSubDocMultiPathFailureDeleted:
 			//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr may exist but doc is deleted (tombstone)
 			cas = uint64(res.Cas())
@@ -265,7 +260,6 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 				xattrContentErr := res.ContentAt(uint(i), xattr)
 				if xattrContentErr != nil {
 					xattrErrors = append(xattrErrors, xattrContentErr)
-					DebugfCtx(ctx, KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 					continue
 				}
 				xattrs[xattrKey] = xattr
@@ -273,12 +267,10 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 
 			if len(xattrErrors) == len(xattrs) {
 				// No doc, no xattrs means the doc isn't found
-				DebugfCtx(ctx, KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKeys), xattrErrors)
 				return false, ErrNotFound, cas
 			}
 
 			if len(xattrErrors) > 0 {
-				DebugfCtx(ctx, KeyCRUD, "Partial xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKeys), xattrErrors)
 				return false, ErrXattrPartialFound, cas
 			}
 
