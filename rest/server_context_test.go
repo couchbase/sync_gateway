@@ -946,7 +946,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("LeakyBucketConfig not supported on CBS")
 	}
-	
+
 	touchErr := errors.New("touch error")
 	rt := NewRestTester(t, &RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{
