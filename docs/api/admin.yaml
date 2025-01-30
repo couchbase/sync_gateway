@@ -132,7 +132,8 @@ paths:
   '/{keyspace}/':
     $ref: './paths/admin/keyspace-.yaml'
   /_expvar:
-    $ref: ./paths/admin/_expvar.yaml
+    # use the same path as for metrics
+    $ref: ./paths/metric/_expvar.yaml
   /:
     $ref: ./paths/admin/-.yaml
   /_ping:

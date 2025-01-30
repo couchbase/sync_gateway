@@ -26,7 +26,7 @@ get:
           Successfully returned statistics.
           For details, see [JSON Metrics](stats-monitoring-json.html).
       content:
-        application/javascript:
+        application/json:
           schema:
             $ref: ../../components/schemas.yaml#/ExpVars
   operationId: get__expvar
