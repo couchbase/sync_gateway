@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.12.0
 	github.com/couchbase/cbgt v1.3.10-0.20250128173458-04138cb9d33d
 	github.com/couchbase/clog v0.1.0
-	github.com/couchbase/go-blip v0.0.0-20241014144256-13a798c348fd
+	github.com/couchbase/go-blip v0.0.0-20250130142438-e3a29100f703
 	github.com/couchbase/gocb/v2 v2.9.1
 	github.com/couchbase/gocbcore/v10 v10.5.2
 	github.com/couchbase/gomemcached v0.2.1
@@ -45,6 +45,7 @@ require (
 	github.com/aws/aws-sdk-go v1.44.299 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/coder/websocket v1.8.12 // indirect
 	github.com/couchbase/blance v0.1.5 // indirect
 	github.com/couchbase/cbauth v0.1.11 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
@@ -96,5 +97,4 @@ require (
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	nhooyr.io/websocket v1.8.17 // indirect
 )
