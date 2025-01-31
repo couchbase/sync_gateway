@@ -454,7 +454,6 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err, "Error unmarshalling body")
 
 			runOnce = true
-
 			// Trigger import
 			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, err)

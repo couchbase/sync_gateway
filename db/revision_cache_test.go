@@ -1258,59 +1258,9 @@ func TestRevCacheOnDemand(t *testing.T) {
 	log.Printf("Calling getRev for %s, %s", docID, revID)
 	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
 	require.Error(t, err)
-	if base.IsEnterpriseEdition() {
-		fmt.Println("here")
-	}
 	require.ErrorContains(t, err, "missing")
 	// returns empty doc rev
 	assert.Equal(t, "", rev.DocID)
-}
-
-func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
-	dbcOptions := DatabaseContextOptions{
-		RevisionCacheOptions: &RevisionCacheOptions{
-			MaxItemCount: 20,
-			ShardCount:   1,
-			MaxBytes:     112, // equivalent to max size 2 items
-		},
-	}
-	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	docID := "doc1"
-	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
-	require.NoError(t, err)
-
-	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
-	defer testCtxCancel()
-
-	for i := 0; i < 2; i++ {
-		docID := fmt.Sprintf("extraDoc%d", i)
-		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
-		require.NoError(t, err)
-		go func() {
-			for {
-				select {
-				case <-testCtx.Done():
-					return
-				default:
-					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
-				}
-			}
-		}()
-	}
-	log.Printf("Updating doc to trigger on-demand import")
-	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"ver": "2"}`))
-	require.NoError(t, err)
-	log.Printf("Calling getRev for %s, %s", docID, revID)
-	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "missing")
-	// returns empty doc rev
-	assert.Equal(t, "", rev.DocID)
-
 }
 
 func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
@@ -1518,4 +1468,121 @@ func createDocAndReturnSizeAndRev(t *testing.T, ctx context.Context, docID strin
 	}
 
 	return expectedSize, rev
+}
+
+func TestRevCacheOnDemandImport(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2,
+			ShardCount:   1,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
+	require.NoError(t, err)
+
+	ctx, testCtxCancel := context.WithCancel(ctx)
+	defer testCtxCancel()
+
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
+			}
+		}()
+	}
+	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"ver": "2"}`))
+	require.NoError(t, err)
+	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "missing")
+	// returns empty doc rev
+	assert.Equal(t, "", rev.DocID)
+}
+
+func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 20,
+			ShardCount:   1,
+			MaxBytes:     112, // equivalent to max size 2 items
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
+	require.NoError(t, err)
+
+	ctx, testCtxCancel := context.WithCancel(ctx)
+	defer testCtxCancel()
+
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
+			}
+		}()
+	}
+	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"ver": "2"}`))
+	require.NoError(t, err)
+	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "missing")
+	// returns empty doc rev
+	assert.Equal(t, "", rev.DocID)
+
+}
+
+func TestRevCacheOnDemandImportNoCache(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := "doc1"
+	revID1, _, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	_, exists := collection.revisionCache.Peek(ctx, docID, revID1)
+	require.True(t, exists)
+
+	require.NoError(t, collection.dataStore.Set(docID, 0, nil, []byte(`{"foo": "baz"}`)))
+
+	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalSync)
+	require.NoError(t, err)
+	require.Equal(t, Body{"foo": "baz"}, doc.Body(ctx))
+
+	// rev1 still exists in cache but not on server
+	_, exists = collection.revisionCache.Peek(ctx, docID, revID1)
+	require.True(t, exists)
+
+	// rev2 is not in cache but is on server
+	_, exists = collection.revisionCache.Peek(ctx, docID, doc.CurrentRev)
+	require.False(t, exists)
 }
