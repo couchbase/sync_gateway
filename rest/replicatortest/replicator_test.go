@@ -8681,6 +8681,9 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 	currTime := configResponse.UpdatedAt
 	createdAtTime := configResponse.CreatedAt
 
+	// avoid flake where update at seems to be the same (possibly running to fast)
+	time.Sleep(10 * time.Millisecond)
+
 	resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -8695,6 +8698,6 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 	configResponse = db.ReplicationConfig{}
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
 
-	assert.Greater(t, configResponse.UpdatedAt.UnixNano(), currTime.UnixNano())
+	base.AssertTimeGreaterThan(t, *configResponse.UpdatedAt, *currTime)
 	assert.Equal(t, configResponse.CreatedAt.UnixNano(), createdAtTime.UnixNano())
 }
