@@ -256,7 +256,8 @@ func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) e
 		}
 		return err != nil, err, nil
 	}
-	sleeper := CreateDoublingSleeperDurationFunc(500, time.Second*30)
+	// Initial retry 1 seconds, max wait 30s, waits up to 10m
+	sleeper := CreateMaxDoublingSleeperFunc(20, 1000, 30000)
 	err, _ := RetryLoop(ctx, "BuildDeferredIndexes", worker, sleeper)
 	if err != nil {
 		return err
