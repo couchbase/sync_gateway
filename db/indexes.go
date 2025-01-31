@@ -295,8 +295,15 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 		IndexTombstones: i.shouldIndexTombstones(options.UseXattrs),
 	}
 
-	// Initial retry 500ms, max wait 1s, waits up to ~15s
-	sleeper := base.CreateMaxDoublingSleeperFunc(15, 500, 1000)
+	var sleeper base.RetrySleeper
+	// Wait infinitely to create indexes if WaitForIndexesInfinite is set. Initial retry 500ms, max wait 1s
+	// Database init manager will set this infinite option
+	if options.WaitForIndexesOnlineOption == base.WaitForIndexesInfinite {
+		sleeper = base.CreateIndefiniteMaxDoublingSleeperFunc(500, 1000)
+	} else {
+		// Initial retry 500ms, max wait 1s, waits up to ~15s
+		sleeper = base.CreateMaxDoublingSleeperFunc(15, 500, 1000)
+	}
 
 	// start a retry loop to create index,
 	worker := func() (shouldRetry bool, err error, value interface{}) {
