@@ -451,6 +451,20 @@ func (dbConfig *DbConfig) setDatabaseCredentials(credentials base.CredentialsCon
 	}
 }
 
+// getBucketConfigFromBoostrap will take bootstrap config credentials and return a BucketConfig. Note bucket name will
+// be empty string given we don't specify a bucket to connect to here
+func getBucketConfigFromBoostrap(config BootstrapConfig) BucketConfig {
+	return BucketConfig{
+		Server:     &config.Server,
+		Username:   config.Username,
+		Password:   config.Password,
+		CertPath:   config.X509CertPath,
+		KeyPath:    config.X509KeyPath,
+		CACertPath: config.CACertPath,
+		Bucket:     base.StringPtr(""),
+	}
+}
+
 // setup populates fields in the dbConfig
 func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig, forcePerBucketAuth bool) error {
 	dbConfig.Name = dbName

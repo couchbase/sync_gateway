@@ -352,7 +352,12 @@ func (h *handler) handleGetDbConfig() error {
 
 type RunTimeServerConfigResponse struct {
 	*StartupConfig
+	RuntimeClusterUUID
 	Databases map[string]*DbConfig `json:"databases"`
+}
+
+type RuntimeClusterUUID struct {
+	ClusterUUID string `json:"cluster_uuid"`
 }
 
 // Get admin config info
@@ -408,6 +413,29 @@ func (h *handler) handleGetConfig() error {
 				dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted(h.ctx())
 			}
 		}
+
+		// grab cluster uuid for runtime config
+		var clusterUUID string
+		if len(allDbNames) > 0 {
+			// we can use db context to retrieve clusterUUID
+			dbCtx := h.server.Database(h.ctx(), allDbNames[0])
+			clusterUUID = dbCtx.ServerUUID
+		} else {
+			bucketCfg := getBucketConfigFromBoostrap(h.server.Config.Bootstrap)
+			spec, err := GetBucketSpec(h.ctx(), &DatabaseConfig{
+				DbConfig: DbConfig{
+					BucketConfig: bucketCfg,
+				},
+			}, h.server.Config)
+			if err != nil {
+				return err
+			}
+			clusterUUID, err = h.server.BootstrapContext.Connection.GetClusterUUID(h.ctx(), spec)
+			if err != nil {
+				return err
+			}
+		}
+		cfg.ClusterUUID = clusterUUID
 
 		// because loggers can be changed at runtime, we need to work backwards to get the config that would've created the actually running instances
 		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging)
