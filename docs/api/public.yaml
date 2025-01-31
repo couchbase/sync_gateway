@@ -8,8 +8,12 @@
 
 openapi: 3.0.3
 info:
-  title: Sync Gateway
-  description: Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server
+  title: Sync Gateway Public REST API
+  description: |-
+    # Introduction
+
+    Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server.
+    The Sync Gateway Public REST API is used for client replication.
   version: '3.3'
   license:
     name: Business Source License 1.1 (BSL)
@@ -108,5 +112,5 @@ tags:
     description: Endpoints that are not supported by Sync Gateway
     x-capella: false
 externalDocs:
-  description: Sync Gateway Quickstart | Couchbase Docs
-  url: 'https://docs.couchbase.com/sync-gateway/current/index.html'
+  description: ⬆️ Public REST API Overview
+  url: rest-api.html
