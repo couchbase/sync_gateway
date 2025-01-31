@@ -1258,9 +1258,6 @@ func TestRevCacheOnDemand(t *testing.T) {
 	log.Printf("Calling getRev for %s, %s", docID, revID)
 	rev, err := collection.getRev(ctx, docID, revID, 0, nil)
 	require.Error(t, err)
-	if base.IsEnterpriseEdition() {
-		fmt.Println("here")
-	}
 	require.ErrorContains(t, err, "missing")
 	// returns empty doc rev
 	assert.Equal(t, "", rev.DocID)
@@ -1488,13 +1485,22 @@ func TestRevCacheOnDemandImport(t *testing.T) {
 	docID := "doc1"
 	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
 	require.NoError(t, err)
+
+	ctx, testCtxCancel := context.WithCancel(ctx)
+	defer testCtxCancel()
+
 	for i := 0; i < 2; i++ {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
 		go func() {
 			for {
-				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
 			}
 		}()
 	}
@@ -1523,13 +1529,22 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 	docID := "doc1"
 	revID, _, err := collection.Put(ctx, docID, Body{"ver": "1"})
 	require.NoError(t, err)
+
+	ctx, testCtxCancel := context.WithCancel(ctx)
+	defer testCtxCancel()
+
 	for i := 0; i < 2; i++ {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
 		go func() {
 			for {
-				_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err = db.revisionCache.Get(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
 			}
 		}()
 	}
