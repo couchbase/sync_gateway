@@ -461,7 +461,7 @@ def make_curl_task(
     url,
     user="",
     password="",
-    content_postprocessors=[],
+    content_postprocessors: Optional[List[Callable]] = None,
     timeout=60,
     log_file="python_curl.log",
     **kwargs,
@@ -496,8 +496,9 @@ def make_curl_task(
             print("WARNING: Error connecting to url {0}: {1}".format(url, e))
 
         response_string = response_file_handle.read()
-        for content_postprocessor in content_postprocessors:
-            response_string = content_postprocessor(response_string)
+        if content_postprocessors:
+            for content_postprocessor in content_postprocessors:
+                response_string = content_postprocessor(response_string)
         return response_string
 
     return PythonTask(
@@ -506,8 +507,10 @@ def make_curl_task(
 
 
 def add_file_task(
-    sourcefile_path, content_postprocessors: Optional[List[Callable]] = None
-) -> PythonTask:
+    sourcefile_path: Union[pathlib.Path, str],
+    output_path: Union[pathlib.Path, str],
+    content_postprocessors: Optional[List[Callable]] = None,
+):
     """
     Adds the contents of a file to the output zip
 
@@ -525,7 +528,7 @@ def add_file_task(
     task = PythonTask(
         description="Contents of {0}".format(sourcefile_path),
         callable=python_add_file_task,
-        log_file=os.path.basename(sourcefile_path),
+        log_file=output_path,
         log_exception=False,
     )
 
