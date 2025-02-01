@@ -30,7 +30,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Union
+from typing import Callable, List, Optional, Union
 
 # The 'latin-1' encoding is being used since we can't guarantee that all bytes that will be
 # processed through sgcollect will be decodable from 'utf-8' (which is the default in Python)
@@ -469,7 +469,7 @@ def make_curl_task(
     url,
     user="",
     password="",
-    content_postprocessors=[],
+    content_postprocessors: Optional[List[Callable]] = None,
     timeout=60,
     log_file="python_curl.log",
     **kwargs,
@@ -504,8 +504,9 @@ def make_curl_task(
             print("WARNING: Error connecting to url {0}: {1}".format(url, e))
 
         response_string = response_file_handle.read()
-        for content_postprocessor in content_postprocessors:
-            response_string = content_postprocessor(response_string)
+        if content_postprocessors:
+            for content_postprocessor in content_postprocessors:
+                response_string = content_postprocessor(response_string)
         return response_string
 
     return PythonTask(
@@ -513,9 +514,14 @@ def make_curl_task(
     )
 
 
-def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
+def add_gzip_file_task(
+    sourcefile_path: Union[pathlib.Path, str],
+    output_path: Union[pathlib.Path, str],
+    salt: str,
+    content_postprocessors: Optional[List[Callable]] = None,
+) -> PythonTask:
     """
-    Adds the extracted contents of a file to the output zip
+    Adds the extracted contents of a gzipped file to the output zip. This will redact the contents of the file.
 
     The content_postprocessors is a list of functions -- see make_curl_task
     """
@@ -523,8 +529,9 @@ def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
     def python_add_file_task():
         with gzip.open(sourcefile_path, "r") as infile:
             contents = infile.read().decode("utf-8")
-            for content_postprocessor in content_postprocessors:
-                contents = content_postprocessor(contents)
+            if content_postprocessors:
+                for content_postprocessor in content_postprocessors:
+                    contents = content_postprocessor(contents)
             redactor = LogRedactor(salt, tempfile.mkdtemp())
             contents = redactor.redact_string(contents)
 
@@ -533,12 +540,10 @@ def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
             f.write(contents.encode())
         return out.getvalue()
 
-    log_file = os.path.basename(sourcefile_path)
-
     task = PythonTask(
         description="Extracted contents of {0}".format(sourcefile_path),
         callable=python_add_file_task,
-        log_file=log_file,
+        log_file=output_path,
         log_exception=False,
     )
 
@@ -547,7 +552,11 @@ def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
     return task
 
 
-def add_file_task(sourcefile_path, content_postprocessors=[]):
+def add_file_task(
+    sourcefile_path: Union[pathlib.Path, str],
+    output_path: Union[pathlib.Path, str],
+    content_postprocessors: Optional[List[Callable]] = None,
+):
     """
     Adds the contents of a file to the output zip
 
@@ -557,14 +566,15 @@ def add_file_task(sourcefile_path, content_postprocessors=[]):
     def python_add_file_task():
         with open(sourcefile_path, "br") as infile:
             contents = infile.read()
-            for content_postprocessor in content_postprocessors:
-                contents = content_postprocessor(contents)
+            if content_postprocessors:
+                for content_postprocessor in content_postprocessors:
+                    contents = content_postprocessor(contents)
             return contents
 
     task = PythonTask(
         description="Contents of {0}".format(sourcefile_path),
         callable=python_add_file_task,
-        log_file=os.path.basename(sourcefile_path),
+        log_file=output_path,
         log_exception=False,
     )
 
