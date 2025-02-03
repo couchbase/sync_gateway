@@ -3242,7 +3242,118 @@ func TestRoleUpdatedAtField(t *testing.T) {
 }
 
 func TestServerUUIDRuntimeServerConfig(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	testCases := []struct {
+		name             string
+		persistentConfig bool
+	}{
+		{
+			name:             "Persistent config",
+			persistentConfig: true,
+		},
+		{
+			name:             "non persistent config",
+			persistentConfig: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: testCase.persistentConfig})
+			defer rt.Close()
+
+			// create a db and test code pathway when we have db defined
+			if testCase.persistentConfig {
+				dbConfig := rt.NewDbConfig()
+				RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+			}
+
+			resp := rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
+			RequireStatus(t, resp, http.StatusOK)
+
+			var clusterUUID string
+			config := RunTimeServerConfigResponse{}
+			err := base.JSONUnmarshal(resp.Body.Bytes(), &config)
+			require.NoError(t, err)
+			if base.TestUseCouchbaseServer() {
+				require.Len(t, config.ClusterUUID, 32)
+			} else {
+				require.Empty(t, config.ClusterUUID)
+			}
+			clusterUUID = config.ClusterUUID
+
+			// delete db and attempt to retrieve cluster UUID again to ensure we can still retrieve it
+			resp = rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+			RequireStatus(t, resp, http.StatusOK)
+
+			resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
+			RequireStatus(t, resp, http.StatusOK)
+
+			config = RunTimeServerConfigResponse{}
+			err = base.JSONUnmarshal(resp.Body.Bytes(), &config)
+			require.NoError(t, err)
+			if base.TestUseCouchbaseServer() {
+				require.Len(t, config.ClusterUUID, 32)
+			} else {
+				require.Empty(t, config.ClusterUUID)
+			}
+			assert.Equal(t, clusterUUID, config.ClusterUUID)
+		})
+	}
+	//rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	//defer rt.Close()
+	//
+	//resp := rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
+	//RequireStatus(t, resp, http.StatusOK)
+	//
+	//var config RunTimeServerConfigResponse
+	//var clusterUUID string
+	//err := base.JSONUnmarshal(resp.Body.Bytes(), &config)
+	//require.NoError(t, err)
+	//if base.TestUseCouchbaseServer() {
+	//	require.Len(t, config.ClusterUUID, 32)
+	//} else {
+	//	require.Empty(t, config.ClusterUUID)
+	//}
+	//clusterUUID = config.ClusterUUID
+	//
+	//// create a db and test code pathway when we have db defined
+	//dbConfig := rt.NewDbConfig()
+	//RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	//
+	//resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
+	//RequireStatus(t, resp, http.StatusOK)
+	//
+	//config = RunTimeServerConfigResponse{}
+	//err = base.JSONUnmarshal(resp.Body.Bytes(), &config)
+	//require.NoError(t, err)
+	//if base.TestUseCouchbaseServer() {
+	//	require.Len(t, config.ClusterUUID, 32)
+	//} else {
+	//	require.Empty(t, config.ClusterUUID)
+	//}
+	//assert.Equal(t, clusterUUID, config.ClusterUUID)
+	//
+	//// delete db and attempt to retrieve cluster UUID again to ensure we can still retrieve it
+	//resp = rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+	//RequireStatus(t, resp, http.StatusOK)
+	//
+	//resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
+	//RequireStatus(t, resp, http.StatusOK)
+	//
+	//config = RunTimeServerConfigResponse{}
+	//err = base.JSONUnmarshal(resp.Body.Bytes(), &config)
+	//require.NoError(t, err)
+	//if base.TestUseCouchbaseServer() {
+	//	require.Len(t, config.ClusterUUID, 32)
+	//} else {
+	//	require.Empty(t, config.ClusterUUID)
+	//}
+	//assert.Equal(t, clusterUUID, config.ClusterUUID)
+
+}
+
+func TestLol(t *testing.T) {
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
@@ -3258,23 +3369,6 @@ func TestServerUUIDRuntimeServerConfig(t *testing.T) {
 		require.Empty(t, config.ClusterUUID)
 	}
 	clusterUUID = config.ClusterUUID
-
-	// create a db and test code pathway when we have db defined
-	dbConfig := rt.NewDbConfig()
-	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-
-	resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
-	RequireStatus(t, resp, http.StatusOK)
-
-	config = RunTimeServerConfigResponse{}
-	err = base.JSONUnmarshal(resp.Body.Bytes(), &config)
-	require.NoError(t, err)
-	if base.TestUseCouchbaseServer() {
-		require.Len(t, config.ClusterUUID, 32)
-	} else {
-		require.Empty(t, config.ClusterUUID)
-	}
-	assert.Equal(t, clusterUUID, config.ClusterUUID)
 
 	// delete db and attempt to retrieve cluster UUID again to ensure we can still retrieve it
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/", "")
@@ -3292,5 +3386,4 @@ func TestServerUUIDRuntimeServerConfig(t *testing.T) {
 		require.Empty(t, config.ClusterUUID)
 	}
 	assert.Equal(t, clusterUUID, config.ClusterUUID)
-
 }

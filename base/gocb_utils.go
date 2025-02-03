@@ -13,6 +13,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -160,4 +162,37 @@ func getRootCAs(ctx context.Context, caCertPath string) (*x509.CertPool, error) 
 		WarnfCtx(ctx, "Could not retrieve root CAs: %v", err)
 	}
 	return rootCAs, nil
+}
+
+func GetServerUUIDWithAgent(a *gocbcore.Agent, mgmtEp, method, username, password string) (string, error) {
+	req, err := http.NewRequest(method, mgmtEp+"/pools", nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	if username != "" && password != "" {
+		req.SetBasicAuth(username, password)
+	}
+	response, err := a.HTTPClient().Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	respBytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var responseJson struct {
+		ServerUUID string `json:"uuid"`
+	}
+
+	if err := JSONUnmarshal(respBytes, &responseJson); err != nil {
+		return "", err
+	}
+
+	return responseJson.ServerUUID, nil
 }

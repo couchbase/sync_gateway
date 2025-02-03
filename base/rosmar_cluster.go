@@ -171,8 +171,3 @@ func (c *RosmarCluster) Close() {
 }
 
 func (c *RosmarCluster) SetConnectionStringServerless() error { return nil }
-
-func (c *RosmarCluster) GetClusterUUID(ctx context.Context, spec BucketSpec) (string, error) {
-	// no cluster uuid for rosmar
-	return "", nil
-}

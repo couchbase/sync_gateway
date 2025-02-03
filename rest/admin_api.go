@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -421,16 +422,11 @@ func (h *handler) handleGetConfig() error {
 			dbCtx := h.server.Database(h.ctx(), allDbNames[0])
 			clusterUUID = dbCtx.ServerUUID
 		} else {
+			fmt.Println("calling egent")
 			bucketCfg := getBucketConfigFromBoostrap(h.server.Config.Bootstrap)
-			spec, err := GetBucketSpec(h.ctx(), &DatabaseConfig{
-				DbConfig: DbConfig{
-					BucketConfig: bucketCfg,
-				},
-			}, h.server.Config)
-			if err != nil {
-				return err
-			}
-			clusterUUID, err = h.server.BootstrapContext.Connection.GetClusterUUID(h.ctx(), spec)
+			agentEpList := h.server.GoCBAgent.MgmtEps()
+			agentEp := agentEpList[rand.Intn(len(agentEpList))]
+			clusterUUID, err = base.GetServerUUIDWithAgent(h.server.GoCBAgent, agentEp, http.MethodGet, bucketCfg.Username, bucketCfg.Password)
 			if err != nil {
 				return err
 			}

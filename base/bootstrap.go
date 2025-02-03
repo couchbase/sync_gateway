@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"reflect"
 	"sort"
 	"sync"
@@ -45,9 +44,6 @@ type BootstrapConnection interface {
 	// GetDocument retrieves the document with the specified key from the bucket's default collection.
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetDocument(ctx context.Context, bucket, docID string, rv interface{}) (exists bool, err error)
-	// GetClusterUUID returns the UUID of the cluster
-	GetClusterUUID(ctx context.Context, spec BucketSpec) (string, error)
-
 	// Close releases any long-lived connections
 	Close()
 }
@@ -283,31 +279,6 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 	cc.cachedBucketConnections.removeOutdatedBuckets(SetOf(bucketList...))
 
 	return bucketList, nil
-}
-
-func (cc *CouchbaseCluster) GetClusterUUID(ctx context.Context, spec BucketSpec) (string, error) {
-	// choose random cached bucket connection
-	lits, err := cc.GetConfigBuckets()
-	if err != nil {
-		return "", err
-	}
-	randBucket := lits[rand.Intn(len(lits))]
-	b, teardown, err := cc.getBucket(ctx, randBucket)
-	if err != nil {
-		return "", err
-	}
-	defer teardown()
-
-	// construct what's needed for GocbV2Bucket to fetch cluster UUID
-	gocbv2Bucket := &GocbV2Bucket{
-		bucket: b,
-		Spec:   spec,
-	}
-	uuidStr, err := GetServerUUID(ctx, gocbv2Bucket)
-	if err != nil {
-		return "", err
-	}
-	return uuidStr, nil
 }
 
 func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr interface{}) (cas uint64, err error) {
