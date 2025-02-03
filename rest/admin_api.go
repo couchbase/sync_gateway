@@ -417,18 +417,19 @@ func (h *handler) handleGetConfig() error {
 
 		// grab cluster uuid for runtime config
 		var clusterUUID string
-		if len(allDbNames) > 0 {
-			// we can use db context to retrieve clusterUUID
-			dbCtx := h.server.Database(h.ctx(), allDbNames[0])
-			clusterUUID = dbCtx.ServerUUID
-		} else {
-			fmt.Println("calling egent")
-			bucketCfg := getBucketConfigFromBoostrap(h.server.Config.Bootstrap)
-			agentEpList := h.server.GoCBAgent.MgmtEps()
-			agentEp := agentEpList[rand.Intn(len(agentEpList))]
-			clusterUUID, err = base.GetServerUUIDWithAgent(h.server.GoCBAgent, agentEp, http.MethodGet, bucketCfg.Username, bucketCfg.Password)
-			if err != nil {
-				return err
+		if !base.ServerIsWalrus(h.server.Config.Bootstrap.Server) {
+			if len(allDbNames) > 0 {
+				// we can use db context to retrieve clusterUUID
+				dbCtx := h.server.Database(h.ctx(), allDbNames[0])
+				clusterUUID = dbCtx.ServerUUID
+			} else {
+				bucketCfg := getBucketConfigFromBoostrap(h.server.Config.Bootstrap)
+				agentEpList := h.server.GoCBAgent.MgmtEps()
+				agentEp := agentEpList[rand.Intn(len(agentEpList))]
+				clusterUUID, err = base.GetServerUUIDWithAgent(h.server.GoCBAgent, agentEp, http.MethodGet, bucketCfg.Username, bucketCfg.Password)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		cfg.ClusterUUID = clusterUUID
