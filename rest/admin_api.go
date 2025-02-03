@@ -426,7 +426,7 @@ func (h *handler) handleGetConfig() error {
 				bucketCfg := getBucketConfigFromBoostrap(h.server.Config.Bootstrap)
 				agentEpList := h.server.GoCBAgent.MgmtEps()
 				agentEp := agentEpList[rand.Intn(len(agentEpList))]
-				clusterUUID, err = base.GetServerUUIDWithAgent(h.server.GoCBAgent, agentEp, http.MethodGet, bucketCfg.Username, bucketCfg.Password)
+				clusterUUID, err = base.GetServerUUIDWithAgent(h.server.GoCBAgent, agentEp, bucketCfg.Username, bucketCfg.Password)
 				if err != nil {
 					return err
 				}

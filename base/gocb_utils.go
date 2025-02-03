@@ -164,8 +164,8 @@ func getRootCAs(ctx context.Context, caCertPath string) (*x509.CertPool, error) 
 	return rootCAs, nil
 }
 
-func GetServerUUIDWithAgent(a *gocbcore.Agent, mgmtEp, method, username, password string) (string, error) {
-	req, err := http.NewRequest(method, mgmtEp+"/pools", nil)
+func GetServerUUIDWithAgent(a *gocbcore.Agent, mgmtEp, username, password string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, mgmtEp+"/pools", nil)
 	if err != nil {
 		return "", err
 	}
