@@ -21,9 +21,6 @@ import optparse
 import os
 import re
 import shutil
-import signal
-import socket
-import subprocess
 import sys
 import tempfile
 import threading
@@ -1235,31 +1232,6 @@ def find_script(name):
     return None
 
 
-def get_server_guts(initargs_path):
-    dump_guts_path = find_script("dump-guts")
-
-    if dump_guts_path is None:
-        log("Couldn't find dump-guts script. Some information will be missing")
-        return {}
-
-    escript = exec_name("escript")
-    extra_args = os.getenv("EXTRA_DUMP_GUTS_ARGS")
-    args = [escript, dump_guts_path, "--initargs-path", initargs_path]
-    if extra_args:
-        args = args + extra_args.split(";")
-    print("Checking for server guts in %s..." % initargs_path)
-    p = subprocess.Popen(args, stdout=subprocess.PIPE)
-    output = p.stdout.read()
-    p.wait()
-    # print("args: %s gave rc: %d and:\n\n%s\n" % (args, rc, output))
-    tokens = output.rstrip("\0").split("\0")
-    d = {}
-    if len(tokens) > 1:
-        for i in range(0, len(tokens), 2):
-            d[tokens[i]] = tokens[i + 1]
-    return d
-
-
 def guess_utility(command):
     if isinstance(command, list):
         command = " ".join(command)
@@ -1319,20 +1291,6 @@ def setup_stdin_watcher():
     th = threading.Thread(target=_in_thread)
     th.setDaemon(True)
     th.start()
-
-
-class CurlKiller:
-    def __init__(self, p):
-        self.p = p
-
-    def cleanup(self):
-        if self.p is not None:
-            print("Killing curl...")
-            os.kill(self.p.pid, signal.SIGKILL)
-            print("done")
-
-    def disarm(self):
-        self.p = None
 
 
 def do_upload(path, url, proxy):
@@ -1412,19 +1370,6 @@ class CbcollectInfoOptions(optparse.Option):
     TYPES = optparse.Option.TYPES + ("ticket",)
     TYPE_CHECKER = copy(optparse.Option.TYPE_CHECKER)
     TYPE_CHECKER["ticket"] = check_ticket
-
-
-def find_primary_addr(default=None):
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        try:
-            s.connect(("8.8.8.8", 56))
-            addr, port = s.getsockname()
-            return addr
-        except socket.error:
-            return default
-    finally:
-        s.close()
 
 
 def exec_name(name):
