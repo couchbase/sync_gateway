@@ -11,11 +11,10 @@ Redacts sensitive data in config files
 """
 
 import json
-import traceback
 import re
-from urllib.parse import urlparse
-
+import traceback
 from typing import Union
+from urllib.parse import urlparse
 
 
 def get_parsed_json(json_text: str) -> dict:

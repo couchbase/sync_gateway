@@ -11,9 +11,8 @@ import pathlib
 import unittest
 
 import password_remover
-import tasks
-
 import pytest
+import tasks
 
 VERBOSE = 2
 

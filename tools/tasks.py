@@ -214,7 +214,7 @@ class Task(object):
             return 127
         p.stdin.close()
 
-        from threading import Timer, Event
+        from threading import Event, Timer
 
         timer = None
         timer_fired = Event()
@@ -436,7 +436,7 @@ class TaskRunner(object):
     def __make_zip(prefix, filename, files):
         """Write all our logs to a zipfile"""
 
-        from zipfile import ZipFile, ZIP_DEFLATED
+        from zipfile import ZIP_DEFLATED, ZipFile
 
         zf = ZipFile(filename, mode="w", compression=ZIP_DEFLATED)
         try:

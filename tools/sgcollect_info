@@ -28,19 +28,21 @@ import uuid
 from sys import platform as _platform
 
 import password_remover
-from tasks import AllOsTask
-from tasks import CbcollectInfoOptions
-from tasks import TaskRunner
-from tasks import add_file_task
-from tasks import add_gzip_file_task
-from tasks import do_upload
-from tasks import dump_utilities
-from tasks import flatten
-from tasks import generate_upload_url
-from tasks import log
-from tasks import make_curl_task
-from tasks import make_os_tasks
-from tasks import setup_stdin_watcher
+from tasks import (
+    AllOsTask,
+    CbcollectInfoOptions,
+    TaskRunner,
+    add_file_task,
+    add_gzip_file_task,
+    do_upload,
+    dump_utilities,
+    flatten,
+    generate_upload_url,
+    log,
+    make_curl_task,
+    make_os_tasks,
+    setup_stdin_watcher,
+)
 
 try:
     # Don't validate HTTPS by default.
