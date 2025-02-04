@@ -372,12 +372,8 @@ class TaskRunner(object):
 
     def run(self, task):
         """Run a task with a file descriptor corresponding to its log file"""
+        command_to_print = getattr(task, "command_to_print", task.command)
         if task.will_run():
-            if hasattr(task, "command_to_print"):
-                command_to_print = task.command_to_print
-            else:
-                command_to_print = task.command
-
             log("%s (%s) - " % (task.description, command_to_print), end="")
             if task.privileged and os.getuid() != 0:
                 log("skipped (needs root privs)")
@@ -406,7 +402,7 @@ class TaskRunner(object):
         elif self.verbosity >= 2:
             log(
                 'Skipping "%s" (%s): not for platform %s'
-                % (task.description, task.command_to_print, sys.platform)
+                % (task.description, command_to_print, sys.platform)
             )
 
     def redact_and_zip(self, filename, log_type, salt, node):
