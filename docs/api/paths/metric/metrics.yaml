@@ -6,7 +6,7 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 get:
-  summary: Debugging/monitoring runtime stats in Prometheus Exposition format
+  summary: Get debugging and monitoring runtime stats in Prometheus Exposition format
   description: |-
     Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
 
@@ -17,11 +17,9 @@ get:
     * External Stats Reader
   responses:
     '200':
-      description: Successfully returned stats
-      content:
-        text/plain:
-          schema:
-            type: string
+      description: |-
+          Successfully returned statistics.
+          For details, see [Prometheus Metrics](stats-monitoring-prometheus.html).
   tags:
     - Prometheus
   operationId: get_metrics
