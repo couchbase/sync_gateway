@@ -8,6 +8,7 @@
 
 import json
 import pathlib
+import sys
 import unittest
 
 import password_remover
@@ -128,3 +129,13 @@ def test_task_popen_exception(tmp_path):
 
     with open(pathlib.Path(runner.tmpdir) / runner.default_name) as fh:
         assert "Failed to execute ['notacommand']: Boom!" in fh.read()
+
+
+@pytest.mark.parametrize("verbosity", [0, 1, 2])
+@pytest.mark.parametrize("task_platform", [sys.platform, "fakeplatform"])
+def test_task_logging(verbosity, task_platform, tmp_path):
+    taskrunner = tasks.TaskRunner(verbosity=verbosity, tmp_dir=tmp_path)
+    task = tasks.AllOsTask("echo", "echo")
+    # fake the platform for a test
+    task.platforms = [task_platform]
+    taskrunner.run(task)
