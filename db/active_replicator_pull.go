@@ -48,6 +48,10 @@ func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 	logCtx := base.CorrelationIDLogCtx(ctx, apr.config.ID+"-"+string(ActiveReplicatorTypePull))
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
+	if err := apr.startStatusReporter(); err != nil {
+		return err
+	}
+
 	err := apr._connect()
 	if err != nil {
 		_ = apr.setError(err)
@@ -89,10 +93,6 @@ func (apr *ActivePullReplicator) _connect() error {
 
 	if apr.blipSyncContext.activeCBMobileSubprotocol <= CBMobileReplicationV2 && apr.config.PurgeOnRemoval {
 		base.ErrorfCtx(apr.ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
-	}
-
-	if err := apr.startStatusReporter(); err != nil {
-		return err
 	}
 
 	apr.setState(ReplicationStateRunning)
