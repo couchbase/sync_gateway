@@ -426,10 +426,17 @@ func (h *handler) handleGetConfig() error {
 				bucketCfg := getBucketConfigFromBoostrap(h.server.Config.Bootstrap)
 				agentEpList := h.server.GoCBAgent.MgmtEps()
 				agentEp := agentEpList[rand.Intn(len(agentEpList))]
-				clusterUUID, err = base.GetServerUUIDWithAgent(h.server.GoCBAgent, agentEp, bucketCfg.Username, bucketCfg.Password)
+				respBytes, _, err := base.MgmtRequest(h.server.GoCBAgent, agentEp, http.MethodGet, "/pools", "application/json", bucketCfg.Username, bucketCfg.Password, nil)
 				if err != nil {
 					return err
 				}
+				var responseJson struct {
+					ServerUUID string `json:"uuid"`
+				}
+				if err := base.JSONUnmarshal(respBytes, &responseJson); err != nil {
+					return err
+				}
+				clusterUUID = responseJson.ServerUUID
 			}
 		}
 		cfg.ClusterUUID = clusterUUID

@@ -504,31 +504,22 @@ func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType
 		return nil, 0, err
 	}
 
-	req, err := http.NewRequest(method, mgmtEp+uri, body)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	if contentType != "" {
-		req.Header.Add("Content-Type", contentType)
-	}
-
+	var username, password string
 	if b.Spec.Auth != nil {
-		username, password, _ := b.Spec.Auth.GetCredentials()
-		req.SetBasicAuth(username, password)
+		username, password, _ = b.Spec.Auth.GetCredentials()
 	}
-	response, err := b.HttpClient(ctx).Do(req)
-	if err != nil {
-		return nil, response.StatusCode, err
-	}
-	defer func() { _ = response.Body.Close() }()
 
-	respBytes, err := io.ReadAll(response.Body)
+	agent, err := b.getGoCBAgent()
 	if err != nil {
+		WarnfCtx(ctx, "Unable to obtain gocbcore.Agent during mgt request:%v", err)
 		return nil, 0, err
 	}
+	respBytes, statusCode, err := MgmtRequest(agent, mgmtEp, method, uri, contentType, username, password, body)
+	if err != nil {
+		return nil, statusCode, err
+	}
 
-	return respBytes, response.StatusCode, nil
+	return respBytes, statusCode, nil
 }
 
 // This prevents Sync Gateway from overflowing gocb's pipeline

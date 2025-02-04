@@ -164,35 +164,30 @@ func getRootCAs(ctx context.Context, caCertPath string) (*x509.CertPool, error) 
 	return rootCAs, nil
 }
 
-func GetServerUUIDWithAgent(a *gocbcore.Agent, mgmtEp, username, password string) (string, error) {
-	req, err := http.NewRequest(http.MethodGet, mgmtEp+"/pools", nil)
+// MgmtRequest makes a request to the http couchbase management api. This function will read the entire contents of
+// the response and return the output bytes, the status code, and an error.
+func MgmtRequest(a *gocbcore.Agent, mgmtEp, method, uri, contentType, username, password string, body io.Reader) ([]byte, int, error) {
+	req, err := http.NewRequest(method, mgmtEp+uri, body)
 	if err != nil {
-		return "", err
+		return nil, 0, err
 	}
 
-	req.Header.Add("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Add("Content-Type", contentType)
+	}
 
 	if username != "" && password != "" {
 		req.SetBasicAuth(username, password)
 	}
 	response, err := a.HTTPClient().Do(req)
 	if err != nil {
-		return "", err
+		return nil, response.StatusCode, err
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	respBytes, err := io.ReadAll(response.Body)
 	if err != nil {
-		return "", err
+		return nil, 0, err
 	}
-
-	var responseJson struct {
-		ServerUUID string `json:"uuid"`
-	}
-
-	if err := JSONUnmarshal(respBytes, &responseJson); err != nil {
-		return "", err
-	}
-
-	return responseJson.ServerUUID, nil
+	return respBytes, response.StatusCode, nil
 }
