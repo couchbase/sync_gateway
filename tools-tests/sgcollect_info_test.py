@@ -6,11 +6,10 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
-import unittest
 import io
+import unittest
 
 import pytest
-
 import sgcollect_info
 
 
