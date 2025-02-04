@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -261,43 +262,28 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 	return statuses
 }
 
-func (rt *RestTester) WaitForResyncStatus(status db.BackgroundProcessState) db.ResyncManagerResponse {
-	var resyncStatus db.ResyncManagerResponse
-	successFunc := func() bool {
-		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-		err := json.Unmarshal(response.BodyBytes(), &resyncStatus)
-		require.NoError(rt.TB(), err)
-
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB()), &val)
-
-		if status == db.BackgroundProcessStateCompleted {
-			return resyncStatus.State == status && base.IsDocNotFoundError(err)
-		} else {
-			return resyncStatus.State == status
-		}
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
-	return resyncStatus
+// RunResync takes database offline, runs resync and waits for it to complete and takes database online. Returns the completed resync status.
+func (rt *RestTester) RunResync() db.ResyncManagerResponseDCP {
+	rt.TakeDbOffline()
+	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync", "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
+	return rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
 
+// WaitForResyncDCPStatus waits for the resync status to reach the expected status and returns the final status.
 func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) db.ResyncManagerResponseDCP {
 	var resyncStatus db.ResyncManagerResponseDCP
-	successFunc := func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
 		err := json.Unmarshal(response.BodyBytes(), &resyncStatus)
-		require.NoError(rt.TB(), err)
+		assert.NoError(c, err)
 
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB()), &val)
-
-		if status == db.BackgroundProcessStateCompleted {
-			return resyncStatus.State == status && base.IsDocNotFoundError(err)
-		} else {
-			return resyncStatus.State == status
+		assert.Equal(c, status, resyncStatus.State)
+		if slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateCompleted, db.BackgroundProcessStateStopped}, status) {
+			_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB()), nil)
+			assert.True(c, base.IsDocNotFoundError(err), "expected heartbeat doc to be deleted, got: %v", err)
 		}
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
+	}, time.Second*10, time.Millisecond*10)
 	return resyncStatus
 }
 
@@ -403,6 +389,13 @@ func (rt *RestTester) TakeDbOffline() {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 	require.Equal(rt.TB(), db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
+}
+
+// TakeDbOnline takes the database online and waits for online status.
+func (rt *RestTester) TakeDbOnline() {
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
+	require.NoError(rt.TB(), rt.WaitForDBOnline())
 }
 
 // RequireDbOnline asserts that the state of the database is online

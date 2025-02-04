@@ -242,7 +242,6 @@ type UnsupportedOptions struct {
 	GuestReadOnly                  bool                     `json:"guest_read_only,omitempty"`                     // Config option to restrict GUEST document access to read-only
 	ForceAPIForbiddenErrors        bool                     `json:"force_api_forbidden_errors,omitempty"`          // Config option to force the REST API to return forbidden errors
 	ConnectedClient                bool                     `json:"connected_client,omitempty"`                    // Enables BLIP connected-client APIs
-	UseQueryBasedResyncManager     bool                     `json:"use_query_resync_manager,omitempty"`            // Config option to use Query based resync manager to perform Resync op
 	DCPReadBuffer                  int                      `json:"dcp_read_buffer,omitempty"`                     // Enables user to set their own DCP read buffer
 	KVBufferSize                   int                      `json:"kv_buffer,omitempty"`                           // Enables user to set their own KV pool buffer
 	BlipSendDocsWithChannelRemoval bool                     `json:"blip_send_docs_with_channel_removal,omitempty"` // Enables sending docs with channel removals using channel filters
@@ -564,11 +563,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	if dbContext.UseQueryBasedResyncManager() {
-		dbContext.ResyncManager = NewResyncManager(metadataStore, metaKeys)
-	} else {
-		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
-	}
+	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
 
 	return dbContext, nil
 }
@@ -1619,113 +1614,6 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context) time.Du
 	return DefaultPurgeInterval
 }
 
-// Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
-// and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
-// To be used when the JavaScript sync function changes.
-type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged *int)
-
-func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator) (int, error) {
-	base.InfofCtx(ctx, base.KeyAll, "Recomputing document channels...")
-	base.InfofCtx(ctx, base.KeyAll, "Re-running sync function on all documents...")
-
-	queryLimit := db.queryPaginationLimit()
-	startSeq := uint64(0)
-	endSeq, err := db.sequences().getSequence()
-	if err != nil {
-		return 0, err
-	}
-
-	docsChanged := 0
-	docsProcessed := 0
-
-	// In the event of an early exit we would like to ensure these values are up to date which they wouldn't be if they
-	// were unable to reach the end of the batch iteration.
-	defer callback(&docsProcessed, &docsChanged)
-
-	var unusedSequences []uint64
-	highSeq := uint64(0)
-	for {
-		results, err := db.QueryResync(ctx, queryLimit, startSeq, endSeq)
-		if err != nil {
-			return 0, err
-		}
-
-		queryRowCount := 0
-
-		var importRow QueryIdRow
-		for {
-			var found bool
-			if db.useViews() {
-				var viewRow channelsViewRow
-				found = results.Next(ctx, &viewRow)
-				if !found {
-					break
-				}
-				importRow = QueryIdRow{
-					Seq: uint64(viewRow.Key[1].(float64)),
-					Id:  viewRow.ID,
-				}
-			} else {
-				found = results.Next(ctx, &importRow)
-				if !found {
-					break
-				}
-			}
-			select {
-			case <-terminator.Done():
-				base.InfofCtx(ctx, base.KeyAll, "Resync was stopped before the operation could be completed. System "+
-					"may be in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
-				closeErr := results.Close()
-				if closeErr != nil {
-					return 0, closeErr
-				}
-				return docsChanged, nil
-			default:
-			}
-
-			docid := importRow.Id
-			key := realDocID(docid)
-			queryRowCount++
-			docsProcessed++
-			_, unusedSequences, err = db.resyncDocument(ctx, docid, key, regenerateSequences, unusedSequences)
-			if err == nil {
-				docsChanged++
-			} else if err != base.ErrUpdateCancel {
-				base.WarnfCtx(ctx, "Error updating doc %q: %v", base.UD(docid), err)
-			}
-			highSeq = importRow.Seq
-		}
-
-		callback(&docsProcessed, &docsChanged)
-
-		// Close query results
-		closeErr := results.Close()
-		if closeErr != nil {
-			return 0, closeErr
-		}
-
-		if queryRowCount < queryLimit || highSeq >= endSeq {
-			break
-		}
-		startSeq = highSeq + 1
-	}
-
-	db.releaseSequences(ctx, unusedSequences)
-
-	if regenerateSequences {
-		if err := db.updateAllPrincipalsSequences(ctx); err != nil {
-			return docsChanged, err
-		}
-	}
-
-	base.InfofCtx(ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
-
-	if docsChanged > 0 {
-		db.invalidateAllPrincipals(ctx, endSeq)
-	}
-	return docsChanged, nil
-}
-
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
 	users, roles, err := c.allPrincipalIDs(ctx)
 	if err != nil {
@@ -2026,14 +1914,6 @@ func (context *DatabaseContext) UseViews() bool {
 
 func (context *DatabaseContext) UseMou() bool {
 	return context.EnableMou
-}
-
-// UseQueryBasedResyncManager returns if query bases resync manager should be used for Resync operation
-func (context *DatabaseContext) UseQueryBasedResyncManager() bool {
-	if context.Options.UnsupportedOptions != nil {
-		return context.Options.UnsupportedOptions.UseQueryBasedResyncManager
-	}
-	return false
 }
 
 func (context *DatabaseContext) DeltaSyncEnabled() bool {
