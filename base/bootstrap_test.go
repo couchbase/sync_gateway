@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"dario.cat/mergo"
 	"github.com/stretchr/testify/assert"
@@ -41,6 +42,12 @@ func TestBootstrapRefCounting(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires making a connection to CBS")
 	}
+
+	ctx := TestCtx(t)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int32(tbpNumBuckets(ctx)), GTestBucketPool.stats.TotalBucketInitCount.Load())
+	}, 2*time.Minute, 5*time.Millisecond) // Wait for bucket pool to be initialized, since GetConfigBuckets requires equal buckets to tbpNumBuckets
+
 	// Integration tests are configured to run in these parameters, they are used in main_test_bucket_pool.go
 	// Future enhancement would be to allow all integration tests to run with TLS
 	x509CertPath := ""
@@ -49,7 +56,6 @@ func TestBootstrapRefCounting(t *testing.T) {
 	forcePerBucketAuth := false
 	tlsSkipVerify := BoolPtr(TestTLSSkipVerify())
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
-	ctx := TestCtx(t)
 	cluster, err := NewCouchbaseCluster(ctx, UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, TestUseXattrs(), CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()

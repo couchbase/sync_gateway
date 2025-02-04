@@ -236,7 +236,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	if err != nil {
 		tbp.Fatalf(ctx, "couldn't run bucket init func: %v", err)
 	}
-	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, 1)
+	tbp.stats.TotalBucketInitCount.Add(1)
 	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(initFuncStart).Nanoseconds())
 	tbp.markBucketOpened(t, b)
 
@@ -578,8 +578,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 	wg.Wait()
 
 	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(start).Nanoseconds())
-	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, int32(numBuckets))
-
+	tbp.stats.TotalBucketInitCount.Add(int32(numBuckets))
 }
 
 // bucketReadierWorker reads a channel of "dirty" buckets (bucketReadierQueue), does something to get them ready, and then puts them back into the pool.
