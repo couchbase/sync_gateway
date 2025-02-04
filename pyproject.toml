@@ -1,2 +1,5 @@
 [tool.ruff]
 extend-include = ["tools/sgcollect_info"]
+
+[tool.ruff.lint]
+extend-select = ["I"]

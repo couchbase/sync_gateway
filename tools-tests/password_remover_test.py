@@ -9,9 +9,8 @@
 import json
 import unittest
 
-import pytest
-
 import password_remover
+import pytest
 
 
 class TestStripPasswordsFromUrl(unittest.TestCase):
