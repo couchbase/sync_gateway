@@ -201,27 +201,32 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 	if deadlineCancel != nil {
 		deadlineCancel()
 	}
-	if retryErr != nil {
-		switch ctxErr := ctx.Err(); ctxErr {
-		case context.Canceled:
-			// replicator was stopped - appropriate state has already been set
-			base.InfofCtx(ctx, base.KeyReplicate, "exiting reconnect loop: %v", ctxErr)
-			return
-		case context.DeadlineExceeded:
-			// timeout on reconnecting state
-			base.WarnfCtx(ctx, "aborting reconnect loop after timeout: %v", ctxErr)
-		default:
-			// unexpected error from retry loop
-			base.WarnfCtx(ctx, "aborting reconnect loop after error: %v", retryErr)
-		}
 
-		a.replicationStats.NumReconnectsAborted.Add(1)
-		a.lock.Lock()
-		defer a.lock.Unlock()
-		a.setState(ReplicationStateError)
-		a._publishStatus()
-		a._stop()
+	// Exit early if no error or if context was cancelled
+	if retryErr == nil {
+		return
 	}
+	if ctx.Err() == context.Canceled {
+		// replicator was stopped - appropriate state has already been set
+		base.InfofCtx(ctx, base.KeyReplicate, "exiting reconnect loop: %v", ctx.Err())
+		return
+	}
+
+	// Handle remaining error cases
+	if ctx.Err() == context.DeadlineExceeded {
+		// timeout on reconnecting state
+		base.WarnfCtx(ctx, "aborting reconnect loop after timeout: %v", ctx.Err())
+	} else {
+		// unexpected error from retry loop
+		base.WarnfCtx(ctx, "aborting reconnect loop after error: %v", retryErr)
+	}
+
+	a.replicationStats.NumReconnectsAborted.Add(1)
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a.setState(ReplicationStateError)
+	a._publishStatus()
+	a._stop()
 }
 
 // reconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
