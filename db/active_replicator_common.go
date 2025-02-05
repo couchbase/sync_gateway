@@ -268,7 +268,7 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	return nil
 }
 
-// _stop aborts any replicator processes that run outside of a running replication (e.g: async reconnect handling)
+// _stop aborts any replicator processes that run outside of a running replication connection (e.g: async reconnect handling, statsreporter)
 func (a *activeReplicatorCommon) _stop() {
 	if a.ctxCancel != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling context on activeReplicatorCommon in _stop()")
@@ -369,8 +369,8 @@ func (a *activeReplicatorCommon) _publishStatus() {
 	}
 }
 
-func (arc *activeReplicatorCommon) startStatusReporter() error {
-	go func(ctx context.Context) {
+func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) error {
+	go func() {
 		ticker := time.NewTicker(arc.config.CheckpointInterval)
 		defer ticker.Stop()
 		for {
@@ -386,7 +386,7 @@ func (arc *activeReplicatorCommon) startStatusReporter() error {
 				return
 			}
 		}
-	}(arc.ctx)
+	}()
 	return nil
 }
 
