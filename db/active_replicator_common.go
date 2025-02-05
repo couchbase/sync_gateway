@@ -204,6 +204,11 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 	if err != nil {
 		a.replicationStats.NumReconnectsAborted.Add(1)
 		base.WarnfCtx(ctx, "couldn't reconnect replicator: %v", err)
+		a.lock.Lock()
+		defer a.lock.Unlock()
+		a.setState(ReplicationStateError)
+		a._publishStatus()
+		a._stop()
 	}
 }
 
