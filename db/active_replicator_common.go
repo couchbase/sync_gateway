@@ -172,6 +172,7 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		}
 
 		a.lock.Lock()
+		defer a.lock.Unlock()
 
 		// preserve lastError from the previous connect attempt
 		a.setState(ReplicationStateReconnecting)
@@ -187,8 +188,6 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		err = a.replicatorConnectFn()
 		a.setLastError(err)
 		a._publishStatus()
-
-		a.lock.Unlock()
 
 		if err != nil {
 			base.InfofCtx(a.ctx, base.KeyReplicate, "error starting replicator on reconnect: %v", err)
