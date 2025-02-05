@@ -53,7 +53,7 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 		apr.config.ID+"-"+string(ActiveReplicatorTypePush))
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
-	if err := apr.startStatusReporter(); err != nil {
+	if err := apr.startStatusReporter(apr.ctx); err != nil {
 		return err
 	}
 

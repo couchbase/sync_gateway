@@ -48,7 +48,7 @@ func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 	logCtx := base.CorrelationIDLogCtx(ctx, apr.config.ID+"-"+string(ActiveReplicatorTypePull))
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
-	if err := apr.startStatusReporter(); err != nil {
+	if err := apr.startStatusReporter(apr.ctx); err != nil {
 		return err
 	}
 
