@@ -11,26 +11,24 @@ package rest
 // DatabaseError denotes an error that occurred during database startup
 type DatabaseError struct {
 	ErrMsg string            `json:"error_message"`
-	Code   DatabaseErrorType `json:"error_code"`
+	Code   databaseErrorCode `json:"error_code"`
 }
 
-type DatabaseErrorType uint8
+type databaseErrorCode uint8
 
 const (
-	DatabaseBucketConnectionError DatabaseErrorType = iota
-	DatabaseInvalidDatastore
-	DatabaseIndexError
-	DatabaseInitSyncInfoError
-	DatabaseInitialisationIndexError
-	DatabaseCreateDatabaseContextError
-	DatabaseSGRClusterError
-	DatabaseCreateReplicationError
+	DatabaseBucketConnectionError      databaseErrorCode = 0
+	DatabaseInvalidDatastore           databaseErrorCode = 1
+	DatabaseInitSyncInfoError          databaseErrorCode = 2
+	DatabaseInitialisationIndexError   databaseErrorCode = 3
+	DatabaseCreateDatabaseContextError databaseErrorCode = 4
+	DatabaseSGRClusterError            databaseErrorCode = 5
+	DatabaseCreateReplicationError     databaseErrorCode = 6
 )
 
 var DatabaseErrorString = []string{
 	DatabaseBucketConnectionError:      "Error connecting to bucket",
 	DatabaseInvalidDatastore:           "Collection(s) not available",
-	DatabaseIndexError:                 "Error creating/building/waiting index",
 	DatabaseInitSyncInfoError:          "Error initialising sync info",
 	DatabaseInitialisationIndexError:   "Error initialising database indexes",
 	DatabaseCreateDatabaseContextError: "Error creating database context",
@@ -38,7 +36,7 @@ var DatabaseErrorString = []string{
 	DatabaseCreateReplicationError:     "Error creating replication during database init",
 }
 
-func NewDatabaseError(code DatabaseErrorType) *DatabaseError {
+func NewDatabaseError(code databaseErrorCode) *DatabaseError {
 	return &DatabaseError{
 		ErrMsg: DatabaseErrorString[code],
 		Code:   code,

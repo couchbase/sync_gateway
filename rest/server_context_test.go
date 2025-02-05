@@ -978,6 +978,7 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 	}
 	rt := NewRestTesterMultipleCollections(t, nil, 3)
 	defer rt.Close()
+	ctx := base.TestCtx(t)
 
 	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
 	scopesConfig := GetCollectionsConfig(t, rt.TestBucket, 3)
@@ -1014,6 +1015,12 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 	invalDb = allDbs[0]
 	require.Nil(t, invalDb.DatabaseError)
 	assert.Equal(t, db.RunStateString[db.DBOnline], invalDb.State)
+
+	// add back the datastore
+	b, err = base.AsGocbV2Bucket(rt.GetDatabase().Bucket)
+	require.NoError(t, err)
+	err = b.CreateDataStore(ctx, dsList[0])
+	require.NoError(t, err)
 
 	// try creating db with bad collections config ensure it fails and isn't shown on all dbs
 	scopesConfig[scope] = ScopeConfig{
