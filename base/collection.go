@@ -509,12 +509,7 @@ func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType
 		username, password, _ = b.Spec.Auth.GetCredentials()
 	}
 
-	agent, err := b.getGoCBAgent()
-	if err != nil {
-		WarnfCtx(ctx, "Unable to obtain gocbcore.Agent during mgt request:%v", err)
-		return nil, 0, err
-	}
-	respBytes, statusCode, err := MgmtRequest(agent, mgmtEp, method, uri, contentType, username, password, body)
+	respBytes, statusCode, err := MgmtRequest(b.HttpClient(ctx), mgmtEp, method, uri, contentType, username, password, body)
 	if err != nil {
 		return nil, statusCode, err
 	}

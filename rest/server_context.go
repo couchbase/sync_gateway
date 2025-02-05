@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -1995,20 +1994,8 @@ func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, p
 	retryCount := 0
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		var httpResponse *http.Response
-
 		endpointIdx := retryCount % len(endpoints)
-		req, err := http.NewRequest(method, endpoints[endpointIdx]+path, bytes.NewBuffer(requestBody))
-		if err != nil {
-			return false, err, nil
-		}
-
-		req.SetBasicAuth(username, password)
-
-		httpResponse, err = httpClient.Do(req) // nolint:bodyclose // The body is closed outside of the worker loop
-		if err == nil {
-			return false, nil, httpResponse
-		}
+		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, "application/json", username, password, bytes.NewBuffer(requestBody))
 
 		if err, ok := err.(net.Error); ok && err.Timeout() {
 			retryCount++
@@ -2018,27 +2005,12 @@ func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, p
 		return false, err, nil
 	}
 
-	err, result := base.RetryLoop(ctx, "doHTTPAuthRequest", worker, base.CreateSleeperFunc(10, 100))
+	err, _ = base.RetryLoop(ctx, "doHTTPAuthRequest", worker, base.CreateSleeperFunc(10, 100))
 	if err != nil {
 		return 0, nil, err
 	}
 
-	httpResponse, ok := result.(*http.Response)
-	if !ok {
-		return 0, nil, fmt.Errorf("unexpected response type from doHTTPAuthRequest")
-	}
-
-	bodyString, err := io.ReadAll(httpResponse.Body)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	err = httpResponse.Body.Close()
-	if err != nil {
-		return 0, nil, err
-	}
-
-	return httpResponse.StatusCode, bodyString, nil
+	return statusCode, responseBody, nil
 }
 
 // For test use
@@ -2158,4 +2130,33 @@ func getTotalMemory(ctx context.Context) uint64 {
 		return 0
 	}
 	return memory.Total
+}
+
+// getClusterUUID returns the cluster UUID. rosmar does not have a ClusterUUID, so this will return an empty cluster UUID and no error in this case.
+func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
+	allDbNames := sc.AllDatabaseNames()
+	// we can use db context to retrieve clusterUUID
+	if len(allDbNames) > 0 {
+		db, err := sc.GetDatabase(ctx, allDbNames[0])
+		if err == nil {
+			return db.ServerUUID, nil
+		}
+	}
+	// no cluster uuid for rosmar cluster
+	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
+		return "", nil
+	}
+	// request server for cluster uuid
+	eps, client, err := sc.ObtainManagementEndpointsAndHTTPClient()
+	if err != nil {
+		return "", err
+	}
+	statusCode, output, err := doHTTPAuthRequest(ctx, client, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodGet, "/pools", eps, nil)
+	if err != nil {
+		return "", err
+	}
+	if statusCode != http.StatusOK {
+		return "", fmt.Errorf("unable to get cluster UUID from server: %s", output)
+	}
+	return base.ParseClusterUUID(output)
 }

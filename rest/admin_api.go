@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -416,28 +415,9 @@ func (h *handler) handleGetConfig() error {
 		}
 
 		// grab cluster uuid for runtime config
-		var clusterUUID string
-		if !base.ServerIsWalrus(h.server.Config.Bootstrap.Server) {
-			if len(allDbNames) > 0 {
-				// we can use db context to retrieve clusterUUID
-				dbCtx := h.server.Database(h.ctx(), allDbNames[0])
-				clusterUUID = dbCtx.ServerUUID
-			} else {
-				bucketCfg := getBucketConfigFromBoostrap(h.server.Config.Bootstrap)
-				agentEpList := h.server.GoCBAgent.MgmtEps()
-				agentEp := agentEpList[rand.Intn(len(agentEpList))]
-				respBytes, _, err := base.MgmtRequest(h.server.GoCBAgent, agentEp, http.MethodGet, "/pools", "application/json", bucketCfg.Username, bucketCfg.Password, nil)
-				if err != nil {
-					return err
-				}
-				var responseJson struct {
-					ServerUUID string `json:"uuid"`
-				}
-				if err := base.JSONUnmarshal(respBytes, &responseJson); err != nil {
-					return err
-				}
-				clusterUUID = responseJson.ServerUUID
-			}
+		clusterUUID, err := h.server.getClusterUUID(h.ctx())
+		if err != nil {
+			base.InfofCtx(h.ctx(), base.KeyConfig, "Could not determine cluster UUID: %s", err)
 		}
 		cfg.ClusterUUID = clusterUUID
 
