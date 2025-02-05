@@ -196,14 +196,26 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		return err != nil, err, nil
 	}
 
-	err, _ := base.RetryLoop(ctx, "replicator reconnect", retryFunc, sleeperFunc)
+	retryErr, _ := base.RetryLoop(ctx, "replicator reconnect", retryFunc, sleeperFunc)
 	// release timer associated with context deadline
 	if deadlineCancel != nil {
 		deadlineCancel()
 	}
-	if err != nil {
+	if retryErr != nil {
+		switch ctxErr := ctx.Err(); ctxErr {
+		case context.Canceled:
+			// replicator was stopped - appropriate state has already been set
+			base.InfofCtx(ctx, base.KeyReplicate, "exiting reconnect loop: %v", ctxErr)
+			return
+		case context.DeadlineExceeded:
+			// timeout on reconnecting state
+			base.WarnfCtx(ctx, "aborting reconnect loop after timeout: %v", ctxErr)
+		default:
+			// unexpected error from retry loop
+			base.WarnfCtx(ctx, "aborting reconnect loop after error: %v", retryErr)
+		}
+
 		a.replicationStats.NumReconnectsAborted.Add(1)
-		base.WarnfCtx(ctx, "couldn't reconnect replicator: %v", err)
 		a.lock.Lock()
 		defer a.lock.Unlock()
 		a.setState(ReplicationStateError)
