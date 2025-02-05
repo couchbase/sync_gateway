@@ -365,15 +365,15 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 
 // buildErrorMessage will build appropriate http error message based on the invalidConfig
 func (sc *ServerContext) buildErrorMessage(dbName string, invalidConfig *invalidConfigInfo) *base.HTTPError {
-	var err *base.HTTPError
 	if invalidConfig.databaseError != nil {
-		err = base.HTTPErrorf(http.StatusNotFound, "Database %s has an invalid configuration: %v. You must update database config immediately through create db process", dbName, invalidConfig.databaseError.ErrMsg)
+		err := base.HTTPErrorf(http.StatusNotFound, "Database %s has an invalid configuration: %v. You must update database config immediately through create db process", dbName, invalidConfig.databaseError.ErrMsg)
+		return err
 	}
 	if invalidConfig.collectionConflicts {
-		err = base.HTTPErrorf(http.StatusNotFound, "Database %s has conflicting collections. You must update database config immediately through create db process", dbName)
+		err := base.HTTPErrorf(http.StatusNotFound, "Database %s has conflicting collections. You must update database config immediately through create db process", dbName)
+		return err
 	}
-	err = base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(dbName), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.Config.Bootstrap.ConfigGroupID))
-	return err
+	return base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(dbName), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.Config.Bootstrap.ConfigGroupID))
 }
 
 func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
@@ -670,7 +670,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	} else {
 		bucket, err = db.ConnectToBucket(ctx, spec, options.failFast)
 	}
-	// auth error or fatal error here - is fatal whjen bucket ddoesn't exist?
 	if err != nil {
 		if options.loadFromBucket {
 			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseBucketConnectionError))
@@ -716,7 +715,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
 				resyncRequired, err := base.InitSyncInfo(dataStore, config.MetadataID)
-				// ghere if this fails, have failed iint sync info
 				if err != nil {
 					if options.loadFromBucket {
 						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInitSyncInfoError))

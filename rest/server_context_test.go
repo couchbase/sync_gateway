@@ -973,7 +973,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 }
 
 func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
-	if base.TestUseWalrus() {
+	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
 	rt := NewRestTesterMultipleCollections(t, nil, 3)
