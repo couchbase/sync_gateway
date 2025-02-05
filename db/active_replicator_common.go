@@ -223,6 +223,7 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 	a.replicationStats.NumReconnectsAborted.Add(1)
 	a.lock.Lock()
 	defer a.lock.Unlock()
+	// use setState to preserve last error from retry loop set by setLastError
 	a.setState(ReplicationStateError)
 	a._publishStatus()
 	a._stop()
