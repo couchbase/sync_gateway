@@ -91,21 +91,6 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	if numCollectionsPerBucket == 0 {
 		numCollectionsPerBucket = tbpNumCollectionsPerBucket(ctx)
 	}
-	// We can safely skip setup when we want Walrus buckets to be used.
-	// They'll be created on-demand via GetTestBucketAndSpec,
-	// which is fast enough for Walrus that we don't need to prepare buckets ahead of time.
-	if !TestUseCouchbaseServer() || TestUseExistingBucket() {
-		tbp := TestBucketPool{
-			bucketInitFunc:          bucketInitFunc,
-			unclosedBuckets:         make(map[string]map[string]struct{}),
-			integrationMode:         TestUseCouchbaseServer(),
-			useExistingBucket:       TestUseExistingBucket(),
-			useDefaultScope:         options.UseDefaultScope,
-			numCollectionsPerBucket: numCollectionsPerBucket,
-		}
-		tbp.verbose.Set(tbpVerbose())
-		return &tbp
-	}
 
 	// Used to manage cancellation of worker goroutines
 	ctx, ctxCancelFunc := context.WithCancel(ctx)
@@ -132,6 +117,13 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		useDefaultScope:         options.UseDefaultScope,
 		skipMobileXDCR:          true, // do not set up enableCrossClusterVersioning until Sync Gateway 4.x
 		numCollectionsPerBucket: numCollectionsPerBucket,
+		verbose:                 *NewAtomicBool(tbpVerbose()),
+	}
+
+	// We can safely skip setup if using existing buckets or rosmar buckets, since they can be opened on demand.
+	if UnitTestUrlIsWalrus() || TestUseExistingBucket() {
+		tbp.stats.TotalBucketInitCount.Add(int32(numBuckets))
+		return &tbp
 	}
 
 	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), &tbp)
@@ -141,8 +133,6 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		tbp.Fatalf(ctx, "%s", err)
 	}
 	tbp.skipCollections = !useCollections
-
-	tbp.verbose.Set(tbpVerbose())
 
 	// Start up an async readier worker to process dirty buckets
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
