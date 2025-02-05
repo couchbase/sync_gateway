@@ -113,6 +113,7 @@ type getOrAddDatabaseConfigOptions struct {
 	connectToBucketFn db.OpenBucketFn // supply a custom function for buckets, used for testing only
 	forceOnline       bool            // force the database to come online, even if startOffline is set
 	asyncOnline       bool            // Whether getOrAddDatabaseConfig should block until database is ready, when startOffline=false
+	loadFromBucket    bool            // If this is load config from bucket operation
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -354,12 +355,25 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 	var httpErr *base.HTTPError
 	invalidConfig, ok := sc.invalidDatabaseConfigTracking.exists(name)
 	if !dbConfigFound && ok {
-		httpErr = base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(name), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.Config.Bootstrap.ConfigGroupID))
+		httpErr = sc.buildErrorMessage(name, invalidConfig)
 	} else {
 		httpErr = base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	}
 
 	return nil, dbConfigFound, httpErr
+}
+
+// buildErrorMessage will build appropriate http error message based on the invalidConfig
+func (sc *ServerContext) buildErrorMessage(dbName string, invalidConfig *invalidConfigInfo) *base.HTTPError {
+	var err *base.HTTPError
+	if invalidConfig.databaseError != nil {
+		err = base.HTTPErrorf(http.StatusNotFound, "Database %s has an invalid configuration: %v. You must update database config immediately through create db process", dbName, invalidConfig.databaseError.ErrMsg)
+	}
+	if invalidConfig.collectionConflicts {
+		err = base.HTTPErrorf(http.StatusNotFound, "Database %s has conflicting collections. You must update database config immediately through create db process", dbName)
+	}
+	err = base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(dbName), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.Config.Bootstrap.ConfigGroupID))
+	return err
 }
 
 func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
@@ -410,6 +424,21 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 		}
 		if sc.DatabaseInitManager.HasActiveInitialization(name) {
 			summary.InitializationActive = true
+		}
+		dbs = append(dbs, summary)
+	}
+	sc.invalidDatabaseConfigTracking.m.RLock()
+	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
+	for name, invalidConfig := range sc.invalidDatabaseConfigTracking.dbNames {
+		// skip adding any invalid dbs with no error associated with them or that exist in above list
+		if invalidConfig.databaseError == nil || sc.databases_[name] != nil {
+			continue
+		}
+		summary := DbSummary{
+			DBName:        name,
+			Bucket:        invalidConfig.configBucketName,
+			State:         db.RunStateString[db.DBOffline], // db can always be reported as offline if we have an invalid config
+			DatabaseError: invalidConfig.databaseError,
 		}
 		dbs = append(dbs, summary)
 	}
@@ -488,17 +517,18 @@ func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string
 func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true)
+	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, false)
 }
 
-func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
+func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool, loadFromBucket bool) error {
 	sc._removeDatabase(ctx, config.Name)
 	// use async initialization whenever using persistent config
 	asyncOnline := sc.persistentConfig
 	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, getOrAddDatabaseConfigOptions{
-		useExisting: false,
-		failFast:    failFast,
-		asyncOnline: asyncOnline,
+		useExisting:    false,
+		failFast:       failFast,
+		asyncOnline:    asyncOnline,
+		loadFromBucket: loadFromBucket,
 	})
 	return err
 }
@@ -640,7 +670,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	} else {
 		bucket, err = db.ConnectToBucket(ctx, spec, options.failFast)
 	}
+	// auth error or fatal error here - is fatal whjen bucket ddoesn't exist?
 	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseBucketConnectionError))
+		}
 		return nil, err
 	}
 
@@ -667,6 +701,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 				dataStore, err := base.GetAndWaitUntilDataStoreReady(ctx, bucket, scName, options.failFast)
 				if err != nil {
+					if options.loadFromBucket {
+						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInvalidDatastore))
+					}
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
 
@@ -679,7 +716,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
 				resyncRequired, err := base.InitSyncInfo(dataStore, config.MetadataID)
+				// ghere if this fails, have failed iint sync info
 				if err != nil {
+					if options.loadFromBucket {
+						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInitSyncInfoError))
+					}
 					return nil, err
 				}
 				if resyncRequired {
@@ -696,6 +737,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			scName := base.DefaultScopeAndCollectionName()
 			resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
 			if err != nil {
+				if options.loadFromBucket {
+					sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInitSyncInfoError))
+				}
 				return nil, err
 			}
 			if resyncRequired {
@@ -731,6 +775,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// Initialize indexes using DatabaseInitManager.
 		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
 		if err != nil {
+			if options.loadFromBucket {
+				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInitialisationIndexError))
+			}
 			return nil, err
 		}
 	}
@@ -797,6 +844,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	contextOptions.MetadataStore = bucket.DefaultDataStore()
 	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
 	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInvalidDatastore))
+		}
 		return nil, err
 	}
 
@@ -811,6 +861,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Create the DB Context
 	dbcontext, err = db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseCreateDatabaseContextError))
+		}
 		return nil, err
 	}
 	dbcontext.BucketSpec = spec
@@ -855,6 +908,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	cfgReplications, err := dbcontext.SGReplicateMgr.GetReplications()
 	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseSGRClusterError))
+		}
 		return nil, err
 	}
 	// PUT replications that do not exist
@@ -868,6 +924,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	replicationErr := dbcontext.SGReplicateMgr.PutReplications(ctx, newReplications)
 	if replicationErr != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseCreateReplicationError))
+		}
 		return nil, replicationErr
 	}
 
@@ -890,6 +949,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
 	}
+
+	// TODO: Errors for online processes should be handled on dbcontext as its been loaded into server context below (CBG-4511)
 
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
