@@ -176,7 +176,7 @@ func MgmtRequest(client *http.Client, mgmtEp, method, uri, contentType, username
 		req.Header.Add("Content-Type", contentType)
 	}
 
-	if username != "" && password != "" {
+	if username != "" {
 		req.SetBasicAuth(username, password)
 	}
 	response, err := client.Do(req)

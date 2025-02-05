@@ -1995,7 +1995,7 @@ func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, p
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		endpointIdx := retryCount % len(endpoints)
-		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, "application/json", username, password, bytes.NewBuffer(requestBody))
+		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, "", username, password, bytes.NewBuffer(requestBody))
 
 		if err, ok := err.(net.Error); ok && err.Timeout() {
 			retryCount++
