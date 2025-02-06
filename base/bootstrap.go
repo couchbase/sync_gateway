@@ -44,7 +44,6 @@ type BootstrapConnection interface {
 	// GetDocument retrieves the document with the specified key from the bucket's default collection.
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetDocument(ctx context.Context, bucket, docID string, rv interface{}) (exists bool, err error)
-
 	// Close releases any long-lived connections
 	Close()
 }
