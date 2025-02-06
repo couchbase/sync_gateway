@@ -26,6 +26,7 @@ var DatabaseErrorMap = map[databaseErrorCode]string{
 
 type databaseErrorCode uint8
 
+// Error codes exposed for each error a database can encounter on load. These codes are consumed by Capella so must remain stable.
 const (
 	DatabaseBucketConnectionError      databaseErrorCode = 1
 	DatabaseInvalidDatastore           databaseErrorCode = 2
