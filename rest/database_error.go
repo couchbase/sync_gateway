@@ -27,13 +27,13 @@ var DatabaseErrorMap = map[databaseErrorCode]string{
 type databaseErrorCode uint8
 
 const (
-	DatabaseBucketConnectionError databaseErrorCode = iota
-	DatabaseInvalidDatastore
-	DatabaseInitSyncInfoError
-	DatabaseInitialisationIndexError
-	DatabaseCreateDatabaseContextError
-	DatabaseSGRClusterError
-	DatabaseCreateReplicationError
+	DatabaseBucketConnectionError      databaseErrorCode = 1
+	DatabaseInvalidDatastore           databaseErrorCode = 2
+	DatabaseInitSyncInfoError          databaseErrorCode = 3
+	DatabaseInitialisationIndexError   databaseErrorCode = 4
+	DatabaseCreateDatabaseContextError databaseErrorCode = 5
+	DatabaseSGRClusterError            databaseErrorCode = 6
+	DatabaseCreateReplicationError     databaseErrorCode = 7
 )
 
 func NewDatabaseError(code databaseErrorCode) *DatabaseError {
