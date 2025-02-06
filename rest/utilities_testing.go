@@ -2840,3 +2840,10 @@ func RequireGocbDCPResync(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
 }
+
+// reloadDatabaseWithConfigLoadFromBucket forces reload of db as if it was being picked up from the bucket
+func (sc *ServerContext) reloadDatabaseWithConfigLoadFromBucket(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, true)
+}

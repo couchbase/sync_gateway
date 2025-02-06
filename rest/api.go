@@ -448,11 +448,12 @@ type DatabaseRoot struct {
 }
 
 type DbSummary struct {
-	DBName               string `json:"db_name"`
-	Bucket               string `json:"bucket"`
-	State                string `json:"state"`
-	InitializationActive bool   `json:"init_in_progress,omitempty"`
-	RequireResync        bool   `json:"require_resync,omitempty"`
+	DBName               string         `json:"db_name"`
+	Bucket               string         `json:"bucket"`
+	State                string         `json:"state"`
+	InitializationActive bool           `json:"init_in_progress,omitempty"`
+	RequireResync        bool           `json:"require_resync,omitempty"`
+	DatabaseError        *DatabaseError `json:"database_error,omitempty"`
 }
 
 func (h *handler) handleGetDB() error {
