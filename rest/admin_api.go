@@ -352,11 +352,12 @@ func (h *handler) handleGetDbConfig() error {
 
 type RunTimeServerConfigResponse struct {
 	*StartupConfig
-	RuntimeClusterUUID
-	Databases map[string]*DbConfig `json:"databases"`
+	RuntimeInformation `json:"runtime_information"`
+	Databases          map[string]*DbConfig `json:"databases"`
 }
 
-type RuntimeClusterUUID struct {
+// RuntimeInformation is a struct that holds runtime-only info in without interfering or being lost inside the actual StartupConfig properties.
+type RuntimeInformation struct {
 	ClusterUUID string `json:"cluster_uuid"`
 }
 
