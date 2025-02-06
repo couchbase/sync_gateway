@@ -352,7 +352,13 @@ func (h *handler) handleGetDbConfig() error {
 
 type RunTimeServerConfigResponse struct {
 	*StartupConfig
-	Databases map[string]*DbConfig `json:"databases"`
+	RuntimeInformation `json:"runtime_information"`
+	Databases          map[string]*DbConfig `json:"databases"`
+}
+
+// RuntimeInformation is a struct that holds runtime-only info in without interfering or being lost inside the actual StartupConfig properties.
+type RuntimeInformation struct {
+	ClusterUUID string `json:"cluster_uuid"`
 }
 
 // Get admin config info
@@ -408,6 +414,13 @@ func (h *handler) handleGetConfig() error {
 				dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted(h.ctx())
 			}
 		}
+
+		// grab cluster uuid for runtime config
+		clusterUUID, err := h.server.getClusterUUID(h.ctx())
+		if err != nil {
+			base.InfofCtx(h.ctx(), base.KeyConfig, "Could not determine cluster UUID: %s", err)
+		}
+		cfg.ClusterUUID = clusterUUID
 
 		// because loggers can be changed at runtime, we need to work backwards to get the config that would've created the actually running instances
 		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging)
