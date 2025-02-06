@@ -103,9 +103,8 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	numBuckets := tbpNumBuckets(ctx)
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
-
 	tbp := TestBucketPool{
-		integrationMode:         true,
+		integrationMode:         !UnitTestUrlIsWalrus() && !TestUseExistingBucket(),
 		readyBucketPool:         make(chan Bucket, numBuckets),
 		bucketReadierQueue:      make(chan tbpBucketName, numBuckets),
 		bucketReadierWaitGroup:  &sync.WaitGroup{},
@@ -115,13 +114,13 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		unclosedBuckets:         make(map[string]map[string]struct{}),
 		useExistingBucket:       TestUseExistingBucket(),
 		useDefaultScope:         options.UseDefaultScope,
-		skipMobileXDCR:          true, // do not set up enableCrossClusterVersioning until Sync Gateway 4.x
+		skipMobileXDCR:          !UnitTestUrlIsWalrus(), // do not set up enableCrossClusterVersioning until Sync Gateway 4.x
 		numCollectionsPerBucket: numCollectionsPerBucket,
 		verbose:                 *NewAtomicBool(tbpVerbose()),
 	}
 
 	// We can safely skip setup if using existing buckets or rosmar buckets, since they can be opened on demand.
-	if UnitTestUrlIsWalrus() || TestUseExistingBucket() {
+	if !tbp.integrationMode {
 		tbp.stats.TotalBucketInitCount.Add(int32(numBuckets))
 		return &tbp
 	}
