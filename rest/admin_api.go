@@ -117,7 +117,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(contextNoCancel, loadedConfig, true, false)
+		_, err = h.server._applyConfig(contextNoCancel, loadedConfig, true, false, false)
 		if err != nil {
 			return databaseLoadErrorAsHTTPError(err)
 		}
@@ -1040,7 +1040,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
 		return err
 	}
 
@@ -1109,7 +1109,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
 		return err
 	}
 
@@ -1209,7 +1209,7 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
 		return err
 	}
 
@@ -1279,7 +1279,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
 		return err
 	}
 
