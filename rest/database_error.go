@@ -14,19 +14,7 @@ type DatabaseError struct {
 	Code   databaseErrorCode `json:"error_code"`
 }
 
-type databaseErrorCode uint8
-
-const (
-	DatabaseBucketConnectionError      databaseErrorCode = 0
-	DatabaseInvalidDatastore           databaseErrorCode = 1
-	DatabaseInitSyncInfoError          databaseErrorCode = 2
-	DatabaseInitialisationIndexError   databaseErrorCode = 3
-	DatabaseCreateDatabaseContextError databaseErrorCode = 4
-	DatabaseSGRClusterError            databaseErrorCode = 5
-	DatabaseCreateReplicationError     databaseErrorCode = 6
-)
-
-var DatabaseErrorString = []string{
+var DatabaseErrorMap = map[databaseErrorCode]string{
 	DatabaseBucketConnectionError:      "Error connecting to bucket",
 	DatabaseInvalidDatastore:           "Collection(s) not available",
 	DatabaseInitSyncInfoError:          "Error initialising sync info",
@@ -36,9 +24,21 @@ var DatabaseErrorString = []string{
 	DatabaseCreateReplicationError:     "Error creating replication during database init",
 }
 
+type databaseErrorCode uint8
+
+const (
+	DatabaseBucketConnectionError databaseErrorCode = iota
+	DatabaseInvalidDatastore
+	DatabaseInitSyncInfoError
+	DatabaseInitialisationIndexError
+	DatabaseCreateDatabaseContextError
+	DatabaseSGRClusterError
+	DatabaseCreateReplicationError
+)
+
 func NewDatabaseError(code databaseErrorCode) *DatabaseError {
 	return &DatabaseError{
-		ErrMsg: DatabaseErrorString[code],
+		ErrMsg: DatabaseErrorMap[code],
 		Code:   code,
 	}
 }
