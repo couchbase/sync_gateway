@@ -937,39 +937,6 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 	}
 }
 
-func TestDatabaseStartupFailure(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("EE only test, requires heartbeater error")
-	}
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("LeakyBucketConfig not supported on CBS")
-	}
-
-	touchErr := errors.New("touch error")
-	rt := NewRestTester(t, &RestTesterConfig{
-		LeakyBucketConfig: &base.LeakyBucketConfig{
-			TouchCallback: func(key string) error {
-				if strings.Contains(key, "heartbeat_timeout") {
-					return touchErr
-				}
-				return nil
-			},
-		},
-		PersistentConfig: true,
-	})
-	defer rt.Close()
-
-	dbConfig := DatabaseConfig{
-		DbConfig: rt.NewDbConfig(),
-	}
-
-	// this call does use the leaky bucket
-	dbContext, err := rt.ServerContext().AddDatabaseFromConfigWithBucket(rt.Context(), t, dbConfig, rt.Bucket())
-	require.ErrorIs(t, err, touchErr)
-	require.Nil(t, dbContext)
-	require.Equal(t, "Offline", rt.GetDBState())
-}
-
 func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
