@@ -308,7 +308,7 @@ type invalidConfigInfo struct {
 	configBucketName    string
 	persistedBucketName string
 	collectionConflicts bool
-	databaseError       *DatabaseError
+	databaseError       *db.DatabaseError
 }
 
 type invalidDatabaseConfigs struct {
@@ -351,7 +351,7 @@ func (sc *ScopesConfig) HasNewCollection(previousCollectionMap map[string]struct
 
 // addInvalidDatabase adds a db to invalid dbconfig map if it doesn't exist in there yet and will log for it at warning level
 // if the db already exists there we will calculate if we need to log again according to the config update interval
-func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname string, cnf DatabaseConfig, bucket string, databaseErr *DatabaseError) {
+func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname string, cnf DatabaseConfig, bucket string, databaseErr *db.DatabaseError) {
 	d.m.Lock()
 	defer d.m.Unlock()
 	if d.dbNames[dbname] == nil {
@@ -1839,7 +1839,7 @@ func (sc *ServerContext) handleInvalidDatabaseConfig(ctx context.Context, bucket
 	sc._handleInvalidDatabaseConfig(ctx, bucket, cnf, nil)
 }
 
-func (sc *ServerContext) _handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig, databaseErr *DatabaseError) {
+func (sc *ServerContext) _handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig, databaseErr *db.DatabaseError) {
 	// track corrupt database context
 	sc.invalidDatabaseConfigTracking.addInvalidDatabase(ctx, cnf.Name, cnf, bucket, databaseErr)
 	// don't load config + remove from server context (apart from corrupt database map)
