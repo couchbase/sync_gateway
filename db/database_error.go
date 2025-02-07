@@ -18,7 +18,7 @@ var DatabaseErrorMap = map[databaseErrorCode]string{
 	DatabaseBucketConnectionError:      "Error connecting to bucket",
 	DatabaseInvalidDatastore:           "Collection(s) not available",
 	DatabaseInitSyncInfoError:          "Error initialising sync info",
-	DatabaseInitialisationIndexError:   "Error initialising database indexes",
+	DatabaseInitializationIndexError:   "Error initialising database indexes",
 	DatabaseCreateDatabaseContextError: "Error creating database context",
 	DatabaseSGRClusterError:            "Error with fetching SGR cluster definition",
 	DatabaseCreateReplicationError:     "Error creating replication during database init",
@@ -32,7 +32,7 @@ const (
 	DatabaseBucketConnectionError      databaseErrorCode = 1
 	DatabaseInvalidDatastore           databaseErrorCode = 2
 	DatabaseInitSyncInfoError          databaseErrorCode = 3
-	DatabaseInitialisationIndexError   databaseErrorCode = 4
+	DatabaseInitializationIndexError   databaseErrorCode = 4
 	DatabaseCreateDatabaseContextError databaseErrorCode = 5
 	DatabaseSGRClusterError            databaseErrorCode = 6
 	DatabaseCreateReplicationError     databaseErrorCode = 7

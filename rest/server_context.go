@@ -774,7 +774,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
 		if err != nil {
 			if options.loadFromBucket {
-				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitialisationIndexError))
+				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitializationIndexError))
 			}
 			return nil, err
 		}
@@ -968,7 +968,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			initError := <-dbInitDoneChan
 			if initError != nil {
 				// report error in building/creating indexes
-				dbcontext.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitialisationIndexError)
+				dbcontext.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitializationIndexError)
 				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 				return nil, initError
@@ -1003,7 +1003,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 		initError := <-doneChan
 		if initError != nil {
 			base.WarnfCtx(ctx, "Async database init returned error: %v", initError)
-			dbc.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitialisationIndexError)
+			dbc.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitializationIndexError)
 			atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 			return
 		}

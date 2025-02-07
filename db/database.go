@@ -2278,7 +2278,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	defer func() {
 		if returnedError != nil {
-			// indicate something has gine wrong in the online processes
+			// indicate something has gone wrong in the online processes
 			db.DatabaseStartupError = NewDatabaseError(DatabaseOnlineProcessError)
 			// grab bucket lock so stopOnlineProcesses is not called at the same time as db.Close()
 			db.BucketLock.RLock()
