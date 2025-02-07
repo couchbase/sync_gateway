@@ -970,6 +970,9 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	require.ErrorIs(t, err, touchErr)
 	require.Nil(t, dbContext)
 	require.Equal(t, "Offline", rt.GetDBState())
+
+	require.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().TotalOnlineFatalErrors.Value())
+	require.Equal(t, int64(0), rt.GetDatabase().DbStats.Database().TotalInitFatalErrors.Value())
 }
 
 func TestDatabaseCollectionDeletedErrorState(t *testing.T) {

@@ -968,6 +968,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
 			if initError != nil {
+				dbcontext.DbStats.DatabaseStats.TotalInitFatalErrors.Add(1)
 				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 				return nil, initError
@@ -975,6 +976,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		base.InfofCtx(ctx, base.KeyAll, "Database init completed, starting online processes")
 		if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
+			dbcontext.DbStats.DatabaseStats.TotalOnlineFatalErrors.Add(1)
 			atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 			return nil, err
@@ -1001,6 +1003,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	if doneChan != nil {
 		initError := <-doneChan
 		if initError != nil {
+			dbc.DbStats.DatabaseStats.TotalInitFatalErrors.Add(1)
 			base.WarnfCtx(ctx, "Async database init returned error: %v", initError)
 			atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 			return
@@ -1010,6 +1013,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	// Before bringing the database online, ensure that the database hasn't been modified while we waited for initialization to complete
 	currentDbVersion := sc.GetDbVersion(dbc.Name)
 	if currentDbVersion != version {
+		dbc.DbStats.DatabaseStats.TotalOnlineFatalErrors.Add(1)
 		base.InfofCtx(ctx, base.KeyConfig, "Database version changed while waiting for async init - cancelling obsolete online request. Old version: %s New version: %s", version, currentDbVersion)
 		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 		return
@@ -1018,6 +1022,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	base.InfofCtx(ctx, base.KeyAll, "Async database initialization complete, starting online processes...")
 	err := dbc.StartOnlineProcesses(ctx)
 	if err != nil {
+		dbc.DbStats.DatabaseStats.TotalOnlineFatalErrors.Add(1)
 		base.ErrorfCtx(ctx, "Error starting online processes after async initialization: %v", err)
 		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 		return

@@ -253,4 +253,7 @@ func TestPersistentDbConfigAsyncOnlineWithInvalidConfig(t *testing.T) {
 	// Since we're not running asyncDatabaseOnline inside a goroutine, we don't see the Starting->Offline->Online transition, only the final state
 	err = rt.WaitForDBState(db.RunStateString[db.DBOffline])
 	require.NoError(t, err)
+
+	require.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().TotalOnlineFatalErrors.Value())
+	require.Equal(t, int64(0), rt.GetDatabase().DbStats.Database().TotalInitFatalErrors.Value())
 }
