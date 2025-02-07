@@ -17,8 +17,8 @@ type DatabaseError struct {
 var DatabaseErrorMap = map[databaseErrorCode]string{
 	DatabaseBucketConnectionError:      "Error connecting to bucket",
 	DatabaseInvalidDatastore:           "Collection(s) not available",
-	DatabaseInitSyncInfoError:          "Error initialising sync info",
-	DatabaseInitializationIndexError:   "Error initialising database indexes",
+	DatabaseInitSyncInfoError:          "Error initializing sync info",
+	DatabaseInitializationIndexError:   "Error initializing database indexes",
 	DatabaseCreateDatabaseContextError: "Error creating database context",
 	DatabaseSGRClusterError:            "Error with fetching SGR cluster definition",
 	DatabaseCreateReplicationError:     "Error creating replication during database init",
