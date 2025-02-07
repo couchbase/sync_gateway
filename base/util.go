@@ -467,12 +467,13 @@ func RetryLoop(ctx context.Context, description string, worker RetryWorker, slee
 		select {
 		case <-ctx.Done():
 			verb := "closed"
-			if errors.Is(ctx.Err(), context.Canceled) {
+			ctxErr := ctx.Err()
+			if errors.Is(ctxErr, context.Canceled) {
 				verb = "canceled"
-			} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			} else if errors.Is(ctxErr, context.DeadlineExceeded) {
 				verb = "timed out"
 			}
-			return fmt.Errorf("Retry loop for %v %s based on context", description, verb), nil
+			return fmt.Errorf("Retry loop for %v %s based on context: %w", description, verb, ctxErr), nil
 		case <-time.After(time.Millisecond * time.Duration(sleepMs)):
 		}
 
