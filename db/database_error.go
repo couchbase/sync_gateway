@@ -6,7 +6,7 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-package rest
+package db
 
 // DatabaseError denotes an error that occurred during database startup
 type DatabaseError struct {
@@ -22,6 +22,7 @@ var DatabaseErrorMap = map[databaseErrorCode]string{
 	DatabaseCreateDatabaseContextError: "Error creating database context",
 	DatabaseSGRClusterError:            "Error with fetching SGR cluster definition",
 	DatabaseCreateReplicationError:     "Error creating replication during database init",
+	DatabaseOnlineProcessError:         "Error attempting to start online process",
 }
 
 type databaseErrorCode uint8
@@ -35,6 +36,7 @@ const (
 	DatabaseCreateDatabaseContextError databaseErrorCode = 5
 	DatabaseSGRClusterError            databaseErrorCode = 6
 	DatabaseCreateReplicationError     databaseErrorCode = 7
+	DatabaseOnlineProcessError         databaseErrorCode = 8
 )
 
 func NewDatabaseError(code databaseErrorCode) *DatabaseError {
