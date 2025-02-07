@@ -2222,8 +2222,12 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AutoImport = base.BoolPtr(base.TestUseXattrs())
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()
 
