@@ -412,9 +412,10 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 	for name, dbctx := range sc.databases_ {
 		state := db.RunStateString[atomic.LoadUint32(&dbctx.State)]
 		summary := DbSummary{
-			DBName: name,
-			Bucket: dbctx.Bucket.GetName(),
-			State:  state,
+			DBName:        name,
+			Bucket:        dbctx.Bucket.GetName(),
+			State:         state,
+			DatabaseError: dbctx.DatabaseStartupError,
 		}
 		if state == db.RunStateString[db.DBOffline] {
 			if len(dbctx.RequireResync.ScopeAndCollectionNames()) > 0 {
@@ -671,7 +672,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	if err != nil {
 		if options.loadFromBucket {
-			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseBucketConnectionError))
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseBucketConnectionError))
 		}
 		return nil, err
 	}
@@ -700,7 +701,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				dataStore, err := base.GetAndWaitUntilDataStoreReady(ctx, bucket, scName, options.failFast)
 				if err != nil {
 					if options.loadFromBucket {
-						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInvalidDatastore))
+						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidDatastore))
 					}
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
@@ -716,7 +717,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				resyncRequired, err := base.InitSyncInfo(dataStore, config.MetadataID)
 				if err != nil {
 					if options.loadFromBucket {
-						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInitSyncInfoError))
+						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitSyncInfoError))
 					}
 					return nil, err
 				}
@@ -735,7 +736,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
 			if err != nil {
 				if options.loadFromBucket {
-					sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInitSyncInfoError))
+					sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitSyncInfoError))
 				}
 				return nil, err
 			}
@@ -773,7 +774,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
 		if err != nil {
 			if options.loadFromBucket {
-				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInitialisationIndexError))
+				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitializationIndexError))
 			}
 			return nil, err
 		}
@@ -842,7 +843,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
 	if err != nil {
 		if options.loadFromBucket {
-			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseInvalidDatastore))
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidDatastore))
 		}
 		return nil, err
 	}
@@ -859,7 +860,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext, err = db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		if options.loadFromBucket {
-			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseCreateDatabaseContextError))
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseCreateDatabaseContextError))
 		}
 		return nil, err
 	}
@@ -906,7 +907,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	cfgReplications, err := dbcontext.SGReplicateMgr.GetReplications()
 	if err != nil {
 		if options.loadFromBucket {
-			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseSGRClusterError))
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseSGRClusterError))
 		}
 		return nil, err
 	}
@@ -922,7 +923,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	replicationErr := dbcontext.SGReplicateMgr.PutReplications(ctx, newReplications)
 	if replicationErr != nil {
 		if options.loadFromBucket {
-			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, NewDatabaseError(DatabaseCreateReplicationError))
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseCreateReplicationError))
 		}
 		return nil, replicationErr
 	}
@@ -947,8 +948,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
 	}
 
-	// TODO: Errors for online processes should be handled on dbcontext as its been loaded into server context below (CBG-4511)
-
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 	sc.dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}
@@ -968,6 +967,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
 			if initError != nil {
+				// report error in building/creating indexes
+				dbcontext.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitializationIndexError)
 				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 				return nil, initError
@@ -1002,6 +1003,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 		initError := <-doneChan
 		if initError != nil {
 			base.WarnfCtx(ctx, "Async database init returned error: %v", initError)
+			dbc.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitializationIndexError)
 			atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 			return
 		}
