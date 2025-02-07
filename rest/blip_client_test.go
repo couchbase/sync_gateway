@@ -1038,6 +1038,8 @@ func proposeChangesEntryForDoc(doc *clientDoc) proposeChangeBatchEntry {
 		if i == 0 {
 			// skip current rev
 			continue
+		} else if i == 19 {
+			break // only send 20 history entries
 		}
 		revisionHistory = append(revisionHistory, doc._revisionsBySeq[seq].version)
 	}
@@ -1729,10 +1731,4 @@ func (btc *BlipTesterCollectionClient) sendPullMsg(msg *blip.Message) {
 func (btc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) {
 	btc.addCollectionProperty(msg)
 	btc.parent.pushReplication.sendMsg(msg)
-}
-
-func (c *BlipTesterCollectionClient) lastSeq() clientSeq {
-	c.seqLock.RLock()
-	defer c.seqLock.RUnlock()
-	return c._seqLast
 }
