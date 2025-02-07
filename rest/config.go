@@ -308,6 +308,7 @@ type invalidConfigInfo struct {
 	configBucketName    string
 	persistedBucketName string
 	collectionConflicts bool
+	databaseError       *DatabaseError
 }
 
 type invalidDatabaseConfigs struct {
@@ -350,7 +351,7 @@ func (sc *ScopesConfig) HasNewCollection(previousCollectionMap map[string]struct
 
 // addInvalidDatabase adds a db to invalid dbconfig map if it doesn't exist in there yet and will log for it at warning level
 // if the db already exists there we will calculate if we need to log again according to the config update interval
-func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname string, cnf DatabaseConfig, bucket string) {
+func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname string, cnf DatabaseConfig, bucket string, databaseErr *DatabaseError) {
 	d.m.Lock()
 	defer d.m.Unlock()
 	if d.dbNames[dbname] == nil {
@@ -359,6 +360,7 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 			configBucketName:    *cnf.Bucket,
 			persistedBucketName: bucket,
 			collectionConflicts: cnf.Version == invalidDatabaseConflictingCollectionsVersion,
+			databaseError:       databaseErr,
 		}
 	}
 
@@ -373,6 +375,8 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 	} else if cnf.Version == invalidDatabaseConflictingCollectionsVersion {
 		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseRollbackCollectionCollisions.Add(1)
 		logMessage += " Conflicting collections detected"
+	} else if databaseErr != nil {
+		logMessage += " Error encountered loading database."
 	} else {
 		// Nothing is expected to hit this case, but we might add more invalid sentinel values and forget to update this code.
 		logMessage += " Database was marked invalid. See logs for details."
@@ -1660,7 +1664,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		}
 	}
 
-	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup), nil
+	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup, true), nil
 }
 
 // fetchAndLoadDatabaseSince refreshes all dbConfigs if they where last fetched past the refreshInterval. It then returns found if
@@ -1692,7 +1696,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancella
 		// setting the config cas to 0 will force the reload of the config from the further down stack
 		dbConfig.cfgCas = 0
 	}
-	sc._applyConfigs(nonContextStruct.Ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false)
+	sc._applyConfigs(nonContextStruct.Ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false, false)
 
 	return true, nil
 }
@@ -1794,7 +1798,7 @@ func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket st
 	// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
 	// in memory representation on the server context.
 	if bucket != cnf.GetBucketName() {
-		sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
+		sc._handleInvalidDatabaseConfig(ctx, bucket, cnf, nil)
 		return true, cnf, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
 	}
 	bucketCopy := bucket
@@ -1832,12 +1836,12 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 func (sc *ServerContext) handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
+	sc._handleInvalidDatabaseConfig(ctx, bucket, cnf, nil)
 }
 
-func (sc *ServerContext) _handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig) {
+func (sc *ServerContext) _handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig, databaseErr *DatabaseError) {
 	// track corrupt database context
-	sc.invalidDatabaseConfigTracking.addInvalidDatabase(ctx, cnf.Name, cnf, bucket)
+	sc.invalidDatabaseConfigTracking.addInvalidDatabase(ctx, cnf.Name, cnf, bucket, databaseErr)
 	// don't load config + remove from server context (apart from corrupt database map)
 	sc._removeDatabase(ctx, cnf.Name)
 }
@@ -1998,9 +2002,9 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 }
 
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
+func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool, loadFromBucket bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup)
+		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup, loadFromBucket)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
@@ -2016,11 +2020,11 @@ func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[st
 func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig) (count int) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._applyConfigs(ctx, dbNameConfigs, false)
+	return sc._applyConfigs(ctx, dbNameConfigs, false, false)
 }
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
-func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
+func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup, loadFromBucket bool) (applied bool, err error) {
 	ctx := nonContextStruct.Ctx
 
 	nodeSGVersion := sc.BootstrapContext.sgVersion
@@ -2083,7 +2087,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast); err != nil {
+	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast, loadFromBucket); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
