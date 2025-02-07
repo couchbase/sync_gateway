@@ -8,7 +8,6 @@
 
 import io
 import unittest
-import uuid
 
 import pytest
 import sgcollect_info
@@ -22,8 +21,7 @@ import sgcollect_info
         '{{"logging": {{ "log_file_path": "{tmpdir}" }} }}',
     ],
 )
-@pytest.mark.parametrize("should_redact", [True, False])
-def test_make_collect_logs_tasks(should_redact, config, tmpdir):
+def test_make_collect_logs_tasks(config, tmpdir):
     log_file = tmpdir.join("sg_info.log")
     log_file.write("foo")
     with unittest.mock.patch(
@@ -38,13 +36,10 @@ def test_make_collect_logs_tasks(should_redact, config, tmpdir):
         rotated_log_file = tmpdir.join("sg_info-01.log.gz")
         rotated_log_file.write("foo")
         tasks = sgcollect_info.make_collect_logs_tasks(
-            tmpdir,
             sg_url="fakeurl",
             sg_config_file_path="",
             sg_username="",
             sg_password="",
-            salt=str(uuid.uuid4()),
-            should_redact=should_redact,
         )
         assert [t.log_file for t in tasks] == [
             log_file.basename,
@@ -52,8 +47,7 @@ def test_make_collect_logs_tasks(should_redact, config, tmpdir):
         ]
 
 
-@pytest.mark.parametrize("should_redact", [True, False])
-def test_make_collect_logs_heap_profile(should_redact: bool, tmpdir):
+def test_make_collect_logs_heap_profile(tmpdir):
     with unittest.mock.patch(
         "sgcollect_info.urlopen_with_basic_auth",
         return_value=io.BytesIO(
@@ -65,13 +59,10 @@ def test_make_collect_logs_heap_profile(should_redact: bool, tmpdir):
         pprof_file = tmpdir.join("pprof_heap_high_01.pb.gz")
         pprof_file.write("foo")
         tasks = sgcollect_info.make_collect_logs_tasks(
-            tmpdir,
             sg_url="fakeurl",
             sg_config_file_path="",
             sg_username="",
             sg_password="",
-            salt=str(uuid.uuid4()),
-            should_redact=should_redact,
         )
         assert [tasks[0].log_file] == [pprof_file.basename]
         # ensure that this is not redacted task

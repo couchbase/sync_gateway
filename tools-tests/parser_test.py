@@ -11,3 +11,20 @@ import sgcollect_info
 
 def test_parser():
     sgcollect_info.create_option_parser()
+
+
+def test_parser_log_redaction_salt():
+    parser = sgcollect_info.create_option_parser()
+    options, _ = parser.parse_args(["--log-redaction-salt=a", "foo.zip"])
+    assert options.salt_value == b"a"
+
+    options, _ = parser.parse_args(["foo.zip"])
+    # assert this is bytes uuid4
+    assert isinstance(options.salt_value, bytes)
+    assert len(options.salt_value) == 16
+
+
+def test_parser_sg_url():
+    parser = sgcollect_info.create_option_parser()
+    options, _ = parser.parse_args(["foo.zip"])
+    assert options.sync_gateway_url is None

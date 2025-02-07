@@ -36,7 +36,6 @@ from tasks import (
     PythonTask,
     TaskRunner,
     add_file_task,
-    add_gzip_file_task,
     do_upload,
     dump_utilities,
     flatten,
@@ -44,7 +43,6 @@ from tasks import (
     log,
     make_curl_task,
     make_os_tasks,
-    redactable_file,
     setup_stdin_watcher,
 )
 
@@ -93,6 +91,19 @@ def delete_zip(filename):
         print("Zipfile ({0}) deletion failed: {1}".format(filename, e))
 
 
+def set_salt_value(
+    option: optparse.Option, opt: str, value: str, parser: optparse.OptionParser
+):
+    """
+    optparse callback to validate the salt value. Sets a string salt value as bytes.
+    """
+    if value is not None:
+        try:
+            parser.values.salt_value = value.encode("ascii")
+        except ValueError:
+            parser.error("Invalid UUID: {0}".format(value))
+
+
 def create_option_parser():
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
     parser.add_option(
@@ -137,7 +148,10 @@ def create_option_parser():
     parser.add_option(
         "--log-redaction-salt",
         dest="salt_value",
-        default=str(uuid.uuid4()),
+        default=uuid.uuid4().bytes,
+        callback=set_salt_value,
+        action="callback",
+        type="string",
         help="Is used to salt the hashing of tagged data, \
                             defaults to random uuid. If input by user it should \
                             be provided along with --log-redaction-level option",
@@ -325,13 +339,10 @@ def urlopen_with_basic_auth(url, username, password):
 
 
 def make_collect_logs_tasks(
-    zip_dir: str,
-    sg_url: Optional[str],
+    sg_url: str,
     sg_config_file_path: Optional[str],
     sg_username: Optional[str],
     sg_password: Optional[str],
-    salt: Optional[str],
-    should_redact: bool,
 ) -> List[PythonTask]:
     sg_log_files = {
         "sg_error.log": "sg_error.log",
@@ -405,12 +416,9 @@ def make_collect_logs_tasks(
         if canonical_filename in sg_log_file_paths:
             return
         sg_log_file_paths.add(canonical_filename)
-        if not should_redact or not redactable_file(filename):
-            task = add_file_task(sourcefile_path=filename)
-            task.no_header = True
-            sg_tasks.append(task)
-        else:
-            sg_tasks.append(add_gzip_file_task(sourcefile_path=filename, salt=salt))
+        task = add_file_task(sourcefile_path=filename)
+        task.no_header = True
+        sg_tasks.append(task)
 
     def lookup_std_log_files(files, dirs):
         for dir in dirs:
@@ -510,8 +518,12 @@ def get_db_list(sg_url, sg_username, sg_password):
 #   Server config
 #   Each DB config
 def make_config_tasks(
-    zip_dir, sg_config_path, sg_url, sg_username, sg_password, should_redact
-):
+    sg_config_path: str,
+    sg_url: str,
+    sg_username: Optional[str],
+    sg_password: Optional[str],
+    should_redact: bool,
+) -> List[PythonTask]:
     collect_config_tasks = []
 
     # Here are the "usual suspects" to probe for finding the static config
@@ -678,15 +690,13 @@ def make_download_expvars_task(sg_url, sg_username, sg_password):
 
 
 def make_sg_tasks(
-    zip_dir,
-    sg_url,
-    sg_username,
-    sg_password,
-    sync_gateway_config_path_option,
-    sync_gateway_executable_path,
-    should_redact,
-    salt,
-):
+    sg_url: str,
+    sg_username: Optional[str],
+    sg_password: Optional[str],
+    sync_gateway_config_path_option: Optional[str],
+    sync_gateway_executable_path: Optional[str],
+    should_redact: bool,
+) -> List[PythonTask]:
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(
         sg_url, sg_username, sg_password
@@ -719,7 +729,10 @@ def make_sg_tasks(
 
     # Collect logs
     collect_logs_tasks = make_collect_logs_tasks(
-        zip_dir, sg_url, sg_config_path, sg_username, sg_password, salt, should_redact
+        sg_url,
+        sg_config_path,
+        sg_username,
+        sg_password,
     )
 
     py_expvar_task = make_download_expvars_task(sg_url, sg_username, sg_password)
@@ -738,7 +751,7 @@ def make_sg_tasks(
 
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(
-        zip_dir, sg_config_path, sg_url, sg_username, sg_password, should_redact
+        sg_config_path, sg_url, sg_username, sg_password, should_redact
     )
 
     # Curl the /_status
@@ -930,14 +943,12 @@ def main():
 
     # Run SG specific tasks
     for task in make_sg_tasks(
-        zip_dir,
         sg_url,
         sg_username,
         sg_password,
         options.sync_gateway_config,
         options.sync_gateway_executable,
         should_redact,
-        options.salt_value,
     ):
         runner.run(task)
 
