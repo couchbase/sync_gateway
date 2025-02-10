@@ -217,7 +217,8 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 		bodyTextExpected = fmt.Sprintf(`{"greetings":[{"howdy":"bob"}],"_attachments":{"%s":{"revpos":1,"length":%d,"stub":true,"digest":"%s"}}}`, attachmentName, len(attachmentData), attachmentDigest)
 		require.JSONEq(t, bodyTextExpected, string(data))
 
-		assert.Equal(t, int64(2), btc.rt.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value())
+		// use RequireWaitForStat since rev is sent slightly before the stats are incremented
+		base.RequireWaitForStat(t, btc.rt.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, 2)
 		assert.Equal(t, int64(0), btc.rt.GetDatabase().DbStats.CBLReplicationPull().RevErrorCount.Value())
 		assert.Equal(t, int64(1), btc.rt.GetDatabase().DbStats.CBLReplicationPull().AttachmentPullCount.Value())
 		assert.Equal(t, int64(len(attachmentData)), btc.rt.GetDatabase().DbStats.CBLReplicationPull().AttachmentPullBytes.Value())
