@@ -3481,7 +3481,7 @@ func TestResyncAllTombstones(t *testing.T) {
 
 			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_offline", rt.GetDatabase().Name), "")
 			rest.RequireStatus(t, resp, http.StatusOK)
-			require.NoError(t, rt.WaitForDBState(db.RunStateString[db.DBOffline]))
+			rt.WaitForDBState(db.RunStateString[db.DBOffline])
 
 			resp = rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_resync?action=start", rt.GetDatabase().Name), "")
 			rest.RequireStatus(t, resp, http.StatusOK)

@@ -851,9 +851,6 @@ func TestCollectionStats(t *testing.T) {
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 
-	// Wait for the DB to be ready before attempting to get initial error count
-	require.NoError(t, rt.WaitForDBOnline())
-
 	collection1Stats, err := rt.GetDatabase().DbStats.CollectionStat(scope1Name, collection1Name)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), collection1Stats.SyncFunctionCount.Value())

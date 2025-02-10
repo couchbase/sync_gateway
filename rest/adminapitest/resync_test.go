@@ -40,7 +40,7 @@ func TestResyncRollback(t *testing.T) {
 
 	response := rt.SendAdminRequest("POST", "/{{.db}}/_offline", "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	require.NoError(t, rt.WaitForDBState(db.RunStateString[db.DBOffline]))
+	rt.WaitForDBState(db.RunStateString[db.DBOffline])
 
 	// we need to wait for the resync to start and not finish so we get a partial completion
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync", "")

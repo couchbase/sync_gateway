@@ -2960,7 +2960,7 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// wait for db to come online
-	require.NoError(t, rt.WaitForDBOnline())
+	rt.WaitForDBOnline()
 
 	// grab the persisted db config from the bucket
 	databaseConfig := DatabaseConfig{}

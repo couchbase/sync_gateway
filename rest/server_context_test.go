@@ -982,6 +982,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	// assert that you can attempt again to bring db back online again after failure
 	resp := rt.SendAdminRequest(http.MethodPost, "/"+invalDb.Bucket+"/_online", "")
 	RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForDBOnline()
 }
 
 func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
