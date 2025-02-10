@@ -1956,7 +1956,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	rt.SendAdminRequest("POST", "/db/_online", "")
 	rest.RequireStatus(t, response, 200)
 
-	time.Sleep(500 * time.Millisecond)
+	rt.WaitForDBOnline()
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
