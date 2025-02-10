@@ -137,6 +137,7 @@ type DatabaseContext struct {
 	CORS                         *auth.CORSConfig               // CORS configuration
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
+	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
 }
 
 type Scope struct {
@@ -2273,6 +2274,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	defer func() {
 		if returnedError != nil {
+			// indicate something has gone wrong in the online processes
+			db.DatabaseStartupError = NewDatabaseError(DatabaseOnlineProcessError)
 			for _, cleanupFunc := range cleanupFunctions {
 				cleanupFunc()
 			}

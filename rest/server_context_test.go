@@ -966,7 +966,7 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 	invalDb := allDbs[0]
 	require.NotNil(t, invalDb.DatabaseError)
 	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
-	assert.Equal(t, invalDb.DatabaseError.ErrMsg, DatabaseErrorMap[DatabaseInvalidDatastore])
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseInvalidDatastore])
 
 	// fix db config
 	deletedCollection := dsList[0].CollectionName()
