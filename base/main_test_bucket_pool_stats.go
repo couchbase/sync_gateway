@@ -28,7 +28,7 @@ func (tbp *TestBucketPool) printStats() {
 	}
 
 	totalBucketInitTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalBucketInitDurationNano))
-	totalBucketInitCount := time.Duration(atomic.LoadInt32(&tbp.stats.TotalBucketInitCount))
+	totalBucketInitCount := time.Duration(tbp.stats.TotalBucketInitCount.Load())
 
 	totalBucketReadierTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalBucketReadierDurationNano))
 	totalBucketReadierCount := time.Duration(atomic.LoadInt32(&tbp.stats.TotalBucketReadierCount))
@@ -84,7 +84,7 @@ func (tbp *TestBucketPool) printStats() {
 // printStats() is called once a package's tests have finished to output these stats.
 type bucketPoolStats struct {
 	TotalBucketInitDurationNano    int64
-	TotalBucketInitCount           int32
+	TotalBucketInitCount           atomic.Int32
 	TotalBucketReadierDurationNano int64
 	TotalBucketReadierCount        int32
 	NumBucketsOpened               int32

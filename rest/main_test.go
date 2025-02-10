@@ -22,7 +22,7 @@ import (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
-	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192}
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192, NumCollectionsPerBucket: 3}
 	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }
 
