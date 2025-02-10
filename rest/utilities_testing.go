@@ -1053,17 +1053,17 @@ func (rt *RestTester) GetDBState() string {
 	return body["state"].(string)
 }
 
-// WaitForDBOnline waits for the database to be in the Online state.
+// WaitForDBOnline waits for the database to be in the Online state. Fail the test harness if the state is not reached within the timeout.
 func (rt *RestTester) WaitForDBOnline() {
 	rt.WaitForDBState("Online")
 }
 
-// WaitForDBState waits for the database to be in the specified state.
+// WaitForDBState waits for the database to be in the specified state. Fails the test harness if the state is not reached within the timeout.
 func (rt *RestTester) WaitForDBState(stateWant string) {
 	rt.WaitForDatabaseState(rt.GetDatabase().Name, stateWant)
 }
 
-// WaitForDatabaseState waits for the specified database to be in the specified state.
+// WaitForDatabaseState waits for the specified database to be in the specified state. Fails the test harness if the state is not reached within the timeout.
 func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		assert.Equal(c, targetState, rt.GetDatabaseRoot(dbName).State)
