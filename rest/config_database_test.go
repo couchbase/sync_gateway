@@ -10,6 +10,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -92,7 +93,7 @@ func TestConfigToBucketPointName(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	const testBucketName = "sg_int_my.Bucket"
+	testBucketName := base.CreateTestBucketName(fmt.Sprintf(".%d", time.Now().Unix()))
 
 	// create db config to point to bucket with . in the name
 	dbConfig := rt.NewDbConfig()
