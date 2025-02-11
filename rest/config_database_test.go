@@ -85,7 +85,9 @@ func TestDbConfigUpdatedAtField(t *testing.T) {
 }
 
 func TestConfigToBucketPointName(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Need cbs bucket for this test")
+	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
