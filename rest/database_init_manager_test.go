@@ -210,8 +210,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	close(testSignalChannel)
 
 	// Unblock second collection for original invocation
-	cancelErr := waitForError(t, doneChan, "first init cancellation")
-	require.Error(t, cancelErr)
+	waitForError(t, doneChan, "first init cancellation")
 
 	// Wait for notification on new done channel
 	WaitForChannel(t, modifiedDoneChan, "modified init done chan")

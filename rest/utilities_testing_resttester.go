@@ -138,7 +138,7 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	}, time.Second*10, time.Millisecond*10)
 }
 
-func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
+func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) string {
 	var lastSeq string
 	successFunc := func() bool {
 		val, _, err := rt.GetSingleDataStore().GetRaw(expectedName)
@@ -157,7 +157,8 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 		lastSeq = config.LastSeq
 		return lastSeq != ""
 	}
-	return lastSeq, rt.WaitForCondition(successFunc)
+	require.NoError(rt.TB(), rt.WaitForCondition(successFunc))
+	return lastSeq
 }
 
 func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
@@ -303,8 +304,7 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 }
 
 // UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters
-func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBucketName *string) (*DatabaseConfig, error) {
-	updatedDbConfig := DatabaseConfig{}
+func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBucketName *string) {
 	_, err := rt.ServerContext().BootstrapContext.UpdateConfig(base.TestCtx(rt.TB()), *dbConfig.Bucket, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(originalConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
 		bucketDbConfig := dbConfig
@@ -313,7 +313,7 @@ func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBuc
 
 		return bucketDbConfig, nil
 	})
-	return &updatedDbConfig, err
+	require.NoError(rt.TB(), err)
 }
 
 func (rt *RestTester) InsertDbConfigToBucket(config *DatabaseConfig, bucketName string) {

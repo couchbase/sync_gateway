@@ -431,7 +431,7 @@ func TestCORSBlipSync(t *testing.T) {
 	}
 
 	rt.CreateDatabase("corsdb", dbConfig)
-	require.NoError(t, rt.SetAdminParty(true))
+	rt.SetAdminParty(true)
 	testCases := []struct {
 		name         string
 		origin       *string
@@ -481,7 +481,7 @@ func TestCORSBlipSyncStar(t *testing.T) {
 		Origin: []string{"*"},
 	}
 	rt.CreateDatabase("corsdb", dbConfig)
-	require.NoError(t, rt.SetAdminParty(true))
+	rt.SetAdminParty(true)
 	urls := []string{"http://example.com", "http://example2.com", "https://example.com"}
 	for _, url := range urls {
 		rt.Run(url, func(t *testing.T) {
@@ -510,7 +510,7 @@ func TestCORSBlipNoConfig(t *testing.T) {
 	}
 
 	rt.CreateDatabase("corsdb", dbConfig)
-	require.NoError(t, rt.SetAdminParty(true))
+	rt.SetAdminParty(true)
 
 	urls := []string{"http://example.com", "http://example2.com", "https://example.com"}
 	for _, url := range urls {

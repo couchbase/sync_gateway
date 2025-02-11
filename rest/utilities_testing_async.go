@@ -38,7 +38,8 @@ func WaitForChannel(t *testing.T, ch <-chan error, message string) {
 	}
 }
 
-func waitForError(t *testing.T, ch <-chan error, message string) error {
+// waitForError waits for an error to be sent on the channel, or times out. Fails the test if no error is received or timeout is reached.
+func waitForError(t *testing.T, ch <-chan error, message string) {
 	if message != "" {
 		log.Printf("[%s] starting wait for error", message)
 		defer func() {
@@ -48,10 +49,8 @@ func waitForError(t *testing.T, ch <-chan error, message string) error {
 	select {
 	case err := <-ch:
 		require.Error(t, err, "[%s] Expected error message on channel", message)
-		return err
 	case <-time.After(TestChannelTimeout):
 		require.Fail(t, fmt.Sprintf("[%s] expected error message did not arrive in %v", message, TestChannelTimeout))
-		return nil
 	}
 }
 

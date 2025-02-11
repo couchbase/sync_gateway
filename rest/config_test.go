@@ -2969,8 +2969,7 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 
 	// update the persisted config to a fake bucket name
 	newBucketName := "fakeBucket"
-	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &newBucketName)
-	require.NoError(t, err)
+	rt.UpdatePersistedBucketName(&databaseConfig, &newBucketName)
 
 	// force reload of configs from bucket
 	rt.ServerContext().ForceDbConfigsReload(t, ctx)

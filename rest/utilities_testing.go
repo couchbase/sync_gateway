@@ -375,9 +375,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.TestBucket.Bucket = rt.RestTesterServerContext.Database(ctx, rt.DatabaseConfig.Name).Bucket
 
 		if rt.DatabaseConfig.Guest == nil {
-			if err := rt.SetAdminParty(rt.GuestEnabled); err != nil {
-				rt.TB().Fatalf("Error from SetAdminParty %v", err)
-			}
+			rt.SetAdminParty(rt.GuestEnabled)
 		}
 	}
 
@@ -585,13 +583,12 @@ func (rt *RestTester) WaitForPendingChanges() {
 	}
 }
 
-func (rt *RestTester) SetAdminParty(partyTime bool) error {
+// SetAdminParty enables the guest user if partyTime is true, otherwise disables it.
+func (rt *RestTester) SetAdminParty(partyTime bool) {
 	ctx := rt.Context()
 	a := rt.GetDatabase().Authenticator(ctx)
 	guest, err := a.GetUser("")
-	if err != nil {
-		return err
-	}
+	require.NoError(rt.TB(), err)
 	guest.SetDisabled(!partyTime)
 	var chans channels.TimedSet
 	if partyTime {
@@ -607,7 +604,7 @@ func (rt *RestTester) SetAdminParty(partyTime bool) error {
 			}
 		}
 	}
-	return a.Save(guest)
+	require.NoError(rt.TB(), a.Save(guest))
 }
 
 func (rt *RestTester) Close() {
@@ -1072,21 +1069,15 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 	return response
 }
 
-func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
+func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) {
 	dbName, scopeName, collectionName, err := ParseKeyspace(keyspace)
-	if err != nil {
-		return err
-	}
+	require.NoError(rt.TB(), err)
 	// Get the current user document
 	userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/"+username, "")
-	if userResponse.Code != 200 {
-		return fmt.Errorf("User %s not found", username)
-	}
+	RequireStatus(rt.TB(), userResponse, http.StatusOK)
 
 	var currentConfig auth.PrincipalConfig
-	if err := base.JSONUnmarshal(userResponse.Body.Bytes(), &currentConfig); err != nil {
-		return err
-	}
+	require.NoError(rt.TB(), base.JSONUnmarshal(userResponse.Body.Bytes(), &currentConfig))
 
 	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
 	// Remove read only properties returned from the user api
@@ -1100,13 +1091,11 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 		}
 	}
 
-	newConfigBytes, _ := base.JSONMarshal(currentConfig)
+	newConfigBytes, err := base.JSONMarshal(currentConfig)
+	require.NoError(rt.TB(), err)
 
 	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
-	if userResponse.Code != 200 {
-		return fmt.Errorf("User update failed: %s", userResponse.Body.Bytes())
-	}
-	return nil
+	RequireStatus(rt.TB(), userResponse, http.StatusOK)
 }
 
 type SimpleSync struct {

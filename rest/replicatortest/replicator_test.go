@@ -7978,8 +7978,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	// Check checkpoint document was wrote to bucket with correct status
 	// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
 	expectedCheckpointName := base.SyncDocPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
-	lastSeq, err := activeRT.WaitForCheckpointLastSequence(expectedCheckpointName)
-	require.NoError(t, err)
+	lastSeq := activeRT.WaitForCheckpointLastSequence(expectedCheckpointName)
 	assert.Equal(t, seq, lastSeq)
 
 	err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(t.Name())

@@ -255,8 +255,7 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	lastSeq := changes.Last_Seq.String()
 
 	// Grant user access to channel ABC in collection 1
-	err = rt.SetAdminChannels("bernard", rt.GetKeyspaces()[0], "ABC", "PBS")
-	require.NoError(t, err)
+	rt.SetAdminChannels("bernard", rt.GetKeyspaces()[0], "ABC", "PBS")
 	rt.WaitForPendingChanges()
 
 	// confirm that change from c1 is sent, along with user doc
@@ -311,8 +310,7 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	require.Len(t, changes.Results, 1)
 
 	// Grant user access to channel ABC in collection 1
-	err = rt.SetAdminChannels("bernard", rt.GetKeyspaces()[0], "ABC", "PBS")
-	require.NoError(t, err)
+	rt.SetAdminChannels("bernard", rt.GetKeyspaces()[0], "ABC", "PBS")
 
 	// Write additional docs to the cached channels, should be served via DCP/cache
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc2_c1", `{"value":1, "channels":["ABC"]}`)

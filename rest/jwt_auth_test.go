@@ -88,7 +88,6 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 			}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: providers}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
@@ -236,7 +235,6 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 				testProviderName: cfg,
 			}}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
@@ -374,7 +372,6 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 
 		restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: *config}}
 		restTester := NewRestTester(t, &restTesterConfig)
-		require.NoError(t, restTester.SetAdminParty(false))
 		defer restTester.Close()
 
 		mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
@@ -451,7 +448,6 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 		testProviderName: baseProvider,
 	}}}}
 	restTester := NewRestTester(t, &restTesterConfig)
-	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 	collection := restTester.GetSingleDataStore()
 	c := collection.CollectionName()

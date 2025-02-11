@@ -838,7 +838,6 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
@@ -1052,7 +1051,6 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
@@ -1109,7 +1107,6 @@ func TestOpenIDConnectImplicitFlowInitWithKeyspace(t *testing.T) {
 	opts := auth.OIDCOptions{Providers: testProviders, DefaultProvider: &defaultProvider}
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 	restTester := NewRestTester(t, &restTesterConfig)
-	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
 	createUser(t, restTester, "foo_noah")
@@ -1145,7 +1142,6 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 
 	// JWT claim based grants do not support named collections
 	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig)
-	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
 	createUser(t, restTester, "foo_noah")
@@ -1242,7 +1238,6 @@ func TestUserAPIReadOnlyFields(t *testing.T) {
 
 	// JWT claim based grants do not support named collections
 	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig)
-	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
 	createUser(t, restTester, "foo_noah")
@@ -1307,7 +1302,6 @@ func TestAdminAndJWTChannels(t *testing.T) {
 
 	// JWT claim based grants do not support named collections
 	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig)
-	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
 	// Create user with admin channels and roles
@@ -1416,7 +1410,6 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 	restTester := NewRestTester(t, &restTesterConfig)
-	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
 	ctx := restTester.Context()
@@ -2064,7 +2057,6 @@ func TestCallbackStateClientCookies(t *testing.T) {
 		}},
 	}
 	restTester := NewRestTester(t, &restTesterConfig)
-	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
 	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
@@ -2305,7 +2297,6 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 				}},
 			}
 			restTester := NewRestTester(t, &restTesterConfig)
-			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			issuerURL, err := url.Parse(mockAuthServer.options.issuer)
@@ -2415,7 +2406,6 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
@@ -2525,8 +2515,8 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 				}},
 			}
 			restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
-			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
+			restTester.SetAdminParty(false)
 
 			// Create the test roles and document
 			for roleName, channels := range tc.roleChannels {
@@ -2707,7 +2697,6 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 		CustomTestBucket: tb1,
 	}
 	rt1 := NewRestTesterDefaultCollection(t, &rt1Config) // CBG-2618: fix collection channel access
-	require.NoError(t, rt1.SetAdminParty(false))
 	defer rt1.Close()
 
 	msg1 := httptest.NewServer(rt1.TestPublicHandler())

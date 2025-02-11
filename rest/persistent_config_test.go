@@ -1420,8 +1420,7 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, count, "should have loaded 1 config")
 
-	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &b2Name)
-	require.NoError(t, err)
+	rt.UpdatePersistedBucketName(&databaseConfig, &b2Name)
 
 	dbBucketMismatch := base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value()
 
