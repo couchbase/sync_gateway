@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -113,6 +112,7 @@ type getOrAddDatabaseConfigOptions struct {
 	connectToBucketFn db.OpenBucketFn // supply a custom function for buckets, used for testing only
 	forceOnline       bool            // force the database to come online, even if startOffline is set
 	asyncOnline       bool            // Whether getOrAddDatabaseConfig should block until database is ready, when startOffline=false
+	loadFromBucket    bool            // If this is load config from bucket operation
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -354,12 +354,25 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 	var httpErr *base.HTTPError
 	invalidConfig, ok := sc.invalidDatabaseConfigTracking.exists(name)
 	if !dbConfigFound && ok {
-		httpErr = base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(name), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.Config.Bootstrap.ConfigGroupID))
+		httpErr = sc.buildErrorMessage(name, invalidConfig)
 	} else {
 		httpErr = base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	}
 
 	return nil, dbConfigFound, httpErr
+}
+
+// buildErrorMessage will build appropriate http error message based on the invalidConfig
+func (sc *ServerContext) buildErrorMessage(dbName string, invalidConfig *invalidConfigInfo) *base.HTTPError {
+	if invalidConfig.databaseError != nil {
+		err := base.HTTPErrorf(http.StatusNotFound, "Database %s has an invalid configuration: %v. You must update database config immediately through create db process", dbName, invalidConfig.databaseError.ErrMsg)
+		return err
+	}
+	if invalidConfig.collectionConflicts {
+		err := base.HTTPErrorf(http.StatusNotFound, "Database %s has conflicting collections. You must update database config immediately through create db process", dbName)
+		return err
+	}
+	return base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(dbName), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.Config.Bootstrap.ConfigGroupID))
 }
 
 func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
@@ -399,9 +412,10 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 	for name, dbctx := range sc.databases_ {
 		state := db.RunStateString[atomic.LoadUint32(&dbctx.State)]
 		summary := DbSummary{
-			DBName: name,
-			Bucket: dbctx.Bucket.GetName(),
-			State:  state,
+			DBName:        name,
+			Bucket:        dbctx.Bucket.GetName(),
+			State:         state,
+			DatabaseError: dbctx.DatabaseStartupError,
 		}
 		if state == db.RunStateString[db.DBOffline] {
 			if len(dbctx.RequireResync.ScopeAndCollectionNames()) > 0 {
@@ -410,6 +424,21 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 		}
 		if sc.DatabaseInitManager.HasActiveInitialization(name) {
 			summary.InitializationActive = true
+		}
+		dbs = append(dbs, summary)
+	}
+	sc.invalidDatabaseConfigTracking.m.RLock()
+	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
+	for name, invalidConfig := range sc.invalidDatabaseConfigTracking.dbNames {
+		// skip adding any invalid dbs with no error associated with them or that exist in above list
+		if invalidConfig.databaseError == nil || sc.databases_[name] != nil {
+			continue
+		}
+		summary := DbSummary{
+			DBName:        name,
+			Bucket:        invalidConfig.configBucketName,
+			State:         db.RunStateString[db.DBOffline], // db can always be reported as offline if we have an invalid config
+			DatabaseError: invalidConfig.databaseError,
 		}
 		dbs = append(dbs, summary)
 	}
@@ -488,17 +517,18 @@ func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string
 func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true)
+	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, false)
 }
 
-func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
+func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool, loadFromBucket bool) error {
 	sc._removeDatabase(ctx, config.Name)
 	// use async initialization whenever using persistent config
 	asyncOnline := sc.persistentConfig
 	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, getOrAddDatabaseConfigOptions{
-		useExisting: false,
-		failFast:    failFast,
-		asyncOnline: asyncOnline,
+		useExisting:    false,
+		failFast:       failFast,
+		asyncOnline:    asyncOnline,
+		loadFromBucket: loadFromBucket,
 	})
 	return err
 }
@@ -641,6 +671,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		bucket, err = db.ConnectToBucket(ctx, spec, options.failFast)
 	}
 	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseBucketConnectionError))
+		}
 		return nil, err
 	}
 
@@ -667,6 +700,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 				dataStore, err := base.GetAndWaitUntilDataStoreReady(ctx, bucket, scName, options.failFast)
 				if err != nil {
+					if options.loadFromBucket {
+						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidDatastore))
+					}
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
 
@@ -680,6 +716,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
 				resyncRequired, err := base.InitSyncInfo(dataStore, config.MetadataID)
 				if err != nil {
+					if options.loadFromBucket {
+						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitSyncInfoError))
+					}
 					return nil, err
 				}
 				if resyncRequired {
@@ -696,6 +735,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			scName := base.DefaultScopeAndCollectionName()
 			resyncRequired, err := base.InitSyncInfo(ds, config.MetadataID)
 			if err != nil {
+				if options.loadFromBucket {
+					sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitSyncInfoError))
+				}
 				return nil, err
 			}
 			if resyncRequired {
@@ -731,6 +773,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// Initialize indexes using DatabaseInitManager.
 		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
 		if err != nil {
+			if options.loadFromBucket {
+				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitializationIndexError))
+			}
 			return nil, err
 		}
 	}
@@ -797,6 +842,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	contextOptions.MetadataStore = bucket.DefaultDataStore()
 	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
 	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidDatastore))
+		}
 		return nil, err
 	}
 
@@ -811,6 +859,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Create the DB Context
 	dbcontext, err = db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseCreateDatabaseContextError))
+		}
 		return nil, err
 	}
 	dbcontext.BucketSpec = spec
@@ -855,6 +906,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	cfgReplications, err := dbcontext.SGReplicateMgr.GetReplications()
 	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseSGRClusterError))
+		}
 		return nil, err
 	}
 	// PUT replications that do not exist
@@ -868,6 +922,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	replicationErr := dbcontext.SGReplicateMgr.PutReplications(ctx, newReplications)
 	if replicationErr != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseCreateReplicationError))
+		}
 		return nil, replicationErr
 	}
 
@@ -910,6 +967,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
 			if initError != nil {
+				// report error in building/creating indexes
+				dbcontext.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitializationIndexError)
 				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 				_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 				return nil, initError
@@ -944,6 +1003,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 		initError := <-doneChan
 		if initError != nil {
 			base.WarnfCtx(ctx, "Async database init returned error: %v", initError)
+			dbc.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitializationIndexError)
 			atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 			return
 		}
@@ -1998,20 +2058,8 @@ func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, p
 	retryCount := 0
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		var httpResponse *http.Response
-
 		endpointIdx := retryCount % len(endpoints)
-		req, err := http.NewRequest(method, endpoints[endpointIdx]+path, bytes.NewBuffer(requestBody))
-		if err != nil {
-			return false, err, nil
-		}
-
-		req.SetBasicAuth(username, password)
-
-		httpResponse, err = httpClient.Do(req) // nolint:bodyclose // The body is closed outside of the worker loop
-		if err == nil {
-			return false, nil, httpResponse
-		}
+		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, "", username, password, bytes.NewBuffer(requestBody))
 
 		if err, ok := err.(net.Error); ok && err.Timeout() {
 			retryCount++
@@ -2021,27 +2069,12 @@ func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, p
 		return false, err, nil
 	}
 
-	err, result := base.RetryLoop(ctx, "doHTTPAuthRequest", worker, base.CreateSleeperFunc(10, 100))
+	err, _ = base.RetryLoop(ctx, "doHTTPAuthRequest", worker, base.CreateSleeperFunc(10, 100))
 	if err != nil {
 		return 0, nil, err
 	}
 
-	httpResponse, ok := result.(*http.Response)
-	if !ok {
-		return 0, nil, fmt.Errorf("unexpected response type from doHTTPAuthRequest")
-	}
-
-	bodyString, err := io.ReadAll(httpResponse.Body)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	err = httpResponse.Body.Close()
-	if err != nil {
-		return 0, nil, err
-	}
-
-	return httpResponse.StatusCode, bodyString, nil
+	return statusCode, responseBody, nil
 }
 
 // For test use
@@ -2161,4 +2194,33 @@ func getTotalMemory(ctx context.Context) uint64 {
 		return 0
 	}
 	return memory.Total
+}
+
+// getClusterUUID returns the cluster UUID. rosmar does not have a ClusterUUID, so this will return an empty cluster UUID and no error in this case.
+func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
+	allDbNames := sc.AllDatabaseNames()
+	// we can use db context to retrieve clusterUUID
+	if len(allDbNames) > 0 {
+		db, err := sc.GetDatabase(ctx, allDbNames[0])
+		if err == nil {
+			return db.ServerUUID, nil
+		}
+	}
+	// no cluster uuid for rosmar cluster
+	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
+		return "", nil
+	}
+	// request server for cluster uuid
+	eps, client, err := sc.ObtainManagementEndpointsAndHTTPClient()
+	if err != nil {
+		return "", err
+	}
+	statusCode, output, err := doHTTPAuthRequest(ctx, client, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodGet, "/pools", eps, nil)
+	if err != nil {
+		return "", err
+	}
+	if statusCode != http.StatusOK {
+		return "", fmt.Errorf("unable to get cluster UUID from server: %s", output)
+	}
+	return base.ParseClusterUUID(output)
 }

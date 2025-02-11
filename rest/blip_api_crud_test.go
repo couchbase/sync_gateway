@@ -1838,8 +1838,6 @@ func TestMissingNoRev(t *testing.T) {
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
-	require.NoError(t, rt.WaitForDBOnline())
-
 	// Create 5 docs
 	for i := 0; i < 5; i++ {
 		docID := fmt.Sprintf("doc-%d", i)

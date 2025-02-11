@@ -937,9 +937,6 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	resp := rt.CreateDatabase("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// wait for db to come online
-	require.NoError(t, rt.WaitForDBOnline())
-
 	// grab the persisted db config from the bucket
 	databaseConfig := rest.DatabaseConfig{}
 	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
@@ -1073,7 +1070,7 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// wait for db to come online
-	require.NoError(t, rt.WaitForDBOnline())
+	rt.WaitForDBOnline()
 	badName := tb1.GetName()
 	dbConfig.Bucket = &badName
 
@@ -1435,7 +1432,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	rt.SendAdminRequest("POST", "/db/_online", "")
 	rest.RequireStatus(t, response, 200)
 
-	time.Sleep(500 * time.Millisecond)
+	rt.WaitForDBOnline()
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1486,10 +1483,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	// They may not have been processed at this point
 	wg.Wait()
 
-	// Wait for DB to come online (retry loop)
-	errDbOnline := rt.WaitForDBOnline()
-	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
-
+	rt.WaitForDBOnline()
 }
 
 // Test bring DB online with delay of 1 second
@@ -1525,10 +1519,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	// Wait until after the 1 second delay, since the online request explicitly asked for a delay
 	time.Sleep(1500 * time.Millisecond)
 
-	// Wait for DB to come online (retry loop)
-	errDbOnline := rt.WaitForDBOnline()
-	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
-
+	rt.WaitForDBOnline()
 }
 
 // Test bring DB online with delay of 2 seconds
@@ -1547,7 +1538,6 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 		defer rt.Close()
 
 		var response *rest.TestResponse
-		var errDBState error
 
 		log.Printf("Taking DB offline")
 		require.Equal(t, "Online", rt.GetDBState())
@@ -1565,16 +1555,12 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 		response = rt.SendAdminRequest("POST", "/db/_online", "")
 		rest.RequireStatus(t, response, 200)
 
-		// Wait for DB to come online (retry loop)
-		errDBState = rt.WaitForDBOnline()
-		assert.NoError(t, errDBState)
+		rt.WaitForDBOnline()
 
 		// Wait until after the 1 second delay, since the online request explicitly asked for a delay
 		time.Sleep(1500 * time.Millisecond)
 
-		// Wait for DB to come online (retry loop)
-		errDBState = rt.WaitForDBOnline()
-		assert.NoError(t, errDBState)
+		rt.WaitForDBOnline()
 	}, "CBG-1513: panicked when the walrus bucket was closed and still used")
 }
 

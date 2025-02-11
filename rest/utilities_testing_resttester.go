@@ -116,6 +116,7 @@ func (rt *RestTester) DeleteDocRev(docID, revID string) {
 	rt.DeleteDoc(docID, DocVersion{RevID: revID})
 }
 
+// GetDatabaseRoot returns the DatabaseRoot for a given dtabase. This will fail the test harness if the database is not available.
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 	var dbroot DatabaseRoot
 	resp := rt.SendAdminRequest("GET", "/"+dbname+"/", "")
@@ -395,7 +396,7 @@ func (rt *RestTester) TakeDbOffline() {
 func (rt *RestTester) TakeDbOnline() {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
-	require.NoError(rt.TB(), rt.WaitForDBOnline())
+	rt.WaitForDBOnline()
 }
 
 // RequireDbOnline asserts that the state of the database is online

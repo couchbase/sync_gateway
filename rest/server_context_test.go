@@ -970,4 +970,82 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	require.ErrorIs(t, err, touchErr)
 	require.Nil(t, dbContext)
 	require.Equal(t, "Offline", rt.GetDBState())
+
+	// assert that the db is reported with appropriate error state in all dbs
+	allDbs := rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
+	invalDb := allDbs[0]
+	require.NotNil(t, invalDb.DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseOnlineProcessError])
+
+	// assert that you can attempt again to bring db back online again after failure
+	resp := rt.SendAdminRequest(http.MethodPost, "/"+invalDb.Bucket+"/_online", "")
+	RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForDBOnline()
+}
+
+func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+	rt := NewRestTesterMultipleCollections(t, nil, 3)
+	defer rt.Close()
+	ctx := base.TestCtx(t)
+
+	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
+	scopesConfig := GetCollectionsConfig(t, rt.TestBucket, 3)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scope := dataStoreNames[0].ScopeName()
+
+	// remove datastore
+	b, err := base.AsGocbV2Bucket(rt.GetDatabase().Bucket)
+	require.NoError(t, err)
+	dsList, err := b.ListDataStores()
+	require.NoError(t, err)
+	require.NoError(t, b.DropDataStore(dsList[0]))
+
+	// reload db
+	err = rt.ServerContext().reloadDatabaseWithConfigLoadFromBucket(base.NewNonCancelCtx(), dbConfig.DatabaseConfig)
+	require.Error(t, err)
+
+	allDbs := rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
+	invalDb := allDbs[0]
+	require.NotNil(t, invalDb.DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseInvalidDatastore])
+
+	// fix db config
+	deletedCollection := dsList[0].CollectionName()
+	delete(scopesConfig[scope].Collections, deletedCollection)
+	dbConfig.Scopes = scopesConfig
+	resp := rt.CreateDatabase("db", dbConfig.DbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	allDbs = rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
+	invalDb = allDbs[0]
+	require.Nil(t, invalDb.DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOnline], invalDb.State)
+
+	// add back the datastore
+	b, err = base.AsGocbV2Bucket(rt.GetDatabase().Bucket)
+	require.NoError(t, err)
+	err = b.CreateDataStore(ctx, dsList[0])
+	require.NoError(t, err)
+
+	// try creating db with bad collections config ensure it fails and isn't shown on all dbs
+	scopesConfig[scope] = ScopeConfig{
+		Collections: map[string]*CollectionConfig{
+			"badCollection": {},
+		},
+	}
+	dbConfig.Scopes = scopesConfig
+	dbConfig.Name = "db2"
+	resp = rt.CreateDatabase("db2", dbConfig.DbConfig)
+	RequireStatus(t, resp, http.StatusForbidden)
+
+	allDbs = rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
 }

@@ -172,6 +172,7 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		}
 
 		a.lock.Lock()
+		defer a.lock.Unlock()
 
 		// preserve lastError from the previous connect attempt
 		a.setState(ReplicationStateReconnecting)
@@ -188,23 +189,36 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		a.setLastError(err)
 		a._publishStatus()
 
-		a.lock.Unlock()
-
 		if err != nil {
 			base.InfofCtx(a.ctx, base.KeyReplicate, "error starting replicator on reconnect: %v", err)
 		}
 		return err != nil, err, nil
 	}
 
-	err, _ := base.RetryLoop(ctx, "replicator reconnect", retryFunc, sleeperFunc)
+	retryErr, _ := base.RetryLoop(ctx, "replicator reconnect", retryFunc, sleeperFunc)
 	// release timer associated with context deadline
 	if deadlineCancel != nil {
 		deadlineCancel()
 	}
-	if err != nil {
-		a.replicationStats.NumReconnectsAborted.Add(1)
-		base.WarnfCtx(ctx, "couldn't reconnect replicator: %v", err)
+	// Exit early if no error
+	if retryErr == nil {
+		return
 	}
+
+	// replicator was stopped - appropriate state has already been set
+	if errors.Is(ctx.Err(), context.Canceled) {
+		base.DebugfCtx(ctx, base.KeyReplicate, "exiting reconnect loop: %v", retryErr)
+		return
+	}
+
+	base.WarnfCtx(ctx, "aborting reconnect loop: %v", retryErr)
+	a.replicationStats.NumReconnectsAborted.Add(1)
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	// use setState to preserve last error from retry loop set by setLastError
+	a.setState(ReplicationStateError)
+	a._publishStatus()
+	a._stop()
 }
 
 // reconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
@@ -268,7 +282,7 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	return nil
 }
 
-// _stop aborts any replicator processes that run outside of a running replication (e.g: async reconnect handling)
+// _stop aborts any replicator processes that run outside of a running replication connection (e.g: async reconnect handling, statsreporter)
 func (a *activeReplicatorCommon) _stop() {
 	if a.ctxCancel != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling context on activeReplicatorCommon in _stop()")
@@ -369,8 +383,8 @@ func (a *activeReplicatorCommon) _publishStatus() {
 	}
 }
 
-func (arc *activeReplicatorCommon) startStatusReporter() error {
-	go func(ctx context.Context) {
+func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) error {
+	go func() {
 		ticker := time.NewTicker(arc.config.CheckpointInterval)
 		defer ticker.Stop()
 		for {
@@ -386,7 +400,7 @@ func (arc *activeReplicatorCommon) startStatusReporter() error {
 				return
 			}
 		}
-	}(arc.ctx)
+	}()
 	return nil
 }
 

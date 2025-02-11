@@ -302,7 +302,7 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 	defer rt.Close()
 
 	// Wait for the DB to be ready before attempting to get initial error count
-	assert.NoError(t, rt.WaitForDBOnline())
+	rt.WaitForDBOnline()
 
 	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
@@ -343,7 +343,7 @@ func TestSyncFunctionException(t *testing.T) {
 	defer rt.Close()
 
 	// Wait for the DB to be ready before attempting to get initial error count
-	assert.NoError(t, rt.WaitForDBOnline())
+	rt.WaitForDBOnline()
 
 	numDBSyncExceptionsStart := rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
 

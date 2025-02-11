@@ -378,15 +378,19 @@ func GetServerUUID(ctx context.Context, store CouchbaseBucketStore) (uuid string
 		return "", err
 	}
 
+	return ParseClusterUUID(respBytes)
+}
+
+func ParseClusterUUID(respBytes []byte) (string, error) {
 	var responseJson struct {
-		ServerUUID string `json:"uuid"`
+		UUID string `json:"uuid"`
 	}
 
 	if err := JSONUnmarshal(respBytes, &responseJson); err != nil {
 		return "", err
 	}
 
-	return responseJson.ServerUUID, nil
+	return responseJson.UUID, nil
 }
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not

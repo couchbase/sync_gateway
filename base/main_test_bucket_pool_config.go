@@ -37,7 +37,7 @@ const (
 	tbpEnvBucketPoolSize     = "SG_TEST_BUCKET_POOL_SIZE"
 
 	// Creates and prepares this many collections in each bucket in the backing store.
-	tbpDefaultCollectionPoolSize = 3 // (per bucket)
+	tbpDefaultCollectionPoolSize = 2 // (per bucket)
 	tbpEnvCollectionPoolSize     = "SG_TEST_COLLECTION_POOL_SIZE"
 
 	// Allocate this much memory to each bucket.
@@ -136,6 +136,10 @@ func (tbp *TestBucketPool) canUseNamedCollections(ctx context.Context) (bool, er
 
 // tbpNumBuckets returns the configured number of buckets to use in the pool.
 func tbpNumBuckets(ctx context.Context) int {
+	if TestUseExistingBucket() {
+		// SG_TEST_USE_EXISTING_BUCKET only allows for one bucket name
+		return 1
+	}
 	numBuckets := tbpDefaultBucketPoolSize
 	if envPoolSize := os.Getenv(tbpEnvBucketPoolSize); envPoolSize != "" {
 		var err error
