@@ -88,12 +88,15 @@ func TestConfigToBucketPointName(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Need cbs bucket for this test")
 	}
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTPResp, base.KeyHTTP)
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	const testBucketName = "sg_int_my.Bucket"
 
 	// create db config to point to bucket with . in the name
 	dbConfig := rt.NewDbConfig()
-	dbConfig.Bucket = base.StringPtr("my.Bucket")
+	dbConfig.Bucket = base.StringPtr(testBucketName)
 	dbConfig.Username = base.TestClusterUsername()
 	dbConfig.Password = base.TestClusterPassword()
 	dbConfig.Scopes = nil
@@ -104,7 +107,7 @@ func TestConfigToBucketPointName(t *testing.T) {
 	cluster := v2Bucket.GetCluster()
 	settings := gocb.CreateBucketSettings{
 		BucketSettings: gocb.BucketSettings{
-			Name:       "my.Bucket",
+			Name:       testBucketName,
 			RAMQuotaMB: uint64(256),
 			BucketType: gocb.CouchbaseBucketType,
 		},
@@ -112,10 +115,10 @@ func TestConfigToBucketPointName(t *testing.T) {
 	require.NoError(t, v2Bucket.GetCluster().Buckets().CreateBucket(settings, nil))
 	// cleanup this bucket
 	defer func() {
-		require.NoError(t, v2Bucket.GetCluster().Buckets().DropBucket("my.Bucket", nil))
+		require.NoError(t, v2Bucket.GetCluster().Buckets().DropBucket(testBucketName, nil))
 	}()
 	// wait till bucket is ready
-	bucket := cluster.Bucket("my.Bucket")
+	bucket := cluster.Bucket(testBucketName)
 	require.NoError(t, bucket.WaitUntilReady(10*time.Second, nil))
 
 	// create db pointing to bucket with . in it
