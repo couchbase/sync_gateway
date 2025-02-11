@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -81,4 +82,44 @@ func TestDbConfigUpdatedAtField(t *testing.T) {
 	// assert that registry timestamps are as expected
 	assert.Equal(t, registry.CreatedAt.UnixNano(), registryCreated.UnixNano())
 	assert.Greater(t, registry.UpdatedAt.UnixNano(), registryUpdated.UnixNano())
+}
+
+func TestConfigToBucketPointName(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// create db config to point to bucket with . in the name
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Bucket = base.StringPtr("my.Bucket")
+	dbConfig.Username = base.TestClusterUsername()
+	dbConfig.Password = base.TestClusterPassword()
+	dbConfig.Scopes = nil
+
+	// create bucket with . in the name
+	v2Bucket, err := base.AsGocbV2Bucket(rt.TestBucket)
+	require.NoError(t, err)
+	cluster := v2Bucket.GetCluster()
+	settings := gocb.CreateBucketSettings{
+		BucketSettings: gocb.BucketSettings{
+			Name:       "my.Bucket",
+			RAMQuotaMB: uint64(256),
+			BucketType: gocb.CouchbaseBucketType,
+		},
+	}
+	require.NoError(t, v2Bucket.GetCluster().Buckets().CreateBucket(settings, nil))
+	// cleanup this bucket
+	defer func() {
+		require.NoError(t, v2Bucket.GetCluster().Buckets().DropBucket("my.Bucket", nil))
+	}()
+	// wait till bucket is ready
+	bucket := cluster.Bucket("my.Bucket")
+	require.NoError(t, bucket.WaitUntilReady(10*time.Second, nil))
+
+	// create db pointing to bucket with . in it
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	// assert that we can create a user (pre CBG-4512 access query fails)
+	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_user/", `{"name":"user1", "password":"password", "admin_channels":["ABC"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
 }
