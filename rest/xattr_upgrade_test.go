@@ -152,8 +152,8 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
 	_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(bodyString), map[string][]byte{base.SyncXattrName: []byte(xattrString)}, nil, nil)
-	assert.NoError(t, err, "Error writing doc w/ xattr")
-	require.NoError(t, rt.WaitForSequence(5))
+	require.NoError(t, err, "Error writing doc w/ xattr")
+	rt.WaitForSequence(5)
 
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=2-d", key), `{"updated":true}`)
@@ -163,7 +163,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	assert.Equal(t, 200, rawResponse.Code)
 	log.Printf("raw response:%s", rawResponse.Body.Bytes())
-	require.NoError(t, rt.WaitForSequence(6))
+	rt.WaitForSequence(6)
 
 	// Validate non-xattr document doesn't get upgraded on attempted write
 	nonMobileKey := "TestUpgradeNoXattr"
@@ -221,8 +221,8 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
 	_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(bodyString), map[string][]byte{base.SyncXattrName: []byte(xattrString)}, nil, nil)
-	assert.NoError(t, err, "Error writing doc w/ xattr")
-	require.NoError(t, rt.WaitForSequence(1))
+	require.NoError(t, err, "Error writing doc w/ xattr")
+	rt.WaitForSequence(1)
 
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
 	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes", "{}")

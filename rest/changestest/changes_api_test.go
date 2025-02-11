@@ -975,7 +975,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a missing doc - low sequence should move to 3
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
-	require.NoError(t, rt.WaitForSequence(3))
+	rt.WaitForSequence(3)
 
 	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
 	// low is updated before making the next changes request.
@@ -1073,7 +1073,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	db.WriteDirect(t, collection, []string{"PBS"}, 13)
 	db.WriteDirect(t, collection, []string{"PBS"}, 6)
-	require.NoError(t, rt.WaitForSequence(13))
+	rt.WaitForSequence(13)
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
@@ -1193,7 +1193,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	db.WriteDirect(t, collection, []string{"PBS"}, 13)
 	db.WriteDirect(t, collection, []string{"PBS"}, 6)
-	require.NoError(t, rt.WaitForSequence(13))
+	rt.WaitForSequence(13)
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)

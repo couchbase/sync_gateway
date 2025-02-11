@@ -224,7 +224,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, rt.WaitForDoc(docID))
+	rt.WaitForDoc(docID)
 }
 
 func TestMultiCollectionDCP(t *testing.T) {

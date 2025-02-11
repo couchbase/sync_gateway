@@ -147,8 +147,7 @@ func TestStarAccess(t *testing.T) {
 
 	// Ensure docs have been processed before issuing changes requests
 	expectedSeq := uint64(6)
-	err = rt.WaitForSequence(expectedSeq)
-	require.NoError(t, err)
+	rt.WaitForSequence(expectedSeq)
 
 	// GET /db/_changes
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
@@ -804,7 +803,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/d1", `{"channel":"delta"}`), 201)
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/g1", `{"channel":"gamma"}`), 201)
 
-	rt.MustWaitForDoc("g1", t)
+	rt.WaitForDoc("g1")
 
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "zegpold")
 	require.Len(t, changes.Results, 1)
@@ -812,18 +811,14 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equal(t, "g1", changes.Results[0].ID)
 
 	// Look up sequences for created docs
-	deltaGrantDocSeq, err := rt.SequenceForDoc("delta")
-	assert.NoError(t, err, "Error retrieving document sequence")
-	gammaGrantDocSeq, err := rt.SequenceForDoc("gamma")
-	assert.NoError(t, err, "Error retrieving document sequence")
-
-	alphaDocSeq, err := rt.SequenceForDoc("a1")
-	assert.NoError(t, err, "Error retrieving document sequence")
-	gammaDocSeq, err := rt.SequenceForDoc("g1")
-	assert.NoError(t, err, "Error retrieving document sequence")
+	deltaGrantDocSeq := rt.SequenceForDoc("delta")
+	gammaGrantDocSeq := rt.SequenceForDoc("gamma")
+	alphaDocSeq := rt.SequenceForDoc("a1")
+	gammaDocSeq := rt.SequenceForDoc("g1")
 
 	// Check user access:
-	alice, _ = a.GetUser("alice")
+	alice, err = a.GetUser("alice")
+	require.NoError(t, err)
 	assert.Equal(
 		t,
 
@@ -834,7 +829,8 @@ func TestChannelAccessChanges(t *testing.T) {
 			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
 		}, alice.CollectionChannels(s, c))
 
-	zegpold, _ = a.GetUser("zegpold")
+	zegpold, err = a.GetUser("zegpold")
+	require.NoError(t, err)
 	assert.Equal(
 		t,
 
@@ -849,11 +845,11 @@ func TestChannelAccessChanges(t *testing.T) {
 	response = rt.SendRequest(http.MethodPut, "/{{.keyspace}}/alpha", str)
 	RequireStatus(t, response, http.StatusCreated)
 
-	alphaGrantDocSeq, err := rt.SequenceForDoc("alpha")
-	assert.NoError(t, err, "Error retrieving document sequence")
+	alphaGrantDocSeq := rt.SequenceForDoc("alpha")
 
 	// Check user access again:
-	alice, _ = a.GetUser("alice")
+	alice, err = a.GetUser("alice")
+	require.NoError(t, err)
 	assert.Equal(
 		t,
 
@@ -863,7 +859,8 @@ func TestChannelAccessChanges(t *testing.T) {
 			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
 		}, alice.CollectionChannels(s, c))
 
-	zegpold, _ = a.GetUser("zegpold")
+	zegpold, err = a.GetUser("zegpold")
+	require.NoError(t, err)
 	assert.Equal(
 		t,
 
@@ -874,7 +871,7 @@ func TestChannelAccessChanges(t *testing.T) {
 			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
 		}, zegpold.CollectionChannels(s, c))
 
-	rt.MustWaitForDoc("alpha", t)
+	rt.WaitForDoc("alpha")
 
 	// Look at alice's _changes feed:
 	changes = rt.GetChanges("/{{.keyspace}}/_changes", "alice")
@@ -902,7 +899,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
 	// below, which could lead to a data race if the cache processor is paused while it's processing a change
-	rt.MustWaitForDoc("epsilon", t)
+	rt.WaitForDoc("epsilon")
 
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes

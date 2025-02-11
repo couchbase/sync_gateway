@@ -559,32 +559,23 @@ func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	return ds
 }
 
-func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
-	err := rt.WaitForDoc(docid)
-	assert.NoError(t, err)
+// WaitForDoc waits for any version of the document to be available in change cache. Fails the test harness if the document is not found after timeout.
+func (rt *RestTester) WaitForDoc(docid string) {
+	rt.WaitForSequence(rt.SequenceForDoc(docid))
 }
 
-func (rt *RestTester) WaitForDoc(docid string) (err error) {
-	seq, err := rt.SequenceForDoc(docid)
-	if err != nil {
-		return err
-	}
-	return rt.WaitForSequence(seq)
-}
-
-func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
+// SequenceForDoc returns the sequence number for a document by reading the metadata from the bucket.
+func (rt *RestTester) SequenceForDoc(docid string) (seq uint64) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	doc, err := collection.GetDocument(ctx, docid, db.DocUnmarshalAll)
-	if err != nil {
-		return 0, err
-	}
-	return doc.Sequence, nil
+	require.NoError(rt.TB(), err)
+	return doc.Sequence
 }
 
-// Wait for sequence to be buffered by the channel cache
-func (rt *RestTester) WaitForSequence(seq uint64) error {
+// Wait for sequence to be buffered by the channel cache. Fails the test harness if the sequence is not found after timeout.
+func (rt *RestTester) WaitForSequence(seq uint64) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	return collection.WaitForSequence(ctx, seq)
+	require.NoError(rt.TB(), collection.WaitForSequence(ctx, seq))
 }
 
 func (rt *RestTester) WaitForPendingChanges() {
