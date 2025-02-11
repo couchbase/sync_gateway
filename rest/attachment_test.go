@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -2221,31 +2222,39 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AutoImport = base.BoolPtr(base.TestUseXattrs())
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()
 
 	// Create doc with attachment and expiry
-	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 2}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 1}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Wait for document to be expired - this bucket get should also trigger the expiry purge interval
-	err := rt.WaitForCondition(func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		_, _, err := dataStore.GetRaw(t.Name())
-		return base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+		assert.True(c, base.IsDocNotFoundError(err), "expected err %v to be doc not found", err)
+	}, time.Second*10, time.Millisecond*10)
 
-	// Trigger OnDemand Import for that doc to trigger tombstone
-	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name(), "")
-	RequireStatus(t, resp, http.StatusNotFound)
-
+	if base.TestUseXattrs() {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+		}, time.Second*10, time.Millisecond*5)
+	} else {
+		// Trigger OnDemand Import for that doc to trigger tombstone
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name(), "")
+		RequireStatus(t, resp, http.StatusNotFound)
+	}
 	att2Key := db.MakeAttachmentKey(db.AttVersion2, t.Name(), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
 
 	// With xattrs doc will be imported and will be captured as tombstone and therefore purge attachments
 	// Otherwise attachment will not be purged
-	_, _, err = dataStore.GetRaw(att2Key)
+	_, _, err := dataStore.GetRaw(att2Key)
 	if base.TestUseXattrs() {
 		base.RequireDocNotFoundError(t, err)
 	} else {
