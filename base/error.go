@@ -49,6 +49,9 @@ var (
 	// ErrXattrNotFound is returned if all requested xattrs are not present
 	ErrXattrNotFound = &sgError{"Xattr Not Found"}
 
+	// ErrXattrConfigNotFound is returned if an xattr config is not found
+	ErrXattrConfigNotFound = &sgError{"Xattr Config Not Found"}
+
 	// ErrXattrPartialFound is returned if only a subset of requested xattrs are found
 	ErrXattrPartialFound = &sgError{"Some Requested Xattrs Not Found"}
 

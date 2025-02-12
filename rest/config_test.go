@@ -3301,3 +3301,43 @@ func TestServerUUIDRuntimeServerConfig(t *testing.T) {
 	}
 
 }
+
+func TestNonXattrConfigExistsDuringDBUpdate(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("CBS required for xattr persistence")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// large polling interval to ensure config polling doesn't interfere with test
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(10 * time.Minute)
+		},
+		DatabaseConfig: nil,
+		UseXattrConfig: true,
+	})
+	defer rt.Close()
+	dbConfig1 := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig1), http.StatusCreated)
+
+	// delete created registry
+	err := rt.CustomTestBucket.DefaultDataStore().Delete(base.SGRegistryKey)
+	require.NoError(t, err)
+
+	// create registry document in the bucket with no xattr config
+	_, err = rt.CustomTestBucket.DefaultDataStore().AddRaw(base.SGRegistryKey, 0, []byte("{}"))
+	require.NoError(t, err)
+
+	// trey creating new db, assert xattr config error returned
+	dbConfig2 := rt.NewDbConfig()
+	dbConfig2.Name = "db2"
+	dbConfig2.Scopes = nil
+	resp := rt.CreateDatabase("db2", dbConfig2)
+	RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), "Xattr Config Not Found")
+
+	// try altering previous db config, assert xattr config error returned
+	resp = rt.UpsertDbConfig("db1", dbConfig1)
+	RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), "Xattr Config Not Found")
+}

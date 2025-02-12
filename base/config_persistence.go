@@ -108,7 +108,7 @@ func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb
 		xattrContErr := res.ContentAt(0, &rawValue)
 		if xattrContErr != nil {
 			DebugfCtx(ctx, KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
-			return rawValue, 0, ErrNotFound
+			return rawValue, 0, ErrXattrConfigNotFound
 		}
 		return rawValue, res.Cas(), nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
@@ -182,7 +182,7 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 		xattrContErr := res.ContentAt(0, valuePtr)
 		if xattrContErr != nil {
 			DebugfCtx(ctx, KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
-			return 0, ErrNotFound
+			return 0, ErrXattrConfigNotFound
 		}
 		casOut := res.Cas()
 
