@@ -61,8 +61,10 @@ type TestBucketPool struct {
 	unclosedBucketsLock sync.Mutex
 
 	// skipCollections may be true for older Couchbase Server versions that do not support collections.
-	skipCollections   bool
-	useExistingBucket bool
+	skipCollections bool
+	// numCollectionsPerBucket is the number of collections to create in each bucket
+	numCollectionsPerBucket int
+	useExistingBucket       bool
 
 	// skipMobileXDCR may be true for older versions of Couchbase Server that don't support mobile XDCR enhancements
 	skipMobileXDCR bool
@@ -75,6 +77,8 @@ type TestBucketPoolOptions struct {
 	MemWatermarkThresholdMB uint64
 	UseDefaultScope         bool
 	RequireXDCR             bool // Test buckets will be performing XDCR, requires Server > 7 for integration test robustness
+	ParallelBucketInit      bool
+	NumCollectionsPerBucket int // setting this value in main_test.go will override the default
 }
 
 func NewTestBucketPool(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
@@ -83,19 +87,9 @@ func NewTestBucketPool(ctx context.Context, bucketReadierFunc TBPBucketReadierFu
 
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
 func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc, options TestBucketPoolOptions) *TestBucketPool {
-	// We can safely skip setup when we want Walrus buckets to be used.
-	// They'll be created on-demand via GetTestBucketAndSpec,
-	// which is fast enough for Walrus that we don't need to prepare buckets ahead of time.
-	if !TestUseCouchbaseServer() || TestUseExistingBucket() {
-		tbp := TestBucketPool{
-			bucketInitFunc:    bucketInitFunc,
-			unclosedBuckets:   make(map[string]map[string]struct{}),
-			integrationMode:   TestUseCouchbaseServer(),
-			useExistingBucket: TestUseExistingBucket(),
-			useDefaultScope:   options.UseDefaultScope,
-		}
-		tbp.verbose.Set(tbpVerbose())
-		return &tbp
+	numCollectionsPerBucket := options.NumCollectionsPerBucket
+	if numCollectionsPerBucket == 0 {
+		numCollectionsPerBucket = tbpNumCollectionsPerBucket(ctx)
 	}
 
 	// Used to manage cancellation of worker goroutines
@@ -109,19 +103,26 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	numBuckets := tbpNumBuckets(ctx)
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
-
 	tbp := TestBucketPool{
-		integrationMode:        true,
-		readyBucketPool:        make(chan Bucket, numBuckets),
-		bucketReadierQueue:     make(chan tbpBucketName, numBuckets),
-		bucketReadierWaitGroup: &sync.WaitGroup{},
-		ctxCancelFunc:          ctxCancelFunc,
-		preserveBuckets:        preserveBuckets,
-		bucketInitFunc:         bucketInitFunc,
-		unclosedBuckets:        make(map[string]map[string]struct{}),
-		useExistingBucket:      TestUseExistingBucket(),
-		useDefaultScope:        options.UseDefaultScope,
-		skipMobileXDCR:         true, // do not set up enableCrossClusterVersioning until Sync Gateway 4.x
+		integrationMode:         !UnitTestUrlIsWalrus() && !TestUseExistingBucket(),
+		readyBucketPool:         make(chan Bucket, numBuckets),
+		bucketReadierQueue:      make(chan tbpBucketName, numBuckets),
+		bucketReadierWaitGroup:  &sync.WaitGroup{},
+		ctxCancelFunc:           ctxCancelFunc,
+		preserveBuckets:         preserveBuckets,
+		bucketInitFunc:          bucketInitFunc,
+		unclosedBuckets:         make(map[string]map[string]struct{}),
+		useExistingBucket:       TestUseExistingBucket(),
+		useDefaultScope:         options.UseDefaultScope,
+		skipMobileXDCR:          !UnitTestUrlIsWalrus(), // do not set up enableCrossClusterVersioning until Sync Gateway 4.x
+		numCollectionsPerBucket: numCollectionsPerBucket,
+		verbose:                 *NewAtomicBool(tbpVerbose()),
+	}
+
+	// We can safely skip setup if using existing buckets or rosmar buckets, since they can be opened on demand.
+	if !tbp.integrationMode {
+		tbp.stats.TotalBucketInitCount.Add(int32(numBuckets))
+		return &tbp
 	}
 
 	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), &tbp)
@@ -132,8 +133,6 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	}
 	tbp.skipCollections = !useCollections
 
-	tbp.verbose.Set(tbpVerbose())
-
 	// Start up an async readier worker to process dirty buckets
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
 
@@ -142,13 +141,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		tbp.Fatalf(ctx, "Couldn't remove old test buckets: %v", err)
 	}
 
-	// Make sure the test buckets are created and put into the readier worker queue
-	start := time.Now()
-	if err := tbp.createTestBuckets(numBuckets, tbpBucketQuotaMB(ctx), bucketInitFunc); err != nil {
-		tbp.Fatalf(ctx, "Couldn't create test buckets: %v", err)
-	}
-	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(start).Nanoseconds())
-	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, int32(numBuckets))
+	go tbp.createTestBuckets(ctx, numBuckets, tbpBucketQuotaMB(ctx), bucketInitFunc, options.ParallelBucketInit)
 
 	return &tbp
 }
@@ -232,7 +225,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	if err != nil {
 		tbp.Fatalf(ctx, "couldn't run bucket init func: %v", err)
 	}
-	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, 1)
+	tbp.stats.TotalBucketInitCount.Add(1)
 	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(initFuncStart).Nanoseconds())
 	tbp.markBucketOpened(t, b)
 
@@ -373,8 +366,8 @@ func (tbp *TestBucketPool) Close(ctx context.Context) {
 
 	// Cancel async workers
 	if tbp.ctxCancelFunc != nil {
-		tbp.bucketReadierWaitGroup.Wait()
 		tbp.ctxCancelFunc()
+		tbp.bucketReadierWaitGroup.Wait()
 	}
 
 	if tbp.cluster != nil {
@@ -484,7 +477,7 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 		tbp.Fatalf(ctx, "Bucket doesn't support dynamic collection creation %T", bucket)
 	}
 
-	for i := 0; i < tbpNumCollectionsPerBucket(ctx); i++ {
+	for i := 0; i < tbp.NumCollectionsPerBucket(); i++ {
 		scopeName := tbp.testScopeName()
 		collectionName := fmt.Sprintf("%s%d", tbpCollectionPrefix, i)
 		ctx := KeyspaceLogCtx(ctx, bucket.GetName(), scopeName, collectionName)
@@ -499,14 +492,9 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 }
 
 // createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
-func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
+func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc, parallelBucketInit bool) {
 
-	// keep references to opened buckets for use later in this function
-	var (
-		openBuckets     = make(map[string]Bucket, numBuckets)
-		openBucketsLock sync.Mutex // protects openBuckets
-	)
-
+	start := time.Now()
 	wg := sync.WaitGroup{}
 	wg.Add(numBuckets)
 
@@ -516,17 +504,18 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 
 	// create required number of buckets (skipping any already existing ones)
 	for i := 0; i < numBuckets; i++ {
-		testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
-		ctx := BucketNameCtx(context.Background(), testBucketName)
+		bucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
+		ctx := BucketNameCtx(ctx, bucketName)
 
-		// Bucket creation takes a few seconds for each bucket,
-		// so create and wait for readiness concurrently.
-		go func(bucketName string) {
+		bucketInit := func() {
+			defer wg.Done()
 			ctx := BucketNameCtx(ctx, bucketName)
 
 			tbp.Logf(ctx, "Creating new test bucket")
 			err := tbp.cluster.insertBucket(ctx, bucketName, bucketQuotaMB)
-			if err != nil {
+			if ctx.Err() != nil {
+				return
+			} else if err != nil {
 				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
 			}
 
@@ -534,10 +523,6 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
 			}
-
-			openBucketsLock.Lock()
-			openBuckets[bucketName] = bucket
-			openBucketsLock.Unlock()
 
 			tbp.createCollections(ctx, bucket)
 
@@ -549,53 +534,53 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 				tbp.setXDCRBucketSetting(ctx, bucket)
 			}
 
-			wg.Done()
-		}(testBucketName)
-	}
+			// All the buckets are created and opened, so now we can perform some synchronous setup (e.g. Creating GSI indexes)
 
+			itemName := "bucket"
+			err, _ = RetryLoop(ctx, bucket.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
+				tbp.Logf(ctx, "Running %s through init function", itemName)
+				err := bucketInitFunc(ctx, bucket, tbp)
+				if err != nil {
+					if errors.Is(err, context.Canceled) {
+						return false, err, nil
+					}
+					tbp.Logf(ctx, "Couldn't init %s, got error: %v - Retrying", itemName, err)
+					return true, err, nil
+				}
+				return false, nil, nil
+			}, CreateSleeperFunc(5, 1000))
+			if ctx.Err() != nil {
+				return
+			} else if err != nil {
+				tbp.Fatalf(ctx, "Couldn't init %s, got error: %v - Aborting", itemName, err)
+			}
+			tbp.readyBucketPool <- bucket
+		}
+		// Creation of buckets might be faster in parallel in the case of flush bucket, but slower if GSI is involved.
+		if parallelBucketInit {
+			go bucketInit()
+		} else {
+			bucketInit()
+		}
+	}
 	// wait for the async bucket creation and opening of buckets to finish
 	wg.Wait()
 
-	// All the buckets are created and opened, so now we can perform some synchronous setup (e.g. Creating GSI indexes)
-	for i := 0; i < numBuckets; i++ {
-		testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
-		ctx := BucketNameCtx(context.Background(), testBucketName)
-
-		tbp.Logf(ctx, "running bucketInitFunc")
-		b := openBuckets[testBucketName]
-
-		itemName := "bucket"
-		if err, _ := RetryLoop(ctx, b.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
-			tbp.Logf(ctx, "Running %s through init function", itemName)
-			ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
-			err := bucketInitFunc(ctx, b, tbp)
-			if err != nil {
-				tbp.Logf(ctx, "Couldn't init %s, got error: %v - Retrying", itemName, err)
-				return true, err, nil
-			}
-			return false, nil, nil
-		}, CreateSleeperFunc(5, 1000)); err != nil {
-			tbp.Fatalf(ctx, "Couldn't init %s, got error: %v - Aborting", itemName, err)
-		}
-
-		b.Close(ctx)
-		tbp.addBucketToReadierQueue(ctx, tbpBucketName(testBucketName))
-	}
-
-	return nil
+	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(start).Nanoseconds())
+	tbp.stats.TotalBucketInitCount.Add(int32(numBuckets))
 }
 
 // bucketReadierWorker reads a channel of "dirty" buckets (bucketReadierQueue), does something to get them ready, and then puts them back into the pool.
 // The mechanism for getting the bucket ready can vary by package being tested (for instance, a package not requiring views or GSI can use FlushBucketEmptierFunc)
 // A package requiring views or GSI, will need to pass in the db.ViewsAndGSIBucketReadier function.
 func (tbp *TestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc) {
-	tbp.Logf(context.Background(), "Starting bucketReadier")
+	tbp.Logf(ctx, "Starting bucketReadier")
 
 loop:
 	for {
 		select {
 		case <-ctx.Done():
-			tbp.Logf(context.Background(), "bucketReadier got ctx cancelled")
+			tbp.Logf(ctx, "bucketReadier got ctx cancelled")
 			break loop
 
 		case dirtyBucket := <-tbp.bucketReadierQueue:
@@ -638,7 +623,7 @@ loop:
 		}
 	}
 
-	tbp.Logf(context.Background(), "Stopped bucketReadier")
+	tbp.Logf(ctx, "Stopped bucketReadier")
 }
 
 func (tbp *TestBucketPool) testScopeName() string {

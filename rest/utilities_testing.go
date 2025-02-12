@@ -1053,38 +1053,21 @@ func (rt *RestTester) GetDBState() string {
 	return body["state"].(string)
 }
 
-func (rt *RestTester) WaitForDBOnline() (err error) {
-	return rt.WaitForDBState("Online")
+// WaitForDBOnline waits for the database to be in the Online state. Fail the test harness if the state is not reached within the timeout.
+func (rt *RestTester) WaitForDBOnline() {
+	rt.WaitForDBState("Online")
 }
 
-func (rt *RestTester) WaitForDBState(stateWant string) (err error) {
-	var stateCurr string
-	maxTries := 20
-
-	for i := 0; i < maxTries; i++ {
-		if stateCurr = rt.GetDBState(); stateCurr == stateWant {
-			return nil
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", stateWant, stateCurr, maxTries)
+// WaitForDBState waits for the database to be in the specified state. Fails the test harness if the state is not reached within the timeout.
+func (rt *RestTester) WaitForDBState(stateWant string) {
+	rt.WaitForDatabaseState(rt.GetDatabase().Name, stateWant)
 }
 
-func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) error {
-	var stateCurr string
-	maxTries := 50
-	for i := 0; i < maxTries; i++ {
-		dbRootResponse := DatabaseRoot{}
-		resp := rt.SendAdminRequest("GET", "/"+dbName+"/", "")
-		RequireStatus(rt.TB(), resp, 200)
-		require.NoError(rt.TB(), base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-		stateCurr = dbRootResponse.State
-		if stateCurr == db.RunStateString[targetState] {
-			return nil
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", db.RunStateString[targetState], stateCurr, maxTries)
+// WaitForDatabaseState waits for the specified database to be in the specified state. Fails the test harness if the state is not reached within the timeout.
+func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.Equal(c, targetState, rt.GetDatabaseRoot(dbName).State)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {

@@ -9,8 +9,8 @@ require (
 	github.com/couchbase/cbgt v1.3.10-0.20250128173458-04138cb9d33d
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20250130142438-e3a29100f703
-	github.com/couchbase/gocb/v2 v2.9.1
-	github.com/couchbase/gocbcore/v10 v10.5.2
+	github.com/couchbase/gocb/v2 v2.9.4-0.20250206113323-8ef6d9010511
+	github.com/couchbase/gocbcore/v10 v10.5.4-0.20250107135314-f4c4becdca29
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20241018143914-45ef51a0c1be
@@ -34,10 +34,10 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/crypto v0.32.0
+	golang.org/x/crypto v0.33.0
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
 	golang.org/x/net v0.34.0
-	golang.org/x/oauth2 v0.25.0
+	golang.org/x/oauth2 v0.26.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
@@ -89,8 +89,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/grpc v1.63.2 // indirect

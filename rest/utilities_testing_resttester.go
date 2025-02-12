@@ -115,6 +115,7 @@ func (rt *RestTester) DeleteDocRev(docID, revID string) {
 	rt.DeleteDoc(docID, DocVersion{RevID: revID})
 }
 
+// GetDatabaseRoot returns the DatabaseRoot for a given dtabase. This will fail the test harness if the database is not available.
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 	var dbroot DatabaseRoot
 	resp := rt.SendAdminRequest("GET", "/"+dbname+"/", "")

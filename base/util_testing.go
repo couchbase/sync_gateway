@@ -970,3 +970,8 @@ func numFilesInDir(t *testing.T, dir string, recursive bool) int {
 	require.NoError(t, err)
 	return numFiles
 }
+
+// CreateTestBucketName will create a test bucket name using the test bucket prefix and the suffix you pass in
+func CreateTestBucketName(suffix string) string {
+	return fmt.Sprintf("%s%s", tbpBucketNamePrefix, suffix)
+}

@@ -973,6 +973,18 @@ func TestDatabaseStartupFailure(t *testing.T) {
 
 	require.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().TotalOnlineFatalErrors.Value())
 	require.Equal(t, int64(0), rt.GetDatabase().DbStats.Database().TotalInitFatalErrors.Value())
+	// assert that the db is reported with appropriate error state in all dbs
+	allDbs := rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
+	invalDb := allDbs[0]
+	require.NotNil(t, invalDb.DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseOnlineProcessError])
+
+	// assert that you can attempt again to bring db back online again after failure
+	resp := rt.SendAdminRequest(http.MethodPost, "/"+invalDb.Bucket+"/_online", "")
+	RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForDBOnline()
 }
 
 func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
@@ -1004,7 +1016,7 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 	invalDb := allDbs[0]
 	require.NotNil(t, invalDb.DatabaseError)
 	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
-	assert.Equal(t, invalDb.DatabaseError.ErrMsg, DatabaseErrorMap[DatabaseInvalidDatastore])
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseInvalidDatastore])
 
 	// fix db config
 	deletedCollection := dsList[0].CollectionName()
