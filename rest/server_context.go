@@ -1015,7 +1015,6 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	// Before bringing the database online, ensure that the database hasn't been modified while we waited for initialization to complete
 	currentDbVersion := sc.GetDbVersion(dbc.Name)
 	if currentDbVersion != version {
-		dbc.DbStats.DatabaseStats.TotalOnlineFatalErrors.Add(1)
 		base.InfofCtx(ctx, base.KeyConfig, "Database version changed while waiting for async init - cancelling obsolete online request. Old version: %s New version: %s", version, currentDbVersion)
 		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 		return
