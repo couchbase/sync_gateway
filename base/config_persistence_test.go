@@ -202,6 +202,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	require.NoError(t, err)
 	cfg := map[string]interface{}{}
 	_, loadErr = cp.loadConfig(ctx, c, "testDoc", &cfg)
+	require.Error(t, loadErr)
 	assert.Equal(t, ErrXattrConfigNotFound, loadErr)
 
 }
