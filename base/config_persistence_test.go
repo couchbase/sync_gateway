@@ -197,4 +197,11 @@ func TestXattrConfigPersistence(t *testing.T) {
 	require.NoError(t, loadErr)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
+	// add doc with no xattr config and assert ErrXattrConfigNotFound error returned
+	_, err = c.Upsert("testDoc", map[string]interface{}{"key": "value"}, nil)
+	require.NoError(t, err)
+	cfg := map[string]interface{}{}
+	_, loadErr = cp.loadConfig(ctx, c, "testDoc", &cfg)
+	assert.Equal(t, ErrXattrConfigNotFound, loadErr)
+
 }
