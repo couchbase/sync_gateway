@@ -964,6 +964,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
 			if initError != nil {
+				dbcontext.DbStats.DatabaseStats.TotalInitFatalErrors.Add(1)
 				// report error in building/creating indexes
 				dbcontext.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitializationIndexError)
 				atomic.StoreUint32(&dbcontext.State, db.DBOffline)
@@ -973,6 +974,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		base.InfofCtx(ctx, base.KeyAll, "Database init completed, starting online processes")
 		if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
+			dbcontext.DbStats.DatabaseStats.TotalOnlineFatalErrors.Add(1)
 			atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 			return nil, err
@@ -999,6 +1001,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	if doneChan != nil {
 		initError := <-doneChan
 		if initError != nil {
+			dbc.DbStats.DatabaseStats.TotalInitFatalErrors.Add(1)
 			base.WarnfCtx(ctx, "Async database init returned error: %v", initError)
 			dbc.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInitializationIndexError)
 			atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
@@ -1017,6 +1020,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	base.InfofCtx(ctx, base.KeyAll, "Async database initialization complete, starting online processes...")
 	err := dbc.StartOnlineProcesses(ctx)
 	if err != nil {
+		dbc.DbStats.DatabaseStats.TotalOnlineFatalErrors.Add(1)
 		base.ErrorfCtx(ctx, "Error starting online processes after async initialization: %v", err)
 		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 		return

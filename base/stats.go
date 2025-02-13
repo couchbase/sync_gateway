@@ -88,6 +88,7 @@ const (
 	StatAddedVersion3dot2dot0     = "3.2.0"
 	StatAddedVersion3dot2dot1     = "3.2.1"
 	StatAddedVersion3dot2dot2     = "3.2.2"
+	StatAddedVersion3dot2dot3     = "3.2.3"
 	StatAddedVersion3dot3dot0     = "3.3.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
@@ -662,6 +663,11 @@ type DatabaseStats struct {
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
 	CacheFeedMapStats  *ExpVarMapWrapper `json:"cache_feed"`
 	ImportFeedMapStats *ExpVarMapWrapper `json:"import_feed"`
+
+	// The total number of errors that occurred that prevented the database from being initialized.
+	TotalInitFatalErrors *SgwIntStat `json:"total_init_fatal_errors"`
+	// The total number of errors that occurred that prevented the database from being brought online.
+	TotalOnlineFatalErrors *SgwIntStat `json:"total_online_fatal_errors"`
 }
 
 // This wrapper ensures that an expvar.Map type can be marshalled into JSON. The expvar.Map has no method to go direct to
@@ -1782,6 +1788,14 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.TotalInitFatalErrors, err = NewIntStat(SubsystemDatabaseKey, "total_init_fatal_errors", StatUnitNoUnits, TotalInitFatalErrorsDesc, StatAddedVersion3dot2dot3, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.TotalOnlineFatalErrors, err = NewIntStat(SubsystemDatabaseKey, "total_online_fatal_errors", StatUnitNoUnits, TotalOnlineFatalErrorsDesc, StatAddedVersion3dot2dot3, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1830,6 +1844,8 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
 	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
 	prometheus.Unregister(d.DatabaseStats.PublicRestBytesRead)
+	prometheus.Unregister(d.DatabaseStats.TotalInitFatalErrors)
+	prometheus.Unregister(d.DatabaseStats.TotalOnlineFatalErrors)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {
