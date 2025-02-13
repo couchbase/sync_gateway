@@ -251,4 +251,7 @@ func TestPersistentDbConfigAsyncOnlineWithInvalidConfig(t *testing.T) {
 	// Error should cause db to stay offline - originally a bug caused it to go offline then back to online.
 	// Since we're not running asyncDatabaseOnline inside a goroutine, we don't see the Starting->Offline->Online transition, only the final state
 	rt.WaitForDBState(db.RunStateString[db.DBOffline])
+
+	require.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().TotalOnlineFatalErrors.Value())
+	require.Equal(t, int64(0), rt.GetDatabase().DbStats.Database().TotalInitFatalErrors.Value())
 }

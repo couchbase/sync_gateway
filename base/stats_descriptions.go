@@ -316,6 +316,9 @@ const (
 
 	NumIdleKvOpsDesc    = "The total number of idle kv operations."
 	NumIdleQueryOpsDesc = "The total number of idle query operations."
+
+	TotalInitFatalErrorsDesc   = "The total number of errors that occurred that prevented the database from being initialized."
+	TotalOnlineFatalErrorsDesc = "The total number of errors that occurred that prevented the database from being brought online."
 )
 
 // Delta Sync stats descriptions

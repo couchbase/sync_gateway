@@ -971,6 +971,8 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	require.Nil(t, dbContext)
 	require.Equal(t, "Offline", rt.GetDBState())
 
+	require.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().TotalOnlineFatalErrors.Value())
+	require.Equal(t, int64(0), rt.GetDatabase().DbStats.Database().TotalInitFatalErrors.Value())
 	// assert that the db is reported with appropriate error state in all dbs
 	allDbs := rt.ServerContext().allDatabaseSummaries()
 	require.Len(t, allDbs, 1)
