@@ -90,6 +90,37 @@ const (
 
 var defaultTestingCORSOrigin = []string{"http://example.com", "*", "http://staging.example.com"}
 
+// globalBlipTesterClients stores the active blip tester clients to ensure they are cleaned up at the end of a test
+var globalBlipTesterClients *activeBlipTesterClients
+
+func init() {
+	globalBlipTesterClients = &activeBlipTesterClients{m: make(map[string]int32), lock: sync.Mutex{}}
+}
+
+// activeBlipTesterClients tracks the number of active blip tester clients to make sure they are closed at the end of a test and goroutines are not leaked.
+type activeBlipTesterClients struct {
+	m    map[string]int32
+	lock sync.Mutex
+}
+
+// add increments the count of a blip tester client for a particular test
+func (a *activeBlipTesterClients) add(name string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a.m[name]++
+}
+
+// removeincrements the count of a blip tester client for a particular test
+func (a *activeBlipTesterClients) remove(tb testing.TB, name string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	require.Contains(tb, a.m, name, "Can not remove blip tester client '%s' that was never added", name)
+	a.m[name]--
+	if a.m[name] == 0 {
+		delete(a.m, name)
+	}
+}
+
 // RestTester provides a fake server for testing endpoints
 type RestTester struct {
 	*RestTesterConfig
@@ -2829,4 +2860,15 @@ func (sc *ServerContext) reloadDatabaseWithConfigLoadFromBucket(nonContextStruct
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, true)
+}
+
+// TestBucketPoolRestWithIndexes is the main function that should be used for TestMain in subpackages of rest.
+func TestBucketPoolRestWithIndexes(ctx context.Context, m *testing.M, tbpOptions base.TestBucketPoolOptions) {
+	tbpOptions.TeardownFuncs = append(tbpOptions.TeardownFuncs, func() {
+		if len(globalBlipTesterClients.m) != 0 {
+			// must panic to bubble up through test harness
+			panic(fmt.Sprintf("%v active blip tester clients should be 0 at end of tests", globalBlipTesterClients.m))
+		}
+	})
+	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }
