@@ -2600,6 +2600,7 @@ func TestPutInvalidAttachment(t *testing.T) {
 // validates that proveAttachment isn't being invoked when the attachment is already present and the
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySGTest, base.KeySyncMsg, base.KeySync)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
