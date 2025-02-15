@@ -8,6 +8,7 @@
 
 import io
 import unittest
+import uuid
 
 import pytest
 import sgcollect_info
@@ -21,7 +22,8 @@ import sgcollect_info
         '{{"logging": {{ "log_file_path": "{tmpdir}" }} }}',
     ],
 )
-def test_make_collect_logs_tasks(config, tmpdir):
+@pytest.mark.parametrize("should_redact", [True, False])
+def test_make_collect_logs_tasks(should_redact, config, tmpdir):
     log_file = tmpdir.join("sg_info.log")
     log_file.write("foo")
     with unittest.mock.patch(
@@ -41,8 +43,8 @@ def test_make_collect_logs_tasks(config, tmpdir):
             sg_config_file_path="",
             sg_username="",
             sg_password="",
-            salt="",
-            should_redact=False,
+            salt=str(uuid.uuid4()),
+            should_redact=should_redact,
         )
         assert [t.log_file for t in tasks] == [
             log_file.basename,
@@ -50,7 +52,8 @@ def test_make_collect_logs_tasks(config, tmpdir):
         ]
 
 
-def test_make_collect_logs_heap_profile(tmpdir):
+@pytest.mark.parametrize("should_redact", [True, False])
+def test_make_collect_logs_heap_profile(should_redact: bool, tmpdir):
     with unittest.mock.patch(
         "sgcollect_info.urlopen_with_basic_auth",
         return_value=io.BytesIO(
@@ -67,7 +70,9 @@ def test_make_collect_logs_heap_profile(tmpdir):
             sg_config_file_path="",
             sg_username="",
             sg_password="",
-            salt="",
-            should_redact=False,
+            salt=str(uuid.uuid4()),
+            should_redact=should_redact,
         )
         assert [tasks[0].log_file] == [pprof_file.basename]
+        # ensure that this is not redacted task
+        assert tasks[0].description.startswith("Contents of")

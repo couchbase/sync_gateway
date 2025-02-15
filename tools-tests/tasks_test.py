@@ -138,3 +138,59 @@ def test_task_logging(verbosity, task_platform, tmp_path):
     # fake the platform for a test
     task.platforms = [task_platform]
     taskrunner.run(task)
+
+
+@pytest.mark.parametrize(
+    "filename,redactable",
+    [
+        (
+            "sync_gateway",
+            False,
+        ),
+        (
+            "sync_gateway.exe",
+            False,
+        ),
+        (
+            "sync_gateway.exe",
+            False,
+        ),
+        (
+            "/abs/path/sync_gateway",
+            False,
+        ),
+        (
+            "pprof_heap_high_01.pb.gz",
+            False,
+        ),
+        (
+            "pprof.pb",
+            False,
+        ),
+        (
+            "/abs/path/pprof.pb",
+            False,
+        ),
+        (
+            "sg_info.log",
+            True,
+        ),
+        (
+            "sg_info-01.log.gz",
+            True,
+        ),
+        (
+            "/abs/path/sg_info.log",
+            True,
+        ),
+        (
+            "/abs/path/sg_info-01.log.gz",
+            True,
+        ),
+    ],
+)
+@pytest.mark.parametrize("use_pathlib", [True, False])
+def test_redactable_filename(use_pathlib, filename, redactable):
+    if use_pathlib:
+        filename = pathlib.Path(filename)
+    assert tasks.redactable_file(filename) is redactable

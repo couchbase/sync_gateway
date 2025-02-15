@@ -19,6 +19,7 @@ import hashlib
 import io
 import optparse
 import os
+import pathlib
 import re
 import shutil
 import sys
@@ -29,6 +30,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import Union
 
 # The 'latin-1' encoding is being used since we can't guarantee that all bytes that will be
 # processed through sgcollect will be decodable from 'utf-8' (which is the default in Python)
@@ -407,11 +409,7 @@ class TaskRunner(object):
         redactor = LogRedactor(salt, self.tmpdir)
 
         for name, fp in self.files.items():
-            if not (
-                ".gz" in name
-                or "expvars.json" in name
-                or os.path.basename(name) == "sync_gateway"
-            ):
+            if not redactable_file(name) or ".gz" in name:
                 files.append(redactor.redact_file(name, fp.name))
             else:
                 files.append(fp.name)
@@ -1372,3 +1370,10 @@ def exec_name(name):
     if sys.platform == "win32":
         name += ".exe"
     return name
+
+
+def redactable_file(filename: Union[pathlib.Path, str]) -> bool:
+    filename = pathlib.Path(filename)
+    if filename.name.startswith(("pprof", "expvars.json")):
+        return False
+    return filename.stem != "sync_gateway"
