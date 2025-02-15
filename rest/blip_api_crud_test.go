@@ -3037,7 +3037,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Test performs import, not valid for non-xattr mode")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyCache, base.KeyChanges)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		syncFn := `function(doc) {
@@ -3145,7 +3145,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				// Validate that the latest client message for the requested doc/rev was a norev
 				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID)
-				require.True(t, ok)
+				require.True(t, ok, "All messages=#+v", btcRunner.SingleCollection(btc2.id).parent.pullReplication.GetMessages())
 				require.Equal(t, db.MessageNoRev, msg.Profile())
 
 			})
