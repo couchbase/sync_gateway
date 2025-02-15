@@ -37,6 +37,20 @@ pipeline {
         }
         stage('Setup') {
             stages {
+                stage('Go Modules') {
+                    steps {
+                        sh "which go"
+                        sh "go version"
+                        sh "go env"
+                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                            sh '''
+                                [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
+                                ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
+                            '''
+                            sh "go get -v -tags ${EE_BUILD_TAG} ./..."
+                        }
+                    }
+                }
                 stage('Go Tools') {
                     steps {
                         // unhandled error checker
