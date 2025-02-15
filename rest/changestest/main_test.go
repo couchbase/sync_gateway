@@ -15,11 +15,11 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
 )
 
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
-	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
+	rest.TestBucketPoolRestWithIndexes(ctx, m, tbpOptions)
 }

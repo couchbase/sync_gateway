@@ -3165,6 +3165,7 @@ func TestBlipDatabaseClose(t *testing.T) {
 		const username = "alice"
 		rt.CreateUser(username, []string{"*"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		defer btc.Close()
 		var blipContextClosed atomic.Bool
 		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
 			log.Printf("on exit callback invoked")
@@ -3214,6 +3215,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 		const username = "alice"
 		rt.CreateUser(username, []string{"*"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		defer btc.Close()
 		var blipContextClosed atomic.Bool
 		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
 			blipContextClosed.Store(true)

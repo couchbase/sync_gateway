@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +22,7 @@ import (
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192, NumCollectionsPerBucket: 3}
-	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
+	TestBucketPoolRestWithIndexes(ctx, m, tbpOptions)
 }
 
 func TestConfigOverwritesLegacyFlags(t *testing.T) {
