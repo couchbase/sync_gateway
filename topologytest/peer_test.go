@@ -240,25 +240,27 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)
 		sourceID, err := xdcr.GetSourceID(base.TestCtx(t), bucket)
 		require.NoError(t, err)
-		return &CouchbaseServerPeer{
+		p := &CouchbaseServerPeer{
 			name:               name,
-			tb:                 t,
 			bucket:             bucket,
 			sourceID:           sourceID,
 			pullReplications:   make(map[Peer]xdcr.Manager),
 			pushReplications:   make(map[Peer]xdcr.Manager),
 			symmetricRedundant: opts.Symmetric,
 		}
+		p.UpdateTB(t)
+		return p
 	case PeerTypeCouchbaseLite:
 		require.Equal(t, PeerBucketNoBackingBucket, opts.BucketID, "bucket should not be specified for Couchbase Lite peer %+v", opts)
 		_, ok := buckets[opts.BucketID]
 		require.False(t, ok, "bucket should not be specified for Couchbase Lite peer")
-		return &CouchbaseLiteMockPeer{
-			t:                  t,
+		p := &CouchbaseLiteMockPeer{
 			name:               name,
 			blipClients:        make(map[string]*PeerBlipTesterClient),
 			symmetricRedundant: opts.Symmetric,
 		}
+		p.UpdateTB(t)
+		return p
 	case PeerTypeSyncGateway:
 		bucket, ok := buckets[opts.BucketID]
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)

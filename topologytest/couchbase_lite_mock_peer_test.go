@@ -11,6 +11,7 @@ package topologytest
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -38,7 +39,7 @@ func (p *PeerBlipTesterClient) CollectionClient(dsName sgbucket.DataStoreName) *
 
 // CouchbaseLiteMockPeer represents an in-memory Couchbase Lite peer. This utilizes BlipTesterClient from the rest package to send and receive blip messages.
 type CouchbaseLiteMockPeer struct {
-	t                  *testing.T
+	t                  atomic.Pointer[testing.T]
 	blipClients        map[string]*PeerBlipTesterClient
 	name               string
 	symmetricRedundant bool // there is another peer that is symmetric to this one
@@ -76,7 +77,7 @@ func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
 	for _, c := range p.blipClients {
 		return c
 	}
-	require.Fail(p.t, "no blipClients found for %s", p)
+	require.Fail(p.TB(), "no blipClients found for %s", p)
 	return nil
 }
 
@@ -173,7 +174,7 @@ func (p *CouchbaseLiteMockPeer) IsSymmetricRedundant() bool {
 func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicationConfig) PeerReplication {
 	sg, ok := peer.(*SyncGatewayPeer)
 	if !ok {
-		require.Fail(p.t, fmt.Sprintf("unsupported peer type %T for pull replication", peer))
+		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %T for pull replication", peer))
 	}
 
 	// check for existing blip runner/client and use if present - avoids creating multiple clients for the same peer
@@ -220,12 +221,12 @@ func (p *CouchbaseLiteMockPeer) Context() context.Context {
 
 // TB returns the testing.TB for the peer.
 func (p *CouchbaseLiteMockPeer) TB() testing.TB {
-	return p.t
+	return p.t.Load()
 }
 
 // UpdateTB updates the testing.TB for the peer.
 func (p *CouchbaseLiteMockPeer) UpdateTB(t *testing.T) {
-	p.t = t
+	p.t.Store(t)
 }
 
 // GetBackingBucket returns the backing bucket for the peer. This is always nil.
