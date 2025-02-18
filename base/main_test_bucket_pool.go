@@ -78,7 +78,8 @@ type TestBucketPoolOptions struct {
 	UseDefaultScope         bool
 	RequireXDCR             bool // Test buckets will be performing XDCR, requires Server > 7 for integration test robustness
 	ParallelBucketInit      bool
-	NumCollectionsPerBucket int // setting this value in main_test.go will override the default
+	NumCollectionsPerBucket int      // setting this value in main_test.go will override the default
+	TeardownFuncs           []func() // functions to be run after Main is completed but before standard teardown functions run
 }
 
 func NewTestBucketPool(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
@@ -666,7 +667,7 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	teardownFuncs = append(teardownFuncs, SetUpGlobalTestLogging(ctx))
 	teardownFuncs = append(teardownFuncs, SetUpGlobalTestProfiling(m))
 	teardownFuncs = append(teardownFuncs, SetUpGlobalTestMemoryWatermark(m, options.MemWatermarkThresholdMB))
-
+	teardownFuncs = append(teardownFuncs, options.TeardownFuncs...)
 	SkipPrometheusStatsRegistration = true
 
 	GTestBucketPool = NewTestBucketPoolWithOptions(ctx, bucketReadierFunc, bucketInitFunc, options)

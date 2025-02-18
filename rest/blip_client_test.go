@@ -924,18 +924,7 @@ func (btc *BlipTesterClient) createBlipTesterReplications() {
 			btc.initCollectionReplication(collection, i)
 		}
 	} else {
-		l := sync.RWMutex{}
-		ctx, ctxCancel := context.WithCancel(btc.rt.Context())
-		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
-			ctx:           ctx,
-			ctxCancel:     ctxCancel,
-			seqLock:       &l,
-			_seqStore:     make(map[clientSeq]*clientDoc),
-			_seqFromDocID: make(map[string]clientSeq),
-			_seqCond:      sync.NewCond(&l),
-			_attachments:  make(map[string][]byte),
-			parent:        btc,
-		}
+		btc.nonCollectionAwareClient = NewBlipTesterCollectionClient(btc)
 	}
 
 	btc.pullReplication.bt.avoidRestTesterClose = true
@@ -943,22 +932,9 @@ func (btc *BlipTesterClient) createBlipTesterReplications() {
 }
 
 func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) {
-	l := sync.RWMutex{}
-	ctx, ctxCancel := context.WithCancel(btc.rt.Context())
-	btcReplicator := &BlipTesterCollectionClient{
-		ctx:           ctx,
-		ctxCancel:     ctxCancel,
-		seqLock:       &l,
-		_seqStore:     make(map[clientSeq]*clientDoc),
-		_seqCond:      sync.NewCond(&l),
-		_seqFromDocID: make(map[string]clientSeq),
-		_attachments:  make(map[string][]byte),
-		parent:        btc,
-	}
-
+	btcReplicator := NewBlipTesterCollectionClient(btc)
 	btcReplicator.collection = collection
 	btcReplicator.collectionIdx = collectionIdx
-
 	btc.collectionClients[collectionIdx] = btcReplicator
 }
 
@@ -1249,6 +1225,24 @@ func (btc *BlipTesterCollectionClient) UnsubPullChanges() {
 	require.Empty(btc.TB(), response)
 }
 
+// NewBlipTesterCollectionClient creates a collection specific client from a BlipTesterClient
+func NewBlipTesterCollectionClient(btc *BlipTesterClient) *BlipTesterCollectionClient {
+	ctx, ctxCancel := context.WithCancel(btc.rt.Context())
+	l := sync.RWMutex{}
+	c := &BlipTesterCollectionClient{
+		ctx:           ctx,
+		ctxCancel:     ctxCancel,
+		seqLock:       &l,
+		_seqStore:     make(map[clientSeq]*clientDoc),
+		_seqFromDocID: make(map[string]clientSeq),
+		_seqCond:      sync.NewCond(&l),
+		_attachments:  make(map[string][]byte),
+		parent:        btc,
+	}
+	globalBlipTesterClients.add(btc.TB().Name())
+	return c
+}
+
 // Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterCollectionClient) Close() {
 	btc.ctxCancel()
@@ -1265,6 +1259,7 @@ func (btc *BlipTesterCollectionClient) Close() {
 	btc.attachmentsLock.Lock()
 	defer btc.attachmentsLock.Unlock()
 	btc._attachments = make(map[string][]byte, 0)
+	globalBlipTesterClients.remove(btc.TB(), btc.TB().Name())
 }
 
 func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) {
