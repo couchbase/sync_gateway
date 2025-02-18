@@ -212,6 +212,7 @@ def test_log_redact_file(tmp_path):
         "logline1: foo",
         "logline2: <ud>password</ud>",
         "logline3: log-redaction-salt=AAA",
+        "logline4: bar",
     ]
     with gzip.open(log_file, "wt") as fh:
         for line in input_log_lines:
@@ -226,6 +227,7 @@ def test_log_redact_file(tmp_path):
         "logline1: foo",
         "logline2: <ud>1700bc8ae71605063ae83d80837fa53988c635ef</ud>",
         "logline3: log-redaction-salt <redacted>",
+        "logline4: bar",
         "",  # file has trailing newline
     ]
     updated_text = os.linesep.join(output_log_lines).encode("utf-8")
