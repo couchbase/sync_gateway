@@ -110,7 +110,7 @@ func (a *activeBlipTesterClients) add(name string) {
 	a.m[name]++
 }
 
-// removeincrements the count of a blip tester client for a particular test
+// remove decrements the count of a blip tester client for a particular test
 func (a *activeBlipTesterClients) remove(tb testing.TB, name string) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
