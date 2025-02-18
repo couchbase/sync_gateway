@@ -8,6 +8,7 @@
 
 import gzip
 import json
+import os
 import pathlib
 import sys
 import unittest
@@ -207,21 +208,27 @@ def test_redactable_filename(use_pathlib, filename, redactable):
 
 def test_log_redact_file(tmp_path):
     log_file = tmp_path / "foo.log.gz"
+    input_log_lines = [
+        "logline1: foo",
+        "logline2: <ud>password</ud>",
+        "logline3: log-redaction-salt=AAA",
+    ]
     with gzip.open(log_file, "wt") as fh:
-        fh.write("logline1: foo\n")
-        fh.write("logline2: <ud>password</ud>\n")
-        fh.write("logline3: log-redaction-salt=AAA\n")
+        for line in input_log_lines:
+            fh.write(line + "\n")
 
     salt = b"AA"
     redactor = tasks.LogRedactor(salt, tmp_path)
     redacted_file = redactor.redact_file(log_file.name, log_file)
 
-    updated_text = b"""\
-RedactLevel:partial,HashOfSalt:e2512172abf8cc9f67fdd49eb6cacf2df71bbad3
-logline1: foo
-logline2: <ud>1700bc8ae71605063ae83d80837fa53988c635ef</ud>
-logline3: log-redaction-salt <redacted>
-"""
+    output_log_lines = [
+        "RedactLevel:partial,HashOfSalt:e2512172abf8cc9f67fdd49eb6cacf2df71bbad3",
+        "logline1: foo",
+        "logline2: <ud>1700bc8ae71605063ae83d80837fa53988c635ef</ud>",
+        "logline3: log-redaction-salt <redacted>",
+        "",  # file has trailing newline
+    ]
+    updated_text = os.linesep.join(output_log_lines).encode("utf-8")
 
     redacted_text = gzip.open(redacted_file).read()
     assert redacted_text == updated_text
