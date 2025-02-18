@@ -8,6 +8,7 @@
 
 import gzip
 import json
+import os
 import pathlib
 import sys
 import unittest
@@ -227,7 +228,7 @@ def test_log_redact_file(tmp_path):
         "logline3: log-redaction-salt <redacted>",
         "",  # file has trailing newline
     ]
-    updated_text = "\n".join(output_log_lines).encode("utf-8")
+    updated_text = os.linesep.join(output_log_lines).encode("utf-8")
 
     redacted_text = gzip.open(redacted_file).read()
     assert redacted_text == updated_text

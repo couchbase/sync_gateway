@@ -77,9 +77,9 @@ class CouchbaseLogProcessor:
         if b"RedactLevel" in line:
             # salt + salt to maintain consistency with other
             # occurrences of hashed salt in the logs.
-            return b"RedactLevel:partial,HashOfSalt:%b\n" % generate_hash(
+            return b"RedactLevel:partial,HashOfSalt:%b" % generate_hash(
                 self.salt + self.salt
-            ).hexdigest().encode("utf-8")
+            ).hexdigest().encode("utf-8") + os.linesep.encode("ascii")
         else:
             return line
 
