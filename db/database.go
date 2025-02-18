@@ -243,6 +243,7 @@ type UnsupportedOptions struct {
 	GuestReadOnly                  bool                     `json:"guest_read_only,omitempty"`                     // Config option to restrict GUEST document access to read-only
 	ForceAPIForbiddenErrors        bool                     `json:"force_api_forbidden_errors,omitempty"`          // Config option to force the REST API to return forbidden errors
 	ConnectedClient                bool                     `json:"connected_client,omitempty"`                    // Enables BLIP connected-client APIs
+	UseQueryBasedResyncManager     bool                     `json:"use_query_resync_manager,omitempty"`            // Config option to use Query based resync manager to perform Resync op
 	DCPReadBuffer                  int                      `json:"dcp_read_buffer,omitempty"`                     // Enables user to set their own DCP read buffer
 	KVBufferSize                   int                      `json:"kv_buffer,omitempty"`                           // Enables user to set their own KV pool buffer
 	BlipSendDocsWithChannelRemoval bool                     `json:"blip_send_docs_with_channel_removal,omitempty"` // Enables sending docs with channel removals using channel filters
