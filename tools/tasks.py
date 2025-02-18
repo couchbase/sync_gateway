@@ -85,7 +85,6 @@ class CouchbaseLogProcessor:
 
 
 class RegularLogProcessor:
-
     def __init__(self, salt: bytes):
         self.salt = salt
         self.rexes = [

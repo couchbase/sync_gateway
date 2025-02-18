@@ -222,7 +222,6 @@ def test_log_redact_file(tmp_path):
     redactor = tasks.LogRedactor(salt, tmp_path)
     redacted_file = redactor.redact_file(log_file.name, log_file)
 
-    assert False
     output_log_lines = [
         "RedactLevel:partial,HashOfSalt:e2512172abf8cc9f67fdd49eb6cacf2df71bbad3",
         "logline1: foo",
