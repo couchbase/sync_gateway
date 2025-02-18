@@ -85,30 +85,28 @@ class CouchbaseLogProcessor:
 
 
 class RegularLogProcessor:
-    rexes = [
-        re.compile(b"(<ud>)(.+?)(</ud>)"),
-        # Redact the rest of the line in the case we encounter
-        # log-redaction-salt. Needed to redact ps output containing sgcollect flags safely.
-        re.compile(b"(log-redaction-salt)(.+)"),
-    ]
 
     def __init__(self, salt: bytes):
         self.salt = salt
+        self.rexes = [
+            (re.compile(b"(<ud>)(.+?)(</ud>)"), self._redact_userdata),
+            (re.compile(rb"(log-redaction-salt)(.+)(\r?)"), self.redact_salt),
+        ]
 
-    def _hash(self, match: re.Match) -> bytes:
+    def _redact_userdata(self, match: re.Match) -> bytes:
         result = match.group(1)
-        # re.compile(b"(<ud>)(.+?)(</ud>)"),
-        if match.lastindex == 3:
-            h = generate_hash(self.salt + match.group(2)).hexdigest().encode("ascii")
-            result += h + match.group(3)
-        # re.compile(b"(log-redaction-salt)(.+)"),
-        elif match.lastindex == 2:
-            result += b" <redacted>"
+        h = generate_hash(self.salt + match.group(2)).hexdigest().encode("ascii")
+        result += h + match.group(3)
+        return result
+
+    def redact_salt(self, match: re.Match) -> bytes:
+        result = match.group(1)
+        result += b" <redacted>"
         return result
 
     def do(self, line: bytes) -> bytes:
-        for rex in self.rexes:
-            line = rex.sub(self._hash, line)
+        for rex, func in self.rexes:
+            line = rex.sub(func, line)
         return line
 
 
