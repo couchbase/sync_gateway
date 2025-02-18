@@ -100,7 +100,7 @@ class RegularLogProcessor:
 
     def redact_salt(self, match: re.Match) -> bytes:
         result = match.group(1)
-        result += b" <redacted>"
+        result += b" <redacted>" + match.group(3)
         return result
 
     def do(self, line: bytes) -> bytes:
