@@ -89,7 +89,7 @@ class RegularLogProcessor:
         self.salt = salt
         self.rexes = [
             (re.compile(b"(<ud>)(.+?)(</ud>)"), self._redact_userdata),
-            (re.compile(rb"(log-redaction-salt)(.+)(\r?)"), self.redact_salt),
+            (re.compile(rb"(log-redaction-salt)(.+)"), self.redact_salt),
         ]
 
     def _redact_userdata(self, match: re.Match) -> bytes:
@@ -100,7 +100,10 @@ class RegularLogProcessor:
 
     def redact_salt(self, match: re.Match) -> bytes:
         result = match.group(1)
-        result += b" <redacted>" + match.group(3)
+        result += b" <redacted>"
+        # on windows, make sure we don't lose the \r
+        if match.group(0).endswith(b"\r"):
+            result += b"\r"
         return result
 
     def do(self, line: bytes) -> bytes:
