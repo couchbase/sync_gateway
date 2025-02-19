@@ -3905,7 +3905,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 func BootstrapWaitForDatabaseState(t *testing.T, sc *rest.ServerContext, dbName string, state uint32) {
 	err := base.WaitForNoError(base.TestCtx(t), func() error {
 		resp := rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+dbName+"/", "")
-		if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode() != http.StatusOK {
 			return errors.New("expected 200 status")
 		}
 		var rootResp rest.DatabaseRoot
@@ -4205,12 +4205,12 @@ func TestPerDBCredsOverride(t *testing.T) {
 
 	res := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
 	// Make sure request failed as it could authenticate with the bucket
-	assert.Equal(t, http.StatusForbidden, res.StatusCode)
+	assert.Equal(t, http.StatusForbidden, res.StatusCode())
 
 	// Allow database to be created successfully
 	sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{}
 	res = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
-	assert.Equal(t, http.StatusCreated, res.StatusCode)
+	assert.Equal(t, http.StatusCreated, res.StatusCode())
 
 	// Confirm fetch configs causes bucket credentials to be overrode
 	sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{

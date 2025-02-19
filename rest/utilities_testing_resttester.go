@@ -98,8 +98,8 @@ func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) D
 }
 
 // DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
-func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) {
-	_ = rt.DeleteDocReturnVersion(docID, docVersion)
+func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) DocVersion {
+	return rt.DeleteDocReturnVersion(docID, docVersion)
 }
 
 // DeleteDocReturnVersion deletes a document at a specific version. The test will fail if the revision does not exist.
@@ -135,6 +135,20 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		var body db.Body
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 		assert.Equal(c, version.RevID, body.ExtractRev(), "Unexpected revision for %s", rawResponse.Body.String())
+	}, time.Second*10, time.Millisecond*10)
+}
+
+// WaitForTombstone retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
+func (rt *RestTester) WaitForTombstone(docID string, version DocVersion) {
+	require.NotEqual(rt.TB(), "", version.RevID)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		if !assert.NoError(c, err, "Error getting doc %s", docID) {
+			return
+		}
+		assert.True(c, doc.IsDeleted(), "Document %s is not deleted %+v", docID, doc)
+		assert.Equal(c, version.RevID, doc.SyncData.CurrentRev, "Unexpected revision for %s: %+v", docID, doc)
 	}, time.Second*10, time.Millisecond*10)
 }
 
