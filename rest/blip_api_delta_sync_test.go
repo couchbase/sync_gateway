@@ -520,7 +520,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
-		version = rt.DeleteDocReturnVersion(docID, version)
+		version = rt.DeleteDoc(docID, version)
 
 		data = btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
@@ -628,7 +628,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
-		version = rt.DeleteDocReturnVersion(docID, version)
+		version = rt.DeleteDoc(docID, version)
 
 		data = btcRunner.WaitForVersion(client1.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
@@ -858,7 +858,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
 
 		// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
-		deletedVersion := rt.DeleteDocReturnVersion(docID, newRev)
+		deletedVersion := rt.DeleteDoc(docID, newRev)
 
 		data = btcRunner.WaitForVersion(client.id, docID, deletedVersion)
 		assert.Equal(t, `{}`, string(data))

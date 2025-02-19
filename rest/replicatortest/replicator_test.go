@@ -756,11 +756,11 @@ func TestReplicationStatusActions(t *testing.T) {
 	response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=reset", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	resetErr := rt1.WaitForCondition(func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		status := rt1.GetReplicationStatus(replicationID)
-		return status.Status == db.ReplicationStateStopped && status.LastSeqPull == ""
-	})
-	require.NoError(t, resetErr)
+		assert.Equal(c, db.ReplicationStateStopped, status.Status)
+		assert.Equal(c, "", status.LastSeqPull)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// Restart the replication
 	response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
@@ -1520,13 +1520,10 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
+	const username = "alice"
 	rt.CreateUser("alice", []string{})
 
-	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
-	srv := httptest.NewServer(rt.TestPublicHandler())
-	defer srv.Close()
-	DBURL, _ := url.Parse(srv.URL + "/" + rt.GetDatabase().Name)
-	DBURL.User = url.UserPassword("alice", rest.RestTesterDefaultUserPassword)
+	DBURL := userDBURL(rt, username)
 
 	replicationConfig := fmt.Sprintf(`{
 		"replication_id": "replication1",
@@ -2034,28 +2031,14 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 
-	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
-	srv := httptest.NewServer(rt.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
 		ID:                    t.Name(),
 		Direction:             db.ActiveReplicatorTypePush,
 		ActiveDB:              &db.Database{DatabaseContext: rt.GetDatabase()},
-		RemoteDBURL:           passiveDBURL,
+		RemoteDBURL:           userDBURL(rt, username),
 		WebsocketPingInterval: time.Millisecond * 10,
 		Continuous:            true,
-		ReplicationStatsMap:   dbstats,
+		ReplicationStatsMap:   dbReplicatorStats(t),
 		CollectionsEnabled:    !rt.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -2112,16 +2095,6 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, password)
-
 	// Active
 	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -2130,21 +2103,16 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -2212,30 +2180,17 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 	rt2.CreateUser(username, []string{"*"})
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
 	// Active
 	rt1 := rest.NewRestTester(t, nil)
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+	dbstats := dbReplicatorStats(t)
 
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -2250,9 +2205,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	docIDPrefix := t.Name() + "rt2doc"
 
 	docID1 := docIDPrefix + "1"
-	resp := rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID1, `{"source":"rt2","channels":["`+username+`"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
+	doc1Version := rt2.PutDoc(docID1, `{"source":"rt2","channels":["`+username+`"]}`)
 	rt2.WaitForPendingChanges()
 
 	// Start the replicator (implicit connect)
@@ -2261,9 +2214,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// wait for the documents originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
-	require.Len(t, changesResults.Results, 1)
+	rt1.WaitForVersion(docID1, doc1Version)
 
 	require.NoError(t, ar.Stop())
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().ExpectedSequenceCount)
@@ -2276,17 +2227,14 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
 
 	docID2 := docIDPrefix + "2"
-	resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID2, `{"source":"rt2","channels":["`+username+`"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+	rt2.PutDoc(docID2, `{"source":"rt2","channels":["`+username+`"]}`)
 
 	// allocate a fake sequence to trigger skipped sequence handling - this never arrives at rt1 - we could think about creating the doc afterwards to let the replicator recover, but not necessary for the test.
 	_, err = rt2.MetadataStore().Incr(rt2.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 1, 0)
 	require.NoError(t, err)
 
 	docID3 := docIDPrefix + "3"
-	resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID3, `{"source":"rt2","channels":["`+username+`"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
+	rt2.PutDoc(docID3, `{"source":"rt2","channels":["`+username+`"]}`)
 	rt2.WaitForPendingChanges()
 
 	// Start the replicator (implicit connect)
@@ -2295,7 +2243,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	// restarted replicator has a new checkpointer
 	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
-	changesResults, err = rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 3)
 
@@ -2310,8 +2258,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
 
 	docID4 := docIDPrefix + "4"
-	resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID4, `{"source":"rt2","channels":["`+username+`"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+	rt2.PutDoc(docID4, `{"source":"rt2","channels":["`+username+`"]}`)
 	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
@@ -2476,36 +2423,23 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)
 	passiveRT := rest.NewRestTester(t, nil)
 	defer passiveRT.Close()
-	srv := httptest.NewServer(passiveRT.TestPublicHandler())
-	defer srv.Close()
 
-	// Build remoteDBURL with basic auth creds
-	remoteDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	remoteDBURL.User = url.UserPassword("alice", "pass")
-
-	// Active
+	const username = "alice"
 	activeRT := rest.NewRestTester(t, nil)
 	defer activeRT.Close()
 	id, err := base.GenerateRandomID()
 	require.NoError(t, err)
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          id,
 		Direction:   db.ActiveReplicatorTypePushAndPull,
-		RemoteDBURL: remoteDBURL,
+		RemoteDBURL: userDBURL(passiveRT, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: activeRT.GetDatabase(),
 		},
 		Continuous: true,
 		// aggressive reconnect intervals for testing purposes
 		TotalReconnectTimeout: time.Millisecond * 10,
-		ReplicationStatsMap:   dbstats,
+		ReplicationStatsMap:   dbReplicatorStats(t),
 		CollectionsEnabled:    !activeRT.GetDatabase().OnlyDefaultCollection(),
 	}
 
@@ -2516,16 +2450,14 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 
 	expectedErrMsg := "unexpected status code 401 from target database"
 	require.ErrorContains(t, ar.Start(activeRT.Context()), expectedErrMsg)
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		state, _ := ar.State(activeRT.Context())
-		assert.Equal(c, db.ReplicationStateError, state)
-	}, time.Second*10, time.Millisecond*100)
+	activeRT.WaitForReplicationStatus(id, db.ReplicationStateError)
 
 	status, err := activeRT.GetDatabase().SGReplicateMgr.GetReplicationStatus(activeRT.Context(), id, db.DefaultReplicationStatusOptions())
 	require.NoError(t, err)
 	require.Equal(t, db.ReplicationStateError, status.Status)
 	require.Equal(t, expectedErrMsg, status.ErrorMessage)
-	require.Equal(t, int64(1), ar.Push.GetStats().NumReconnectsAborted.Value())
+	// state is updated by the reconnect loop slightly before NumReconnectsAborted is set
+	base.RequireWaitForStat(t, ar.Push.GetStats().NumReconnectsAborted.Value, 1)
 	firstNumConnectAttempts := ar.Push.GetStats().NumConnectAttempts.Value()
 	require.GreaterOrEqual(t, firstNumConnectAttempts, int64(1))
 
@@ -2668,36 +2600,21 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	docID := t.Name() + "rt2doc1"
 	version := rt2.PutDoc(docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
 	// Active
 	rt1 := rest.NewRestTester(t, nil)
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -2984,35 +2901,20 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-	// Active
 	rt1 := rest.NewRestTester(t, nil)
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          true,
 		ChangesBatchSize:    changesBatchSize,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	}
 
@@ -3169,26 +3071,16 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
 
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          true,
 		ChangesBatchSize:    changesBatchSize,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	}
 
@@ -3301,44 +3193,21 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	rt2.CreateUser(username, []string{username})
 
 	docID := t.Name() + "rt2doc1"
-
-	resp := rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-	_, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-	// Active
+	rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
 	rt1 := rest.NewRestTester(t, nil)
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -3349,28 +3218,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start(ctx1))
 
-	// wait for the replication to stop
-	replicationStopped := false
-	for i := 0; i < 100; i++ {
-		status := ar.GetStatus(ctx1)
-		if status.Status == db.ReplicationStateStopped {
-			replicationStopped = true
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	assert.True(t, replicationStopped, "One-shot replication status should go to stopped on completion")
-
-	/*doc, err := rt1.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
-	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
-	*/
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 }
 
 // TestActiveReplicatorPushBasic:
@@ -3402,29 +3250,15 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -3483,30 +3317,16 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	docID := t.Name() + "rt1doc1"
 	version := rt1.PutDoc(docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -3586,8 +3406,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	// Create first batch of docs
 	docIDPrefix := t.Name() + "rt2doc"
 	for i := 0; i < numRT1DocsInitial; i++ {
-		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		rest.RequireStatus(t, resp, http.StatusCreated)
+		rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
 	}
 
 	// Passive
@@ -3597,19 +3416,10 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	username := "alice"
 	rt2.CreateUser(username, []string{username})
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -3674,8 +3484,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 	// Second batch of docs
 	for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
-		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		rest.RequireStatus(t, resp, http.StatusCreated)
+		rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
@@ -3760,18 +3569,8 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	// Create first batch of docs
 	docIDPrefix := t.Name() + "rt1doc"
 	for i := 0; i < numRT1DocsInitial; i++ {
-		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		rest.RequireStatus(t, resp, http.StatusCreated)
+		rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
 	}
-
-	// Make rt1 listen on an actual HTTP port, so it can receive the blipsync request from edges
-	srv := httptest.NewServer(rt1.TestPublicHandler())
-	defer srv.Close()
-
-	// Build rt1DBURL with basic auth creds
-	rt1DBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	rt1DBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 	// Edge 1
 	edge1Bucket := base.GetTestBucket(t)
@@ -3785,7 +3584,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          "edge-repl",
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: rt1DBURL,
+		RemoteDBURL: userDBURL(rt1, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: edge1.GetDatabase(),
 		},
@@ -3953,31 +3752,16 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ctx1 := rt1.Context()
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -3988,17 +3772,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start(ctx1))
 
-	// wait for the replication to stop
-	replicationStopped := false
-	for i := 0; i < 100; i++ {
-		status := ar.GetStatus(ctx1)
-		if status.Status == db.ReplicationStateStopped {
-			replicationStopped = true
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	assert.True(t, replicationStopped, "One-shot replication status should go to stopped on completion")
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollectionWithUser()
 	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
@@ -4038,16 +3812,6 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	docID := t.Name() + "rt2doc1"
 	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
 	// Active
 
 	rt1 := rest.NewRestTester(t,
@@ -4057,21 +3821,16 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -4097,7 +3856,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	assert.Equal(t, "rt2", body["source"])
 
 	// Tombstone the doc in rt2
-	deletedVersion := rt2.DeleteDocReturnVersion(docID, version)
+	deletedVersion := rt2.DeleteDoc(docID, version)
 
 	// wait for the tombstone written to rt2 to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
@@ -4139,37 +3898,22 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	docID := t.Name() + "rt2doc1"
 	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
 	// Active
 	rt1 := rest.NewRestTester(t, nil)
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: userDBURL(rt2, username),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -5940,28 +5684,18 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
 
-	// Build remoteDBURL with basic auth creds
-	remoteDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	// Add incorrect basic auth creds to target db URL
-	remoteDBURL.User = url.UserPassword("bob", "pass")
-
 	// Active
 	rt1 := rest.NewRestTester(t, nil)
 	defer rt1.Close()
 	ctx1 := rt1.Context()
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
 
 	id, err := base.GenerateRandomID()
 	require.NoError(t, err)
 	arConfig := db.ActiveReplicatorConfig{
-		ID:          id,
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: remoteDBURL,
+		ID:        id,
+		Direction: db.ActiveReplicatorTypePull,
+		// Add incorrect basic auth creds to target db URL
+		RemoteDBURL: userDBURL(rt2, "bob"),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -5970,7 +5704,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
 		TotalReconnectTimeout:    time.Second * 5,
-		ReplicationStatsMap:      dbstats,
+		ReplicationStatsMap:      dbReplicatorStats(t),
 		CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 	}
 
@@ -6372,21 +6106,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		}
 	}
 
-	compareDocRev := func(docRev, cmpRev string) (shouldRetry bool, err error, value interface{}) {
-		docGen, docHash := db.ParseRevID(base.TestCtx(t), docRev)
-		cmpGen, cmpHash := db.ParseRevID(base.TestCtx(t), cmpRev)
-		if docGen == cmpGen {
-			if docHash != cmpHash {
-				return false, fmt.Errorf("rev generations match but hashes are different: %v, %v", docRev, cmpRev), nil
-			}
-			return false, nil, docRev
-		}
-		return true, nil, nil
-	}
-
-	maxAttempts := 200
-	attemptSleepMs := 100
-
 	for _, test := range tombstoneTests {
 
 		t.Run(test.name, func(t *testing.T) {
@@ -6396,9 +6115,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			remotePassiveRT := rest.NewRestTester(t, nil)
 			defer remotePassiveRT.Close()
-
-			srv := httptest.NewServer(remotePassiveRT.TestAdminHandler())
-			defer srv.Close()
 
 			// Active
 			localActiveRT := rest.NewRestTester(t,
@@ -6410,7 +6126,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			replConf := `
 			{
 				"replication_id": "replication",
-				"remote": "` + srv.URL + `/db",
+				"remote": "` + adminDBURL(remotePassiveRT).String() + `",
 				"direction": "pushAndPull",
 				"continuous": true,
 				"collections_enabled": ` + strconv.FormatBool(!localActiveRT.GetDatabase().OnlyDefaultCollection()) + `
@@ -6428,54 +6144,22 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			const doc2ID = "docid2"
-			// Wait for document to arrive on the doc is was put on
-			err := localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				collection, ctx := localActiveRT.GetSingleTestDatabaseCollection()
-				doc, _ := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
-				if doc != nil {
-					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
-				}
-				return true, nil, nil
-			}, maxAttempts, attemptSleepMs)
-			assert.NoError(t, err)
-
-			// Wait for document to be replicated
-			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				collection, ctx := remotePassiveRT.GetSingleTestDatabaseCollection()
-				doc, _ := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
-				if doc != nil {
-					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
-				}
-				return true, nil, nil
-			}, maxAttempts, attemptSleepMs)
-			assert.NoError(t, err)
+			doc2Version := rest.DocVersion{RevID: "3-abc"}
+			localActiveRT.WaitForVersion(doc2ID, doc2Version)
+			remotePassiveRT.WaitForVersion(doc2ID, doc2Version)
 
 			// Stop the replication
-			_ = localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", "")
+			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
 			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
 
 			// Delete on the short branch and make another doc on the longer branch before deleting it
 			if test.longestBranchLocal {
 				// Delete doc on remote
-				resp = remotePassiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2?rev=3-abc", `{"_deleted": true}`)
-				rest.RequireStatus(t, resp, http.StatusCreated)
-
-				// Validate document revision created to prevent race conditions
-				err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-					collection, ctx := remotePassiveRT.GetSingleTestDatabaseCollection()
-					doc, docErr := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
-					if assert.NoError(t, docErr) {
-						if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "4-cc0337d9d38c8e5fc930ae3deda62bf8"); value != nil {
-							requireTombstone(t, remotePassiveRT.GetSingleDataStore(), doc2ID)
-						}
-						return
-					}
-					return true, nil, nil
-				}, maxAttempts, attemptSleepMs)
-				assert.NoError(t, err)
+				deletedVersion := remotePassiveRT.DeleteDoc(doc2ID, doc2Version)
+				require.Equal(t, "4-cc0337d9d38c8e5fc930ae3deda62bf8", deletedVersion.RevID)
 
 				// Create another rev and then delete doc on local - ie tree is longer
-				version := localActiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevID: "3-abc"}, `{"foo":"bar"}`)
+				version := localActiveRT.UpdateDoc(doc2ID, doc2Version, `{"foo":"bar"}`)
 				localActiveRT.DeleteDoc(doc2ID, version)
 
 				// Validate local is CBS tombstone, expect not found error
@@ -6484,22 +6168,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			} else {
 				// Delete doc on localActiveRT (active / local)
-				resp = localActiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2?rev=3-abc", `{"_deleted": true}`)
-				rest.RequireStatus(t, resp, http.StatusCreated)
-
-				// Validate document revision created to prevent race conditions
-				err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-					collection, ctx := localActiveRT.GetSingleTestDatabaseCollection()
-					doc, docErr := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
-					if assert.NoError(t, docErr) {
-						if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "4-cc0337d9d38c8e5fc930ae3deda62bf8"); value != nil {
-							requireTombstone(t, localActiveRT.GetSingleDataStore(), doc2ID)
-						}
-						return
-					}
-					return true, nil, nil
-				}, maxAttempts, attemptSleepMs)
-				assert.NoError(t, err)
+				deletedVersion := localActiveRT.DeleteDoc(doc2ID, doc2Version)
+				require.Equal(t, "4-cc0337d9d38c8e5fc930ae3deda62bf8", deletedVersion.RevID)
 
 				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
 				version := remotePassiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevID: "3-abc"}, `{"foo":"bar"}`)
@@ -6511,42 +6181,15 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			}
 
 			// Start up repl again
-			_ = localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", "")
+			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", ""), http.StatusOK)
 			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for the recently longest branch to show up on both sides
-			err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				collection, ctx := localActiveRT.GetSingleTestDatabaseCollection()
-				doc, docErr := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
-				if assert.NoError(t, docErr) {
-					if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "5-4a5f5a35196c37c117737afd5be1fc9b"); value != nil {
-						// Validate local is CBS tombstone, expect not found error
-						// Expect KeyNotFound error retrieving local tombstone post-replication
-						requireTombstone(t, localActiveRT.GetSingleDataStore(), doc2ID)
-					}
-					return
-				}
-				return true, nil, nil
-			}, maxAttempts, attemptSleepMs)
-			assert.NoError(t, err)
-
-			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				collection, ctx := remotePassiveRT.GetSingleTestDatabaseCollection()
-				doc, docErr := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
-				if assert.NoError(t, docErr) {
-					if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "5-4a5f5a35196c37c117737afd5be1fc9b"); value != nil {
-						// Validate remote is CBS tombstone
-						// Expect KeyNotFound error retrieving remote tombstone post-replication
-						requireTombstone(t, remotePassiveRT.GetSingleDataStore(), doc2ID)
-					}
-					return
-				}
-				return true, nil, nil
-			}, maxAttempts, attemptSleepMs)
-			assert.NoError(t, err)
+			localActiveRT.WaitForTombstone(doc2ID, rest.DocVersion{RevID: "5-4a5f5a35196c37c117737afd5be1fc9b"})
+			remotePassiveRT.WaitForTombstone(doc2ID, rest.DocVersion{RevID: "5-4a5f5a35196c37c117737afd5be1fc9b"})
 
 			// Stop the replication
-			_ = localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", "")
+			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
 			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
 
 			// Resurrect Doc
@@ -6555,28 +6198,26 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			if test.resurrectLocal {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on local
-					err = localActiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
+					err := localActiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					collection, ctx := localActiveRT.GetSingleTestDatabaseCollection()
 					// force on-demand import
 					_, getErr := collection.GetDocument(ctx, "docid2", db.DocUnmarshalSync)
-					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
+					require.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
-					resp = localActiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
-					rest.RequireStatus(t, resp, http.StatusCreated)
+					localActiveRT.PutDoc("docid2", `{"resurrection": true}`)
 				}
 			} else {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on remote
-					err = remotePassiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
+					err := remotePassiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					collection, ctx := remotePassiveRT.GetSingleTestDatabaseCollection()
 					_, getErr := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
-					resp = remotePassiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
-					rest.RequireStatus(t, resp, http.StatusCreated)
+					remotePassiveRT.PutDoc("docid2", `{"resurrection": true}`)
 				}
 			}
 
@@ -6596,7 +6237,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			}
 
 			// Start the replication
-			_ = localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", "")
+			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", ""), http.StatusOK)
 			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for doc to replicate from side resurrection was done on to the other side
@@ -6658,109 +6299,77 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			expectedRevID:    "4-232b1f34f6b9341c54435eaf5447d85d",
 		},
 	}
-
 	for _, test := range defaultConflictResolverWithTombstoneTests {
-		t.Run(test.name, func(tt *testing.T) {
-			// Passive
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		t.Run(test.name, func(t *testing.T) {
+			passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
 			})
 
-			defer rt2.Close()
+			defer passiveRT.Close()
 
 			username := "alice"
-			rt2.CreateUser(username, []string{username})
-
-			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-			srv := httptest.NewServer(rt2.TestPublicHandler())
-			defer srv.Close()
-
-			// Build passiveDBURL with basic auth creds
-			passiveDBURL, err := url.Parse(srv.URL + "/db")
-			require.NoError(t, err)
-			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+			passiveRT.CreateUser(username, []string{username})
 
 			// Active
-			rt1 := rest.NewRestTester(t, nil)
-			defer rt1.Close()
-			ctx1 := rt1.Context()
+			activeRT := rest.NewRestTester(t, nil)
+			defer activeRT.Close()
+			activeRTCtx := activeRT.Context()
 
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
-				ctx1, `function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
+				activeRTCtx, `function(conflict) { return defaultPolicy(conflict); }`, activeRT.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err, "Error creating custom conflict resolver")
-			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-			require.NoError(t, err)
-			dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-			require.NoError(t, err)
 
 			config := db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePushAndPull,
-				RemoteDBURL: passiveDBURL,
+				RemoteDBURL: userDBURL(passiveRT, username),
 				ActiveDB: &db.Database{
-					DatabaseContext: rt1.GetDatabase(),
+					DatabaseContext: activeRT.GetDatabase(),
 				},
 				Continuous:           true,
 				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  dbstats,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
+				ReplicationStatsMap:  dbReplicatorStats(t),
+				CollectionsEnabled:   !activeRT.GetDatabase().OnlyDefaultCollection(),
 			}
 
-			// Create the first revision of the document on rt1.
-			docID := t.Name() + "foo"
-			rt1VersionCreated := createDoc(rt1, docID, "foo")
+			docID := "doc"
+			// Create the first revision of the document on activeRT.
+			activeRTVersionCreated := createDoc(activeRT, docID, "foo")
 
 			// Create active replicator and start replication.
-			ar, err := db.NewActiveReplicator(ctx1, &config)
+			ar, err := db.NewActiveReplicator(activeRTCtx, &config)
 			require.NoError(t, err)
-			require.NoError(t, ar.Start(ctx1), "Error starting replication")
+			require.NoError(t, ar.Start(activeRTCtx), "Error starting replication")
 			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
-			// Wait for the original document revision written to rt1 to arrive at rt2.
-			rt2VersionIDCreated := rt1VersionCreated
-			require.NoError(t, rt2.WaitForCondition(func() bool {
-				collection, ctx := rt2.GetSingleTestDatabaseCollection()
-				doc, _ := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-				return doc != nil && len(doc.Body(ctx)) > 0
-			}))
-			requireVersion(rt2, docID, rt2VersionIDCreated)
+			// Wait for the original document revision written to activeRT to arrive at passiveRT.
+			passiveRT.WaitForVersion(docID, activeRTVersionCreated)
 
 			// Stop replication.
 			require.NoError(t, ar.Stop(), "Error stopping replication")
 
-			// Update the document on rt1 to build a revision history.
-			rt1VersionUpdated := updateDoc(rt1, docID, rt1VersionCreated, "bar")
+			// Update the document on activeRT to build a revision history.
+			activeRTVersionUpdated := updateDoc(activeRT, docID, activeRTVersionCreated, "bar")
 
-			// Tombstone the document on rt1 to mark the tip of the revision history for deletion.
-			rt1.DeleteDoc(docID, rt1VersionUpdated)
+			// Tombstone the document on activeRT to mark the tip of the revision history for deletion.
+			tombstoneVersion := activeRT.DeleteDoc(docID, activeRTVersionUpdated)
 
-			// Ensure that the tombstone revision is written to rt1 bucket with an empty body.
-			waitForTombstone(t, rt1, docID)
+			activeRT.WaitForTombstone(docID, tombstoneVersion)
 
-			// Update the document on rt2 with the specified body values.
-			rt2Version := rt1VersionCreated
+			// Update the document on passiveRT with the specified body values.
+			passiveRTVersion := activeRTVersionCreated
 			for _, bodyValue := range test.remoteBodyValues {
-				rt2Version = updateDoc(rt2, docID, rt2Version, bodyValue)
+				passiveRTVersion = updateDoc(passiveRT, docID, passiveRTVersion, bodyValue)
 			}
 
 			// Start replication.
-			require.NoError(t, ar.Start(ctx1), "Error starting replication")
-
+			require.NoError(t, ar.Start(activeRTCtx), "Error starting replication")
 			// Wait for default conflict resolution policy to be applied through replication and
-			// the winning revision to be written to both rt1 and rt2 buckets. Check whether the
+			// the winning revision to be written to both activeRT and passiveRT buckets. Check whether the
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
-			waitForTombstone(t, rt2, docID)
-			waitForTombstone(t, rt1, docID)
-
 			expectedVersion := rest.NewDocVersionFromFakeRev(test.expectedRevID)
-			requireVersion(rt2, docID, expectedVersion)
-			requireVersion(rt1, docID, expectedVersion)
-
-			// Ensure that the document body of the winning tombstone revision written to both
-			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
-			// revision via SDK should return a "key not found" error.
-			requireErrorKeyNotFound(t, rt2, docID)
-			requireErrorKeyNotFound(t, rt1, docID)
+			activeRT.WaitForTombstone(docID, expectedVersion)
+			passiveRT.WaitForTombstone(docID, expectedVersion)
 		})
 	}
 }
@@ -6827,15 +6436,6 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			username := "alice"
 			rt2.CreateUser(username, []string{username})
 
-			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-			srv := httptest.NewServer(rt2.TestPublicHandler())
-			defer srv.Close()
-
-			// Build passiveDBURL with basic auth creds
-			passiveDBURL, err := url.Parse(srv.URL + "/db")
-			require.NoError(t, err)
-			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
 			// Active
 			rt1 := rest.NewRestTester(t, nil)
 			defer rt1.Close()
@@ -6844,21 +6444,16 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
 				ctx1, `function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err, "Error creating custom conflict resolver")
-			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-			require.NoError(t, err)
-			dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-			require.NoError(t, err)
-
 			config := db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePushAndPull,
-				RemoteDBURL: passiveDBURL,
+				RemoteDBURL: userDBURL(rt2, username),
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
 				Continuous:           true,
 				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  dbstats,
+				ReplicationStatsMap:  dbReplicatorStats(t),
 				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
 			}
 
@@ -6872,14 +6467,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			require.NoError(t, ar.Start(ctx1), "Error starting replication")
 			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
-			// Wait for the original document revision written to rt2 to arrive at rt1.
-			rt1VersionCreated := rt2VersionCreated
-			require.NoError(t, rt1.WaitForCondition(func() bool {
-				collection, ctx := rt1.GetSingleTestDatabaseCollection()
-				doc, _ := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-				return doc != nil && len(doc.Body(ctx)) > 0
-			}))
-			requireVersion(rt1, docID, rt1VersionCreated)
+			rt1.WaitForVersion(docID, rt2VersionCreated)
 
 			// Stop replication.
 			require.NoError(t, ar.Stop(), "Error stopping replication")
@@ -6888,13 +6476,13 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			rt2VersionUpdated := updateDoc(rt2, docID, rt2VersionCreated, "bar")
 
 			// Tombstone the document on rt2 to mark the tip of the revision history for deletion.
-			rt2.DeleteDoc(docID, rt2VersionUpdated)
+			tombstoneVersion := rt2.DeleteDoc(docID, rt2VersionUpdated)
 
 			// Ensure that the tombstone revision is written to rt2 bucket with an empty body.
-			waitForTombstone(t, rt2, docID)
+			rt2.WaitForTombstone(docID, tombstoneVersion)
 
 			// Update the document on rt1 with the specified body values.
-			rt1Version := rt1VersionCreated
+			rt1Version := rt2VersionCreated
 			for _, bodyValue := range test.localBodyValues {
 				rt1Version = updateDoc(rt1, docID, rt1Version, bodyValue)
 			}
@@ -6905,24 +6493,10 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			// Wait for default conflict resolution policy to be applied through replication and
 			// the winning revision to be written to both rt1 and rt2 buckets. Check whether the
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
-			waitForTombstone(t, rt1, docID)
-			waitForTombstone(t, rt2, docID)
 
 			expectedVersion := rest.NewDocVersionFromFakeRev(test.expectedRevID)
-			requireVersion(rt1, docID, expectedVersion)
-			// Wait for conflict resolved doc (tombstone) to be pulled to passive bucket
-			// Then require it is the expected rev
-			require.NoError(t, rt2.WaitForCondition(func() bool {
-				collection, ctx := rt2.GetSingleTestDatabaseCollection()
-				doc, _ := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-				return doc != nil && doc.SyncData.CurrentRev == test.expectedRevID
-			}))
-
-			// Ensure that the document body of the winning tombstone revision written to both
-			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
-			// revision via SDK should return a "key not found" error.
-			requireErrorKeyNotFound(t, rt2, docID)
-			requireErrorKeyNotFound(t, rt1, docID)
+			rt1.WaitForTombstone(docID, expectedVersion)
+			rt2.WaitForTombstone(docID, expectedVersion)
 		})
 	}
 }
@@ -7167,27 +6741,16 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewTLSServer(rt2.TestAdminHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          "test",
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: adminDBURL(rt2),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          true,
 		InsecureSkipVerify:  true,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -7322,12 +6885,6 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	srv := httptest.NewServer(rt2.TestAdminHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
 	customConflictResolver, err := db.NewCustomConflictResolver(ctx1, `function(conflict){
 			var mutatedLocal = conflict.LocalDocument;
 			mutatedLocal.source = "merged";
@@ -7345,7 +6902,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: adminDBURL(rt2),
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -7357,12 +6914,9 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	resp := rt2.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
-	rest.RequireStatus(t, resp, http.StatusCreated)
+	rt2.PutDoc("doc", "{}")
 	rt2.WaitForPendingChanges()
-
-	resp = rt1.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"some_val": "val"}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+	rt1.PutDoc("doc", `{"some_val": "val"}`)
 	rt1.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
@@ -7388,10 +6942,8 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	// Passive //
-	passiveBucket := base.GetTestBucket(t)
 	passiveRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
-			CustomTestBucket: passiveBucket,
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					DeltaSync: &rest.DeltaSyncConfig{
@@ -7402,15 +6954,8 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 		})
 	defer passiveRT.Close()
 
-	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator.
-	srv := httptest.NewServer(passiveRT.TestAdminHandler())
-	defer srv.Close()
-
-	// Active //
-	activeBucket := base.GetTestBucket(t)
 	activeRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
-			CustomTestBucket: activeBucket,
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					DeltaSync: &rest.DeltaSyncConfig{
@@ -7427,24 +6972,17 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	activeRT.WaitForVersion("test", version)
 
 	// Set-up replicator //
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: adminDBURL(passiveRT),
 		ActiveDB: &db.Database{
 			DatabaseContext: activeRT.GetDatabase(),
 		},
 		Continuous:          true,
 		ChangesBatchSize:    1,
 		DeltasEnabled:       true,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -7455,31 +6993,11 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	passiveRT.WaitForVersion("test", version)
 
 	// Delete active document
-	deletedVersion := activeRT.DeleteDocReturnVersion("test", version)
+	deletedVersion := activeRT.DeleteDoc("test", version)
 
 	// Assert that the tombstone is replicated to passive
 	// Get revision 2 on passive peer to assert it has been (a) replicated and (b) deleted
-	var rawResponse *rest.TestResponse
-	err = passiveRT.WaitForCondition(func() bool {
-		rawResponse = passiveRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/test?rev="+deletedVersion.RevID, "")
-		return rawResponse.Code == http.StatusOK
-	})
-	require.NoError(t, err)
-
-	// assert we have deleted revision
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(rawResponse.BodyBytes(), &body))
-	assert.True(t, body[db.BodyDeleted].(bool))
-	// assert the prev body is no longer there
-	assert.Nil(t, body["field1"])
-	assert.Nil(t, body["field2"])
-
-	// Perform get on docID on passive peer and assert that we get 404 code
-	err = passiveRT.WaitForCondition(func() bool {
-		rawResponse = passiveRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/test", "")
-		return rawResponse.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
+	passiveRT.WaitForTombstone("test", deletedVersion)
 
 	// Resurrect tombstoned document
 	resurrectedVersion := activeRT.UpdateDoc("test", deletedVersion, `{"field2":"f2_2"}`)
@@ -7506,10 +7024,8 @@ func TestUnprocessableDeltas(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Passive //
-	passiveBucket := base.GetTestBucket(t)
 	passiveRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
-			CustomTestBucket: passiveBucket,
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					DeltaSync: &rest.DeltaSyncConfig{
@@ -7520,15 +7036,8 @@ func TestUnprocessableDeltas(t *testing.T) {
 		})
 	defer passiveRT.Close()
 
-	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator.
-	srv := httptest.NewServer(passiveRT.TestAdminHandler())
-	defer srv.Close()
-
-	// Active //
-	activeBucket := base.GetTestBucket(t)
 	activeRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
-			CustomTestBucket: activeBucket,
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					DeltaSync: &rest.DeltaSyncConfig{
@@ -7544,25 +7053,17 @@ func TestUnprocessableDeltas(t *testing.T) {
 	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
 	activeRT.WaitForVersion("test", version)
 
-	// Set-up replicator //
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: adminDBURL(passiveRT),
 		ActiveDB: &db.Database{
 			DatabaseContext: activeRT.GetDatabase(),
 		},
 		Continuous:          true,
 		ChangesBatchSize:    200,
 		DeltasEnabled:       true,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -7603,23 +7104,10 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Passive //
-	passiveBucket := base.GetTestBucket(t)
-	passiveRT := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			CustomTestBucket: passiveBucket,
-		})
+	passiveRT := rest.NewRestTester(t, nil)
 	defer passiveRT.Close()
 
-	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator
-	srv := httptest.NewServer(passiveRT.TestAdminHandler())
-	defer srv.Close()
-
-	// Active //
-	activeBucket := base.GetTestBucket(t)
-	activeRT := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			CustomTestBucket: activeBucket,
-		})
+	activeRT := rest.NewRestTester(t, nil)
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -7640,25 +7128,17 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
 	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevID), version2.RevID))
 	require.NoError(t, err)
-	// Set-up replicator //
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
 
 	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: adminDBURL(passiveRT),
 		ActiveDB: &db.Database{
 			DatabaseContext: activeRT.GetDatabase(),
 		},
 		Continuous:          false,
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		PurgeOnRemoval:      false,
 		Filter:              base.ByChannelFilter,
 		FilterChannels:      []string{"rev1chan"},
@@ -7678,15 +7158,9 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 func TestUnderscorePrefixSupport(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive //
 	passiveRT := rest.NewRestTester(t, nil)
 	defer passiveRT.Close()
 
-	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator
-	srv := httptest.NewServer(passiveRT.TestAdminHandler())
-	defer srv.Close()
-
-	// Active //
 	activeRT := rest.NewRestTester(t, nil)
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
@@ -7697,23 +7171,16 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	_ = activeRT.PutDoc(docID, rawDoc)
 
 	// Set-up replicator
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
+		RemoteDBURL: adminDBURL(passiveRT),
 		ActiveDB: &db.Database{
 			DatabaseContext: activeRT.GetDatabase(),
 		},
 		Continuous:          true,
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbstats,
+		ReplicationStatsMap: dbReplicatorStats(t),
 		PurgeOnRemoval:      false,
 		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
@@ -8006,11 +7473,7 @@ func TestGroupIDReplications(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	// Make rt listen on an actual HTTP port, so it can receive replications
-	srv := httptest.NewServer(rt.TestAdminHandler())
-	defer srv.Close()
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+	passiveDBURL := adminDBURL(rt)
 
 	// Start SG nodes for default group, group A and group B
 	groupIDs := []string{"", "GroupA", "GroupB"}
@@ -8048,7 +7511,6 @@ func TestGroupIDReplications(t *testing.T) {
 		resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", string(dbcJSON))
 		resp.RequireStatus(http.StatusCreated)
 	}
-
 	// Start replicators
 	for i, group := range groupIDs {
 		channelFilter := []string{"chan" + group}
@@ -8070,6 +7532,7 @@ func TestGroupIDReplications(t *testing.T) {
 	dataStore := activeBucket.DefaultDataStore()
 	keyspace := "/db/"
 	if !rt.GetDatabase().OnlyDefaultCollection() {
+		var err error
 		dataStore, err = activeBucket.GetNamedDataStore(0)
 		require.NoError(t, err)
 		keyspace = fmt.Sprintf("/db.%s.%s/", dataStore.ScopeName(), dataStore.CollectionName())
@@ -8111,13 +7574,10 @@ func TestAdhocReplicationStatus(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
-	srv := httptest.NewServer(rt.TestAdminHandler())
-	defer srv.Close()
-
 	replConf := `
 	{
 	  "replication_id": "pushandpull-with-target-oneshot-adhoc",
-	  "remote": "` + srv.URL + `/db",
+	  "remote": "` + adminDBURL(rt).String() + `",
 	  "direction": "pushAndPull",
 	  "adhoc": true,
 	  "collections_enabled": ` + strconv.FormatBool(!rt.GetDatabase().OnlyDefaultCollection()) + `
@@ -8128,11 +7588,9 @@ func TestAdhocReplicationStatus(t *testing.T) {
 
 	// With the error hitting the replicationStatus endpoint will either return running, if not completed, and once
 	// completed panics. With the fix after running it'll return a 404 as replication no longer exists.
-	stateError := rt.WaitForCondition(func() bool {
-		resp = rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/pushandpull-with-target-oneshot-adhoc", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, stateError)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, http.StatusNotFound, rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/pushandpull-with-target-oneshot-adhoc", "").Code)
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 // CBG-1046: Add ability to specify user for active peer in sg-replicate2
@@ -8421,11 +7879,6 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	url, err := url.Parse("http://example.com")
 	require.NoError(t, err)
 
@@ -8435,7 +7888,7 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 			Direction:           direction,
 			ActiveDB:            &db.Database{DatabaseContext: rt.GetDatabase()},
 			RemoteDBURL:         url,
-			ReplicationStatsMap: dbstats,
+			ReplicationStatsMap: dbReplicatorStats(t),
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "default collection is not configured")
@@ -8564,24 +8017,12 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 	username := "alice"
 	rt2.CreateUser(username, []string{username})
 
-	// construct remote URL to have _blipsync connect to
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
 	ar, err := db.NewActiveReplicator(base.TestCtx(t), &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePush,
 		ActiveDB:            &db.Database{DatabaseContext: rt1.GetDatabase()},
-		RemoteDBURL:         passiveDBURL,
-		ReplicationStatsMap: dbstats,
+		RemoteDBURL:         userDBURL(rt2, username),
+		ReplicationStatsMap: dbReplicatorStats(t),
 		Continuous:          true,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
@@ -8594,7 +8035,7 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 	// assert that the db context has been removed
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, 0, len(rt1.ServerContext().AllDatabases()))
-	}, time.Second*10, time.Millisecond*100)
+	}, time.Second*10, time.Millisecond*10)
 
 	// attempt to start active replicator, this will hit panic in CBG-4070 pre this work due to the bucket being nil
 	// on the active db context
@@ -8673,7 +8114,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 
 	username := "alice"
 	passiveRT.CreateUser(username, []string{"*"})
-	passiveDBURL := passiveDBURLForAlice(passiveRT, username)
+	passiveDBURL := userDBURL(passiveRT, username)
 	stats := dbReplicatorStats(t)
 	ar, err := db.NewActiveReplicator(activeRT.Context(), &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -8716,8 +8157,8 @@ func dbReplicatorStats(t *testing.T) *base.DbReplicatorStats {
 	return dbstats
 }
 
-// passiveDBURLForAlice creates a public server for the passive RT and returns the URL for the alice user, e.g. http://alice:password@localhost:1234/dbname
-func passiveDBURLForAlice(rt *rest.RestTester, username string) *url.URL {
+// userDBURL creates a public server for the passive RT and returns the URL for the given user, e.g. http://alice:password@localhost:1234/dbname. The webserver will be closed by testing.T.Cleanup.
+func userDBURL(rt *rest.RestTester, username string) *url.URL {
 	srv := httptest.NewServer(rt.TestPublicHandler())
 	rt.TB().Cleanup(srv.Close)
 
@@ -8729,6 +8170,16 @@ func passiveDBURLForAlice(rt *rest.RestTester, username string) *url.URL {
 	return passiveDBURL
 }
 
+// adminDBURL creates a admin server for RestTester returns the URL, e.g. http://localhost:1234/dbname. The webserver will be closed by testing.T.Cleanup.
+func adminDBURL(rt *rest.RestTester) *url.URL {
+	srv := httptest.NewServer(rt.TestAdminHandler())
+	rt.TB().Cleanup(srv.Close)
+
+	passiveDBURL, err := url.Parse(srv.URL + "/" + rt.GetDatabase().Name)
+	require.NoError(rt.TB(), err)
+
+	return passiveDBURL
+}
 func TestReplicationConfigUpdatedAt(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
