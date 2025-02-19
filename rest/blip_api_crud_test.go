@@ -2061,7 +2061,7 @@ func TestBlipClientSendDelete(t *testing.T) {
 
 		// delete doc and wait for deletion at rest tester
 		deleteVersion := btcRunner.DeleteRev(client.id, docID, &docVersion)
-		rt.WaitForTombstoneVersion(docID, deleteVersion)
+		rt.WaitForTombstone(docID, deleteVersion)
 	})
 }
 
@@ -2089,7 +2089,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 		assert.Equal(t, `{"test":true}`, string(rev))
 
 		// delete the doc and make sure the client still gets the tombstone replicated
-		deletedVersion := rt.DeleteDocReturnVersion(docID, version)
+		deletedVersion := rt.DeleteDoc(docID, version)
 
 		rev = btcRunner.WaitForVersion(btc.id, docID, deletedVersion)
 		assert.Equal(t, `{}`, string(rev))

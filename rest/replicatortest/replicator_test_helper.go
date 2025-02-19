@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Helper functions for SGR testing
@@ -72,31 +71,6 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 // requireDocumentVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func requireDocumentVersion(t testing.TB, expected rest.DocVersion, doc *db.Document) {
 	rest.RequireDocVersionEqual(t, expected, rest.DocVersion{RevID: doc.SyncData.CurrentRev})
-}
-
-// requireRevID asserts that the specified document version is written to the
-// underlying bucket backed by the given RestTester instance.
-func requireVersion(rt *rest.RestTester, docID string, version rest.DocVersion) {
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-	require.NoError(rt.TB(), err, "Error reading document from bucket")
-	requireDocumentVersion(rt.TB(), version, doc)
-}
-
-func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
-	_, err := rt.Bucket().DefaultDataStore().Get(docID, nil)
-	base.RequireDocNotFoundError(t, err)
-}
-
-// waitForTombstone waits until the specified tombstone revision is available
-// in the bucket backed by the specified RestTester instance.
-func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
-	rt.WaitForPendingChanges()
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	require.NoError(t, rt.WaitForCondition(func() bool {
-		doc, _ := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-		return doc.IsDeleted() && len(doc.Body(ctx)) == 0
-	}))
 }
 
 // createOrUpdateDoc creates a new document the specified document id, and body value in a channel named "alice".

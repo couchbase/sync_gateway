@@ -57,39 +57,51 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 }
 
 type boostrapResponse struct {
-	Body       string
-	Header     http.Header
-	t          *testing.T
-	StatusCode int
+	response *http.Response
+	url      string
+	Body     string
+	t        *testing.T
 }
 
+// StatusCode returns the status code of the response
+func (r *boostrapResponse) StatusCode() int {
+	return r.response.StatusCode
+}
+
+// AssertStatus asserts the status code of the response
 func (r *boostrapResponse) AssertStatus(status int) {
-	assert.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+	assert.Equal(r.t, status, r.response.StatusCode, "unexpected status code for %s - body: %s", r.url, r.Body)
 }
 
+// RequireStatus fails the test if the this response does not have the expected status code.
 func (r *boostrapResponse) RequireStatus(status int) {
-	require.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+	require.Equal(r.t, status, r.response.StatusCode, "unexpected status code for %s - body: %s", r.url, r.Body)
 }
 
+// AssertResponse asserts the status code and body of the response.
 func (r *boostrapResponse) AssertResponse(status int, body string) {
-	assert.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
-	assert.Equal(r.t, body, r.Body, "unexpected body")
+	assert.Equal(r.t, status, r.response.StatusCode, "unexpected status codefor %s - body: %s", r.url, r.Body)
+	assert.Equal(r.t, body, r.Body, "unexpected body for %s", r.url)
 }
 
+// RequireResponse fails the test if the this response does not have the expected status code or body.
 func (r *boostrapResponse) RequireResponse(status int, body string) {
-	require.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+	require.Equal(r.t, status, r.response.StatusCode, "unexpected status code - body: %s", r.Body)
 	require.Equal(r.t, body, r.Body, "unexpected body")
 }
 
+// Unmarshal unmarshals the response body into the given interface. Fails the test if unmarshalling fails.
 func (r *boostrapResponse) Unmarshal(v interface{}) {
 	err := base.JSONUnmarshal([]byte(r.Body), &v)
 	require.NoError(r.t, err, "Error unmarshalling bootstrap response body")
 }
 
+// BootstrapAdminRequest sends a request to the given server type, and returns the response.
 func BootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body string) boostrapResponse {
 	return doBootstrapAdminRequest(t, sc, method, path, body, nil)
 }
 
+// BootstrapAdminRequestWithHeaders sends a request to the given server type with custom headers, and returns the response.
 func BootstrapAdminRequestWithHeaders(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string) boostrapResponse {
 	return doBootstrapAdminRequest(t, sc, method, path, body, headers)
 }
@@ -123,10 +135,10 @@ func doBootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body
 	require.NoError(t, err)
 
 	return boostrapResponse{
-		t:          t,
-		StatusCode: resp.StatusCode,
-		Body:       string(rBody),
-		Header:     resp.Header,
+		response: resp,
+		t:        t,
+		url:      method + " " + url,
+		Body:     string(rBody),
 	}
 }
 
@@ -153,10 +165,10 @@ func doBootstrapRequest(t *testing.T, sc *ServerContext, method, path, body stri
 	require.NoError(t, err)
 
 	return boostrapResponse{
-		t:          t,
-		StatusCode: resp.StatusCode,
-		Body:       string(rBody),
-		Header:     resp.Header,
+		t:        t,
+		Body:     string(rBody),
+		url:      method + " " + url,
+		response: resp,
 	}
 }
 
