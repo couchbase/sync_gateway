@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -29,7 +30,7 @@ var metadataXattrNames = []string{base.VvXattrName, base.MouXattrName, base.Sync
 
 // CouchbaseServerPeer represents an instance of a backing server (bucket). This is rosmar unless SG_TEST_BACKING_STORE=couchbase is set.
 type CouchbaseServerPeer struct {
-	tb                 testing.TB
+	t                  atomic.Pointer[testing.T]
 	bucket             base.Bucket
 	sourceID           string
 	pullReplications   map[Peer]xdcr.Manager
@@ -94,12 +95,12 @@ func (p *CouchbaseServerPeer) String() string {
 
 // Context returns the context for the peer.
 func (p *CouchbaseServerPeer) Context() context.Context {
-	return base.TestCtx(p.tb)
+	return base.TestCtx(p.TB())
 }
 
 func (p *CouchbaseServerPeer) getCollection(dsName sgbucket.DataStoreName) sgbucket.DataStore {
 	collection, err := p.bucket.NamedDataStore(dsName)
-	require.NoError(p.tb, err)
+	require.NoError(p.TB(), err)
 	return collection
 }
 
@@ -115,15 +116,15 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 	// CBS1->CBS2: XDCR replication
 	// CBS2->CBS1: XDCR replication, creates a new _vv
 	cas, err := p.getCollection(dsName).WriteWithXattrs(p.Context(), docID, 0, 0, body, map[string][]byte{dummySystemXattr: []byte(`{"dummy": "xattr"}`)}, nil, nil)
-	require.NoError(p.tb, err)
+	require.NoError(p.TB(), err)
 	implicitHLV := db.NewHybridLogicalVector()
-	require.NoError(p.tb, implicitHLV.AddVersion(db.Version{SourceID: p.SourceID(), Value: cas}))
+	require.NoError(p.TB(), implicitHLV.AddVersion(db.Version{SourceID: p.SourceID(), Value: cas}))
 	docMetadata := DocMetadata{
 		DocID:       docID,
 		Cas:         cas,
 		ImplicitHLV: implicitHLV,
 	}
-	p.tb.Logf("%s: Created document %s with %#v", p, docID, docMetadata)
+	p.TB().Logf("%s: Created document %s with %#v", p, docID, docMetadata)
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -149,9 +150,9 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 		return doc, nil
 	}
 	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
-	require.NoError(p.tb, err)
+	require.NoError(p.TB(), err)
 	docMeta := getDocVersion(docID, p, cas, lastXattrs)
-	p.tb.Logf("%s: Wrote document %s with %#+v", p, docID, docMeta)
+	p.TB().Logf("%s: Wrote document %s with %#+v", p, docID, docMeta)
 	return BodyAndVersion{
 		docMeta:    docMeta,
 		body:       body,
@@ -169,9 +170,9 @@ func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docI
 		return sgbucket.UpdatedDoc{Doc: nil, IsTombstone: true, Xattrs: xattrs}, nil
 	}
 	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
-	require.NoError(p.tb, err)
+	require.NoError(p.TB(), err)
 	version := getDocVersion(docID, p, cas, lastXattrs)
-	p.tb.Logf("%s: Deleted document %s with %#+v", p, docID, version)
+	p.TB().Logf("%s: Deleted document %s with %#+v", p, docID, version)
 	return version
 }
 
@@ -179,21 +180,21 @@ func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docI
 func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
 	docBytes := p.waitForDocVersion(dsName, docID, expected, replications)
 	var body db.Body
-	require.NoError(p.tb, base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
+	require.NoError(p.TB(), base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
 	return body
 }
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseServerPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) {
 	docBytes := p.waitForDocVersion(dsName, docID, expected, replications)
-	require.Empty(p.tb, docBytes, "expected tombstone for docID %s, got %s. Replications:\n%s", docID, docBytes, replications.Stats())
+	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s. Replications:\n%s", docID, docBytes, replications.Stats())
 }
 
 // waitForDocVersion waits for a document to reach a specific version and returns the body in bytes. The bytes will be nil if the document is a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) []byte {
 	var docBytes []byte
 	var version DocMetadata
-	require.EventuallyWithT(p.tb, func(c *assert.CollectT) {
+	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var err error
 		var xattrs map[string][]byte
 		var cas uint64
@@ -210,10 +211,10 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 // Close will shut down the peer and close any active replications on the peer.
 func (p *CouchbaseServerPeer) Close() {
 	for _, r := range p.pullReplications {
-		assert.NoError(p.tb, r.Stop(p.Context()))
+		assert.NoError(p.TB(), r.Stop(p.Context()))
 	}
 	for _, r := range p.pushReplications {
-		assert.NoError(p.tb, r.Stop(p.Context()))
+		assert.NoError(p.TB(), r.Stop(p.Context()))
 	}
 }
 
@@ -237,37 +238,37 @@ func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerRep
 	case PeerReplicationDirectionPull:
 		_, ok := p.pullReplications[passivePeer]
 		if ok {
-			require.Fail(p.tb, fmt.Sprintf("pull replication already exists for %s-%s", p, passivePeer))
+			require.Fail(p.TB(), fmt.Sprintf("pull replication already exists for %s-%s", p, passivePeer))
 		}
 		r, err := xdcr.NewXDCR(p.Context(), passivePeer.GetBackingBucket(), p.bucket, xdcr.XDCROptions{Mobile: xdcr.MobileOn})
-		require.NoError(p.tb, err)
+		require.NoError(p.TB(), err)
 		p.pullReplications[passivePeer] = r
 		return &CouchbaseServerReplication{
 			activePeer:  p,
 			passivePeer: passivePeer,
 			direction:   config.direction,
-			t:           p.tb.(*testing.T),
+			t:           p.TB().(*testing.T),
 			ctx:         p.Context(),
 			manager:     r,
 		}
 	case PeerReplicationDirectionPush:
 		_, ok := p.pushReplications[passivePeer]
 		if ok {
-			require.Fail(p.tb, fmt.Sprintf("pull replication already exists for %s-%s", p, passivePeer))
+			require.Fail(p.TB(), fmt.Sprintf("pull replication already exists for %s-%s", p, passivePeer))
 		}
 		r, err := xdcr.NewXDCR(p.Context(), p.bucket, passivePeer.GetBackingBucket(), xdcr.XDCROptions{Mobile: xdcr.MobileOn})
-		require.NoError(p.tb, err)
+		require.NoError(p.TB(), err)
 		p.pushReplications[passivePeer] = r
 		return &CouchbaseServerReplication{
 			activePeer:  p,
 			passivePeer: passivePeer,
 			direction:   config.direction,
-			t:           p.tb.(*testing.T),
+			t:           p.TB().(*testing.T),
 			ctx:         p.Context(),
 			manager:     r,
 		}
 	default:
-		require.Fail(p.tb, fmt.Sprintf("unsupported replication direction %d for %s-%s", config.direction, p, passivePeer))
+		require.Fail(p.TB(), fmt.Sprintf("unsupported replication direction %d for %s-%s", config.direction, p, passivePeer))
 	}
 	return nil
 }
@@ -284,11 +285,11 @@ func (p *CouchbaseServerPeer) GetBackingBucket() base.Bucket {
 
 // TB returns the testing.TB for the peer.
 func (p *CouchbaseServerPeer) TB() testing.TB {
-	return p.tb
+	return p.t.Load()
 }
 
-func (p *CouchbaseServerPeer) UpdateTB(tb *testing.T) {
-	p.tb = tb
+func (p *CouchbaseServerPeer) UpdateTB(t *testing.T) {
+	p.t.Store(t)
 }
 
 // useImplicitHLV returns true if the document's HLV is not up to date and an HLV should be composed of current sourceID and cas.
