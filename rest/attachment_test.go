@@ -2673,7 +2673,8 @@ func TestCBLRevposHandling(t *testing.T) {
 }
 
 // Helper_Functions
-func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) {
+// CreateDocWithLegacyAttachment adds a document with a legacy attachment and returns the version of that document.
+func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) DocVersion {
 	// Write attachment directly to the datastore.
 	dataStore := rt.GetSingleDataStore()
 	_, err := dataStore.Add(attKey, 0, attBody)
@@ -2690,6 +2691,10 @@ func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, r
 	// Migrate document metadata from document body to system xattr.
 	attachments := retrieveAttachmentMeta(t, rt, docID)
 	require.Len(t, attachments, 1)
+	// this will do an on demand import
+	docVersion, _ := rt.GetDoc(docID)
+	rt.WaitForPendingChanges()
+	return docVersion
 }
 
 func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta map[string]interface{}) {
@@ -2703,9 +2708,9 @@ func rawDocWithAttachmentAndSyncMeta() []byte {
 	return []byte(`{
    "_sync": {
       "rev": "1-5fc93bd36377008f96fdae2719c174ed",
-      "sequence": 2,
+      "sequence": 1,
       "recent_sequences": [
-         2
+         1
       ],
       "history": {
          "revs": [
