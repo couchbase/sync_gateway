@@ -578,10 +578,9 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		version1 := CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDoc, attKey, attBody)
+		version1 := CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Confirm attachment is in the bucket
 		attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
@@ -630,10 +629,9 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
 		attName := "hi.txt"
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		version1 := CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDoc, attKey, attBody)
+		version1 := CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
 		dataStore := client1.rt.GetSingleDataStore()
