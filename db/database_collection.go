@@ -191,11 +191,6 @@ func (c *DatabaseCollection) oldRevExpirySeconds() uint32 {
 	return c.dbCtx.Options.OldRevExpirySeconds
 }
 
-// queryPaginationLimit limits the size of large queries. This is is controlled at a database level.
-func (c *DatabaseCollection) queryPaginationLimit() int {
-	return c.dbCtx.Options.QueryPaginationLimit
-}
-
 // ReloadUser the User object, in case its persistent properties have been changed. This code does not lock and is not safe to call from concurrent goroutines.
 func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 	if c.user == nil {
