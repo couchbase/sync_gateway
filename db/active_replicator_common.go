@@ -292,18 +292,16 @@ func (a *activeReplicatorCommon) _stop() {
 
 type ReplicatorCompleteFunc func()
 
-// _setError updates state and lastError, and
-// returns the error provided.  Expects callers to be holding
-// a.lock
-func (a *activeReplicatorCommon) setError(err error) (passThrough error) {
+// setError updates state to ReplicationStateError and sets the last error.
+func (a *activeReplicatorCommon) setError(err error) {
 	base.InfofCtx(a.ctx, base.KeyReplicate, "ActiveReplicator had error state set with err: %v", err)
 	a.stateErrorLock.Lock()
 	a.state = ReplicationStateError
 	a.lastError = err
 	a.stateErrorLock.Unlock()
-	return err
 }
 
+// setLastError updates the lastError field for the replicator without updating the replicator state.
 func (a *activeReplicatorCommon) setLastError(err error) {
 	a.stateErrorLock.Lock()
 	a.lastError = err

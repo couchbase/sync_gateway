@@ -54,10 +54,11 @@ func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 
 	err := apr._connect()
 	if err != nil {
-		_ = apr.setError(err)
+		apr.setError(err)
 		base.WarnfCtx(apr.ctx, "Couldn't connect: %v", err)
 		if errors.Is(err, fatalReplicatorConnectError) {
 			base.WarnfCtx(apr.ctx, "Stopping replication connection attempt")
+			defer apr.ctxCancel()
 		} else {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
 			apr.reconnectActive.Set(true)
@@ -190,7 +191,7 @@ func (apr *ActivePullReplicator) _initCheckpointer(remoteCheckpoints []replicati
 	err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
 		checkpointHash, hashErr := apr.config.CheckpointHash(c.collectionIdx)
 		if hashErr != nil {
-			return hashErr
+			return fmt.Errorf("%w: %w", fatalReplicatorConnectError, hashErr)
 		}
 
 		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.metadataStore, c.collectionDataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, c.collectionIdx)

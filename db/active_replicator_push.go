@@ -59,10 +59,11 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 
 	err := apr._connect()
 	if err != nil {
-		_ = apr.setError(err)
+		apr.setError(err)
 		base.WarnfCtx(apr.ctx, "Couldn't connect: %s", err)
 		if errors.Is(err, fatalReplicatorConnectError) {
 			base.WarnfCtx(apr.ctx, "Stopping replication connection attempt")
+			defer apr.ctxCancel()
 		} else {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
 			apr.reconnectActive.Set(true)
@@ -147,7 +148,7 @@ func (apr *ActivePushReplicator) _initCheckpointer(remoteCheckpoints []replicati
 	err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
 		checkpointHash, hashErr := apr.config.CheckpointHash(c.collectionIdx)
 		if hashErr != nil {
-			return hashErr
+			return fmt.Errorf("%w: %w", fatalReplicatorConnectError, hashErr)
 		}
 
 		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.metadataStore, c.collectionDataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, c.collectionIdx)
@@ -315,7 +316,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 	apr.blipSyncContext.fatalErrorCallback = func(err error) {
 		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
 			err = ErrUseProposeChanges
-			_ = apr.setError(PreHydrogenTargetAllowConflictsError)
+			apr.setError(PreHydrogenTargetAllowConflictsError)
 			err = apr.stopAndDisconnect()
 			if err != nil {
 				base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
@@ -347,7 +348,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 		if err != nil {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
 			bh.ctxCancelFunc()
-			_ = apr.setError(err)
+			apr.setError(err)
 			apr.publishStatus()
 			return
 		}
