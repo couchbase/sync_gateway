@@ -2455,7 +2455,8 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, db.ReplicationStateError, status.Status)
 	require.Equal(t, expectedErrMsg, status.ErrorMessage)
-	require.Equal(t, int64(1), ar.Push.GetStats().NumReconnectsAborted.Value())
+	// state is updated by the reconnect loop slightly before NumReconnectsAborted is set
+	base.RequireWaitForStat(t, ar.Push.GetStats().NumReconnectsAborted.Value, 1)
 	firstNumConnectAttempts := ar.Push.GetStats().NumConnectAttempts.Value()
 	require.GreaterOrEqual(t, firstNumConnectAttempts, int64(1))
 
