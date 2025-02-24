@@ -218,7 +218,7 @@ def test_log_redact_file(tmp_path):
         for line in input_log_lines:
             fh.write(line + "\n")
 
-    salt = b"AA"
+    salt = "AA"
     redactor = tasks.LogRedactor(salt, tmp_path)
     redacted_file = redactor.redact_file(log_file.name, log_file)
 

@@ -16,9 +16,9 @@ def test_parser():
 def test_parser_log_redaction_salt():
     parser = sgcollect_info.create_option_parser()
     options, _ = parser.parse_args(["--log-redaction-salt=a", "foo.zip"])
-    assert options.salt_value == b"a"
+    assert options.salt_value == "a"
 
     options, _ = parser.parse_args(["foo.zip"])
-    # assert this is bytes uuid4
-    assert isinstance(options.salt_value, bytes)
-    assert len(options.salt_value) == 16
+    # assert this is a str repr of uuid4
+    assert isinstance(options.salt_value, str)
+    assert len(options.salt_value) == 36

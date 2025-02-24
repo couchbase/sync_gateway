@@ -91,19 +91,6 @@ def delete_zip(filename):
         print("Zipfile ({0}) deletion failed: {1}".format(filename, e))
 
 
-def set_salt_value(
-    option: optparse.Option, opt: str, value: str, parser: optparse.OptionParser
-):
-    """
-    optparse callback to validate the salt value. Sets a string salt value as bytes.
-    """
-    if value is not None:
-        try:
-            parser.values.salt_value = value.encode("ascii")
-        except ValueError:
-            parser.error("Invalid UUID: {0}".format(value))
-
-
 def create_option_parser():
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
     parser.add_option(
@@ -148,10 +135,7 @@ def create_option_parser():
     parser.add_option(
         "--log-redaction-salt",
         dest="salt_value",
-        default=uuid.uuid4().bytes,
-        callback=set_salt_value,
-        action="callback",
-        type="string",
+        default=str(uuid.uuid4()),
         help="Is used to salt the hashing of tagged data, \
                             defaults to random uuid. If input by user it should \
                             be provided along with --log-redaction-level option",

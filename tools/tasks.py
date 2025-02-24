@@ -33,7 +33,7 @@ from typing import Callable, List, Optional, Union
 
 
 class LogRedactor:
-    def __init__(self, salt: bytes, tmpdir: Union[str, pathlib.Path]):
+    def __init__(self, salt: str, tmpdir: Union[str, pathlib.Path]):
         self.target_dir = os.path.join(tmpdir, "redacted")
         os.makedirs(self.target_dir)
 
@@ -70,8 +70,8 @@ class LogRedactor:
 
 
 class CouchbaseLogProcessor:
-    def __init__(self, salt):
-        self.salt = salt
+    def __init__(self, salt: str):
+        self.salt = salt.encode("ascii")
 
     def do(self, line: bytes) -> bytes:
         if b"RedactLevel" in line:
@@ -85,8 +85,8 @@ class CouchbaseLogProcessor:
 
 
 class RegularLogProcessor:
-    def __init__(self, salt: bytes):
-        self.salt = salt
+    def __init__(self, salt: str):
+        self.salt = salt.encode("ascii")
         self.rexes = [
             (re.compile(b"(<ud>)(.+?)(</ud>)"), self._redact_userdata),
             (re.compile(rb"(log-redaction-salt)(.+)"), self.redact_salt),
@@ -388,7 +388,7 @@ class TaskRunner(object):
                 % (task.description, command_to_print, sys.platform)
             )
 
-    def redact_and_zip(self, filename: str, log_type: str, salt: bytes, node: str):
+    def redact_and_zip(self, filename: str, log_type: str, salt: str, node: str):
         """
         Redacts all files defined by writing a copy into a temporary directory. Zips up the directory as filename.
 
