@@ -929,6 +929,11 @@ func (db *Database) ReloadUser(ctx context.Context) error {
 	}
 }
 
+// NextSequence returns the new sequence number.
+func (db *DatabaseContext) NextSequence(ctx context.Context) (uint64, error) {
+	return db.sequences.nextSequence(ctx)
+}
+
 // ////// ALL DOCUMENTS:
 
 type IDRevAndSequence struct {
