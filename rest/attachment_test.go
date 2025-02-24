@@ -2687,9 +2687,8 @@ func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta
 
 // rawDocWithAttachmentAndSyncMeta returns a raw document with an attachment and sync metadata inline. RestTester is used to determine the sequence for the document.
 func rawDocWithAttachmentAndSyncMeta(rt *RestTester) []byte {
-	latestSeq, err := rt.GetDatabase().LastSequence(rt.Context())
+	latestSeq, err := rt.GetDatabase().NextSequence(rt.Context())
 	require.NoError(rt.TB(), err)
-	docSeq := latestSeq + 1
 	return []byte(fmt.Sprintf(`{
    "_sync": {
       "rev": "1-5fc93bd36377008f96fdae2719c174ed",
@@ -2721,7 +2720,7 @@ func rawDocWithAttachmentAndSyncMeta(rt *RestTester) []byte {
       "time_saved": "2021-09-01T17:33:03.054227821Z"
    },
   "key": "value"
-}`, docSeq, docSeq))
+}`, latestSeq, latestSeq))
 }
 
 // attachmentHeaders returns the headers needed to store an attachment.
