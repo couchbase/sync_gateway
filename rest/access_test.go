@@ -909,6 +909,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", `function(doc) {access("alice", "beta");channel("beta");}`), http.StatusOK)
 	resyncStatus := rt.RunResync()
 	require.Equal(t, int64(9), resyncStatus.DocsChanged)
+	rt.TakeDbOnline()
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
 	changes, err = rt.WaitForChanges(len(expectedIDs), "/{{.keyspace}}/_changes", "alice", false)
 	assert.NoError(t, err, "Unexpected error")
