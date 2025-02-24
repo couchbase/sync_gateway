@@ -251,6 +251,17 @@ func (cd *clientDoc) getRev(version DocVersion) (*clientDocRev, error) {
 	return &rev, nil
 }
 
+// pruneVersion removes the given version from the document.
+func (cd *clientDoc) pruneVersion(t testing.TB, version DocVersion) {
+	cd.lock.Lock()
+	defer cd.lock.Unlock()
+	seq, ok := cd._seqsByVersions[version]
+	require.Less(t, seq, cd._latestSeq, "seq %d is the latest seq for doc %q, can not prune latest version", seq, cd.id)
+	require.True(t, ok, "version %v not found in seqsByVersions", version)
+	delete(cd._seqsByVersions, version)
+	delete(cd._revisionsBySeq, seq)
+}
+
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
@@ -894,15 +905,6 @@ func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIP
 	btcRunner.t.Run("revTree", func(t *testing.T) {
 		test(t, []string{db.CBMobileReplicationV3.SubprotocolString()})
 	})
-	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
-	if btcRunner.SkipVersionVectorInitialization {
-		return
-	}
-	btcRunner.t.Run("versionVector", func(t *testing.T) {
-		t.Skip("skip VV subtest on master")
-		// bump sub protocol version here and pass into test function pending CBG-3253
-		test(t, nil)
-	})
 }
 
 func (btc *BlipTesterClient) tearDownBlipClientReplications() {
@@ -924,18 +926,7 @@ func (btc *BlipTesterClient) createBlipTesterReplications() {
 			btc.initCollectionReplication(collection, i)
 		}
 	} else {
-		l := sync.RWMutex{}
-		ctx, ctxCancel := context.WithCancel(btc.rt.Context())
-		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
-			ctx:           ctx,
-			ctxCancel:     ctxCancel,
-			seqLock:       &l,
-			_seqStore:     make(map[clientSeq]*clientDoc),
-			_seqFromDocID: make(map[string]clientSeq),
-			_seqCond:      sync.NewCond(&l),
-			_attachments:  make(map[string][]byte),
-			parent:        btc,
-		}
+		btc.nonCollectionAwareClient = NewBlipTesterCollectionClient(btc)
 	}
 
 	btc.pullReplication.bt.avoidRestTesterClose = true
@@ -943,22 +934,9 @@ func (btc *BlipTesterClient) createBlipTesterReplications() {
 }
 
 func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) {
-	l := sync.RWMutex{}
-	ctx, ctxCancel := context.WithCancel(btc.rt.Context())
-	btcReplicator := &BlipTesterCollectionClient{
-		ctx:           ctx,
-		ctxCancel:     ctxCancel,
-		seqLock:       &l,
-		_seqStore:     make(map[clientSeq]*clientDoc),
-		_seqCond:      sync.NewCond(&l),
-		_seqFromDocID: make(map[string]clientSeq),
-		_attachments:  make(map[string][]byte),
-		parent:        btc,
-	}
-
+	btcReplicator := NewBlipTesterCollectionClient(btc)
 	btcReplicator.collection = collection
 	btcReplicator.collectionIdx = collectionIdx
-
 	btc.collectionClients[collectionIdx] = btcReplicator
 }
 
@@ -1251,6 +1229,24 @@ func (btc *BlipTesterCollectionClient) UnsubPullChanges() {
 	require.Empty(btc.TB(), response)
 }
 
+// NewBlipTesterCollectionClient creates a collection specific client from a BlipTesterClient
+func NewBlipTesterCollectionClient(btc *BlipTesterClient) *BlipTesterCollectionClient {
+	ctx, ctxCancel := context.WithCancel(btc.rt.Context())
+	l := sync.RWMutex{}
+	c := &BlipTesterCollectionClient{
+		ctx:           ctx,
+		ctxCancel:     ctxCancel,
+		seqLock:       &l,
+		_seqStore:     make(map[clientSeq]*clientDoc),
+		_seqFromDocID: make(map[string]clientSeq),
+		_seqCond:      sync.NewCond(&l),
+		_attachments:  make(map[string][]byte),
+		parent:        btc,
+	}
+	globalBlipTesterClients.add(btc.TB().Name())
+	return c
+}
+
 // Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterCollectionClient) Close() {
 	btc.ctxCancel()
@@ -1267,6 +1263,7 @@ func (btc *BlipTesterCollectionClient) Close() {
 	btc.attachmentsLock.Lock()
 	defer btc.attachmentsLock.Unlock()
 	btc._attachments = make(map[string][]byte, 0)
+	globalBlipTesterClients.remove(btc.TB(), btc.TB().Name())
 }
 
 func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) {
@@ -1417,10 +1414,6 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID string, parentVe
 
 	btc.updateLastReplicatedRev(docID, newRev.version)
 	return &newRev.version, nil
-}
-
-func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID string, parentVersion *DocVersion, body []byte) {
-	btc.upsertDoc(docID, parentVersion, body)
 }
 
 func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte) {
@@ -1660,10 +1653,6 @@ func (btcRunner *BlipTestClientRunner) saveAttachment(clientID uint32, attachmen
 	return btcRunner.SingleCollection(clientID).saveAttachment(attachmentData)
 }
 
-func (btcRunner *BlipTestClientRunner) StoreRevOnClient(clientID uint32, docID string, parentVersion *DocVersion, body []byte) {
-	btcRunner.SingleCollection(clientID).StoreRevOnClient(docID, parentVersion, body)
-}
-
 func (btcRunner *BlipTestClientRunner) PushRevWithHistory(clientID uint32, docID string, parentVersion *DocVersion, body []byte, revCount, prunedRevCount int) (*DocVersion, error) {
 	return btcRunner.SingleCollection(clientID).PushRevWithHistory(docID, parentVersion, body, revCount, prunedRevCount)
 }
@@ -1731,4 +1720,13 @@ func (btc *BlipTesterCollectionClient) sendPullMsg(msg *blip.Message) {
 func (btc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) {
 	btc.addCollectionProperty(msg)
 	btc.parent.pushReplication.sendMsg(msg)
+}
+
+// pruneVersion removes the given version from the specified doc. This is not allowed for the latest version of a document.
+func (btcc *BlipTesterCollectionClient) pruneVersion(docID string, version DocVersion) {
+	btcc.seqLock.Lock()
+	defer btcc.seqLock.Unlock()
+	doc, ok := btcc._getClientDoc(docID)
+	require.True(btcc.TB(), ok, "docID %q not found")
+	doc.pruneVersion(btcc.TB(), version)
 }

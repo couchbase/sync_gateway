@@ -3037,7 +3037,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Test performs import, not valid for non-xattr mode")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyCache, base.KeyChanges)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		syncFn := `function(doc) {
@@ -3145,7 +3145,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				// Validate that the latest client message for the requested doc/rev was a norev
 				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID)
-				require.True(t, ok)
+				require.True(t, ok, "All messages=#+v", btcRunner.SingleCollection(btc2.id).parent.pullReplication.GetMessages())
 				require.Equal(t, db.MessageNoRev, msg.Profile())
 
 			})
@@ -3165,6 +3165,7 @@ func TestBlipDatabaseClose(t *testing.T) {
 		const username = "alice"
 		rt.CreateUser(username, []string{"*"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		defer btc.Close()
 		var blipContextClosed atomic.Bool
 		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
 			log.Printf("on exit callback invoked")
@@ -3214,6 +3215,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 		const username = "alice"
 		rt.CreateUser(username, []string{"*"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		defer btc.Close()
 		var blipContextClosed atomic.Bool
 		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
 			blipContextClosed.Store(true)

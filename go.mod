@@ -4,13 +4,13 @@ go 1.23
 
 require (
 	dario.cat/mergo v1.0.0
-	github.com/KimMachineGun/automemlimit v0.7.0
+	github.com/KimMachineGun/automemlimit v0.7.1
 	github.com/coreos/go-oidc/v3 v3.12.0
 	github.com/couchbase/cbgt v1.3.10-0.20250128173458-04138cb9d33d
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20250130142438-e3a29100f703
-	github.com/couchbase/gocb/v2 v2.9.4-0.20250206113323-8ef6d9010511
-	github.com/couchbase/gocbcore/v10 v10.5.4-0.20250107135314-f4c4becdca29
+	github.com/couchbase/gocb/v2 v2.9.4
+	github.com/couchbase/gocbcore/v10 v10.5.4
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20241018143914-45ef51a0c1be
@@ -36,7 +36,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/crypto v0.33.0
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
-	golang.org/x/net v0.34.0
+	golang.org/x/net v0.35.0
 	golang.org/x/oauth2 v0.26.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )

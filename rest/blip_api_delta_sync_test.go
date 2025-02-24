@@ -786,7 +786,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // TestBlipDeltaSyncPush tests that a simple push replication handles deltas in EE,
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
-
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySGTest, base.KeySyncMsg, base.KeySync)
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
