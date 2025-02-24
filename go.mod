@@ -10,7 +10,7 @@ require (
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20250130142438-e3a29100f703
 	github.com/couchbase/gocb/v2 v2.9.4-0.20250206113323-8ef6d9010511
-	github.com/couchbase/gocbcore/v10 v10.5.4-0.20250107135314-f4c4becdca29
+	github.com/couchbase/gocbcore/v10 v10.5.4
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20241018143914-45ef51a0c1be
