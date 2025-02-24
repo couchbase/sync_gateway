@@ -251,6 +251,17 @@ func (cd *clientDoc) getRev(version DocVersion) (*clientDocRev, error) {
 	return &rev, nil
 }
 
+// pruneVersion removes the given version from the document.
+func (cd *clientDoc) pruneVersion(t testing.TB, version DocVersion) {
+	cd.lock.Lock()
+	defer cd.lock.Unlock()
+	seq, ok := cd._seqsByVersions[version]
+	require.Less(t, seq, cd._latestSeq, "seq %d is the latest seq for doc %q, can not prune latest version", seq, cd.id)
+	require.True(t, ok, "version %v not found in seqsByVersions", version)
+	delete(cd._seqsByVersions, version)
+	delete(cd._revisionsBySeq, seq)
+}
+
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
@@ -894,15 +905,6 @@ func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIP
 	btcRunner.t.Run("revTree", func(t *testing.T) {
 		test(t, []string{db.CBMobileReplicationV3.SubprotocolString()})
 	})
-	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
-	if btcRunner.SkipVersionVectorInitialization {
-		return
-	}
-	btcRunner.t.Run("versionVector", func(t *testing.T) {
-		t.Skip("skip VV subtest on master")
-		// bump sub protocol version here and pass into test function pending CBG-3253
-		test(t, nil)
-	})
 }
 
 func (btc *BlipTesterClient) tearDownBlipClientReplications() {
@@ -1412,10 +1414,6 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID string, parentVe
 	return &newRev.version, nil
 }
 
-func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID string, parentVersion *DocVersion, body []byte) {
-	btc.upsertDoc(docID, parentVersion, body)
-}
-
 func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte) {
 	if !bytes.Contains(inputBody, []byte(db.BodyAttachments)) {
 		return inputBody
@@ -1653,10 +1651,6 @@ func (btcRunner *BlipTestClientRunner) saveAttachment(clientID uint32, attachmen
 	return btcRunner.SingleCollection(clientID).saveAttachment(attachmentData)
 }
 
-func (btcRunner *BlipTestClientRunner) StoreRevOnClient(clientID uint32, docID string, parentVersion *DocVersion, body []byte) {
-	btcRunner.SingleCollection(clientID).StoreRevOnClient(docID, parentVersion, body)
-}
-
 func (btcRunner *BlipTestClientRunner) PushRevWithHistory(clientID uint32, docID string, parentVersion *DocVersion, body []byte, revCount, prunedRevCount int) (*DocVersion, error) {
 	return btcRunner.SingleCollection(clientID).PushRevWithHistory(docID, parentVersion, body, revCount, prunedRevCount)
 }
@@ -1730,4 +1724,13 @@ func (c *BlipTesterCollectionClient) lastSeq() clientSeq {
 	c.seqLock.RLock()
 	defer c.seqLock.RUnlock()
 	return c._seqLast
+}
+
+// pruneVersion removes the given version from the specified doc. This is not allowed for the latest version of a document.
+func (btcc *BlipTesterCollectionClient) pruneVersion(docID string, version DocVersion) {
+	btcc.seqLock.Lock()
+	defer btcc.seqLock.Unlock()
+	doc, ok := btcc._getClientDoc(docID)
+	require.True(btcc.TB(), ok, "docID %q not found")
+	doc.pruneVersion(btcc.TB(), version)
 }

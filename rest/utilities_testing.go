@@ -1686,7 +1686,6 @@ func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []stri
 	if len(revHistory) > 0 {
 		revRequest.Properties["history"] = strings.Join(revHistory, ",")
 	}
-
 	// Override any properties which have been supplied explicitly
 	for k, v := range properties {
 		revRequest.Properties[k] = v

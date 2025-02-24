@@ -1900,10 +1900,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Get the document and grab the revID.
 		version, _ := rt.GetDoc(docID)
@@ -1927,13 +1925,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID1, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID2, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Get revID of the first document.
 		version, _ := rt.GetDoc(docID1)
@@ -1966,10 +1962,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Get the document and grab the revID.
 		version, _ := rt.GetDoc(docID)
@@ -1993,27 +1987,21 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
+		doc1Version1 := CreateDocWithLegacyAttachment(t, rt, docID1, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
-
-		version, _ := rt.GetDoc(docID1)
+		doc2Version1 := CreateDocWithLegacyAttachment(t, rt, docID2, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Remove attachment from the first document via document update.
-		_ = rt.UpdateDoc(docID1, version, `{"prop":true}`)
+		_ = rt.UpdateDoc(docID1, doc1Version1, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
 
-		// Get revID of the second document.
-		version, _ = rt.GetDoc(docID2)
-
 		// Remove attachment from the second document via document update.
-		_ = rt.UpdateDoc(docID2, version, `{"prop":true}`)
+		_ = rt.UpdateDoc(docID2, doc2Version1, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2031,13 +2019,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
-
-		// Get the document.
-		_, _ = rt.GetDoc(docID)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Purge the entire document.
 		rt.PurgeDoc(docID)
@@ -2055,13 +2038,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID1, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID2, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Get the first document.
 		_, _ = rt.GetDoc(docID1)
@@ -2673,7 +2654,8 @@ func TestCBLRevposHandling(t *testing.T) {
 }
 
 // Helper_Functions
-func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) {
+// CreateDocWithLegacyAttachment adds a document with a legacy attachment and returns the version of that document.
+func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) DocVersion {
 	// Write attachment directly to the datastore.
 	dataStore := rt.GetSingleDataStore()
 	_, err := dataStore.Add(attKey, 0, attBody)
@@ -2690,6 +2672,10 @@ func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, r
 	// Migrate document metadata from document body to system xattr.
 	attachments := retrieveAttachmentMeta(t, rt, docID)
 	require.Len(t, attachments, 1)
+	// this will do an on demand import
+	docVersion, _ := rt.GetDoc(docID)
+	rt.WaitForPendingChanges()
+	return docVersion
 }
 
 func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta map[string]interface{}) {
@@ -2699,13 +2685,16 @@ func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta
 	return attachments
 }
 
-func rawDocWithAttachmentAndSyncMeta() []byte {
-	return []byte(`{
+// rawDocWithAttachmentAndSyncMeta returns a raw document with an attachment and sync metadata inline. RestTester is used to determine the sequence for the document.
+func rawDocWithAttachmentAndSyncMeta(rt *RestTester) []byte {
+	latestSeq, err := rt.GetDatabase().NextSequence(rt.Context())
+	require.NoError(rt.TB(), err)
+	return []byte(fmt.Sprintf(`{
    "_sync": {
       "rev": "1-5fc93bd36377008f96fdae2719c174ed",
-      "sequence": 2,
+      "sequence": %d,
       "recent_sequences": [
-         2
+         %d
       ],
       "history": {
          "revs": [
@@ -2731,7 +2720,7 @@ func rawDocWithAttachmentAndSyncMeta() []byte {
       "time_saved": "2021-09-01T17:33:03.054227821Z"
    },
   "key": "value"
-}`)
+}`, latestSeq, latestSeq))
 }
 
 // attachmentHeaders returns the headers needed to store an attachment.
