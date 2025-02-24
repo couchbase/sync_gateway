@@ -945,6 +945,29 @@ func (btc *BlipTesterClient) waitForReplicationMessage(collection *db.DatabaseCo
 	return btc.pushReplication.WaitForMessage(serialNumber + 1)
 }
 
+// getMostRecentChangesMessage returns the most recent non nil changes message received from the pull replication. This represents the latest set of changes.
+func (btc *BlipTesterClient) getMostRecentChangesMessage() *blip.Message {
+	var highestMsgSeq uint32
+	var highestSeqMsg *blip.Message
+	// Grab most recent changes message
+	for _, message := range btc.pullReplication.GetMessages() {
+		if message.Properties["Profile"] != db.MessageChanges {
+			continue
+		}
+		messageBody, err := message.Body()
+		require.NoError(btc.TB(), err)
+		if string(messageBody) == "null" {
+			continue
+		}
+		if highestMsgSeq >= uint32(message.SerialNumber()) {
+			continue
+		}
+		highestMsgSeq = uint32(message.SerialNumber())
+		highestSeqMsg = message
+	}
+	return highestSeqMsg
+}
+
 // SingleCollection returns a single collection blip tester if the RestTester database is configured with only one collection. Otherwise, throw a fatal test error.
 func (btcRunner *BlipTestClientRunner) SingleCollection(clientID uint32) *BlipTesterCollectionClient {
 	if btcRunner.clients[clientID].nonCollectionAwareClient != nil {
@@ -1531,15 +1554,15 @@ func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (ms
 }
 
 // GetMessages returns a copy of all messages stored in the Client keyed by serial number
-func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]blip.Message {
+func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]*blip.Message {
 	btr.messagesLock.RLock()
 	defer btr.messagesLock.RUnlock()
 
-	messages := make(map[blip.MessageNumber]blip.Message, len(btr.messages))
+	messages := make(map[blip.MessageNumber]*blip.Message, len(btr.messages))
 	for k, v := range btr.messages {
 		// Read the body before copying, since it might be read asynchronously
 		_, _ = v.Body()
-		messages[k] = *v
+		messages[k] = v
 	}
 
 	return messages
