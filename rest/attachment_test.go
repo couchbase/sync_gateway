@@ -2428,9 +2428,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		btcRunner.WaitForVersion(btc.id, docID, version)
 
 		// Add an attachment to client
-		btcRunner.AttachmentsLock(btc.id).Lock()
-		btcRunner.Attachments(btc.id)["sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="] = []byte("goodbye cruel world")
-		btcRunner.AttachmentsLock(btc.id).Unlock()
+		btcRunner.saveAttachment(btc.id, base64.StdEncoding.EncodeToString([]byte("goodbye cruel world")))
 
 		// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
 		updatedVersion, err := btcRunner.PushRevWithHistory(btc.id, docID, &version, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)

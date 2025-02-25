@@ -1948,7 +1948,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 				// one shot or else we'll carry on to send rev 2-... normally, and we can't assert correctly on the final state of the client
 				rt.WaitForPendingChanges()
-				btcRunner.StartOneshotPullFiltered(btc.id, replicationChannels)
+				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: replicationChannels, Continuous: false})
 
 				// block until we've written the update and got the new version to use in assertions
 				version2 := <-updatedVersion
@@ -2270,7 +2270,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
-		btcRunner.StartOneshotPullFiltered(btc.id, "A")
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: "A", Continuous: false})
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
@@ -2285,7 +2285,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		assert.Equal(t, markerID, changes.Results[1].ID)
 
-		btcRunner.StartOneshotPullFiltered(btc.id, "A")
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: "A", Continuous: false})
 		_ = btcRunner.WaitForVersion(btc.id, markerID, markerVersion)
 
 		messages := btc.pullReplication.GetMessages()
@@ -2879,7 +2879,7 @@ func TestRequestPlusPull(t *testing.T) {
 		caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 
 		// Start a regular one-shot pull
-		btcRunner.StartOneshotPullRequestPlus(client.id)
+		btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Continuous: true, RequestPlus: true})
 
 		// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
 		require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
