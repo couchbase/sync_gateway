@@ -16,9 +16,9 @@ import base64
 import glob
 import gzip
 import hashlib
-import io
 import optparse
 import os
+import pathlib
 import re
 import shutil
 import sys
@@ -29,20 +29,11 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-
-# The 'latin-1' encoding is being used since we can't guarantee that all bytes that will be
-# processed through sgcollect will be decodable from 'utf-8' (which is the default in Python)
-# and the decoder may fail if it encounters any such byte sequence whilst decoding byte strings.
-# The 'latin-1' encoding belongs to the ISO-8859 family and is capable of decoding any byte sequence.
-ENCODING_LATIN1 = "latin-1"
-
-# Error handler is being used to handle special cases on Windows platforms when the cp1252
-# encoding is  referred to as 'latin-1',  it does not map all possible byte values.
-BACKSLASH_REPLACE = "backslashreplace"
+from typing import Callable, List, Optional, Union
 
 
 class LogRedactor:
-    def __init__(self, salt, tmpdir):
+    def __init__(self, salt: str, tmpdir: Union[str, pathlib.Path]):
         self.target_dir = os.path.join(tmpdir, "redacted")
         os.makedirs(self.target_dir)
 
@@ -51,22 +42,16 @@ class LogRedactor:
 
     def _process_file(self, ifile, ofile, processor):
         try:
-            with open(
+            with get_open_fn(ifile)(
                 ifile,
-                "r",
-                newline="",
-                encoding=ENCODING_LATIN1,
-                errors=BACKSLASH_REPLACE,
+                "rb",
             ) as inp:
-                with open(
+                with get_open_fn(ofile)(
                     ofile,
-                    "w+",
-                    newline="",
-                    encoding=ENCODING_LATIN1,
-                    errors=BACKSLASH_REPLACE,
+                    "wb+",
                 ) as out:
                     # Write redaction header
-                    out.write(self.couchbase_log.do("RedactLevel"))
+                    out.write(self.couchbase_log.do(b"RedactLevel"))
                     for line in inp:
                         out.write(processor.do(line))
         except IOError as e:
@@ -79,55 +64,56 @@ class LogRedactor:
         return ofile
 
     def redact_string(self, istring):
-        ostring = self.couchbase_log.do("RedactLevel")
+        ostring = self.couchbase_log.do(b"RedactLevel")
         ostring += self.regular_log.do(istring)
         return ostring
 
 
 class CouchbaseLogProcessor:
-    def __init__(self, salt):
-        self.salt = salt
+    def __init__(self, salt: str):
+        self.salt = salt.encode("ascii")
 
-    def do(self, line):
-        if "RedactLevel" in line:
+    def do(self, line: bytes) -> bytes:
+        if b"RedactLevel" in line:
             # salt + salt to maintain consistency with other
             # occurrences of hashed salt in the logs.
-            return (
-                "RedactLevel:partial,HashOfSalt:%s\n"
-                % generate_hash(self.salt + self.salt).hexdigest()
-            )
+            return b"RedactLevel:partial,HashOfSalt:%b" % generate_hash(
+                self.salt + self.salt
+            ).hexdigest().encode("utf-8") + os.linesep.encode("ascii")
         else:
             return line
 
 
 class RegularLogProcessor:
-    rexes = [
-        re.compile("(<ud>)(.+?)(</ud>)"),
-        # Redact the rest of the line in the case we encounter
-        # log-redaction-salt. Needed to redact ps output containing sgcollect flags safely.
-        re.compile("(log-redaction-salt)(.+)"),
-    ]
+    def __init__(self, salt: str):
+        self.salt = salt.encode("ascii")
+        self.rexes = [
+            (re.compile(b"(<ud>)(.+?)(</ud>)"), self._redact_userdata),
+            (re.compile(rb"(log-redaction-salt)(.+)"), self.redact_salt),
+        ]
 
-    def __init__(self, salt):
-        self.salt = salt
-
-    def _hash(self, match):
+    def _redact_userdata(self, match: re.Match) -> bytes:
         result = match.group(1)
-        if match.lastindex == 3:
-            h = generate_hash(self.salt + match.group(2)).hexdigest()
-            result += h + match.group(3)
-        elif match.lastindex == 2:
-            result += " <redacted>"
+        h = generate_hash(self.salt + match.group(2)).hexdigest().encode("ascii")
+        result += h + match.group(3)
         return result
 
-    def do(self, line):
-        for rex in self.rexes:
-            line = rex.sub(self._hash, line)
+    def redact_salt(self, match: re.Match) -> bytes:
+        result = match.group(1)
+        result += b" <redacted>"
+        # on windows, make sure we don't lose the \r
+        if match.group(0).endswith(b"\r"):
+            result += b"\r"
+        return result
+
+    def do(self, line: bytes) -> bytes:
+        for rex, func in self.rexes:
+            line = rex.sub(func, line)
         return line
 
 
-def generate_hash(val):
-    return hashlib.sha1(val.encode())
+def generate_hash(val: bytes):
+    return hashlib.sha1(val)
 
 
 class AltExitC(object):
@@ -402,16 +388,20 @@ class TaskRunner(object):
                 % (task.description, command_to_print, sys.platform)
             )
 
-    def redact_and_zip(self, filename, log_type, salt, node):
+    def redact_and_zip(self, filename: str, log_type: str, salt: str, node: str):
+        """
+        Redacts all files defined by writing a copy into a temporary directory. Zips up the directory as filename.
+
+        :param filename: The name of the zip file to be created
+        :param log_type: Prefix for the name of the zipfile
+        :param salt: The salt to be used for redaction
+        :param node: Hostname
+        """
         files = []
         redactor = LogRedactor(salt, self.tmpdir)
 
         for name, fp in self.files.items():
-            if not (
-                ".gz" in name
-                or "expvars.json" in name
-                or os.path.basename(name) == "sync_gateway"
-            ):
+            if redactable_file(name):
                 files.append(redactor.redact_file(name, fp.name))
             else:
                 files.append(fp.name)
@@ -515,41 +505,9 @@ def make_curl_task(
     )
 
 
-def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
-    """
-    Adds the extracted contents of a file to the output zip
-
-    The content_postprocessors is a list of functions -- see make_curl_task
-    """
-
-    def python_add_file_task():
-        with gzip.open(sourcefile_path, "r") as infile:
-            contents = infile.read().decode("utf-8")
-            for content_postprocessor in content_postprocessors:
-                contents = content_postprocessor(contents)
-            redactor = LogRedactor(salt, tempfile.mkdtemp())
-            contents = redactor.redact_string(contents)
-
-        out = io.BytesIO()
-        with gzip.GzipFile(fileobj=out, mode="w") as f:
-            f.write(contents.encode())
-        return out.getvalue()
-
-    log_file = os.path.basename(sourcefile_path)
-
-    task = PythonTask(
-        description="Extracted contents of {0}".format(sourcefile_path),
-        callable=python_add_file_task,
-        log_file=log_file,
-        log_exception=False,
-    )
-
-    task.no_header = True
-
-    return task
-
-
-def add_file_task(sourcefile_path, content_postprocessors=[]):
+def add_file_task(
+    sourcefile_path, content_postprocessors: Optional[List[Callable]] = None
+) -> PythonTask:
     """
     Adds the contents of a file to the output zip
 
@@ -559,8 +517,9 @@ def add_file_task(sourcefile_path, content_postprocessors=[]):
     def python_add_file_task():
         with open(sourcefile_path, "br") as infile:
             contents = infile.read()
-            for content_postprocessor in content_postprocessors:
-                contents = content_postprocessor(contents)
+            if content_postprocessors:
+                for content_postprocessor in content_postprocessors:
+                    contents = content_postprocessor(contents)
             return contents
 
     task = PythonTask(
@@ -1372,3 +1331,23 @@ def exec_name(name):
     if sys.platform == "win32":
         name += ".exe"
     return name
+
+
+def redactable_file(filename: Union[pathlib.Path, str]) -> bool:
+    """
+    Return True if the file should be redacted, otherwise False.
+    """
+    filename = pathlib.Path(filename)
+    if filename.name.startswith(("pprof", "expvars.json")):
+        return False
+    return filename.stem != "sync_gateway"
+
+
+def get_open_fn(path: Union[pathlib.Path, str]) -> Callable:
+    """
+    Return open function for path. gzip.open if suffixed with .gz, else open.
+    """
+    path = pathlib.Path(path)
+    if path.suffix == ".gz":
+        return gzip.open
+    return open
