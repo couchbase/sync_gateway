@@ -1124,6 +1124,7 @@ func (btc *BlipTesterClient) createBlipTesterReplications() {
 			_seqCond:      sync.NewCond(&l),
 			_attachments:  make(map[string][]byte),
 			parent:        btc,
+			hlc:           btc.hlc,
 		}
 	}
 
