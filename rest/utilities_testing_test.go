@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -332,4 +333,50 @@ func TestRequest(t *testing.T) {
 		// invalid URL escape - should panic (with a prefix in message)
 		_ = Request(http.MethodGet, "%", "")
 	})
+}
+
+func TestHybridLogicalClockNowConcurrent(t *testing.T) {
+
+	hlc := NewHybridLogicalClock()
+
+	wg := sync.WaitGroup{}
+	wg.Add(100)
+	results := make(chan []int64)
+
+	for i := 0; i < 100; i++ {
+		go getTimestamps(&wg, results, hlc)
+	}
+
+	doneChan := make(chan struct{})
+	go func() {
+		wg.Wait()
+		doneChan <- struct{}{}
+	}()
+	allHLCTimestamps := make([]int64, 0, 10000)
+loop:
+	for {
+		select {
+		case timestamps := <-results:
+			allHLCTimestamps = append(allHLCTimestamps, timestamps...)
+		case <-doneChan:
+			break loop
+		}
+	}
+
+	timestampMap := make(map[int64]bool)
+	for _, timestamp := range allHLCTimestamps {
+		if _, ok := timestampMap[timestamp]; ok {
+			t.Fatalf("timestamp %d is not unique", timestamp)
+		}
+		timestampMap[timestamp] = true
+	}
+}
+
+func getTimestamps(wg *sync.WaitGroup, results chan []int64, hlc *hybridLogicalClock) {
+	defer wg.Done()
+	timestamps := make([]int64, 100)
+	for i := 0; i < 100; i++ {
+		timestamps[i] = hlc.Now()
+	}
+	results <- timestamps
 }
