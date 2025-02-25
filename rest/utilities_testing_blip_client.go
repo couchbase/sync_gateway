@@ -1588,7 +1588,6 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 
 	var docVersion DocVersion
 	if btc.UseHLV() {
-		// TODO: CBG-4440 Construct a HLC for Value - UnixNano is not accurate enough on Windows to generate unique values, and seq is not comparable across clients.
 		newVersion := db.Version{SourceID: btc.parent.SourceID, Value: uint64(btc.hlc.Now())}
 		require.NoError(btc.TB(), hlv.AddVersion(newVersion))
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
