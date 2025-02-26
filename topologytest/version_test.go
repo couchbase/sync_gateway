@@ -69,7 +69,7 @@ func DocMetadataFromDocument(doc *db.Document) DocMetadata {
 }
 
 func (v DocMetadata) GoString() string {
-	return fmt.Sprintf("DocMetadata{\nDocID:%s\n\tRevTreeID:%s\n\tHLV:%+v\n\tMou:%+v\n\tCas:%d\n\tImplicitHLV:%+v\n}", v.DocID, v.RevTreeID, v.HLV, v.Mou, v.Cas, v.ImplicitHLV)
+	return fmt.Sprintf("DocMetadata{\n\tDocID: %q,\n\tRevTreeID:%q,\n\tHLV:%+v,\n\tMou:%+v,\n\tCas:%d,\n\tImplicitHLV:%+v,\n}", v.DocID, v.RevTreeID, v.HLV, v.Mou, v.Cas, v.ImplicitHLV)
 }
 
 // DocMetadataFromDocVersion returns metadata DocVersion from the given document and version.

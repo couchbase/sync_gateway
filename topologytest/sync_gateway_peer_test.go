@@ -63,7 +63,11 @@ func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID strin
 	collection, ctx := p.getCollection(dsName)
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 	require.NoError(p.TB(), err)
-	return DocMetadataFromDocument(doc), doc.Body(ctx)
+	var body db.Body
+	if !doc.IsDeleted() {
+		body = doc.Body(ctx)
+	}
+	return DocMetadataFromDocument(doc), body
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
