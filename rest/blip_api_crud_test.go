@@ -2185,25 +2185,10 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docMarker, docMarkerVersion)
 
-		messages := btc.pullReplication.GetMessages()
-
-		var highestMsgSeq uint32
-		var highestSeqMsg blip.Message
-		// Grab most recent changes message
-		for _, message := range messages {
-			messageBody, err := message.Body()
-			require.NoError(t, err)
-			if message.Properties["Profile"] == db.MessageChanges && string(messageBody) != "null" {
-				if highestMsgSeq < uint32(message.SerialNumber()) {
-					highestMsgSeq = uint32(message.SerialNumber())
-					highestSeqMsg = message
-				}
-			}
-		}
+		changesMsg := btc.getMostRecentChangesMessage()
 
 		var messageBody []interface{}
-		err = highestSeqMsg.ReadJSONBody(&messageBody)
-		assert.NoError(t, err)
+		require.NoError(t, changesMsg.ReadJSONBody(&messageBody))
 		require.Len(t, messageBody, 3)
 		require.Len(t, messageBody[0], 4) // Rev 2 of doc, being sent as removal from channel A
 		require.Len(t, messageBody[1], 4) // Rev 3 of doc, being sent as removal from channel B
@@ -2288,25 +2273,9 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: "A", Continuous: false})
 		_ = btcRunner.WaitForVersion(btc.id, markerID, markerVersion)
 
-		messages := btc.pullReplication.GetMessages()
-
-		var highestMsgSeq uint32
-		var highestSeqMsg blip.Message
-		// Grab most recent changes message
-		for _, message := range messages {
-			messageBody, err := message.Body()
-			require.NoError(t, err)
-			if message.Properties["Profile"] == db.MessageChanges && string(messageBody) != "null" {
-				if highestMsgSeq < uint32(message.SerialNumber()) {
-					highestMsgSeq = uint32(message.SerialNumber())
-					highestSeqMsg = message
-				}
-			}
-		}
-
+		changesMsg := btc.getMostRecentChangesMessage()
 		var messageBody []interface{}
-		err = highestSeqMsg.ReadJSONBody(&messageBody)
-		assert.NoError(t, err)
+		require.NoError(t, changesMsg.ReadJSONBody(&messageBody))
 		require.Len(t, messageBody, 1)
 		require.Len(t, messageBody[0], 3) // marker doc
 		require.Equal(t, "docmarker", messageBody[0].([]interface{})[1])
