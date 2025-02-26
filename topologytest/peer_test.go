@@ -447,7 +447,6 @@ func TestPeerImplementation(t *testing.T) {
 			resurrectionVersion := peer.WriteDocument(collectionName, docID, resurrectionBody)
 			require.NotEmpty(t, resurrectionVersion.docMeta.CV(t))
 
-			// need to switch to a HLC so we can have unique versions even in the same timestamp window
 			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), deleteVersion.CV(t))
 			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), updateVersion.docMeta.CV(t))
 			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), createVersion.docMeta.CV(t))

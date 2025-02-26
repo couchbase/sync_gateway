@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -337,11 +338,11 @@ func TestRequest(t *testing.T) {
 
 func TestHybridLogicalClockNowConcurrent(t *testing.T) {
 
-	hlc := NewHybridLogicalClock()
+	hlc := rosmar.NewHybridLogicalClock(0)
 
 	wg := sync.WaitGroup{}
 	wg.Add(100)
-	results := make(chan []int64)
+	results := make(chan []rosmar.Timestamp)
 
 	for i := 0; i < 100; i++ {
 		go getTimestamps(&wg, results, hlc)
@@ -352,7 +353,7 @@ func TestHybridLogicalClockNowConcurrent(t *testing.T) {
 		wg.Wait()
 		doneChan <- struct{}{}
 	}()
-	allHLCTimestamps := make([]int64, 0, 10000)
+	allHLCTimestamps := make([]rosmar.Timestamp, 0, 10000)
 loop:
 	for {
 		select {
@@ -363,7 +364,7 @@ loop:
 		}
 	}
 
-	timestampMap := make(map[int64]bool)
+	timestampMap := make(map[rosmar.Timestamp]bool)
 	for _, timestamp := range allHLCTimestamps {
 		if _, ok := timestampMap[timestamp]; ok {
 			t.Fatalf("timestamp %d is not unique", timestamp)
@@ -372,9 +373,9 @@ loop:
 	}
 }
 
-func getTimestamps(wg *sync.WaitGroup, results chan []int64, hlc *hybridLogicalClock) {
+func getTimestamps(wg *sync.WaitGroup, results chan []rosmar.Timestamp, hlc *rosmar.HybridLogicalClock) {
 	defer wg.Done()
-	timestamps := make([]int64, 100)
+	timestamps := make([]rosmar.Timestamp, 100)
 	for i := 0; i < 100; i++ {
 		timestamps[i] = hlc.Now()
 	}

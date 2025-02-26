@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,29 +80,7 @@ type BlipTesterClient struct {
 	collectionClients        []*BlipTesterCollectionClient
 	nonCollectionAwareClient *BlipTesterCollectionClient
 
-	hlc *hybridLogicalClock
-}
-
-// hybridLogicalClock produces a UnixNano timestamp that will always be increasing regardless of clock changes.
-type hybridLogicalClock struct {
-	currentTime int64
-	mutex       sync.Mutex
-}
-
-func NewHybridLogicalClock() *hybridLogicalClock {
-	return &hybridLogicalClock{}
-}
-
-func (h *hybridLogicalClock) Now() int64 {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
-	wallClockTime := time.Now().UnixNano()
-	if wallClockTime <= h.currentTime {
-		h.currentTime++
-	} else {
-		h.currentTime = wallClockTime
-	}
-	return h.currentTime
+	hlc *rosmar.HybridLogicalClock
 }
 
 // getClientDocForSeq returns the clientDoc for the given sequence number, if it exists.
@@ -335,7 +314,7 @@ type BlipTesterCollectionClient struct {
 	attachmentsLock sync.RWMutex      // lock for _attachments map
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
 
-	hlc *hybridLogicalClock
+	hlc *rosmar.HybridLogicalClock
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
@@ -1043,7 +1022,7 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 		BlipTesterClientOpts: *opts,
 		rt:                   rt,
 		id:                   id.ID(),
-		hlc:                  NewHybridLogicalClock(),
+		hlc:                  rosmar.NewHybridLogicalClock(0),
 	}
 	btcRunner.clients[client.id] = client
 	client.createBlipTesterReplications()
