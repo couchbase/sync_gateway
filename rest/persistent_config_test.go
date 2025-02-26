@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1543,4 +1544,47 @@ func TestNonXattrConfigExistsDuringDBUpdate(t *testing.T) {
 	resp = rt.UpsertDbConfig("db1", dbConfig1)
 	RequireStatus(t, resp, http.StatusInternalServerError)
 	assert.Contains(t, resp.Body.String(), "Xattr Config Not Found")
+	allDbs := rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
+	invalDb := allDbs[0]
+	require.NotNil(t, invalDb.DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseInvalidXattrConfigError])
+}
+
+func TestNonXattrConfigExistsOnConfigPoll(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("CBS required for xattr persistence")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// large polling interval to ensure config polling doesn't interfere with test
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(10 * time.Minute)
+		},
+		DatabaseConfig: nil,
+		UseXattrConfig: true,
+	})
+	defer rt.Close()
+	dbConfig1 := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig1), http.StatusCreated)
+
+	// delete created registry
+	err := rt.CustomTestBucket.DefaultDataStore().Delete(base.SGRegistryKey)
+	require.NoError(t, err)
+
+	// create registry document in the bucket with no xattr config
+	_, err = rt.CustomTestBucket.DefaultDataStore().AddRaw(base.SGRegistryKey, 0, []byte("{}"))
+	require.NoError(t, err)
+
+	// force config reload
+	rt.ServerContext().ForceDbConfigsReload(t, base.TestCtx(t))
+
+	allDbs := rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
+	invalDb := allDbs[0]
+	require.NotNil(t, invalDb.DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseInvalidXattrConfigError])
 }

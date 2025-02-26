@@ -120,6 +120,93 @@ func TestConfigPersistence(t *testing.T) {
 
 }
 
+func TestConfigNotFoundErrorReporting(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+
+	sgCollection, ok := dataStore.(*Collection)
+	require.True(t, ok)
+
+	c := sgCollection.Collection
+
+	testCases := []struct {
+		name                  string
+		configPersistenceImpl ConfigPersistence
+		docKey                string
+	}{
+		{
+			name:                  "document body persistence",
+			configPersistenceImpl: &DocumentBootstrapPersistence{},
+			docKey:                "docBodyPersistence",
+		},
+		{
+			name:                  "xattr persistence",
+			configPersistenceImpl: &XattrBootstrapPersistence{},
+			docKey:                "docXattrPersistence",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			cp := testCase.configPersistenceImpl
+			configKey := testCase.docKey
+
+			// attempt to retrieve config that has never existed, validate not found
+			var config map[string]interface{}
+			_, loadErr := cp.loadConfig(ctx, c, configKey, &config)
+			require.Error(t, loadErr)
+			assert.Equal(t, ErrNotFound, loadErr)
+
+			// attempt with raw config
+			_, _, rawErr := cp.loadRawConfig(ctx, c, configKey)
+			require.Error(t, rawErr)
+			assert.Equal(t, ErrNotFound, loadErr)
+
+			// attempt to retrieve config that has been deleted (tombstone), validate not found
+			configBody := make(map[string]interface{})
+			configBody["sampleConfig"] = "value"
+			insertCAS, insertErr := cp.insertConfig(c, configKey, configBody)
+			require.NoError(t, insertErr)
+			_, removeErr := cp.removeRawConfig(c, configKey, gocb.Cas(insertCAS))
+			require.NoError(t, removeErr)
+
+			_, loadErr = cp.loadConfig(ctx, c, configKey, &config)
+			require.Error(t, loadErr)
+			assert.Equal(t, ErrNotFound, loadErr)
+
+			// attempt with raw config
+			_, _, rawErr = cp.loadRawConfig(ctx, c, configKey)
+			require.Error(t, rawErr)
+			assert.Equal(t, ErrNotFound, loadErr)
+
+			if testCase.name == "xattr persistence" {
+				// attempt to create config doc with no xattr defined, for xattr persistence will fail
+				_, err := c.Upsert(testCase.docKey, map[string]interface{}{"key": "value"}, nil)
+				require.NoError(t, err)
+				cfg := map[string]interface{}{}
+				_, loadErr = cp.loadConfig(ctx, c, testCase.docKey, &cfg)
+				require.Error(t, loadErr)
+				assert.Equal(t, ErrXattrConfigNotFound, loadErr)
+			} else {
+				// attempt to create config doc with no doc body defined, for in body persistence will not fail
+				_, err := c.Upsert(testCase.docKey, map[string]interface{}{}, nil)
+				require.NoError(t, err)
+				cfg := map[string]interface{}{}
+				_, loadErr = cp.loadConfig(ctx, c, testCase.docKey, &cfg)
+				require.NoError(t, loadErr)
+			}
+		})
+	}
+}
+
 func TestXattrConfigPersistence(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {

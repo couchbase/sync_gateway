@@ -407,13 +407,15 @@ func (d *invalidDatabaseConfigs) remove(dbname string) {
 }
 
 // removeNonExistingConfigs will remove any configs from invalid config tracking map that aren't present in fetched configs
-func (d *invalidDatabaseConfigs) removeNonExistingConfigs(fetchedConfigs map[string]bool) {
+func (d *invalidDatabaseConfigs) removeNonExistingConfigs(fetchedConfigs map[string]bool, corruptMetaMap map[string]struct{}) {
 	d.m.Lock()
 	defer d.m.Unlock()
 	for dbName := range d.dbNames {
 		if ok := fetchedConfigs[dbName]; !ok {
-			// this invalid db config was not found in config polling, so lets remove
-			delete(d.dbNames, dbName)
+			// this invalid db config was not found in config polling, remove if not associated with corrupt metadata in the bucket
+			if _, ok := corruptMetaMap[dbName]; !ok {
+				delete(d.dbNames, dbName)
+			}
 		}
 	}
 }
@@ -1833,6 +1835,25 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 	return true, &cnf, nil
 }
 
+func (sc *ServerContext) handleMultipleInvalidDatabaseConfigs(ctx context.Context, bucket string, corruptDbMap map[string]struct{}, databaseError *db.DatabaseError) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	//for bucket, dbNames := range corruptDbMap {
+	//	for _, dbName := range dbNames {
+	//		dbCnf := DatabaseConfig{}
+	//		dbCnf.Name = dbName
+	//		dbCnf.Bucket = &bucket
+	//		sc._handleInvalidDatabaseConfig(ctx, bucket, dbCnf, databaseError)
+	//	}
+	//}
+	for dbName, _ := range corruptDbMap {
+		dbCnf := DatabaseConfig{}
+		dbCnf.Name = dbName
+		dbCnf.Bucket = &bucket
+		sc._handleInvalidDatabaseConfig(ctx, bucket, dbCnf, databaseError)
+	}
+}
+
 func (sc *ServerContext) handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
@@ -1931,6 +1952,19 @@ func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
 	return buckets, nil
 }
 
+// getLoadedDbsForBucket returns a slice of database names associated with the bucket
+func (sc *ServerContext) getLoadedDbsForBucket(bucket string) map[string]struct{} {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	dbNamesForBucket := make(map[string]struct{})
+	for _, dbCtx := range sc.databases_ {
+		if dbCtx.Bucket.GetName() == bucket {
+			dbNamesForBucket[dbCtx.Name] = struct{}{}
+		}
+	}
+	return dbNamesForBucket
+}
+
 // FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 
@@ -1941,6 +1975,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 
 	allConfigsFound := make(map[string]bool)
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
+	corruptMetadataMap := make(map[string]struct{}) // db names with corrupt metadata in the bucket
 	for _, bucket := range buckets {
 		ctx := base.BucketNameCtx(ctx, bucket)
 		base.TracefCtx(ctx, base.KeyConfig, "Checking for configs for group %q", sc.Config.Bootstrap.ConfigGroupID)
@@ -1952,6 +1987,12 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 				base.WarnfCtx(ctx, "Unable to fetch configs for group %q on startup: %v", sc.Config.Bootstrap.ConfigGroupID, err)
 			} else {
 				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch configs for group %q: %v", sc.Config.Bootstrap.ConfigGroupID, err)
+				if errors.Is(err, base.ErrXattrConfigNotFound) {
+					// add db's associated with this bucket to the corrupt metadata tracking map
+					dbNames := sc.getLoadedDbsForBucket(bucket)
+					corruptMetadataMap = dbNames
+					sc.handleMultipleInvalidDatabaseConfigs(ctx, bucket, dbNames, db.NewDatabaseError(db.DatabaseInvalidXattrConfigError))
+				}
 			}
 			continue
 		}
@@ -1996,7 +2037,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 
 	// remove any invalid databases from the tracking map if config poll above didn't
 	// pick up that configs from the bucket. This means the config is no longer present in the bucket.
-	sc.invalidDatabaseConfigTracking.removeNonExistingConfigs(allConfigsFound)
+	sc.invalidDatabaseConfigTracking.removeNonExistingConfigs(allConfigsFound, corruptMetadataMap)
 
 	return fetchedConfigs, nil
 }

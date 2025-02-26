@@ -700,6 +700,19 @@ func (h *handler) handlePutDbConfig() (err error) {
 	})
 
 	if err != nil {
+		// handle the case where the xattr config is empty and the database is therefore in invalid state
+		if errors.Is(err, base.ErrXattrConfigNotFound) {
+			if dbCtx, ok := h.server.databases_[dbName]; ok {
+				base.WarnfCtx(h.ctx(), "Couldn't update config for database - empty xattr config found: %v", err)
+				// populate database error for error reporting and take the db offline, return early to not rollback config
+				dbCtx.DatabaseStartupError = db.NewDatabaseError(db.DatabaseInvalidXattrConfigError)
+				dbOfflineErr := dbCtx.TakeDbOffline(h.ctx(), "Empty xattr config found")
+				if dbOfflineErr != nil {
+					return dbOfflineErr
+				}
+				return err
+			}
+		}
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
 		// pass forceReload flag down stack to reset the cas to force the reload of the previous config from the bucket
