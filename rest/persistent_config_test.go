@@ -1587,4 +1587,20 @@ func TestNonXattrConfigExistsOnConfigPoll(t *testing.T) {
 	require.NotNil(t, invalDb.DatabaseError)
 	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
 	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseInvalidXattrConfigError])
+
+	// delete invalid config/db config from bucket
+	key := PersistentConfigKey(base.TestCtx(t), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1")
+	cas, err := rt.ServerContext().BootstrapContext.Connection.GetMetadataDocument(base.TestCtx(t), rt.CustomTestBucket.GetName(), key, nil)
+	require.NoError(t, err)
+	err = rt.ServerContext().BootstrapContext.Connection.DeleteMetadataDocument(base.TestCtx(t), rt.CustomTestBucket.GetName(), key, cas)
+	require.NoError(t, err)
+	err = rt.CustomTestBucket.DefaultDataStore().Delete(base.SGRegistryKey)
+	require.NoError(t, err)
+
+	// force config poll
+	rt.ServerContext().ForceDbConfigsReload(t, base.TestCtx(t))
+
+	// assert that the db is no longer present in the server context
+	allDbs = rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 0)
 }
