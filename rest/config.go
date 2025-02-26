@@ -1838,15 +1838,7 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 func (sc *ServerContext) handleMultipleInvalidDatabaseConfigs(ctx context.Context, bucket string, corruptDbMap map[string]struct{}, databaseError *db.DatabaseError) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	//for bucket, dbNames := range corruptDbMap {
-	//	for _, dbName := range dbNames {
-	//		dbCnf := DatabaseConfig{}
-	//		dbCnf.Name = dbName
-	//		dbCnf.Bucket = &bucket
-	//		sc._handleInvalidDatabaseConfig(ctx, bucket, dbCnf, databaseError)
-	//	}
-	//}
-	for dbName, _ := range corruptDbMap {
+	for dbName := range corruptDbMap {
 		dbCnf := DatabaseConfig{}
 		dbCnf.Name = dbName
 		dbCnf.Bucket = &bucket
