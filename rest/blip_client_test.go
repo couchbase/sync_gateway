@@ -1361,96 +1361,6 @@ func (btcc *BlipTesterCollectionClient) AddRev(docID string, parentVersion *DocV
 	return newRev.version
 }
 
-// PushUnsolicitedRev creates a revision on the client, and immediately sends a changes request for it. This is only intended for use when there is no push replication running.
-func (btcc *BlipTesterCollectionClient) PushUnsolicitedRev(docID string, parentRev *DocVersion, body []byte) (version *DocVersion, err error) {
-	return btcc.PushRevWithHistory(docID, parentRev, body, 1, 0)
-}
-
-// PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
-func (btcc *BlipTesterCollectionClient) PushRevWithHistory(docID string, parentVersion *DocVersion, body []byte, revCount, prunedRevCount int) (version *DocVersion, err error) {
-	ctx := base.DatabaseLogCtx(base.TestCtx(btcc.parent.rt.TB()), btcc.parent.rt.GetDatabase().Name, nil)
-	parentRevGen := parentVersion.RevIDGeneration()
-	revGen := parentRevGen + revCount + prunedRevCount
-
-	var revisionHistory []string
-	for i := revGen - 1; i > parentRevGen; i-- {
-		rev := fmt.Sprintf("%d-%s", i, "abc")
-		revisionHistory = append(revisionHistory, rev)
-	}
-
-	// Inline attachment processing
-	body = btcc.ProcessInlineAttachments(body, revGen)
-
-	var parentDocBody []byte
-	if parentVersion != nil {
-		doc, ok := btcc.getClientDoc(docID)
-		if !ok {
-			return nil, fmt.Errorf("doc %s not found in client", docID)
-		}
-		doc.lock.RLock()
-		parentDocBody = doc._revisionsBySeq[doc._seqsByVersions[*parentVersion]].body
-		doc.lock.RUnlock()
-	}
-
-	newRevID := fmt.Sprintf("%d-%s", revGen, "abc")
-	newRev := btcc.upsertDoc(docID, parentVersion, body)
-
-	// send a proposeChanges message with the single rev we just created on the client
-	proposeChangesRequest := blip.NewRequest()
-	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
-	var serverVersionComponent string
-	if parentVersion != nil {
-		serverVersionComponent = fmt.Sprintf(`,"%s"`, parentVersion.RevID)
-	}
-	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s"%s]]`, docID, newRevID, serverVersionComponent)))
-
-	btcc.addCollectionProperty(proposeChangesRequest)
-
-	btcc.sendPushMsg(proposeChangesRequest)
-
-	proposeChangesResponse := proposeChangesRequest.Response()
-	rspBody, err := proposeChangesResponse.Body()
-	require.NoError(btcc.TB(), err)
-	require.NotContains(btcc.TB(), proposeChangesResponse.Properties, "Error-Domain", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
-	require.NotContains(btcc.TB(), proposeChangesResponse.Properties, "Error-Code", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
-	require.Equal(btcc.TB(), "[]", string(rspBody))
-
-	// send msg rev with new doc
-	revRequest := blip.NewRequest()
-	revRequest.SetProfile(db.MessageRev)
-	revRequest.Properties[db.RevMessageID] = docID
-	revRequest.Properties[db.RevMessageRev] = newRevID
-	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
-
-	btcc.addCollectionProperty(revRequest)
-	if btcc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" && parentVersion != nil {
-		base.DebugfCtx(ctx, base.KeySync, "Sending deltas from test client from parent %v", parentVersion)
-		var parentDocJSON, newDocJSON db.Body
-		require.NoError(btcc.TB(), parentDocJSON.Unmarshal(parentDocBody))
-		require.NoError(btcc.TB(), newDocJSON.Unmarshal(body))
-		delta, err := base.Diff(parentDocJSON, newDocJSON)
-		require.NoError(btcc.TB(), err)
-		revRequest.Properties[db.RevMessageDeltaSrc] = parentVersion.RevID
-		body = delta
-	} else {
-		base.DebugfCtx(ctx, base.KeySync, "Not sending deltas from test client")
-	}
-
-	revRequest.SetBody(body)
-
-	btcc.sendPushMsg(revRequest)
-
-	revResponse := revRequest.Response()
-	rspBody, err = revResponse.Body()
-	require.NoError(btcc.TB(), err)
-	if revResponse.Type() == blip.ErrorType {
-		return nil, fmt.Errorf("error %s %s from revResponse: %s", revResponse.Properties["Error-Domain"], revResponse.Properties["Error-Code"], rspBody)
-	}
-
-	btcc.updateLastReplicatedRev(docID, newRev.version)
-	return &newRev.version, nil
-}
-
 func (btcc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte) {
 	if !bytes.Contains(inputBody, []byte(db.BodyAttachments)) {
 		return inputBody
@@ -1663,10 +1573,6 @@ func (btcRunner *BlipTestClientRunner) AddRev(clientID uint32, docID string, ver
 	return btcRunner.SingleCollection(clientID).AddRev(docID, version, body)
 }
 
-func (btcRunner *BlipTestClientRunner) PushUnsolicitedRev(clientID uint32, docID string, parentVersion *DocVersion, body []byte) (*DocVersion, error) {
-	return btcRunner.SingleCollection(clientID).PushUnsolicitedRev(docID, parentVersion, body)
-}
-
 func (btcRunner *BlipTestClientRunner) StartPullSince(clientID uint32, options BlipTesterPullOptions) {
 	btcRunner.SingleCollection(clientID).StartPullSince(options)
 }
@@ -1678,11 +1584,6 @@ func (btcRunner *BlipTestClientRunner) GetVersion(clientID uint32, docID string,
 // saveAttachment takes base64 encoded data and stores the attachment on the client.
 func (btcRunner *BlipTestClientRunner) saveAttachment(clientID uint32, attachmentData string) (int, string) {
 	return btcRunner.SingleCollection(clientID).saveAttachment(attachmentData)
-}
-
-// PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
-func (btcRunner *BlipTestClientRunner) PushRevWithHistory(clientID uint32, docID string, parentVersion *DocVersion, body []byte, revCount, prunedRevCount int) (*DocVersion, error) {
-	return btcRunner.SingleCollection(clientID).PushRevWithHistory(docID, parentVersion, body, revCount, prunedRevCount)
 }
 
 // UnsubPullChanges will send an UnsubChanges message to the server to stop the pull replication. Fails test harness if Sync Gateway responds with an error.
