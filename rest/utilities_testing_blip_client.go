@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,6 +79,8 @@ type BlipTesterClient struct {
 
 	collectionClients        []*BlipTesterCollectionClient
 	nonCollectionAwareClient *BlipTesterCollectionClient
+
+	hlc *rosmar.HybridLogicalClock
 }
 
 // getClientDocForSeq returns the clientDoc for the given sequence number, if it exists.
@@ -310,6 +313,8 @@ type BlipTesterCollectionClient struct {
 
 	attachmentsLock sync.RWMutex      // lock for _attachments map
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
+
+	hlc *rosmar.HybridLogicalClock
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
@@ -1017,6 +1022,7 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 		BlipTesterClientOpts: *opts,
 		rt:                   rt,
 		id:                   id.ID(),
+		hlc:                  rosmar.NewHybridLogicalClock(0),
 	}
 	btcRunner.clients[client.id] = client
 	client.createBlipTesterReplications()
@@ -1097,6 +1103,7 @@ func (btc *BlipTesterClient) createBlipTesterReplications() {
 			_seqCond:      sync.NewCond(&l),
 			_attachments:  make(map[string][]byte),
 			parent:        btc,
+			hlc:           btc.hlc,
 		}
 	}
 
@@ -1116,6 +1123,7 @@ func (btc *BlipTesterClient) initCollectionReplication(collection string, collec
 		_seqFromDocID: make(map[string]clientSeq),
 		_attachments:  make(map[string][]byte),
 		parent:        btc,
+		hlc:           btc.hlc,
 	}
 
 	btcReplicator.collection = collection
@@ -1560,8 +1568,7 @@ func (btc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *Do
 
 	var docVersion DocVersion
 	if btc.UseHLV() {
-		// TODO: CBG-4440 Construct a HLC for Value - UnixNano is not accurate enough on Windows to generate unique values, and seq is not comparable across clients.
-		newVersion := db.Version{SourceID: btc.parent.SourceID, Value: uint64(time.Now().UnixNano())}
+		newVersion := db.Version{SourceID: btc.parent.SourceID, Value: uint64(btc.hlc.Now())}
 		require.NoError(btc.TB(), hlv.AddVersion(newVersion))
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
 	} else {

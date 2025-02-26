@@ -76,8 +76,8 @@ github.com/couchbaselabs/gocbconnstr v1.0.5 h1:e0JokB5qbcz7rfnxEhNRTKz8q1svoRvDo
 github.com/couchbaselabs/gocbconnstr v1.0.5/go.mod h1:KV3fnIKMi8/AzX0O9zOrO9rofEqrRF1d2rG7qqjxC7o=
 github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20240607131231-fb385523de28 h1:lhGOw8rNG6RAadmmaJAF3PJ7MNt7rFuWG7BHCYMgnGE=
 github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20240607131231-fb385523de28/go.mod h1:o7T431UOfFVHDNvMBUmUxpHnhivwv7BziUao/nMl81E=
-github.com/couchbaselabs/rosmar v0.0.0-20250219003541-c8f724802783 h1:V6N77//HHB1ypgaD0iuvZuSMz7tkeB7LSvSUbXtL/6c=
-github.com/couchbaselabs/rosmar v0.0.0-20250219003541-c8f724802783/go.mod h1:suZBurj14d2YtLOW8pBc8mjQN8MhPFHHgPbqX1fDDlE=
+github.com/couchbaselabs/rosmar v0.0.0-20250226134616-3b9ac157a3cd h1:kW8rCwAesoUTaTPu/wK5/XhcAAncKKir5zdj0eeHOpE=
+github.com/couchbaselabs/rosmar v0.0.0-20250226134616-3b9ac157a3cd/go.mod h1:suZBurj14d2YtLOW8pBc8mjQN8MhPFHHgPbqX1fDDlE=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

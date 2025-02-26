@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"iter"
 	"maps"
-	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -447,13 +446,11 @@ func TestPeerImplementation(t *testing.T) {
 			resurrectionBody := []byte(`{"op": "resurrection"}`)
 			resurrectionVersion := peer.WriteDocument(collectionName, docID, resurrectionBody)
 			require.NotEmpty(t, resurrectionVersion.docMeta.CV(t))
-			// FIXME: CBG-4440 - Windows timestamp resolution not good enough for this test
-			if runtime.GOOS != "windows" {
-				// need to switch to a HLC so we can have unique versions even in the same timestamp window
-				require.NotEqual(t, resurrectionVersion.docMeta.CV(t), deleteVersion.CV(t))
-				require.NotEqual(t, resurrectionVersion.docMeta.CV(t), updateVersion.docMeta.CV(t))
-				require.NotEqual(t, resurrectionVersion.docMeta.CV(t), createVersion.docMeta.CV(t))
-			}
+
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), deleteVersion.CV(t))
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), updateVersion.docMeta.CV(t))
+			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), createVersion.docMeta.CV(t))
+
 			if tc.peerOption.Type == PeerTypeSyncGateway {
 				require.NotEmpty(t, resurrectionVersion.docMeta.RevTreeID)
 				require.NotEqual(t, resurrectionVersion.docMeta.RevTreeID, createVersion.docMeta.RevTreeID)
