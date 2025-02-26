@@ -3079,7 +3079,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		for i, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
 				docID := fmt.Sprintf("doc%d_%s,", i, testCase.name)
-				markerDoc := fmt.Sprintf("markerDoc%d_%s", i, testCase.name)
 				validBody := fmt.Sprintf(`{"foo":"bar", "channel":%q}`, testCase.channel)
 				username := fmt.Sprintf("user_%d", i)
 
@@ -3096,8 +3095,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.updatedBody)
 				require.NoError(t, err)
 
-				markerDocBody := fmt.Sprintf(`{"channel":%q}`, testCase.channel)
-				_ = rt.PutDoc(markerDoc, markerDocBody)
 				rt.WaitForPendingChanges()
 				rt.GetDatabase().FlushRevisionCacheForTest()
 
@@ -3110,13 +3107,8 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				btcRunner.StartOneshotPull(btc2.id)
 
-				btcRunner.WaitForDoc(btc2.id, markerDoc)
-
-				// Validate that the latest client message for the requested doc/rev was a norev
-				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID)
-				require.True(t, ok, "All messages=#+v", btcRunner.SingleCollection(btc2.id).parent.pullReplication.GetMessages())
+				msg := btcRunner.WaitForBlipRevMessage(btc2.id, docID, revID)
 				require.Equal(t, db.MessageNoRev, msg.Profile())
-
 			})
 		}
 	})
