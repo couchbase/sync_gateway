@@ -1138,7 +1138,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				currentBucketDoc = currentDoc
 			}
 		}
-		// updatedRevPos is the revpos of the new revision, to be added to attachment metadata if needed for CBL<4.0 compatibility. revpos is not used
+		// updatedRevPos is the revpos of the new revision, to be added to attachment metadata if needed for CBL<4.0 compatibility. revpos is no longer used by Sync Gateway.
 		updatedRevPos, _ := ParseRevID(bh.loggingCtx, revID)
 
 		// currentDigests is a map from attachment name to the current bucket doc digest,
