@@ -108,6 +108,10 @@ func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb
 		xattrContErr := res.ContentAt(0, &rawValue)
 		if xattrContErr != nil {
 			DebugfCtx(ctx, KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
+			// StatusSubDocBadMulti returned if xattr doesn't exist
+			if isKVError(xattrContErr, memd.StatusSubDocBadMulti) {
+				return rawValue, 0, ErrXattrConfigNotFound
+			}
 			return rawValue, 0, ErrNotFound
 		}
 		return rawValue, res.Cas(), nil
@@ -182,6 +186,10 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 		xattrContErr := res.ContentAt(0, valuePtr)
 		if xattrContErr != nil {
 			DebugfCtx(ctx, KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
+			// StatusSubDocBadMulti returned if xattr doesn't exist
+			if isKVError(xattrContErr, memd.StatusSubDocBadMulti) {
+				return 0, ErrXattrConfigNotFound
+			}
 			return 0, ErrNotFound
 		}
 		casOut := res.Cas()
