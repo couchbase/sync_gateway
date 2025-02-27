@@ -1032,19 +1032,18 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 	revRequest.Properties[db.RevMessageRev] = change.version.RevID
 	revRequest.Properties[db.RevMessageHistory] = change.historyStr()
 
-	docBody, deltaBody, deltaVersion := btcc.getBodyAndDeltas(change.docID, change.version, change.latestServerVersion)
-
+	var deltaVersion *DocVersion
+	var docBody []byte
+	if deltasSupported {
+		docBody, deltaVersion = btcc.getDeltaBody(change.docID, change.version, change.latestServerVersion)
+	} else {
+		docBody = btcc.getBodyBytes(change.docID, change.version)
+	}
 	if deltasSupported && deltaVersion != nil {
 		base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version as deltaSrc for doc %s = %v", change.docID, deltaVersion)
 		revRequest.Properties[db.RevMessageDeltaSrc] = deltaVersion.RevID
-		var newBodyUnmarshalled db.Body
-		require.NoError(btcc.TB(), newBodyUnmarshalled.Unmarshal(docBody))
-		delta, err := base.Diff(deltaBody, newBodyUnmarshalled)
-		require.NoError(btcc.TB(), err)
-		revRequest.SetBody(delta)
-	} else {
-		revRequest.SetBody(docBody)
 	}
+	revRequest.SetBody(docBody)
 
 	btcc.addCollectionProperty(revRequest)
 	btcc.sendPushMsg(revRequest)
@@ -1327,17 +1326,23 @@ func (btcc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion 
 
 // getBody returns the body for a specific revision. This will fail the test harness if not present.
 func (btcc *BlipTesterCollectionClient) getBody(docID string, version DocVersion) db.Body {
+	rawDoc := btcc.getBodyBytes(docID, version)
+	var body db.Body
+	require.NoError(btcc.TB(), body.Unmarshal(rawDoc))
+	return body
+}
+
+// getBody returns the body for a specific revision. This will fail the test harness if not present.
+func (btcc *BlipTesterCollectionClient) getBodyBytes(docID string, version DocVersion) []byte {
 	btcc.seqLock.RLock()
 	defer btcc.seqLock.RUnlock()
 	doc, ok := btcc._getClientDoc(docID)
 	require.True(btcc.TB(), ok, "docID %q not found", docID)
-	var body db.Body
-	require.NoError(btcc.TB(), body.Unmarshal(doc._getRev(btcc.TB(), version).body))
-	return body
+	return doc._getRev(btcc.TB(), version).body
 }
 
-// getBodyAndDeltas returns the body and delta from version to serverVersion. If serverVersion was a tombstone, do not return delta. This will fail the test harness if not present.
-func (btcc *BlipTesterCollectionClient) getBodyAndDeltas(docID string, version DocVersion, serverVersion DocVersion) (body []byte, deltaBody db.Body, parentVersion *DocVersion) {
+// getDeltaBody returns the body of the given docID at a given version. If the serverVersion is available locally and not a tombstone, create the body as a delta. If there is no version available to make a delta, the parentVerison will be nil and the full body of the document at the version will be returned.
+func (btcc *BlipTesterCollectionClient) getDeltaBody(docID string, version DocVersion, serverVersion DocVersion) (body []byte, parentVersion *DocVersion) {
 	btcc.seqLock.RLock()
 	defer btcc.seqLock.RUnlock()
 	doc, ok := btcc._getClientDoc(docID)
@@ -1345,10 +1350,16 @@ func (btcc *BlipTesterCollectionClient) getBodyAndDeltas(docID string, version D
 	rev := doc._getRev(btcc.TB(), version)
 	serverRev, ok := doc._revisionsBySeq[doc._seqsByVersions[serverVersion]]
 	if !ok || serverRev.isDelete {
-		return rev.body, nil, nil
+		return rev.body, nil
 	}
+	var deltaBody db.Body
 	require.NoError(btcc.TB(), deltaBody.Unmarshal(serverRev.body), "serverRev=%+v", serverRev)
-	return rev.body, deltaBody, &serverRev.version
+	var newBodyUnmarshalled db.Body
+	require.NoError(btcc.TB(), newBodyUnmarshalled.Unmarshal(rev.body))
+	delta, err := base.Diff(deltaBody, newBodyUnmarshalled)
+	require.NoError(btcc.TB(), err)
+
+	return delta, &serverRev.version
 }
 
 // GetDoc returns a rev stored in the Client under the given docID.  (if multiple revs are present, rev body returned is non-deterministic)
@@ -1390,7 +1401,7 @@ func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (ms
 	return nil, false
 }
 
-// GetMessages returns a copy of all messages stored in the Client keyed by serial number
+// GetMessages returns a map of all messages stored in the Client keyed by serial number. These messages are mutable, but the response of the messages has been received so they should be effectively immutable.
 func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]*blip.Message {
 	btr.messagesLock.RLock()
 	defer btr.messagesLock.RUnlock()
