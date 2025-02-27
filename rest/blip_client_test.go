@@ -1208,7 +1208,6 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) {
 func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *DocVersion, body []byte) *clientDocRev {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
-	newSeq := btcc._nextSequence()
 	oldSeq, ok := btcc._seqFromDocID[docID]
 	var doc *clientDoc
 	if ok {
@@ -1233,6 +1232,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *D
 	digest := "abc" // TODO: Generate rev ID digest based on body hash?
 
 	newRevID := fmt.Sprintf("%d-%s", newGen, digest)
+	newSeq := btcc._nextSequence()
 	rev := clientDocRev{clientSeq: newSeq, version: DocVersion{RevID: newRevID}, body: body}
 	doc._addNewRev(rev)
 
