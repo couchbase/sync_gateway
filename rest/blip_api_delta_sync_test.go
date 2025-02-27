@@ -811,7 +811,6 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		client.ClientDeltas = true
 
 		btcRunner.StartPull(client.id)
-		btcRunner.StartPush(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -820,6 +819,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 		// create doc1 rev 2-abc on client
 		newRev := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+		btcRunner.StartPushWithOpts(client.id, BlipTesterPushOptions{Continuous: false})
 
 		// Check EE is delta, and CE is full-body replication
 		msg := client.waitForReplicationMessage(collection, 2)
@@ -868,18 +868,31 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		if rt.GetDatabase().DbStats.DeltaSync() != nil {
 			deltaPushDocCountStart = rt.GetDatabase().DbStats.DeltaSync().DeltaPushDocCount.Value()
 		}
-
-		_, err := btcRunner.PushUnsolicitedRev(client.id, docID, &deletedVersion, []byte(`{"undelete":true}`))
-
-		if base.IsEnterpriseEdition() {
+		revRequest := blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "4-abc"
+		revRequest.Properties[db.RevMessageHistory] = deletedVersion.RevID
+		revRequest.SetBody([]byte(`{"undelete": "true"}`))
+		useDeltas := base.IsEnterpriseEdition()
+		if useDeltas {
+			revRequest.Properties[db.RevMessageDeltaSrc] = deletedVersion.RevID
+		}
+		btcRunner.SingleCollection(client.id).sendPushMsg(revRequest)
+		revResp := revRequest.Response()
+		if useDeltas {
+			body, err := revResp.Body()
+			require.NoError(t, err)
 			// Now make the client push up a delta that has the parent of the tombstone.
-			// This is not a valid scenario, and is actively prevented on the CBL side.
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "Can't use delta. Found tombstone for doc")
+			// This is not a valid scenario, and is actively prevented on the CBL side. Assert Sync Gateway will catch this error.
+			require.Equal(t, blip.ErrorType, revResp.Type())
+			require.Equal(t, `422`, revResp.Properties["Error-Code"], "Did not find correct output for %s", body)
+			require.Contains(t, string(body), "Can't use delta. Found tombstone")
 		} else {
 			// Pushing a full body revision on top of a tombstone is valid.
 			// CBL clients should fall back to this. The test client doesn't.
-			assert.NoError(t, err)
+			require.NotContains(t, revResp.Properties, "Error-Domain")
+			require.NotContains(t, revResp.Properties, "Error-Code")
 		}
 
 		var deltaPushDocCountEnd int64
