@@ -1188,7 +1188,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
 				// digest is different we need to override the revpos and set it to the current revision to ensure
-				// the attachment is requested and stored. revpos provided for SG/CBL<4.0 compatibility but is not used.
+				// the attachment is requested and stored. revpos provided for SG/CBL<4.0 compatibility but is no longer used by Sync Gateway.
 				if currentAttachmentDigest != incomingAttachmentDigest {
 					bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
 				}
