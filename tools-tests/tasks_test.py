@@ -47,23 +47,25 @@ REDACTED_OUTPUT = """\
 
 
 @pytest.mark.parametrize("tag_userdata", [True, False])
-def test_add_file_task(tmpdir, tag_userdata):
+def test_add_file_task(tmp_path, tag_userdata):
     if tag_userdata:
         expected = REDACTED_OUTPUT
     else:
         expected = REDACTED_OUTPUT.replace("<ud>foo</ud>", "foo")
 
     filename = "config.json"
-    config_file = tmpdir.join(filename)
-    config_file.write(INPUT_CONFIG)
+    config_file = tmp_path / filename
+    config_file.write_text(INPUT_CONFIG)
     postprocessors = [password_remover.remove_passwords]
     if tag_userdata:
         postprocessors.append(password_remover.tag_userdata_in_server_config)
     task = tasks.add_file_task(
-        config_file.strpath,
+        sourcefile_path=config_file,
+        output_path=config_file.name,
         content_postprocessors=postprocessors,
     )
-    output_dir = tmpdir.mkdir("output")
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
     runner = tasks.TaskRunner(
         verbosity=VERBOSE,
         default_name="sg.log",
