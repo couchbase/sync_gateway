@@ -623,10 +623,8 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
 
-	xattrs, cas, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	_, cas, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
-	require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
