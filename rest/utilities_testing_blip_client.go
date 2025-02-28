@@ -1341,19 +1341,6 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 						base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %v", change.docID, change.version)
 						// block until remote has actually processed the rev and sent a response
 						revResp := revRequest.Response()
-						/*<<<<<<< HEAD:rest/utilities_testing_blip_client.go
-						  						if status := revResp.Properties[db.BlipErrorCode]; status != "" {
-						  							if status == "409" {
-						  								// conflict on write of rev - OK to ignore and let pull replication resolve
-						  								btcc.TB().Logf("conflict on write of rev %s / %v", change.docID, change.version)
-						  							} else {
-						  								body, err := revResp.Body()
-						  								require.NoError(btcc.TB(), err)
-						  								require.FailNow(btcc.TB(), fmt.Sprintf("error response from rev: %s %s : %s", revResp.Properties["Error-Domain"], revResp.Properties["Error-Code"], body))
-						  							}
-						  						}
-						  =======
-						*/
 						require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %v: %s", revResp)
 						base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
 						btcc.updateLastReplicatedVersion(change.docID, change.version)
@@ -1450,7 +1437,7 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 	errorDomain := subChangesResponse.Properties["Error-Domain"]
 	errorCode := subChangesResponse.Properties["Error-Code"]
 	if errorDomain != "" && errorCode != "" {
-		require.FailNowf(btc.TB(), "error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody))
+		require.FailNow(btc.TB(), fmt.Sprintf("error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody)))
 	}
 }
 

@@ -121,7 +121,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		unclosedBuckets:        make(map[string]map[string]struct{}),
 		useExistingBucket:      TestUseExistingBucket(),
 		useDefaultScope:        options.UseDefaultScope,
-		skipMobileXDCR:         true, // do not set up enableCrossClusterVersioning until Sync Gateway 4.x
+		skipMobileXDCR:         false,
 	}
 
 	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), &tbp)

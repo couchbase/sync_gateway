@@ -77,7 +77,7 @@ func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
 	for _, c := range p.blipClients {
 		return c
 	}
-	require.Fail(p.TB(), "no blipClients found for %s", p)
+	require.Fail(p.TB(), fmt.Sprintf("no blipClients found for %s", p))
 	return nil
 }
 
@@ -262,7 +262,7 @@ func (r *CouchbaseLiteMockReplication) Start() {
 	case PeerReplicationDirectionPull:
 		r.btcRunner.StartPull(r.btc.ID())
 	default:
-		require.Fail(r.btc.TB(), "unsupported replication direction %q", r.direction)
+		require.Fail(r.btc.TB(), fmt.Sprintf("unsupported replication direction %q", r.direction))
 	}
 }
 
