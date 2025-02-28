@@ -50,10 +50,10 @@ type RevisionCache interface {
 	Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32)
 
 	// RemoveWithRev evicts a revision from the cache using its revID.
-	RemoveWithRev(docID, revID string, collectionID uint32)
+	RemoveWithRev(ctx context.Context, docID, revID string, collectionID uint32)
 
 	// RemoveWithCV evicts a revision from the cache using its current version.
-	RemoveWithCV(docID string, cv *Version, collectionID uint32)
+	RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta)
@@ -168,13 +168,13 @@ func (c *collectionRevisionCache) Upsert(ctx context.Context, docRev DocumentRev
 }
 
 // RemoveWithRev is for per collection access to Remove method
-func (c *collectionRevisionCache) RemoveWithRev(docID, revID string) {
-	(*c.revCache).RemoveWithRev(docID, revID, c.collectionID)
+func (c *collectionRevisionCache) RemoveWithRev(ctx context.Context, docID, revID string) {
+	(*c.revCache).RemoveWithRev(ctx, docID, revID, c.collectionID)
 }
 
 // RemoveWithCV is for per collection access to Remove method
-func (c *collectionRevisionCache) RemoveWithCV(docID string, cv *Version) {
-	(*c.revCache).RemoveWithCV(docID, cv, c.collectionID)
+func (c *collectionRevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *Version) {
+	(*c.revCache).RemoveWithCV(ctx, docID, cv, c.collectionID)
 }
 
 // UpdateDelta is for per collection access to UpdateDelta method
@@ -457,6 +457,11 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	channels = doc.SyncData.getCurrentChannels()
 	revid = doc.CurrentRev
 	hlv = doc.HLV
+	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+	if getHistoryErr != nil {
+		return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, revid, hlv, err
+	}
+	history = encodeRevisions(ctx, doc.ID, validatedHistory)
 
 	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, revid, hlv, err
 }
