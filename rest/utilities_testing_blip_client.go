@@ -1450,7 +1450,7 @@ func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpti
 	errorDomain := subChangesResponse.Properties["Error-Domain"]
 	errorCode := subChangesResponse.Properties["Error-Code"]
 	if errorDomain != "" && errorCode != "" {
-		require.FailNowf(btc.TB(), "error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody))
+		require.FailNow(btc.TB(), fmt.Sprintf("error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody)))
 	}
 }
 
