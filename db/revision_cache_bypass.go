@@ -124,11 +124,11 @@ func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevisi
 	// no-op
 }
 
-func (rc *BypassRevisionCache) RemoveWithRev(docID, revID string, collectionID uint32) {
+func (rc *BypassRevisionCache) RemoveWithRev(ctx context.Context, docID, revID string, collectionID uint32) {
 	// no-op
 }
 
-func (rc *BypassRevisionCache) RemoveWithCV(docID string, cv *Version, collectionID uint32) {
+func (rc *BypassRevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32) {
 	// no-op
 }
 
