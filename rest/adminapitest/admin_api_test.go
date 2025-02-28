@@ -728,6 +728,12 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			require.True(t, ok)
 
+			// create documents in DB to cause resync to take a few seconds
+			for i := 0; i < 1000; i++ {
+				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+fmt.Sprint(i), `{"value":1}`)
+				rest.RequireStatus(t, resp, http.StatusCreated)
+			}
+
 			rt.TakeDbOffline()
 
 			if !testCase.specifyCollection {
@@ -738,9 +744,10 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
 				rest.RequireStatus(t, resp, http.StatusOK)
 			}
+			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
 
-			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-
+			statusResponse = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
 		})
 	}
@@ -4166,7 +4173,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 
 			// Start compact to modify purge interval
 			database, _ := db.GetDatabase(dbc, nil)
-			_, err = database.Compact(ctx, false, func(purgedDocCount *int) {}, base.NewSafeTerminator())
+			_, err = database.Compact(ctx, false, nil, base.NewSafeTerminator(), false)
 			require.NoError(t, err)
 
 			assert.EqualValues(t, test.expectedPurgeIntervalAfterCompact, dbc.GetMetadataPurgeInterval(ctx))

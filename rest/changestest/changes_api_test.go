@@ -3480,6 +3480,20 @@ func TestTombstoneCompaction(t *testing.T) {
 		t.Skip("If running with no xattrs compact acts as a no-op")
 	}
 
+	tests := []struct {
+		numDocs                      int
+		runAsScheduledBackgroundTask bool
+	}{
+		// Multiples of Batch Size
+		{numDocs: db.QueryTombstoneBatch},
+		{numDocs: db.QueryTombstoneBatch * 4},
+		// Smaller Than Batch Size
+		{numDocs: 2},
+		{numDocs: db.QueryTombstoneBatch / 4},
+		// Larger than Batch Size
+		{numDocs: db.QueryTombstoneBatch + 20},
+	}
+
 	var rt *rest.RestTester
 	numCollections := 1
 
@@ -3490,64 +3504,84 @@ func TestTombstoneCompaction(t *testing.T) {
 		rt = rest.NewRestTester(t, nil)
 	}
 	defer rt.Close()
-	zero := time.Duration(0)
-	rt.GetDatabase().Options.PurgeInterval = &zero
+	rt.GetDatabase().Options.PurgeInterval = base.Ptr(time.Duration(0))
 
-	compactionTotal := 0
-	expectedBatches := 0
+	for _, test := range tests {
+		for _, runAsScheduledBackgroundTask := range []bool{false, true} {
+			t.Run(fmt.Sprintf("numDocs:%d asBackgroundTask:%v", test.numDocs, runAsScheduledBackgroundTask), func(t *testing.T) {
 
-	TestCompact := func(numDocs int) {
+				// seed with tombstones
+				for count := 0; count < test.numDocs; count++ {
+					for _, keyspace := range rt.GetKeyspaces() {
+						response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/", keyspace), `{"foo":"bar"}`)
+						assert.Equal(t, http.StatusOK, response.Code)
+						var body db.Body
+						err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+						assert.NoError(t, err)
+						revID := body["rev"].(string)
+						docID := body["id"].(string)
 
-		count := 0
+						response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/%s?rev=%s", keyspace, docID, revID), "")
+						assert.Equal(t, http.StatusOK, response.Code)
+					}
+				}
 
-		for count < numDocs {
-			count++
-			for _, keyspace := range rt.GetKeyspaces() {
-				response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/", keyspace), `{"foo":"bar"}`)
-				assert.Equal(t, 200, response.Code)
-				var body db.Body
-				err := base.JSONUnmarshal(response.Body.Bytes(), &body)
-				assert.NoError(t, err)
-				revId := body["rev"].(string)
-				docId := body["id"].(string)
+				expectedCompactions := test.numDocs * numCollections
+				expectedBatches := (test.numDocs/db.QueryTombstoneBatch + 1) * numCollections
 
-				response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/%s?rev=%s", keyspace, docId, revId), "")
-				assert.Equal(t, 200, response.Code)
-			}
+				numCompactionsBefore := int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value())
+				var numBatchesBefore int
+				if base.TestsDisableGSI() {
+					numBatchesBefore = int(rt.GetDatabase().DbStats.Query(fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncHousekeeping(), db.ViewTombstones)).QueryCount.Value())
+				} else {
+					numBatchesBefore = int(rt.GetDatabase().DbStats.Query(db.QueryTypeTombstones).QueryCount.Value())
+				}
+
+				numIdleKvOpsBefore := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
+				numIdleQueryOpsBefore := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
+
+				if runAsScheduledBackgroundTask {
+					database, err := db.CreateDatabase(rt.GetDatabase())
+					require.NoError(t, err)
+					purgedCount, err := database.Compact(base.TestCtx(t), false, nil, base.NewSafeTerminator(), true)
+					require.NoError(t, err)
+					require.Equal(t, expectedCompactions, purgedCount)
+
+					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
+					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
+
+					// cannot do equal here because there are other idle kv ops unrelated to compaction
+					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, expectedCompactions)
+					assert.Equal(t, numIdleQueryOpsAfter-numIdleQueryOpsBefore, expectedBatches)
+				} else {
+					resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
+					rest.RequireStatus(t, resp, http.StatusOK)
+					err := rt.WaitForCondition(func() bool {
+						return rt.GetDatabase().TombstoneCompactionManager.GetRunState() == db.BackgroundProcessStateCompleted
+					})
+					assert.NoError(t, err)
+
+					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
+					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
+
+					// ad-hoc compactions don't invoke idle ops - but we do have other idle kv ops so can't ensure it stays zero
+					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, 0)
+					assert.Equal(t, numIdleQueryOpsAfter-numIdleQueryOpsBefore, 0)
+				}
+
+				actualCompactions := int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()) - numCompactionsBefore
+				require.Equal(t, expectedCompactions, actualCompactions)
+
+				var actualBatches int
+				if base.TestsDisableGSI() {
+					actualBatches = int(rt.GetDatabase().DbStats.Query(fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncHousekeeping(), db.ViewTombstones)).QueryCount.Value()) - numBatchesBefore
+				} else {
+					actualBatches = int(rt.GetDatabase().DbStats.Query(db.QueryTypeTombstones).QueryCount.Value()) - numBatchesBefore
+				}
+				require.Equal(t, expectedBatches, actualBatches)
+			})
 		}
-		resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		err := rt.WaitForCondition(func() bool {
-			time.Sleep(1 * time.Second)
-			return rt.GetDatabase().TombstoneCompactionManager.GetRunState() == db.BackgroundProcessStateCompleted
-		})
-		assert.NoError(t, err)
-
-		compactionTotal += (numDocs * numCollections)
-		require.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()))
-
-		var actualBatches int64
-		if base.TestsDisableGSI() {
-			actualBatches = rt.GetDatabase().DbStats.Query(fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncHousekeeping(), db.ViewTombstones)).QueryCount.Value()
-		} else {
-			actualBatches = rt.GetDatabase().DbStats.Query(db.QueryTypeTombstones).QueryCount.Value()
-		}
-
-		expectedBatches += (numDocs/db.QueryTombstoneBatch + 1) * numCollections
-		require.Equal(t, expectedBatches, int(actualBatches))
 	}
-
-	// Multiples of Batch Size
-	TestCompact(db.QueryTombstoneBatch)
-	TestCompact(db.QueryTombstoneBatch * 4)
-
-	// Smaller Than Batch Size
-	TestCompact(2)
-	TestCompact(db.QueryTombstoneBatch / 4)
-
-	// Larger than Batch Size
-	TestCompact(db.QueryTombstoneBatch + 20)
 }
 
 // TestOneShotGrantTiming simulates a one-shot changes feed returning before a previously issued grant has been

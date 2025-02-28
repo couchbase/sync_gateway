@@ -33,8 +33,6 @@ func assertDesignDocExists(t testing.TB, viewStore sgbucket.ViewStore, ddocName 
 // assertDesignDocDoesNotExist ensures that the design doc does not exist in the dataStore.
 func assertDesignDocNotExists(t testing.TB, viewStore sgbucket.ViewStore, ddocName string) bool {
 	ddoc, err := viewStore.GetDDoc(ddocName)
-	if err == nil {
-		return assert.Failf(t, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
-	}
+	assert.Error(t, err, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
 	return assert.Truef(t, IsMissingDDocError(err), "Design doc %s should not exist but got a different error fetching it: %v", ddocName, err)
 }

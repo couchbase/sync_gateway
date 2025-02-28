@@ -9,6 +9,7 @@
 package replicatortest
 
 import (
+	"context"
 	"encoding/json"
 	"expvar"
 	"fmt"
@@ -25,14 +26,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocb/v2"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReplicationAPI(t *testing.T) {
@@ -6533,7 +6536,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				localActiveRT.WaitForVersion(doc2ID, expectedVersion)
 			}
-			assert.NoError(t, err)
 		})
 	}
 }
@@ -8571,6 +8573,68 @@ func TestDbConfigNoOverwriteReplications(t *testing.T) {
 	require.Equal(t, startReplicationConfig.Direction, config.Direction)
 }
 
+func TestActiveReplicatorChangesFeedExit(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
+
+	var shouldChannelQueryError atomic.Bool
+	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		LeakyBucketConfig: &base.LeakyBucketConfig{
+			QueryCallback: func(ddoc, viewname string, params map[string]any) error {
+				if viewname == "channels" && shouldChannelQueryError.Load() {
+					shouldChannelQueryError.Store(false)
+					return gocb.ErrTimeout
+				}
+				return nil
+			},
+			N1QLQueryCallback: func(_ context.Context, statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool) error {
+				// * channel query uses all docs index
+				if strings.Contains(statement, "sg_allDocs") && shouldChannelQueryError.Load() {
+					shouldChannelQueryError.Store(false)
+					return gocb.ErrTimeout
+				}
+				return nil
+			},
+		},
+	})
+	t.Cleanup(activeRT.Close)
+	_ = activeRT.Bucket()
+
+	passiveRT := rest.NewRestTesterPersistentConfig(t)
+	t.Cleanup(passiveRT.Close)
+
+	username := "alice"
+	passiveRT.CreateUser(username, []string{"*"})
+	passiveDBURL := passiveDBURLForAlice(passiveRT, username)
+	stats := dbReplicatorStats(t)
+	ar, err := db.NewActiveReplicator(activeRT.Context(), &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: activeRT.GetDatabase(),
+		},
+		ChangesBatchSize:    200,
+		Continuous:          false,
+		ReplicationStatsMap: stats,
+		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, ar.Stop()) })
+
+	docID := "doc1"
+	_ = activeRT.CreateTestDoc(docID)
+
+	shouldChannelQueryError.Store(true)
+	require.NoError(t, ar.Start(activeRT.Context()))
+
+	changesResults, err := passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	require.Equal(t, docID, changesResults.Results[0].ID)
+	require.Equal(t, int64(2), stats.NumConnectAttemptsPush.Value())
+}
 func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
 	var expectedBody db.Body
 	require.NoError(t, base.JSONUnmarshal([]byte(expected), &expectedBody))
@@ -8619,4 +8683,64 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	assert.Equal(t, passiveBucketUUID, syncData.HLV.SourceID)
 	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
 	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+}
+
+func dbReplicatorStats(t *testing.T) *base.DbReplicatorStats {
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	return dbstats
+}
+
+// passiveDBURLForAlice creates a public server for the passive RT and returns the URL for the alice user, e.g. http://alice:password@localhost:1234/dbname
+func passiveDBURLForAlice(rt *rest.RestTester, username string) *url.URL {
+	srv := httptest.NewServer(rt.TestPublicHandler())
+	rt.TB().Cleanup(srv.Close)
+
+	passiveDBURL, err := url.Parse(srv.URL + "/" + rt.GetDatabase().Name)
+	require.NoError(rt.TB(), err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+	return passiveDBURL
+}
+
+func TestReplicationConfigUpdatedAt(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	activeRT, _, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// create a replication and assert the updated at field is present in the config
+	activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+
+	activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
+
+	resp := activeRT.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
+	var configResponse db.ReplicationConfig
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
+
+	// Check that the config has an updated_at field
+	require.NotNil(t, configResponse.UpdatedAt)
+	require.NotNil(t, configResponse.CreatedAt)
+	currTime := configResponse.UpdatedAt
+	createdAtTime := configResponse.CreatedAt
+
+	resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateStopped)
+
+	// update the config
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{"name":"replication1","source":"%s","type":"push", "continuous":true}`, remoteURLString))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Check that the updated_at field is updated when the config is updated
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
+	configResponse = db.ReplicationConfig{}
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &configResponse))
+
+	assert.Greater(t, configResponse.UpdatedAt.UnixNano(), currTime.UnixNano())
+	assert.Equal(t, configResponse.CreatedAt.UnixNano(), createdAtTime.UnixNano())
 }

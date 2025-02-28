@@ -47,9 +47,7 @@ func waitForError(t *testing.T, ch <-chan error, message string) error {
 	}
 	select {
 	case err := <-ch:
-		if err == nil {
-			require.Fail(t, "[%s] Received non-error message on channel", message)
-		}
+		require.Error(t, err, "[%s] Expected error message on channel", message)
 		return err
 	case <-time.After(TestChannelTimeout):
 		require.Fail(t, fmt.Sprintf("[%s] expected error message did not arrive in %v", message, TestChannelTimeout))

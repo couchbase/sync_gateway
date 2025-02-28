@@ -138,6 +138,9 @@ ExpVars:
                 num_idle_kv_ops:
                   type: integer
                   description: "The total number of idle kv operations."
+                num_idle_query_ops:
+                  type: integer
+                  description: "The total number of idle query operations."
                 process_cpu_percent_utilization:
                   type: number
                   format: float
@@ -1301,7 +1304,10 @@ Database:
           type: object
           properties:
             size:
-              description: The maximum number of revisions that can be stored in the revision cache.
+              description: |-
+                The maximum number of revisions that can be stored in the revision cache.
+                Note when running with greater than 1 shard count we add 10% capacity overall to avoid early eviction when some shards fill up before others, so
+                you may find that the capacity stat (revision_cache_num_items) will climb to the defined rev cache size + 10%.
               type: string
               default: 5000
             max_memory_count_mb:

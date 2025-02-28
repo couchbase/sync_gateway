@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -45,18 +44,15 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		docBody := db.Body{"greetings": []map[string]interface{}{{"hello": "world!"}, {"hi": "alice"}}}
 		version := rt.PutDocDirectly(docID, docBody)
 
-		seq := rt.GetDocumentSequence(docID)
-
 		// wait for doc on client
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// update doc1 on client
-		_ = btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+		newRev := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 
 		// wait for update to arrive on SG
-		_, err := rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", seq), "", true)
-		require.NoError(t, err)
+		rt.WaitForVersion(docID, newRev)
 
 		body := rt.GetDocBody(docID)
 		require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])

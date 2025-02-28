@@ -83,7 +83,7 @@ func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
 
 // PutDoc will upsert the document with a given contents.
 func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
-	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
+	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s?show_cv=true", rt.GetSingleKeyspace(), docID), body)
 	RequireStatus(rt.TB(), rawResponse, 201)
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
 }
@@ -131,11 +131,11 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
 func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	if version.RevTreeID == "" {
-		require.NotEqualf(rt.TB(), "", version.CV.String(), "Expeted CV if RevTreeID is empty in WaitForVersion")
+		require.NotEqual(rt.TB(), "", version.CV.String(), "Expected CV if RevTreeID in WaitForVersion")
 	}
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?show_cv=true", "")
-		if !assert.Contains(c, []int{http.StatusOK, http.StatusCreated}, rawResponse.Code) {
+		if !assert.Contains(c, []int{200, 201}, rawResponse.Code, "Unexpected status code for %s", rawResponse.Body.String()) {
 			return
 		}
 		var body db.Body

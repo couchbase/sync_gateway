@@ -63,21 +63,18 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 
 		// Create doc revision with attachment on SG.
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-		version := btc.rt.PutDoc(docID, bodyText)
+		version1 := btc.rt.PutDoc(docID, bodyText)
 
-		data := btcRunner.WaitForVersion(btc.id, docID, version)
+		data := btcRunner.WaitForVersion(btc.id, docID, version1)
 		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		require.JSONEq(t, bodyTextExpected, string(data))
 
 		// Update the replicated doc at client along with keeping the same attachment stub.
 		bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-		version = btcRunner.AddRev(btc.id, docID, &version, []byte(bodyText))
+		version2 := btcRunner.AddRev(btc.id, docID, &version1, []byte(bodyText))
 
-		// TODO: Replace with rt.WaitForVersion
-		// Wait for the document to be replicated at SG
-		btc.pushReplication.WaitForMessage(2)
-
-		respBody := btc.rt.GetDocVersion(docID, version)
+		rt.WaitForVersion(docID, version2)
+		respBody := btc.rt.GetDocVersion(docID, version2)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]interface{})
@@ -135,20 +132,19 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 		// Create doc revision with attachment on SG.
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-		version := btc.rt.PutDoc(docID, bodyText)
+		version1 := btc.rt.PutDoc(docID, bodyText)
 
-		data := btcRunner.WaitForVersion(btc.id, docID, version)
+		data := btcRunner.WaitForVersion(btc.id, docID, version1)
 		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		require.JSONEq(t, bodyTextExpected, string(data))
 
 		// Update the replicated doc at client along with keeping the same attachment stub.
 		bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-		version = btcRunner.AddRev(btc.id, docID, &version, []byte(bodyText))
+		version2 := btcRunner.AddRev(btc.id, docID, &version1, []byte(bodyText))
 
-		// Wait for the document to be replicated at SG
-		btc.pushReplication.WaitForMessage(2)
+		rt.WaitForVersion(docID, version2)
 
-		respBody := btc.rt.GetDocVersion(docID, version)
+		respBody := btc.rt.GetDocVersion(docID, version2)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]interface{})
@@ -269,7 +265,6 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 		// create doc2 now that we know the server has the attachment - SG should still request the attachment data from the client.
 		doc2Body := fmt.Sprintf(`{"greetings":[{"howdy": "bob"}],"_attachments":{"%s":{"data":"%s"}}}`, attachmentName, attachmentDataB64)
 		doc2Version := btcRunner.AddRev(btc.id, doc2ID, nil, []byte(doc2Body))
-
 		btc.rt.WaitForVersion(doc2ID, doc2Version)
 
 		assert.Equal(t, int64(2), btc.rt.GetDatabase().DbStats.CBLReplicationPush().DocPushCount.Value())
@@ -299,7 +294,6 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		btcRunner.StartPush(btc.id)
 
 		docVersion := btcRunner.AddRev(btc.id, docID, nil, []byte(`{"greetings":[{"hi": "alice"}]}`))
-
 		docVersion = btcRunner.AddRev(btc.id, docID, &docVersion, []byte(`{"greetings":[{"hi": "bob"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`))
 
 		// Wait for the documents to be replicated at SG
@@ -367,7 +361,6 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		// CBL replicates, sends to client as 4-abc history:[4-abc, 3-abc, 2-abc], attachment has revpos=2
 		bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 		rev := NewDocVersionFromFakeRev("2-abc")
-		// FIXME CBG-4400:  docID: doc1 was not found on the client - expecting to update doc based on parentVersion RevID: 2-abc
 		_ = btcRunner.AddRev(btc.id, docID, &rev, []byte(bodyText))
 
 		bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
@@ -536,8 +529,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 		digest := db.Sha1DigestKey(attachmentA)
 
 		// Push initial attachment data
-		version := btcRunner.AddRev(client1.id, docID, EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
-
+		version := btcRunner.AddRev(client1.id, "doc", EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
 		rt.WaitForVersion("doc", version)
 
 		// Confirm attachment is in the bucket
@@ -548,8 +540,8 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 		// Simulate changing only the attachment name over CBL
 		// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
-		version = btcRunner.AddRev(client1.id, docID, &version, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
-		client1.rt.WaitForVersion(docID, version)
+		version = btcRunner.AddRev(client1.id, "doc", &version, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
+		client1.rt.WaitForVersion("doc", version)
 
 		// Check if attachment is still in bucket
 		bucketAttachmentA, _, err = client1.rt.GetSingleDataStore().GetRaw(attachmentAKey)
@@ -594,7 +586,6 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 		// Store the document and attachment on the test client
 		_ = btcRunner.AddRev(client1.id, docID, &docVersion, rawDoc)
-		// FIXME CBG-4400: docID: doc was not found on the client - expecting to update doc based on parentVersion RevID: 1-5fc93bd36377008f96fdae2719c174ed
 
 		btcRunner.AttachmentsLock(client1.id).Lock()
 		btcRunner.Attachments(client1.id)[digest] = attBody
@@ -653,7 +644,6 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		version, _ := client1.rt.GetDoc(docID)
 
 		// Store the document and attachment on the test client
-		// FIXME CBG-4400: docID: doc was not found on the client - expecting to update doc based on parentVersion RevID: 1-5fc93bd36377008f96fdae2719c174ed
 		_ = btcRunner.AddRev(client1.id, docID, &version, rawDoc)
 		btcRunner.AttachmentsLock(client1.id).Lock()
 		btcRunner.Attachments(client1.id)[digest] = attBody
@@ -668,7 +658,6 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 
 		// Update the document, leaving body intact
 		version = btcRunner.AddRev(client1.id, "doc", &version, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
-
 		client1.rt.WaitForVersion("doc", version)
 
 		resp := client1.rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/doc/%s", attName), "")

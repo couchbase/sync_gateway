@@ -348,7 +348,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
-		_ = bh.sendChanges(rq.Sender, &sendChangesOptions{
+		_, err = bh.sendChanges(rq.Sender, &sendChangesOptions{
 			docIDs:            subChangesParams.docIDs(),
 			since:             subChangesParams.Since(),
 			continuous:        continuous,
@@ -361,6 +361,10 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			changesCtx:        collectionCtx.changesCtx,
 			requestPlusSeq:    requestPlusSeq,
 		})
+		if err != nil {
+			base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "Closing blip connection due to changes feed error %+v\n", err)
+			bh.ctxCancelFunc()
+		}
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
@@ -428,8 +432,8 @@ func (flag changesDeletedFlag) HasFlag(deletedFlag changesDeletedFlag) bool {
 	return flag&deletedFlag != 0
 }
 
-// Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (isComplete bool) {
+// sendChanges will start a changes feed and send changes. Returns bool to indicate whether the changes feed finished and all changes were sent. The error value is only used to indicate a fatal error, where the blip connection should be terminated. If the blip connection is disconnected by the client, the error will be nil, but the boolean parameter will be false.
+func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (bool, error) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			bh.replicationStats.NumHandlersPanicked.Add(1)
@@ -472,18 +476,17 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	changesDb, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
 	if err != nil {
 		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %v", bh.blipContext.ID, err)
-		return false
-
+		return false, err
 	}
 
-	forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
+	forceClose, err := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
 				// If change is a removal and we're running with protocol V3 and change change is not a tombstone
 				// fall into 3.0 removal handling.
 				// Changes with change.Revoked=true have already evaluated UserHasDocAccess in changes.go, don't check again.
-				if change.allRemoved && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 && !change.Deleted && !change.Revoked {
+				if change.allRemoved && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 && !change.Deleted && !change.Revoked && !bh.db.Options.UnsupportedOptions.BlipSendDocsWithChannelRemoval {
 					// If client doesn't want removals / revocations, don't send change
 					if !opts.revocations {
 						continue
@@ -494,7 +497,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					if err == nil && userHasAccessToDoc {
 						continue
 					}
-
 					// If we can't determine user access due to an error, log error and fall through to send change anyway.
 					// In the event of an error we should be cautious and send a revocation anyway, even if the user
 					// may actually have an alternate access method. This is the safer approach security-wise and
@@ -546,8 +548,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		}
 		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.loggingCtx, user)
 	}
-
-	return !forceClose
+	return (err == nil && !forceClose), err
 }
 
 func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []interface{} {

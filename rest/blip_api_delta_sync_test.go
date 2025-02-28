@@ -130,20 +130,17 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 		// put doc directly needs to be here
-		version := rt.PutDocDirectly(docID, JsonToMap(t, bodyText))
-		data := btcRunner.WaitForVersion(btc.id, docID, version)
-
+		version1 := rt.PutDocDirectly(docID, JsonToMap(t, bodyText))
+		data := btcRunner.WaitForVersion(btc.id, docID, version1)
 		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		require.JSONEq(t, bodyTextExpected, string(data))
 
 		// Update the replicated doc at client by adding another attachment.
 		bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
-		version = btcRunner.AddRev(btc.id, docID, &version, []byte(bodyText))
+		version2 := btcRunner.AddRev(btc.id, docID, &version1, []byte(bodyText))
 
-		// Wait for the document to be replicated at SG
-		btc.pushReplication.WaitForMessage(2)
-
-		respBody := rt.GetDocVersion(docID, version)
+		rt.WaitForVersion(docID, version2)
+		respBody := rt.GetDocVersion(docID, version2)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]interface{})
@@ -890,6 +887,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 			assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 			assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 		}
+		// wait for response body, indicating rev was written to server
+		_ = msg.Response()
 
 		respBody := rt.GetDocVersion(docID, newRev)
 		assert.Equal(t, "doc1", respBody[db.BodyId])
@@ -963,25 +962,33 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		btcRunner.StartPull(client.id)
 		btcRunner.StartPush(client.id)
 
+		rawBody := `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`
+		var body db.Body
+		require.NoError(t, base.JSONUnmarshal([]byte(rawBody), &body))
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
+		version1 := rt.PutDocDirectly(docID, body)
 
-		data := btcRunner.WaitForVersion(client.id, docID, version)
-		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+		data := btcRunner.WaitForVersion(client.id, docID, version1)
+		assert.Equal(t, rawBody, string(data))
 		// create doc1 rev 2-abcxyz on client
-		newRev := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 		// Check EE is delta, and CE is full-body replication
+		version2 := btcRunner.AddRev(client.id, docID, &version1, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+		// MSG1: proposeChanges
+		// MSG2: rev
 		msg := client.waitForReplicationMessage(collection, 2)
+		require.Equal(t, db.MessageRev, msg.Profile())
+
+		// wait for the reply, indicating the message was written
+		_ = msg.Response()
 
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was NOT the delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
-		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 
-		body := rt.GetDocVersion("doc1", newRev)
-		require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
+		fullBody := rt.GetDocVersion("doc1", version2)
+		require.Equal(t, "bob", fullBody["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
 	})
 }

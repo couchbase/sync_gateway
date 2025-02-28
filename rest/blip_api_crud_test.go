@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -1205,7 +1206,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 		concurrentSendRevNum = 50
 	)
 	rt := NewRestTester(t, &RestTesterConfig{
-		leakyBucketConfig: &base.LeakyBucketConfig{
+		LeakyBucketConfig: &base.LeakyBucketConfig{
 			UpdateCallback: func(_ string) {
 				time.Sleep(time.Millisecond * 5) // slow down rosmar - it's too quick to be throttled
 			},
@@ -2993,7 +2994,6 @@ func TestUnsubChanges(t *testing.T) {
 		activeReplStat := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplActiveContinuous
 		require.EqualValues(t, 1, activeReplStat.Value())
 
-		// Unsub changes
 		btcRunner.UnsubPullChanges(btc.id)
 		// Wait for unsub changes to stop the sub changes being sent before sending document up
 		base.RequireWaitForStat(t, activeReplStat.Value, 0)
@@ -3466,5 +3466,46 @@ func TestBlipMergeVersions(t *testing.T) {
 				"DEF": 2,
 				"GHI": 2,
 			}}, *doc.HLV)
+	})
+}
+
+// Starts a continuous pull replication then updates the db to trigger a close.
+func TestChangesFeedExitDisconnect(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		var shouldChannelQueryError atomic.Bool
+		rt := NewRestTester(t, &RestTesterConfig{
+			LeakyBucketConfig: &base.LeakyBucketConfig{
+				QueryCallback: func(ddoc, viewname string, params map[string]any) error {
+					if viewname == "channels" && shouldChannelQueryError.Load() {
+						return gocb.ErrTimeout
+					}
+					return nil
+				},
+				N1QLQueryCallback: func(_ context.Context, statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool) error {
+					if strings.Contains(statement, "sg_channels") && shouldChannelQueryError.Load() {
+						return gocb.ErrTimeout
+					}
+					return nil
+				},
+			},
+		})
+		defer rt.Close()
+		const username = "alice"
+		rt.CreateUser(username, []string{"*"})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		var blipContextClosed atomic.Bool
+		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
+			blipContextClosed.Store(true)
+		}
+
+		shouldChannelQueryError.Store(true)
+		btcRunner.StartPull(btc.id)
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.True(c, blipContextClosed.Load())
+		}, time.Second*10, time.Millisecond*100)
 	})
 }

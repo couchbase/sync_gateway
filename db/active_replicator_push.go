@@ -181,7 +181,7 @@ func (apr *ActivePushReplicator) _initCheckpointer(remoteCheckpoints []replicati
 // requires apr.lock
 func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
 	status := &ReplicationStatus{}
-	status.Status, status.ErrorMessage = apr._getStateWithErrorMessage()
+	status.Status, status.ErrorMessage = apr.getStateWithErrorMessage()
 
 	pushStats := apr.replicationStats
 	status.DocsWritten = pushStats.SendRevCount.Value()
@@ -332,7 +332,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 	apr.activeSendChanges.Add(1)
 	go func(s *blip.Sender) {
 		defer apr.activeSendChanges.Add(-1)
-		isComplete := bh.sendChanges(s, &sendChangesOptions{
+		isComplete, err := bh.sendChanges(s, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,
 			since:             since,
 			continuous:        apr.config.Continuous,
@@ -344,8 +344,15 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
 			changesCtx:        collectionCtx.changesCtx,
 		})
-		// On a normal completion, call complete for the replication
+		if err != nil {
+			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
+			bh.ctxCancelFunc()
+			_ = apr.setError(err)
+			apr.publishStatus()
+			return
+		}
 		if isComplete {
+			// On a normal completion, call complete for the replication
 			apr.Complete()
 		}
 	}(apr.blipSender)

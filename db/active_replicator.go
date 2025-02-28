@@ -214,8 +214,10 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	// - make this configurable for testing mixed-version replications
 	// - if unspecified, default to v2 and v3 until VV is supported with ISGR, then also include v4
 	protocols := []string{CBMobileReplicationV3.SubprotocolString(), CBMobileReplicationV2.SubprotocolString()}
-	blipContext, err := NewSGBlipContextWithProtocols(arc.ctx, arc.config.ID+idSuffix, originPatterns, protocols, nil)
+	cancelCtx, cancelFunc := context.WithCancel(context.Background())
+	blipContext, err := NewSGBlipContextWithProtocols(arc.ctx, arc.config.ID+idSuffix, originPatterns, protocols, cancelCtx)
 	if err != nil {
+		cancelFunc()
 		return nil, nil, err
 	}
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
@@ -226,7 +228,10 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		}
 	}
 
-	bsc = NewBlipSyncContext(arc.ctx, blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats)
+	bsc, err = NewBlipSyncContext(arc.ctx, blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats, cancelFunc)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	bsc.loggingCtx = base.CorrelationIDLogCtx(
 		arc.config.ActiveDB.AddDatabaseLogContext(base.NewNonCancelCtx().Ctx),

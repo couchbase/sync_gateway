@@ -2411,11 +2411,10 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 
 		// force attachment into test client's store to validate it's fetched
 		attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
-		contentType := "text/plain"
 
 		length, digest := btcRunner.saveAttachment(btc.id, attachmentAData)
 		// Update doc1, include reference to non-existing attachment with recent revpos
-		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
+		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"stub":true,"revpos":1}}}`, digest, length)))
 
 		rt.WaitForVersion(doc1ID, doc1Version)
 
@@ -2516,12 +2515,10 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		btcRunner.AttachmentsLock(btc.id).Unlock()
 
 		// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
-		t.Skip("Skip until CBG-4400 is fixed")
-		_, err := btcRunner.PushRevWithHistory(btc.id, docID, &version, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
+		updatedVersion, err := btcRunner.PushRevWithHistory(btc.id, docID, &version, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
 		require.NoError(t, err)
 
-		// Ensure message and attachment is pushed up
-		btc.pushReplication.WaitForMessage(2)
+		rt.WaitForVersion(docID, *updatedVersion)
 
 		// Get the attachment and ensure the data is updated
 		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc/hello.txt", "")
@@ -2685,24 +2682,24 @@ func TestCBLRevposHandling(t *testing.T) {
 		defer btc.Close()
 
 		startingBody := db.Body{"foo": "bar"}
-		doc1Version := rt.PutDocDirectly(doc1ID, startingBody)
-		doc2Version := rt.PutDocDirectly(doc2ID, startingBody)
+		doc1Version1 := rt.PutDocDirectly(doc1ID, startingBody)
+		doc2Version1 := rt.PutDocDirectly(doc2ID, startingBody)
 
 		rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
-		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
+		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version1)
+		btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version1)
 
 		btcRunner.StartPush(btc.id)
 
 		attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
 		attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
 
-		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
-		doc2Version = btcRunner.AddRev(btc.id, doc2ID, &doc2Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+		doc1Version2 := btcRunner.AddRev(btc.id, doc1ID, &doc1Version1, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+		doc2Version2 := btcRunner.AddRev(btc.id, doc2ID, &doc2Version1, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
 
-		rt.WaitForVersion(doc1ID, doc1Version)
-		rt.WaitForVersion(doc2ID, doc2Version)
+		rt.WaitForVersion(doc1ID, doc1Version2)
+		rt.WaitForVersion(doc2ID, doc2Version2)
 
 		collection, ctx := rt.GetSingleTestDatabaseCollection()
 		_, err := collection.GetDocument(ctx, "doc1", db.DocUnmarshalAll)
@@ -2711,14 +2708,12 @@ func TestCBLRevposHandling(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update doc1, don't change attachment, use correct revpos
-		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
-
-		rt.WaitForVersion(doc1ID, doc1Version)
+		doc1Version3 := btcRunner.AddRev(btc.id, doc1ID, &doc1Version2, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
+		btc.rt.WaitForVersion(doc1ID, doc1Version3)
 
 		// Update doc1, don't change attachment, use revpos=generation of revid, as CBL 2.x does.  Should not proveAttachment on digest match.
-		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
-
-		rt.WaitForVersion(doc1ID, doc1Version)
+		doc1Version4 := btcRunner.AddRev(btc.id, doc1ID, &doc1Version3, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
+		rt.WaitForVersion(doc1ID, doc1Version4)
 
 		// Validate attachment exists
 		attResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
@@ -2727,9 +2722,8 @@ func TestCBLRevposHandling(t *testing.T) {
 
 		attachmentPushCount := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 		// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
-		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
-
-		rt.WaitForVersion(doc1ID, doc1Version)
+		doc1Version5 := btcRunner.AddRev(btc.id, doc1ID, &doc1Version4, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
+		rt.WaitForVersion(doc1ID, doc1Version5)
 
 		// Validate attachment exists and is updated
 		attResponse = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")

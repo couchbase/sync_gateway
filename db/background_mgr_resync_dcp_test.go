@@ -110,6 +110,8 @@ func TestResyncDCPInit(t *testing.T) {
 			}()
 
 			options := make(map[string]interface{})
+			options["database"] = db
+			options["collections"] = ResyncCollections{}
 			if testCase.forceReset {
 				options["reset"] = true
 			}
