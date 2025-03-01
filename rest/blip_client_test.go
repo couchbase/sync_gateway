@@ -1560,20 +1560,13 @@ func (btcc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) {
 	btcc.parent.pushReplication.sendMsg(msg)
 }
 
-// lastSeq returns the latest sequence number for this collection.
-func (btcc *BlipTesterCollectionClient) lastSeq() clientSeq {
-	btcc.seqLock.RLock()
-	defer btcc.seqLock.RUnlock()
-	return btcc._seqLast
-}
-
 // _nextSequence returns the next sequence number for this collection.
 func (btcc *BlipTesterCollectionClient) _nextSequence() clientSeq {
 	btcc._seqLast++
 	return btcc._seqLast
 }
 
-// _pruneVersion removes the given version from the specified doc. This is not allowed for the latest version of a document.
+// pruneVersion removes the given version from the specified doc. This is not allowed for the latest version of a document.
 func (btcc *BlipTesterCollectionClient) pruneVersion(docID string, version DocVersion) {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()

@@ -282,7 +282,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
+func (c *DatabaseCollection) ForEachStubAttachment(body Body, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
@@ -293,9 +293,6 @@ func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, doc
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 		}
 		if meta["data"] == nil {
-			if revpos, ok := base.ToInt64(meta["revpos"]); revpos < int64(minRevpos) || !ok {
-				continue
-			}
 			digest, ok := meta["digest"].(string)
 			if !ok {
 				return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
