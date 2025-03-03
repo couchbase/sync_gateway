@@ -1,7 +1,6 @@
 module github.com/couchbase/sync_gateway
 
 go 1.23
-
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.1
@@ -37,7 +36,7 @@ require (
 	golang.org/x/crypto v0.33.0
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
 	golang.org/x/net v0.35.0
-	golang.org/x/oauth2 v0.26.0
+	golang.org/x/oauth2 v0.27.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
