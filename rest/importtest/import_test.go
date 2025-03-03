@@ -2336,6 +2336,9 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
+	numVbuckets, err := bucket.GetMaxVbno()
+	require.NoError(t, err)
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: bucket.NoCloseClone(),
 		PersistentConfig: false,
@@ -2392,7 +2395,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	require.NoError(t, err)
 
 	// vBucket 800
-	checkpointKey = fmt.Sprintf("%s%d", checkpointPrefix, 800)
+	checkpointKey = fmt.Sprintf("%s%d", checkpointPrefix, (800/1024)*numVbuckets)
 	checkpointData = base.ShardedImportDCPMetadata{}
 	checkpointBytes, _, err = metaStore.GetRaw(checkpointKey)
 	require.NoError(t, err)
