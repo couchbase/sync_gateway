@@ -8,14 +8,13 @@
 
 import os
 import pathlib
-import unittest.mock
 import ssl
+import unittest.mock
 
 import pytest
-import trustme
-
 import sgcollect_info
 import tasks
+import trustme
 
 ZIP_NAME = "foo.zip"
 REDACTED_ZIP_NAME = "foo-redacted.zip"

@@ -13,6 +13,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -160,4 +162,32 @@ func getRootCAs(ctx context.Context, caCertPath string) (*x509.CertPool, error) 
 		WarnfCtx(ctx, "Could not retrieve root CAs: %v", err)
 	}
 	return rootCAs, nil
+}
+
+// MgmtRequest makes a request to the http couchbase management api. This function will read the entire contents of
+// the response and return the output bytes, the status code, and an error.
+func MgmtRequest(client *http.Client, mgmtEp, method, uri, contentType, username, password string, body io.Reader) ([]byte, int, error) {
+	req, err := http.NewRequest(method, mgmtEp+uri, body)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if contentType != "" {
+		req.Header.Add("Content-Type", contentType)
+	}
+
+	if username != "" {
+		req.SetBasicAuth(username, password)
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return nil, response.StatusCode, err
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	respBytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, 0, err
+	}
+	return respBytes, response.StatusCode, nil
 }

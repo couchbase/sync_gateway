@@ -740,11 +740,12 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, "doc2", allDocsResult.Rows[1].ID)
 }
 func TestChannelAccessChanges(t *testing.T) {
-
+	base.TestRequiresDCPResync(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`, PersistentConfig: true}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 	dataStore := rt.GetSingleDataStore()
 	c := dataStore.CollectionName()
 	s := dataStore.ScopeName()
@@ -882,18 +883,11 @@ func TestChannelAccessChanges(t *testing.T) {
 	// below, which could lead to a data race if the cache processor is paused while it's processing a change
 	rt.MustWaitForDoc("epsilon", t)
 
-	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
-	// be changed while the database is in use (only when it's re-opened) but for testing purposes
-	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	collectionWithUser, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-
-	changed, err := collectionWithUser.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
-	assert.NoError(t, err)
-	assert.True(t, changed)
-	changeCount, err := collectionWithUser.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
-	assert.NoError(t, err)
-	assert.Equal(t, 9, changeCount)
-
+	// Finally, throw a wrench in the works by changing the sync fn.
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", `function(doc) {access("alice", "beta");channel("beta");}`), http.StatusOK)
+	resyncStatus := rt.RunResync()
+	require.Equal(t, int64(9), resyncStatus.DocsChanged)
+	rt.TakeDbOnline()
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
 	changes, err = rt.WaitForChanges(len(expectedIDs), "/{{.keyspace}}/_changes", "alice", false)
 	assert.NoError(t, err, "Unexpected error")

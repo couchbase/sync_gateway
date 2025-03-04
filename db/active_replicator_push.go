@@ -53,6 +53,10 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 		apr.config.ID+"-"+string(ActiveReplicatorTypePush))
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
+	if err := apr.startStatusReporter(apr.ctx); err != nil {
+		return err
+	}
+
 	err := apr._connect()
 	if err != nil {
 		_ = apr.setError(err)
@@ -92,10 +96,6 @@ func (apr *ActivePushReplicator) _connect() error {
 		if err := apr._startPushNonCollection(); err != nil {
 			return err
 		}
-	}
-
-	if err := apr.startStatusReporter(); err != nil {
-		return err
 	}
 
 	apr.setState(ReplicationStateRunning)

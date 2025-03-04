@@ -2763,7 +2763,7 @@ func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 
 			resp := rt.CreateDatabase(dbName, dbConfig)
 			RequireStatus(t, resp, http.StatusCreated)
-			assert.NoError(t, rt.WaitForDBOnline())
+			rt.WaitForDBOnline()
 
 			dbConfig.EnableXattrs = base.BoolPtr(false)
 

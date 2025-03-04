@@ -16,9 +16,10 @@
 # be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
-import ijson  # `pip install ijson` if you cannot load this module.
 import sys
 from urllib.request import urlopen
+
+import ijson  # `pip install ijson` if you cannot load this module.
 
 previous = 0
 current = 0

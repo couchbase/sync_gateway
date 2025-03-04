@@ -89,6 +89,37 @@ const (
 
 var defaultTestingCORSOrigin = []string{"http://example.com", "*", "http://staging.example.com"}
 
+// globalBlipTesterClients stores the active blip tester clients to ensure they are cleaned up at the end of a test
+var globalBlipTesterClients *activeBlipTesterClients
+
+func init() {
+	globalBlipTesterClients = &activeBlipTesterClients{m: make(map[string]int32), lock: sync.Mutex{}}
+}
+
+// activeBlipTesterClients tracks the number of active blip tester clients to make sure they are closed at the end of a test and goroutines are not leaked.
+type activeBlipTesterClients struct {
+	m    map[string]int32
+	lock sync.Mutex
+}
+
+// add increments the count of a blip tester client for a particular test
+func (a *activeBlipTesterClients) add(name string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a.m[name]++
+}
+
+// remove decrements the count of a blip tester client for a particular test
+func (a *activeBlipTesterClients) remove(tb testing.TB, name string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	require.Contains(tb, a.m, name, "Can not remove blip tester client '%s' that was never added", name)
+	a.m[name]--
+	if a.m[name] == 0 {
+		delete(a.m, name)
+	}
+}
+
 // RestTester provides a fake server for testing endpoints
 type RestTester struct {
 	*RestTesterConfig
@@ -1052,38 +1083,21 @@ func (rt *RestTester) GetDBState() string {
 	return body["state"].(string)
 }
 
-func (rt *RestTester) WaitForDBOnline() (err error) {
-	return rt.WaitForDBState("Online")
+// WaitForDBOnline waits for the database to be in the Online state. Fail the test harness if the state is not reached within the timeout.
+func (rt *RestTester) WaitForDBOnline() {
+	rt.WaitForDBState("Online")
 }
 
-func (rt *RestTester) WaitForDBState(stateWant string) (err error) {
-	var stateCurr string
-	maxTries := 20
-
-	for i := 0; i < maxTries; i++ {
-		if stateCurr = rt.GetDBState(); stateCurr == stateWant {
-			return nil
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", stateWant, stateCurr, maxTries)
+// WaitForDBState waits for the database to be in the specified state. Fails the test harness if the state is not reached within the timeout.
+func (rt *RestTester) WaitForDBState(stateWant string) {
+	rt.WaitForDatabaseState(rt.GetDatabase().Name, stateWant)
 }
 
-func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) error {
-	var stateCurr string
-	maxTries := 50
-	for i := 0; i < maxTries; i++ {
-		dbRootResponse := DatabaseRoot{}
-		resp := rt.SendAdminRequest("GET", "/"+dbName+"/", "")
-		RequireStatus(rt.TB(), resp, 200)
-		require.NoError(rt.TB(), base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-		stateCurr = dbRootResponse.State
-		if stateCurr == db.RunStateString[targetState] {
-			return nil
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", db.RunStateString[targetState], stateCurr, maxTries)
+// WaitForDatabaseState waits for the specified database to be in the specified state. Fails the test harness if the state is not reached within the timeout.
+func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.Equal(c, targetState, rt.GetDatabaseRoot(dbName).State)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
@@ -1672,7 +1686,6 @@ func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []stri
 	if len(revHistory) > 0 {
 		revRequest.Properties["history"] = strings.Join(revHistory, ",")
 	}
-
 	// Override any properties which have been supplied explicitly
 	for k, v := range properties {
 		revRequest.Properties[k] = v
@@ -2820,4 +2833,22 @@ func JsonToMap(t *testing.T, jsonStr string) map[string]interface{} {
 	err := json.Unmarshal([]byte(jsonStr), &result)
 	require.NoError(t, err)
 	return result
+}
+
+// reloadDatabaseWithConfigLoadFromBucket forces reload of db as if it was being picked up from the bucket
+func (sc *ServerContext) reloadDatabaseWithConfigLoadFromBucket(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, true)
+}
+
+// TestBucketPoolRestWithIndexes is the main function that should be used for TestMain in subpackages of rest.
+func TestBucketPoolRestWithIndexes(ctx context.Context, m *testing.M, tbpOptions base.TestBucketPoolOptions) {
+	tbpOptions.TeardownFuncs = append(tbpOptions.TeardownFuncs, func() {
+		if len(globalBlipTesterClients.m) != 0 {
+			// must panic to bubble up through test harness
+			panic(fmt.Sprintf("%v active blip tester clients should be 0 at end of tests", globalBlipTesterClients.m))
+		}
+	})
+	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }

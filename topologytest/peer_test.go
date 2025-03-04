@@ -387,7 +387,11 @@ func TestPeerImplementation(t *testing.T) {
 					direction: PeerReplicationDirectionPush,
 				})
 				pushReplication.Start()
-				defer pushReplication.Stop()
+				defer func() {
+					fmt.Printf("HONK stopping push replication")
+					pushReplication.Stop()
+					fmt.Printf("HONK done stopping push replication")
+				}()
 				replications = append(replications, pushReplication)
 			}
 

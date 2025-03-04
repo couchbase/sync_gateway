@@ -8,8 +8,11 @@
 
 openapi: 3.0.3
 info:
-  title: Sync Gateway
-  description: Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server
+  title: Sync Gateway Admin REST API
+  description: |-
+    # Introduction
+
+    The Sync Gateway Admin REST API is used to administer user accounts and roles, and to run administrative tasks in superuser mode.
   version: '3.3'
   license:
     name: Business Source License 1.1 (BSL)
@@ -131,7 +134,8 @@ paths:
   '/{keyspace}/':
     $ref: './paths/admin/keyspace-.yaml'
   /_expvar:
-    $ref: ./paths/admin/_expvar.yaml
+    # use the same path as for metrics
+    $ref: ./paths/metric/_expvar.yaml
   /:
     $ref: ./paths/admin/-.yaml
   /_ping:
@@ -209,5 +213,5 @@ tags:
   - name: Unsupported
     description: Endpoints that are not supported by Sync Gateway
 externalDocs:
-  description: Sync Gateway Quickstart | Couchbase Docs
-  url: 'https://docs.couchbase.com/sync-gateway/current/index.html'
+  description: ⬆️ Admin REST API Overview
+  url: rest-api-admin.html

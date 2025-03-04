@@ -243,14 +243,15 @@ func TestPersistentDbConfigAsyncOnlineWithInvalidConfig(t *testing.T) {
 
 	// simulate regular startup
 	atomic.StoreUint32(&rt.GetDatabase().State, db.DBStarting)
-	err := rt.WaitForDBState(db.RunStateString[db.DBStarting])
-	require.NoError(t, err)
+	rt.WaitForDBState(db.RunStateString[db.DBStarting])
 
 	// Can't trigger error case from REST API - requires incompatible or difficult to test configurations (persistent config, offline, active async init)
 	rt.ServerContext().asyncDatabaseOnline(base.NewNonCancelCtx(), rt.GetDatabase(), nil, rt.ServerContext().GetDbVersion("db"))
 
 	// Error should cause db to stay offline - originally a bug caused it to go offline then back to online.
 	// Since we're not running asyncDatabaseOnline inside a goroutine, we don't see the Starting->Offline->Online transition, only the final state
-	err = rt.WaitForDBState(db.RunStateString[db.DBOffline])
-	require.NoError(t, err)
+	rt.WaitForDBState(db.RunStateString[db.DBOffline])
+
+	require.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().TotalOnlineFatalErrors.Value())
+	require.Equal(t, int64(0), rt.GetDatabase().DbStats.Database().TotalInitFatalErrors.Value())
 }

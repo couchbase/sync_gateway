@@ -374,7 +374,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 					if versionVectorProtocol {
 						msgHLV, _, err := ExtractHLVFromBlipMessage(revID)
 						if err != nil {
-							base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication.", base.UD(docID))
+							base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format %s for hlv on doc: %s falling back to full body replication.", revID, base.UD(docID))
 							deltaSrcRevID = "" // will force falling back to full body replication below
 						} else {
 							deltaSrcRevID = msgHLV.GetCurrentVersionString()

@@ -61,7 +61,7 @@ func RequireNumTestBuckets(t testing.TB, numRequired int) {
 // RequireNumTestDataStores skips the given test if there are not enough test buckets available to use.
 func RequireNumTestDataStores(t testing.TB, numRequired int) {
 	TestRequiresCollections(t)
-	available := tbpNumCollectionsPerBucket(TestCtx(t))
+	available := GTestBucketPool.NumCollectionsPerBucket()
 	if available < numRequired {
 		t.Skipf("Only had %d usable test data stores available (test requires %d)", available, numRequired)
 	}
@@ -75,4 +75,8 @@ func (tbp *TestBucketPool) NumUsableBuckets() int {
 		return 10
 	}
 	return tbpNumBuckets(context.Background()) - int(atomic.LoadUint32(&tbp.preservedBucketCount))
+}
+
+func (tbp *TestBucketPool) NumCollectionsPerBucket() int {
+	return tbp.numCollectionsPerBucket
 }

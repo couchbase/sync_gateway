@@ -169,8 +169,9 @@ ExpVars:
                   description: "The total uptime."
         per_db:
           description: |-
-            This array contains stats for all databases declared in the config file -- see the [Sync Gateway Statistics Schema](./../stats-monitoring.html) for more details on the metrics collected and reported by Sync Gateway.
-            The statistics for each {$db_name} database are grouped into:
+            This array contains stats for all databases declared in the config file &mdash; see [View Statistics and Metrics](stats-monitoring.html) for more details on the metrics collected and reported by Sync Gateway.
+
+            The statistics for each database are grouped into:
             - cache related statistics
             - collections statistics
             - cbl_replication_push

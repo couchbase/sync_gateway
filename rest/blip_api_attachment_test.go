@@ -217,7 +217,8 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 		bodyTextExpected = fmt.Sprintf(`{"greetings":[{"howdy":"bob"}],"_attachments":{"%s":{"revpos":1,"length":%d,"stub":true,"digest":"%s"}}}`, attachmentName, len(attachmentData), attachmentDigest)
 		require.JSONEq(t, bodyTextExpected, string(data))
 
-		assert.Equal(t, int64(2), btc.rt.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value())
+		// use RequireWaitForStat since rev is sent slightly before the stats are incremented
+		base.RequireWaitForStat(t, btc.rt.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, 2)
 		assert.Equal(t, int64(0), btc.rt.GetDatabase().DbStats.CBLReplicationPull().RevErrorCount.Value())
 		assert.Equal(t, int64(1), btc.rt.GetDatabase().DbStats.CBLReplicationPull().AttachmentPullCount.Value())
 		assert.Equal(t, int64(len(attachmentData)), btc.rt.GetDatabase().DbStats.CBLReplicationPull().AttachmentPullBytes.Value())
@@ -338,8 +339,6 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	})
 }
 func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
-	t.Skip("Skip until CBG-4400 is fixed")
-
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -347,6 +346,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	const docID = "doc1"
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // There is no such thing as branching ancestors in version vectors
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
@@ -359,39 +359,40 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		// CBL creates revisions 1-abc, 2-abc, 3-abc, 4-abc on the client, with an attachment associated with rev 2.
 		// rev tree pruning on the CBL side, so 1-abc no longer exists.
 		// CBL replicates, sends to client as 4-abc history:[4-abc, 3-abc, 2-abc], attachment has revpos=2
-		bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-		rev := NewDocVersionFromFakeRev("2-abc")
-		_ = btcRunner.AddRev(btc.id, docID, &rev, []byte(bodyText))
+		var latestVersion *DocVersion
+		var firstVersion DocVersion
+		for i := range 3 {
+			version := btcRunner.AddRev(btc.id, docID, latestVersion, []byte(fmt.Sprintf(`{"rev": %d, "greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`, i)))
+			if latestVersion == nil {
+				firstVersion = version
+			}
+			latestVersion = &version
+		}
+		btcRunner.SingleCollection(btc.id).pruneVersion(docID, firstVersion)
 
-		bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-		docVersion, err := btcRunner.PushRevWithHistory(btc.id, docID, &rev, []byte(bodyText), 2, 0)
-		require.NoError(t, err)
-		require.NotNil(t, docVersion)
-		assert.Equal(t, "4-abc", docVersion.RevTreeID)
+		bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+		version4 := btcRunner.AddRev(btc.id, docID, latestVersion, []byte(bodyText))
+		require.Equal(t, "4-abc", version4.RevTreeID)
 
+		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
 		// Wait for the document to be replicated at SG
-		rt.WaitForVersion(docID, *docVersion)
+		rt.WaitForVersion(docID, version4)
 
-		collection, ctx := rt.GetSingleTestDatabaseCollection()
-		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
-		require.NoError(t, err)
+		body := rt.GetDocBody(docID)
 
-		body := doc.Body(ctx)
 		greetings := body["greetings"].([]interface{})
 		assert.Len(t, greetings, 1)
 		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
 
-		assert.Len(t, doc.Attachments, 1)
-		hello, ok := doc.Attachments["hello.txt"].(map[string]interface{})
+		attachments, ok := body[db.BodyAttachments].(map[string]any)
+		require.True(t, ok)
+		assert.Len(t, attachments, 1)
+		hello, ok := attachments["hello.txt"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 		assert.Equal(t, float64(11), hello["length"])
 
-		// revpos should match the generation of the current revision, since it's new to SGW with that revision.
-		// The actual revTreeID will differ when running this test as HLV client (multiple updates to HLV on client
-		// don't result in multiple revTree revisions)
-		expectedRevPos, _ := db.ParseRevID(ctx, doc.CurrentRev)
-		assert.Equal(t, float64(expectedRevPos), hello["revpos"])
+		assert.Equal(t, float64(4), hello["revpos"])
 		assert.True(t, hello["stub"].(bool))
 
 		// Check the number of sendProveAttachment/sendGetAttachment calls.
@@ -556,7 +557,6 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 // TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
 func TestBlipLegacyAttachNameChange(t *testing.T) {
-	t.Skip("Skip until CBG-4400 is fixed")
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -576,20 +576,9 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDoc, attKey, attBody)
-
-		// Get the document and grab the revID.
-		docVersion := client1.GetDocVersion(docID)
-
-		// Store the document and attachment on the test client
-		_ = btcRunner.AddRev(client1.id, docID, &docVersion, rawDoc)
-
-		btcRunner.AttachmentsLock(client1.id).Lock()
-		btcRunner.Attachments(client1.id)[digest] = attBody
-		btcRunner.AttachmentsLock(client1.id).Unlock()
+		version1 := CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Confirm attachment is in the bucket
 		attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
@@ -597,11 +586,15 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, bucketAttachmentA, attBody)
 
+		btcRunner.StartPull(client1.id)
+		btcRunner.WaitForVersion(client1.id, docID, version1)
+
 		// Simulate changing only the attachment name over CBL
 		// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
-		docVersion = btcRunner.AddRev(client1.id, "doc", &docVersion, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+		version2 := btcRunner.AddRev(client1.id, "doc", &version1, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
 
-		client1.rt.WaitForVersion("doc", docVersion)
+		btcRunner.StartPushWithOpts(client1.id, BlipTesterPushOptions{Continuous: false})
+		client1.rt.WaitForVersion("doc", version2)
 
 		resp := client1.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc/attach", "")
 		RequireStatus(t, resp, http.StatusOK)
@@ -611,8 +604,8 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 // TestBlipLegacyAttachDocUpdate ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
-	t.Skip("Skip until CBG-4400 is fixed")
 
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -628,43 +621,22 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client1.Close()
 
-		btcRunner.StartPush(client1.id)
-
 		// Create document in the bucket with a legacy attachment.  Properties here align with rawDocWithAttachmentAndSyncMeta
 		docID := "doc"
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
 		attName := "hi.txt"
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDoc, attKey, attBody)
+		version1 := CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
-		version, _ := client1.rt.GetDoc(docID)
-
-		// Store the document and attachment on the test client
-		_ = btcRunner.AddRev(client1.id, docID, &version, rawDoc)
-		btcRunner.AttachmentsLock(client1.id).Lock()
-		btcRunner.Attachments(client1.id)[digest] = attBody
-		btcRunner.AttachmentsLock(client1.id).Unlock()
-
-		// Confirm attachment is in the bucket
 		attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
 		dataStore := client1.rt.GetSingleDataStore()
 		bucketAttachmentA, _, err := dataStore.GetRaw(attachmentAKey)
 		require.NoError(t, err)
 		require.EqualValues(t, bucketAttachmentA, attBody)
 
-		// Update the document, leaving body intact
-		version = btcRunner.AddRev(client1.id, "doc", &version, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
-		client1.rt.WaitForVersion("doc", version)
-
-		resp := client1.rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/doc/%s", attName), "")
-		RequireStatus(t, resp, http.StatusOK)
-		assert.Equal(t, attBody, resp.BodyBytes())
-
-		// Validate that the attachment hasn't been migrated to V2
 		v1Key := db.MakeAttachmentKey(1, "doc", digest)
 		v1Body, _, err := dataStore.GetRaw(v1Key)
 		require.NoError(t, err)
@@ -673,11 +645,33 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		v2Key := db.MakeAttachmentKey(2, "doc", digest)
 		_, _, err = dataStore.GetRaw(v2Key)
 		require.Error(t, err)
+
+		btcRunner.StartOneshotPull(client1.id)
+		btcRunner.WaitForVersion(client1.id, docID, version1)
+
+		btcRunner.StartPush(client1.id)
+
+		// Update the document, leaving body intact
+		version2 := btcRunner.AddRev(client1.id, "doc", &version1, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+		client1.rt.WaitForVersion("doc", version2)
+
+		resp := client1.rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/doc/%s", attName), "")
+		RequireStatus(t, resp, http.StatusOK)
+		assert.Equal(t, attBody, resp.BodyBytes())
+
+		// Validate that the attachment hasn't been migrated to V2
+		v1Key = db.MakeAttachmentKey(1, "doc", digest)
+		v1Body, _, err = dataStore.GetRaw(v1Key)
+		require.NoError(t, err)
+		require.EqualValues(t, attBody, v1Body)
+
+		v2Key = db.MakeAttachmentKey(2, "doc", digest)
+		_, _, err = dataStore.GetRaw(v2Key)
+		require.Error(t, err)
 		// Confirm correct type of error for both integration test and Walrus
 		if !errors.Is(err, sgbucket.MissingError{Key: v2Key}) {
 			var keyValueErr *gocb.KeyValueError
 			require.True(t, errors.As(err, &keyValueErr))
-			//require.Equal(t, keyValueErr.StatusCode, memd.StatusKeyNotFound)
 			require.Equal(t, keyValueErr.DocumentID, v2Key)
 		}
 	})

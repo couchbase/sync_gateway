@@ -2256,7 +2256,6 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	if err != nil {
 		return
 	}
-
 	mutableBody, metaMap, newRevID, err := col.prepareSyncFn(doc, newDoc)
 	if err != nil {
 		return

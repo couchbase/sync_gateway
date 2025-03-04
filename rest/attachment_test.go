@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -1900,10 +1901,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Get the document and grab the revID.
 		version, _ := rt.GetDoc(docID)
@@ -1927,13 +1926,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID1, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID2, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Get revID of the first document.
 		version, _ := rt.GetDoc(docID1)
@@ -1966,10 +1963,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Get the document and grab the revID.
 		version, _ := rt.GetDoc(docID)
@@ -1993,27 +1988,21 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
+		doc1Version1 := CreateDocWithLegacyAttachment(t, rt, docID1, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
-
-		version, _ := rt.GetDoc(docID1)
+		doc2Version1 := CreateDocWithLegacyAttachment(t, rt, docID2, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Remove attachment from the first document via document update.
-		_ = rt.UpdateDoc(docID1, version, `{"prop":true}`)
+		_ = rt.UpdateDoc(docID1, doc1Version1, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
 
-		// Get revID of the second document.
-		version, _ = rt.GetDoc(docID2)
-
 		// Remove attachment from the second document via document update.
-		_ = rt.UpdateDoc(docID2, version, `{"prop":true}`)
+		_ = rt.UpdateDoc(docID2, doc2Version1, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2031,13 +2020,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
-
-		// Get the document.
-		_, _ = rt.GetDoc(docID)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Purge the entire document.
 		rt.PurgeDoc(docID)
@@ -2055,13 +2039,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
 		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
-		rawDoc := rawDocWithAttachmentAndSyncMeta()
-
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID1, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID2, rawDocWithAttachmentAndSyncMeta(rt), attKey, attBody)
 
 		// Get the first document.
 		_, _ = rt.GetDoc(docID1)
@@ -2222,31 +2204,39 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AutoImport = base.BoolPtr(base.TestUseXattrs())
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()
 
 	// Create doc with attachment and expiry
-	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 2}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 1}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Wait for document to be expired - this bucket get should also trigger the expiry purge interval
-	err := rt.WaitForCondition(func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		_, _, err := dataStore.GetRaw(t.Name())
-		return base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+		assert.True(c, base.IsDocNotFoundError(err), "expected err %v to be doc not found", err)
+	}, time.Second*10, time.Millisecond*10)
 
-	// Trigger OnDemand Import for that doc to trigger tombstone
-	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name(), "")
-	RequireStatus(t, resp, http.StatusNotFound)
-
+	if base.TestUseXattrs() {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+		}, time.Second*10, time.Millisecond*5)
+	} else {
+		// Trigger OnDemand Import for that doc to trigger tombstone
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name(), "")
+		RequireStatus(t, resp, http.StatusNotFound)
+	}
 	att2Key := db.MakeAttachmentKey(db.AttVersion2, t.Name(), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
 
 	// With xattrs doc will be imported and will be captured as tombstone and therefore purge attachments
 	// Otherwise attachment will not be purged
-	_, _, err = dataStore.GetRaw(att2Key)
+	_, _, err := dataStore.GetRaw(att2Key)
 	if base.TestUseXattrs() {
 		base.RequireDocNotFoundError(t, err)
 	} else {
@@ -2425,66 +2415,6 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	})
 }
 
-func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
-	rtConfig := &RestTesterConfig{
-		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				AllowConflicts: base.BoolPtr(true),
-			},
-		},
-	}
-
-	btcRunner := NewBlipTesterClientRunner(t)
-	const docID = "doc"
-
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, rtConfig)
-		defer rt.Close()
-
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
-		defer btc.Close()
-
-		btcRunner.StartPull(btc.id)
-
-		// Push an initial rev with attachment data
-		initialVersion := rt.PutDocWithAttachment(docID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
-		rt.WaitForPendingChanges()
-
-		// Replicate data to client and ensure doc arrives
-		rt.WaitForPendingChanges()
-		btcRunner.WaitForVersion(btc.id, docID, initialVersion)
-
-		// Create a set of revisions before we start the replicator to ensure there's a significant amount of history to push
-		version := initialVersion
-		for i := 0; i < 25; i++ {
-			version = btcRunner.AddRev(btc.id, docID, &version, []byte(`{"update_count":`+strconv.Itoa(i)+`,"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`))
-		}
-
-		// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment, even when we replicate it
-		proveAttachmentBefore := btc.pushReplication.replicationStats.ProveAttachment.Value()
-		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
-		rt.WaitForVersion(docID, version)
-
-		proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
-		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
-
-		// start another push to run in the background from where we last left off
-		latestSeq := btcRunner.SingleCollection(btc.id).lastSeq()
-		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: true, Since: strconv.Itoa(int(latestSeq))})
-
-		// Push another bunch of history, this time whilst a replicator is actively pushing them
-		for i := 25; i < 50; i++ {
-			version = btcRunner.AddRev(btc.id, docID, &version, []byte(`{"update_count":`+strconv.Itoa(i)+`,"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`))
-		}
-
-		rt.WaitForVersion(docID, version)
-		proveAttachmentAfter = btc.pushReplication.replicationStats.ProveAttachment.Value()
-		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
-	})
-}
-
 func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
@@ -2510,15 +2440,13 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		btcRunner.WaitForVersion(btc.id, docID, version)
 
 		// Add an attachment to client
-		btcRunner.AttachmentsLock(btc.id).Lock()
-		btcRunner.Attachments(btc.id)["sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="] = []byte("goodbye cruel world")
-		btcRunner.AttachmentsLock(btc.id).Unlock()
+		btcRunner.saveAttachment(btc.id, base64.StdEncoding.EncodeToString([]byte("goodbye cruel world")))
 
 		// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
-		updatedVersion, err := btcRunner.PushRevWithHistory(btc.id, docID, &version, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
-		require.NoError(t, err)
+		updatedVersion := btcRunner.AddRev(btc.id, docID, &version, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`))
 
-		rt.WaitForVersion(docID, *updatedVersion)
+		btcRunner.StartPush(btc.id)
+		rt.WaitForVersion(docID, updatedVersion)
 
 		// Get the attachment and ensure the data is updated
 		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc/hello.txt", "")
@@ -2663,6 +2591,7 @@ func TestPutInvalidAttachment(t *testing.T) {
 // validates that proveAttachment isn't being invoked when the attachment is already present and the
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySGTest, base.KeySyncMsg, base.KeySync)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2736,7 +2665,8 @@ func TestCBLRevposHandling(t *testing.T) {
 }
 
 // Helper_Functions
-func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) {
+// CreateDocWithLegacyAttachment adds a document with a legacy attachment and returns the version of that document.
+func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) DocVersion {
 	// Write attachment directly to the datastore.
 	dataStore := rt.GetSingleDataStore()
 	_, err := dataStore.Add(attKey, 0, attBody)
@@ -2753,6 +2683,10 @@ func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, r
 	// Migrate document metadata from document body to system xattr.
 	attachments := retrieveAttachmentMeta(t, rt, docID)
 	require.Len(t, attachments, 1)
+	// this will do an on demand import
+	docVersion, _ := rt.GetDoc(docID)
+	rt.WaitForPendingChanges()
+	return docVersion
 }
 
 // CreateDocWithLegacyAttachmentNoMigration create a doc with legacy attachment defined (v1) and will not attempt to migrate that attachment to v2
@@ -2778,13 +2712,16 @@ func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta
 	return attachments
 }
 
-func rawDocWithAttachmentAndSyncMeta() []byte {
-	return []byte(`{
+// rawDocWithAttachmentAndSyncMeta returns a raw document with an attachment and sync metadata inline. RestTester is used to determine the sequence for the document.
+func rawDocWithAttachmentAndSyncMeta(rt *RestTester) []byte {
+	latestSeq, err := rt.GetDatabase().NextSequence(rt.Context())
+	require.NoError(rt.TB(), err)
+	return []byte(fmt.Sprintf(`{
    "_sync": {
       "rev": "1-5fc93bd36377008f96fdae2719c174ed",
-      "sequence": 2,
+      "sequence": %d,
       "recent_sequences": [
-         2
+         %d
       ],
       "history": {
          "revs": [
@@ -2810,7 +2747,7 @@ func rawDocWithAttachmentAndSyncMeta() []byte {
       "time_saved": "2021-09-01T17:33:03.054227821Z"
    },
   "key": "value"
-}`)
+}`, latestSeq, latestSeq))
 }
 
 // attachmentHeaders returns the headers needed to store an attachment.
@@ -2865,7 +2802,7 @@ func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 	attBody := []byte(`hi`)
 	digest := db.Sha1DigestKey(attBody)
 	attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
-	rawDoc := rawDocWithAttachmentAndSyncMeta()
+	rawDoc := rawDocWithAttachmentAndSyncMeta(rt)
 
 	// Create a document with legacy attachment.
 	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)

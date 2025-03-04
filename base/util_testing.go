@@ -990,3 +990,8 @@ func ResetCBGTCertPools(t *testing.T) {
 		cbgtRootCertPools = oldRootCAs
 	})
 }
+
+// CreateTestBucketName will create a test bucket name using the test bucket prefix and the suffix you pass in
+func CreateTestBucketName(suffix string) string {
+	return fmt.Sprintf("%s%s", tbpBucketNamePrefix, suffix)
+}

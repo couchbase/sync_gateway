@@ -246,7 +246,7 @@ func TestRequireResync(t *testing.T) {
 	// The online call is async, but subsequent get to status should remain offline
 	onlineResponse := rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
-	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOffline))
+	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOffline])
 
 	needsResync := []string{scope + "." + collection1}
 	rest.WaitAndAssertCondition(t, func() bool {
@@ -276,7 +276,7 @@ func TestRequireResync(t *testing.T) {
 	resyncPayload, marshalErr := base.JSONMarshal(resyncCollections)
 	require.NoError(t, marshalErr)
 
-	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOffline))
+	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOffline])
 
 	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", string(resyncPayload))
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -310,7 +310,7 @@ func TestRequireResync(t *testing.T) {
 	// Attempt online again, should now succeed
 	onlineResponse = rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
-	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOnline))
+	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOnline])
 
 	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
 	rest.RequireStatus(t, resp, http.StatusOK)

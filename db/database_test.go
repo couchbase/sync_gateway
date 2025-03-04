@@ -3301,42 +3301,6 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	assert.Equal(t, uint64(2), xattr.Sequence)
 }
 
-func TestResyncUpdateAllDocChannels(t *testing.T) {
-	syncFn := `
-	function(doc) {
-		channel("x")
-	}`
-
-	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-
-	_, err := collection.UpdateSyncFun(ctx, syncFn)
-	require.NoError(t, err)
-
-	defer db.Close(ctx)
-
-	for i := 0; i < 10; i++ {
-		updateBody := make(map[string]interface{})
-		updateBody["val"] = i
-		_, _, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), updateBody)
-		require.NoError(t, err)
-	}
-
-	err = db.TakeDbOffline(base.NewNonCancelCtx(), "")
-	assert.NoError(t, err)
-
-	waitAndAssertCondition(t, func() bool {
-		state := atomic.LoadUint32(&db.State)
-		return state == DBOffline
-	})
-
-	_, err = collection.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
-	assert.NoError(t, err)
-
-	syncFnCount := int(db.DbStats.Database().SyncFunctionCount.Value())
-	assert.Equal(t, 20, syncFnCount)
-}
-
 func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	if !base.TestUseXattrs() {

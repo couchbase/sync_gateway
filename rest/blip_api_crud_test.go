@@ -1952,8 +1952,6 @@ func TestMissingNoRev(t *testing.T) {
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
-	require.NoError(t, rt.WaitForDBOnline())
-
 	// Create 5 docs
 	for i := 0; i < 5; i++ {
 		docID := fmt.Sprintf("doc-%d", i)
@@ -2068,7 +2066,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 				// one shot or else we'll carry on to send rev 2-... normally, and we can't assert correctly on the final state of the client
 				rt.WaitForPendingChanges()
-				btcRunner.StartOneshotPullFiltered(btc.id, replicationChannels)
+				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: replicationChannels, Continuous: false})
 
 				// block until we've written the update and got the new version to use in assertions
 				version2 := <-updatedVersion
@@ -2362,25 +2360,10 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docMarker, docMarkerVersion)
 
-		messages := btc.pullReplication.GetMessages()
-
-		var highestMsgSeq uint32
-		var highestSeqMsg blip.Message
-		// Grab most recent changes message
-		for _, message := range messages {
-			messageBody, err := message.Body()
-			require.NoError(t, err)
-			if message.Properties["Profile"] == db.MessageChanges && string(messageBody) != "null" {
-				if highestMsgSeq < uint32(message.SerialNumber()) {
-					highestMsgSeq = uint32(message.SerialNumber())
-					highestSeqMsg = message
-				}
-			}
-		}
+		changesMsg := btc.getMostRecentChangesMessage()
 
 		var messageBody []interface{}
-		err = highestSeqMsg.ReadJSONBody(&messageBody)
-		assert.NoError(t, err)
+		require.NoError(t, changesMsg.ReadJSONBody(&messageBody))
 		require.Len(t, messageBody, 3)
 		require.Len(t, messageBody[0], 4) // Rev 2 of doc, being sent as removal from channel A
 		require.Len(t, messageBody[1], 4) // Rev 3 of doc, being sent as removal from channel B
@@ -2448,7 +2431,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
-		btcRunner.StartOneshotPullFiltered(btc.id, "A")
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: "A", Continuous: false})
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
@@ -2463,28 +2446,12 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		assert.Equal(t, markerID, changes.Results[1].ID)
 
-		btcRunner.StartOneshotPullFiltered(btc.id, "A")
+		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: "A", Continuous: false})
 		_ = btcRunner.WaitForVersion(btc.id, markerID, markerVersion)
 
-		messages := btc.pullReplication.GetMessages()
-
-		var highestMsgSeq uint32
-		var highestSeqMsg blip.Message
-		// Grab most recent changes message
-		for _, message := range messages {
-			messageBody, err := message.Body()
-			require.NoError(t, err)
-			if message.Properties["Profile"] == db.MessageChanges && string(messageBody) != "null" {
-				if highestMsgSeq < uint32(message.SerialNumber()) {
-					highestMsgSeq = uint32(message.SerialNumber())
-					highestSeqMsg = message
-				}
-			}
-		}
-
+		changesMsg := btc.getMostRecentChangesMessage()
 		var messageBody []interface{}
-		err = highestSeqMsg.ReadJSONBody(&messageBody)
-		assert.NoError(t, err)
+		require.NoError(t, changesMsg.ReadJSONBody(&messageBody))
 		require.Len(t, messageBody, 1)
 		require.Len(t, messageBody[0], 3) // marker doc
 		require.Equal(t, "docmarker", messageBody[0].([]interface{})[1])
@@ -3057,7 +3024,7 @@ func TestRequestPlusPull(t *testing.T) {
 		caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 
 		// Start a regular one-shot pull
-		btcRunner.StartOneshotPullRequestPlus(client.id)
+		btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Continuous: true, RequestPlus: true})
 
 		// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
 		require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
@@ -3214,7 +3181,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Test performs import, not valid for non-xattr mode")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyCache, base.KeyChanges)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -3288,7 +3255,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		for i, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
 				docID := fmt.Sprintf("doc%d_%s,", i, testCase.name)
-				markerDoc := fmt.Sprintf("markerDoc%d_%s", i, testCase.name)
 				validBody := fmt.Sprintf(`{"foo":"bar", "channel":%q}`, testCase.channel)
 				username := fmt.Sprintf("user_%d", i)
 
@@ -3305,8 +3271,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.updatedBody)
 				require.NoError(t, err)
 
-				markerDocBody := fmt.Sprintf(`{"channel":%q}`, testCase.channel)
-				_ = rt.PutDoc(markerDoc, markerDocBody)
 				rt.WaitForPendingChanges()
 				rt.GetDatabase().FlushRevisionCacheForTest()
 
@@ -3319,13 +3283,8 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				btcRunner.StartOneshotPull(btc2.id)
 
-				btcRunner.WaitForDoc(btc2.id, markerDoc)
-
-				// Validate that the latest client message for the requested doc/rev was a norev
-				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID)
-				require.True(t, ok)
+				msg := btcRunner.WaitForBlipRevMessage(btc2.id, docID, revID)
 				require.Equal(t, db.MessageNoRev, msg.Profile())
-
 			})
 		}
 	})
@@ -3343,6 +3302,7 @@ func TestBlipDatabaseClose(t *testing.T) {
 		const username = "alice"
 		rt.CreateUser(username, []string{"*"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		defer btc.Close()
 		var blipContextClosed atomic.Bool
 		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
 			log.Printf("on exit callback invoked")
@@ -3496,6 +3456,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 		const username = "alice"
 		rt.CreateUser(username, []string{"*"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		defer btc.Close()
 		var blipContextClosed atomic.Bool
 		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
 			blipContextClosed.Store(true)
