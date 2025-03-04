@@ -2329,6 +2329,8 @@ func TestImportRollback(t *testing.T) {
 // - Test is much like TestImportRollback, but with multiple partitions and multiple vBuckets rolling back
 // - Test case rollbackWithoutFailover will only rollback one partition
 func TestImportRollbackMultiplePartitions(t *testing.T) {
+	t.Skip("test will fail on this branch, no cbgt update on here yet")
+
 	if !base.IsEnterpriseEdition() {
 		t.Skip("This test only works against EE")
 	}
