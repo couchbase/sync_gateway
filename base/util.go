@@ -1764,3 +1764,14 @@ func WaitForNoError(ctx context.Context, callback func() error) error {
 	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
 	return err
 }
+
+// EfficientBytesClone will return a copy of the given bytes.
+// This implementation is slightly quicker than bytes.Clone and won't over-allocate (golang#55905)
+func EfficientBytesClone(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	nb := make([]byte, len(b))
+	copy(nb, b)
+	return nb
+}

@@ -2168,7 +2168,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		documentRevision := DocumentRevision{
 			DocID:       docid,
 			RevID:       newRevID,
-			BodyBytes:   storedDocBytes,
+			BodyBytes:   base.EfficientBytesClone(storedDocBytes),
 			History:     encodeRevisions(ctx, docid, history),
 			Channels:    revChannels,
 			Attachments: doc.Attachments,
