@@ -576,7 +576,6 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 // threshold for this shard, retuning the bytes evicted and number of items evicted
 func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, numBytesEvicted int64) {
 	for rc.lruList.Len() > int(rc.capacity) {
-		//value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
 		value := rc._findEvictionValue()
 		if value == nil {
 			// no more ready for eviction
