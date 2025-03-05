@@ -2092,3 +2092,53 @@ func TestConcurrentPutAndGetOnRevCache(t *testing.T) {
 	assert.Equal(t, cacheElem, cvElement)
 	assert.Equal(t, cacheElem, revElement)
 }
+
+func TestEvictionRaceConditionRequestRevFromBucketHighChurn(t *testing.T) {
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2,
+			ShardCount:   1,
+		},
+	}
+	var wg sync.WaitGroup
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	rev1ID, _, err := collection.Put(ctx, docID, Body{"ver": "0"})
+	require.NoError(t, err)
+	wg.Add(1)
+
+	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	defer testCtxCancel()
+
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				select {
+				case <-testCtx.Done():
+					return
+				default:
+					_, err = db.revisionCache.GetWithRev(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
+			}
+		}()
+	}
+
+	var getErr error
+	go func() {
+		for i := 0; i < 100; i++ {
+			_, getErr = db.revisionCache.GetWithRev(ctx, docID, rev1ID, collection.GetCollectionID(), true)
+			if getErr != nil {
+				break
+			}
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+	require.NoError(t, getErr)
+}

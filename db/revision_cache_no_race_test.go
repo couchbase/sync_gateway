@@ -81,9 +81,9 @@ func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
 
 	revCache, ok := db.revisionCache.(*LRURevisionCache)
 	require.True(t, ok)
-	require.Equal(t, 2, revCache.lruList.Len())
-	assert.Equal(t, 2, len(revCache.cache))
-	assert.Equal(t, 2, len(revCache.hlvCache))
+	lruLen := revCache.lruList.Len()
+	assert.Equal(t, lruLen, len(revCache.cache))
+	assert.Equal(t, lruLen, len(revCache.hlvCache))
 	var found bool
 	for index := range revCache.cache {
 		docID := index.DocID
@@ -152,9 +152,9 @@ func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
 
 	revCache, ok := db.revisionCache.(*LRURevisionCache)
 	require.True(t, ok)
-	require.Equal(t, 2, revCache.lruList.Len())
-	assert.Equal(t, 2, len(revCache.cache))
-	assert.Equal(t, 2, len(revCache.hlvCache))
+	lruLen := revCache.lruList.Len()
+	assert.Equal(t, lruLen, len(revCache.cache))
+	assert.Equal(t, lruLen, len(revCache.hlvCache))
 	var found bool
 	for index := range revCache.cache {
 		docID := index.DocID
@@ -216,9 +216,9 @@ func TestPutRevHighRevCacheChurn(t *testing.T) {
 
 	revCache, ok := db.revisionCache.(*LRURevisionCache)
 	require.True(t, ok)
-	require.Equal(t, 2, revCache.lruList.Len())
-	assert.Equal(t, 2, len(revCache.cache))
-	assert.Equal(t, 2, len(revCache.hlvCache))
+	lruLen := revCache.lruList.Len()
+	assert.Equal(t, lruLen, len(revCache.cache))
+	assert.Equal(t, lruLen, len(revCache.hlvCache))
 	var found bool
 	for index := range revCache.cache {
 		docID := index.DocID

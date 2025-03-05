@@ -127,6 +127,7 @@ type revCacheValue struct {
 	removed      bool
 	itemBytes    atomic.Int64
 	collectionID uint32
+	canEvict     atomic.Bool
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -383,6 +384,7 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, c
 		value = elem.Value.(*revCacheValue)
 	} else if create {
 		value = &revCacheValue{id: docID, revID: revID, collectionID: collectionID}
+		value.canEvict.Store(false)
 		rc.cache[key] = rc.lruList.PushFront(value)
 		rc.cacheNumItems.Add(1)
 
@@ -413,6 +415,7 @@ func (rc *LRURevisionCache) getValueByCV(ctx context.Context, docID string, cv *
 		value = elem.Value.(*revCacheValue)
 	} else if create {
 		value = &revCacheValue{id: docID, cv: *cv, collectionID: collectionID}
+		value.canEvict.Store(false)
 		newElem := rc.lruList.PushFront(value)
 		rc.hlvCache[key] = newElem
 		rc.cacheNumItems.Add(1)
@@ -573,7 +576,12 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 // threshold for this shard, retuning the bytes evicted and number of items evicted
 func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, numBytesEvicted int64) {
 	for rc.lruList.Len() > int(rc.capacity) {
-		value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
+		//value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
+		value := rc._findEvictionValue()
+		if value == nil {
+			// no more ready for eviction
+			break
+		}
 		hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: value.collectionID}
 		revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
 		delete(rc.cache, revKey)
@@ -613,6 +621,12 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
 	} else {
+		// we only want to set can evict if we are having to load the doc from the bucket into value,
+		// avoiding setting this value multiple times in the case other goroutines are loading the same value
+		defer func() {
+			value.canEvict.Store(true) // once done loading doc we can set the value to be ready for eviction
+		}()
+
 		cacheHit = false
 		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
@@ -690,6 +704,12 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
 	} else {
+		// we only want to set can evict if we are having to load the doc from the bucket into value,
+		// avoiding setting this value multiple times in the case other goroutines are loading the same value
+		defer func() {
+			value.canEvict.Store(true) // once done loading doc we can set the value to be ready for eviction
+		}()
+
 		cacheHit = false
 		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
@@ -730,6 +750,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.hlvHistory = docRev.hlvHistory
 	}
 	value.lock.Unlock()
+	value.canEvict.Store(true) // now we have stored the doc revision in the cache, we can allow eviction
 }
 
 func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int64) {
@@ -805,7 +826,11 @@ func (rc *LRURevisionCache) performEviction(ctx context.Context) {
 		// find amount of bytes needed to evict till below threshold
 		bytesNeededToRemove := currMemoryUsage - rc.memoryCapacity
 		for bytesNeededToRemove > numBytesRemoved {
-			value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
+			value := rc._findEvictionValue()
+			if value == nil {
+				// no more values ready for eviction
+				break
+			}
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
 			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: value.collectionID}
 			delete(rc.cache, revKey)
@@ -850,4 +875,27 @@ func (rc *LRURevisionCache) incrRevCacheMemoryUsage(ctx context.Context, bytesCo
 	}
 	rc.currMemoryUsage.Add(bytesCount)
 	rc.cacheMemoryBytesStat.Add(bytesCount)
+}
+
+func (rc *LRURevisionCache) _findEvictionValue() *revCacheValue {
+	evictionCandidate := rc.lruList.Back()
+	revItem := evictionCandidate.Value.(*revCacheValue)
+
+	if revItem.canEvict.Load() {
+		rc.lruList.Remove(evictionCandidate)
+		return revItem
+	}
+
+	// iterate through list backwards to find value ready for eviction
+	evictionCandidate = evictionCandidate.Prev()
+	for evictionCandidate != nil {
+		revItem = evictionCandidate.Value.(*revCacheValue)
+		if revItem.canEvict.Load() {
+			rc.lruList.Remove(evictionCandidate)
+			return revItem
+		}
+		// check prev value
+		evictionCandidate = evictionCandidate.Prev()
+	}
+	return nil
 }
