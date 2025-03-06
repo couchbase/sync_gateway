@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -2372,25 +2371,9 @@ func TestRevocationNoRev(t *testing.T) {
 
 		_ = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
 
-		messages := btc.pullReplication.GetMessages()
-
-		var highestMsgSeq uint32
-		var highestSeqMsg blip.Message
-		// Grab most recent changes message
-		for _, message := range messages {
-			messageBody, err := message.Body()
-			require.NoError(t, err)
-			if message.Properties["Profile"] == db.MessageChanges && string(messageBody) != "null" {
-				if highestMsgSeq < uint32(message.SerialNumber()) {
-					highestMsgSeq = uint32(message.SerialNumber())
-					highestSeqMsg = message
-				}
-			}
-		}
-
+		changesMsg := btc.getMostRecentChangesMessage()
 		var messageBody []interface{}
-		err := highestSeqMsg.ReadJSONBody(&messageBody)
-		require.NoError(t, err)
+		require.NoError(t, changesMsg.ReadJSONBody(&messageBody))
 		require.Len(t, messageBody, 2)
 		require.Len(t, messageBody[0], 4)
 

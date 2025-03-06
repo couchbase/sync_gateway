@@ -1128,22 +1128,18 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		var currentBucketDoc *Document
 
 		// Look at attachments with revpos > the last common ancestor's
-		minRevpos := 1
 		if len(history) > 0 {
 			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
 			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
 			// as we will already have any attachments on the common ancestor so don't need to ask for them.
 			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
 			if err == nil {
-				commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
-				minRevpos, _ = ParseRevID(bh.loggingCtx, commonAncestor)
-				minRevpos++
 				rawBucketDoc = rawDoc
 				currentBucketDoc = currentDoc
-			} else {
-				minRevpos, _ = ParseRevID(bh.loggingCtx, history[len(history)-1])
 			}
 		}
+		// updatedRevPos is the revpos of the new revision, to be added to attachment metadata if needed for CBL<4.0 compatibility. revpos is no longer used by Sync Gateway.
+		updatedRevPos, _ := ParseRevID(bh.loggingCtx, revID)
 
 		// currentDigests is a map from attachment name to the current bucket doc digest,
 		// for any attachments on the incoming document that are also on the current bucket doc
@@ -1159,7 +1155,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				if !ok {
 					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
+					bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
 					continue
 				}
 
@@ -1190,23 +1186,18 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 				}
 
-				incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
-
 				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
 				// digest is different we need to override the revpos and set it to the current revision to ensure
-				// the attachment is requested and stored
-				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
+				// the attachment is requested and stored. revpos provided for SG/CBL<4.0 compatibility but is no longer used by Sync Gateway.
+				if currentAttachmentDigest != incomingAttachmentDigest {
+					bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
 				}
 			}
 
 			body[BodyAttachments] = bodyAtts
 		}
 
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
+		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, docID, currentDigests); err != nil {
 			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
 			return err
 		}
@@ -1472,8 +1463,8 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
-	return bh.collection.ForEachStubAttachment(body, minRevpos, docID, currentDigests,
+func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, docID string, currentDigests map[string]string) error {
+	return bh.collection.ForEachStubAttachment(body, docID, currentDigests,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			// Request attachment if we don't have it
 			if knownData == nil {
