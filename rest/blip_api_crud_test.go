@@ -2060,8 +2060,8 @@ func TestBlipClientSendDelete(t *testing.T) {
 		rt.WaitForVersion(docID, docVersion)
 
 		// delete doc and wait for deletion at rest tester
-		_ = btcRunner.DeleteRev(client.id, docID, &docVersion)
-		rt.WaitForDeletion(docID)
+		deleteVersion := btcRunner.DeleteRev(client.id, docID, &docVersion)
+		rt.WaitForTombstoneVersion(docID, deleteVersion)
 	})
 }
 
