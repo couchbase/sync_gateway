@@ -140,11 +140,29 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 }
 
 func (rt *RestTester) WaitForTombstoneVersion(docID string, deleteVersion DocVersion) {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-		assert.Equal(c, 404, rawResponse.Code, "Expected 404 status code but got %d for %s", rawResponse.Code, docID)
-		assert.Contains(c, rawResponse.Body.String(), "deleted")
+		doc, rawDoc, err := collection.GetDocWithXattr(ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(c, err)
+		assert.True(c, doc.Deleted)
+		docVersion, err := getDocVersion(rawDoc.Xattrs)
+		assert.NoError(c, err)
+		assert.Equal(c, deleteVersion.RevID, docVersion.RevID, "Unexpected revision for %s, got: %s expected: %s", doc.ID, docVersion.RevID, deleteVersion.RevID)
 	}, time.Second*10, time.Millisecond*100)
+}
+
+func getDocVersion(xattrs map[string][]byte) (DocVersion, error) {
+	docVersion := DocVersion{}
+	sync, ok := xattrs[base.SyncXattrName]
+	if ok {
+		var syncData *db.SyncData
+		err := json.Unmarshal(sync, &syncData)
+		if err != nil {
+			return docVersion, err
+		}
+		docVersion.RevID = syncData.CurrentRev
+	}
+	return docVersion, nil
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
