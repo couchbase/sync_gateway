@@ -2093,7 +2093,59 @@ func TestConcurrentPutAndGetOnRevCache(t *testing.T) {
 	assert.Equal(t, cacheElem, revElement)
 }
 
-func TestEvictionRaceConditionRequestRevFromBucketHighChurn(t *testing.T) {
+func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2,
+			ShardCount:   1,
+		},
+	}
+	var wg sync.WaitGroup
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	_, _, err := collection.Put(ctx, docID, Body{"ver": "0"})
+	require.NoError(t, err)
+	wg.Add(1)
+
+	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	defer testCtxCancel()
+
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				select {
+				case <-testCtx.Done():
+					return
+				default:
+					_, err = db.revisionCache.GetWithRev(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
+			}
+		}()
+	}
+
+	go func() {
+		for i := 0; i < 100; i++ {
+			err = collection.dataStore.Set(docID, 0, nil, []byte(fmt.Sprintf(`{"ver": "%d"}`, i)))
+			require.NoError(t, err)
+			_, err := db.revisionCache.GetActive(ctx, docID, collection.GetCollectionID())
+			if err != nil {
+				break
+			}
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+	require.NoError(t, err)
+}
+
+func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
 
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -2141,4 +2193,49 @@ func TestEvictionRaceConditionRequestRevFromBucketHighChurn(t *testing.T) {
 	}()
 	wg.Wait()
 	require.NoError(t, getErr)
+
+}
+
+func TestPutRevHighRevCacheChurn(t *testing.T) {
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 2,
+			ShardCount:   1,
+		},
+	}
+	var wg sync.WaitGroup
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := "doc1"
+	wg.Add(1)
+
+	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
+	defer testCtxCancel()
+
+	for i := 0; i < 2; i++ {
+		docID := fmt.Sprintf("extraDoc%d", i)
+		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
+		require.NoError(t, err)
+		go func() {
+			for {
+				select {
+				case <-testCtx.Done():
+					return
+				default:
+					_, err = db.revisionCache.GetWithRev(ctx, docID, revID, collection.GetCollectionID(), RevCacheOmitDelta) //nolint:errcheck
+				}
+			}
+		}()
+	}
+
+	go func() {
+		for i := 0; i < 100; i++ {
+			docRev := DocumentRevision{DocID: docID, RevID: fmt.Sprintf("1-%d", i), CV: &Version{SourceID: "someSrc", Value: uint64(i)}, BodyBytes: []byte(fmt.Sprintf(`{"ver": "%d"}`, i)), History: Revisions{"start": 1}}
+			db.revisionCache.Put(ctx, docRev, collection.GetCollectionID())
+		}
+		wg.Done()
+	}()
+	wg.Wait()
 }
