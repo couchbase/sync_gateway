@@ -2037,6 +2037,34 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	})
 }
 
+func TestBlipClientSendDelete(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rtConfig := RestTesterConfig{
+		GuestEnabled: true,
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		// add doc and wait for arrival at rest tester
+		const docID = "doc1"
+		docVersion := btcRunner.AddRev(client.id, docID, EmptyDocVersion(), []byte(`{"key": "val"}`))
+		rt.WaitForVersion(docID, docVersion)
+
+		// delete doc and wait for deletion at rest tester
+		_ = btcRunner.DeleteRev(client.id, docID, &docVersion)
+		rt.WaitForDeletion(docID)
+	})
+}
+
 // Reproduces CBG-617 (a client using activeOnly for the initial replication, and then still expecting to get subsequent tombstones afterwards)
 func TestActiveOnlyContinuous(t *testing.T) {
 

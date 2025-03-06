@@ -139,6 +139,14 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	}, time.Second*10, time.Millisecond*10)
 }
 
+func (rt *RestTester) WaitForDeletion(docID string) {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
+		assert.Equal(c, 404, rawResponse.Code, "Expected 404 status code but got %d for %s", rawResponse.Code, docID)
+		assert.Contains(c, rawResponse.Body.String(), "deleted")
+	}, time.Second*10, time.Millisecond*100)
+}
+
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
 	var lastSeq string
 	successFunc := func() bool {
