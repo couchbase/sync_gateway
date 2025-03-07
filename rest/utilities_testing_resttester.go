@@ -143,26 +143,12 @@ func (rt *RestTester) WaitForTombstoneVersion(docID string, deleteVersion DocVer
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-		if ! assert.NoError(c, err) {
+		if !assert.NoError(c, err) {
 			return
 		}
-		assert.True(c, doc.Deleted)
+		assert.NotEqual(c, int64(0), doc.TombstonedAt)
 		assert.Equal(c, deleteVersion.RevID, doc.SyncData.CurrentRev)
 	}, time.Second*10, time.Millisecond*100)
-}
-
-func getDocVersion(xattrs map[string][]byte) (DocVersion, error) {
-	docVersion := DocVersion{}
-	sync, ok := xattrs[base.SyncXattrName]
-	if ok {
-		var syncData *db.SyncData
-		err := json.Unmarshal(sync, &syncData)
-		if err != nil {
-			return docVersion, err
-		}
-		docVersion.RevID = syncData.CurrentRev
-	}
-	return docVersion, nil
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
