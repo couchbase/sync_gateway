@@ -263,7 +263,7 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 		}
 		revTreeIDHistory = append(revTreeIDHistory, cd._revisionsBySeq[seq].version.RevTreeID)
 	}
-	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, hlvHistory: latestRev.HLV}
+	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, hlvHistory: latestRev.HLV, isDelete: latestRev.isDelete}
 }
 
 type BlipTesterCollectionClient struct {
@@ -575,6 +575,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 				isDelete:                  true,
 				msg:                       msg,
 				updateLatestServerVersion: true,
+				hlv:                       hlv,
 			}
 			if replacedRev != "" {
 				var replacedVersion *DocVersion
@@ -1104,6 +1105,7 @@ type proposeChangeBatchEntry struct {
 	hlvHistory          db.HybridLogicalVector
 	seq                 clientSeq
 	latestServerVersion DocVersion
+	isDelete            bool
 }
 
 func (e proposeChangeBatchEntry) historyStr() string {
@@ -1212,6 +1214,9 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 	revRequest.Properties[db.RevMessageID] = change.docID
 	revRequest.Properties[db.RevMessageRev] = change.Rev()
 	revRequest.Properties[db.RevMessageHistory] = change.historyStr()
+	if change.isDelete {
+		revRequest.Properties[db.RevMessageDeleted] = "1"
+	}
 	var deltaVersion *DocVersion
 	var docBody []byte
 	if deltasSupported {
@@ -1413,7 +1418,7 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) {
 	btr.storeMessage(msg)
 }
 
-func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *DocVersion, body []byte) *clientDocRev {
+func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *DocVersion, body []byte, isDelete bool) *clientDocRev {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
 	oldSeq, ok := btcc._seqFromDocID[docID]
@@ -1455,7 +1460,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *D
 	}
 
 	newSeq := btcc._nextSequence()
-	rev := clientDocRev{clientSeq: newSeq, version: docVersion, body: body, HLV: hlv, isDelete: body == nil}
+	rev := clientDocRev{clientSeq: newSeq, version: docVersion, body: body, HLV: hlv, isDelete: isDelete}
 	doc._addNewRev(rev)
 
 	btcc._seqStore[newSeq] = doc
@@ -1471,20 +1476,20 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *D
 // Delete creates a tombstone for the document and returns a the current DocVersion and hlv. If the BlipTesterCollectionClient is using revtrees, hlv will be nil.
 func (btcc *BlipTesterCollectionClient) Delete(docID string, parentVersion *DocVersion) (DocVersion, *db.HybridLogicalVector) {
 	require.NotNil(btcc.TB(), parentVersion, "parentVersion must be provided for delete operation")
-	newRev := btcc.upsertDoc(docID, parentVersion, nil)
+	newRev := btcc.upsertDoc(docID, parentVersion, []byte(`{}`), true)
 	return newRev.version, &newRev.HLV
 }
 
 // AddRev creates a revision on the client. This creates a new revision from the parentVersion and returns the new DocVersion.
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
 func (btcc *BlipTesterCollectionClient) AddRev(docID string, parentVersion *DocVersion, body []byte) DocVersion {
-	newRev := btcc.upsertDoc(docID, parentVersion, body)
+	newRev := btcc.upsertDoc(docID, parentVersion, body, false)
 	return newRev.version
 }
 
 // AddHLVRev creates a revision on the client. This returns an HLV in addition to DocVersion and is otherwise identical to AddRev
 func (btcc *BlipTesterCollectionClient) AddHLVRev(docID string, parentVersion *DocVersion, body []byte) (DocVersion, *db.HybridLogicalVector) {
-	newRev := btcc.upsertDoc(docID, parentVersion, body)
+	newRev := btcc.upsertDoc(docID, parentVersion, body, false)
 	return newRev.version, &newRev.HLV
 }
 
