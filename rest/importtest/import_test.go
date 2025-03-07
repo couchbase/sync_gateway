@@ -1610,13 +1610,16 @@ func TestImportRevisionCopy(t *testing.T) {
 	_, err := dataStore.Add(key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
-	// 2. Trigger import via SG retrieval
+	// 2. Trigger import via SG retrieval, this will not populate the rev cache.
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	assert.Equal(t, 200, response.Code)
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev.RevTreeID
+
+	// Populate rev cache by getting the doc again
+	rt.GetDoc(key)
 
 	// 3. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -2324,6 +2327,8 @@ func TestImportRollback(t *testing.T) {
 // - Test is much like TestImportRollback, but with multiple partitions and multiple vBuckets rolling back
 // - Test case rollbackWithoutFailover will only rollback one partition
 func TestImportRollbackMultiplePartitions(t *testing.T) {
+	t.Skip("test will fail on this branch, no cbgt update on here yet, CBG-4505")
+
 	if !base.IsEnterpriseEdition() {
 		t.Skip("This test only works against EE")
 	}
