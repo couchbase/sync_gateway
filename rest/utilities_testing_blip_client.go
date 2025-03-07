@@ -235,11 +235,23 @@ func (cd *clientDoc) _revisionBySeq(tb testing.TB, seq clientSeq) *clientDocRev 
 }
 
 // _getRev returns the revision associated with the given version. Calling this function requires holding BlipTesterCollectionClient.seqLock as read lock.
-func (cd *clientDoc) _getRev(tb testing.TB, version DocVersion) *clientDocRev {
+func (cd *clientDoc) _getRev(tb testing.TB, version DocVersion, failTest bool) *clientDocRev {
 	seq, ok := cd._seqsByVersions[version]
-	require.True(tb, ok, "version %v not found in seqsByVersions", version)
+	if !ok {
+		if failTest {
+			require.True(tb, ok, "version %v not found in seqsByVersions", version)
+		} else {
+			return nil
+		}
+	}
 	rev, ok := cd._revisionsBySeq[seq]
-	require.True(tb, ok, "seq %d not found in revisionsBySeq", seq)
+	if !ok {
+		if failTest {
+			require.True(tb, ok, "seq %d not found in revisionsBySeq", seq)
+		} else {
+			return nil
+		}
+	}
 	return &rev
 }
 
@@ -334,7 +346,10 @@ func (btcc *BlipTesterCollectionClient) IsVersionTombstone(docID string, version
 	if !exists {
 		return false, base.ErrNotFound
 	}
-	rev := doc._getRev(btcc.TB(), version)
+	rev := doc._getRev(btcc.TB(), version, false)
+	if rev == nil {
+		return false, base.ErrNotFound
+	}
 	return rev.isDelete, nil
 }
 
@@ -1629,7 +1644,7 @@ func (btcc *BlipTesterCollectionClient) getBodyBytes(docID string, version DocVe
 	defer btcc.seqLock.RUnlock()
 	doc, ok := btcc._getClientDoc(docID)
 	require.True(btcc.TB(), ok, "docID %q not found", docID)
-	return doc._getRev(btcc.TB(), version).body
+	return doc._getRev(btcc.TB(), version, true).body
 }
 
 // getLatestHLV returns the HLV for the document. This will return nil if the document doesn't exist in the local store.
@@ -1649,7 +1664,7 @@ func (btcc *BlipTesterCollectionClient) getDeltaBody(docID string, version DocVe
 	defer btcc.seqLock.RUnlock()
 	doc, ok := btcc._getClientDoc(docID)
 	require.True(btcc.TB(), ok, "docID %q not found", docID)
-	rev := doc._getRev(btcc.TB(), version)
+	rev := doc._getRev(btcc.TB(), version, true)
 	serverRev, ok := doc._revisionsBySeq[doc._seqsByVersions[serverVersion]]
 	if !ok || serverRev.isDelete {
 		return rev.body, nil

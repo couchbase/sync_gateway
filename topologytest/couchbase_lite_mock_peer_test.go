@@ -148,7 +148,9 @@ func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStor
 	expectedVersion := db.DocVersion{CV: expected.CV(p.TB())}
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		isTombstone, err := client.IsVersionTombstone(docID, expectedVersion)
-		require.NoError(c, err)
+		if !assert.NoError(c, err) {
+			return
+		}
 		assert.True(c, isTombstone, "expected docID %s on peer %s to be deleted. Replications:\n%s", docID, p, replications.Stats())
 	}, totalWaitTime, pollInterval)
 }
