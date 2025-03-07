@@ -322,6 +322,18 @@ def urlopen_with_basic_auth(url, username, password):
         return urllib.request.urlopen(url)
 
 
+def get_unique_filename(filenames: set[str], original_filename: str) -> str:
+    """
+    Given a set of filenames, return a unique filename that is not in the set.
+    """
+    i = 1
+    filename = original_filename
+    while filename in filenames:
+        filename = f"{original_filename}.{i}"
+        i += 1
+    return filename
+
+
 def make_collect_logs_tasks(
     sg_url: str,
     sg_config_file_path: Optional[str],
@@ -391,6 +403,7 @@ def make_collect_logs_tasks(
 
     # Keep a dictionary of log file paths we've added, to avoid adding duplicates
     sg_log_file_paths: set[pathlib.Path] = set()
+    output_basenames: set[str] = set()
 
     sg_tasks: List[PythonTask] = []
 
@@ -399,8 +412,10 @@ def make_collect_logs_tasks(
         canonical_filename.resolve()
         if canonical_filename in sg_log_file_paths:
             return
+        output_basename = get_unique_filename(output_basenames, canonical_filename.name)
         sg_log_file_paths.add(canonical_filename)
-        task = add_file_task(sourcefile_path=filename)
+        output_basenames.add(output_basename)
+        task = add_file_task(sourcefile_path=filename, output_path=output_basename)
         task.no_header = True
         sg_tasks.append(task)
 
@@ -538,6 +553,7 @@ def make_config_tasks(
     for sg_config_file in sg_config_files:
         task = add_file_task(
             sourcefile_path=sg_config_file,
+            output_path=os.path.basename(sg_config_file),
             content_postprocessors=server_config_postprocessors,
         )
         collect_config_tasks.append(task)
