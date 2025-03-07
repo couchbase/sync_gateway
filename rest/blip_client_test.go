@@ -249,7 +249,7 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 		}
 		revisionHistory = append(revisionHistory, cd._revisionsBySeq[seq].version)
 	}
-	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, history: revisionHistory, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq}
+	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, history: revisionHistory, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
 }
 
 type BlipTesterCollectionClient struct {
@@ -949,6 +949,7 @@ type proposeChangeBatchEntry struct {
 	seq                 clientSeq
 	history             []DocVersion
 	latestServerVersion DocVersion
+	isDelete            bool
 }
 
 func (e proposeChangeBatchEntry) historyStr() string {
@@ -1031,6 +1032,9 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 	revRequest.Properties[db.RevMessageID] = change.docID
 	revRequest.Properties[db.RevMessageRev] = change.version.RevID
 	revRequest.Properties[db.RevMessageHistory] = change.historyStr()
+	if change.isDelete {
+		revRequest.Properties[db.RevMessageDeleted] = "1"
+	}
 
 	var deltaVersion *DocVersion
 	var docBody []byte
@@ -1204,7 +1208,7 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) {
 }
 
 // upsertDoc will create or update the doc based on whether parentVersion is passed or not. Enforces MVCC update.
-func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *DocVersion, body []byte) *clientDocRev {
+func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *DocVersion, body []byte, isDelete bool) *clientDocRev {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
 	oldSeq, ok := btcc._seqFromDocID[docID]
@@ -1232,7 +1236,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *D
 
 	newRevID := fmt.Sprintf("%d-%s", newGen, digest)
 	newSeq := btcc._nextSequence()
-	rev := clientDocRev{clientSeq: newSeq, version: DocVersion{RevID: newRevID}, body: body}
+	rev := clientDocRev{clientSeq: newSeq, version: DocVersion{RevID: newRevID}, body: body, isDelete: isDelete}
 	doc._addNewRev(rev)
 
 	btcc._seqStore[newSeq] = doc
@@ -1248,7 +1252,12 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *D
 // AddRev creates a revision on the client.
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
 func (btcc *BlipTesterCollectionClient) AddRev(docID string, parentVersion *DocVersion, body []byte) DocVersion {
-	newRev := btcc.upsertDoc(docID, parentVersion, body)
+	newRev := btcc.upsertDoc(docID, parentVersion, body, false)
+	return newRev.version
+}
+
+func (btcc *BlipTesterCollectionClient) DeleteRev(docID string, parentVersion *DocVersion) DocVersion {
+	newRev := btcc.upsertDoc(docID, parentVersion, []byte(`{}`), true)
 	return newRev.version
 }
 
@@ -1495,6 +1504,10 @@ func (btcRunner *BlipTestClientRunner) StartOneshotPull(clientID uint32) {
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
 func (btcRunner *BlipTestClientRunner) AddRev(clientID uint32, docID string, version *DocVersion, body []byte) DocVersion {
 	return btcRunner.SingleCollection(clientID).AddRev(docID, version, body)
+}
+
+func (btcrunner *BlipTestClientRunner) DeleteRev(clientID uint32, docID string, version *DocVersion) DocVersion {
+	return btcrunner.SingleCollection(clientID).DeleteRev(docID, version)
 }
 
 func (btcRunner *BlipTestClientRunner) StartPullSince(clientID uint32, options BlipTesterPullOptions) {
