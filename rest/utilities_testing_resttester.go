@@ -142,12 +142,12 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 func (rt *RestTester) WaitForTombstoneVersion(docID string, deleteVersion DocVersion) {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		doc, rawDoc, err := collection.GetDocWithXattr(ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(c, err)
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		if ! assert.NoError(c, err) {
+			return
+		}
 		assert.True(c, doc.Deleted)
-		docVersion, err := getDocVersion(rawDoc.Xattrs)
-		assert.NoError(c, err)
-		assert.Equal(c, deleteVersion.RevID, docVersion.RevID, "Unexpected revision for %s, got: %s expected: %s", doc.ID, docVersion.RevID, deleteVersion.RevID)
+		assert.Equal(c, deleteVersion.RevID, doc.SyncData.CurrentRev)
 	}, time.Second*10, time.Millisecond*100)
 }
 
