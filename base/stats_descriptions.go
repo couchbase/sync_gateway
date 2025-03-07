@@ -64,7 +64,8 @@ const (
 
 	SystemMemoryTotalDesc = "The total memory available on the system in bytes."
 
-	WarnCountDesc = "The total number of warnings logged."
+	WarnCountDesc          = "The total number of warnings logged."
+	AssertionFailCountDesc = "The total number of assertion failures logged."
 
 	UptimeDesc = "The total uptime."
 )
