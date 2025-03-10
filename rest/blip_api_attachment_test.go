@@ -268,7 +268,8 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 		doc2Version := btcRunner.AddRev(btc.id, doc2ID, nil, []byte(doc2Body))
 		btc.rt.WaitForVersion(doc2ID, doc2Version)
 
-		assert.Equal(t, int64(2), btc.rt.GetDatabase().DbStats.CBLReplicationPush().DocPushCount.Value())
+		// use RequireWaitForStat since document exists on Server very slightly before the stat is updated
+		base.RequireWaitForStat(t, btc.rt.GetDatabase().DbStats.CBLReplicationPush().DocPushCount.Value, 2)
 		assert.Equal(t, int64(0), btc.rt.GetDatabase().DbStats.CBLReplicationPush().DocPushErrorCount.Value())
 		assert.Equal(t, int64(2), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
 		assert.Equal(t, int64(2*len(attachmentData)), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushBytes.Value())
