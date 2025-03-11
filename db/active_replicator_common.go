@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,42 +34,44 @@ var fatalReplicatorConnectError = errors.New("Fatal replication connection")
 // replicatorCommon defines the struct contents shared by ActivePushReplicator
 // and ActivePullReplicator
 type activeReplicatorCommon struct {
-	config                *ActiveReplicatorConfig
-	blipSyncContext       *BlipSyncContext
-	blipSender            *blip.Sender
-	Stats                 expvar.Map
-	checkpointerCtx       context.Context
-	checkpointerCtxCancel context.CancelFunc
-	CheckpointID          string // Used for checkpoint retrieval when Checkpointer isn't available
-	initialStatus         *ReplicationStatus
-	statusKey             string // key used when persisting replication status
-	state                 string
-	lastError             error
-	stateErrorLock        sync.RWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
-	replicationStats      *BlipSyncStats
-	_getStatusCallback    func() *ReplicationStatus
-	onReplicatorComplete  ReplicatorCompleteFunc
-	lock                  sync.RWMutex
-	ctx                   context.Context
-	ctxCancel             context.CancelFunc
-	reconnectActive       base.AtomicBool                                             // Tracks whether reconnect goroutine is active
-	replicatorConnectFn   func() error                                                // the function called inside reconnectLoop.
-	activeSendChanges     atomic.Int32                                                // Tracks whether sendChanges goroutines are active, there is one per collection.
-	namedCollections      map[base.ScopeAndCollectionName]*activeReplicatorCollection // set only if the replicator is running with collections - access with forEachCollection
-	defaultCollection     *activeReplicatorCollection                                 // set only if the replicator is not running with collections - access with forEachCollection
+	config                          *ActiveReplicatorConfig
+	blipSyncContext                 *BlipSyncContext
+	blipSender                      *blip.Sender
+	Stats                           expvar.Map
+	checkpointerCtx                 context.Context
+	checkpointerCtxCancel           context.CancelFunc
+	CheckpointID                    string // Used for checkpoint retrieval when Checkpointer isn't available
+	initialStatus                   *ReplicationStatus
+	statusKey                       string // key used when persisting replication status
+	state                           string
+	direction                       ActiveReplicatorDirection
+	lastError                       error
+	stateErrorLock                  sync.RWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
+	replicationStats                *BlipSyncStats
+	_getStatusCallback              func() *ReplicationStatus
+	onReplicatorComplete            ReplicatorCompleteFunc
+	lock                            sync.RWMutex
+	ctx                             context.Context
+	ctxCancel                       context.CancelFunc
+	reconnectActive                 base.AtomicBool                                             // Tracks whether reconnect goroutine is active
+	replicatorConnectFn             func() error                                                // the function called inside reconnectLoop.
+	registerCheckpointerCallbacksFn func(*activeReplicatorCollection) error                     // function to register checkpointer callbacks
+	activeSendChanges               atomic.Int32                                                // Tracks whether sendChanges goroutines are active, there is one per collection.
+	namedCollections                map[base.ScopeAndCollectionName]*activeReplicatorCollection // set only if the replicator is running with collections - access with forEachCollection
+	defaultCollection               *activeReplicatorCollection                                 // set only if the replicator is not running with collections - access with forEachCollection
 }
 
 // GetSingleCollection returns the single collection for the replication.
-func (apr *activeReplicatorCommon) GetSingleCollection(tb testing.TB) *activeReplicatorCollection {
-	if apr.config.CollectionsEnabled {
-		if len(apr.namedCollections) != 1 {
-			tb.Fatalf("Can only use GetSingleCollection with 1 collection, had %d", len(apr.namedCollections))
+func (arc *activeReplicatorCommon) GetSingleCollection(tb testing.TB) *activeReplicatorCollection {
+	if arc.config.CollectionsEnabled {
+		if len(arc.namedCollections) != 1 {
+			tb.Fatalf("Can only use GetSingleCollection with 1 collection, had %d", len(arc.namedCollections))
 		}
-		for _, collection := range apr.namedCollections {
+		for _, collection := range arc.namedCollections {
 			return collection
 		}
 	}
-	return apr.defaultCollection
+	return arc.defaultCollection
 }
 
 // activeReplicatorCollection stores data about a single collection for the replication.
@@ -83,12 +86,15 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 
 	var replicationStats *BlipSyncStats
 	var checkpointID string
-	if direction == ActiveReplicatorTypePush {
+	switch direction {
+	case ActiveReplicatorTypePush:
 		replicationStats = BlipSyncStatsForSGRPush(config.ReplicationStatsMap)
 		checkpointID = PushCheckpointID(config.ID)
-	} else {
+	case ActiveReplicatorTypePull:
 		replicationStats = BlipSyncStatsForSGRPull(config.ReplicationStatsMap)
 		checkpointID = PullCheckpointID(config.ID)
+	default:
+		return nil, fmt.Errorf("Invalid replicator direction: %v", direction)
 	}
 
 	if config.CheckpointInterval == 0 {
@@ -108,54 +114,156 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 		metakeys = config.ActiveDB.MetadataKeys
 	}
 
-	apr := activeReplicatorCommon{
+	arc := activeReplicatorCommon{
 		config:           config,
 		state:            ReplicationStateStopped,
 		replicationStats: replicationStats,
 		CheckpointID:     checkpointID,
 		initialStatus:    initialStatus,
 		statusKey:        metakeys.ReplicationStatusKey(checkpointID),
+		direction:        direction,
 	}
 
 	if config.CollectionsEnabled {
-		apr.namedCollections = make(map[base.ScopeAndCollectionName]*activeReplicatorCollection)
+		arc.namedCollections = make(map[base.ScopeAndCollectionName]*activeReplicatorCollection)
 	} else {
 		defaultDatabaseCollection, err := config.ActiveDB.GetDefaultDatabaseCollection()
 		if err != nil {
 			return nil, err
 		}
-		apr.defaultCollection = &activeReplicatorCollection{
+		arc.defaultCollection = &activeReplicatorCollection{
 			metadataStore:       config.ActiveDB.MetadataStore,
 			collectionDataStore: defaultDatabaseCollection.dataStore,
 		}
 	}
 
-	return &apr, nil
+	return &arc, nil
+}
+
+// Start starts the replicator, setting the state to ReplicationStateStarting and starting the status reporter.
+func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
+	arc.lock.Lock()
+	defer arc.lock.Unlock()
+
+	if arc.ctx != nil && arc.ctx.Err() == nil {
+		return fmt.Errorf("Replicator is already running")
+	}
+
+	arc.setState(ReplicationStateStarting)
+	logCtx := base.CorrelationIDLogCtx(ctx,
+		arc.config.ID+"-"+string(arc.direction))
+	arc.ctx, arc.ctxCancel = context.WithCancel(logCtx)
+
+	arc.startStatusReporter(arc.ctx)
+
+	err := arc.replicatorConnectFn()
+	if err != nil {
+		arc.setError(err)
+		base.WarnfCtx(arc.ctx, "Couldn't connect: %s", err)
+		if errors.Is(err, fatalReplicatorConnectError) {
+			base.WarnfCtx(arc.ctx, "Stopping replication connection attempt")
+			defer arc.ctxCancel()
+		} else {
+			base.InfofCtx(arc.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
+			arc.reconnectActive.Set(true)
+			go arc.reconnectLoop()
+		}
+	}
+	arc._publishStatus()
+	return err
+}
+
+// initCheckpointer starts a checkpointer. The remoteCheckpoints are only for collections and indexed by the blip collectionIdx. If using default collection only, replicationCheckpoints is an empty array.
+func (arc *activeReplicatorCommon) _initCheckpointer(remoteCheckpoints []replicationCheckpoint) error {
+	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
+	arc.checkpointerCtx, arc.checkpointerCtxCancel = context.WithCancel(arc.ctx)
+
+	err := arc.forEachCollection(func(c *activeReplicatorCollection) error {
+		checkpointHash, hashErr := arc.config.CheckpointHash(c.collectionIdx)
+		if hashErr != nil {
+			return hashErr
+		}
+
+		c.Checkpointer = NewCheckpointer(arc.checkpointerCtx, c.metadataStore, c.collectionDataStore, arc.CheckpointID, checkpointHash, arc.blipSender, arc.config, c.collectionIdx)
+
+		if arc.config.CollectionsEnabled {
+			err := c.Checkpointer.setLastCheckpointSeq(&remoteCheckpoints[*c.collectionIdx])
+			if err != nil {
+				return err
+			}
+		} else {
+			err := c.Checkpointer.fetchDefaultCollectionCheckpoints()
+			if err != nil {
+				return err
+			}
+		}
+
+		if err := arc.registerCheckpointerCallbacksFn(c); err != nil {
+			return err
+		}
+
+		c.Checkpointer.Start()
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetStatus is used to retrieve replication status. Combines current running stats with initialStatus.
+func (arc *activeReplicatorCommon) GetStatus() *ReplicationStatus {
+	arc.lock.RLock()
+	defer arc.lock.RUnlock()
+	return arc._getStatusCallback()
+}
+
+// reset performs a reset on the replication by removing the local checkpoint document.
+func (arc *activeReplicatorCommon) reset() error {
+	if arc.state != ReplicationStateStopped {
+		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", arc.config.ID)
+	}
+
+	arc.lock.Lock()
+	defer arc.lock.Unlock()
+
+	if err := arc.forEachCollection(func(c *activeReplicatorCollection) error {
+		if err := resetLocalCheckpoint(c.collectionDataStore, arc.CheckpointID); err != nil {
+			return err
+		}
+		c.Checkpointer = nil
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return removeLocalStatus(arc.ctx, arc.config.ActiveDB.MetadataStore, arc.statusKey)
 }
 
 // reconnectLoop synchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
-func (a *activeReplicatorCommon) reconnectLoop() {
-	base.DebugfCtx(a.ctx, base.KeyReplicate, "starting reconnector")
+func (arc *activeReplicatorCommon) reconnectLoop() {
+	base.DebugfCtx(arc.ctx, base.KeyReplicate, "starting reconnector")
 	defer func() {
-		a.reconnectActive.Set(false)
+		arc.reconnectActive.Set(false)
 	}()
 
 	initialReconnectInterval := defaultInitialReconnectInterval
-	if a.config.InitialReconnectInterval != 0 {
-		initialReconnectInterval = a.config.InitialReconnectInterval
+	if arc.config.InitialReconnectInterval != 0 {
+		initialReconnectInterval = arc.config.InitialReconnectInterval
 	}
 	maxReconnectInterval := defaultMaxReconnectInterval
-	if a.config.MaxReconnectInterval != 0 {
-		maxReconnectInterval = a.config.MaxReconnectInterval
+	if arc.config.MaxReconnectInterval != 0 {
+		maxReconnectInterval = arc.config.MaxReconnectInterval
 	}
 
 	// ctx causes the retry loop to stop if cancelled
-	ctx := a.ctx
+	ctx := arc.ctx
 
 	// if a reconnect timeout is set, we'll wrap the existing so both can stop the retry loop
 	var deadlineCancel context.CancelFunc
-	if a.config.TotalReconnectTimeout != 0 {
-		ctx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(a.config.TotalReconnectTimeout))
+	if arc.config.TotalReconnectTimeout != 0 {
+		ctx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(arc.config.TotalReconnectTimeout))
 	}
 
 	sleeperFunc := base.SleeperFuncCtx(
@@ -171,26 +279,26 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		default:
 		}
 
-		a.lock.Lock()
-		defer a.lock.Unlock()
+		arc.lock.Lock()
+		defer arc.lock.Unlock()
 
 		// preserve lastError from the previous connect attempt
-		a.setState(ReplicationStateReconnecting)
+		arc.setState(ReplicationStateReconnecting)
 
 		// disconnect no-ops if nothing is active, but will close any checkpointer processes, blip contexts, etc, if active.
-		base.TracefCtx(a.ctx, base.KeyReplicate, "calling disconnect from reconnectLoop")
-		err = a._disconnect()
+		base.TracefCtx(arc.ctx, base.KeyReplicate, "calling disconnect from reconnectLoop")
+		err = arc._disconnect()
 		if err != nil {
-			base.InfofCtx(a.ctx, base.KeyReplicate, "error stopping replicator on reconnect: %v", err)
+			base.InfofCtx(arc.ctx, base.KeyReplicate, "error stopping replicator on reconnect: %v", err)
 		}
 
 		// set lastError, but don't set an error state inside the reconnect loop
-		err = a.replicatorConnectFn()
-		a.setLastError(err)
-		a._publishStatus()
+		err = arc.replicatorConnectFn()
+		arc.setLastError(err)
+		arc._publishStatus()
 
 		if err != nil {
-			base.InfofCtx(a.ctx, base.KeyReplicate, "error starting replicator on reconnect: %v", err)
+			base.InfofCtx(arc.ctx, base.KeyReplicate, "error starting replicator on reconnect: %v", err)
 		}
 		return err != nil, err, nil
 	}
@@ -212,141 +320,139 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 	}
 
 	base.WarnfCtx(ctx, "aborting reconnect loop: %v", retryErr)
-	a.replicationStats.NumReconnectsAborted.Add(1)
-	a.lock.Lock()
-	defer a.lock.Unlock()
+	arc.replicationStats.NumReconnectsAborted.Add(1)
+	arc.lock.Lock()
+	defer arc.lock.Unlock()
 	// use setState to preserve last error from retry loop set by setLastError
-	a.setState(ReplicationStateError)
-	a._publishStatus()
-	a._stop()
+	arc.setState(ReplicationStateError)
+	arc._publishStatus()
+	arc._stop()
 }
 
 // reconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
-func (a *activeReplicatorCommon) reconnect() error {
-	a.lock.Lock()
-	base.TracefCtx(a.ctx, base.KeyReplicate, "Calling disconnect from reconnect()")
-	err := a._disconnect()
-	a._publishStatus()
-	a.lock.Unlock()
+func (arc *activeReplicatorCommon) reconnect() error {
+	arc.lock.Lock()
+	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling disconnect from reconnect()")
+	err := arc._disconnect()
+	arc._publishStatus()
+	arc.lock.Unlock()
 	return err
 }
 
 // stopAndDisconnect runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
-func (a *activeReplicatorCommon) stopAndDisconnect() error {
-	a.lock.Lock()
-	a._stop()
-	base.TracefCtx(a.ctx, base.KeyReplicate, "Calling _stop and _disconnect from stopAndDisconnect()")
-	err := a._disconnect()
-	a.setState(ReplicationStateStopped)
-	a._publishStatus()
-	a.lock.Unlock()
+func (arc *activeReplicatorCommon) stopAndDisconnect() error {
+	arc.lock.Lock()
+	arc._stop()
+	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling _stop and _disconnect from stopAndDisconnect()")
+	err := arc._disconnect()
+	arc.setState(ReplicationStateStopped)
+	arc._publishStatus()
+	arc.lock.Unlock()
 
 	// Wait for up to 10s for reconnect goroutine to exit
 	teardownStart := time.Now()
-	for a.reconnectActive.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
+	for arc.reconnectActive.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return err
 }
 
 // _disconnect aborts any replicator processes used during a connected/running replication (checkpointing, blip contexts, etc.)
-func (a *activeReplicatorCommon) _disconnect() error {
-	if a == nil {
+func (arc *activeReplicatorCommon) _disconnect() error {
+	if arc == nil {
 		// noop
 		return nil
 	}
 
-	if a.checkpointerCtx != nil {
-		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
-		a.checkpointerCtxCancel()
-		_ = a.forEachCollection(func(c *activeReplicatorCollection) error {
+	if arc.checkpointerCtx != nil {
+		base.TracefCtx(arc.ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
+		arc.checkpointerCtxCancel()
+		_ = arc.forEachCollection(func(c *activeReplicatorCollection) error {
 			c.Checkpointer.closeWg.Wait()
 			c.Checkpointer.CheckpointNow()
 			return nil
 		})
 	}
-	a.checkpointerCtx = nil
+	arc.checkpointerCtx = nil
 
-	if a.blipSender != nil {
-		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sender")
-		a.blipSender.Close()
-		a.blipSender = nil
+	if arc.blipSender != nil {
+		base.TracefCtx(arc.ctx, base.KeyReplicate, "closing blip sender")
+		arc.blipSender.Close()
+		arc.blipSender = nil
 	}
 
-	if a.blipSyncContext != nil {
-		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sync context")
-		a.blipSyncContext.Close()
-		a.blipSyncContext = nil
+	if arc.blipSyncContext != nil {
+		base.TracefCtx(arc.ctx, base.KeyReplicate, "closing blip sync context")
+		arc.blipSyncContext.Close()
+		arc.blipSyncContext = nil
 	}
 
 	return nil
 }
 
 // _stop aborts any replicator processes that run outside of a running replication connection (e.g: async reconnect handling, statsreporter)
-func (a *activeReplicatorCommon) _stop() {
-	if a.ctxCancel != nil {
-		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling context on activeReplicatorCommon in _stop()")
-		a.ctxCancel()
+func (arc *activeReplicatorCommon) _stop() {
+	if arc.ctxCancel != nil {
+		base.TracefCtx(arc.ctx, base.KeyReplicate, "cancelling context on activeReplicatorCommon in _stop()")
+		arc.ctxCancel()
 	}
 }
 
 type ReplicatorCompleteFunc func()
 
-// _setError updates state and lastError, and
-// returns the error provided.  Expects callers to be holding
-// a.lock
-func (a *activeReplicatorCommon) setError(err error) (passThrough error) {
-	base.InfofCtx(a.ctx, base.KeyReplicate, "ActiveReplicator had error state set with err: %v", err)
-	a.stateErrorLock.Lock()
-	a.state = ReplicationStateError
-	a.lastError = err
-	a.stateErrorLock.Unlock()
-	return err
+// setError updates state to ReplicationStateError and sets the last error.
+func (arc *activeReplicatorCommon) setError(err error) {
+	base.InfofCtx(arc.ctx, base.KeyReplicate, "ActiveReplicator had error state set with err: %v", err)
+	arc.stateErrorLock.Lock()
+	arc.state = ReplicationStateError
+	arc.lastError = err
+	arc.stateErrorLock.Unlock()
 }
 
-func (a *activeReplicatorCommon) setLastError(err error) {
-	a.stateErrorLock.Lock()
-	a.lastError = err
-	a.stateErrorLock.Unlock()
+// setLastError updates the lastError field for the replicator without updating the replicator state.
+func (arc *activeReplicatorCommon) setLastError(err error) {
+	arc.stateErrorLock.Lock()
+	arc.lastError = err
+	arc.stateErrorLock.Unlock()
 }
 
 // setState updates replicator state and resets lastError to nil.  Expects callers
-// to be holding a.lock
-func (a *activeReplicatorCommon) setState(state string) {
-	a.stateErrorLock.Lock()
-	a.state = state
+// to be holding activeReplicatorCommon.lock
+func (arc *activeReplicatorCommon) setState(state string) {
+	arc.stateErrorLock.Lock()
+	arc.state = state
 	if state == ReplicationStateRunning {
-		a.lastError = nil
+		arc.lastError = nil
 	}
-	a.stateErrorLock.Unlock()
+	arc.stateErrorLock.Unlock()
 }
 
-func (a *activeReplicatorCommon) getState() string {
-	a.stateErrorLock.RLock()
-	defer a.stateErrorLock.RUnlock()
-	return a.state
+func (arc *activeReplicatorCommon) getState() string {
+	arc.stateErrorLock.RLock()
+	defer arc.stateErrorLock.RUnlock()
+	return arc.state
 }
 
 // getStateWithErrorMessage returns the current state and last error message for the replicator.
-func (a *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastErrorMessage string) {
-	a.stateErrorLock.RLock()
-	defer a.stateErrorLock.RUnlock()
-	if a.lastError == nil {
-		return a.state, ""
+func (arc *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastErrorMessage string) {
+	arc.stateErrorLock.RLock()
+	defer arc.stateErrorLock.RUnlock()
+	if arc.lastError == nil {
+		return arc.state, ""
 	}
-	return a.state, a.lastError.Error()
+	return arc.state, arc.lastError.Error()
 }
 
-func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
-	return a.replicationStats
+func (arc *activeReplicatorCommon) GetStats() *BlipSyncStats {
+	arc.lock.RLock()
+	defer arc.lock.RUnlock()
+	return arc.replicationStats
 }
 
 // getCheckpointHighSeq returns the highest sequence number that has been processed by the replicator across all collections.
-func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
+func (arc *activeReplicatorCommon) getCheckpointHighSeq() string {
 	var highSeq SequenceID
-	err := a.forEachCollection(func(c *activeReplicatorCollection) error {
+	err := arc.forEachCollection(func(c *activeReplicatorCollection) error {
 		if c.Checkpointer != nil {
 			safeSeq := c.Checkpointer.calculateSafeProcessedSeq()
 			if highSeq.Before(safeSeq) {
@@ -356,7 +462,7 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 		return nil
 	})
 	if err != nil {
-		base.WarnfCtx(a.ctx, "Error calculating high sequence: %v", err)
+		base.WarnfCtx(arc.ctx, "Error calculating high sequence: %v", err)
 		return ""
 	}
 
@@ -368,22 +474,22 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 }
 
 // publishStatus updates the replication status document in the metadata store.
-func (a *activeReplicatorCommon) publishStatus() {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-	a._publishStatus()
+func (arc *activeReplicatorCommon) publishStatus() {
+	arc.lock.Lock()
+	defer arc.lock.Unlock()
+	arc._publishStatus()
 }
 
-// _publishStatus updates the replication status document in the metadata store. Requires holding a.lock before calling.
-func (a *activeReplicatorCommon) _publishStatus() {
-	status := a._getStatusCallback()
-	err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.statusKey, status, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
+// _publishStatus updates the replication status document in the metadata store. Requires holding activeReplicatorCommon.lock before calling.
+func (arc *activeReplicatorCommon) _publishStatus() {
+	status := arc._getStatusCallback()
+	err := setLocalStatus(arc.ctx, arc.config.ActiveDB.MetadataStore, arc.statusKey, status, int(arc.config.ActiveDB.Options.LocalDocExpirySecs))
 	if err != nil {
-		base.WarnfCtx(a.ctx, "Couldn't set status for replication: %v", err)
+		base.WarnfCtx(arc.ctx, "Couldn't set status for replication: %v", err)
 	}
 }
 
-func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) error {
+func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(arc.config.CheckpointInterval)
 		defer ticker.Stop()
@@ -401,7 +507,6 @@ func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) erro
 			}
 		}
 	}()
-	return nil
 }
 
 // getLocalStatusDoc retrieves replication status document for a given client ID from the given metadataStore
@@ -472,4 +577,11 @@ func removeLocalStatus(ctx context.Context, metadataStore base.DataStore, status
 
 	_, _, err = putDocWithRevision(metadataStore, statusKey, currentStatus.Rev, nil, 0)
 	return err
+}
+
+// registerFunctions must be called once after immediately after newActiveReplicatorCommon to set the functions that require a circular definition from parent (ActiveReplicatorPush/ActiveReplicatorPull) and activeReplicatorCommon.
+func (arc *activeReplicatorCommon) registerFunctions(getStatusFn func() *ReplicationStatus, connectFn func() error, registerCheckpointerCallbacksFn func(*activeReplicatorCollection) error) {
+	arc._getStatusCallback = getStatusFn
+	arc.replicatorConnectFn = connectFn
+	arc.registerCheckpointerCallbacksFn = registerCheckpointerCallbacksFn
 }

@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -27,6 +26,7 @@ type ActivePushReplicator struct {
 	*activeReplicatorCommon
 }
 
+// NewPushReplicator creates an ISGR push replicator.
 func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActivePushReplicator, error) {
 	replicator, err := newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePush)
 	if err != nil {
@@ -35,42 +35,8 @@ func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*Ac
 	apr := ActivePushReplicator{
 		activeReplicatorCommon: replicator,
 	}
-	replicator._getStatusCallback = apr._getStatus
-	apr.replicatorConnectFn = apr._connect
+	replicator.registerFunctions(apr._getStatus, apr._connect, apr.registerCheckpointerCallbacks)
 	return &apr, nil
-}
-
-func (apr *ActivePushReplicator) Start(ctx context.Context) error {
-	apr.lock.Lock()
-	defer apr.lock.Unlock()
-
-	if apr.ctx != nil && apr.ctx.Err() == nil {
-		return fmt.Errorf("ActivePushReplicator already running")
-	}
-
-	apr.setState(ReplicationStateStarting)
-	logCtx := base.CorrelationIDLogCtx(ctx,
-		apr.config.ID+"-"+string(ActiveReplicatorTypePush))
-	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
-
-	if err := apr.startStatusReporter(apr.ctx); err != nil {
-		return err
-	}
-
-	err := apr._connect()
-	if err != nil {
-		_ = apr.setError(err)
-		base.WarnfCtx(apr.ctx, "Couldn't connect: %s", err)
-		if errors.Is(err, fatalReplicatorConnectError) {
-			base.WarnfCtx(apr.ctx, "Stopping replication connection attempt")
-		} else {
-			base.InfofCtx(apr.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
-			apr.reconnectActive.Set(true)
-			go apr.reconnectLoop()
-		}
-	}
-	apr._publishStatus()
-	return err
 }
 
 var PreHydrogenTargetAllowConflictsError = errors.New("cannot run replication to target with allow_conflicts=false. Change to allow_conflicts=true or upgrade to 2.8")
@@ -139,46 +105,7 @@ func (apr *ActivePushReplicator) Complete() {
 	}
 }
 
-// initCheckpointer starts a checkpointer. The remoteCheckpoints are only for collections and indexed by the blip collectionIdx. If using default collection only, replicationCheckpoints is an empty array.
-func (apr *ActivePushReplicator) _initCheckpointer(remoteCheckpoints []replicationCheckpoint) error {
-	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
-	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
-
-	err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
-		checkpointHash, hashErr := apr.config.CheckpointHash(c.collectionIdx)
-		if hashErr != nil {
-			return hashErr
-		}
-
-		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.metadataStore, c.collectionDataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, c.collectionIdx)
-
-		if apr.config.CollectionsEnabled {
-			err := c.Checkpointer.setLastCheckpointSeq(&remoteCheckpoints[*c.collectionIdx])
-			if err != nil {
-				return err
-			}
-		} else {
-			err := c.Checkpointer.fetchDefaultCollectionCheckpoints()
-			if err != nil {
-				return err
-			}
-		}
-
-		if err := apr.registerCheckpointerCallbacks(c); err != nil {
-			return err
-		}
-
-		c.Checkpointer.Start()
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// requires apr.lock
+// _getStatus returns current replicator status. Requires holding ActivePushReplicator.lock as a read lock.
 func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
 	status := &ReplicationStatus{}
 	status.Status, status.ErrorMessage = apr.getStateWithErrorMessage()
@@ -195,36 +122,6 @@ func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
 		status.PushReplicationStatus.Add(apr.initialStatus.PushReplicationStatus)
 	}
 	return status
-}
-
-// GetStatus is used externally to retrieve pull replication status.  Combines current running stats with
-// initialStatus.
-func (apr *ActivePushReplicator) GetStatus() *ReplicationStatus {
-	apr.lock.RLock()
-	defer apr.lock.RUnlock()
-	return apr._getStatus()
-}
-
-// reset performs a reset on the replication by removing the local checkpoint document.
-func (apr *ActivePushReplicator) reset() error {
-	if apr.state != ReplicationStateStopped {
-		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
-	}
-
-	apr.lock.Lock()
-	defer apr.lock.Unlock()
-
-	if err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
-		if err := resetLocalCheckpoint(c.collectionDataStore, apr.CheckpointID); err != nil {
-			return err
-		}
-		c.Checkpointer = nil
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return removeLocalStatus(apr.ctx, apr.config.ActiveDB.MetadataStore, apr.statusKey)
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
@@ -315,7 +212,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 	apr.blipSyncContext.fatalErrorCallback = func(err error) {
 		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
 			err = ErrUseProposeChanges
-			_ = apr.setError(PreHydrogenTargetAllowConflictsError)
+			apr.setError(PreHydrogenTargetAllowConflictsError)
 			err = apr.stopAndDisconnect()
 			if err != nil {
 				base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
@@ -347,7 +244,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 		if err != nil {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
 			bh.ctxCancelFunc()
-			_ = apr.setError(err)
+			apr.setError(err)
 			apr.publishStatus()
 			return
 		}
