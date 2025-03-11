@@ -74,33 +74,32 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 	// add collection list to manager for use in status call
 	r.SetCollectionStatus(collectionNames)
 
-	// If the previous run completed, or there was an error during unmarshalling the status we will start the
-	// process from scratch with a new resync ID. Otherwise, we should resume with the resync ID, stats specified in the doc.
-	var resetReason string
+	// If the previous run completed, or we couldn't determine, we will start the resync with a new resync ID.
+	// Otherwise, we should resume with the resync ID, and the previous stats specified in the doc.
+	var resetMsg string // an optional message about why we're resetting
 	var statusDoc ResyncManagerStatusDocDCP
 	if clusterStatus == nil {
-		resetReason = "no previous run found"
+		resetMsg = "no previous run found"
 	} else if resetOpt, _ := options["reset"].(bool); resetOpt {
-		resetReason = "reset option requested"
+		resetMsg = "reset option requested"
 	} else if err := base.JSONUnmarshal(clusterStatus, &statusDoc); err != nil {
-		resetReason = "failed to unmarshal cluster status"
+		resetMsg = "failed to unmarshal cluster status"
 	} else if statusDoc.State == BackgroundProcessStateCompleted {
-		resetReason = "previous run completed"
-	}
-	if resetReason != "" {
-		newID, err := uuid.NewRandom()
-		if err != nil {
-			return err
-		}
-		r.ResyncID = newID.String()
-		base.InfofCtx(ctx, base.KeyAll, "Resync: Resetting resync process with ID: %q - %s", r.ResyncID, resetReason)
+		resetMsg = "previous run completed"
+	} else {
+		// use the resync ID from the status doc to resume
+		r.ResyncID = statusDoc.ResyncID
+		r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
+		base.InfofCtx(ctx, base.KeyAll, "Resync: Resuming resync with ID: %q", r.ResyncID)
 		return nil
 	}
 
-	// use the resync ID from the status doc to resume
-	r.ResyncID = statusDoc.ResyncID
-	r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
-	base.InfofCtx(ctx, base.KeyAll, "Resync: Resuming resync with ID: %q", r.ResyncID)
+	newID, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
+	r.ResyncID = newID.String()
+	base.InfofCtx(ctx, base.KeyAll, "Resync: Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
 	return nil
 }
 
