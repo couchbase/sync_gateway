@@ -21,6 +21,7 @@ type ActivePullReplicator struct {
 	*activeReplicatorCommon
 }
 
+// NewPullReplicator creates an ISGR pull replicator.
 func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActivePullReplicator, error) {
 	replicator, err := newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePull)
 	if err != nil {
@@ -148,7 +149,7 @@ func (apr *ActivePullReplicator) Complete() {
 	}
 }
 
-// requires apr.lock
+// _getStatus returns current replicator status. Requires holding ActivePullReplicator.lock as a read lock.
 func (apr *ActivePullReplicator) _getStatus() *ReplicationStatus {
 	status := &ReplicationStatus{
 		ID: apr.CheckpointID,

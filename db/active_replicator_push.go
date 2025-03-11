@@ -26,6 +26,7 @@ type ActivePushReplicator struct {
 	*activeReplicatorCommon
 }
 
+// NewPushReplicator creates an ISGR push replicator.
 func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActivePushReplicator, error) {
 	replicator, err := newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePush)
 	if err != nil {
@@ -104,7 +105,7 @@ func (apr *ActivePushReplicator) Complete() {
 	}
 }
 
-// requires apr.lock
+// _getStatus returns current replicator status. Requires holding ActivePushReplicator.lock as a read lock.
 func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
 	status := &ReplicationStatus{}
 	status.Status, status.ErrorMessage = apr.getStateWithErrorMessage()
