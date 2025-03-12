@@ -362,10 +362,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	collection, exists := c.db.CollectionByID[event.CollectionID]
 	if !exists {
 		cID := event.CollectionID
-		if cID == base.DefaultCollectionID {
+		if cID == base.DefaultCollectionID && base.MetadataCollectionID == base.DefaultCollectionID {
 			// It's possible for the `_default` collection to be associated with other databases writing non-principal documents,
-			// but we still need this collection's feed for the MetadataStore docs. Conditionally drop log level to avoid spurious warnings.
-			base.DebugfCtx(ctx, base.KeyCache, "DocChanged(): Ignoring non-metadata mutation for doc %q in the default collection - kv ID: %d", base.UD(docID), cID)
+			// but we still need this collection's feed for the sgCfgPrefix docs.
 		} else if cID == base.MetadataCollectionID {
 			// When Metadata moves to a different collection, we should start to warn again - we don't expect non-metadata mutations here!
 			base.WarnfCtx(ctx, "DocChanged(): Non-metadata mutation for doc %q in MetadataStore - kv ID: %d", base.UD(docID), cID)
