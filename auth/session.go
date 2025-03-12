@@ -114,15 +114,21 @@ func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl tim
 	return session, nil
 }
 
+// GetSession returns a session by ID. Return a not found error if the session is not found, or is invalid.
 func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, error) {
 	var session LoginSession
 	_, err := auth.datastore.Get(auth.DocIDForSession(sessionID), &session)
 	if err != nil {
-		if base.IsDocNotFoundError(err) {
-			err = nil
-		}
 		return nil, err
 	}
+	user, err := auth.GetUser(session.Username)
+	if err != nil {
+		return nil, err
+	}
+	if session.SessionUUID != user.GetSessionUUID() {
+		return nil, base.ErrNotFound
+	}
+
 	return &session, nil
 }
 

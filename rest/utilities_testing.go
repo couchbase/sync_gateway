@@ -2871,3 +2871,10 @@ func TestBucketPoolRestWithIndexes(ctx context.Context, m *testing.M, tbpOptions
 	})
 	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }
+
+func RequireNotFoundError(t *testing.T, response *TestResponse) {
+	RequireStatus(t, response, http.StatusNotFound)
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, db.Body{"error": "not_found", "reason": "missing"}, body)
+}
