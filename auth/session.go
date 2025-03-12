@@ -125,6 +125,9 @@ func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, error) {
 	if err != nil {
 		return nil, err
 	}
+	if user == nil {
+		return nil, base.ErrNotFound
+	}
 	if session.SessionUUID != user.GetSessionUUID() {
 		return nil, base.ErrNotFound
 	}
