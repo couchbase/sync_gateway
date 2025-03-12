@@ -334,10 +334,10 @@ func (arc *activeReplicatorCommon) reconnect() {
 	}()
 }
 
-// disconnet will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
+// disconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
 func (arc *activeReplicatorCommon) disconnect() error {
 	arc.lock.Lock()
-	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling disconnect from reconnect()")
+	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling disconnect without stopping the replicator")
 	err := arc._disconnect()
 	arc._publishStatus()
 	arc.lock.Unlock()
