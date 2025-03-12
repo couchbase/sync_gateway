@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/cbgt"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,6 +81,65 @@ func TestDCPNameLength(t *testing.T) {
 			assert.Truef(t, len(cbgtIndexDCPName) <= maxDCPNameLength,
 				"len(cbgtIndexDCPName)=%d is exceeds max allowed %d chars: %s",
 				len(cbgtIndexDCPName), maxDCPNameLength, cbgtIndexDCPName)
+		})
+	}
+}
+
+// TestFeedEventByteSliceCopy( ensures that the byte slices in the FeedEvent are copies and not the original ones - CBG-4540
+func TestFeedEventByteSliceCopy(t *testing.T) {
+	tests := []struct {
+		name           string
+		getFeedEventFn func(k, v []byte) sgbucket.FeedEvent
+	}{
+		{
+			name: "makeFeedEvent",
+			getFeedEventFn: func(k, v []byte) sgbucket.FeedEvent {
+				return makeFeedEvent(k, v, 0, 0, 0, 0, 0, sgbucket.FeedOpMutation)
+			},
+		},
+		{
+			name: "mutationEvent.asFeedEvent",
+			getFeedEventFn: func(k, v []byte) sgbucket.FeedEvent {
+				me := mutationEvent{
+					key:   k,
+					value: v,
+				}
+				return me.asFeedEvent()
+			},
+		},
+		{
+			name: "deletionEvent.asFeedEvent",
+			getFeedEventFn: func(k, v []byte) sgbucket.FeedEvent {
+				de := deletionEvent{
+					key:   k,
+					value: v,
+				}
+				return de.asFeedEvent()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			const (
+				keyData   = "key"
+				valueData = "value"
+			)
+			keySlice := []byte(keyData)
+			valueSlice := []byte(valueData)
+			e := test.getFeedEventFn(keySlice, valueSlice)
+			require.Equal(t, keyData, string(e.Key))
+			require.Equal(t, valueData, string(e.Value))
+			require.Equal(t, keyData, string(keySlice))
+			require.Equal(t, valueData, string(valueSlice))
+
+			// mutate the originals and ensure the FeedEvent byte slices didn't change with it
+			keySlice[0] = 'x'
+			valueSlice[0] = 'x'
+			assert.Equal(t, keyData, string(e.Key))
+			assert.Equal(t, valueData, string(e.Value))
+			assert.NotEqual(t, keyData, string(keySlice))
+			assert.NotEqual(t, valueData, string(valueSlice))
 		})
 	}
 }

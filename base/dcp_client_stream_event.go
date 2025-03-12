@@ -54,14 +54,15 @@ type mutationEvent struct {
 }
 
 // asFeedEvent converts a mutationEvent to a sgbucket.FeedEvent.
+// The byte slices are copied to ensure that memory associated with the memd mutationEvent and Packet are independent and can be released or reused by gocbcore as needed.
 func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpMutation,
 		Flags:        e.flags,
 		Expiry:       e.expiry,
 		CollectionID: e.collection,
-		Key:          e.key,
-		Value:        e.value,
+		Key:          EfficientBytesClone(e.key),
+		Value:        EfficientBytesClone(e.value),
 		DataType:     e.datatype,
 		Cas:          e.cas,
 		RevNo:        e.revNo,
@@ -83,12 +84,13 @@ type deletionEvent struct {
 }
 
 // asFeedEvent converts a deletionEvent to a sgbucket.FeedEvent.
+// The byte slices are copied to ensure that memory associated with the memd mutationEvent and Packet are independent and can be released or reused by gocbcore as needed.
 func (e deletionEvent) asFeedEvent() sgbucket.FeedEvent {
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpDeletion,
 		CollectionID: e.collection,
-		Key:          e.key,
-		Value:        e.value,
+		Key:          EfficientBytesClone(e.key),
+		Value:        EfficientBytesClone(e.value),
 		DataType:     e.datatype,
 		Cas:          e.cas,
 		RevNo:        e.revNo,
