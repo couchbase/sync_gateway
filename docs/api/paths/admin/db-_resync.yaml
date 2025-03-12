@@ -36,8 +36,6 @@ post:
 
     A resync operation cannot be run if the database is online. The database can be taken offline by calling the `POST /{db}/_offline` endpoint.
 
-    In a multi-node cluster, the resync operation *must* be run on only a single node. Therefore, users should bring other nodes offline before initiating this action. Undefined system behaviour will happen if running resync on more than 1 node.
-
     The `requireUser()` and `requireRole()` calls in the sync function will always return `true`.
 
     - **action=start** - This is an asynchronous operation, and will start resync in the background.

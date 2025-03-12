@@ -64,17 +64,6 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 	db := options["database"].(*Database)
 	resyncCollections := options["collections"].(ResyncCollections)
 
-	newRunInit := func() error {
-		uniqueUUID, err := uuid.NewRandom()
-		if err != nil {
-			return err
-		}
-
-		r.ResyncID = uniqueUUID.String()
-		base.InfofCtx(ctx, base.KeyAll, "Resync: Starting new resync run with resync ID: %q", r.ResyncID)
-		return nil
-	}
-
 	// Get collectionIds and store in manager for use in DCP client later
 	collectionIDs, hasAllCollections, collectionNames, err := getCollectionIdsAndNames(db, resyncCollections)
 	if err != nil {
@@ -85,29 +74,33 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 	// add collection list to manager for use in status call
 	r.SetCollectionStatus(collectionNames)
 
-	if clusterStatus != nil {
-		var statusDoc ResyncManagerStatusDocDCP
-		err := base.JSONUnmarshal(clusterStatus, &statusDoc)
-
-		reset, ok := options["reset"].(bool)
-		if reset && ok {
-			base.InfofCtx(ctx, base.KeyAll, "Resync: Resetting resync process. Will not resume any partially completed process")
-		}
-
-		// If the previous run completed, or there was an error during unmarshalling the status we will start the
-		// process from scratch with a new resync ID. Otherwise, we should resume with the resync ID, stats specified in the doc.
-		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
-			return newRunInit()
-		}
+	// If the previous run completed, or we couldn't determine, we will start the resync with a new resync ID.
+	// Otherwise, we should resume with the resync ID, and the previous stats specified in the doc.
+	var resetMsg string // an optional message about why we're resetting
+	var statusDoc ResyncManagerStatusDocDCP
+	if clusterStatus == nil {
+		resetMsg = "no previous run found"
+	} else if resetOpt, _ := options["reset"].(bool); resetOpt {
+		resetMsg = "reset option requested"
+	} else if err := base.JSONUnmarshal(clusterStatus, &statusDoc); err != nil {
+		resetMsg = "failed to unmarshal cluster status"
+	} else if statusDoc.State == BackgroundProcessStateCompleted {
+		resetMsg = "previous run completed"
+	} else {
+		// use the resync ID from the status doc to resume
 		r.ResyncID = statusDoc.ResyncID
 		r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
-
-		base.InfofCtx(ctx, base.KeyAll, "Resync: Attempting to resume resync with resync ID: %s", r.ResyncID)
-
+		base.InfofCtx(ctx, base.KeyAll, "Resync: Resuming resync with ID: %q", r.ResyncID)
 		return nil
 	}
 
-	return newRunInit()
+	newID, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
+	r.ResyncID = newID.String()
+	base.InfofCtx(ctx, base.KeyAll, "Resync: Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
+	return nil
 }
 
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
