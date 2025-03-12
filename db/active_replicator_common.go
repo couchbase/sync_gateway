@@ -165,7 +165,6 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 			defer arc.ctxCancel()
 		} else {
 			base.InfofCtx(arc.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
-			arc.reconnectActive.Set(true)
 			go arc.reconnectLoop()
 		}
 	}
@@ -243,6 +242,7 @@ func (arc *activeReplicatorCommon) reset() error {
 
 // reconnectLoop synchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
 func (arc *activeReplicatorCommon) reconnectLoop() {
+	arc.reconnectActive.Set(true)
 	base.DebugfCtx(arc.ctx, base.KeyReplicate, "starting reconnector")
 	defer func() {
 		arc.reconnectActive.Set(false)
