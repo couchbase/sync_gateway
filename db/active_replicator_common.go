@@ -273,14 +273,17 @@ func (arc *activeReplicatorCommon) reconnectLoop() {
 		ctx)
 
 	retryFunc := func() (shouldRetry bool, err error, _ interface{}) {
-		select {
-		case <-ctx.Done():
+		// check before and after acquiring lock to make sure to exit early if ActiveReplicatorCommon.Stop() was called.
+		if ctx.Err() != nil {
 			return false, ctx.Err(), nil
-		default:
 		}
 
 		arc.lock.Lock()
 		defer arc.lock.Unlock()
+
+		if ctx.Err() != nil {
+			return false, ctx.Err(), nil
+		}
 
 		// preserve lastError from the previous connect attempt
 		arc.setState(ReplicationStateReconnecting)
