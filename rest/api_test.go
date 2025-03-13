@@ -2225,25 +2225,33 @@ func TestHandlePprofs(t *testing.T) {
 			inputResource: "/_debug/pprof/trace?seconds=1",
 		},
 	}
+	// use WaitGroup to parallelize to speed up slow tests. t.Parallel doesn't work with go2xunit processing
+	wg := sync.WaitGroup{}
 
 	for _, tc := range tests {
-		t.Run(tc.inputProfile, func(t *testing.T) {
-			expectedContentDispositionPrefix := fmt.Sprintf(`attachment; filename="%v`, tc.inputProfile)
+		expectedContentDispositionPrefix := fmt.Sprintf(`attachment; filename="%v`, tc.inputProfile)
+		wg.Add(1)
+		func() {
+			defer wg.Done()
 			response := rt.SendAdminRequest(http.MethodGet, tc.inputResource, "")
 			cdHeader := response.Header().Get("Content-Disposition")
 			assert.Truef(t, strings.HasPrefix(cdHeader, expectedContentDispositionPrefix), "Expected header prefix: %q but got %q", expectedContentDispositionPrefix, cdHeader)
 			assert.Equal(t, "application/octet-stream", response.Header().Get("Content-Type"))
 			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
 			RequireStatus(t, response, http.StatusOK)
-
-			response = rt.SendAdminRequest(http.MethodPost, tc.inputResource, "")
-			cdHeader = response.Header().Get("Content-Disposition")
+		}()
+		wg.Add(1)
+		func() {
+			defer wg.Done()
+			response := rt.SendAdminRequest(http.MethodPost, tc.inputResource, "")
+			cdHeader := response.Header().Get("Content-Disposition")
 			assert.Truef(t, strings.HasPrefix(cdHeader, expectedContentDispositionPrefix), "Expected header prefix: %q but got %q", expectedContentDispositionPrefix, cdHeader)
 			assert.Equal(t, "application/octet-stream", response.Header().Get("Content-Type"))
 			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
 			RequireStatus(t, response, http.StatusOK)
-		})
+		}()
 	}
+	wg.Wait()
 }
 
 func TestHandleStats(t *testing.T) {

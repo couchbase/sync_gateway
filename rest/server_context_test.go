@@ -835,13 +835,13 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	_, _, err = collection.Put(ctx, "doc2", db.Body{"type": "doc2"})
 	require.NoError(t, err)
 
-	// wait long enough to be confident that import isn't running...
-	time.Sleep(time.Second * 5)
+	require.Nil(t, rt.GetDatabase().ImportListener)
 
 	// ensure doc1 is not imported - since we started the database offline
 	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
 	rt.ServerContext().TakeDbOnline(base.NewNonCancelCtx(), rt.GetDatabase())
+	require.NotNil(t, rt.GetDatabase().ImportListener)
 
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3", `{"type":"doc3"}`)
 	RequireStatus(t, resp, http.StatusCreated)
