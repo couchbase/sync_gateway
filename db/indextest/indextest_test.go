@@ -43,7 +43,7 @@ func TestRoleQuery(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, false)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless)
 
 			authenticator := database.Authenticator(ctx)
 			require.NotNil(t, authenticator, "database.Authenticator(ctx) returned nil")
@@ -57,8 +57,7 @@ func TestRoleQuery(t *testing.T) {
 			// Delete 1 role
 			role1, err := authenticator.NewRole("role1", base.SetOf("ABC"))
 			require.NoError(t, err)
-			err = authenticator.DeleteRole(role1, false, 0)
-			require.NoError(t, err)
+			require.NoError(t, database.DeleteRole(ctx, role1.Name(), false))
 
 			testCases := []struct {
 				name          string
@@ -122,7 +121,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, false)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 			t.Run("roleQueryCovered", func(t *testing.T) {
 				roleStatement, _ := database.BuildRolesQuery("", 0)
@@ -194,7 +193,7 @@ func TestGetRoleIDs(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, false)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
@@ -245,22 +244,17 @@ func TestInitializeIndexes(t *testing.T) {
 	base.LongRunningTest(t)
 
 	tests := []struct {
-		xattrs           bool
-		collections      bool
-		clusterN1QLStore bool
+		xattrs      bool
+		collections bool
 	}{
-		{true, false, false},
-		{false, false, false},
-		{true, true, false},
-		{false, true, false},
-		{true, false, true},
-		{false, false, true},
-		{true, true, true},
-		{false, true, true},
+		{true, false},
+		{false, false},
+		{true, true},
+		{false, true},
 	}
 
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("xattrs=%v collections=%v clusterN1QL=%v", test.xattrs, test.collections, test.clusterN1QLStore), func(t *testing.T) {
+		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
 			options := db.DatabaseContextOptions{
 				EnableXattr: test.xattrs,
 			}
@@ -277,15 +271,8 @@ func TestInitializeIndexes(t *testing.T) {
 			gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
 			require.NoError(t, err)
 
-			var n1qlStore base.N1QLStore
-			if test.clusterN1QLStore {
-				n1qlStore, err = base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), collection.ScopeName, collection.Name)
-				require.NoError(t, err)
-			} else {
-				var ok bool
-				n1qlStore, ok = base.AsN1QLStore(collection.GetCollectionDatastore())
-				require.True(t, ok)
-			}
+			n1qlStore, err := base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), collection.ScopeName, collection.Name)
+			require.NoError(t, err)
 
 			// add and drop indexes that may be different from the way the bucket pool expects, so use specific options here for test
 			xattrSpecificIndexOptions := db.InitializeIndexOptions{
@@ -311,9 +298,6 @@ func TestInitializeIndexes(t *testing.T) {
 
 // TestInitializeIndexesConcurrentMultiNode simulates a large multi-node SG cluster starting up and racing to create indexes.
 func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
-	if base.TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -324,28 +308,17 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 	// All nodes will just be waiting for the state so we can keep this unrealistically high to increase chances of finding error cases.
 	const numSGNodes = 100
 
-	tests := []struct {
-		clusterN1QLStore bool
-	}{
-		{false},
-		{true},
-	}
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
 
-	for _, test := range tests {
-		t.Run(fmt.Sprintf("clusterN1QL=%v", test.clusterN1QLStore), func(t *testing.T) {
-			bucket := base.GetTestBucket(t)
-			defer bucket.Close(base.TestCtx(t))
-
-			var wg sync.WaitGroup
-			wg.Add(numSGNodes)
-			for i := 0; i < numSGNodes; i++ {
-				ctx := base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("test-node-%d", i))
-				go func() {
-					defer wg.Done()
-					setupN1QLStore(ctx, t, bucket, false, test.clusterN1QLStore)
-				}()
-			}
-			wg.Wait()
-		})
+	var wg sync.WaitGroup
+	wg.Add(numSGNodes)
+	for i := 0; i < numSGNodes; i++ {
+		ctx := base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("test-node-%d", i))
+		go func() {
+			defer wg.Done()
+			setupN1QLStore(ctx, t, bucket, false)
+		}()
 	}
+	wg.Wait()
 }

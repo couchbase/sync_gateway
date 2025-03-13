@@ -27,7 +27,7 @@ func getDatabaseContextOptions(isServerless bool) db.DatabaseContextOptions {
 }
 
 // setupN1QLStore initializes the indexes for a database. This is normally done by the rest package
-func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isServerless, useN1qlCluster bool) {
+func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isServerless bool) {
 	testBucket, ok := bucket.(*base.TestBucket)
 	require.True(t, ok)
 
@@ -62,17 +62,11 @@ func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isSer
 	require.NoError(t, err)
 
 	var n1qlStore base.N1QLStore
-	if useN1qlCluster {
-		gocbBucket, err := base.AsGocbV2Bucket(testBucket)
-		require.NoError(t, err)
+	gocbBucket, err := base.AsGocbV2Bucket(testBucket)
+	require.NoError(t, err)
 
-		n1qlStore, err = base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), dataStore.ScopeName(), dataStore.CollectionName())
-		require.NoError(t, err)
-	} else {
-		var ok bool
-		n1qlStore, ok = base.AsN1QLStore(dataStore)
-		require.True(t, ok)
-	}
+	n1qlStore, err = base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), dataStore.ScopeName(), dataStore.CollectionName())
+	require.NoError(t, err)
 
 	require.NoError(t, db.InitializeIndexes(ctx, n1qlStore, options))
 }
