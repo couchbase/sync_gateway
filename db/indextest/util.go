@@ -12,6 +12,7 @@ import (
 	"context"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
@@ -33,9 +34,6 @@ func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isSer
 
 	hasOnlyDefaultDataStore := len(testBucket.GetNonDefaultDatastoreNames()) == 0
 
-	defaultDataStore := bucket.DefaultDataStore()
-	defaultN1QLStore, ok := base.AsN1QLStore(defaultDataStore)
-	require.True(t, ok, "Unable to get n1QLStore for defaultDataStore")
 	options := db.InitializeIndexOptions{
 		NumReplicas: 0,
 		Serverless:  isServerless,
@@ -46,8 +44,7 @@ func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isSer
 	} else {
 		options.MetadataIndexes = db.IndexesMetadataOnly
 	}
-	ctx = base.CollectionLogCtx(ctx, defaultDataStore.ScopeName(), defaultDataStore.CollectionName())
-	require.NoError(t, db.InitializeIndexes(ctx, defaultN1QLStore, options))
+	initializeIndexes(ctx, t, testBucket, bucket.DefaultDataStore(), options)
 	if hasOnlyDefaultDataStore {
 		return
 	}
@@ -61,13 +58,18 @@ func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isSer
 	dataStore, err := testBucket.GetNamedDataStore(0)
 	require.NoError(t, err)
 
-	var n1qlStore base.N1QLStore
+	initializeIndexes(ctx, t, testBucket, dataStore, options)
+}
+
+// initializeIndexes initializes the indexes for a data store like rest.DatabaseInitManager's DatabaseInitWorker
+func initializeIndexes(ctx context.Context, t *testing.T, testBucket base.Bucket, dsName sgbucket.DataStoreName, options db.InitializeIndexOptions) {
 	gocbBucket, err := base.AsGocbV2Bucket(testBucket)
 	require.NoError(t, err)
 
-	n1qlStore, err = base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), dataStore.ScopeName(), dataStore.CollectionName())
+	n1qlStore, err := base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), dsName.ScopeName(), dsName.CollectionName())
 	require.NoError(t, err)
 
+	ctx = base.CollectionLogCtx(ctx, dsName.ScopeName(), dsName.CollectionName())
 	require.NoError(t, db.InitializeIndexes(ctx, n1qlStore, options))
 }
 
