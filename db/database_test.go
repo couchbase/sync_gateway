@@ -3324,7 +3324,6 @@ func TestUpdateCalculatedStatsPanic(t *testing.T) {
 }
 
 func Test_waitForBackgroundManagersToStop(t *testing.T) {
-	base.LongRunningTest(t)
 	t.Run("single unstoppable process", func(t *testing.T) {
 		bgMngr := &BackgroundManager{
 			name:    "test_unstoppable_runner",
@@ -3337,7 +3336,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 10 * time.Second
+		deadline := 10 * time.Millisecond
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopping, bgMngr.GetRunState())
@@ -3355,7 +3354,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 10 * time.Second
+		deadline := 10 * time.Millisecond
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
 		assert.Less(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, bgMngr.GetRunState())
@@ -3383,7 +3382,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 10 * time.Second
+		deadline := 10 * time.Millisecond
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{stoppableBgMngr, unstoppableBgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, stoppableBgMngr.GetRunState())

@@ -2184,45 +2184,25 @@ func TestHandlePprofsCmdlineAndSymbol(t *testing.T) {
 }
 
 func TestHandlePprofs(t *testing.T) {
-	base.LongRunningTest(t)
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode.")
-	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
+	// only test endpoints that do not require time based sampling to make this test fast, net/http/pprof package is itself tested
 	tests := []struct {
 		inputProfile  string
 		inputResource string
 	}{
 		{
 			inputProfile:  "heap",
-			inputResource: "/_debug/pprof/heap?seconds=1",
-		},
-		{
-			inputProfile:  "profile",
-			inputResource: "/_debug/pprof/profile?seconds=1",
-		},
-		{
-			inputProfile:  "block",
-			inputResource: "/_debug/pprof/block?seconds=1",
+			inputResource: "/_debug/pprof/heap",
 		},
 		{
 			inputProfile:  "threadcreate",
 			inputResource: "/_debug/pprof/threadcreate",
 		},
 		{
-			inputProfile:  "mutex",
-			inputResource: "/_debug/pprof/mutex?seconds=1",
-		},
-		{
 			inputProfile:  "goroutine",
 			inputResource: "/_debug/pprof/goroutine?debug=0&gc=1",
-		},
-		{
-			inputProfile:  "trace",
-			inputResource: "/_debug/pprof/trace?seconds=1",
 		},
 	}
 
