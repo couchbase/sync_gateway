@@ -8,6 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
+// Package indextest runs tests which add or remove GSI tests. These exist in a separate package from db to avoid index churn, and the bucket pool function will drop all indexes in the bucket pool before running tests.
 package indextest
 
 import (
@@ -25,6 +26,6 @@ func TestMain(m *testing.M) {
 	}
 
 	ctx := context.Background() // start of test process
-	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048, NumCollectionsPerBucket: 1}
 	db.TestBucketPoolEnsureNoIndexes(ctx, m, tbpOptions)
 }
