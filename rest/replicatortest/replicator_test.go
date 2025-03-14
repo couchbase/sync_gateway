@@ -8547,12 +8547,12 @@ func TestExistingConfigEmptyReplicationID(t *testing.T) {
 	}
 }
 
-// TestPanicInCheckpointHash:
+// TestNoDBInCheckpointHash:
 //   - Create two rest testers
 //   - Add active replicator for rt1 to push to rt2
 //   - Remove database context off os rt1
 //   - Call start on active replicator, this would normally hit panic in ticket CBG-4070, should now error instead
-func TestPanicInCheckpointHash(t *testing.T) {
+func TestNoDBInCheckpointHash(t *testing.T) {
 
 	// Create two rest testers
 	rt1 := rest.NewRestTester(t, nil)
@@ -8586,7 +8586,7 @@ func TestPanicInCheckpointHash(t *testing.T) {
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
-
+	defer func() { assert.NoError(t, ar.Stop()) }()
 	// remove the db context for rt1 off the server context
 	ok := rt1.ServerContext().RemoveDatabase(base.TestCtx(t), "db")
 	require.True(t, ok)

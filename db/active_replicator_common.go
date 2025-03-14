@@ -54,7 +54,7 @@ type activeReplicatorCommon struct {
 	ctx                             context.Context
 	ctxCancel                       context.CancelFunc
 	reconnectActive                 base.AtomicBool                                             // Tracks whether reconnect goroutine is active
-	replicatorConnectFn             func() error                                                // the function called inside reconnectLoop.
+	replicatorConnectFn             func() error                                                // the function called inside reconnect.
 	registerCheckpointerCallbacksFn func(*activeReplicatorCollection) error                     // function to register checkpointer callbacks
 	activeSendChanges               atomic.Int32                                                // Tracks whether sendChanges goroutines are active, there is one per collection.
 	namedCollections                map[base.ScopeAndCollectionName]*activeReplicatorCollection // set only if the replicator is running with collections - access with forEachCollection
@@ -165,8 +165,7 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 			defer arc.ctxCancel()
 		} else {
 			base.InfofCtx(arc.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
-			arc.reconnectActive.Set(true)
-			go arc.reconnectLoop()
+			arc.reconnect()
 		}
 	}
 	arc._publishStatus()
@@ -241,98 +240,104 @@ func (arc *activeReplicatorCommon) reset() error {
 	return removeLocalStatus(arc.ctx, arc.config.ActiveDB.MetadataStore, arc.statusKey)
 }
 
-// reconnectLoop synchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
-func (arc *activeReplicatorCommon) reconnectLoop() {
-	base.DebugfCtx(arc.ctx, base.KeyReplicate, "starting reconnector")
-	defer func() {
-		arc.reconnectActive.Set(false)
-	}()
+// reconnect asynchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
+func (arc *activeReplicatorCommon) reconnect() {
+	arc.reconnectActive.Set(true)
+	go func() {
+		base.DebugfCtx(arc.ctx, base.KeyReplicate, "starting reconnector")
+		defer func() {
+			arc.reconnectActive.Set(false)
+		}()
 
-	initialReconnectInterval := defaultInitialReconnectInterval
-	if arc.config.InitialReconnectInterval != 0 {
-		initialReconnectInterval = arc.config.InitialReconnectInterval
-	}
-	maxReconnectInterval := defaultMaxReconnectInterval
-	if arc.config.MaxReconnectInterval != 0 {
-		maxReconnectInterval = arc.config.MaxReconnectInterval
-	}
-
-	// ctx causes the retry loop to stop if cancelled
-	ctx := arc.ctx
-
-	// if a reconnect timeout is set, we'll wrap the existing so both can stop the retry loop
-	var deadlineCancel context.CancelFunc
-	if arc.config.TotalReconnectTimeout != 0 {
-		ctx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(arc.config.TotalReconnectTimeout))
-	}
-
-	sleeperFunc := base.SleeperFuncCtx(
-		base.CreateIndefiniteMaxDoublingSleeperFunc(
-			int(initialReconnectInterval.Milliseconds()),
-			int(maxReconnectInterval.Milliseconds())),
-		ctx)
-
-	retryFunc := func() (shouldRetry bool, err error, _ interface{}) {
-		select {
-		case <-ctx.Done():
-			return false, ctx.Err(), nil
-		default:
+		initialReconnectInterval := defaultInitialReconnectInterval
+		if arc.config.InitialReconnectInterval != 0 {
+			initialReconnectInterval = arc.config.InitialReconnectInterval
+		}
+		maxReconnectInterval := defaultMaxReconnectInterval
+		if arc.config.MaxReconnectInterval != 0 {
+			maxReconnectInterval = arc.config.MaxReconnectInterval
 		}
 
+		// ctx causes the retry loop to stop if cancelled
+		ctx := arc.ctx
+
+		// if a reconnect timeout is set, we'll wrap the existing so both can stop the retry loop
+		var deadlineCancel context.CancelFunc
+		if arc.config.TotalReconnectTimeout != 0 {
+			ctx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(arc.config.TotalReconnectTimeout))
+		}
+
+		sleeperFunc := base.SleeperFuncCtx(
+			base.CreateIndefiniteMaxDoublingSleeperFunc(
+				int(initialReconnectInterval.Milliseconds()),
+				int(maxReconnectInterval.Milliseconds())),
+			ctx)
+
+		retryFunc := func() (shouldRetry bool, err error, _ interface{}) {
+			// check before and after acquiring lock to make sure to exit early if ActiveReplicatorCommon.Stop() was called.
+			if ctx.Err() != nil {
+				return false, ctx.Err(), nil
+			}
+
+			arc.lock.Lock()
+			defer arc.lock.Unlock()
+
+			if ctx.Err() != nil {
+				return false, ctx.Err(), nil
+			}
+
+			// preserve lastError from the previous connect attempt
+			arc.setState(ReplicationStateReconnecting)
+
+			// disconnect no-ops if nothing is active, but will close any checkpointer processes, blip contexts, etc, if active.
+			base.TracefCtx(arc.ctx, base.KeyReplicate, "calling disconnect from reconnect")
+			err = arc._disconnect()
+			if err != nil {
+				base.InfofCtx(arc.ctx, base.KeyReplicate, "error stopping replicator on reconnect: %v", err)
+			}
+
+			// set lastError, but don't set an error state inside the reconnect loop
+			err = arc.replicatorConnectFn()
+			arc.setLastError(err)
+			arc._publishStatus()
+
+			if err != nil {
+				base.InfofCtx(arc.ctx, base.KeyReplicate, "error starting replicator on reconnect: %v", err)
+			}
+			return err != nil, err, nil
+		}
+
+		retryErr, _ := base.RetryLoop(ctx, "replicator reconnect", retryFunc, sleeperFunc)
+		// release timer associated with context deadline
+		if deadlineCancel != nil {
+			deadlineCancel()
+		}
+		// Exit early if no error
+		if retryErr == nil {
+			return
+		}
+
+		// replicator was stopped - appropriate state has already been set
+		if errors.Is(ctx.Err(), context.Canceled) {
+			base.DebugfCtx(ctx, base.KeyReplicate, "exiting reconnect loop: %v", retryErr)
+			return
+		}
+
+		base.WarnfCtx(ctx, "aborting reconnect loop: %v", retryErr)
+		arc.replicationStats.NumReconnectsAborted.Add(1)
 		arc.lock.Lock()
 		defer arc.lock.Unlock()
-
-		// preserve lastError from the previous connect attempt
-		arc.setState(ReplicationStateReconnecting)
-
-		// disconnect no-ops if nothing is active, but will close any checkpointer processes, blip contexts, etc, if active.
-		base.TracefCtx(arc.ctx, base.KeyReplicate, "calling disconnect from reconnectLoop")
-		err = arc._disconnect()
-		if err != nil {
-			base.InfofCtx(arc.ctx, base.KeyReplicate, "error stopping replicator on reconnect: %v", err)
-		}
-
-		// set lastError, but don't set an error state inside the reconnect loop
-		err = arc.replicatorConnectFn()
-		arc.setLastError(err)
+		// use setState to preserve last error from retry loop set by setLastError
+		arc.setState(ReplicationStateError)
 		arc._publishStatus()
-
-		if err != nil {
-			base.InfofCtx(arc.ctx, base.KeyReplicate, "error starting replicator on reconnect: %v", err)
-		}
-		return err != nil, err, nil
-	}
-
-	retryErr, _ := base.RetryLoop(ctx, "replicator reconnect", retryFunc, sleeperFunc)
-	// release timer associated with context deadline
-	if deadlineCancel != nil {
-		deadlineCancel()
-	}
-	// Exit early if no error
-	if retryErr == nil {
-		return
-	}
-
-	// replicator was stopped - appropriate state has already been set
-	if errors.Is(ctx.Err(), context.Canceled) {
-		base.DebugfCtx(ctx, base.KeyReplicate, "exiting reconnect loop: %v", retryErr)
-		return
-	}
-
-	base.WarnfCtx(ctx, "aborting reconnect loop: %v", retryErr)
-	arc.replicationStats.NumReconnectsAborted.Add(1)
-	arc.lock.Lock()
-	defer arc.lock.Unlock()
-	// use setState to preserve last error from retry loop set by setLastError
-	arc.setState(ReplicationStateError)
-	arc._publishStatus()
-	arc._stop()
+		arc._stop()
+	}()
 }
 
-// reconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
-func (arc *activeReplicatorCommon) reconnect() error {
+// disconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
+func (arc *activeReplicatorCommon) disconnect() error {
 	arc.lock.Lock()
-	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling disconnect from reconnect()")
+	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling disconnect without stopping the replicator")
 	err := arc._disconnect()
 	arc._publishStatus()
 	arc.lock.Unlock()
