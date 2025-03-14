@@ -91,10 +91,9 @@ func TestDeleteSession(t *testing.T) {
 	assert.NoError(t, dataStore.Set(auth.DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
 	assert.NoError(t, auth.DeleteSession(ctx, mockSession.ID, ""))
 
-	// Just to verify the session has been deleted gracefully.
 	session, err := auth.GetSession(mockSession.ID)
 	assert.Nil(t, session)
-	assert.NoError(t, err)
+	base.RequireDocNotFoundError(t, err)
 }
 
 // Coverage for MakeSessionCookie. The MakeSessionCookie should create a cookie
