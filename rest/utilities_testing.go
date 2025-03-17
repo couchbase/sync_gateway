@@ -1163,12 +1163,10 @@ type RawResponse struct {
 // Used by tests that need to validate sequences (for grants, etc)
 func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
-	if response.Code != 200 {
-		return 0
-	}
+	require.Equal(rt.TB(), http.StatusOK, response.Code, "Error getting raw document %s", response.Body.String())
 
 	var rawResponse RawResponse
-	_ = base.JSONUnmarshal(response.BodyBytes(), &rawResponse)
+	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
 	return rawResponse.Sync.Sequence
 }
 
