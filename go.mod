@@ -2,6 +2,8 @@ module github.com/couchbase/sync_gateway
 
 go 1.23.0
 
+toolchain go1.24.1
+
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.1
@@ -11,7 +13,7 @@ require (
 	github.com/couchbase/go-blip v0.0.0-20250222004812-31da589e100a
 	github.com/couchbase/gocb/v2 v2.9.4
 	github.com/couchbase/gocbcore/v10 v10.5.4
-	github.com/couchbase/gomemcached v0.2.1
+	github.com/couchbase/gomemcached v0.3.3
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20241018143914-45ef51a0c1be
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
@@ -62,6 +64,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/pprof v0.0.0-20240227163752-401108e1b7e7 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
