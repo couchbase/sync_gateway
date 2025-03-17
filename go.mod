@@ -2,11 +2,13 @@ module github.com/couchbase/sync_gateway
 
 go 1.23.0
 
+toolchain go1.24.1
+
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.1
 	github.com/coreos/go-oidc/v3 v3.12.0
-	github.com/couchbase/cbgt v1.3.10-0.20250128173458-04138cb9d33d
+	github.com/couchbase/cbgt v1.4.7
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20250222004812-31da589e100a
 	github.com/couchbase/gocb/v2 v2.9.4
@@ -42,20 +44,18 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go v1.44.299 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coder/websocket v1.8.12 // indirect
-	github.com/couchbase/blance v0.1.5 // indirect
-	github.com/couchbase/cbauth v0.1.11 // indirect
+	github.com/couchbase/blance v0.1.6 // indirect
+	github.com/couchbase/cbauth v0.1.13 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/gocbcoreps v0.1.3 // indirect
 	github.com/couchbase/goprotostellar v1.0.2 // indirect
-	github.com/couchbase/tools-common/cloud v1.0.0 // indirect
-	github.com/couchbase/tools-common/fs v1.0.0 // indirect
-	github.com/couchbase/tools-common/testing v1.0.0 // indirect
-	github.com/couchbase/tools-common/types v1.0.0 // indirect
-	github.com/couchbase/tools-common/utils v1.0.0 // indirect
+	github.com/couchbase/tools-common/cloud/v5 v5.0.3 // indirect
+	github.com/couchbase/tools-common/fs v1.0.2 // indirect
+	github.com/couchbase/tools-common/testing v1.0.1 // indirect
+	github.com/couchbase/tools-common/types v1.1.4 // indirect
 	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20240607131231-fb385523de28 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
@@ -91,7 +91,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
-	golang.org/x/time v0.3.0 // indirect
+	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/grpc v1.63.2 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
