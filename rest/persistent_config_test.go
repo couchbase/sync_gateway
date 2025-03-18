@@ -1350,15 +1350,16 @@ func getTestDatabaseConfig(bucketName string, dbName string, scopesConfig Scopes
 }
 
 func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) DbConfig {
-	numIndexReplicas := uint(0)
 	enableXattrs := base.TestUseXattrs()
 	dbConfig := DbConfig{
 		BucketConfig: BucketConfig{
 			Bucket: &bucketName,
 		},
-		NumIndexReplicas: &numIndexReplicas,
-		EnableXattrs:     &enableXattrs,
-		Scopes:           scopesConfig,
+		Index: &IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		},
+		EnableXattrs: &enableXattrs,
+		Scopes:       scopesConfig,
 	}
 	if scopesConfig != nil {
 		dbConfig.Scopes = scopesConfig

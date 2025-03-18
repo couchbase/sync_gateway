@@ -361,8 +361,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-		numReplicas := uint(0)
-		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
+		rt.DatabaseConfig.Index = &IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		}
 
 		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
 		rt.DatabaseConfig.Username = username
@@ -2716,8 +2717,10 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(rt.Bucket().GetName()),
 		},
-		NumIndexReplicas: base.UintPtr(0),
-		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+		Index: &IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		},
+		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
 	}
 	// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
 	if !base.UnitTestUrlIsWalrus() {

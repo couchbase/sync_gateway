@@ -161,11 +161,16 @@ func createIndex(ctx context.Context, store N1QLStore, indexName string, express
 	if filterExpression != "" {
 		filterExpressionStr = " WHERE " + filterExpression
 	}
+	var partitionExpresionStr string
+	if options.NumPartitions != nil {
+		partitionExpresionStr = " PARTITION BY HASH(META().id)"
+	}
 
-	createStatement := fmt.Sprintf("CREATE INDEX `%s`%s ON %s(%s)%s", indexName, ifNotExistsStr, store.EscapedKeyspace(), expression, filterExpressionStr)
+	createStatement := fmt.Sprintf("CREATE INDEX `%s`%s ON %s(%s)%s %s", indexName, ifNotExistsStr, store.EscapedKeyspace(), expression, partitionExpresionStr, filterExpressionStr)
 
 	// Replace any KeyspaceQueryToken references in the index expression
 	createStatement = strings.ReplaceAll(createStatement, KeyspaceQueryToken, store.EscapedKeyspace())
+
 	createErr := createIndexFromStatement(ctx, store, indexName, createStatement, options)
 	if IsIndexAlreadyExistsError(createErr) || IsCreateDuplicateIndexError(createErr) {
 		// Pre-7.1 compatibility: Swallow this error like Server does when specifying `IF NOT EXISTS`
