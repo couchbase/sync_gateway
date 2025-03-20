@@ -13,6 +13,7 @@ package indextest
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -333,7 +334,7 @@ func TestPartitionedIndexes(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("TestPartitionedIndexes only works with UseXattrs=true")
 	}
-	numPartitions := uint32(8)
+	numPartitions := uint32(13)
 	serverless := false
 
 	database, ctx := db.SetupTestDBWithOptions(t, db.DatabaseContextOptions{NumIndexPartitions: base.Ptr(numPartitions)})
@@ -347,12 +348,46 @@ func TestPartitionedIndexes(t *testing.T) {
 		require.NoError(t, err)
 		for _, index := range allIndexes {
 			if strings.HasPrefix(index.Name, "sg_allDocs") || strings.HasPrefix(index.Name, "sg_channels") {
-				require.True(t, strings.HasSuffix(index.Name, "x1_p8"), "expected 8 partitions for %+v", index)
+				require.True(t, strings.HasSuffix(index.Name, "x1_p13"), "expected %d partitions for %+v", numPartitions, index)
 				require.NotEqual(t, "", index.Partition)
+				require.Equal(t, numPartitions, getPartitionCount(t, gocbBucket, dsName, index.Name))
 			} else {
 				require.Equal(t, "", index.Partition)
 				require.True(t, strings.HasSuffix(index.Name, "_x1"), "expected nopartitions for %+v", index)
+				require.Equal(t, uint32(1), getPartitionCount(t, gocbBucket, dsName, index.Name))
 			}
 		}
 	}
+}
+
+// getPartitionCount returns the number of partitions for a given index.
+func getPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbucket.DataStoreName, indexName string) uint32 {
+	gsiEps, err := bucket.GSIEps()
+	require.NoError(t, err)
+
+	var username, password string
+	if bucket.Spec.Auth != nil {
+		username, password, _ = bucket.Spec.Auth.GetCredentials()
+	}
+	ctx := base.TestCtx(t)
+	var partitionCount uint32
+	for _, gsiEp := range gsiEps {
+		uri := fmt.Sprintf("/api/v1/stats/%s.%s.%s/%s?partition=true", bucket.BucketName(), dsName.ScopeName(), dsName.CollectionName(), indexName)
+		respBytes, statusCode, err := base.MgmtRequest(bucket.HttpClient(ctx), gsiEp, http.MethodGet, uri, "application/json", username, password, nil)
+		require.NoError(t, err)
+		// on a non partitioned index, the index might not be found on a given index node
+		if statusCode == http.StatusNotFound {
+			continue
+		}
+		require.Equal(t, http.StatusOK, statusCode, "unexpected status code for %s", respBytes)
+		var output map[string]any
+		require.NoError(t, base.JSONUnmarshal(respBytes, &output))
+		for key := range output {
+			fmt.Printf("Key: %s\n", key)
+			if strings.HasPrefix(key, "Partition-") {
+				partitionCount++
+			}
+		}
+	}
+	return partitionCount
 }

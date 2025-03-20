@@ -468,6 +468,19 @@ func (b *GocbV2Bucket) QueryEpsCount() (int, error) {
 	return len(agent.N1qlEps()), nil
 }
 
+// GSIEps returns the GSI endpoints for the bucket for querying information about indexes.
+func (b *GocbV2Bucket) GSIEps() (url []string, err error) {
+	agent, err := b.getGoCBAgent()
+	if err != nil {
+		return url, err
+	}
+	gsiEps := agent.GSIEps()
+	if len(gsiEps) == 0 {
+		return nil, fmt.Errorf("No available Couchbase Server nodes")
+	}
+	return gsiEps, nil
+}
+
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
 func (b *GocbV2Bucket) MetadataPurgeInterval(ctx context.Context) (time.Duration, error) {

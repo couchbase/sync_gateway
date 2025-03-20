@@ -162,7 +162,7 @@ func createIndex(ctx context.Context, store N1QLStore, indexName string, express
 		filterExpressionStr = " WHERE " + filterExpression
 	}
 	var partitionExpresionStr string
-	if options.NumPartitions != nil {
+	if options.NumPartitions != nil && *options.NumPartitions > 1 {
 		partitionExpresionStr = " PARTITION BY HASH(META().id)"
 	}
 

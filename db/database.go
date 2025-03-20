@@ -1921,7 +1921,7 @@ func (context *DatabaseContext) numIndexPartitions() uint32 {
 	if context.Options.NumIndexPartitions != nil {
 		return *context.Options.NumIndexPartitions
 	}
-	return 1
+	return DefaultNumIndexPartitions
 }
 
 func (context *DatabaseContext) UseViews() bool {
