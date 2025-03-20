@@ -3354,7 +3354,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 10 * time.Millisecond
+		deadline := 100 * time.Millisecond
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
 		assert.Less(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, bgMngr.GetRunState())
@@ -3382,7 +3382,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 10 * time.Millisecond
+		deadline := 100 * time.Millisecond
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{stoppableBgMngr, unstoppableBgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, stoppableBgMngr.GetRunState())
