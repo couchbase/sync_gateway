@@ -2398,7 +2398,10 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 			t, &RestTesterConfig{
 				LeakyBucketConfig: &base.LeakyBucketConfig{
 					GetWithXattrCallback: func(key string) error {
-						return fmt.Errorf("Leaky Bucket GetWithXattrCallback Error")
+						if throw {
+							return fmt.Errorf("Leaky Bucket GetWithXattrCallback Error")
+						}
+						return nil
 					}, GetRawCallback: func(key string) error {
 						if throw {
 							return fmt.Errorf("Leaky Bucket GetRawCallback Error")
