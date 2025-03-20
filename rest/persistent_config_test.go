@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1503,4 +1504,103 @@ func persistentConfigTestCases() []persistentConfigTestCase {
 			},
 		}
 	}
+}
+
+func TestNonXattrConfigExistsDuringDBUpdate(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("CBS required for xattr persistence")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// large polling interval to ensure config polling doesn't interfere with test
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(10 * time.Minute)
+		},
+		DatabaseConfig: nil,
+		UseXattrConfig: true,
+	})
+	defer rt.Close()
+	dbConfig1 := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig1), http.StatusCreated)
+
+	// delete created registry
+	err := rt.CustomTestBucket.DefaultDataStore().Delete(base.SGRegistryKey)
+	require.NoError(t, err)
+
+	// create registry document in the bucket with no xattr config
+	_, err = rt.CustomTestBucket.DefaultDataStore().AddRaw(base.SGRegistryKey, 0, []byte("{}"))
+	require.NoError(t, err)
+
+	// trey creating new db, assert xattr config error returned
+	dbConfig2 := rt.NewDbConfig()
+	dbConfig2.Name = "db2"
+	dbConfig2.Scopes = nil
+	resp := rt.CreateDatabase("db2", dbConfig2)
+	RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), "Xattr Config Not Found")
+
+	// try altering previous db config, assert xattr config error returned
+	resp = rt.UpsertDbConfig("db1", dbConfig1)
+	RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), "Xattr Config Not Found")
+	allDbs := rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
+	invalDb := allDbs[0]
+	require.NotNil(t, invalDb.DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseInvalidXattrConfigError])
+}
+
+func TestNonXattrConfigExistsOnConfigPoll(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("CBS required for xattr persistence")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// large polling interval to ensure config polling doesn't interfere with test
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(10 * time.Minute)
+		},
+		DatabaseConfig: nil,
+		UseXattrConfig: true,
+	})
+	defer rt.Close()
+	dbConfig1 := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig1), http.StatusCreated)
+
+	// delete created registry
+	err := rt.CustomTestBucket.DefaultDataStore().Delete(base.SGRegistryKey)
+	require.NoError(t, err)
+
+	// create registry document in the bucket with no xattr config
+	_, err = rt.CustomTestBucket.DefaultDataStore().AddRaw(base.SGRegistryKey, 0, []byte("{}"))
+	require.NoError(t, err)
+
+	// force config reload
+	rt.ServerContext().ForceDbConfigsReload(t, base.TestCtx(t))
+
+	allDbs := rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 1)
+	invalDb := allDbs[0]
+	require.NotNil(t, invalDb.DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOffline], invalDb.State)
+	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseInvalidXattrConfigError])
+
+	// delete invalid config/db config from bucket
+	key := PersistentConfigKey(base.TestCtx(t), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1")
+	cas, err := rt.ServerContext().BootstrapContext.Connection.GetMetadataDocument(base.TestCtx(t), rt.CustomTestBucket.GetName(), key, nil)
+	require.NoError(t, err)
+	err = rt.ServerContext().BootstrapContext.Connection.DeleteMetadataDocument(base.TestCtx(t), rt.CustomTestBucket.GetName(), key, cas)
+	require.NoError(t, err)
+	err = rt.CustomTestBucket.DefaultDataStore().Delete(base.SGRegistryKey)
+	require.NoError(t, err)
+
+	// force config poll
+	rt.ServerContext().ForceDbConfigsReload(t, base.TestCtx(t))
+
+	// assert that the db is no longer present in the server context
+	allDbs = rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, allDbs, 0)
 }
