@@ -1733,7 +1733,7 @@ Database:
           type: number
           default: 1
         num_partitions:
-          description: The number of partitions to use for the Global Secondary Indexes (GSI) for large indexes. It is not recommended to set this unless you have performance issues. If set, the recommended number is 8.
+          description: The number of partitions to use for the large indexes created by Sync Gateway. It is not recommended to set this unless you require additional horizontal scalability for individual indexes and have appropriately scaled your Query nodes to handle the increased query parallelism. If set, the recommended number is 8 and does not need to be directly related to the number of your Query nodes. Ensure documentation is read to understand the performance tradeoffs and instructions for migration if you have previously run with only one partition.
           type: number
           default: 1
     use_views:
