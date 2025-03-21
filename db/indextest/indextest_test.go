@@ -370,24 +370,29 @@ func getPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbucket.
 		username, password, _ = bucket.Spec.Auth.GetCredentials()
 	}
 	ctx := base.TestCtx(t)
-	var partitionCount uint32
-	for _, gsiEp := range gsiEps {
-		uri := fmt.Sprintf("/api/v1/stats/%s.%s.%s/%s?partition=true", bucket.BucketName(), dsName.ScopeName(), dsName.CollectionName(), indexName)
-		respBytes, statusCode, err := base.MgmtRequest(bucket.HttpClient(ctx), gsiEp, http.MethodGet, uri, "application/json", username, password, nil)
-		require.NoError(t, err)
-		// on a non partitioned index, the index might not be found on a given index node
-		if statusCode == http.StatusNotFound {
+	uri := "/getIndexStatus"
+	respBytes, statusCode, err := base.MgmtRequest(bucket.HttpClient(ctx), gsiEps[0], http.MethodGet, uri, "application/json", username, password, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, statusCode, "unexpected status code for %s", respBytes)
+	var output struct {
+		Status []struct {
+			IndexName    string `json:"indexName"`
+			Bucket       string `json:"bucket"`
+			Collection   string `json:"collection"`
+			Scope        string `json:"scope"`
+			NumPartition uint32 `json:"numPartition"`
+		} `json:"status"`
+	}
+	require.NoError(t, base.JSONUnmarshal(respBytes, &output), "error unmarshalling %s", respBytes)
+	for _, idx := range output.Status {
+		if idx.Bucket != bucket.BucketName() || idx.Collection != dsName.CollectionName() || idx.Scope != dsName.ScopeName() {
 			continue
 		}
-		require.Equal(t, http.StatusOK, statusCode, "unexpected status code for %s", respBytes)
-		var output map[string]any
-		require.NoError(t, base.JSONUnmarshal(respBytes, &output))
-		for key := range output {
-			fmt.Printf("Key: %s\n", key)
-			if strings.HasPrefix(key, "Partition-") {
-				partitionCount++
-			}
+		if idx.IndexName != indexName {
+			continue
 		}
+		return idx.NumPartition
 	}
-	return partitionCount
+	require.Failf(t, "index not found", "index %s not found in %+v", indexName, output)
+	return 0
 }

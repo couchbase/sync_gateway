@@ -9,7 +9,7 @@
 services:
   couchbase:
     container_name: couchbase
-    image: "couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME:-enterprise-7.1.4}"
+    image: "couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME:-enterprise-7.6.5}"
     ports:
       - 8091:8091
       - 8092:8092
