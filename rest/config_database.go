@@ -164,8 +164,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		SessionCookieHTTPOnly: base.BoolPtr(false),
 		AllowConflicts:        base.BoolPtr(base.DefaultAllowConflicts),
 		Index: &IndexConfig{
-			NumReplicas:   base.UintPtr(DefaultNumIndexReplicas),
-			NumPartitions: base.Ptr(db.DefaultNumIndexPartitions),
+			NumReplicas: base.UintPtr(DefaultNumIndexReplicas),
 		},
 		UseViews:                    base.BoolPtr(false),
 		SendWWWAuthenticateHeader:   base.BoolPtr(true),
@@ -193,6 +192,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		if base.IsEnterpriseEdition() {
 			dbConfig.ImportPartitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
 		}
+		dbConfig.Index.NumPartitions = base.Ptr(db.DefaultNumIndexPartitions)
 	} else {
 		dbConfig.AutoImport = base.BoolPtr(false)
 	}
