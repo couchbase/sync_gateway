@@ -525,8 +525,6 @@ func dcpKeyFilter(key []byte, metaKeys *MetadataKeys) bool {
 // The byte slices must be copied to ensure that memory associated with the memd mutationEvent and Packet are independent and can be released or reused by gocbcore as needed.
 func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry uint32, vbNo uint16, collectionID uint32, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
 
-	// not currently doing rq.Extras handling (as was done in go-couchbase/upr_feed, makeUprEvent) since SG doesn't use
-	// flags information, and snapshot handling is done by cbgt and sent as SnapshotStart, SnapshotEnd
 	event := sgbucket.FeedEvent{
 		Opcode:       opcode,
 		Key:          EfficientBytesClone(key),
