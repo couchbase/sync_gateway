@@ -164,7 +164,8 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		SessionCookieHTTPOnly: base.BoolPtr(false),
 		AllowConflicts:        base.BoolPtr(base.DefaultAllowConflicts),
 		Index: &IndexConfig{
-			NumReplicas: base.UintPtr(DefaultNumIndexReplicas),
+			NumReplicas:   base.UintPtr(DefaultNumIndexReplicas),
+			NumPartitions: base.Ptr(db.DefaultNumIndexPartitions),
 		},
 		UseViews:                    base.BoolPtr(false),
 		SendWWWAuthenticateHeader:   base.BoolPtr(true),
