@@ -557,8 +557,18 @@ func TestAuditDatabaseUpdate(t *testing.T) {
 	rt := createAuditLoggingRestTester(t)
 	defer rt.Close()
 
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.BoolPtr(true),
+			EnabledEvents: base.UintSlicePtr([]uint{
+				uint(base.AuditIDUpdateDatabaseConfig),
+			}),
+		},
+	}
+
 	// initialize RestTester
-	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	testCases := []struct {
 		name   string
@@ -750,7 +760,18 @@ func TestAuditDocumentRead(t *testing.T) {
 	rt := createAuditLoggingRestTester(t)
 	defer rt.Close()
 
-	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.BoolPtr(true),
+			EnabledEvents: base.UintSlicePtr([]uint{
+				uint(base.AuditIDDocumentRead),
+				uint(base.AuditIDDocumentMetadataRead),
+			}),
+		},
+	}
+
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	const docID = "doc1"
 	docVersion := rt.CreateTestDoc(docID)
@@ -917,11 +938,58 @@ func TestAuditDocumentRead(t *testing.T) {
 	}
 }
 
+// TestNoAuditWhenDisabledAtDb tests to ensure when audit logging is disabled at the db that you will not get any events
+// associated with the db in the audit log
+func TestNoAuditWhenDisabledAtDb(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	// test create/view doc events and assert they don't show in audit log
+	output := base.AuditLogContents(t, func(t testing.TB) {
+		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"key":"value"}`)
+		RequireStatus(t, resp, http.StatusCreated)
+	})
+	events := jsonLines(rt.TB(), output)
+	require.Len(t, events, 0)
+
+	output = base.AuditLogContents(t, func(t testing.TB) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1", "")
+		RequireStatus(t, resp, http.StatusOK)
+	})
+	events = jsonLines(rt.TB(), output)
+	require.Len(t, events, 0)
+
+	// test event that is enabled by default on db (when audit is enabled)
+	output = base.AuditLogContents(t, func(t testing.TB) {
+		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"user_xattr_key":"user_xattr_value"}`)
+		RequireStatus(t, resp, http.StatusCreated)
+	})
+	events = jsonLines(rt.TB(), output)
+	require.Len(t, events, 0)
+}
+
 func TestAuditAttachmentEvents(t *testing.T) {
 	rt := createAuditLoggingRestTester(t)
 	defer rt.Close()
 
-	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.BoolPtr(true),
+			EnabledEvents: base.UintSlicePtr([]uint{
+				uint(base.AuditIDAttachmentCreate),
+				uint(base.AuditIDAttachmentRead),
+				uint(base.AuditIDAttachmentDelete),
+				uint(base.AuditIDAttachmentUpdate),
+			}),
+		},
+	}
+
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
 	testCases := []struct {
 		name                  string
 		setupCode             func(t testing.TB, docID string) DocVersion
@@ -1055,7 +1123,11 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			})
 			postAttachmentVersion, _ := rt.GetDoc(docID)
 
+			requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, postAttachmentVersion.RevID, attachmentName, testCase.attachmentCreateCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, postAttachmentVersion.RevID, attachmentName, testCase.attachmentReadCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, postAttachmentVersion.RevID, attachmentName, testCase.attachmentUpdateCount)
 			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, attachmentName, testCase.attachmentDeleteCount)
+
 		})
 	}
 }
@@ -1065,10 +1137,20 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.BoolPtr(true),
+			EnabledEvents: base.UintSlicePtr([]uint{
+				uint(base.AuditIDDocumentCreate),
+				uint(base.AuditIDDocumentUpdate),
+			}),
+		},
+	}
 	if base.TestUseXattrs() {
 		// this is not set automatically for CE
 		dbConfig.AutoImport = base.BoolPtr(true)
 	}
+
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	type testCase struct {
 		name                string
@@ -1143,7 +1225,17 @@ func TestAuditChangesFeedStart(t *testing.T) {
 		rt := createAuditLoggingRestTester(t)
 		defer rt.Close()
 
-		RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+		dbConfig := rt.NewDbConfig()
+		dbConfig.Logging = &DbLoggingConfig{
+			Audit: &DbAuditLoggingConfig{
+				Enabled: base.BoolPtr(true),
+				EnabledEvents: base.UintSlicePtr([]uint{
+					uint(base.AuditIDChangesFeedStarted),
+				}),
+			},
+		}
+
+		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
@@ -1482,7 +1574,20 @@ func TestAuditBlipCRUD(t *testing.T) {
 		rt := createAuditLoggingRestTester(t)
 		defer rt.Close()
 
-		RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+		dbConfig := rt.NewDbConfig()
+		dbConfig.Logging = &DbLoggingConfig{
+			Audit: &DbAuditLoggingConfig{
+				Enabled: base.BoolPtr(true),
+				EnabledEvents: base.UintSlicePtr([]uint{
+					uint(base.AuditIDAttachmentCreate),
+					uint(base.AuditIDAttachmentRead),
+					uint(base.AuditIDAttachmentDelete),
+					uint(base.AuditIDAttachmentUpdate),
+				}),
+			},
+		}
+
+		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
