@@ -89,6 +89,7 @@ const (
 	StatAddedVersion3dot2dot1     = "3.2.1"
 	StatAddedVersion3dot2dot2     = "3.2.2"
 	StatAddedVersion3dot2dot3     = "3.2.3"
+	StatAddedVersion3dot2dot4     = "3.2.4"
 	StatAddedVersion3dot3dot0     = "3.3.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
@@ -301,7 +302,7 @@ func (g *GlobalStat) initResourceUtilizationStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.AssertionFailCount, err = NewIntStat(ResourceUtilizationSubsystem, "assertion_fail_count", StatUnitNoUnits, AssertionFailCountDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	resUtil.AssertionFailCount, err = NewIntStat(ResourceUtilizationSubsystem, "assertion_fail_count", StatUnitNoUnits, AssertionFailCountDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -390,7 +391,7 @@ type ResourceUtilization struct {
 	SystemMemoryTotal *SgwIntStat `json:"system_memory_total"`
 	// The total number of warnings logged.
 	WarnCount *SgwIntStat `json:"warn_count"`
-	// The total number of assertion failures logged.
+	// The total number of assertion failures logged. This is a good indicator of a bug and should be reported.
 	AssertionFailCount *SgwIntStat `json:"assertion_fail_count"`
 	// The total uptime.
 	Uptime *SgwDurStat `json:"uptime"`

@@ -10,23 +10,21 @@ package base
 
 import (
 	"context"
-	"sync/atomic"
 )
 
-// IsDevMode returns true when compiled with the `cb_sg_devmode` build tag, and false otherwise.
-//
-// The compiler will remove this check and all code invoked inside it in non-dev mode, avoiding any impact on production code.
-// https://godbolt.org/z/f1K8a96rE
+const (
+	assertionFailedPrefix = "Assertion failed: "
+)
+
+// IsDevMode returns true when compiled with the `cb_sg_devmode` build tag
 func IsDevMode() bool {
 	return cbSGDevModeBuildTagSet
 }
 
-// DevModeAssertionFailures is a counter of the number of assertion failures that have occurred in dev mode. This will always be zero in non-dev mode.
-var DevModeAssertionFailures atomic.Uint32
-
-// AssertfCtx panics when compiled with the `cb_sg_devmode` build tag, and just warns otherwise.
-// Callers must be aware that they are responsible for handling returns to cover the non-devmode warn case.
+// AssertfCtx logs an error message and continues execution, or when compiled with the `cb_sg_devmode` build tag panics for better dev-time visibility.
+// The SG test harness will ensure AssertionFailCount is zero at the end of tests, even without devmode enabled.
+// Note: Callers MUST ensure code is safe to continue executing after the Assert (e.g. by returning an error) and MUST NOT be used like a panic that will halt.
 func AssertfCtx(ctx context.Context, format string, args ...any) {
 	SyncGatewayStats.GlobalStats.ResourceUtilization.AssertionFailCount.Add(1)
-	assertLogFn(ctx, format, args...)
+	assertLogFn(ctx, assertionFailedPrefix+format, args...)
 }
