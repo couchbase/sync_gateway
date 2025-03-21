@@ -348,6 +348,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 			Serverless:                 false,
 			MetadataIndexes:            IndexesWithoutMetadata,
+			NumPartitions:              DefaultNumIndexPartitions,
 		}
 		if base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
 			options.MetadataIndexes = IndexesAll

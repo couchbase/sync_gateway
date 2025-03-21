@@ -452,7 +452,7 @@ func (c *DatabaseCollection) buildAccessQuery(username string) string {
 	// SG usernames don't allow back tick, but guard username in select clause for additional safety
 	username = strings.Replace(username, "`", "``", -1)
 	statement = strings.Replace(statement, QuerySelectUserName, username, -1)
-	statement = replaceIndexTokensQuery(statement, sgIndexes[IndexAccess], c.UseXattrs())
+	statement = replaceIndexTokensQuery(statement, sgIndexes[IndexAccess], c.UseXattrs(), c.numIndexPartitions())
 	return statement
 }
 
@@ -484,7 +484,7 @@ func (c *DatabaseCollection) buildRoleAccessQuery(username string) string {
 	// SG usernames don't allow back tick, but guard username in select clause for additional safety
 	username = strings.Replace(username, "`", "``", -1)
 	statement = strings.Replace(statement, QuerySelectUserName, username, -1)
-	statement = replaceIndexTokensQuery(statement, sgIndexes[IndexRoleAccess], c.UseXattrs())
+	statement = replaceIndexTokensQuery(statement, sgIndexes[IndexRoleAccess], c.UseXattrs(), c.numIndexPartitions())
 	return statement
 }
 
@@ -517,7 +517,7 @@ func (c *DatabaseCollection) buildChannelsQuery(channelName string, startSeq uin
 
 	channelQueryStatement := replaceActiveOnlyFilter(channelQuery.statement, activeOnly)
 	channelQueryStatement = replaceSyncTokensQuery(channelQueryStatement, c.UseXattrs())
-	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, index, c.UseXattrs())
+	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, index, c.UseXattrs(), c.numIndexPartitions())
 	if limit > 0 {
 		channelQueryStatement = fmt.Sprintf("%s LIMIT %d", channelQueryStatement, limit)
 	}
@@ -568,7 +568,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -600,9 +600,9 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (string, map[string]interface{}) {
 	var queryStatement string
 	if context.IsServerless() {
-		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs(), context.numIndexPartitions())
 	} else {
-		queryStatement = replaceIndexTokensQuery(QueryUsersUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryUsersUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
 	}
 
 	params := make(map[string]interface{})
@@ -644,9 +644,9 @@ func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (str
 
 	var queryStatement string
 	if context.IsServerless() {
-		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs(), context.numIndexPartitions())
 	} else {
-		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
 	}
 
 	params := make(map[string]interface{})
@@ -669,9 +669,9 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 
 	var queryStatement string
 	if context.IsServerless() {
-		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs(), context.numIndexPartitions())
 	} else {
-		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
 	}
 
 	params := make(map[string]interface{})
@@ -718,7 +718,7 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 
 	// N1QL Query
 	allDocsQueryStatement := replaceSyncTokensQuery(QueryAllDocs.statement, c.UseXattrs())
-	allDocsQueryStatement = replaceIndexTokensQuery(allDocsQueryStatement, sgIndexes[IndexAllDocs], c.UseXattrs())
+	allDocsQueryStatement = replaceIndexTokensQuery(allDocsQueryStatement, sgIndexes[IndexAllDocs], c.UseXattrs(), c.numIndexPartitions())
 
 	params := make(map[string]interface{}, 0)
 	if startKey != "" {
@@ -755,7 +755,7 @@ func (c *DatabaseCollection) QueryTombstones(ctx context.Context, olderThan time
 
 	// N1QL Query
 	tombstoneQueryStatement := replaceSyncTokensQuery(QueryTombstones.statement, c.UseXattrs())
-	tombstoneQueryStatement = replaceIndexTokensQuery(tombstoneQueryStatement, sgIndexes[IndexTombstones], c.UseXattrs())
+	tombstoneQueryStatement = replaceIndexTokensQuery(tombstoneQueryStatement, sgIndexes[IndexTombstones], c.UseXattrs(), c.numIndexPartitions())
 	if limit != 0 {
 		tombstoneQueryStatement = fmt.Sprintf("%s LIMIT %d", tombstoneQueryStatement, limit)
 	}

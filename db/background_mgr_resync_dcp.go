@@ -389,6 +389,7 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 		NumReplicas:                db.Options.NumIndexReplicas,
 		MetadataIndexes:            IndexesPrincipalOnly,
 		UseXattrs:                  db.UseXattrs(),
+		NumPartitions:              db.numIndexPartitions(),
 	}
 
 	return InitializeIndexes(ctx, n1qlStore, options)

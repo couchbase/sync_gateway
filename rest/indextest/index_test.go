@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
@@ -865,17 +866,18 @@ func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, import
 		}
 	}
 	bucketName := tb.GetName()
-	numIndexReplicas := uint(0)
 	enableXattrs := base.TestUseXattrs()
 
 	dbConfig := rest.DbConfig{
 		BucketConfig: rest.BucketConfig{
 			Bucket: &bucketName,
 		},
-		NumIndexReplicas: &numIndexReplicas,
-		EnableXattrs:     &enableXattrs,
-		Scopes:           scopesConfig,
-		AutoImport:       false, // disable import to streamline index tests and avoid teardown races
+		Index: &rest.IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		},
+		EnableXattrs: &enableXattrs,
+		Scopes:       scopesConfig,
+		AutoImport:   false, // disable import to streamline index tests and avoid teardown races
 	}
 	return dbConfig
 }
@@ -917,4 +919,58 @@ func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, ch
 	channel, ok := xattr.Channels[channelName]
 	require.True(t, ok)
 	require.Nil(t, channel)
+}
+
+func TestPartitionedIndexes(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test requires Couchbase Server for GSI")
+	}
+	if !base.TestUseXattrs() {
+		t.Skip("Partitioned indexes are only supported with non xattr indexes")
+	}
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+		SyncFn:           channels.DocChannelsSyncFunction,
+	})
+	defer rt.Close()
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Index = &rest.IndexConfig{
+		NumPartitions: base.Ptr(uint32(8)),
+		NumReplicas:   base.Ptr(uint(0)),
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	rt.CreateUser("alice", []string{"alice"})
+	collection, err := base.AsCollection(rt.GetSingleDataStore())
+	require.NoError(t, err)
+
+	indexNames, err := collection.GetIndexes()
+	require.NoError(t, err)
+
+	expectedIndexNames := []string{
+		// non-partitioned indexes
+		"sg_access_x1", "sg_roleAccess_x1", "sg_tombstones_x1",
+		// partitioned indexes
+		"sg_allDocs_x1_p8", "sg_channels_x1_p8",
+	}
+	if !base.TestsUseNamedCollections() {
+		// metadata index, unpartitioned
+		expectedIndexNames = append(expectedIndexNames, "sg_syncDocs_x1")
+	}
+	require.ElementsMatch(t, expectedIndexNames, indexNames)
+
+	// verify allDocs index is working
+	rt.PutDoc("doc1", `{"channels": ["alice"]}`)
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	allDocs := struct {
+		Rows []any
+	}{}
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &allDocs), "Error unmarshalling all docs response, body: %s", resp.Body)
+	require.Len(t, allDocs.Rows, 1)
+
+	// verify channels index is working
+	rt.GetDatabase().FlushRevisionCacheForTest()
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", "alice")
+	changes.RequireDocIDs(t, []string{"doc1", "_user/alice"})
 }

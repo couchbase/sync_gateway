@@ -171,7 +171,8 @@ type DbConfig struct {
 	SessionCookieName                string                           `json:"session_cookie_name,omitempty"`                  // Custom per-database session cookie name
 	SessionCookieHTTPOnly            *bool                            `json:"session_cookie_http_only,omitempty"`             // HTTP only cookies
 	AllowConflicts                   *bool                            `json:"allow_conflicts,omitempty"`                      // Deprecated: False forbids creating conflicts
-	NumIndexReplicas                 *uint                            `json:"num_index_replicas,omitempty"`                   // Number of GSI index replicas used for core indexes
+	NumIndexReplicas                 *uint                            `json:"num_index_replicas,omitempty"`                   // Number of GSI index replicas used for core indexes, deprecated for IndexConfig.NumReplicas
+	Index                            *IndexConfig                     `json:"index,omitempty"`                                // Index options
 	UseViews                         *bool                            `json:"use_views,omitempty"`                            // Force use of views instead of GSI
 	SendWWWAuthenticateHeader        *bool                            `json:"send_www_authenticate_header,omitempty"`         // If false, disables setting of 'WWW-Authenticate' header in 401 responses. Implicitly false if disable_password_auth is true.
 	DisablePasswordAuth              *bool                            `json:"disable_password_auth,omitempty"`                // If true, disables user/pass authentication, only permitting OIDC or guest access
@@ -285,6 +286,11 @@ type DbAuditLoggingConfig struct {
 	EnabledEvents *[]uint                      `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled - pointer to differentiate between empty slice and nil
 	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"` // List of users to disable audit logging for
 	DisabledRoles []base.AuditLoggingPrincipal `json:"disabled_roles,omitempty"` // List of roles to disable audit logging for
+}
+
+type IndexConfig struct {
+	NumReplicas   *uint   `json:"num_replicas,omitempty"`   // Number of replicas for GSI indexes
+	NumPartitions *uint32 `json:"num_partitions,omitempty"` // Number of partitions for GSI indexes
 }
 
 func GetTLSVersionFromString(stringV *string) uint16 {
@@ -1027,7 +1033,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
 	} else {
 		if len(dbConfig.Scopes) != 0 && dbConfig.UseViews != nil && *dbConfig.UseViews {
-			multiError = multiError.Append(fmt.Errorf("useViews=true is incompatible with collections which requires GSI"))
+			multiError = multiError.Append(fmt.Errorf("use_views=true is incompatible with collections which requires GSI"))
 		}
 
 		for scopeName, scopeConfig := range dbConfig.Scopes {
@@ -1105,6 +1111,19 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
+	if dbConfig.NumIndexReplicas != nil {
+		base.WarnfCtx(ctx, "num_index_replicas is deprecated and will be removed in a future release. Use index.num_replicas instead.")
+		if dbConfig.Index != nil && dbConfig.Index.NumReplicas != nil {
+			multiError = multiError.Append(fmt.Errorf("num_index_replicas and index.num_replicas are mutually exclusive. Remove num_index_replicas deprecated option."))
+		}
+	}
+	if dbConfig.Index != nil && dbConfig.Index.NumPartitions != nil {
+		if *dbConfig.Index.NumPartitions < 1 {
+			multiError = multiError.Append(fmt.Errorf("index.num_partitions must be greater than 0"))
+		} else if !dbConfig.UseXattrs() {
+			multiError = multiError.Append(fmt.Errorf("index.num_partitions is incompatible with enable_shared_bucket_access=false"))
+		}
+	}
 	return multiError.ErrorOrNil()
 }
 
@@ -2364,4 +2383,22 @@ func (c *DbConfig) IsAuditLoggingEnabled() (enabled bool, events []uint) {
 		// Audit logging not defined in the config.  Use default value
 		return base.DefaultDbAuditEnabled, nil
 	}
+}
+
+// numIndexReplicas returns the number of index replicas for the database, populating the default value if necessary.
+func (c *DbConfig) numIndexReplicas() uint {
+	if c.NumIndexReplicas != nil {
+		return *c.NumIndexReplicas
+	} else if c.Index != nil && c.Index.NumReplicas != nil {
+		return *c.Index.NumReplicas
+	}
+	return DefaultNumIndexReplicas
+}
+
+// numIndexPartitions returns the number of index partitions for the database, populating the default value if necessary.
+func (c *DbConfig) numIndexPartitions() uint32 {
+	if c.Index != nil && c.Index.NumPartitions != nil {
+		return *c.Index.NumPartitions
+	}
+	return db.DefaultNumIndexPartitions
 }

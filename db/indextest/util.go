@@ -28,16 +28,17 @@ func getDatabaseContextOptions(isServerless bool) db.DatabaseContextOptions {
 }
 
 // setupN1QLStore initializes the indexes for a database. This is normally done by the rest package
-func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isServerless bool) {
+func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isServerless bool, numPartitions uint32) {
 	testBucket, ok := bucket.(*base.TestBucket)
 	require.True(t, ok)
 
 	hasOnlyDefaultDataStore := len(testBucket.GetNonDefaultDatastoreNames()) == 0
 
 	options := db.InitializeIndexOptions{
-		NumReplicas: 0,
-		Serverless:  isServerless,
-		UseXattrs:   base.TestUseXattrs(),
+		NumReplicas:   0,
+		Serverless:    isServerless,
+		UseXattrs:     base.TestUseXattrs(),
+		NumPartitions: numPartitions,
 	}
 	if hasOnlyDefaultDataStore {
 		options.MetadataIndexes = db.IndexesAll
@@ -53,6 +54,7 @@ func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isSer
 		Serverless:      isServerless,
 		UseXattrs:       base.TestUseXattrs(),
 		MetadataIndexes: db.IndexesWithoutMetadata,
+		NumPartitions:   numPartitions,
 	}
 
 	dataStore, err := testBucket.GetNamedDataStore(0)

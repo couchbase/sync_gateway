@@ -3062,12 +3062,14 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 			BucketConfig: rest.BucketConfig{
 				Bucket: base.StringPtr(tb.GetName()),
 			},
-			Name:             dbName,
-			EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
-			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-			AutoImport:       false, // starts faster without import feed, but will panic if turned on CBG-3455
-			NumIndexReplicas: base.UintPtr(0),
-			RevsLimit:        base.Uint32Ptr(123), // use RevsLimit to detect config changes
+			Name:         dbName,
+			EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+			AutoImport:   false, // starts faster without import feed, but will panic if turned on CBG-3455
+			Index: &rest.IndexConfig{
+				NumReplicas: base.Ptr(uint(0)),
+			},
+			RevsLimit: base.Uint32Ptr(123), // use RevsLimit to detect config changes
 		},
 	}
 	var err error

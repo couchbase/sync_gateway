@@ -129,3 +129,97 @@ func TestConfigToBucketPointName(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_user/", `{"name":"user1", "password":"password", "admin_channels":["ABC"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 }
+
+func TestDatabaseConfigValidation(t *testing.T) {
+	testCases := []struct {
+		name          string
+		dbConfig      DbConfig
+		numReplicas   uint
+		expectedError string
+	}{
+		{
+			name: "Empty index",
+			dbConfig: DbConfig{
+				Name:  "db",
+				Index: &IndexConfig{},
+			},
+			numReplicas:   1,
+			expectedError: "",
+		},
+		{
+			name: "valid num_replicas, legacy",
+			dbConfig: DbConfig{
+				Name:             "db",
+				NumIndexReplicas: base.Ptr(uint(2)),
+			},
+			numReplicas: 2,
+		},
+		{
+			name: "valid num_replicas, new",
+			dbConfig: DbConfig{
+				Name: "db",
+				Index: &IndexConfig{
+					NumReplicas: base.Ptr(uint(2)),
+				},
+			},
+			numReplicas: 2,
+		},
+		{
+			name: "duplicate index replica definitions, same value",
+			dbConfig: DbConfig{
+				Name:             "db",
+				NumIndexReplicas: base.Ptr(uint(2)),
+				Index: &IndexConfig{
+					NumReplicas: base.Ptr(uint(2)),
+				},
+			},
+			expectedError: "mutually exclusive",
+		},
+		{
+			name: "duplicate index replica definitions, diff value",
+			dbConfig: DbConfig{
+				Name:             "db",
+				NumIndexReplicas: base.Ptr(uint(3)),
+				Index: &IndexConfig{
+					NumReplicas: base.Ptr(uint(2)),
+				},
+			},
+			expectedError: "mutually exclusive",
+		},
+		{
+			name: "explicit 0 partitions",
+			dbConfig: DbConfig{
+				Name: "db",
+				Index: &IndexConfig{
+					NumPartitions: base.Ptr(uint32(0)),
+				},
+			},
+			expectedError: "num_partitions must be greater than 0",
+		},
+		{
+			name: "partitions with xattrs=false",
+			dbConfig: DbConfig{
+				Name: "db",
+				Index: &IndexConfig{
+					NumPartitions: base.Ptr(uint32(2)),
+				},
+				EnableXattrs: base.BoolPtr(false),
+			},
+			expectedError: "incompatible with enable_shared_bucket_access=false",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			validateOIDC := false
+			validateReplications := true
+			err := tc.dbConfig.validate(ctx, validateOIDC, validateReplications)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.numReplicas, tc.dbConfig.numIndexReplicas())
+		})
+	}
+}

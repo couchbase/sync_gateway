@@ -145,9 +145,11 @@ func dbConfigForTestBucket(tb *base.TestBucket) DbConfig {
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(tb.GetName()),
 		},
-		NumIndexReplicas: base.UintPtr(0),
-		UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+		Index: &IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		},
+		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
 	}
 }
 

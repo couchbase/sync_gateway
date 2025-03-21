@@ -989,9 +989,11 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb1User,
 				Password: tb1Password,
 			},
-			EnableXattrs:     &xattrs,
-			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-			NumIndexReplicas: base.UintPtr(0),
+			EnableXattrs: &xattrs,
+			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+			Index: &IndexConfig{
+				NumReplicas: base.UintPtr(0),
+			},
 		},
 		"db2": {
 			BucketConfig: BucketConfig{
@@ -1000,9 +1002,11 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb1User,
 				Password: tb1Password,
 			},
-			EnableXattrs:     &xattrs,
-			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-			NumIndexReplicas: base.UintPtr(0),
+			EnableXattrs: &xattrs,
+			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+			Index: &IndexConfig{
+				NumReplicas: base.Ptr(uint(0)),
+			},
 		},
 		"db3": {
 			BucketConfig: BucketConfig{
@@ -1011,9 +1015,11 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb2User,
 				Password: tb2Password,
 			},
-			EnableXattrs:     &xattrs,
-			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-			NumIndexReplicas: base.UintPtr(0),
+			EnableXattrs: &xattrs,
+			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+			Index: &IndexConfig{
+				NumReplicas: base.Ptr(uint(0)),
+			},
 		},
 	}
 

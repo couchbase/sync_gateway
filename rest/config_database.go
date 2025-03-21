@@ -153,17 +153,19 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 				ExpirySeconds:        base.IntPtr(int(db.DefaultChannelCacheAge.Seconds())),
 			},
 		},
-		StartOffline:                base.BoolPtr(false),
-		OIDCConfig:                  nil,
-		OldRevExpirySeconds:         base.Uint32Ptr(base.DefaultOldRevExpirySeconds),
-		ViewQueryTimeoutSecs:        base.Uint32Ptr(base.DefaultViewTimeoutSecs),
-		LocalDocExpirySecs:          base.Uint32Ptr(base.DefaultLocalDocExpirySecs),
-		EnableXattrs:                base.BoolPtr(base.DefaultUseXattrs),
-		SecureCookieOverride:        base.BoolPtr(sc.API.HTTPS.TLSCertPath != ""),
-		SessionCookieName:           "",
-		SessionCookieHTTPOnly:       base.BoolPtr(false),
-		AllowConflicts:              base.BoolPtr(base.DefaultAllowConflicts),
-		NumIndexReplicas:            base.UintPtr(DefaultNumIndexReplicas),
+		StartOffline:          base.BoolPtr(false),
+		OIDCConfig:            nil,
+		OldRevExpirySeconds:   base.Uint32Ptr(base.DefaultOldRevExpirySeconds),
+		ViewQueryTimeoutSecs:  base.Uint32Ptr(base.DefaultViewTimeoutSecs),
+		LocalDocExpirySecs:    base.Uint32Ptr(base.DefaultLocalDocExpirySecs),
+		EnableXattrs:          base.BoolPtr(base.DefaultUseXattrs),
+		SecureCookieOverride:  base.BoolPtr(sc.API.HTTPS.TLSCertPath != ""),
+		SessionCookieName:     "",
+		SessionCookieHTTPOnly: base.BoolPtr(false),
+		AllowConflicts:        base.BoolPtr(base.DefaultAllowConflicts),
+		Index: &IndexConfig{
+			NumReplicas: base.UintPtr(DefaultNumIndexReplicas),
+		},
 		UseViews:                    base.BoolPtr(false),
 		SendWWWAuthenticateHeader:   base.BoolPtr(true),
 		BucketOpTimeoutMs:           nil,
@@ -190,6 +192,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		if base.IsEnterpriseEdition() {
 			dbConfig.ImportPartitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
 		}
+		dbConfig.Index.NumPartitions = base.Ptr(db.DefaultNumIndexPartitions)
 	} else {
 		dbConfig.AutoImport = base.BoolPtr(false)
 	}
