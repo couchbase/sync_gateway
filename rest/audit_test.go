@@ -990,8 +990,6 @@ func TestAuditAttachmentEvents(t *testing.T) {
 
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
-	rt.WaitForDBOnline()
-
 	testCases := []struct {
 		name                  string
 		setupCode             func(t testing.TB, docID string) DocVersion
@@ -1528,6 +1526,9 @@ func requireChangesStartEvent(t testing.TB, output []byte, expectedFields map[st
 }
 
 func createAuditLoggingRestTester(t *testing.T) *RestTester {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Audit logging only works in EE")
+	}
 	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
