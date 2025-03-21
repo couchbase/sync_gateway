@@ -990,6 +990,8 @@ func TestAuditAttachmentEvents(t *testing.T) {
 
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
+	rt.WaitForDBOnline()
+
 	testCases := []struct {
 		name                  string
 		setupCode             func(t testing.TB, docID string) DocVersion
@@ -1614,6 +1616,9 @@ func TestAuditBlipCRUD(t *testing.T) {
 					btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
 					// wait for the doc to be replicated, since that's what we're actually auditing
 					rt.WaitForVersion(docID, version)
+					base.RequireWaitForStat(t, func() int64 {
+						return rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value()
+					}, 1)
 				},
 				attachmentCreateCount: 1,
 			},
