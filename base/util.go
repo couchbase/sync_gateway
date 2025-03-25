@@ -896,10 +896,6 @@ func IntPtr(i int) *int {
 	return &i
 }
 
-func UintSlicePtr(u []uint) *[]uint {
-	return &u
-}
-
 // IntDefault returns ifNil if i is nil, or else returns dereferenced value of i
 func IntDefault(i *int, ifNil int) int {
 	if i != nil {

@@ -561,7 +561,7 @@ func TestAuditDatabaseUpdate(t *testing.T) {
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
 			Enabled: base.BoolPtr(true),
-			EnabledEvents: base.UintSlicePtr([]uint{
+			EnabledEvents: base.Ptr([]uint{
 				uint(base.AuditIDUpdateDatabaseConfig),
 			}),
 		},
@@ -764,7 +764,7 @@ func TestAuditDocumentRead(t *testing.T) {
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
 			Enabled: base.BoolPtr(true),
-			EnabledEvents: base.UintSlicePtr([]uint{
+			EnabledEvents: base.Ptr([]uint{
 				uint(base.AuditIDDocumentRead),
 				uint(base.AuditIDDocumentMetadataRead),
 			}),
@@ -979,7 +979,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
 			Enabled: base.BoolPtr(true),
-			EnabledEvents: base.UintSlicePtr([]uint{
+			EnabledEvents: base.Ptr([]uint{
 				uint(base.AuditIDAttachmentCreate),
 				uint(base.AuditIDAttachmentRead),
 				uint(base.AuditIDAttachmentDelete),
@@ -1140,7 +1140,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
 			Enabled: base.BoolPtr(true),
-			EnabledEvents: base.UintSlicePtr([]uint{
+			EnabledEvents: base.Ptr([]uint{
 				uint(base.AuditIDDocumentCreate),
 				uint(base.AuditIDDocumentUpdate),
 			}),
@@ -1229,7 +1229,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 		dbConfig.Logging = &DbLoggingConfig{
 			Audit: &DbAuditLoggingConfig{
 				Enabled: base.BoolPtr(true),
-				EnabledEvents: base.UintSlicePtr([]uint{
+				EnabledEvents: base.Ptr([]uint{
 					uint(base.AuditIDChangesFeedStarted),
 				}),
 			},
@@ -1581,7 +1581,7 @@ func TestAuditBlipCRUD(t *testing.T) {
 		dbConfig.Logging = &DbLoggingConfig{
 			Audit: &DbAuditLoggingConfig{
 				Enabled: base.BoolPtr(true),
-				EnabledEvents: base.UintSlicePtr([]uint{
+				EnabledEvents: base.Ptr([]uint{
 					uint(base.AuditIDAttachmentCreate),
 					uint(base.AuditIDAttachmentRead),
 					uint(base.AuditIDAttachmentDelete),

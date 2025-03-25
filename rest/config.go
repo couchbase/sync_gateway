@@ -2300,7 +2300,7 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	if l == nil || (l.Console == nil && l.Audit == nil) {
 		return &base.DbLogConfig{
 			Audit: &base.DbAuditLogConfig{
-				Enabled: false,
+				Enabled: base.DefaultDbAuditEnabled,
 			},
 		}
 	}
