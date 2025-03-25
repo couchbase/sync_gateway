@@ -726,8 +726,8 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	teardownFuncs = append(teardownFuncs, func() { GTestBucketPool.Close(ctx) })
 
 	teardownFuncs = append(teardownFuncs, func() {
-		if DevModeAssertionFailures.Load() > 0 {
-			panic("Test harness failed due to failures from -tag cb_sg_devmode. Look at logs for panic statements.")
+		if numAssertionFails := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().AssertionFailCount.Value(); numAssertionFails > 0 {
+			panic(fmt.Sprintf("Test harness failed due to %d assertion failures. Search logs for %q", numAssertionFails, assertionFailedPrefix))
 		}
 	})
 	// must be the last teardown function added to the list to correctly detect leaked goroutines
