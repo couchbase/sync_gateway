@@ -102,6 +102,8 @@ func TestOnDemandImportMou(t *testing.T) {
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		writeCas, err := collection.dataStore.WriteCas(getKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
+		startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, getKey)
+		require.NoError(t, err)
 
 		// fetch the document to trigger on-demand import
 		doc, err := collection.GetDocument(ctx, getKey, DocUnmarshalAll)
@@ -111,7 +113,7 @@ func TestOnDemandImportMou(t *testing.T) {
 			require.NotNil(t, doc.MetadataOnlyUpdate)
 			require.Equal(t, base.CasToString(writeCas), doc.MetadataOnlyUpdate.PreviousHexCAS)
 			require.Equal(t, base.CasToString(doc.Cas), doc.MetadataOnlyUpdate.HexCAS)
-			require.Equal(t, uint64(1), doc.MetadataOnlyUpdate.PreviousRevSeqNo)
+			require.Equal(t, startingRevSeqNo, doc.MetadataOnlyUpdate.PreviousRevSeqNo)
 		} else {
 			require.Nil(t, doc.MetadataOnlyUpdate)
 		}
@@ -135,6 +137,8 @@ func TestOnDemandImportMou(t *testing.T) {
 					ID: writeKey,
 				}
 				newDoc.UpdateBodyBytes([]byte(`{"foo": "baz"}`))
+				startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, writeKey)
+				require.NoError(t, err)
 
 				_, rawBucketDoc, err := collection.GetDocumentWithRaw(ctx, writeKey, DocUnmarshalSync)
 				require.NoError(t, err)
@@ -172,7 +176,7 @@ func TestOnDemandImportMou(t *testing.T) {
 					require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
 					require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
 					require.Equal(t, base.CasToString(importCas), mou.HexCAS)
-					require.Equal(t, uint64(1), mou.PreviousRevSeqNo)
+					require.Equal(t, startingRevSeqNo, mou.PreviousRevSeqNo)
 				} else {
 					// expect not found fetching mou xattr
 					require.Error(t, err)
