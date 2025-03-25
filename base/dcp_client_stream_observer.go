@@ -48,8 +48,10 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 		cas:        mutation.Cas,
 		datatype:   mutation.Datatype,
 		collection: mutation.CollectionID,
-		key:        mutation.Key,
-		value:      mutation.Value,
+
+		// The byte slices must be copied to ensure that memory associated with the underlying memd mutationEvent and Packet are independent and can be released or reused by gocbcore as needed.
+		key:   EfficientBytesClone(mutation.Key),
+		value: EfficientBytesClone(mutation.Value),
 	}
 	dc.workerForVbno(mutation.VbID).Send(dc.ctx, e)
 }
@@ -69,8 +71,10 @@ func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 		revNo:      deletion.RevNo,
 		datatype:   deletion.Datatype,
 		collection: deletion.CollectionID,
-		key:        deletion.Key,
-		value:      deletion.Value,
+
+		// The byte slices must be copied to ensure that memory associated with the underlying memd mutationEvent and Packet are independent and can be released or reused by gocbcore as needed.
+		key:   EfficientBytesClone(deletion.Key),
+		value: EfficientBytesClone(deletion.Value),
 	}
 	dc.workerForVbno(deletion.VbID).Send(dc.ctx, e)
 
