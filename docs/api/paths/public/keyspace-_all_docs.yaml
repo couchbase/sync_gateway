@@ -65,26 +65,3 @@ post:
   tags:
     - Document
   operationId: post_keyspace-_all_docs
-head:
-  summary: /{db}/_all_docs
-  responses:
-    '200':
-      description: OK
-    '400':
-      $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
-  tags:
-    - Document
-  parameters:
-    - $ref: ../../components/parameters.yaml#/include_docs
-    - $ref: ../../components/parameters.yaml#/Include-channels
-    - $ref: ../../components/parameters.yaml#/include-access
-    - $ref: ../../components/parameters.yaml#/include-revs
-    - $ref: ../../components/parameters.yaml#/include-seqs
-    - $ref: ../../components/parameters.yaml#/keys
-    - $ref: ../../components/parameters.yaml#/startkey
-    - $ref: ../../components/parameters.yaml#/endkey
-    - $ref: ../../components/parameters.yaml#/limit-result-rows
-  description: ''
-  operationId: head_keyspace-_all_docs

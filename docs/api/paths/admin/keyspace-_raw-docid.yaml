@@ -112,20 +112,3 @@ get:
   tags:
     - Document
   operationId: get_keyspace-_raw-docid
-head:
-  summary: /{keyspace}/_raw/{docid}
-  responses:
-    '200':
-      description: Document exists
-    '400':
-      $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
-  tags:
-    - Document
-  description: |-
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Application
-    * Sync Gateway Application Read Only
-  operationId: head_keyspace-_raw-docid
