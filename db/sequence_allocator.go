@@ -292,7 +292,6 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 
 	// if sequences to release are above the max allowed, return error to cancel update
 	if numberToRelease > MaxSequencesToRelease {
-		base.WarnfCtx(ctx, "Number of sequences to release (%d) to catch up with doc current sequence (%d) exceeds MaxSequencesToRelease (%d). Doc update will be cancelled.", numberToRelease, existingSequence, MaxSequencesToRelease)
 		s.mutex.Unlock()
 		s.dbStats.CorruptSequenceCount.Add(1) // increment corrupt sequence count
 		return 0, 0, base.ErrMaxSequenceReleasedExceeded

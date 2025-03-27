@@ -1756,7 +1756,7 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.CorruptSequenceCount, err = NewIntStat(SubsystemDatabaseKey, "corrupt_sequence_count", StatUnitNoUnits, CorruptSequenceCountDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.CorruptSequenceCount, err = NewIntStat(SubsystemDatabaseKey, "corrupt_sequence_count", StatUnitNoUnits, CorruptSequenceCountDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
