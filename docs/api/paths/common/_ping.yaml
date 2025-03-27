@@ -19,12 +19,3 @@ get:
   tags:
     - Server
   operationId: get__ping
-head:
-  responses:
-    '200':
-      description: Server is available
-  tags:
-    - Server
-  summary: Check if API is available
-  description: Returns OK status if API is available.
-  operationId: head__ping

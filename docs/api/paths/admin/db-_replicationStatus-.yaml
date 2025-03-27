@@ -34,17 +34,3 @@ get:
   tags:
     - Replication
   operationId: get_db-_replicationStatus-
-head:
-  summary: /{db}/_replicationStatus/
-  responses:
-    '200':
-      description: OK
-    '400':
-      description: Bad Request
-  tags:
-    - Replication
-  description: |-
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Replicator
-  operationId: head_db-_replicationStatus-

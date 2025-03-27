@@ -113,7 +113,7 @@ get:
     - Document
   operationId: get_keyspace-_raw-docid
 head:
-  summary: /{keyspace}/_raw/{docid}
+  summary: Check if a document exists
   responses:
     '200':
       description: Document exists
