@@ -9,6 +9,7 @@
 package adminapitest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -67,6 +68,64 @@ func TestResyncRollback(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 	status = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+}
+
+func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeyChanges, base.KeyAccess)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		AutoImport: base.BoolPtr(false),
+	})
+
+	defer rt.Close()
+	ctx := base.TestCtx(t)
+	ds := rt.GetSingleDataStore()
+
+	// create a sequence much higher than _syc:seqs value
+	const corruptSequence = db.MaxSequencesToRelease + 1000
+
+	numDocs := 10
+	for i := 0; i < numDocs; i++ {
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
+	}
+
+	// corrupt doc0 sequence
+	_, xattrs, cas, err := ds.GetWithXattrs(ctx, "doc0", []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	// corrupt the document sequence
+	var newSyncData map[string]interface{}
+	err = json.Unmarshal(xattrs[base.SyncXattrName], &newSyncData)
+	require.NoError(t, err)
+	newSyncData["sequence"] = corruptSequence
+	_, err = ds.UpdateXattrs(ctx, "doc0", 0, cas, map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, newSyncData)}, nil)
+	require.NoError(t, err)
+
+	response := rt.SendAdminRequest("POST", "/{{.db}}/_offline", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+	rt.WaitForDBState(db.RunStateString[db.DBOffline])
+
+	// we need to wait for the resync to start and not finish
+	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start&regenerate_sequences=true", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
+	_, xattrs, cas, err = ds.GetWithXattrs(ctx, "doc0", []string{base.SyncXattrName})
+	require.NoError(t, err)
+	// assert doc sequence wasn't changed
+	var bucketSync map[string]interface{}
+	err = json.Unmarshal(xattrs[base.SyncXattrName], &bucketSync)
+	require.NoError(t, err)
+	seq := newSyncData["sequence"].(int)
+	require.Equal(t, uint64(corruptSequence), uint64(seq))
+
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.Database().CorruptSequenceCount.Value()
+	}, 1)
 }
 
 func TestResyncRegenerateSequencesPrincipals(t *testing.T) {

@@ -320,6 +320,9 @@ const (
 
 	TotalInitFatalErrorsDesc   = "The total number of errors that occurred that prevented the database from being initialized."
 	TotalOnlineFatalErrorsDesc = "The total number of errors that occurred that prevented the database from being brought online."
+
+	CorruptSequenceCountDesc = "The total number of corrupt sequences detected at the sequence allocator. Documents that have a corrupt " +
+		"sequence that trigger release of sequences above the MaxSequenceToRelease threshold will have their update cancelled."
 )
 
 // Delta Sync stats descriptions

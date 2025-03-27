@@ -39,6 +39,9 @@ const (
 	// Accounts for a maximum SG cluster size of 50 nodes, each allocating a full batch size of 10
 	// if this value is too low and this correction has potential to allocate sequences that other nodes have already reserved a batch for
 	syncSeqCorrectionValue = 500
+
+	// Maximum number of sequences to release as part of nextSequenceGreaterThan
+	MaxSequencesToRelease = 10000000
 )
 
 // MaxSequenceIncrFrequency is the maximum frequency we want to perform incr operations.
@@ -286,6 +289,15 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	numberToRelease := existingSequence - syncSeq
 	numberToAllocate := s.sequenceBatchSize
 	incrVal := numberToRelease + numberToAllocate
+
+	// here
+	if numberToRelease > MaxSequencesToRelease {
+		base.WarnfCtx(ctx, "Number of sequences to release (%d) to catch up with doc current sequence (%d) exceeds MaxSequencesToRelease (%d). Doc update will be cancelled.", numberToRelease, existingSequence, MaxSequencesToRelease)
+		s.mutex.Unlock()
+		s.dbStats.CorruptSequenceCount.Add(1) // increment corrupt sequence count
+		return 0, 0, base.ErrMaxSequenceReleasedExceeded
+	}
+
 	allocatedToSeq, err := s.incrementSequence(incrVal)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from incrementSequence in nextSequenceGreaterThan(%d): %v", existingSequence, err)

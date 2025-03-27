@@ -1882,6 +1882,9 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 
 	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
+		if errors.Is(err, base.ErrMaxSequenceReleasedExceeded) {
+			base.WarnfCtx(ctx, "Doc %s / %s had an existing sequence %d that is more than %d larger than expected. Document update will be cancelled. This may indicate documents being migrated between databases by an external process.", base.UD(newDoc.ID), prevCurrentRev, doc.Sequence, MaxSequencesToRelease)
+		}
 		return
 	}
 

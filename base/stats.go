@@ -645,6 +645,8 @@ type DatabaseStats struct {
 	SequenceReleasedCount *SgwIntStat `json:"sequence_released_count"`
 	// The total number of sequences reserved by Sync Gateway.
 	SequenceReservedCount *SgwIntStat `json:"sequence_reserved_count"`
+	// The total number of corrupt sequences above the MaxSequencesToRelease threshold seen at the sequence allocator
+	CorruptSequenceCount *SgwIntStat `json:"corrupt_sequence_count"`
 	// The total number of warnings relating to the channel name size.
 	WarnChannelNameSizeCount *SgwIntStat `json:"warn_channel_name_size_count"`
 	// The total number of warnings relating to the channel count exceeding the channel count threshold.
@@ -1754,6 +1756,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.CorruptSequenceCount, err = NewIntStat(SubsystemDatabaseKey, "corrupt_sequence_count", StatUnitNoUnits, CorruptSequenceCountDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.WarnChannelNameSizeCount, err = NewIntStat(SubsystemDatabaseKey, "warn_channel_name_size_count", StatUnitNoUnits, WarnChannelNameSizeCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1839,6 +1845,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SequenceIncrCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceReleasedCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceReservedCount)
+	prometheus.Unregister(d.DatabaseStats.CorruptSequenceCount)
 	prometheus.Unregister(d.DatabaseStats.WarnChannelNameSizeCount)
 	prometheus.Unregister(d.DatabaseStats.WarnChannelsPerDocCount)
 	prometheus.Unregister(d.DatabaseStats.WarnGrantsPerDocCount)
