@@ -114,7 +114,7 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-	_, xattrs, cas, err = ds.GetWithXattrs(ctx, "doc0", []string{base.SyncXattrName})
+	_, xattrs, _, err = ds.GetWithXattrs(ctx, "doc0", []string{base.SyncXattrName})
 	require.NoError(t, err)
 	// assert doc sequence wasn't changed
 	var bucketSync map[string]interface{}
