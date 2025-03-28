@@ -13,6 +13,7 @@ package indextest
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestRoleQuery(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, db.DefaultNumIndexPartitions)
 
 			authenticator := database.Authenticator(ctx)
 			require.NotNil(t, authenticator, "database.Authenticator(ctx) returned nil")
@@ -121,7 +122,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, db.DefaultNumIndexPartitions)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 			t.Run("roleQueryCovered", func(t *testing.T) {
 				roleStatement, _ := database.BuildRolesQuery("", 0)
@@ -193,7 +194,7 @@ func TestGetRoleIDs(t *testing.T) {
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, db.DefaultNumIndexPartitions)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
@@ -276,9 +277,10 @@ func TestInitializeIndexes(t *testing.T) {
 
 			// add and drop indexes that may be different from the way the bucket pool expects, so use specific options here for test
 			xattrSpecificIndexOptions := db.InitializeIndexOptions{
-				NumReplicas: 0,
-				Serverless:  database.IsServerless(),
-				UseXattrs:   test.xattrs,
+				NumReplicas:   0,
+				Serverless:    database.IsServerless(),
+				UseXattrs:     test.xattrs,
+				NumPartitions: db.DefaultNumIndexPartitions,
 			}
 			if database.OnlyDefaultCollection() {
 				xattrSpecificIndexOptions.MetadataIndexes = db.IndexesAll
@@ -291,6 +293,11 @@ func TestInitializeIndexes(t *testing.T) {
 
 				initErr := db.InitializeIndexes(ctx, n1qlStore, xattrSpecificIndexOptions)
 				require.NoError(t, initErr, "Error initializing all indexes on bucket")
+			}
+			allIndexes, err := gocbBucket.GetCluster().Bucket(gocbBucket.BucketName()).Scope(collection.ScopeName).Collection(collection.Name).QueryIndexes().GetAllIndexes(nil)
+			require.NoError(t, err)
+			for _, index := range allIndexes {
+				require.Equal(t, "", index.Partition)
 			}
 		})
 	}
@@ -310,15 +317,44 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
-
 	var wg sync.WaitGroup
 	wg.Add(numSGNodes)
 	for i := 0; i < numSGNodes; i++ {
 		ctx := base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("test-node-%d", i))
 		go func() {
 			defer wg.Done()
-			setupN1QLStore(ctx, t, bucket, false)
+			setupN1QLStore(ctx, t, bucket, false, db.DefaultNumIndexPartitions)
 		}()
 	}
 	wg.Wait()
+}
+
+func TestPartitionedIndexes(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("TestPartitionedIndexes only works with UseXattrs=true")
+	}
+	numPartitions := uint32(13)
+	serverless := false
+
+	database, ctx := db.SetupTestDBWithOptions(t, db.DatabaseContextOptions{NumIndexPartitions: base.Ptr(numPartitions)})
+	defer database.Close(ctx)
+
+	setupN1QLStore(ctx, t, database.Bucket, serverless, numPartitions)
+	gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
+	require.NoError(t, err)
+	for _, dsName := range []sgbucket.DataStoreName{db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionDatastore(), database.MetadataStore} {
+		allIndexes, err := gocbBucket.GetCluster().Bucket(gocbBucket.BucketName()).Scope(dsName.ScopeName()).Collection(dsName.CollectionName()).QueryIndexes().GetAllIndexes(nil)
+		require.NoError(t, err)
+		for _, index := range allIndexes {
+			if strings.HasPrefix(index.Name, "sg_allDocs") || strings.HasPrefix(index.Name, "sg_channels") {
+				require.True(t, strings.HasSuffix(index.Name, "x1_p13"), "expected %d partitions for %+v", numPartitions, index)
+				require.NotEqual(t, "", index.Partition)
+				require.Equal(t, numPartitions, db.GetIndexPartitionCount(t, gocbBucket, dsName, index.Name))
+			} else {
+				require.Equal(t, "", index.Partition)
+				require.True(t, strings.HasSuffix(index.Name, "_x1"), "expected nopartitions for %+v", index)
+				require.Equal(t, uint32(1), db.GetIndexPartitionCount(t, gocbBucket, dsName, index.Name))
+			}
+		}
+	}
 }

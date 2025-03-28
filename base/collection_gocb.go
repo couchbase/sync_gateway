@@ -415,7 +415,7 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 // current use cases (on-demand import).  If there's a need for expiry as part of normal get, this shouldn't be
 // used - an enhanced version of Get() should be implemented to avoid two ops
 func (c *Collection) GetExpiry(ctx context.Context, k string) (expiry uint32, getMetaError error) {
-	agent, err := c.Bucket.getGoCBAgent()
+	agent, err := c.Bucket.GetGoCBAgent()
 	if err != nil {
 		WarnfCtx(ctx, "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
 		return 0, err
@@ -569,7 +569,7 @@ func (c *Collection) setCollectionID() error {
 		c.kvCollectionID = DefaultCollectionID
 		return nil
 	}
-	agent, err := c.Bucket.getGoCBAgent()
+	agent, err := c.Bucket.GetGoCBAgent()
 	if err != nil {
 		return err
 	}

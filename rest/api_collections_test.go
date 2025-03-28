@@ -282,9 +282,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Scopes:           scopesConfig,
-			NumIndexReplicas: base.UintPtr(0),
-			EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+			Scopes:       scopesConfig,
+			EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
 		},
 		},
 	}
@@ -416,8 +415,7 @@ func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
 		CustomTestBucket: tb,
 		//PersistentConfig: true,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Scopes:           scopesConfig,
-			NumIndexReplicas: base.UintPtr(0),
+			Scopes: scopesConfig,
 		},
 		},
 	}
@@ -840,10 +838,9 @@ func TestCollectionStats(t *testing.T) {
 		GuestEnabled:     true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				Scopes:           scopesConfig,
-				NumIndexReplicas: base.UintPtr(0),
-				AutoImport:       base.TestUseXattrs(),
-				EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+				Scopes:       scopesConfig,
+				AutoImport:   base.TestUseXattrs(),
+				EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
 			},
 		},
 	}

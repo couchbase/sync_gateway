@@ -21,16 +21,19 @@ import (
 )
 
 const (
-	indexNameFormat   = "sg_%s_%s%d"    // Name, xattrs, version.  e.g. "sg_channels_x1"
-	syncRelativeToken = "$relativesync" // Relative sync token (no keyspace), used to swap between xattr/non-xattr handling in n1ql statements
-	syncToken         = "$sync"         // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
-	indexToken        = "$idx"          // Index token, used to hint which index should be used for the query
+	indexNameFormat              = "sg_%s_%s%d"    // Name, xattrs, version.  e.g. "sg_channels_x1"
+	partitionableIndexNameFormat = "%s_p%d"        // indexName, numPartitions
+	syncRelativeToken            = "$relativesync" // Relative sync token (no keyspace), used to swap between xattr/non-xattr handling in n1ql statements
+	syncToken                    = "$sync"         // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
+	indexToken                   = "$idx"          // Index token, used to hint which index should be used for the query
 
 	// N1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
 	// Need to escape the underscore in '_sync' to prevent it being treated as a N1QL wildcard
 	SyncDocWildcard  = `\\_sync:%`
 	SyncUserWildcard = `\\_sync:user:%`
 	SyncRoleWildcard = `\\_sync:role:%`
+
+	DefaultNumIndexPartitions uint32 = 1
 )
 
 // Index and query definitions use syncToken ($sync) to represent the location of sync gateway's metadata.
@@ -175,6 +178,10 @@ var (
 			"ORDER BY [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)] " +
 			"LIMIT 1",
 	}
+	partitionableIndexes = map[SGIndexType]bool{
+		IndexAllDocs:  true,
+		IndexChannels: true,
+	}
 )
 
 var sgIndexes map[SGIndexType]SGIndex
@@ -191,6 +198,7 @@ func init() {
 			filterExpression: indexFilterExpressions[i],
 			flags:            indexFlags[i],
 			creationMode:     indexCreationModes[i],
+			partitionable:    partitionableIndexes[i],
 		}
 		// If a readiness query is specified for this index, mark the index as required and add to SGIndex
 		readinessQuery, ok := readinessQueries[i]
@@ -214,18 +222,23 @@ type SGIndex struct {
 	readinessQuery   string            // Query used to determine view readiness
 	flags            SGIndexFlags      // Additional index options
 	creationMode     indexCreationMode // Signal when to create indexes
+	partitionable    bool              // Whether the index is partitionable
 }
 
-func (i *SGIndex) fullIndexName(useXattrs bool) string {
-	return i.indexNameForVersion(i.version, useXattrs)
+func (i *SGIndex) fullIndexName(useXattrs bool, numPartitions uint32) string {
+	return i.indexNameForVersion(i.version, useXattrs, numPartitions)
 }
 
-func (i *SGIndex) indexNameForVersion(version int, useXattrs bool) string {
+func (i *SGIndex) indexNameForVersion(version int, useXattrs bool, numPartitions uint32) string {
 	xattrsToken := ""
 	if useXattrs {
 		xattrsToken = "x"
 	}
-	return fmt.Sprintf(indexNameFormat, i.simpleName, xattrsToken, version)
+	indexName := fmt.Sprintf(indexNameFormat, i.simpleName, xattrsToken, version)
+	if i.partitionable && numPartitions > 1 {
+		indexName = fmt.Sprintf(partitionableIndexNameFormat, indexName, numPartitions)
+	}
+	return indexName
 }
 
 // Tombstone indexing is required for indexes that need to index the _sync xattrs even when the document
@@ -281,8 +294,10 @@ func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
 // will need to be invoked for any created indexes.
 func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, options InitializeIndexOptions) error {
-
-	indexName := i.fullIndexName(options.UseXattrs)
+	if options.NumPartitions < 1 {
+		return fmt.Errorf("Invalid number of partitions specified for index %s: %d, needs to be greater than 0", i.simpleName, options.NumPartitions)
+	}
+	indexName := i.fullIndexName(options.UseXattrs, options.NumPartitions)
 
 	// Create index
 	base.InfofCtx(ctx, base.KeyQuery, "Creating index %s if it doesn't already exist...", indexName)
@@ -293,6 +308,9 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 		DeferBuild:      true,
 		NumReplica:      options.NumReplicas,
 		IndexTombstones: i.shouldIndexTombstones(options.UseXattrs),
+	}
+	if i.partitionable && options.NumPartitions > 1 {
+		n1qlOptions.NumPartitions = &options.NumPartitions
 	}
 
 	// Initial retry 1 seconds, max wait 30s, waits up to 10m
@@ -344,11 +362,14 @@ type InitializeIndexOptions struct {
 	MetadataIndexes            CollectionIndexesType           // indicate which indexes to create
 	Serverless                 bool                            // if true, create indexes for serverless
 	UseXattrs                  bool                            // if true, create indexes on xattrs, otherwise, use inline sync data
+	NumPartitions              uint32                          // number of partitions to use for the index
 }
 
 // Initializes Sync Gateway indexes for datastore.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options InitializeIndexOptions) error {
-
+	if options.NumPartitions < 1 {
+		return fmt.Errorf("Invalid number of partitions specified: %d, needs to be greater than 0", options.NumPartitions)
+	}
 	base.InfofCtx(ctx, base.KeyAll, "Initializing indexes with numReplicas: %d...", options.NumReplicas)
 
 	// Create any indexes that aren't present
@@ -360,7 +381,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 			continue
 		}
 
-		fullIndexName := sgIndex.fullIndexName(options.UseXattrs)
+		fullIndexName := sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions)
 
 		err := sgIndex.createIfNeeded(ctx, n1QLStore, options)
 		if err != nil {
@@ -371,7 +392,6 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 
 		fullIndexNames = append(fullIndexNames, fullIndexName)
 	}
-
 	// Issue BUILD INDEX for any deferred indexes.
 	if len(fullIndexNames) > 0 {
 		buildErr := base.BuildDeferredIndexes(ctx, n1QLStore, fullIndexNames)
@@ -391,7 +411,7 @@ func waitForIndexes(ctx context.Context, bucket base.N1QLStore, options Initiali
 	var indexes []string
 
 	for _, sgIndex := range sgIndexes {
-		fullIndexName := sgIndex.fullIndexName(options.UseXattrs)
+		fullIndexName := sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions)
 		if !sgIndex.shouldCreate(options) {
 			continue
 		}
@@ -421,17 +441,18 @@ func removeObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOn
 
 	// Build set of candidates for cleanup
 	removalCandidates := make([]string, 0)
+	numPartitions := DefaultNumIndexPartitions // obsolete indexes is always partitions 1, greater than 1 needs to be removed manually
 	for _, sgIndex := range indexMap {
 		// Current version, opposite xattr setting
-		removalCandidates = append(removalCandidates, sgIndex.fullIndexName(!useXattrs))
+		removalCandidates = append(removalCandidates, sgIndex.fullIndexName(!useXattrs, numPartitions))
 		// If using views we can remove current version for xattr setting too
 		if useViews {
-			removalCandidates = append(removalCandidates, sgIndex.fullIndexName(useXattrs))
+			removalCandidates = append(removalCandidates, sgIndex.fullIndexName(useXattrs, numPartitions))
 		}
 		// Older versions, both xattr and non-xattr
 		for _, prevVersion := range sgIndex.previousVersions {
-			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, true))
-			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, false))
+			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, true, numPartitions))
+			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, false, numPartitions))
 		}
 	}
 
@@ -497,8 +518,8 @@ func replaceSyncTokensQuery(statement string, useXattrs bool) string {
 }
 
 // Replace index tokens ($idx) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
-func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool) string {
-	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs), -1)
+func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool, numPartitions uint32) string {
+	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs, numPartitions), -1)
 }
 
 func copySGIndexes(inputMap map[SGIndexType]SGIndex) map[SGIndexType]SGIndex {
@@ -521,7 +542,7 @@ func GetIndexesName(options InitializeIndexOptions) []string {
 			continue
 		}
 		if sgIndex.shouldCreate(options) {
-			indexesName = append(indexesName, sgIndex.fullIndexName(options.UseXattrs))
+			indexesName = append(indexesName, sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions))
 		}
 	}
 	return indexesName
