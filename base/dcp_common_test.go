@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/cbgt"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,4 +83,27 @@ func TestDCPNameLength(t *testing.T) {
 				len(cbgtIndexDCPName), maxDCPNameLength, cbgtIndexDCPName)
 		})
 	}
+}
+
+// TestFeedEventByteSliceCopy( ensures that the byte slices in the FeedEvent are copies and not the original ones - CBG-4540
+func TestFeedEventByteSliceCopy(t *testing.T) {
+	const (
+		keyData   = "key"
+		valueData = "value"
+	)
+	keySlice := []byte(keyData)
+	valueSlice := []byte(valueData)
+	e := makeFeedEvent(keySlice, valueSlice, 0, 0, 0, 0, 0, sgbucket.FeedOpMutation)
+	require.Equal(t, keyData, string(e.Key))
+	require.Equal(t, valueData, string(e.Value))
+	require.Equal(t, keyData, string(keySlice))
+	require.Equal(t, valueData, string(valueSlice))
+
+	// mutate the originals and ensure the FeedEvent byte slices didn't change with it
+	keySlice[0] = 'x'
+	valueSlice[0] = 'x'
+	assert.Equal(t, keyData, string(e.Key))
+	assert.Equal(t, valueData, string(e.Value))
+	assert.NotEqual(t, keyData, string(keySlice))
+	assert.NotEqual(t, valueData, string(valueSlice))
 }

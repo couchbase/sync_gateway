@@ -176,20 +176,3 @@ post:
   tags:
     - Database Management
   operationId: post_keyspace-_changes
-head:
-  summary: /{db}/_changes
-  responses:
-    '200':
-      description: OK
-    '400':
-      description: Bad Request
-    '404':
-      description: Not Found
-  tags:
-    - Database Management
-  description: |-
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Application
-    * Sync Gateway Application Read Only
-  operationId: head_keyspace-_changes

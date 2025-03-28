@@ -78,6 +78,9 @@ var (
 	// ErrSkippedSequencesMissing is returned when attempting to remove a sequence range form the skipped sequence list and at least one sequence in that range is not present
 	ErrSkippedSequencesMissing = &sgError{"Sequence range has sequences that aren't present in skipped list"}
 
+	// ErrMaxSequenceReleasedExceeded is returned when the maximum number of sequences to be released as part of nextSequenceGreaterThan is exceeded
+	ErrMaxSequenceReleasedExceeded = &sgError{"Maximum number of sequences to release to catch up with document sequence exceeded"}
+
 	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
 	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
 )

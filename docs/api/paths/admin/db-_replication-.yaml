@@ -53,17 +53,3 @@ post:
   tags:
     - Replication
   operationId: post_db-_replication-
-head:
-  summary: /{db}/_replication/
-  responses:
-    '200':
-      description: OK
-    '404':
-      description: Not Found
-  tags:
-    - Replication
-  description: |-
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Replicator
-  operationId: head_db-_replication-

@@ -265,6 +265,11 @@ func (c *DatabaseCollection) UseXattrs() bool {
 	return c.dbCtx.Options.EnableXattr
 }
 
+// numIndexPartitions returns the number of partitions for the collection's indexes. This is controlled at a database level.
+func (c *DatabaseCollection) numIndexPartitions() uint32 {
+	return c.dbCtx.numIndexPartitions()
+}
+
 // User will return the user object.
 func (c *DatabaseCollectionWithUser) User() auth.User {
 	return c.user

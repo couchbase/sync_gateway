@@ -25,7 +25,7 @@ post:
     - $ref: ../../components/parameters.yaml#/compact-type
     - name: action
       in: query
-      description: Defines whether the a compact operation is being started or stopped.
+      description: Defines whether the compact operation is being started or stopped.
       schema:
         type: string
         default: start

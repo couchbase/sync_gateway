@@ -934,7 +934,6 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
 
-	numIndexReplicas := uint(0)
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
@@ -943,7 +942,6 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 				MaxWaitSkipped: &skippedMaxWait,
 			},
 		},
-		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -1010,7 +1008,6 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
 
-	numIndexReplicas := uint(0)
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
@@ -1019,7 +1016,6 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 				MaxWaitSkipped: &skippedMaxWait,
 			},
 		},
-		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -1130,7 +1126,6 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
 
-	numIndexReplicas := uint(0)
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
@@ -1139,7 +1134,6 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 				MaxWaitSkipped: &skippedMaxWait,
 			},
 		},
-		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -1251,7 +1245,6 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
 
-	numIndexReplicas := uint(0)
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
@@ -1260,7 +1253,6 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 				MaxWaitSkipped: &skippedMaxWait,
 			},
 		},
-		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -3374,7 +3366,6 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
-	numIndexReplicas := uint(0)
 	smallCacheSize := 100
 	minimumChannelCacheConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 		CacheConfig: &rest.CacheConfig{
@@ -3382,7 +3373,6 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 				MaxNumber: &smallCacheSize,
 			},
 		},
-		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`, DatabaseConfig: minimumChannelCacheConfig}
 

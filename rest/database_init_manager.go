@@ -141,15 +141,12 @@ func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
 }
 
 func (m *DatabaseInitManager) BuildIndexOptions(isServerless bool, dbConfig *DatabaseConfig) db.InitializeIndexOptions {
-	numReplicas := DefaultNumIndexReplicas
-	if dbConfig.NumIndexReplicas != nil {
-		numReplicas = *dbConfig.NumIndexReplicas
-	}
 	return db.InitializeIndexOptions{
 		WaitForIndexesOnlineOption: base.WaitForIndexesInfinite,
-		NumReplicas:                numReplicas,
+		NumReplicas:                dbConfig.numIndexReplicas(),
 		Serverless:                 isServerless,
 		UseXattrs:                  dbConfig.UseXattrs(),
+		NumPartitions:              dbConfig.numIndexPartitions(),
 	}
 }
 

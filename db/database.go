@@ -185,6 +185,7 @@ type DatabaseContextOptions struct {
 	MaxConcurrentChangesBatches   *int              // Maximum number of changes batches to process concurrently per replication
 	MaxConcurrentRevs             *int              // Maximum number of revs to process concurrently per replication
 	NumIndexReplicas              uint              // Number of replicas for GSI indexes
+	NumIndexPartitions            *uint32           // Number of partitions for GSI indexes, if not set will default to 1
 	ImportVersion                 uint64            // Version included in import DCP checkpoints, incremented when collections added to db
 }
 
@@ -1913,6 +1914,14 @@ func (context *DatabaseContext) GetUserViewsEnabled() bool {
 
 func (context *DatabaseContext) UseXattrs() bool {
 	return context.Options.EnableXattr
+}
+
+// numIndexPartitions returns the number of index partitions to use for the database's indexes.
+func (context *DatabaseContext) numIndexPartitions() uint32 {
+	if context.Options.NumIndexPartitions != nil {
+		return *context.Options.NumIndexPartitions
+	}
+	return DefaultNumIndexPartitions
 }
 
 func (context *DatabaseContext) UseViews() bool {
