@@ -12,8 +12,10 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"testing"
 	"time"
 
@@ -1017,5 +1019,101 @@ func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key str
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
 	}
 	return syncData, mou, cas
+
+}
+
+func TestImportCancelOnDocWithCorruptSequenceOverImportFeed(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport, base.KeyCRUD)
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// create a sequence much higher than _syc:seqs value
+	const corruptSequence = MaxSequencesToRelease + 1000
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	key := t.Name()
+	bodyBytes := []byte(`{"foo":"bar"}`)
+	// Create via the SDK
+	_, err := collection.dataStore.AddRaw(key, 0, bodyBytes)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+
+	_, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	// corrupt the document sequence
+	var newSyncData map[string]interface{}
+	err = json.Unmarshal(xattrs[base.SyncXattrName], &newSyncData)
+	require.NoError(t, err)
+	newSyncData["sequence"] = corruptSequence
+	_, err = collection.dataStore.UpdateXattrs(ctx, key, 0, cas, map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, newSyncData)}, DefaultMutateInOpts())
+	require.NoError(t, err)
+
+	// sdk update to trigger import
+	require.NoError(t, collection.dataStore.SetRaw(key, 0, nil, []byte(`{"foo":"baz"}`)))
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 1)
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.Database().CorruptSequenceCount.Value()
+	}, 1)
+}
+
+func TestImportCancelOnDocWithCorruptSequenceOndemand(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport, base.KeyCRUD)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(base.TestCtx(t))
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, DatabaseContextOptions{})
+	key := t.Name()
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	_, _, err := collection.Put(ctx, key, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	// create a sequence much higher than _syc:seqs value
+	const corruptSequence = MaxSequencesToRelease + 1000
+
+	_, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	// corrupt the document sequence
+	var newSyncData map[string]interface{}
+	err = json.Unmarshal(xattrs[base.SyncXattrName], &newSyncData)
+	require.NoError(t, err)
+	newSyncData["sequence"] = corruptSequence
+	_, err = collection.dataStore.UpdateXattrs(ctx, key, 0, cas, map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, newSyncData)}, DefaultMutateInOpts())
+	require.NoError(t, err)
+
+	// sdk update
+	require.NoError(t, collection.dataStore.SetRaw(key, 0, nil, []byte(`{"foo":"baz"}`)))
+
+	// trigger on demand import
+	_, err = collection.GetDocument(ctx, key, DocUnmarshalAll)
+	require.Error(t, err)
+	var httpErr *base.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusNotFound, httpErr.Status)
+
+	// verify that the document was not imported
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 1)
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.Database().CorruptSequenceCount.Value()
+	}, 1)
 
 }
