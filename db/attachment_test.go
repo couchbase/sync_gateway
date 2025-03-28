@@ -875,7 +875,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		defer db.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-		// Update the doc with a the same body as rev 3-a, and make sure attachments are migrated.
+		// Update the doc with the same body as rev 3-a, and make sure attachments are migrated.
 		newBody := Body{
 			"test":  true,
 			BodyRev: "3-a",
