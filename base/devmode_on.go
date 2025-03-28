@@ -11,13 +11,6 @@
 
 package base
 
-import (
-	"context"
-)
-
 const cbSGDevModeBuildTagSet = true
 
-var assertLogFn logFn = func(ctx context.Context, format string, args ...any) {
-	DevModeAssertionFailures.Add(1)
-	PanicfCtx(ctx, format, args...)
-}
+var assertLogFn logFn = PanicfCtx
