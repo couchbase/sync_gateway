@@ -74,6 +74,9 @@ var (
 
 	// ErrReplicationLimitExceeded is returned when then replication connection threshold is exceeded
 	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try again later."}
+
+	// ErrMaxSequenceReleasedExceeded is returned when the maximum number of sequences to be released as part of nextSequenceGreaterThan is exceeded
+	ErrMaxSequenceReleasedExceeded = &sgError{"Maximum number of sequences to release to catch up with document sequence exceeded"}
 )
 
 func (e *sgError) Error() string {

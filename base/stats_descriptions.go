@@ -316,6 +316,9 @@ const (
 
 	NumIdleKvOpsDesc    = "The total number of idle kv operations."
 	NumIdleQueryOpsDesc = "The total number of idle query operations."
+
+	CorruptSequenceCountDesc = "The total number of corrupt sequences detected at the sequence allocator. Documents that have a corrupt " +
+		"sequence that trigger release of sequences above the MaxSequenceToRelease threshold will have their update cancelled."
 )
 
 // Delta Sync stats descriptions
