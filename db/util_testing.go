@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -698,4 +699,43 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 		_, err := collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
 		require.NoError(t, err)
 	}
+}
+
+// GetIndexPartitionCount returns the number of partitions for a given index. This function queries index nodes directly and would not be suitable for production use, since this port is not generally accessible.
+func GetIndexPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbucket.DataStoreName, indexName string) uint32 {
+	agent, err := bucket.GetGoCBAgent()
+	require.NoError(t, err)
+	gsiEps := agent.GSIEps()
+	require.Greater(t, len(gsiEps), 0, "No available Couchbase Server nodes for GSI")
+
+	var username, password string
+	if bucket.Spec.Auth != nil {
+		username, password, _ = bucket.Spec.Auth.GetCredentials()
+	}
+	ctx := base.TestCtx(t)
+	uri := "/getIndexStatus"
+	respBytes, statusCode, err := base.MgmtRequest(bucket.HttpClient(ctx), gsiEps[0], http.MethodGet, uri, "application/json", username, password, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, statusCode, "unexpected status code for %s", respBytes)
+	var output struct {
+		Status []struct {
+			IndexName    string `json:"indexName"`
+			Bucket       string `json:"bucket"`
+			Collection   string `json:"collection"`
+			Scope        string `json:"scope"`
+			NumPartition uint32 `json:"numPartition"`
+		} `json:"status"`
+	}
+	require.NoError(t, base.JSONUnmarshal(respBytes, &output), "error unmarshalling %s", respBytes)
+	for _, idx := range output.Status {
+		if idx.Bucket != bucket.BucketName() || idx.Collection != dsName.CollectionName() || idx.Scope != dsName.ScopeName() {
+			continue
+		}
+		if idx.IndexName != indexName {
+			continue
+		}
+		return idx.NumPartition
+	}
+	require.Failf(t, "index not found", "index %s not found in %+v", indexName, output)
+	return 0
 }

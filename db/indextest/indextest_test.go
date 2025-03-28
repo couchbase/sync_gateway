@@ -13,7 +13,6 @@ package indextest
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -350,49 +349,12 @@ func TestPartitionedIndexes(t *testing.T) {
 			if strings.HasPrefix(index.Name, "sg_allDocs") || strings.HasPrefix(index.Name, "sg_channels") {
 				require.True(t, strings.HasSuffix(index.Name, "x1_p13"), "expected %d partitions for %+v", numPartitions, index)
 				require.NotEqual(t, "", index.Partition)
-				require.Equal(t, numPartitions, getPartitionCount(t, gocbBucket, dsName, index.Name))
+				require.Equal(t, numPartitions, db.GetIndexPartitionCount(t, gocbBucket, dsName, index.Name))
 			} else {
 				require.Equal(t, "", index.Partition)
 				require.True(t, strings.HasSuffix(index.Name, "_x1"), "expected nopartitions for %+v", index)
-				require.Equal(t, uint32(1), getPartitionCount(t, gocbBucket, dsName, index.Name))
+				require.Equal(t, uint32(1), db.GetIndexPartitionCount(t, gocbBucket, dsName, index.Name))
 			}
 		}
 	}
-}
-
-// getPartitionCount returns the number of partitions for a given index.
-func getPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbucket.DataStoreName, indexName string) uint32 {
-	gsiEps, err := bucket.GSIEps()
-	require.NoError(t, err)
-
-	var username, password string
-	if bucket.Spec.Auth != nil {
-		username, password, _ = bucket.Spec.Auth.GetCredentials()
-	}
-	ctx := base.TestCtx(t)
-	uri := "/getIndexStatus"
-	respBytes, statusCode, err := base.MgmtRequest(bucket.HttpClient(ctx), gsiEps[0], http.MethodGet, uri, "application/json", username, password, nil)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, statusCode, "unexpected status code for %s", respBytes)
-	var output struct {
-		Status []struct {
-			IndexName    string `json:"indexName"`
-			Bucket       string `json:"bucket"`
-			Collection   string `json:"collection"`
-			Scope        string `json:"scope"`
-			NumPartition uint32 `json:"numPartition"`
-		} `json:"status"`
-	}
-	require.NoError(t, base.JSONUnmarshal(respBytes, &output), "error unmarshalling %s", respBytes)
-	for _, idx := range output.Status {
-		if idx.Bucket != bucket.BucketName() || idx.Collection != dsName.CollectionName() || idx.Scope != dsName.ScopeName() {
-			continue
-		}
-		if idx.IndexName != indexName {
-			continue
-		}
-		return idx.NumPartition
-	}
-	require.Failf(t, "index not found", "index %s not found in %+v", indexName, output)
-	return 0
 }

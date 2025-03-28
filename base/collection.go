@@ -239,7 +239,7 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		// Available on all supported server versions
 		return true
 	case sgbucket.BucketStoreFeatureN1ql:
-		agent, err := b.getGoCBAgent()
+		agent, err := b.GetGoCBAgent()
 		if err != nil {
 			return false
 		}
@@ -295,7 +295,7 @@ func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArgum
 
 func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
-	agent, agentErr := b.getGoCBAgent()
+	agent, agentErr := b.GetGoCBAgent()
 	if agentErr != nil {
 		return nil, nil, agentErr
 	}
@@ -353,7 +353,7 @@ func (b *GocbV2Bucket) GetMaxVbno() (uint16, error) {
 }
 
 func (b *GocbV2Bucket) getConfigSnapshot() (*gocbcore.ConfigSnapshot, error) {
-	agent, err := b.getGoCBAgent()
+	agent, err := b.GetGoCBAgent()
 	if err != nil {
 		return nil, fmt.Errorf("no gocbcore.Agent: %w", err)
 	}
@@ -448,7 +448,7 @@ func (b *GocbV2Bucket) BucketItemCount(ctx context.Context) (itemCount int, err 
 }
 
 func (b *GocbV2Bucket) MgmtEps() (url []string, err error) {
-	agent, err := b.getGoCBAgent()
+	agent, err := b.GetGoCBAgent()
 	if err != nil {
 		return url, err
 	}
@@ -460,25 +460,12 @@ func (b *GocbV2Bucket) MgmtEps() (url []string, err error) {
 }
 
 func (b *GocbV2Bucket) QueryEpsCount() (int, error) {
-	agent, err := b.getGoCBAgent()
+	agent, err := b.GetGoCBAgent()
 	if err != nil {
 		return 0, err
 	}
 
 	return len(agent.N1qlEps()), nil
-}
-
-// GSIEps returns the GSI endpoints for the bucket for querying information about indexes.
-func (b *GocbV2Bucket) GSIEps() (url []string, err error) {
-	agent, err := b.getGoCBAgent()
-	if err != nil {
-		return url, err
-	}
-	gsiEps := agent.GSIEps()
-	if len(gsiEps) == 0 {
-		return nil, fmt.Errorf("No available Couchbase Server nodes")
-	}
-	return gsiEps, nil
 }
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
@@ -492,7 +479,7 @@ func (b *GocbV2Bucket) MaxTTL(ctx context.Context) (int, error) {
 }
 
 func (b *GocbV2Bucket) HttpClient(ctx context.Context) *http.Client {
-	agent, err := b.getGoCBAgent()
+	agent, err := b.GetGoCBAgent()
 	if err != nil {
 		WarnfCtx(ctx, "Unable to obtain gocbcore.Agent while retrieving httpClient:%v", err)
 		return nil
@@ -540,7 +527,7 @@ func (b *GocbV2Bucket) releaseKvOp() {
 }
 
 // GetGoCBAgent returns the underlying agent from gocbcore
-func (b *GocbV2Bucket) getGoCBAgent() (*gocbcore.Agent, error) {
+func (b *GocbV2Bucket) GetGoCBAgent() (*gocbcore.Agent, error) {
 	return b.bucket.Internal().IORouter()
 }
 

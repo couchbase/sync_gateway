@@ -71,7 +71,7 @@ if [ "${MULTI_NODE:-}" == "true" ]; then
     ${DOCKER_COMPOSE} up -d --force-recreate --renew-anon-volumes --remove-orphans
 else
     # single node
-    docker run --rm -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume "${WORKSPACE_ROOT}:/workspace" -p 8091-8096:8091-8096 -p 9102:9102 -p 11207:11207 -p 11210:11210 -p 11211:11211 -p 18091-18094:18091-18094 -p 19102 "${COUCHBASE_DOCKER_IMAGE_NAME}"
+    docker run --rm -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume "${WORKSPACE_ROOT}:/workspace" -p 8091-8097:8091-8097 -p 9102:9102 -p 9123:9123 -p 11207:11207 -p 11210:11210 -p 11211:11211 -p 18091-18097:18091-18097 -p 19102:19102 "${COUCHBASE_DOCKER_IMAGE_NAME}"
 fi
 
 # Test to see if Couchbase Server is up

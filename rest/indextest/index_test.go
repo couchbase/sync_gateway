@@ -959,6 +959,15 @@ func TestPartitionedIndexes(t *testing.T) {
 	}
 	require.ElementsMatch(t, expectedIndexNames, indexNames)
 
+	bucket, err := base.AsGocbV2Bucket(rt.Bucket())
+	require.NoError(t, err)
+	for _, indexName := range expectedIndexNames {
+		expectedPartitions := uint32(1)
+		if strings.HasSuffix(indexName, "_x1_p8") {
+			expectedPartitions = 8
+		}
+		require.Equal(t, expectedPartitions, db.GetIndexPartitionCount(t, bucket, collection, indexName))
+	}
 	// verify allDocs index is working
 	rt.PutDoc("doc1", `{"channels": ["alice"]}`)
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs", "")

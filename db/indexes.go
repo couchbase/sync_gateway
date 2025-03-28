@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	indexNameFormat   = "sg_%s_%s%d"    // Name, xattrs, version.  e.g. "sg_channels_x1"
-	syncRelativeToken = "$relativesync" // Relative sync token (no keyspace), used to swap between xattr/non-xattr handling in n1ql statements
-	syncToken         = "$sync"         // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
-	indexToken        = "$idx"          // Index token, used to hint which index should be used for the query
+	indexNameFormat              = "sg_%s_%s%d"    // Name, xattrs, version.  e.g. "sg_channels_x1"
+	partitionableIndexNameFormat = "%s_p%d"        // indexName, numPartitions
+	syncRelativeToken            = "$relativesync" // Relative sync token (no keyspace), used to swap between xattr/non-xattr handling in n1ql statements
+	syncToken                    = "$sync"         // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
+	indexToken                   = "$idx"          // Index token, used to hint which index should be used for the query
 
 	// N1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
 	// Need to escape the underscore in '_sync' to prevent it being treated as a N1QL wildcard
@@ -177,7 +178,7 @@ var (
 			"ORDER BY [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)] " +
 			"LIMIT 1",
 	}
-	partionableIndexes = map[SGIndexType]bool{
+	partitionableIndexes = map[SGIndexType]bool{
 		IndexAllDocs:  true,
 		IndexChannels: true,
 	}
@@ -197,7 +198,7 @@ func init() {
 			filterExpression: indexFilterExpressions[i],
 			flags:            indexFlags[i],
 			creationMode:     indexCreationModes[i],
-			partionable:      partionableIndexes[i],
+			partitionable:    partitionableIndexes[i],
 		}
 		// If a readiness query is specified for this index, mark the index as required and add to SGIndex
 		readinessQuery, ok := readinessQueries[i]
@@ -221,7 +222,7 @@ type SGIndex struct {
 	readinessQuery   string            // Query used to determine view readiness
 	flags            SGIndexFlags      // Additional index options
 	creationMode     indexCreationMode // Signal when to create indexes
-	partionable      bool              // Whether the index is partitionable
+	partitionable    bool              // Whether the index is partitionable
 }
 
 func (i *SGIndex) fullIndexName(useXattrs bool, numPartitions uint32) string {
@@ -234,8 +235,8 @@ func (i *SGIndex) indexNameForVersion(version int, useXattrs bool, numPartitions
 		xattrsToken = "x"
 	}
 	indexName := fmt.Sprintf(indexNameFormat, i.simpleName, xattrsToken, version)
-	if i.partionable && numPartitions > 1 {
-		indexName = fmt.Sprintf("%s_p%d", indexName, numPartitions)
+	if i.partitionable && numPartitions > 1 {
+		indexName = fmt.Sprintf(partitionableIndexNameFormat, indexName, numPartitions)
 	}
 	return indexName
 }
@@ -308,7 +309,7 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 		NumReplica:      options.NumReplicas,
 		IndexTombstones: i.shouldIndexTombstones(options.UseXattrs),
 	}
-	if i.partionable && options.NumPartitions > 1 {
+	if i.partitionable && options.NumPartitions > 1 {
 		n1qlOptions.NumPartitions = &options.NumPartitions
 	}
 
