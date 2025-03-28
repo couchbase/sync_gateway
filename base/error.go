@@ -77,6 +77,9 @@ var (
 
 	// ErrSkippedSequencesMissing is returned when attempting to remove a sequence range form the skipped sequence list and at least one sequence in that range is not present
 	ErrSkippedSequencesMissing = &sgError{"Sequence range has sequences that aren't present in skipped list"}
+
+	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
+	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
 )
 
 func (e *sgError) Error() string {
@@ -255,7 +258,8 @@ func IsTemporaryKvError(err error) bool {
 		gocb.ErrTimeout,            // SDK op timeout.  Wrapped by gocb.ErrAmbiguousTimeout, gocb.ErrUnambiguousTimeout,
 		gocb.ErrOverload,           // SDK client-side pipeline queue full, request was not submitted to server
 		gocb.ErrTemporaryFailure,   // Couchbase Server returned temporary failure error
-		gocb.ErrCircuitBreakerOpen} // SDK client-side circuit breaker blocked request
+		gocb.ErrCircuitBreakerOpen, // SDK client-side circuit breaker blocked request
+	}
 
 	// iterate through to check incoming error is one of them
 	for _, tempKVErr := range temporaryKVError {
