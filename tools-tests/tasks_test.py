@@ -6,14 +6,16 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
+import gzip
 import json
+import os
 import pathlib
+import sys
 import unittest
 
 import password_remover
-import tasks
-
 import pytest
+import tasks
 
 VERBOSE = 2
 
@@ -128,3 +130,107 @@ def test_task_popen_exception(tmp_path):
 
     with open(pathlib.Path(runner.tmpdir) / runner.default_name) as fh:
         assert "Failed to execute ['notacommand']: Boom!" in fh.read()
+
+
+@pytest.mark.parametrize("verbosity", [0, 1, 2])
+@pytest.mark.parametrize("task_platform", [sys.platform, "fakeplatform"])
+def test_task_logging(verbosity, task_platform, tmp_path):
+    taskrunner = tasks.TaskRunner(verbosity=verbosity, tmp_dir=tmp_path)
+    task = tasks.AllOsTask("echo", "echo")
+    # fake the platform for a test
+    task.platforms = [task_platform]
+    taskrunner.run(task)
+
+
+@pytest.mark.parametrize(
+    "filename,redactable",
+    [
+        (
+            "sync_gateway",
+            False,
+        ),
+        (
+            "sync_gateway.exe",
+            False,
+        ),
+        (
+            "/abs/path/sync_gateway",
+            False,
+        ),
+        (
+            "/abs/path/sync_gateway.exe",
+            False,
+        ),
+        (
+            "pprof_heap_high_01.pb.gz",
+            False,
+        ),
+        (
+            "pprof.pb",
+            False,
+        ),
+        (
+            "/abs/path/pprof.pb",
+            False,
+        ),
+        (
+            "sg_info.log",
+            True,
+        ),
+        (
+            "sg_info-01.log.gz",
+            True,
+        ),
+        (
+            "/abs/path/sg_info.log",
+            True,
+        ),
+        (
+            "/abs/path/sg_info-01.log.gz",
+            True,
+        ),
+        (
+            "expvars.json",
+            False,
+        ),
+        (
+            "/abs/path/expvars.json",
+            False,
+        ),
+    ],
+)
+@pytest.mark.parametrize("use_pathlib", [True, False])
+def test_redactable_filename(use_pathlib, filename, redactable):
+    if use_pathlib:
+        filename = pathlib.Path(filename)
+    assert tasks.redactable_file(filename) is redactable
+
+
+def test_log_redact_file(tmp_path):
+    log_file = tmp_path / "foo.log.gz"
+    input_log_lines = [
+        "logline1: foo",
+        "logline2: <ud>password</ud>",
+        "logline3: log-redaction-salt=AAA",
+        "logline4: bar",
+    ]
+    with gzip.open(log_file, "wt") as fh:
+        for line in input_log_lines:
+            fh.write(line + "\n")
+
+    salt = "AA"
+    redactor = tasks.LogRedactor(salt, tmp_path)
+    redacted_file = redactor.redact_file(log_file.name, log_file)
+
+    output_log_lines = [
+        "RedactLevel:partial,HashOfSalt:e2512172abf8cc9f67fdd49eb6cacf2df71bbad3",
+        "logline1: foo",
+        "logline2: <ud>1700bc8ae71605063ae83d80837fa53988c635ef</ud>",
+        "logline3: log-redaction-salt <redacted>",
+        "logline4: bar",
+        "",  # file has trailing newline
+    ]
+    updated_text = os.linesep.join(output_log_lines).encode("utf-8")
+
+    redacted_text = gzip.open(redacted_file).read()
+    assert redacted_text == updated_text

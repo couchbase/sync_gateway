@@ -6,11 +6,10 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
-import unittest
 import io
+import unittest
 
 import pytest
-
 import sgcollect_info
 
 
@@ -37,13 +36,10 @@ def test_make_collect_logs_tasks(config, tmpdir):
         rotated_log_file = tmpdir.join("sg_info-01.log.gz")
         rotated_log_file.write("foo")
         tasks = sgcollect_info.make_collect_logs_tasks(
-            tmpdir,
             sg_url="fakeurl",
             sg_config_file_path="",
             sg_username="",
             sg_password="",
-            salt="",
-            should_redact=False,
         )
         assert [t.log_file for t in tasks] == [
             log_file.basename,
@@ -63,12 +59,11 @@ def test_make_collect_logs_heap_profile(tmpdir):
         pprof_file = tmpdir.join("pprof_heap_high_01.pb.gz")
         pprof_file.write("foo")
         tasks = sgcollect_info.make_collect_logs_tasks(
-            tmpdir,
             sg_url="fakeurl",
             sg_config_file_path="",
             sg_username="",
             sg_password="",
-            salt="",
-            should_redact=False,
         )
         assert [tasks[0].log_file] == [pprof_file.basename]
+        # ensure that this is not redacted task
+        assert tasks[0].description.startswith("Contents of")

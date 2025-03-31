@@ -6,9 +6,9 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
-from importlib.util import spec_from_loader, module_from_spec
-from importlib.machinery import SourceFileLoader
 import sys
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
 
 module_name = "sgcollect_info"
 spec = spec_from_loader(
