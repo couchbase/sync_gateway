@@ -72,13 +72,3 @@ post:
   tags:
     - Session
   operationId: post_db-_session
-head:
-  summary: /{db}/_session
-  responses:
-    '200':
-      description: OK
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
-  tags:
-    - Session
-  operationId: head_db-_session

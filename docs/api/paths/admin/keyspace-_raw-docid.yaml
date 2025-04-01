@@ -11,7 +11,7 @@ parameters:
 get:
   summary: Get a document with the corresponding metadata
   description: |-
-    Returns the a documents latest revision with its metadata.
+    Returns a document's latest revision with its metadata.
 
     Note: The direct use of this endpoint is unsupported. The sync metadata is maintained internally by Sync Gateway and its structure can change. It should not be used to drive business logic of applications since the response to the `/{db}/_raw/{id}` endpoint can change at any time.
 
@@ -23,7 +23,7 @@ get:
     - $ref: ../../components/parameters.yaml#/include_doc
     - name: redact
       in: query
-      description: This redacts sensitive parts of the response. Cannot be used when `include_docs=true`
+      description: This redacts sensitive parts of the response. Cannot be used when `include_doc=true`
       schema:
         type: boolean
   responses:
@@ -72,7 +72,7 @@ get:
                     description: The document CAS (Concurrent Document Mutations) number used for document locking.
                     type: string
                   value_crc32c:
-                    description: The documents CRC32 number.
+                    description: The document's CRC32 number.
                     type: string
                   channel_set:
                     description: The channels the document has been in.
@@ -112,20 +112,3 @@ get:
   tags:
     - Document
   operationId: get_keyspace-_raw-docid
-head:
-  summary: /{keyspace}/_raw/{docid}
-  responses:
-    '200':
-      description: Document exists
-    '400':
-      $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
-  tags:
-    - Document
-  description: |-
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Application
-    * Sync Gateway Application Read Only
-  operationId: head_keyspace-_raw-docid
