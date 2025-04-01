@@ -303,6 +303,10 @@ func (g *GlobalStat) initResourceUtilizationStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.AssertionFailCount, err = NewIntStat(ResourceUtilizationSubsystem, "assertion_fail_count", StatUnitNoUnits, AssertionFailCountDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.CpuPercentUtil, err = NewFloatStat(ResourceUtilizationSubsystem, "process_cpu_percent_utilization", StatUnitPercent, ProcessCPUPercentUtilDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersion3dot2dot0, StatStabilityCommitted, nil, nil, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
@@ -388,6 +392,8 @@ type ResourceUtilization struct {
 	SystemMemoryTotal *SgwIntStat `json:"system_memory_total"`
 	// The total number of warnings logged.
 	WarnCount *SgwIntStat `json:"warn_count"`
+	// The total number of assertion failures logged. This is a good indicator of a bug and should be reported.
+	AssertionFailCount *SgwIntStat `json:"assertion_fail_count"`
 	// The total uptime.
 	Uptime *SgwDurStat `json:"uptime"`
 }
