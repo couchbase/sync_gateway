@@ -2298,7 +2298,11 @@ func RegisterSignalHandler(ctx context.Context) {
 func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	l := c.Logging
 	if l == nil || (l.Console == nil && l.Audit == nil) {
-		return nil
+		return &base.DbLogConfig{
+			Audit: &base.DbAuditLogConfig{
+				Enabled: base.DefaultDbAuditEnabled,
+			},
+		}
 	}
 
 	var con *base.DbConsoleLogConfig
