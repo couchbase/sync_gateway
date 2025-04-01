@@ -67,3 +67,54 @@ def test_make_collect_logs_heap_profile(tmpdir):
         assert [tasks[0].log_file] == [pprof_file.basename]
         # ensure that this is not redacted task
         assert tasks[0].description.startswith("Contents of")
+
+
+@pytest.mark.parametrize("should_redact", [True, False])
+def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
+    tmpdir1 = tmp_path / "tmpdir1"
+    tmpdir2 = tmp_path / "tmpdir2"
+    config = """
+        {{"logfilepath": "{tmpdir1}",
+          "logging": {{ "log_file_path": "{tmpdir2}" }}
+        }}
+    """
+    for d in [tmpdir1, tmpdir2]:
+        d.mkdir()
+        (d / "sg_info.log").write_text("foo")
+        (d / "sg_info-01.log.gz").write_text("foo")
+
+    with unittest.mock.patch(
+        "sgcollect_info.urlopen_with_basic_auth",
+        return_value=io.BytesIO(
+            config.format(
+                tmpdir1=str(tmpdir1).replace("\\", "\\\\"),
+                tmpdir2=str(tmpdir2).replace("\\", "\\\\"),
+            ).encode("utf-8")
+        ),
+    ):
+        tasks = sgcollect_info.make_collect_logs_tasks(
+            sg_url="fakeurl",
+            sg_config_file_path="",
+            sg_username="",
+            sg_password="",
+        )
+        # assert all tasks have unique log_file names
+        assert len(set(t.log_file for t in tasks)) == len(tasks)
+        assert set(t.log_file for t in tasks) == {
+            "sg_info.log",
+            "sg_info.log.1",
+            "sg_info-01.log.gz",
+            "sg_info-01.log.gz.1",
+        }
+
+
+@pytest.mark.parametrize(
+    "basenames, filename, expected",
+    [
+        ({}, "foo", "foo"),
+        ({"foo"}, "foo", "foo.1"),
+        ({"foo", "foo.1"}, "foo", "foo.2"),
+    ],
+)
+def test_get_unique_filename(basenames, filename, expected):
+    assert sgcollect_info.get_unique_filename(basenames, filename) == expected
