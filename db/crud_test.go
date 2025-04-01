@@ -1763,3 +1763,46 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 		assert.Equal(t, int64(1), db.DbStats.Database().SequenceReleasedCount.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
+
+func TestDocUpdateCorruptSequence(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// create a sequence much higher than _syc:seqs value
+	const corruptSequence = MaxSequencesToRelease + 1000
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	rev, doc, err := collection.Put(ctx, "doc1", Body{"foo": "bar"})
+	require.NoError(t, err)
+	docRev := doc.RevID
+	t.Logf("doc sequence: %d", doc.Sequence)
+
+	// but we can fiddle with the sequence in the metadata of the doc write to simulate a doc from a different cluster (with a higher sequence)
+	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, "doc1", []string{base.SyncXattrName})
+	require.NoError(t, err)
+	var newSyncData map[string]interface{}
+	err = json.Unmarshal(xattrs[base.SyncXattrName], &newSyncData)
+	require.NoError(t, err)
+	newSyncData["sequence"] = corruptSequence
+	_, err = collection.dataStore.UpdateXattrs(ctx, doc.ID, 0, doc.Cas, map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, newSyncData)}, DefaultMutateInOpts())
+	require.NoError(t, err)
+
+	_, _, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
+	require.Error(t, err)
+	require.ErrorIs(t, err, base.ErrMaxSequenceReleasedExceeded)
+
+	// assert update to doc was cancelled thus doc1 is its original version
+	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(corruptSequence), doc.Sequence)
+	assert.Equal(t, docRev, doc.RevID)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.Database().CorruptSequenceCount.Value()
+	}, 1)
+}

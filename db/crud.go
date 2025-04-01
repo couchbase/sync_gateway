@@ -1882,6 +1882,9 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 
 	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
+		if errors.Is(err, base.ErrMaxSequenceReleasedExceeded) {
+			base.ErrorfCtx(ctx, "Doc %s / %s had a much larger sequence (%d) than the current sequence number. Document update will be cancelled, since we don't want to allocate sequences to fill a gap this large. This may indicate document metadata being migrated between databases where it should've been stripped and re-imported.", base.UD(newDoc.ID), prevCurrentRev, doc.Sequence)
+		}
 		return
 	}
 
