@@ -105,7 +105,7 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 
 	response := rt.SendAdminRequest("POST", "/{{.db}}/_offline", "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	rt.WaitForDBState(db.RunStateString[db.DBOffline])
+	require.NoError(t, rt.WaitForDBState(db.RunStateString[db.DBOffline]))
 
 	// we need to wait for the resync to start and not finish
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start&regenerate_sequences=true", "")
