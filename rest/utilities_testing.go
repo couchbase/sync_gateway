@@ -901,10 +901,8 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 		} else {
 			response = rt.Send(RequestByUser("GET", changesURL, "", username))
 		}
-		err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-		if err != nil {
-			return false, err, nil
-		}
+		require.Equal(rt.TB(), http.StatusOK, response.Code, "Error GET %s %s", changesURL, response.Body.String())
+		require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &changes), "Error unmarshalling changes response: %s", response.Body.String())
 		if len(changes.Results) < numChangesExpected {
 			// not enough results, retry
 			return true, fmt.Errorf("expecting %d changes, got %d", numChangesExpected, len(changes.Results)), nil
