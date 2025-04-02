@@ -77,6 +77,9 @@ var (
 
 	// ErrMaxSequenceReleasedExceeded is returned when the maximum number of sequences to be released as part of nextSequenceGreaterThan is exceeded
 	ErrMaxSequenceReleasedExceeded = &sgError{"Maximum number of sequences to release to catch up with document sequence exceeded"}
+
+	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
+	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
 )
 
 func (e *sgError) Error() string {
@@ -249,7 +252,8 @@ func IsTemporaryKvError(err error) bool {
 		gocb.ErrTimeout,            // SDK op timeout.  Wrapped by gocb.ErrAmbiguousTimeout, gocb.ErrUnambiguousTimeout,
 		gocb.ErrOverload,           // SDK client-side pipeline queue full, request was not submitted to server
 		gocb.ErrTemporaryFailure,   // Couchbase Server returned temporary failure error
-		gocb.ErrCircuitBreakerOpen} // SDK client-side circuit breaker blocked request
+		gocb.ErrCircuitBreakerOpen, // SDK client-side circuit breaker blocked request
+	}
 
 	// iterate through to check incoming error is one of them
 	for _, tempKVErr := range temporaryKVError {
