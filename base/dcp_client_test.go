@@ -764,3 +764,63 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	require.NotEqual(t, dcpMutationRevNo, dcpDeletionRevNo)
 
 }
+
+func TestDCPClientAgentConfig(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("exercises gocbcore code")
+	}
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name         string
+		serverSuffix string
+		networkType  string
+	}{
+		{
+			name:         "implicit",
+			serverSuffix: "",
+			networkType:  "",
+		},
+		{
+			name:         "network=default",
+			serverSuffix: "?network=default",
+			networkType:  "default",
+		},
+		{
+			name:         "network=external",
+			serverSuffix: "?network=external",
+			networkType:  "external",
+		},
+		{
+			name:         "network=auto",
+			serverSuffix: "?network=auto",
+			networkType:  "auto",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NotContains(t, gocbv2Bucket.Spec.Server, "?", "expected no query parameters for connection string to start")
+			oldBucketSpecServer := gocbv2Bucket.Spec.Server
+			defer func() { gocbv2Bucket.Spec.Server = oldBucketSpecServer }()
+			gocbv2Bucket.Spec.Server += tc.serverSuffix
+			dcpClient, err := NewDCPClient(ctx,
+				"fakeFeedID",
+				func(sgbucket.FeedEvent) bool { return true },
+				DCPClientOptions{MetadataStoreType: DCPMetadataStoreInMemory},
+				gocbv2Bucket)
+			require.NoError(t, err)
+			defer func() {
+				assert.NoError(t, dcpClient.Close())
+			}()
+
+			config, err := dcpClient.getAgentConfig(gocbv2Bucket.GetSpec())
+			require.NoError(t, err)
+
+			require.Equal(t, tc.networkType, config.IoConfig.NetworkType)
+		})
+	}
+}
