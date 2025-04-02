@@ -635,6 +635,8 @@ type DatabaseStats struct {
 	PublicRestBytesWritten *SgwIntStat `json:"public_rest_bytes_written"`
 	// The total amount of bytes read over the public REST api
 	PublicRestBytesRead *SgwIntStat `json:"public_rest_bytes_read"`
+	// The value of the last sequence number assigned. Callers using Set should be holding a mutex or ensure concurrent updates to this value are otherwise safe.
+	LastSequenceAssignedValue *SgwIntStat `json:"last_sequence_assigned_value"` // TODO: CBG-4579 - Replace with SgwUintStat stat
 	// The total number of sequence numbers assigned.
 	SequenceAssignedCount *SgwIntStat `json:"sequence_assigned_count"`
 	// The total number of high sequence lookups.
@@ -643,6 +645,8 @@ type DatabaseStats struct {
 	SequenceIncrCount *SgwIntStat `json:"sequence_incr_count"`
 	// The total number of unused, reserved sequences released by Sync Gateway.
 	SequenceReleasedCount *SgwIntStat `json:"sequence_released_count"`
+	// The value of the last sequence number reserved (which may not yet be assigned). Callers using Set should be holding a mutex or ensure concurrent updates to this value are otherwise safe.
+	LastSequenceReservedValue *SgwIntStat `json:"last_sequence_reserved_value"` // TODO: CBG-4579 - Replace with SgwUintStat stat
 	// The total number of sequences reserved by Sync Gateway.
 	SequenceReservedCount *SgwIntStat `json:"sequence_reserved_count"`
 	// The total number of corrupt sequences above the MaxSequencesToRelease threshold seen at the sequence allocator
@@ -1740,6 +1744,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.LastSequenceAssignedValue, err = NewIntStat(SubsystemDatabaseKey, "last_sequence_assigned_value", StatUnitNoUnits, LastSequenceAssignedValueDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.SequenceGetCount, err = NewIntStat(SubsystemDatabaseKey, "sequence_get_count", StatUnitNoUnits, SequenceGetCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1753,6 +1761,10 @@ func (d *DbStats) initDatabaseStats() error {
 		return err
 	}
 	resUtil.SequenceReservedCount, err = NewIntStat(SubsystemDatabaseKey, "sequence_reserved_count", StatUnitNoUnits, SequenceReservedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.LastSequenceReservedValue, err = NewIntStat(SubsystemDatabaseKey, "last_sequence_reserved_value", StatUnitNoUnits, LastSequenceReservedValueDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1841,10 +1853,12 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumTombstonesCompacted)
 	prometheus.Unregister(d.DatabaseStats.PublicRestBytesWritten)
 	prometheus.Unregister(d.DatabaseStats.SequenceAssignedCount)
+	prometheus.Unregister(d.DatabaseStats.LastSequenceAssignedValue)
 	prometheus.Unregister(d.DatabaseStats.SequenceGetCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceIncrCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceReleasedCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceReservedCount)
+	prometheus.Unregister(d.DatabaseStats.LastSequenceReservedValue)
 	prometheus.Unregister(d.DatabaseStats.CorruptSequenceCount)
 	prometheus.Unregister(d.DatabaseStats.WarnChannelNameSizeCount)
 	prometheus.Unregister(d.DatabaseStats.WarnChannelsPerDocCount)

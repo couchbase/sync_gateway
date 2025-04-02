@@ -1234,10 +1234,12 @@ type AtomicInt struct {
 	val int64
 }
 
+// Set sets the value of the atomic int. Callers must ensure that invocations of this are protected by a mutex or are otherwise safe to call concurrently, since value can overwrite any previous value.
 func (ai *AtomicInt) Set(value int64) {
 	atomic.StoreInt64(&ai.val, value)
 }
 
+// SetIfMax sets the value of the atomic int to the given value if the given value is greater than the current value.
 func (ai *AtomicInt) SetIfMax(value int64) {
 	for {
 		cur := atomic.LoadInt64(&ai.val)
@@ -1251,6 +1253,7 @@ func (ai *AtomicInt) SetIfMax(value int64) {
 	}
 }
 
+// Add adds the given value to the atomic int.
 func (ai *AtomicInt) Add(value int64) {
 	atomic.AddInt64(&ai.val, value)
 }
