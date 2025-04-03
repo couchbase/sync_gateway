@@ -2,8 +2,6 @@ module github.com/couchbase/sync_gateway
 
 go 1.23.0
 
-toolchain go1.24.1
-
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.1
