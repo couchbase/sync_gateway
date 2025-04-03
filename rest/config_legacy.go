@@ -390,13 +390,13 @@ func setupServerConfig(ctx context.Context, args []string) (config *LegacyServer
 	if pkgerrors.Cause(err) == base.ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {
-		return nil, err
+		return nil, errors.New(err.Error())
 	}
 
 	// If we got an unknownFields error when reading the config
 	// log and exit now we've tried setting up the logging.
 	if unknownFieldsErr != nil {
-		return nil, unknownFieldsErr
+		return nil, errors.New(unknownFieldsErr.Error())
 	}
 
 	// Validation
