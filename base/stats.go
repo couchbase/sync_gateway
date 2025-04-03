@@ -204,6 +204,10 @@ func (g *GlobalStat) initConfigStats() error {
 	if err != nil {
 		return err
 	}
+	configStat.XattrFormatMismatches, err = NewIntStat(ConfigSubsystem, "xattr_format_mismatches", StatUnitBytes, XattrFormatMismatchesDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	g.ConfigStat = configStat
 	return nil
 }
@@ -403,6 +407,8 @@ type ConfigStat struct {
 	DatabaseBucketMismatches *SgwIntStat `json:"database_config_bucket_mismatches"`
 	// The number of times the config was rolled back to an invalid state (conflicting collections)
 	DatabaseRollbackCollectionCollisions *SgwIntStat `json:"database_config_rollback_collection_collisions"`
+	// The number of times a non-xattr config or registry document was loaded in xattr mode
+	XattrFormatMismatches *SgwIntStat `json:"xattr_format_mismatches"`
 }
 
 type AuditStat struct {
