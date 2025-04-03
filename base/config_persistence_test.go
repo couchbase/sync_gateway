@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestConfigPersistence ensures that all implementations of ConfigPersistence behave as expected for common operations.
 func TestConfigPersistence(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {
@@ -197,4 +198,64 @@ func TestXattrConfigPersistence(t *testing.T) {
 	require.NoError(t, loadErr)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
+}
+
+// TestConfigPersistenceXattrFormatMismatches ensures that the XattrFormatMismatches stat is incremented when loading a config of a different format.
+func TestConfigPersistenceXattrFormatMismatches(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+
+	sgCollection, ok := dataStore.(*Collection)
+	require.True(t, ok)
+	c := sgCollection.Collection
+
+	nonXattrConfigPersistence := &DocumentBootstrapPersistence{}
+	nonXattrConfigKey := "testNonXattrConfigKey"
+	nonXattrConfigBody := map[string]interface{}{
+		"sampleConfig": "value",
+	}
+
+	xattrConfigKey := "testXattrConfigKey"
+	xattrConfigPersistence := &XattrBootstrapPersistence{}
+	xattrConfigBody := map[string]interface{}{
+		"sampleConfig": "value",
+	}
+
+	// create config without xattrs
+	_, marshalErr := JSONMarshal(nonXattrConfigBody)
+	require.NoError(t, marshalErr)
+	_, insertErr := nonXattrConfigPersistence.insertConfig(c, nonXattrConfigKey, nonXattrConfigBody)
+	require.NoError(t, insertErr)
+
+	existingStat := SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Value()
+
+	// load config in xattr mode
+	data, _, err := xattrConfigPersistence.loadRawConfig(ctx, c, nonXattrConfigKey)
+	require.Error(t, err)
+	assert.Nil(t, data)
+	assert.Equal(t, existingStat+1, SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Value())
+
+	// we can try the other way around (xattr config loading in non-xattr mode) - but it won't have any effect on the stat. This works in one way only.
+	_, marshalErr = JSONMarshal(xattrConfigBody)
+	require.NoError(t, marshalErr)
+	_, insertErr = xattrConfigPersistence.insertConfig(c, xattrConfigKey, xattrConfigBody)
+	require.NoError(t, insertErr)
+
+	existingStat = SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Value()
+
+	// load config in non-xattr mode
+	data, _, err = nonXattrConfigPersistence.loadRawConfig(ctx, c, xattrConfigKey)
+	require.NoError(t, err)
+	assert.Equal(t, []byte(`{"cfgVersion":1}`), data) // whitespace stripped cfgXattrBody
+
+	// this stat isn't effective since it only works when loading a non-xattr config in xattr mode
+	assert.Equal(t, existingStat, SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Value())
 }

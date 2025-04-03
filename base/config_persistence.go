@@ -107,7 +107,8 @@ func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb
 		// config
 		xattrContErr := res.ContentAt(0, &rawValue)
 		if xattrContErr != nil {
-			DebugfCtx(ctx, KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
+			SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Add(1)
+			WarnfCtx(ctx, "Found config document but No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
 			return rawValue, 0, ErrNotFound
 		}
 		return rawValue, res.Cas(), nil
@@ -181,7 +182,8 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 		// config
 		xattrContErr := res.ContentAt(0, valuePtr)
 		if xattrContErr != nil {
-			DebugfCtx(ctx, KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
+			SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Add(1)
+			WarnfCtx(ctx, "Found config document but No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
 			return 0, ErrNotFound
 		}
 		casOut := res.Cas()
