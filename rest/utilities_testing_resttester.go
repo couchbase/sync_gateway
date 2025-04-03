@@ -99,21 +99,11 @@ func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) D
 }
 
 // DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
-func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) {
-	_ = rt.DeleteDocReturnVersion(docID, docVersion)
-}
-
-// DeleteDocReturnVersion deletes a document at a specific version. The test will fail if the revision does not exist.
-func (rt *RestTester) DeleteDocReturnVersion(docID string, docVersion DocVersion) DocVersion {
+func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) DocVersion {
 	resp := rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevID), "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 	return DocVersionFromPutResponse(rt.TB(), resp)
-}
-
-// DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
-func (rt *RestTester) DeleteDocRev(docID, revID string) {
-	rt.DeleteDoc(docID, DocVersion{RevID: revID})
 }
 
 // GetDatabaseRoot returns the DatabaseRoot for a given dtabase. This will fail the test harness if the database is not available.
@@ -139,7 +129,8 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	}, time.Second*10, time.Millisecond*10)
 }
 
-func (rt *RestTester) WaitForTombstoneVersion(docID string, deleteVersion DocVersion) {
+// WaitForTombstone waits for a the document version to exist and be tombstoned. If the document is not found, the test will fail.
+func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)

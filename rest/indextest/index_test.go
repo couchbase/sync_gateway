@@ -813,12 +813,12 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	// Need a wait loop here to wait for config polling to pick up the change
 	err = rest.WaitForConditionWithOptions(ctx, func() bool {
 		resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
-		if resp.StatusCode == http.StatusOK && resp.Body == "" {
+		if resp.StatusCode() == http.StatusOK && resp.Body == "" {
 			return true
 		} else {
-			log.Printf("Waiting for OK and empty filter, current status: %v, filter: %q", resp.StatusCode, resp.Body)
+			log.Printf("Waiting for OK and empty filter, current status: %v, filter: %q", resp.StatusCode(), resp.Body)
 		}
-		return (resp.StatusCode == http.StatusOK) && resp.Body == ""
+		return (resp.StatusCode() == http.StatusOK) && resp.Body == ""
 	}, 200, 100)
 	require.NoError(t, err)
 
