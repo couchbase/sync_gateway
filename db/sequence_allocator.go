@@ -179,14 +179,11 @@ func (s *sequenceAllocator) nextSequence(ctx context.Context) (sequence uint64, 
 	if err != nil {
 		return 0, err
 	}
-
 	// If sequences were reserved, send notification to the release sequence monitor, to start the clock for releasing these sequences.
 	// Must be done after mutex is released.
 	if sequencesReserved {
 		s.reserveNotify <- struct{}{}
 	}
-
-	s.dbStats.SequenceAssignedCount.Add(1)
 	return sequence, nil
 }
 
@@ -220,7 +217,6 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		if sequencesReserved {
 			s.reserveNotify <- struct{}{}
 		}
-		s.dbStats.SequenceAssignedCount.Add(1)
 		return sequence, 0, nil
 	}
 
@@ -229,6 +225,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	if targetSequence <= s.max {
 		releaseFrom := s.last + 1
 		s.last = targetSequence
+		s.dbStats.LastSequenceAssignedValue.Set(int64(targetSequence))
 		s.mutex.Unlock()
 		if releaseFrom < targetSequence {
 			released, err := s.releaseSequenceRange(ctx, releaseFrom, targetSequence-1)
@@ -277,7 +274,6 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		if sequencesReserved {
 			s.reserveNotify <- struct{}{}
 		}
-		s.dbStats.SequenceAssignedCount.Add(1)
 		return sequence, releasedSequenceCount, nil
 	}
 
@@ -297,9 +293,9 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		return 0, 0, base.ErrMaxSequenceReleasedExceeded
 	}
 
-	allocatedToSeq, err := s.incrementSequence(incrVal)
+	allocatedToSeq, err := s._incrementSequence(incrVal)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error from incrementSequence in nextSequenceGreaterThan(%d): %v", existingSequence, err)
+		base.WarnfCtx(ctx, "Error from _incrementSequence in nextSequenceGreaterThan(%d): %v", existingSequence, err)
 		s.mutex.Unlock()
 		return 0, 0, err
 	}
@@ -307,12 +303,12 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	s.max = allocatedToSeq
 	s.last = allocatedToSeq - numberToAllocate + 1
 	sequence = s.last
+	s.dbStats.LastSequenceAssignedValue.Set(int64(sequence))
 	s.mutex.Unlock()
 
 	// Perform standard batch handling and stats updates
 	s.lastSequenceReserveTime = time.Now()
 	s.reserveNotify <- struct{}{}
-	s.dbStats.SequenceReservedCount.Add(int64(incrVal))
 	s.dbStats.SequenceAssignedCount.Add(1)
 
 	// Release the newly allocated sequences that were used to catch up to existingSequence (d)
@@ -339,6 +335,8 @@ func (s *sequenceAllocator) _nextSequence(ctx context.Context) (sequence uint64,
 	}
 	s.last++
 	sequence = s.last
+	s.dbStats.SequenceAssignedCount.Add(1)
+	s.dbStats.LastSequenceAssignedValue.Set(int64(sequence))
 	return sequence, sequencesReserved, nil
 }
 
@@ -356,7 +354,7 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 		base.DebugfCtx(ctx, base.KeyCRUD, "Increased sequence batch to %d", s.sequenceBatchSize)
 	}
 
-	max, err := s.incrementSequence(s.sequenceBatchSize)
+	max, err := s._incrementSequence(s.sequenceBatchSize)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
 		return err
@@ -378,7 +376,6 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 	s.last = max - s.sequenceBatchSize
 	s.lastSequenceReserveTime = time.Now()
 
-	s.dbStats.SequenceReservedCount.Add(int64(s.sequenceBatchSize))
 	return nil
 }
 
@@ -388,12 +385,16 @@ func (s *sequenceAllocator) getSequence() (max uint64, err error) {
 }
 
 // Increments the _sync:seq document.  Retry handling provided by bucket.Incr.
-func (s *sequenceAllocator) incrementSequence(numToReserve uint64) (max uint64, err error) {
+// Expects sequenceAllocator.mutex to be held to ensure consistent LastSequenceReservedValue updates.
+func (s *sequenceAllocator) _incrementSequence(numToReserve uint64) (uint64, error) {
 	value, err := s.datastore.Incr(s.metaKeys.SyncSeqKey(), numToReserve, numToReserve, 0)
-	if err == nil {
-		s.dbStats.SequenceIncrCount.Add(1)
+	if err != nil {
+		return value, err
 	}
-	return value, err
+	s.dbStats.SequenceIncrCount.Add(1)
+	s.dbStats.SequenceReservedCount.Add(int64(numToReserve))
+	s.dbStats.LastSequenceReservedValue.Set(int64(value))
+	return value, nil
 }
 
 // ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.
@@ -488,7 +489,7 @@ func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, prevAllocTo
 
 	base.DebugfCtx(ctx, base.KeyCRUD, "_sync:seq value successfully corrected, entering normal sequence batch processing for this node")
 	// if _sync:seq has been fixed successfully just increment by batch size to get new unique batch for this node
-	allocatedToSeq, err = s.incrementSequence(s.sequenceBatchSize)
+	allocatedToSeq, err = s._incrementSequence(s.sequenceBatchSize)
 	if err != nil {
 		return 0, err
 	}

@@ -618,7 +618,9 @@ func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *Data
 
 // AllocateTestSequence allocates a sequence via the sequenceAllocator.  For use by non-db tests
 func AllocateTestSequence(database *DatabaseContext) (uint64, error) {
-	return database.sequences.incrementSequence(1)
+	database.sequences.mutex.Lock()
+	defer database.sequences.mutex.Unlock()
+	return database.sequences._incrementSequence(1)
 }
 
 // ReleaseTestSequence releases a sequence via the sequenceAllocator.  For use by non-db tests
