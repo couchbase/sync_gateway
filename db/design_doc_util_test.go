@@ -9,6 +9,7 @@
 package db
 
 import (
+	"fmt"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -34,7 +35,7 @@ func assertDesignDocExists(t testing.TB, viewStore sgbucket.ViewStore, ddocName 
 func assertDesignDocNotExists(t testing.TB, viewStore sgbucket.ViewStore, ddocName string) bool {
 	ddoc, err := viewStore.GetDDoc(ddocName)
 	if err == nil {
-		return assert.Failf(t, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
+		return assert.Fail(t, fmt.Sprintf("Design doc %s should not exist but but it did: %v", ddocName, ddoc))
 	}
 	return assert.Truef(t, IsMissingDDocError(err), "Design doc %s should not exist but got a different error fetching it: %v", ddocName, err)
 }

@@ -746,7 +746,7 @@ func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionNam
 			return collectionClient
 		}
 	}
-	require.FailNow(btcRunner.clients[clientID].TB(), "Could not find collection %s in BlipTesterClient", collectionName)
+	require.FailNow(btcRunner.clients[clientID].TB(), fmt.Sprintf("Could not find collection %s in BlipTesterClient", collectionName))
 	return nil
 }
 

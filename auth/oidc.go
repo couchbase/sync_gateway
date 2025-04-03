@@ -302,7 +302,7 @@ func (op *OIDCProvider) InitUserPrefix(ctx context.Context) error {
 // an initial provider metadata discovery and initiates the discovery sync in the background.
 func (op *OIDCProvider) initOIDCClient(ctx context.Context) error {
 	if op == nil {
-		return fmt.Errorf(ErrMsgNilProvider)
+		return errors.New(ErrMsgNilProvider)
 	}
 
 	if op.Issuer == "" {

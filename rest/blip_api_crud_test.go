@@ -499,7 +499,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 				// Ensure we only receive expected docs
 				_, isExpected := docIDsReceived[docID]
 				if !isExpected {
-					t.Errorf(fmt.Sprintf("Received unexpected docId: %s", docID))
+					t.Errorf("Received unexpected docId: %s", docID)
 				} else {
 					// Add to received set, to ensure we get all expected docs
 					docIDsReceived[docID] = true
