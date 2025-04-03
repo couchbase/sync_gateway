@@ -1326,7 +1326,7 @@ func requireXattrsEqual(t testing.TB, expected map[string][]byte, actual map[str
 	for k, v := range expected {
 		actualV, ok := actual[k]
 		if !ok {
-			require.Fail(t, "Missing expected xattr %s", k)
+			require.Fail(t, fmt.Sprintf("Missing expected xattr %s", k))
 		}
 		require.JSONEq(t, string(v), string(actualV))
 	}
