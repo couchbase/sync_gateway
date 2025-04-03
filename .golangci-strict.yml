@@ -1,3 +1,11 @@
+# Copyright 2025-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
 version: "2"
 linters:
   enable:
@@ -38,6 +46,43 @@ linters:
         ruleguard:
           failOn: all
           rules: ${base-path}/ruleguard/rules-*.go
+    staticcheck:
+      checks:
+        - all # enable all
+        # disable some checks until fixed
+        - -QF1001 # Apply De Morgan's law.
+        - -QF1003 # could use tagged switch
+        - -QF1004 # Use 'strings.ReplaceAll' instead of 'strings.Replace' with 'n == -1'.
+        - -QF1007 # could merge conditional assignment into variable declaration
+        - -QF1008 # Omit embedded fields from selector expression.
+        - -QF1010 # Convert slice of bytes to string when printing it.
+        - -QF1011 # Omit redundant type from variable declaration.
+        - -QF1012 # Use 'fmt.Fprintf(x, ...)' instead of 'x.Write(fmt.Sprintf(...))'.
+        - -S1000 # Use plain channel send or receive instead of single-case select.
+        - -S1002 # Omit comparison with boolean constant.
+        - -S1005 # unnecssary assignment to the blank identifier
+        - -S1007 # Simplify regular expression by using raw string literal.
+        - -S1008 # Simplify returning boolean expression.
+        - -S1009 # Omit redundant nil check on slices, maps, and channels.
+        - -S1011 # Use a single 'append' to concatenate two slices.
+        - -S1012 # Replace 'time.Now().Sub(x)' with 'time.Since(x)'.
+        - -S1021 # Merge variable declaration and assignment.
+        - -S1023 # redundant return statement
+        - -S1024 # Replace 'x.Sub(time.Now())' with 'time.Until(x)'.
+        - -S1025 # Don't use 'fmt.Sprintf("%s", x)' unnecessarily.
+        - -S1028 # Simplify error construction with 'fmt.Errorf'.
+        - -S1030 # Use 'bytes.Buffer.String' or 'bytes.Buffer.Bytes'.
+        - -S1031 # unnecessary nil check around range
+        - -S1039 # Unnecessary use of 'fmt.Sprint'.
+        - -ST1003 # Poorly chosen identifier.
+        - -ST1005 # errors strings should not end with punctuation or newlines
+        - -ST1006 # Poorly chosen receiver name.
+        - -ST1008 # A function's error value should be its last return value.
+        - -ST1011 # Poorly chosen name for variable of type 'time.Duration'.
+        - -ST1012 # Poorly chosen name for error variable.
+        - -ST1016 # methods on the same type should have the same receiver name
+        - -ST1017 # Don't use Yoda conditions.
+        - -ST1023 # Redundant type in variable declaration.
   exclusions:
     generated: strict
     presets:
