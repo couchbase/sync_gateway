@@ -10,7 +10,7 @@ package rest
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	httpprof "net/http/pprof"
 	"os"
@@ -237,7 +237,7 @@ func (h *handler) handleFlush() error {
 		if !h.db.BucketSpec.IsWalrusBucket() {
 			if !h.db.DatabaseContext.AllowFlushNonCouchbaseBuckets() {
 				msg := "Flush not allowed on Couchbase buckets by default."
-				return fmt.Errorf(msg)
+				return errors.New(msg)
 			}
 		}
 
