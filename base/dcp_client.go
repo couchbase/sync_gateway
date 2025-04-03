@@ -310,10 +310,11 @@ func (dc *DCPClient) close() {
 	}()
 }
 
-func (dc *DCPClient) initAgent(spec BucketSpec) error {
+// getAgentConfig returns a gocbcore.DCPAgentConfig for the given BucketSpec
+func (dc *DCPClient) getAgentConfig(spec BucketSpec) (*gocbcore.DCPAgentConfig, error) {
 	connStr, err := spec.GetGoCBConnStringForDCP()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	agentConfig := gocbcore.DCPAgentConfig{}
@@ -321,7 +322,7 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	beforeFromConnStr := time.Now()
 	connStrError := agentConfig.FromConnStr(connStr)
 	if connStrError != nil {
-		return fmt.Errorf("Unable to start DCP Client - error building conn str: %v", connStrError)
+		return nil, fmt.Errorf("Unable to start DCP Client - error building conn str: %v", connStrError)
 	}
 	if d := time.Since(beforeFromConnStr); d > FromConnStrWarningThreshold {
 		WarnfCtx(dc.ctx, "Parsed cluster connection string %q in: %v", UD(connStr), d)
@@ -331,12 +332,12 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 
 	auth, authErr := spec.GocbcoreAuthProvider()
 	if authErr != nil {
-		return fmt.Errorf("Unable to start DCP Client - error creating authenticator: %w", authErr)
+		return nil, fmt.Errorf("Unable to start DCP Client - error creating authenticator: %w", authErr)
 	}
 
 	tlsRootCAProvider, err := GoCBCoreTLSRootCAProvider(dc.ctx, &spec.TLSSkipVerify, spec.CACertPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Force poolsize to 1, multiple clients results in DCP naming collision
@@ -346,14 +347,21 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
 	if dc.supportsCollections {
-		agentConfig.IoConfig = gocbcore.IoConfig{
-			UseCollections: true,
-		}
+		agentConfig.IoConfig.UseCollections = true
+	}
+	return &agentConfig, nil
+}
+
+// initAgent creates a DCP agent and waits for it to be ready
+func (dc *DCPClient) initAgent(spec BucketSpec) error {
+	agentConfig, err := dc.getAgentConfig(spec)
+	if err != nil {
+		return err
 	}
 	flags := memd.DcpOpenFlagProducer
 	flags |= memd.DcpOpenFlagIncludeXattrs
 	var agentErr error
-	dc.agent, agentErr = gocbcore.CreateDcpAgent(&agentConfig, dc.ID, flags)
+	dc.agent, agentErr = gocbcore.CreateDcpAgent(agentConfig, dc.ID, flags)
 	if agentErr != nil {
 		return fmt.Errorf("Unable to start DCP client - error creating agent: %w", agentErr)
 	}
