@@ -543,7 +543,7 @@ func getLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey
 
 // setLocalStatus updates replication status.
 func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey string, status *ReplicationStatus, localDocExpirySecs int) (err error) {
-	base.TracefCtx(ctx, base.KeyReplicate, "setLocalStatus for %q (%v)", statusKey, status)
+	base.TracefCtx(ctx, base.KeyReplicate, "setLocalStatus for %q (%#+v)", statusKey, status)
 
 	// obtain current rev
 	currentStatus, err := getLocalStatusDoc(ctx, metadataStore, statusKey)
