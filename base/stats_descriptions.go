@@ -276,13 +276,17 @@ const (
 
 	SequenceAssignedCountDesc = "The total number of sequence numbers assigned."
 
+	LastSequenceAssignedValueDesc = "The value of the last sequence number assigned."
+
 	SequenceGetCountDesc = "The total number of high sequence lookups."
 
 	SequenceIncrCountDesc = "The total number of times the sequence counter document has been incremented."
 
-	SequenceReleasedCountDesc = "The total number of unused, reserved sequences released by Sync Gateway."
+	SequenceReleasedCountDesc = "The total number of unused, reserved sequences released."
 
-	SequenceReservedCountDesc = "The total number of sequences reserved by Sync Gateway."
+	SequenceReservedCountDesc = "The total number of sequences reserved."
+
+	LastSequenceReservedValueDesc = "The value of the last sequence number reserved (which may not yet be assigned)"
 
 	WarnChannelNameSizeCountDesc = "The total number of warnings relating to the channel name size."
 
