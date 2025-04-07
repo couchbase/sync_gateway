@@ -252,7 +252,6 @@ User:
 
         User names can only have alphanumeric ASCII characters and underscores.
       type: string
-      required: true
     password:
       description: |-
         The password of the user.
