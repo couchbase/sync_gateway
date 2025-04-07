@@ -2217,9 +2217,9 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	rt1.WaitForVersion(docID1, doc1Version)
 
 	require.NoError(t, ar.Stop())
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().ExpectedSequenceCount)
+	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().ProcessedSequenceCount)
+	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
 
 	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
 	assert.Equal(t, int64(1), dbstats.ProcessedSequenceLen.Value())
@@ -2248,9 +2248,9 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	require.Len(t, changesResults.Results, 3)
 
 	require.NoError(t, ar.Stop())
-	assert.Equal(t, int64(2), pullCheckpointer.Stats().ExpectedSequenceCount)
+	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 2)
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
-	assert.Equal(t, int64(2), pullCheckpointer.Stats().ProcessedSequenceCount)
+	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 2)
 
 	assert.Equal(t, int64(2), dbstats.ExpectedSequenceLen.Value())
 	assert.Equal(t, int64(2), dbstats.ProcessedSequenceLen.Value())
@@ -2271,9 +2271,9 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	require.Len(t, changesResults.Results, 4)
 
 	require.NoError(t, ar.Stop())
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().ExpectedSequenceCount)
+	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().ProcessedSequenceCount)
+	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
 
 	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
 	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
