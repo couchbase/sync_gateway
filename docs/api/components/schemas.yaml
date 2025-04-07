@@ -252,6 +252,7 @@ User:
 
         User names can only have alphanumeric ASCII characters and underscores.
       type: string
+      required: true
     password:
       description: |-
         The password of the user.
@@ -259,35 +260,27 @@ User:
         Mandatory. unless `allow_empty_password` is `true` in the database configs.
       type: string
     admin_channels:
-      description: A list of channels to explicitly grant to the user for the default collection.
+      description: A list of channels to explicitly grant to the user for the default collection. See `collection_access` for channels in named collections.
       type: array
       items:
         type: string
     all_channels:
       description: |-
-        All the channels that the user has been granted access to for the default collection.
+        All the channels that the user has been granted access to for the default collection. See `collection_access` for channels in named collections.
 
         Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
       type: array
       items:
         type: string
       readOnly: true
-    collection_access:
-      description: A set of access grants by scope and collection.
-      type: object
-      additionalProperties:
-        x-additionalPropertiesName: scopename
-        description: An object keyed by scope, containing a set of collections.
-        type: object
-        additionalProperties:
-          x-additionalPropertiesName: collectionname
-          $ref: '#/CollectionAccessConfig'
+    $ref: '#/CollectionAccessConfig'
     email:
       description: The email address of the user.
       type: string
     disabled:
       description: 'If true, the user will not be able to login to the account as it is disabled.'
       type: boolean
+      default: false
     admin_roles:
       description: A list of roles to explicitly grant to the user.
       type: array
@@ -325,34 +318,44 @@ User:
       readOnly: true
   title: User
 CollectionAccessConfig:
-  description: An object keyed by collection name, defines access for the collection.
-  type: object
-  properties:
-    admin_channels:
-      description: A list of channels to explicitly grant to the user.
-      type: array
-      items:
-        type: string
-    all_channels:
-      description: |-
-        All the channels that the user has been granted access to.
+  collection_access:
+    description: A set of access grants by scope and collection for a specific collection.
+    type: object
+    additionalProperties:
+      maxProperties: 1
+      description: An object keyed by scope, containing a set of collections.
+      type: object
+      x-additionalPropertiesName: scopename
+      additionalProperties:
+        description: An object keyed by collection name, defines access collections in this scope.
+        type: object
+        x-additionalPropertiesName: collectionname
+        properties:
+          admin_channels:
+            description: A list of channels to explicitly grant to the user in this collection.
+            type: array
+            items:
+              type: string
+          all_channels:
+            description: |-
+              All the channels that the user has been granted access to in this collection.
 
-        Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
-      type: array
-      items:
-        type: string
-      readOnly: true
-    jwt_channels:
-      description: The channels that the user has been granted access to through channels_claim.
-      type: array
-      items:
-        type: string
-      readOnly: true
-    jwt_last_updated:
-      description: The last time that the user's JWT roles/channels were updated.
-      type: string
-      format: date-time
-      readOnly: true
+              Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
+            type: array
+            items:
+              type: string
+            readOnly: true
+          jwt_channels:
+            description: The channels that the user has been granted access to through channels_claim.
+            type: array
+            items:
+              type: string
+            readOnly: true
+          jwt_last_updated:
+            description: The last time that the user's JWT roles/channels were updated.
+            type: string
+            format: date-time
+            readOnly: true
 Role:
   description: Properties associated with a role
   type: object
@@ -364,29 +367,20 @@ Role:
         Role names can only have alphanumeric ASCII characters and underscores.
       type: string
     admin_channels:
-      description: The channels that users in the role are able to access for the default collection.
+      description: The channels that users in the role are able to access for the default collection. Use `collection_access.scopename.collectionname.admin_channels` for channels in named collections.
       type: array
       items:
         type: string
     all_channels:
       description: |-
-        The channels that the role grants access to for the default collection.
+        The channels that the role grants access to for the default collection. See `collection_access.scopename.collectionname` for channels in named collections.
 
         These channels could have been assigned by the Sync function or using the `admin_channels` property.
       type: array
       items:
         type: string
       readOnly: true
-    collection_access:
-      description: A set of access grants by scope and collection.
-      type: object
-      additionalProperties:
-        x-additionalPropertiesName: scopename
-        description: An object keyed by scope, containing a set of collections.
-        type: object
-        additionalProperties:
-          x-additionalPropertiesName: collectionname
-          $ref: '#/CollectionAccessConfig'
+    $ref: '#/CollectionAccessConfig'
   title: Role
 User-session-information:
   type: object
