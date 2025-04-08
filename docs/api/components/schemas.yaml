@@ -259,7 +259,9 @@ User:
         Mandatory. unless `allow_empty_password` is `true` in the database configs.
       type: string
     admin_channels:
-      description: A list of channels to explicitly grant to the user for the default collection. See `collection_access` for channels in named collections.
+      description: |-
+        A list of channels to explicitly grant to the user for the default collection.
+        See `collection_access` for channels in named collections.
       type: array
       items:
         type: string
