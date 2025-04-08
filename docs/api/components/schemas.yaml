@@ -267,7 +267,8 @@ User:
         type: string
     all_channels:
       description: |-
-        All the channels that the user has been granted access to for the default collection. See `collection_access` for channels in named collections.
+        All the channels that the user has been granted access to for the default collection.
+        See `collection_access` for channels in named collections.
 
         Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
       type: array
