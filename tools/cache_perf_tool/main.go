@@ -67,19 +67,19 @@ func main() {
 		cpuProfBuf := bytes.Buffer{}
 		err = pprof.StartCPUProfile(&cpuProfBuf)
 		if err != nil {
-			log.Println("Error starting CPU profile: %v", err)
+			log.Printf("Error starting CPU profile: %v", err)
 			return
 		}
 		defer func() {
 			pprof.StopCPUProfile()
 			cpuProfileBuffer, err := io.ReadAll(&cpuProfBuf)
 			if err != nil {
-				log.Println("error reading cpuProfBuf: %v", err)
+				log.Printf("error reading cpuProfBuf: %v", err)
 				return
 			}
 			err = os.WriteFile("cpu.prof", cpuProfileBuffer, os.ModePerm)
 			if err != nil {
-				log.Println("error writing cpu profile to file: %v", err)
+				log.Printf("error writing cpu profile to file: %v", err)
 				return
 			}
 		}()
@@ -104,7 +104,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Println("Error creating database context: %v", err)
+		log.Printf("Error creating database context: %v", err)
 		return
 	}
 	defer dbContext.Close(ctx)
@@ -124,7 +124,7 @@ func main() {
 			}
 			// need to have a delay for each node defined so we have variable write throughput
 			if len(delayList) != *nodes-1 {
-				log.Println("invalid number of delays: %d", len(delayList))
+				log.Printf("invalid number of delays: %d", len(delayList))
 				return
 			}
 		}
@@ -132,7 +132,7 @@ func main() {
 		// create new sgw node abstraction and spawn write goroutines
 		p.spawnDocCreationGoroutine(ctx)
 	} else {
-		log.Println("Invalid mode: %s", *mode)
+		log.Printf("Invalid mode: %s", *mode)
 		return
 	}
 
@@ -209,13 +209,13 @@ func heapProfiling(ctx context.Context) {
 			heapProfBuf := bytes.Buffer{}
 			err := pprof.WriteHeapProfile(&heapProfBuf)
 			if err != nil {
-				log.Println("Error writing heap profile: %v", err)
+				log.Printf("Error writing heap profile: %v", err)
 				return
 			}
 
 			err = os.WriteFile(fileName, heapProfBuf.Bytes(), os.ModePerm)
 			if err != nil {
-				log.Println("Error writing heap profile to file: %v", err)
+				log.Printf("Error writing heap profile to file: %v", err)
 				return
 			}
 		}
@@ -236,12 +236,12 @@ func mutexProfiling(ctx context.Context) {
 			mutexProfBuf := bytes.Buffer{}
 			err := pprof.Lookup("mutex").WriteTo(&mutexProfBuf, 0)
 			if err != nil {
-				log.Println("Error writing mutex profile: %v", err)
+				log.Printf("Error writing mutex profile: %v", err)
 				return
 			}
 			err = os.WriteFile(fileName, mutexProfBuf.Bytes(), os.ModePerm)
 			if err != nil {
-				log.Println("Error writing mutex profile to file: %v", err)
+				log.Printf("Error writing mutex profile to file: %v", err)
 				return
 			}
 		}
@@ -262,13 +262,13 @@ func blockProfiling(ctx context.Context) {
 			blockProfBuf := bytes.Buffer{}
 			err := pprof.Lookup("block").WriteTo(&blockProfBuf, 0)
 			if err != nil {
-				log.Println("Error writing block profile: %v", err)
+				log.Printf("Error writing block profile: %v", err)
 				return
 			}
 
 			err = os.WriteFile(fileName, blockProfBuf.Bytes(), os.ModePerm)
 			if err != nil {
-				log.Println("Error writing block profile to file: %v", err)
+				log.Printf("Error writing block profile to file: %v", err)
 				return
 			}
 		}
@@ -289,13 +289,13 @@ func goroutineProfiling(ctx context.Context) {
 			goroutineProfBuf := bytes.Buffer{}
 			err := pprof.Lookup("goroutine").WriteTo(&goroutineProfBuf, 1)
 			if err != nil {
-				log.Println("Error writing goroutine profile: %v", err)
+				log.Printf("Error writing goroutine profile: %v", err)
 				return
 			}
 
 			err = os.WriteFile(fileName, goroutineProfBuf.Bytes(), os.ModePerm)
 			if err != nil {
-				log.Println("Error writing goroutine profile to file: %v", err)
+				log.Printf("Error writing goroutine profile to file: %v", err)
 				return
 			}
 		}
