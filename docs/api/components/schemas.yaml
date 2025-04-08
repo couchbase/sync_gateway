@@ -368,7 +368,9 @@ Role:
         Role names can only have alphanumeric ASCII characters and underscores.
       type: string
     admin_channels:
-      description: The channels that users in the role are able to access for the default collection. Use `collection_access.scopename.collectionname.admin_channels` for channels in named collections.
+      description: |-
+        The channels that users in the role are able to access for the default collection.
+        Use `collection_access.scopename.collectionname.admin_channels` for channels in named collections.
       type: array
       items:
         type: string
