@@ -86,6 +86,7 @@ type ServerContext struct {
 	DatabaseInitManager           *DatabaseInitManager       // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
+	connectToBucketFn             db.OpenBucketFn // connectToBucketFn is a function to use for opening buckets, used for testing only
 }
 
 type ActiveReplicationsCounter struct {
@@ -565,10 +566,11 @@ func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config D
 	// use async initialization whenever using persistent config
 	asyncOnline := sc.persistentConfig
 	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, getOrAddDatabaseConfigOptions{
-		useExisting:    false,
-		failFast:       failFast,
-		asyncOnline:    asyncOnline,
-		loadFromBucket: loadFromBucket,
+		useExisting:       false,
+		failFast:          failFast,
+		asyncOnline:       asyncOnline,
+		loadFromBucket:    loadFromBucket,
+		connectToBucketFn: sc.connectToBucketFn,
 	})
 	return err
 }

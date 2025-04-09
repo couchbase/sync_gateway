@@ -84,7 +84,9 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, CasError key: %s, cas: %d", cfgKey, cas)
 		return nil, 0, ErrCfgCasError
 	}
-
+	if cfgKey == "planPIndexes" {
+		fmt.Printf("HONK cfg_sg: Get, key: %s, cas: %d value: %s\n", cfgKey, cas, value)
+	}
 	return value, casOut, nil
 }
 
@@ -96,8 +98,12 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 	}
 
 	bucketKey := c.sgCfgBucketKey(cfgKey)
+	fmt.Printf("writing %s\n", bucketKey)
 	casOut, err := c.datastore.WriteCas(bucketKey, 0, cas, val, 0)
 
+	if cfgKey == "planPIndexes" {
+		fmt.Printf("HONK cfg_sg: Set, key: %s, cas: %d casOut: %d value: %s\n", cfgKey, cas, casOut, val)
+	}
 	if IsCasMismatch(err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)
 		return 0, ErrCfgCasError

@@ -390,21 +390,37 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 
 // TakeDbOffline takes the database offline.
 func (rt *RestTester) TakeDbOffline() {
-	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
-	RequireStatus(rt.TB(), resp, http.StatusOK)
+	sc := rt.ServerContext()
+	require.NotNil(rt.TB(), sc)
+	if sc.persistentConfig == true {
+		RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"offline": true}`), http.StatusCreated)
+	} else {
+		RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", ""), http.StatusOK)
+	}
 	require.Equal(rt.TB(), db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
 }
 
 // TakeDbOnline takes the database online and waits for online status.
-func (rt *RestTester) TakeDbOnline() {
-	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", "")
-	RequireStatus(rt.TB(), resp, http.StatusOK)
+func (rt *RestTester) TakeDbOnline(dbName ...string) {
+	require.LessOrEqual(rt.TB(), len(dbName), 1, "A maximum of one database name is allowed")
+	db := "{{.db}}"
+	sc := rt.ServerContext()
+	require.NotNil(rt.TB(), sc)
+	if sc.persistentConfig == true {
+		RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPost, "/"+db+"/_config", `{"offline": false}`), http.StatusCreated)
+	} else {
+		RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPost, "/"+db+"/_online", ""), http.StatusOK)
+	}
 	rt.WaitForDBOnline()
 }
 
 // RequireDbOnline asserts that the state of the database is online
-func (rt *RestTester) RequireDbOnline() {
-	response := rt.SendAdminRequest("GET", "/{{.db}}/", "")
+func (rt *RestTester) RequireDbOnline(dbNames ...string) {
+	dbName := "{{.db}}"
+	if len(dbNames) == 1 {
+		dbName = dbNames[0]
+	}
+	response := rt.SendAdminRequest("GET", "/"+dbName+"/", "")
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.Equal(rt.TB(), "Online", body["state"].(string))

@@ -224,6 +224,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	} else if rt.LeakyBucketConfig != nil {
 		rt.TB().Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a LeakyBucketConfig")
 	}
+
 	rt.TestBucket = testBucket
 
 	if rt.PersistentConfig != false {
@@ -313,7 +314,16 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.RestTesterServerContext.BootstrapContext.sgVersion = *rt.RestTesterConfig.syncGatewayVersion
 	}
 	ctx := rt.Context()
-
+	if rt.CustomTestBucket != nil {
+		rt.RestTesterServerContext.connectToBucketFn = func(ctx context.Context, spec base.BucketSpec, failFast bool) (base.Bucket, error) {
+			fmt.Printf("CustomTestBucket: %s\n", rt.CustomTestBucket.BucketSpec.BucketName)
+			if spec.BucketName == rt.TestBucket.BucketSpec.BucketName {
+				fmt.Printf("loading this bucket")
+				return rt.TestBucket, nil
+			}
+			return db.ConnectToBucket(ctx, spec, failFast)
+		}
+	}
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
 		// Copy any testbucket cert info into boostrap server config
 		// Required as present for X509 tests there is no way to pass this info to the bootstrap server context with a

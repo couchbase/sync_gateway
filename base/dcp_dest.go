@@ -30,6 +30,7 @@ func init() {
 type SGDest interface {
 	cbgt.Dest
 	initFeed(backfillType uint64) (map[uint16]uint64, error)
+	FeedID() string
 }
 
 // DCPDest implements SGDest (superset of cbgt.Dest) interface to manage updates coming from a
@@ -231,6 +232,10 @@ func (d *DCPDest) Stats(io.Writer) error {
 	return nil
 }
 
+func (d *DCPDest) FeedID() string {
+	return d.feedID
+}
+
 func partitionToVbNo(ctx context.Context, partition string) uint16 {
 	vbNo, err := strconv.Atoi(partition)
 	if err != nil {
@@ -332,4 +337,8 @@ func (d *DCPLoggingDest) Stats(w io.Writer) error {
 
 func (d *DCPLoggingDest) initFeed(backfillType uint64) (map[uint16]uint64, error) {
 	return d.dest.initFeed(backfillType)
+}
+
+func (d *DCPLoggingDest) FeedID() string {
+	return d.dest.FeedID()
 }

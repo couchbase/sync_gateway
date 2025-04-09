@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -2492,4 +2493,88 @@ func TestImportUpdateExpiry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBadCredentialsPIndex(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	const (
+		docID                = "stalePIndexDoc"
+		dbName               = "db1"
+		numPartitions uint16 = 2
+	)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.ImportPartitions = base.Ptr(numPartitions)
+	// start cbgt.Manager and cbgt feeds with 2 partitions
+	rest.RequireStatus(t, rt.CreateDatabase(dbName, dbConfig), http.StatusCreated)
+	// writing document via SDK directly to Couchbase Server, to be processed by cbgt's DCP feed
+	_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(`{"write": "1"}`))
+	require.NoError(t, err)
+
+	// this will increment the import count by one if the document is processed by cbgt
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
+	require.Equal(t, int64(numPartitions), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value())
+
+	// Sync Gateway behavioral summary
+	// - On prem cluster1, created db1
+	// XDCR from cluster1 -> cluster2, filter out _sync:dbconfig* but not _sync:planPIndexes, or other cbgt metadata docs
+	// - On prem cluster2, created db2
+	// looks at _sync:planPIndexes, due to default metadata id
+
+	metadataPrefix := rt.GetDatabase().MetadataKeys.SGCfgPrefix(rt.GetDatabase().Options.GroupID)
+	rt.TakeDbOffline()
+
+	// mutate the indexDefs file to have a different database name "bad_db" to simulate the migration from cluster1 to cluster2
+	indexDefsID := metadataPrefix + "indexDefs"
+	var indexDefs cbgt.IndexDefs
+	_, err = rt.GetDatabase().MetadataStore.Get(indexDefsID, &indexDefs)
+	require.NoError(t, err)
+
+	require.Len(t, indexDefs.IndexDefs, 1)
+	for _, indexDef := range indexDefs.IndexDefs {
+
+		var sourceParams base.SGFeedSourceParams
+		require.NoError(t, base.JSONUnmarshal([]byte(indexDef.SourceParams), &sourceParams))
+		require.Equal(t, dbName, sourceParams.DbName)
+		sourceParams.DbName = "bad_db"
+		indexDef.SourceParams = string(base.MustJSONMarshal(t, sourceParams))
+	}
+
+	require.NoError(t, rt.GetSingleDataStore().Set(indexDefsID, 0, nil, indexDefs))
+	planPIndexesID := metadataPrefix + "planPIndexes"
+
+	var planPIndexes cbgt.PlanPIndexes
+	_, err = rt.GetDatabase().MetadataStore.Get(planPIndexesID, &planPIndexes)
+	require.NoError(t, err)
+
+	require.Len(t, planPIndexes.PlanPIndexes, int(numPartitions))
+	for _, indexDef := range planPIndexes.PlanPIndexes {
+
+		var sourceParams base.SGFeedSourceParams
+		require.NoError(t, base.JSONUnmarshal([]byte(indexDef.SourceParams), &sourceParams))
+		require.Equal(t, dbName, sourceParams.DbName)
+		sourceParams.DbName = "bad_db"
+		indexDef.SourceParams = string(base.MustJSONMarshal(t, sourceParams))
+	}
+
+	require.NoError(t, rt.GetSingleDataStore().Set(planPIndexesID, 0, nil, base.MustJSONMarshal(t, planPIndexes)))
+	// Sync Gateway will construct a new cbgt.Manager and feed, but use the the bucket by cbgt.Cfg (???)
+	rt.TakeDbOnline(dbName)
+
+	// write an second mutation to document
+	require.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
+	require.NoError(t, rt.GetSingleDataStore().Set(docID, 0, nil, []byte(`{"write": "2"}`)))
+
+	base.AssertWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
+	time.Sleep(15 * time.Second)
+	require.Equal(t, int64(numPartitions), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value())
 }
