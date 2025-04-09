@@ -1065,6 +1065,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
 
+		if deltaSrcBody[BodyRemoved] != nil {
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found _removed property for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevID)
+		}
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
 			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
