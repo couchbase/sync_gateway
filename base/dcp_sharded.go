@@ -718,4 +718,9 @@ func (meh *sgMgrEventHandlers) OnFeedError(_ string, r cbgt.Feed, feedErr error)
 		}
 		dcpFeed.NotifyMgrOnClose()
 	}
+	/*
+		for _, dest := range r.Dests() {
+			fmt.Printf("dest= %#+v\n", dest.(SGDest).FeedID())
+		}
+	*/
 }

@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -2492,4 +2493,81 @@ func TestImportUpdateExpiry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBadCredentialsPIndex(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	const (
+		docID                = "stalePIndexDoc"
+		dbName               = "db"
+		numPartitions uint16 = 2
+	)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
+		PersistentConfig: false,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				ImportPartitions: base.Ptr(numPartitions),
+			},
+		},
+	})
+	defer rt.Close()
+
+	_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(`{"write": "1"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
+	require.Equal(t, int64(numPartitions), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value())
+
+	rt.TakeDbOffline()
+
+	const indexDefsID = "_sync:cfgindexDefs"
+	var indexDefs cbgt.IndexDefs
+	_, err = rt.GetSingleDataStore().Get(indexDefsID, &indexDefs)
+	require.NoError(t, err)
+
+	require.Len(t, indexDefs.IndexDefs, 1)
+	for _, indexDef := range indexDefs.IndexDefs {
+
+		var sourceParams base.SGFeedSourceParams
+		require.NoError(t, base.JSONUnmarshal([]byte(indexDef.SourceParams), &sourceParams))
+		require.Equal(t, dbName, sourceParams.DbName)
+		sourceParams.DbName = "bad_db"
+		indexDef.SourceParams = string(base.MustJSONMarshal(t, sourceParams))
+	}
+
+	require.NoError(t, rt.GetSingleDataStore().Set(indexDefsID, 0, nil, indexDefs))
+	/*
+		const planPIndexesID = "_sync:cfgplanPIndexes"
+
+		var planPIndexes cbgt.PlanPIndexes
+		_, err = rt.GetSingleDataStore().Get(planPIndexesID, &planPIndexes)
+		require.NoError(t, err)
+
+		require.Len(t, planPIndexes.PlanPIndexes, int(numPartitions))
+		for _, indexDef := range planPIndexes.PlanPIndexes {
+
+			var sourceParams base.SGFeedSourceParams
+			require.NoError(t, base.JSONUnmarshal([]byte(indexDef.SourceParams), &sourceParams))
+			require.Equal(t, dbName, sourceParams.DbName)
+			sourceParams.DbName = "bad_db"
+			indexDef.SourceParams = string(base.MustJSONMarshal(t, sourceParams))
+		}
+
+		require.NoError(t, rt.GetSingleDataStore().Set(planPIndexesID, 0, nil, base.MustJSONMarshal(t, planPIndexes)))
+	*/
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_online", ""), http.StatusOK)
+	rt.WaitForDBOnline()
+
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
+
+	require.Equal(t, 0, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
+	require.NoError(t, rt.GetSingleDataStore().Set(docID, 0, nil, []byte(`{"write": "2"}`)))
+
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
+	require.Equal(t, int64(numPartitions), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value())
 }

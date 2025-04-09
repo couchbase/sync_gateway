@@ -236,6 +236,7 @@ func addCbgtAuthToDCPParams(ctx context.Context, dcpParams string) string {
 		return dcpParams
 	}
 
+	fmt.Printf("HONK cbgtFeedParams: %s\n", dcpParams)
 	creds, ok := getCbgtCredentials(sgSourceParams.DbName)
 	if !ok {
 		InfofCtx(ctx, KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
