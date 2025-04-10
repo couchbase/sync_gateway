@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,20 +27,15 @@ type processEntryGen struct {
 	t         *testing.T
 	numNodes  int
 	batchSize int
+	numChans  int
 }
 
 func (p *processEntryGen) spawnDocCreationGoroutine(ctx context.Context) {
 	for i := 0; i < p.numNodes; i++ {
 		// create new sgw node abstraction
 		sgNode := &sgwNode{nodeID: i, seqAlloc: newSequenceAllocator(p.batchSize, p.seqAlloc)}
-		if i == 0 {
-			go p.nodeWrites(ctx, sgNode, 0*time.Second)
-		} else {
-			// delay list will always be length 1 less than the number of nodes
-			// because the first node created has delay 0
-			index := i - 1
-			go p.nodeWrites(ctx, sgNode, p.delays[index])
-		}
+		// delay list should be same length as num sgw nodes
+		go p.nodeWrites(ctx, sgNode, p.delays[i])
 	}
 }
 
@@ -48,24 +44,28 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
 	log.Printf("node %d has delay of %v ms", node.nodeID, delay.Milliseconds())
+	// create map of configured channels
+	chanMap := make(channels.ChannelMap)
+	for i := 0; i < p.numChans; i++ {
+		chanMap["test-"+strconv.Itoa(i)] = nil
+	}
 	if delay.Nanoseconds() == 0 {
 		// mutate as fast as possible
 		for {
+			timeStamp := time.Now()
 			select {
 			case <-ctx.Done():
 				return
 			default:
 				sgwSeqno := node.seqAlloc.nextSeq()
 				docCount++
-				chanMap := make(channels.ChannelMap)
-				chanMap["test"] = nil
 				logEntry := &db.LogEntry{
 					Sequence:     sgwSeqno,
-					DocID:        fmt.Sprintf("key-%d-%d", docCount, sgwSeqno),
+					DocID:        "key-" + strconv.FormatUint(docCount, 10) + "-" + strconv.FormatUint(sgwSeqno, 10), //fmt.Sprintf("key-%d-%d", docCount, sgwSeqno),
 					RevID:        "1-abc",
 					Flags:        0,
-					TimeReceived: time.Now(),
-					TimeSaved:    time.Now(),
+					TimeReceived: timeStamp,
+					TimeSaved:    timeStamp,
 					Channels:     chanMap,
 					CollectionID: 0,
 				}
@@ -77,21 +77,20 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
 	for {
+		timeStamp := time.Now()
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			docCount++
 			sgwSeqno := node.seqAlloc.nextSeq()
-			chanMap := make(channels.ChannelMap)
-			chanMap["test"] = nil
 			logEntry := &db.LogEntry{
 				Sequence:     sgwSeqno,
 				DocID:        fmt.Sprintf("key-%d-%d", docCount, sgwSeqno),
 				RevID:        "1-abc",
 				Flags:        0,
-				TimeReceived: time.Now(),
-				TimeSaved:    time.Now(),
+				TimeReceived: timeStamp,
+				TimeSaved:    timeStamp,
 				Channels:     chanMap,
 				CollectionID: 0,
 			}

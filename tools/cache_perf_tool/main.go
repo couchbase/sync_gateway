@@ -16,9 +16,11 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,27 +28,34 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/rosmar"
+	"github.com/felixge/fgprof"
 )
 
 var numGoroutines atomic.Int32
 
+var once sync.Once
+
 func main() {
 	mode := flag.String("mode", "processEntry", "Mode for the tool to run in, either dcp or processEntry.")
 	nodes := flag.Int("sgwNodes", 1, "Number of sgw nodes to abstract.")
-	bachSize := flag.Int("batchSize", 10, "Batch size for the sequence allocator.")
-	timeToRun := flag.Int("duration", 5, "Duration to run the test for in minutes.")
-	dalays := flag.String("writeDelay", "150", "Delay between writes in milliseconds. Must be entered in format <delayMS>,<delayMS>,<delayMS>.")
-	profile := flag.Bool("profile", false, "Enable profiling.")
+	batchSize := flag.Int("batchSize", 10, "Batch size for the sequence allocator.")
+	timeToRun := flag.Duration("duration", 5*time.Minute, "Duration to run the test for in minutes. Examples:  3m for 3 minutes, 30s for 30 seconds etc")
+	delays := flag.String("writeDelay", "0", "Delay between writes in milliseconds. Must be entered in format <delayMS>,<delayMS>,<delayMS>.")
+	profileInterval := flag.Duration("profileInterval", 30*time.Second, "Interval for profiling to be triggered on, example 10s would be every 10 seconds.") //flag.Bool("profileInterval", false, "Enable profiling.")
+	numChannels := flag.Int("numChannels", 1, "Number of channels to create per document.")
 	flag.Parse()
 
 	if *nodes < 1 {
 		log.Fatalf("Invalid number of nodes: %d", *nodes)
 	}
-	if *bachSize < 1 {
-		log.Fatalf("Invalid batch size: %d", *bachSize)
+	if *batchSize < 1 || *batchSize > 10 {
+		log.Fatalf("Invalid batch size: %d", *batchSize)
 	}
 	if *timeToRun < 1 {
 		log.Fatalf("Invalid duration: %d", *timeToRun)
+	}
+	if *numChannels < 1 {
+		log.Fatalf("Invalid number of channels: %d", *numChannels)
 	}
 
 	parentCtx := context.Background()
@@ -54,7 +63,7 @@ func main() {
 
 	// Need a bucket type for creating the database context
 	var walrusBucket *rosmar.Bucket
-	bucketName := "cahceTest" + "rosmar_"
+	bucketName := "cacheTest" + "rosmar_"
 	url := rosmar.InMemoryURL
 	walrusBucket, err := rosmar.OpenBucket(url, bucketName, rosmar.CreateOrOpen)
 	if err != nil {
@@ -62,7 +71,7 @@ func main() {
 	}
 	defer walrusBucket.Close(parentCtx)
 
-	if *profile {
+	if profileInterval.Seconds() > 1 {
 		// start CPU profiling here
 		cpuProfBuf := bytes.Buffer{}
 		err = pprof.StartCPUProfile(&cpuProfBuf)
@@ -83,10 +92,25 @@ func main() {
 				return
 			}
 		}()
-		go heapProfiling(ctx)
-		go mutexProfiling(ctx)
-		go blockProfiling(ctx)
-		go goroutineProfiling(ctx)
+		fileName := fmt.Sprintf("fprof-%s.prof", time.Now().Format(time.RFC3339))
+		fProfBuf := bytes.Buffer{}
+		stopFn := fgprof.Start(&fProfBuf, fgprof.FormatPprof)
+		defer func() {
+			err := stopFn()
+			if err != nil {
+				log.Printf("Error stopping fprof profile: %v", err)
+				return
+			}
+			err = os.WriteFile(fileName, fProfBuf.Bytes(), os.ModePerm)
+			if err != nil {
+				log.Printf("Error writing fprof profile to file: %v", err)
+				return
+			}
+		}()
+		go heapProfiling(ctx, *profileInterval)
+		go mutexProfiling(ctx, *profileInterval)
+		go blockProfiling(ctx, *profileInterval)
+		go goroutineProfiling(ctx, *profileInterval)
 	}
 
 	// new syncSeqMock to be used for the sequence allocator
@@ -109,6 +133,9 @@ func main() {
 	}
 	defer dbContext.Close(ctx)
 
+	// stats goroutine
+	go csvStats(ctx, dbContext)
+
 	// init change cache and unlock mutex for the test
 	dbContext.StartChangeCache(t, parentCtx)
 
@@ -117,42 +144,29 @@ func main() {
 		// todo: add dcp mode code
 	} else if *mode == "processEntry" {
 		var delayList []time.Duration
-		if *nodes > 1 { // if we have one node then we don't have a delay (node will write as fast as possible)
-			delayList, err = extractDelays(*dalays)
-			if err != nil {
-				return
-			}
-			// need to have a delay for each node defined so we have variable write throughput
-			if len(delayList) != *nodes-1 {
-				log.Printf("invalid number of delays: %d", len(delayList))
-				return
-			}
+		delayList, err = extractDelays(*delays)
+		if err != nil {
+			return
 		}
-		p := &processEntryGen{t: t, dbCtx: dbContext, delays: delayList, seqAlloc: seqAllocator, numNodes: *nodes, batchSize: *bachSize}
+		// need to have a delay for each node defined so we have variable write throughput
+		if len(delayList) != *nodes {
+			log.Printf("invalid number of delays, number of input delays should match number of nodes: "+
+				"Delays=%d and number of nodes=%d", len(delayList), *nodes)
+			return
+		}
+
+		p := &processEntryGen{t: t, dbCtx: dbContext, delays: delayList, seqAlloc: seqAllocator, numNodes: *nodes,
+			batchSize: *batchSize, numChans: *numChannels}
 		// create new sgw node abstraction and spawn write goroutines
 		p.spawnDocCreationGoroutine(ctx)
 	} else {
 		log.Printf("Invalid mode: %s", *mode)
 		return
 	}
-
-	defer func() {
-		fmt.Println("-------------------------------------")
-		fmt.Println("end of test stats")
-		dbContext.UpdateCalculatedStats(ctx)
-		fmt.Println("high seq of cache", dbContext.DbStats.Database().HighSeqFeed.Value())
-		fmt.Println("pending seq length", dbContext.DbStats.Cache().PendingSeqLen.Value())
-		fmt.Println("high seq stable", dbContext.DbStats.Cache().HighSeqStable.Value())
-		fmt.Println("num current skipped", dbContext.DbStats.Cache().NumCurrentSeqsSkipped.Value())
-		fmt.Println("cumulative skipped", dbContext.DbStats.Cache().NumSkippedSeqs.Value())
-		fmt.Println("skipped length", dbContext.DbStats.Cache().SkippedSeqLen.Value())
-		fmt.Println("skipped capacity", dbContext.DbStats.Cache().SkippedSeqCap.Value())
-		fmt.Println("dcp cache count", dbContext.DbStats.Database().DCPCachingCount.Value())
-		fmt.Println("dcp cache time", dbContext.DbStats.Database().DCPCachingTime.Value())
-	}()
+	defer printJavaPropertiesFile(ctx, dbContext)
 
 	// duration of test logic
-	ticker := time.NewTicker(time.Duration(*timeToRun) * time.Minute)
+	ticker := time.NewTicker(*timeToRun)
 	defer ticker.Stop()
 
 outerloop:
@@ -167,11 +181,57 @@ outerloop:
 	workerFunc := func() (shouldRetry bool, err error, val interface{}) {
 		return numGoroutines.Load() != int32(0), nil, val
 	}
-	err, _ = base.RetryLoop(parentCtx, "wait for writing goroutines to stop", workerFunc, base.CreateSleeperFunc(200, 100))
+	err, _ = base.RetryLoop(parentCtx, "wait for writing goroutines to stop", workerFunc, base.CreateSleeperFunc(500, 100))
 	if err != nil {
 		log.Printf("Error waiting for stat value (%d) to reach 0: %v", numGoroutines.Load(), err)
 	}
 
+}
+
+func printJavaPropertiesFile(ctx context.Context, dbContext *db.DatabaseContext) {
+	// Print the Java properties file to stdout
+	dbContext.UpdateCalculatedStats(ctx)
+	dbStats := dbContext.DbStats
+	// calculate here avg time to cache seq in ms
+	count := dbStats.Database().DCPCachingCount.Value()
+	timeNano := dbStats.Database().DCPCachingTime.Value()
+	avgTimeNano := float64(timeNano) / float64(count)
+	avgTimeMs := avgTimeNano / 1e6
+	_, _ = fmt.Fprintf(os.Stdout, "high_seq_feed=%d\npending_seq_len=%d\nhigh_seq_stable=%d\ncurrent_skipped_seq_count=%d\nnum_skipped_seqs=%d\n"+
+		"skipped_seq_len=%d\nskipped_seq_cap=%d\ndcp_caching_count=%d\ndcp_caching_time=%d\navg_time_per_seq_ms=%f\n",
+		dbStats.Database().HighSeqFeed.Value(), dbStats.Cache().PendingSeqLen.Value(), dbStats.Cache().HighSeqStable.Value(), dbStats.Cache().NumCurrentSeqsSkipped.Value(),
+		dbStats.Cache().NumSkippedSeqs.Value(), dbStats.Cache().SkippedSeqLen.Value(), dbStats.Cache().SkippedSeqCap.Value(), count,
+		timeNano, avgTimeMs)
+}
+
+func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	numGoroutines.Add(1)
+	defer numGoroutines.Add(-1)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			once.Do(func() {
+				_, _ = fmt.Fprintf(os.Stderr, "timestamp,high_seq_feed,pending_seq_len,high_seq_stable,current_skipped_seq_count,"+
+					"num_skipped_seqs,skipped_seq_len,skipped_seq_cap,dcp_caching_count,dcp_caching_time,avg_time_per_seq_ms\n")
+			})
+			dbContext.UpdateCalculatedStats(ctx)
+			dbStats := dbContext.DbStats
+			// calculate here avg time to cache seq in ms
+			count := dbStats.Database().DCPCachingCount.Value()
+			timeNano := dbStats.Database().DCPCachingTime.Value()
+			avgTimeNano := float64(timeNano) / float64(count)
+			avgTimeMs := avgTimeNano / 1e6
+			_, _ = fmt.Fprintf(os.Stderr, "%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%f\n",
+				time.Now().Format(time.RFC3339), dbStats.Database().HighSeqFeed.Value(), dbStats.Cache().PendingSeqLen.Value(), dbStats.Cache().HighSeqStable.Value(),
+				dbStats.Cache().NumCurrentSeqsSkipped.Value(), dbStats.Cache().NumSkippedSeqs.Value(), dbStats.Cache().SkippedSeqLen.Value(), dbStats.Cache().SkippedSeqCap.Value(),
+				count, timeNano, avgTimeMs)
+		}
+	}
 }
 
 func extractDelays(delayStr string) ([]time.Duration, error) {
@@ -186,8 +246,8 @@ func extractDelays(delayStr string) ([]time.Duration, error) {
 			log.Printf("Error parsing delay: %v", err)
 			return nil, err
 		}
-		if delayInt > 150 {
-			log.Printf("Invalid delay, you can have a max delay of 150ms: %d", delayInt)
+		if delayInt > 150 || delayInt < 0 {
+			log.Printf("Invalid delay: %d, you can have a max delay of 150ms and minimum delay of 0ms", delayInt)
 			return nil, err
 		}
 		delays = append(delays, time.Duration(delayInt)*time.Millisecond)
@@ -195,8 +255,8 @@ func extractDelays(delayStr string) ([]time.Duration, error) {
 	return delays, nil
 }
 
-func heapProfiling(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+func heapProfiling(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
@@ -222,8 +282,8 @@ func heapProfiling(ctx context.Context) {
 	}
 }
 
-func mutexProfiling(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+func mutexProfiling(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
@@ -234,11 +294,14 @@ func mutexProfiling(ctx context.Context) {
 		case <-ticker.C:
 			fileName := fmt.Sprintf("mutex-%s.prof", time.Now().Format(time.RFC3339))
 			mutexProfBuf := bytes.Buffer{}
+			runtime.SetMutexProfileFraction(1)
+			time.Sleep(5 * time.Second)
 			err := pprof.Lookup("mutex").WriteTo(&mutexProfBuf, 0)
 			if err != nil {
 				log.Printf("Error writing mutex profile: %v", err)
 				return
 			}
+			runtime.SetMutexProfileFraction(0)
 			err = os.WriteFile(fileName, mutexProfBuf.Bytes(), os.ModePerm)
 			if err != nil {
 				log.Printf("Error writing mutex profile to file: %v", err)
@@ -248,8 +311,8 @@ func mutexProfiling(ctx context.Context) {
 	}
 }
 
-func blockProfiling(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+func blockProfiling(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
@@ -260,11 +323,14 @@ func blockProfiling(ctx context.Context) {
 		case <-ticker.C:
 			fileName := fmt.Sprintf("block-%s.prof", time.Now().Format(time.RFC3339))
 			blockProfBuf := bytes.Buffer{}
+			runtime.SetBlockProfileRate(1)
+			time.Sleep(5 * time.Second)
 			err := pprof.Lookup("block").WriteTo(&blockProfBuf, 0)
 			if err != nil {
 				log.Printf("Error writing block profile: %v", err)
 				return
 			}
+			runtime.SetBlockProfileRate(0)
 
 			err = os.WriteFile(fileName, blockProfBuf.Bytes(), os.ModePerm)
 			if err != nil {
@@ -275,8 +341,8 @@ func blockProfiling(ctx context.Context) {
 	}
 }
 
-func goroutineProfiling(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+func goroutineProfiling(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
