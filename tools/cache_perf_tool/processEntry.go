@@ -10,7 +10,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strconv"
 	"testing"
@@ -61,7 +60,7 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 				docCount++
 				logEntry := &db.LogEntry{
 					Sequence:     sgwSeqno,
-					DocID:        "key-" + strconv.FormatUint(docCount, 10) + "-" + strconv.FormatUint(sgwSeqno, 10), //fmt.Sprintf("key-%d-%d", docCount, sgwSeqno),
+					DocID:        "key-" + strconv.FormatUint(docCount, 10) + "-" + strconv.FormatUint(sgwSeqno, 10),
 					RevID:        "1-abc",
 					Flags:        0,
 					TimeReceived: timeStamp,
@@ -86,7 +85,7 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 			sgwSeqno := node.seqAlloc.nextSeq()
 			logEntry := &db.LogEntry{
 				Sequence:     sgwSeqno,
-				DocID:        fmt.Sprintf("key-%d-%d", docCount, sgwSeqno),
+				DocID:        "key-" + strconv.FormatUint(docCount, 10) + "-" + strconv.FormatUint(sgwSeqno, 10),
 				RevID:        "1-abc",
 				Flags:        0,
 				TimeReceived: timeStamp,
