@@ -36,7 +36,6 @@ type sequenceAllocator struct {
 	lastSeq       uint64
 	maxSeqInBatch uint64
 	lock          sync.Mutex
-	syncSeqEvent  chan struct{}
 }
 
 func newSequenceAllocator(batchSize int, syncSeq *syncSeqMock) *sequenceAllocator {
@@ -45,7 +44,6 @@ func newSequenceAllocator(batchSize int, syncSeq *syncSeqMock) *sequenceAllocato
 		batchSize:     batchSize,
 		lastSeq:       0,
 		maxSeqInBatch: 0,
-		syncSeqEvent:  make(chan struct{}, 1),
 	}
 }
 
@@ -56,13 +54,6 @@ func (s *sequenceAllocator) nextSeq() uint64 {
 		max := s.syncSeqMock.nextBatch(uint64(s.batchSize))
 		s.maxSeqInBatch = max
 		s.lastSeq = max - uint64(s.batchSize)
-		// channel has cap of 1 so to avoid blocking here we need select here
-		// the motivation to have cap 1 on this buffered channel is to sort of siluate dedupe from KV engine upon
-		// rapid updates to _sync:seq doc
-		select {
-		case s.syncSeqEvent <- struct{}{}:
-		default:
-		}
 	}
 	s.lastSeq++
 	return s.lastSeq

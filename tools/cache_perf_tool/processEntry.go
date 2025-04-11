@@ -10,7 +10,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"strconv"
 	"testing"
 	"time"
@@ -42,7 +41,6 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 	docCount := uint64(0)
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
-	log.Printf("node %d has delay of %v ms", node.nodeID, delay.Milliseconds())
 	// create map of configured channels
 	chanMap := make(channels.ChannelMap)
 	for i := 0; i < p.numChans; i++ {

@@ -20,7 +20,6 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,15 +32,13 @@ import (
 
 var numGoroutines atomic.Int32
 
-var once sync.Once
-
 func main() {
 	mode := flag.String("mode", "processEntry", "Mode for the tool to run in, either dcp or processEntry.")
 	nodes := flag.Int("sgwNodes", 1, "Number of sgw nodes to abstract.")
 	batchSize := flag.Int("batchSize", 10, "Batch size for the sequence allocator.")
 	timeToRun := flag.Duration("duration", 5*time.Minute, "Duration to run the test for in minutes. Examples:  3m for 3 minutes, 30s for 30 seconds etc")
 	delays := flag.String("writeDelay", "0", "Delay between writes in milliseconds. Must be entered in format <delayMS>,<delayMS>,<delayMS>.")
-	profileInterval := flag.Duration("profileInterval", 30*time.Second, "Interval for profiling to be triggered on, example 10s would be every 10 seconds.") //flag.Bool("profileInterval", false, "Enable profiling.")
+	profileInterval := flag.Duration("profileInterval", 30*time.Second, "Interval for profiling to be triggered on, example 10s would be every 10 seconds.")
 	numChannels := flag.Int("numChannels", 1, "Number of channels to create per document.")
 	flag.Parse()
 
@@ -57,6 +54,17 @@ func main() {
 	if *numChannels < 1 {
 		log.Fatalf("Invalid number of channels: %d", *numChannels)
 	}
+	var delayList []time.Duration
+	delayList, err := extractDelays(*delays)
+	if err != nil {
+		return
+	}
+	// need to have a delay for each node defined so we have variable write throughput
+	if len(delayList) != *nodes {
+		log.Printf("invalid number of delays, number of input delays should match number of nodes: "+
+			"Delays=%d and number of nodes=%d", len(delayList), *nodes)
+		return
+	}
 
 	parentCtx := context.Background()
 	ctx, cancelFunc := context.WithCancel(parentCtx)
@@ -65,7 +73,7 @@ func main() {
 	var walrusBucket *rosmar.Bucket
 	bucketName := "cacheTest" + "rosmar_"
 	url := rosmar.InMemoryURL
-	walrusBucket, err := rosmar.OpenBucket(url, bucketName, rosmar.CreateOrOpen)
+	walrusBucket, err = rosmar.OpenBucket(url, bucketName, rosmar.CreateOrOpen)
 	if err != nil {
 		log.Fatalf("Error opening walrus bucket: %v", err)
 	}
@@ -143,18 +151,6 @@ func main() {
 	if *mode == "dcp" {
 		// todo: add dcp mode code
 	} else if *mode == "processEntry" {
-		var delayList []time.Duration
-		delayList, err = extractDelays(*delays)
-		if err != nil {
-			return
-		}
-		// need to have a delay for each node defined so we have variable write throughput
-		if len(delayList) != *nodes {
-			log.Printf("invalid number of delays, number of input delays should match number of nodes: "+
-				"Delays=%d and number of nodes=%d", len(delayList), *nodes)
-			return
-		}
-
 		p := &processEntryGen{t: t, dbCtx: dbContext, delays: delayList, seqAlloc: seqAllocator, numNodes: *nodes,
 			batchSize: *batchSize, numChans: *numChannels}
 		// create new sgw node abstraction and spawn write goroutines
@@ -197,11 +193,17 @@ func printJavaPropertiesFile(ctx context.Context, dbContext *db.DatabaseContext)
 	timeNano := dbStats.Database().DCPCachingTime.Value()
 	avgTimeNano := float64(timeNano) / float64(count)
 	avgTimeMs := avgTimeNano / 1e6
-	_, _ = fmt.Fprintf(os.Stdout, "high_seq_feed=%d\npending_seq_len=%d\nhigh_seq_stable=%d\ncurrent_skipped_seq_count=%d\nnum_skipped_seqs=%d\n"+
-		"skipped_seq_len=%d\nskipped_seq_cap=%d\ndcp_caching_count=%d\ndcp_caching_time=%d\navg_time_per_seq_ms=%f\n",
-		dbStats.Database().HighSeqFeed.Value(), dbStats.Cache().PendingSeqLen.Value(), dbStats.Cache().HighSeqStable.Value(), dbStats.Cache().NumCurrentSeqsSkipped.Value(),
-		dbStats.Cache().NumSkippedSeqs.Value(), dbStats.Cache().SkippedSeqLen.Value(), dbStats.Cache().SkippedSeqCap.Value(), count,
-		timeNano, avgTimeMs)
+	timeMS := timeNano / 1e6
+	_, _ = fmt.Fprintf(os.Stdout, "high_seq_feed=%d\n", dbStats.Database().HighSeqFeed.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "pending_seq_len=%d\n", dbStats.Cache().PendingSeqLen.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "high_seq_stable=%d\n", dbStats.Cache().HighSeqStable.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "current_skipped_seq_count=%d\n", dbStats.Cache().NumCurrentSeqsSkipped.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "num_skipped_seqs=%d\n", dbStats.Cache().NumSkippedSeqs.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "skipped_seq_len=%d\n", dbStats.Cache().SkippedSeqLen.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "skipped_seq_cap=%d\n", dbStats.Cache().SkippedSeqCap.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "dcp_caching_count=%d\n", count)
+	_, _ = fmt.Fprintf(os.Stdout, "dcp_caching_time=%d\n", timeMS)
+	_, _ = fmt.Fprintf(os.Stdout, "avg_time_per_seq_ms=%f\n", avgTimeMs)
 }
 
 func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
@@ -209,16 +211,24 @@ func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
 	defer ticker.Stop()
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
+	_, _ = fmt.Fprintf(os.Stderr, "timestamp,")
+	_, _ = fmt.Fprintf(os.Stderr, "high_seq_feed,")
+	_, _ = fmt.Fprintf(os.Stderr, "pending_seq_len,")
+	_, _ = fmt.Fprintf(os.Stderr, "high_seq_stable,")
+	_, _ = fmt.Fprintf(os.Stderr, "current_skipped_seq_count,")
+	_, _ = fmt.Fprintf(os.Stderr, "num_skipped_seqs,")
+	_, _ = fmt.Fprintf(os.Stderr, "skipped_seq_len,")
+	_, _ = fmt.Fprintf(os.Stderr, "skipped_seq_cap,")
+	_, _ = fmt.Fprintf(os.Stderr, "dcp_caching_count,")
+	_, _ = fmt.Fprintf(os.Stderr, "dcp_caching_time,")
+	_, _ = fmt.Fprintf(os.Stderr, "avg_time_per_seq_ms")
+	_, _ = fmt.Fprintf(os.Stderr, "\n")
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			once.Do(func() {
-				_, _ = fmt.Fprintf(os.Stderr, "timestamp,high_seq_feed,pending_seq_len,high_seq_stable,current_skipped_seq_count,"+
-					"num_skipped_seqs,skipped_seq_len,skipped_seq_cap,dcp_caching_count,dcp_caching_time,avg_time_per_seq_ms\n")
-			})
 			dbContext.UpdateCalculatedStats(ctx)
 			dbStats := dbContext.DbStats
 			// calculate here avg time to cache seq in ms
@@ -226,10 +236,19 @@ func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
 			timeNano := dbStats.Database().DCPCachingTime.Value()
 			avgTimeNano := float64(timeNano) / float64(count)
 			avgTimeMs := avgTimeNano / 1e6
-			_, _ = fmt.Fprintf(os.Stderr, "%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%f\n",
-				time.Now().Format(time.RFC3339), dbStats.Database().HighSeqFeed.Value(), dbStats.Cache().PendingSeqLen.Value(), dbStats.Cache().HighSeqStable.Value(),
-				dbStats.Cache().NumCurrentSeqsSkipped.Value(), dbStats.Cache().NumSkippedSeqs.Value(), dbStats.Cache().SkippedSeqLen.Value(), dbStats.Cache().SkippedSeqCap.Value(),
-				count, timeNano, avgTimeMs)
+			timeMS := timeNano / 1e6
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", time.Now().Unix())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Database().HighSeqFeed.Value())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().PendingSeqLen.Value())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().HighSeqStable.Value())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().NumCurrentSeqsSkipped.Value())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().NumSkippedSeqs.Value())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().SkippedSeqLen.Value())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().SkippedSeqCap.Value())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", count)
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", timeMS)
+			_, _ = fmt.Fprintf(os.Stderr, "%f", avgTimeMs)
+			_, _ = fmt.Fprintf(os.Stderr, "\n")
 		}
 	}
 }
@@ -295,7 +314,7 @@ func mutexProfiling(ctx context.Context, interval time.Duration) {
 			fileName := fmt.Sprintf("mutex-%s.prof", time.Now().Format(time.RFC3339))
 			mutexProfBuf := bytes.Buffer{}
 			runtime.SetMutexProfileFraction(1)
-			time.Sleep(5 * time.Second)
+			time.Sleep(interval)
 			err := pprof.Lookup("mutex").WriteTo(&mutexProfBuf, 0)
 			if err != nil {
 				log.Printf("Error writing mutex profile: %v", err)
@@ -324,7 +343,7 @@ func blockProfiling(ctx context.Context, interval time.Duration) {
 			fileName := fmt.Sprintf("block-%s.prof", time.Now().Format(time.RFC3339))
 			blockProfBuf := bytes.Buffer{}
 			runtime.SetBlockProfileRate(1)
-			time.Sleep(5 * time.Second)
+			time.Sleep(interval)
 			err := pprof.Lookup("block").WriteTo(&blockProfBuf, 0)
 			if err != nil {
 				log.Printf("Error writing block profile: %v", err)
