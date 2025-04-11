@@ -38,7 +38,7 @@ func main() {
 	batchSize := flag.Int("batchSize", 10, "Batch size for the sequence allocator.")
 	timeToRun := flag.Duration("duration", 5*time.Minute, "Duration to run the test for in minutes. Examples:  3m for 3 minutes, 30s for 30 seconds etc")
 	delays := flag.String("writeDelay", "0", "Delay between writes in milliseconds. Must be entered in format <delayMS>,<delayMS>,<delayMS>.")
-	profileInterval := flag.Duration("profileInterval", 30*time.Second, "Interval for profiling to be triggered on, example 10s would be every 10 seconds.")
+	profileInterval := flag.Duration("profileInterval", 0*time.Second, "Interval for profiling to be triggered on, example 10s would be every 10 seconds.")
 	numChannels := flag.Int("numChannels", 1, "Number of channels to create per document.")
 	flag.Parse()
 
@@ -53,6 +53,9 @@ func main() {
 	}
 	if *numChannels < 1 {
 		log.Fatalf("Invalid number of channels: %d", *numChannels)
+	}
+	if profileInterval.Seconds() != 0 && *profileInterval >= *timeToRun {
+		log.Fatalf("Invalid profile interval: %d, must be less than the duration of test: %d", *profileInterval, *timeToRun)
 	}
 	var delayList []time.Duration
 	delayList, err := extractDelays(*delays)
