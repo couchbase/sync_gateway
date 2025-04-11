@@ -76,6 +76,34 @@ func (db *DatabaseContext) NewStatWaiter(stat *base.SgwIntStat, tb testing.TB) *
 	}
 }
 
+// StartChangeCache is called from the cache benchmarking tool to init the change cache, not to be called
+// from outside test code
+func (db *DatabaseContext) StartChangeCache(t *testing.T, ctx context.Context) {
+	notifyChange := func(ctx context.Context, changedChannels channels.Set) {
+		db.mutationListener.Notify(ctx, changedChannels)
+	}
+
+	// Initialize the change cache
+	if err := db.changeCache.Init(
+		ctx,
+		db,
+		db.channelCache,
+		notifyChange,
+		db.Options.CacheOptions,
+		db.MetadataKeys,
+	); err != nil {
+		t.Fatal(err)
+	}
+	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
+	db.changeCache.lock.Unlock()
+}
+
+// CallProcessEntry allows the cache benchmarking tool to call directly into processEntry, not to
+// be used from outside test code
+func (db *DatabaseContext) CallProcessEntry(t *testing.T, ctx context.Context, log *LogEntry) {
+	db.changeCache.processEntry(ctx, log)
+}
+
 func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
 	return db.NewStatWaiter(db.DbStats.Database().DCPCachingCount, tb)
 }
