@@ -57,11 +57,8 @@ get:
                 type: number
                 default: 0
               state:
-                description: 'The database state. Change using the `/{db}/_offline` and `/{db}/_online` endpoints.'
-                type: string
-                enum:
-                  - Online
-                  - Offline
+                allOf: # use allOf to prevent DatabaseState from showing as the type in the display
+                  - $ref: ../../components/schemas.yaml#/DatabaseState
               server_uuid:
                 description: Unique server identifier.
                 type: string
