@@ -55,7 +55,7 @@ put:
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Architect
-    * Sync Gateway Application
+    * Sync Gateway Application (sync function only)
   parameters:
     - $ref: ../../components/parameters.yaml#/DB-config-If-Match
     - $ref: ../../components/parameters.yaml#/disable_oidc_validation
@@ -87,7 +87,7 @@ post:
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Architect
-    * Sync Gateway Application
+    * Sync Gateway Application (sync function only)
   parameters:
     - $ref: ../../components/parameters.yaml#/DB-config-If-Match
   requestBody:

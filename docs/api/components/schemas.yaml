@@ -3088,13 +3088,17 @@ IndexInitStatus:
       description: The status of the current operation.
       type: string
       enum:
-        - running
         - completed
         - error
+        - running
+        - stopped
+        - stopping
       x-enumDescriptions:
         running: Indexes are being created.
         completed: All indexes were created.
         error: The index initialization operation has failed.
+        stopped: The index initialization operation has been stopped. These indexes may still on Couchbase Server.
+        stopping: The index initialization operation is in the process of being stopped.
     start_time:
       description: The ISO-8601 date and time the index initialization operation was started.
       type: string
@@ -3105,8 +3109,18 @@ IndexInitStatus:
       description: 'scope name with one or more collection names and the status of their index creation'
       type: object
       additionalProperties:
-        $ref: '#/CollectionNames'
-      example: {"scopeName": ["collection1", "collection2"]}
+        x-additionalPropertiesName: scopename
+        description: An object keyed by scope, containing a set of collections and the status of their index creation.
+        type: object
+        additionalProperties:
+          x-additionalPropertiesName: collectionname
+          type: string
+          enum:
+            - "completed"
+            - "in progress"
+          x-enumDescriptions:
+            completed: All indexes were created.
+            "in progress": Indexes are being created.
     settings:
       allOf:
         - $ref: '#/IndexSettings'
@@ -3114,6 +3128,4 @@ IndexInitStatus:
     - status
     - start_time
     - last_error
-    - docs_changed
-    - docs_processed
   title: IndexInitStatus
