@@ -162,7 +162,7 @@ func main() {
 		log.Printf("Invalid mode: %s", *mode)
 		return
 	}
-	defer printJavaPropertiesFile(ctx, dbContext)
+	defer printEndofTestStatsFile(ctx, dbContext)
 
 	// duration of test logic
 	ticker := time.NewTicker(*timeToRun)
@@ -187,8 +187,8 @@ outerloop:
 
 }
 
-func printJavaPropertiesFile(ctx context.Context, dbContext *db.DatabaseContext) {
-	// Print the Java properties file to stdout
+func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext) {
+	// Print the csv file to stdout
 	dbContext.UpdateCalculatedStats(ctx)
 	dbStats := dbContext.DbStats
 	// calculate here avg time to cache seq in ms
@@ -197,16 +197,33 @@ func printJavaPropertiesFile(ctx context.Context, dbContext *db.DatabaseContext)
 	avgTimeNano := float64(timeNano) / float64(count)
 	avgTimeMs := avgTimeNano / 1e6
 	timeMS := timeNano / 1e6
-	_, _ = fmt.Fprintf(os.Stdout, "high_seq_feed=%d\n", dbStats.Database().HighSeqFeed.Value())
-	_, _ = fmt.Fprintf(os.Stdout, "pending_seq_len=%d\n", dbStats.Cache().PendingSeqLen.Value())
-	_, _ = fmt.Fprintf(os.Stdout, "high_seq_stable=%d\n", dbStats.Cache().HighSeqStable.Value())
-	_, _ = fmt.Fprintf(os.Stdout, "current_skipped_seq_count=%d\n", dbStats.Cache().NumCurrentSeqsSkipped.Value())
-	_, _ = fmt.Fprintf(os.Stdout, "num_skipped_seqs=%d\n", dbStats.Cache().NumSkippedSeqs.Value())
-	_, _ = fmt.Fprintf(os.Stdout, "skipped_seq_len=%d\n", dbStats.Cache().SkippedSeqLen.Value())
-	_, _ = fmt.Fprintf(os.Stdout, "skipped_seq_cap=%d\n", dbStats.Cache().SkippedSeqCap.Value())
-	_, _ = fmt.Fprintf(os.Stdout, "dcp_caching_count=%d\n", count)
-	_, _ = fmt.Fprintf(os.Stdout, "dcp_caching_time=%d\n", timeMS)
-	_, _ = fmt.Fprintf(os.Stdout, "avg_time_per_seq_ms=%f\n", avgTimeMs)
+
+	_, _ = fmt.Fprintf(os.Stdout, "timestamp,")
+	_, _ = fmt.Fprintf(os.Stdout, "high_seq_feed,")
+	_, _ = fmt.Fprintf(os.Stdout, "pending_seq_len,")
+	_, _ = fmt.Fprintf(os.Stdout, "high_seq_stable,")
+	_, _ = fmt.Fprintf(os.Stdout, "current_skipped_seq_count,")
+	_, _ = fmt.Fprintf(os.Stdout, "num_skipped_seqs,")
+	_, _ = fmt.Fprintf(os.Stdout, "skipped_seq_len,")
+	_, _ = fmt.Fprintf(os.Stdout, "skipped_seq_cap,")
+	_, _ = fmt.Fprintf(os.Stdout, "dcp_caching_count,")
+	_, _ = fmt.Fprintf(os.Stdout, "dcp_caching_time,")
+	_, _ = fmt.Fprintf(os.Stdout, "avg_time_per_seq_ms")
+	_, _ = fmt.Fprintf(os.Stdout, "\n")
+
+	// print end of run stats
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", time.Now().Unix())
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", dbStats.Database().HighSeqFeed.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", dbStats.Cache().PendingSeqLen.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", dbStats.Cache().HighSeqStable.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", dbStats.Cache().NumCurrentSeqsSkipped.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", dbStats.Cache().NumSkippedSeqs.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", dbStats.Cache().SkippedSeqLen.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", dbStats.Cache().SkippedSeqCap.Value())
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", count)
+	_, _ = fmt.Fprintf(os.Stdout, "%d,", timeMS)
+	_, _ = fmt.Fprintf(os.Stdout, "%f", avgTimeMs)
+	_, _ = fmt.Fprintf(os.Stdout, "\n")
 }
 
 func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
