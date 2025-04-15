@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10"
@@ -656,4 +657,55 @@ func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUU
 
 func (dc *DCPClient) GetMetadataKeyPrefix() string {
 	return dc.metadata.GetKeyPrefix()
+}
+
+// StartWorkersForTest will iterate through dcp workers to start them, to be used for caching testing purposes only.
+func (dc *DCPClient) StartWorkersForTest(t *testing.T) {
+	dc.startWorkers(dc.ctx)
+}
+
+// NewDCPClientForTest creates a dcp client object for caching test purposes, does not actually create a client you can stream to. TEST ONLY.
+func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*DCPClient, error) {
+	numWorkers := DefaultNumWorkers
+
+	client := &DCPClient{
+		ctx:                 ctx,
+		workers:             make([]*DCPWorker, numWorkers),
+		numVbuckets:         numVbuckets,
+		callback:            callback,
+		ID:                  ID,
+		spec:                bucket.GetSpec(),
+		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
+		terminator:          make(chan bool),
+		doneChannel:         make(chan error, 1),
+		failOnRollback:      options.FailOnRollback,
+		checkpointPrefix:    options.CheckpointPrefix,
+		dbStats:             options.DbStats,
+		agentPriority:       options.AgentPriority,
+		collectionIDs:       options.CollectionIDs,
+	}
+
+	// Initialize active vbuckets
+	client.activeVbuckets = make(map[uint16]struct{})
+	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
+		client.activeVbuckets[vbNo] = struct{}{}
+	}
+
+	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
+	switch options.MetadataStoreType {
+	case DCPMetadataStoreCS:
+		// TODO: Change GetSingleDataStore to a metadata Store?
+		metadataStore := bucket.DefaultDataStore()
+		client.metadata = NewDCPMetadataCS(ctx, metadataStore, numVbuckets, numWorkers, checkpointPrefix)
+	case DCPMetadataStoreInMemory:
+		client.metadata = NewDCPMetadataMem(numVbuckets)
+	default:
+		return nil, fmt.Errorf("Unknown Metadatatype: %d", options.MetadataStoreType)
+	}
+
+	if len(client.collectionIDs) == 0 {
+		client.collectionIDs = []uint32{DefaultCollectionID}
+	}
+
+	return client, nil
 }

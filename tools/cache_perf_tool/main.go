@@ -32,8 +32,13 @@ import (
 
 var numGoroutines atomic.Int32
 
+const (
+	processEntry = "processEntry"
+	dcp          = "dcp"
+)
+
 func main() {
-	mode := flag.String("mode", "processEntry", "Mode for the tool to run in, either dcp or processEntry.")
+	mode := flag.String("mode", processEntry, "Mode for the tool to run in, either dcp or processEntry.")
 	nodes := flag.Int("sgwNodes", 1, "Number of sgw nodes to abstract.")
 	batchSize := flag.Int("batchSize", 10, "Batch size for the sequence allocator.")
 	timeToRun := flag.Duration("duration", 5*time.Minute, "Duration to run the test for in minutes. Examples:  3m for 3 minutes, 30s for 30 seconds etc")
@@ -57,13 +62,13 @@ func main() {
 	if profileInterval.Seconds() != 0 && *profileInterval >= *timeToRun {
 		log.Fatalf("Invalid profile interval: %d, must be less than the duration of test: %d", *profileInterval, *timeToRun)
 	}
-	var delayList []time.Duration
-	delayList, err := extractDelays(*delays)
+
+	delayList, err := extractDelays(*delays, *mode)
 	if err != nil {
 		return
 	}
 	// need to have a delay for each node defined so we have variable write throughput
-	if len(delayList) != *nodes {
+	if len(delayList) != *nodes && *mode == processEntry {
 		log.Printf("invalid number of delays, number of input delays should match number of nodes: "+
 			"Delays=%d and number of nodes=%d", len(delayList), *nodes)
 		return
@@ -151,9 +156,23 @@ func main() {
 	dbContext.StartChangeCache(t, parentCtx)
 
 	// mode selection logic
-	if *mode == "dcp" {
-		// todo: add dcp mode code
-	} else if *mode == "processEntry" {
+	if *mode == dcp {
+		bucket := &base.GocbV2Bucket{}
+		// setup dcp generator object and create fake dcp client
+		seqAlloc := newSequenceAllocator(*batchSize, seqAllocator)
+		dcpGen := &dcpDataGen{seqAlloc: seqAlloc, delays: delayList, dbCtx: dbContext, numChannels: *numChannels}
+		mutationListener := dbContext.GetMutationListener(t)
+		cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
+		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, cacheFeedStatsMap.Map)
+		if err != nil {
+			log.Printf("Error creating DCP client: %v", err)
+			return
+		}
+		dcpGen.client = client
+
+		// create vBucket mutations
+		dcpGen.vBucketCreation(ctx)
+	} else if *mode == processEntry {
 		p := &processEntryGen{t: t, dbCtx: dbContext, delays: delayList, seqAlloc: seqAllocator, numNodes: *nodes,
 			batchSize: *batchSize, numChans: *numChannels}
 		// create new sgw node abstraction and spawn write goroutines
@@ -273,7 +292,7 @@ func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
 	}
 }
 
-func extractDelays(delayStr string) ([]time.Duration, error) {
+func extractDelays(delayStr string, mode string) ([]time.Duration, error) {
 	var delays []time.Duration
 	if delayStr == "" {
 		return delays, nil
@@ -285,9 +304,15 @@ func extractDelays(delayStr string) ([]time.Duration, error) {
 			log.Printf("Error parsing delay: %v", err)
 			return nil, err
 		}
-		if delayInt > 150 || delayInt < 0 {
-			log.Printf("Invalid delay: %d, you can have a max delay of 150ms and minimum delay of 0ms", delayInt)
-			return nil, err
+		if delayInt < 0 {
+			log.Printf("Invalid delay: %d, you can have a minimum delay of 0ms", delayInt)
+			return nil, fmt.Errorf("invalid delay")
+		}
+		if mode == processEntry {
+			if delayInt > 150 {
+				log.Printf("Invalid delay: %d, you can have a max delay of 150ms and minimum delay of 0ms", delayInt)
+				return nil, fmt.Errorf("invalid delay")
+			}
 		}
 		delays = append(delays, time.Duration(delayInt)*time.Millisecond)
 	}

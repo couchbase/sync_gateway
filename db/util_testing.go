@@ -769,3 +769,8 @@ func GetIndexPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbu
 	require.Failf(t, "index not found", "index %s not found in %+v", indexName, output)
 	return 0
 }
+
+// GetMutationListener retrieves mutation listener form database context, to be used only for testing purposes.
+func (db *DatabaseContext) GetMutationListener(t *testing.T) changeListener {
+	return db.mutationListener
+}
