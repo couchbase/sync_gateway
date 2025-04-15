@@ -78,15 +78,6 @@ func TestRoot(t *testing.T) {
 	assert.Equal(t, "GET, HEAD", response.Header().Get("Allow"))
 }
 
-func TestGreg(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	rt.PutDoc("doc1", `{"foo":"bar"}`)
-
-	time.Sleep(5 * time.Second)
-}
-
 func TestPublicRESTStatCount(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()

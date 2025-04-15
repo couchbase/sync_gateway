@@ -39,7 +39,7 @@ const (
 
 func main() {
 	mode := flag.String("mode", processEntry, "Mode for the tool to run in, either dcp or processEntry.")
-	nodes := flag.Int("sgwNodes", 1, "Number of sgw nodes to abstract.")
+	nodes := flag.Int("sgwNodes", 1, "Number of sgw nodes to abstract. NOTE only relevant for processEntry mode.")
 	batchSize := flag.Int("batchSize", 10, "Batch size for the sequence allocator.")
 	timeToRun := flag.Duration("duration", 5*time.Minute, "Duration to run the test for in minutes. Examples:  3m for 3 minutes, 30s for 30 seconds etc")
 	delays := flag.String("writeDelay", "0", "Delay between writes in milliseconds. Must be entered in format <delayMS>,<delayMS>,<delayMS>.")
