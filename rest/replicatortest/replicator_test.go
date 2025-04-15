@@ -7932,7 +7932,7 @@ var emptyReplicationTestCases = []struct {
 }
 
 func TestBanEmptyReplicationID(t *testing.T) {
-	rt := rest.NewRestTesterPersistentConfigWithDB(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", `{"remote": "fakeremote", "direction": "pull", "initial_state": "stopped"}`)
@@ -8109,7 +8109,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	t.Cleanup(activeRT.Close)
 	_ = activeRT.Bucket()
 
-	passiveRT := rest.NewRestTesterPersistentConfigWithDB(t)
+	passiveRT := rest.NewRestTesterPersistentConfig(t)
 	t.Cleanup(passiveRT.Close)
 
 	username := "alice"

@@ -340,7 +340,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 func TestImportFilterEndpoint(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
-	rt := NewRestTesterPersistentConfigWithDB(t)
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	rt.CreateDatabase("db1", rt.NewDbConfig())

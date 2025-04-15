@@ -646,7 +646,7 @@ func TestResyncPersistence(t *testing.T) {
 }
 
 func TestExpiryUpdateSyncFunction(t *testing.T) {
-	rt := NewRestTesterPersistentConfigWithDB(t)
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	const docID = "doc1"

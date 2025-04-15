@@ -827,7 +827,7 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		t.Skip("Only works with default collection until CBG-4003 is fixed")
 	}
-	rt := NewRestTesterPersistentConfigWithDB(t)
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	// Create role with 1 channel and assign it to user
@@ -860,7 +860,7 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 
 func TestGetAllChannelsByUserNonexistentAndDeletedUser(t *testing.T) {
 
-	rt := NewRestTesterPersistentConfigWithDB(t)
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	// assert the endpoint returns 404 when user is not found

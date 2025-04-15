@@ -2682,7 +2682,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 }
 
 func TestPersistentConfigConcurrency(t *testing.T) {
-	rt := rest.NewRestTesterPersistentConfigWithDB(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	// Get config
@@ -2715,7 +2715,7 @@ func TestDbConfigCredentials(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	rt := rest.NewRestTesterPersistentConfigWithDB(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	var dbConfig rest.DatabaseConfig
@@ -2743,7 +2743,7 @@ func TestDbConfigCredentials(t *testing.T) {
 }
 
 func TestInvalidDBConfig(t *testing.T) {
-	rt := rest.NewRestTesterPersistentConfigWithDB(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	// Put db config with invalid sync fn
@@ -2779,7 +2779,7 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
-	rt := rest.NewRestTesterPersistentConfigWithDB(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/db/_config", `{"name": "test"}`), http.StatusBadRequest)
@@ -2789,7 +2789,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 
-	rt := rest.NewRestTesterPersistentConfigWithDB(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	// put a doc in db
@@ -3198,7 +3198,7 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	importFilter := "function(doc){ return true; }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
-	rt := rest.NewRestTesterPersistentConfigWithDB(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	rt.TakeDbOffline()
@@ -3831,7 +3831,7 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 		t.Skip("Audit logging is an EE-only feature")
 	}
 
-	rt := rest.NewRestTesterPersistentConfigWithDB(t)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	// check default audit config - verbose to read event names, etc.

@@ -3149,7 +3149,7 @@ func TestBlipDatabaseClose(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTesterPersistentConfigWithDB(t)
+		rt := NewRestTesterPersistentConfig(t)
 		defer rt.Close()
 		const username = "alice"
 		rt.CreateUser(username, []string{"*"})
