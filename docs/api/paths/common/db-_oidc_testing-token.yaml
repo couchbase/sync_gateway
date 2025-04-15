@@ -37,5 +37,5 @@ post:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Authentication
+    - Unsupported
   operationId: post_db-_oidc_testing-token

@@ -19,7 +19,7 @@ get:
     * Sync Gateway Dev Ops
     * External Stats Reader
   tags:
-    - JSON
+    - Metrics
   responses:
     $ref: ../../components/responses.yaml#/expvar_reponses
   operationId: get__expvar
