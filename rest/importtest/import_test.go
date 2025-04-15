@@ -2212,7 +2212,7 @@ func TestImportOnWriteMigration(t *testing.T) {
 func TestImportFilterTimeout(t *testing.T) {
 	importFilter := `function(doc) { while(true) { } }`
 
-	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Ptr(1)}}}
+	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Ptr(uint32(1))}}}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
@@ -2341,7 +2341,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		PersistentConfig: false,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Ptr(2),
+				ImportPartitions: base.Ptr(uint16(2)),
 			},
 		},
 	})
@@ -2415,7 +2415,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		PersistentConfig: false,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Ptr(2),
+				ImportPartitions: base.Ptr(uint16(2)),
 			},
 		},
 	})

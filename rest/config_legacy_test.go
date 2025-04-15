@@ -40,7 +40,7 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		{
 			name:     "Override *duration for StatsLogFrequency",
 			base:     StartupConfig{Unsupported: UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Minute)}},
-			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: base.Ptr(10)}},
+			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: base.Ptr(uint(10))}},
 			expected: StartupConfig{Unsupported: UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Second * 10)}},
 		},
 		{

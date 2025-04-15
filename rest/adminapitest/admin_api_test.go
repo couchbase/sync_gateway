@@ -2019,7 +2019,7 @@ func TestHandleDBConfig(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.CacheConfig = &rest.CacheConfig{
 		RevCacheConfig: &rest.RevCacheConfig{
-			MaxItemCount: base.Ptr(1337), ShardCount: base.Ptr(7),
+			MaxItemCount: base.Ptr(uint32(1337)), ShardCount: base.Ptr(uint16(7)),
 		},
 	}
 
@@ -2634,7 +2634,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	// Update revs limit too so we can check db config
 	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
-	dbConfig.RevsLimit = base.Ptr(100)
+	dbConfig.RevsLimit = base.Ptr(uint32(100))
 
 	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -2643,7 +2643,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	// Check that db revs limit is there now and error logging config
 	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
-	assert.Equal(t, base.Ptr(100), runtimeServerConfigResponse.Databases["db"].RevsLimit)
+	assert.Equal(t, base.Ptr(uint32(100)), runtimeServerConfigResponse.Databases["db"].RevsLimit)
 
 	assert.NotNil(t, runtimeServerConfigResponse.Logging.Error)
 	assert.Equal(t, "debug", runtimeServerConfigResponse.Logging.Console.LogLevel.String())
@@ -3069,7 +3069,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 			Index: &rest.IndexConfig{
 				NumReplicas: base.Ptr(uint(0)),
 			},
-			RevsLimit: base.Ptr(123), // use RevsLimit to detect config changes
+			RevsLimit: base.Ptr(uint32(123)), // use RevsLimit to detect config changes
 		},
 	}
 	var err error

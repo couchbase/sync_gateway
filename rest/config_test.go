@@ -473,14 +473,14 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	}
 
 	// Set Deprecated Values
-	dbConfig.DeprecatedRevCacheSize = base.Ptr(10)
+	dbConfig.DeprecatedRevCacheSize = base.Ptr(uint32(10))
 	dbConfig.CacheConfig.DeprecatedChannelCacheAge = base.Ptr(10)
 	dbConfig.CacheConfig.DeprecatedChannelCacheMinLength = base.Ptr(10)
 	dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength = base.Ptr(10)
 	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.Ptr(true)
-	dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait = base.Ptr(uint32(10))
 	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum = base.Ptr(10)
-	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait = base.Ptr(uint32(10))
 
 	// Run Deprecated Fallback
 	warnings := dbConfig.deprecatedConfigCacheFallback()
@@ -507,8 +507,8 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	}
 
 	// Set A Couple Deprecated Values AND Their New Counterparts
-	dbConfig.DeprecatedRevCacheSize = base.Ptr(10)
-	dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr(20)
+	dbConfig.DeprecatedRevCacheSize = base.Ptr(uint32(10))
+	dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr(uint32(20))
 	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.Ptr(false)
 	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(true)
 
@@ -992,7 +992,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 			EnableXattrs: &xattrs,
 			UseViews:     base.Ptr(base.TestsDisableGSI()),
 			Index: &IndexConfig{
-				NumReplicas: base.Ptr(0),
+				NumReplicas: base.Ptr(uint(0)),
 			},
 		},
 		"db2": {
@@ -2213,7 +2213,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 						{
 							HandlerType: "webhook",
 							Url:         "http://localhost:8080/",
-							Timeout:     base.Ptr(0),
+							Timeout:     base.Ptr(uint64(0)),
 							Filter:      webhookFilter,
 						},
 					},
@@ -3094,8 +3094,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Ptr(100),
-		MaxMemoryCountMB: base.Ptr(51),
+		MaxItemCount:     base.Ptr(uint32(100)),
+		MaxMemoryCountMB: base.Ptr(uint32(51)),
 	}
 	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
 
@@ -3116,8 +3116,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Ptr(100),
-		MaxMemoryCountMB: base.Ptr(4),
+		MaxItemCount:     base.Ptr(uint32(100)),
+		MaxMemoryCountMB: base.Ptr(uint32(4)),
 	}
 	resp = rt.UpsertDbConfig("db1", dbConfig)
 	if base.IsEnterpriseEdition() {
@@ -3130,8 +3130,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	// test turing off the memory based rev cache
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Ptr(100),
-		MaxMemoryCountMB: base.Ptr(0),
+		MaxItemCount:     base.Ptr(uint32(100)),
+		MaxMemoryCountMB: base.Ptr(uint32(0)),
 	}
 	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
 

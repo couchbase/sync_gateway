@@ -129,7 +129,7 @@ func TestAllDatabaseNames(t *testing.T) {
 		BucketConfig:       bucketConfigFromTestBucket(tb1),
 		Name:               "imdb1",
 		AllowEmptyPassword: base.Ptr(true),
-		NumIndexReplicas:   base.Ptr(0),
+		NumIndexReplicas:   base.Ptr(uint(0)),
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
@@ -142,7 +142,7 @@ func TestAllDatabaseNames(t *testing.T) {
 		BucketConfig:       bucketConfigFromTestBucket(tb2),
 		Name:               "imdb2",
 		AllowEmptyPassword: base.Ptr(true),
-		NumIndexReplicas:   base.Ptr(0),
+		NumIndexReplicas:   base.Ptr(uint(0)),
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
@@ -587,7 +587,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 			Password: base.TestClusterPassword(),
 		},
 		Name:             tb.GetName(),
-		NumIndexReplicas: base.Ptr(0),
+		NumIndexReplicas: base.Ptr(uint(0)),
 		EnableXattrs:     base.Ptr(base.TestUseXattrs()),
 		Scopes: ScopesConfig{
 			"foo": ScopeConfig{
@@ -865,17 +865,17 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 		},
 		{
 			name:                        "explicit 1",
-			compactIntervalDays:         base.Ptr(1),
+			compactIntervalDays:         base.Ptr(float32(1)),
 			expectedCompactIntervalSecs: uint32((24 * time.Hour).Seconds()),
 		},
 		{
 			name:                        "1.5",
-			compactIntervalDays:         base.Ptr(1.5),
+			compactIntervalDays:         base.Ptr(float32(1.5)),
 			expectedCompactIntervalSecs: uint32((1.5 * 24 * time.Hour).Seconds()),
 		},
 		{
 			name:                        "2",
-			compactIntervalDays:         base.Ptr(2),
+			compactIntervalDays:         base.Ptr(float32(2)),
 			expectedCompactIntervalSecs: uint32((2 * 24 * time.Hour).Seconds()),
 		},
 	}
@@ -922,7 +922,7 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 		{
 			name: "HeapProfileCollectionThreshold",
 			startupConfig: &StartupConfig{
-				HeapProfileCollectionThreshold: base.Ptr(100),
+				HeapProfileCollectionThreshold: base.Ptr(uint64(100)),
 			},
 			heapProfileCollectionThreshold: 100,
 			heapProfileCollectionEnabled:   true,

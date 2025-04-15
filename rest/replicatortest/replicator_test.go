@@ -2171,7 +2171,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 				CacheConfig: &rest.CacheConfig{
 					// shorten pending sequence handling to speed up test
 					ChannelCacheConfig: &rest.ChannelCacheConfig{
-						MaxWaitPending: base.Ptr(1),
+						MaxWaitPending: base.Ptr(uint32(1)),
 					},
 				},
 			}},

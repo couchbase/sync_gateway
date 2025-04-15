@@ -696,18 +696,18 @@ func TestImportPartitionsServerless(t *testing.T) {
 	}{
 		{
 			name:               "serverless partitions",
-			expectedPartitions: base.Ptr(6),
+			expectedPartitions: base.Ptr(uint16(6)),
 			serverless:         true,
 		},
 		{
 			name:               "serverless partitions with import_partition specified",
-			importPartition:    base.Ptr(8),
-			expectedPartitions: base.Ptr(8),
+			importPartition:    base.Ptr(uint16(8)),
+			expectedPartitions: base.Ptr(uint16(8)),
 			serverless:         true,
 		},
 		{
 			name:               "non serverless partitions",
-			expectedPartitions: base.Ptr(16),
+			expectedPartitions: base.Ptr(uint16(16)),
 			serverless:         false,
 		},
 	}

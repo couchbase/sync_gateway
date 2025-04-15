@@ -193,7 +193,7 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	rtNode := rtc.RoundRobin()
 
 	// upsert with an invalid config option
-	resp = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Ptr(0)})
+	resp = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Ptr(uint32(0))})
 	RequireStatus(t, resp, http.StatusBadRequest)
 
 	// On the same node, make sure the database is still running.
