@@ -178,7 +178,7 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 	// If the user doesn't specify any timeout, default to 75s
 	if b.ViewQueryTimeoutSecs == nil {
-		return DefaultViewTimeoutSecs * 1000
+		return uint64(DefaultViewTimeoutSecs) * 1000
 	}
 
 	// If the user specifies 0, then translate that to "No timeout"
@@ -186,7 +186,7 @@ func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 		return 1000 * 60 * 60 * 24 * 365 * 10 // 10 years in milliseconds
 	}
 
-	return uint64(*b.ViewQueryTimeoutSecs * 1000)
+	return uint64(*b.ViewQueryTimeoutSecs) * 1000
 }
 
 // TLSConfig creates a TLS configuration and populates the certificates
