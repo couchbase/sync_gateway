@@ -33,23 +33,23 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:         PersistentConfigDefaultGroupID,
 			ConfigUpdateFrequency: base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
-			ServerTLSSkipVerify:   base.BoolPtr(false),
-			UseTLSServer:          base.BoolPtr(DefaultUseTLSServer),
+			ServerTLSSkipVerify:   base.Ptr(false),
+			UseTLSServer:          base.Ptr(DefaultUseTLSServer),
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,
 			AdminInterface:     DefaultAdminInterface,
 			MetricsInterface:   DefaultMetricsInterface,
 			MaximumConnections: DefaultMaxIncomingConnections,
-			CompressResponses:  base.BoolPtr(true),
+			CompressResponses:  base.Ptr(true),
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
 			ReadHeaderTimeout:                         base.NewConfigDuration(base.DefaultReadHeaderTimeout),
 			IdleTimeout:                               base.NewConfigDuration(base.DefaultIdleTimeout),
-			AdminInterfaceAuthentication:              base.BoolPtr(true),
-			MetricsInterfaceAuthentication:            base.BoolPtr(true),
-			EnableAdminAuthenticationPermissionsCheck: base.BoolPtr(base.IsEnterpriseEdition()),
+			AdminInterfaceAuthentication:              base.Ptr(true),
+			MetricsInterfaceAuthentication:            base.Ptr(true),
+			EnableAdminAuthenticationPermissionsCheck: base.Ptr(base.IsEnterpriseEdition()),
 		},
 		Logging: base.LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
@@ -59,16 +59,16 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Replicator: ReplicatorConfig{
-			MaxConcurrentChangesBatches: base.IntPtr(db.DefaultMaxConcurrentChangesBatches),
-			MaxConcurrentRevs:           base.IntPtr(db.DefaultMaxConcurrentRevs),
+			MaxConcurrentChangesBatches: base.Ptr(db.DefaultMaxConcurrentChangesBatches),
+			MaxConcurrentRevs:           base.Ptr(db.DefaultMaxConcurrentRevs),
 		},
 		Unsupported: UnsupportedConfig{
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
 			Serverless: ServerlessConfig{
-				Enabled:                base.BoolPtr(false),
+				Enabled:                base.Ptr(false),
 				MinConfigFetchInterval: base.NewConfigDuration(DefaultMinConfigFetchInterval),
 			},
-			AllowDbConfigEnvVars: base.BoolPtr(true),
+			AllowDbConfigEnvVars: base.Ptr(true),
 			DiagnosticInterface:  DefaultDiagnosticInterface, // Disabled by default
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
@@ -217,7 +217,7 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 }
 
 func (sc *StartupConfig) IsServerless() bool {
-	return base.BoolDefault(sc.Unsupported.Serverless.Enabled, false)
+	return base.ValDefault(sc.Unsupported.Serverless.Enabled, false)
 }
 
 func LoadStartupConfigFromPath(ctx context.Context, path string) (*StartupConfig, error) {
@@ -275,7 +275,7 @@ func setGlobalConfig(ctx context.Context, sc *StartupConfig) error {
 	}
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.
-	if base.BoolDefault(sc.Unsupported.UseStdlibJSON, false) {
+	if base.ValDefault(sc.Unsupported.UseStdlibJSON, false) {
 		base.InfofCtx(ctx, base.KeyAll, "Using the stdlib JSON package")
 		base.UseStdlibJSON = true
 	}

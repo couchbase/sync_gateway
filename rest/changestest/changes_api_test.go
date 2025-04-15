@@ -3241,7 +3241,7 @@ func TestChangesLargeSequences(t *testing.T) {
 			 channel(doc.channel)
 		 }`,
 		InitSyncSeq:    initialSeq,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.BoolPtr(true)}},
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.Ptr(true)}},
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -3697,7 +3697,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 			}`,
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
-					ChangesRequestPlus: base.BoolPtr(true),
+					ChangesRequestPlus: base.Ptr(true),
 				},
 			},
 		})

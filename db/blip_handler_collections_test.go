@@ -24,14 +24,14 @@ func TestParseScopeCollection(t *testing.T) {
 	}{
 		{
 			collectionString: "foo.bar",
-			scope:            base.StringPtr("foo"),
-			collection:       base.StringPtr("bar"),
+			scope:            base.Ptr("foo"),
+			collection:       base.Ptr("bar"),
 			err:              false,
 		},
 		{
 			collectionString: "foo",
-			scope:            base.StringPtr(base.DefaultScope),
-			collection:       base.StringPtr("foo"),
+			scope:            base.Ptr(base.DefaultScope),
+			collection:       base.Ptr("foo"),
 			err:              false,
 		},
 		{

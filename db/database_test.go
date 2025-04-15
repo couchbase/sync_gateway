@@ -1320,7 +1320,7 @@ func TestConflictRevLimitDefault(t *testing.T) {
 func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 	// Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
-		AllowConflicts: base.BoolPtr(true),
+		AllowConflicts: base.Ptr(true),
 	}
 
 	db, ctx := SetupTestDBWithOptions(t, dbOptions)
@@ -1330,7 +1330,7 @@ func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 
 func TestConflictRevLimitAllowConflictsFalse(t *testing.T) {
 	dbOptions := DatabaseContextOptions{
-		AllowConflicts: base.BoolPtr(false),
+		AllowConflicts: base.Ptr(false),
 	}
 
 	db, ctx := SetupTestDBWithOptions(t, dbOptions)
@@ -1345,7 +1345,7 @@ func TestNoConflictsMode(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -1449,7 +1449,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
 	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false)
@@ -1526,7 +1526,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 	delete(body, "n")
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
@@ -2082,7 +2082,7 @@ func mockOIDCProvider() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.google.com",
-			ClientID: base.StringPtr(clientID),
+			ClientID: base.Ptr(clientID),
 		},
 		Name:          "Google",
 		CallbackURL:   &callbackURL,
@@ -2094,7 +2094,7 @@ func mockOIDCProviderWithCallbackURLQuery() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.google.com",
-			ClientID: base.StringPtr(clientID),
+			ClientID: base.Ptr(clientID),
 		},
 		Name:          "Google",
 		CallbackURL:   &callbackURLWithQuery,
@@ -2108,7 +2108,7 @@ func mockOIDCProviderWithNoValidationKey() auth.OIDCProvider {
 		CallbackURL: &callbackURL,
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.yahoo.com",
-			ClientID: base.StringPtr(clientID),
+			ClientID: base.Ptr(clientID),
 		},
 	}
 }

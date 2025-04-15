@@ -24,7 +24,7 @@ func TestUserXattrSetUnsetDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UserXattrKey = base.StringPtr("myXattr")
+	dbConfig.UserXattrKey = base.Ptr("myXattr")
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -33,7 +33,7 @@ func TestUserXattrSetUnsetDBConfig(t *testing.T) {
 	assert.Contains(t, string(resp.BodyBytes()), `"user_xattr_key":"myXattr"`)
 
 	// upsert an empty string to ensure we can remove the config option
-	resp = rt.UpsertDbConfig(rt.GetDatabase().Name, rest.DbConfig{UserXattrKey: base.StringPtr("")})
+	resp = rt.UpsertDbConfig(rt.GetDatabase().Name, rest.DbConfig{UserXattrKey: base.Ptr("")})
 	rest.AssertStatus(t, resp, http.StatusCreated)
 
 	// empty string for the config option will be treated like nil in use

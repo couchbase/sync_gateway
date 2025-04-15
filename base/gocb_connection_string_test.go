@@ -113,7 +113,7 @@ func TestGetIntFromConnStr(t *testing.T) {
 		{
 			name:          "kv_pool_size=8",
 			server:        "couchbase://localhost?kv_pool_size=8",
-			kvPoolSize:    IntPtr(8),
+			kvPoolSize:    Ptr(8),
 			expectedError: false,
 		},
 		{

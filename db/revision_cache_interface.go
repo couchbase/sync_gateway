@@ -19,10 +19,10 @@ import (
 
 const (
 	// DefaultRevisionCacheSize is the number of recently-accessed doc revisions to cache in RAM
-	DefaultRevisionCacheSize = 5000
+	DefaultRevisionCacheSize uint32 = 5000
 
 	// DefaultRevisionCacheShardCount is the default number of shards to use for the revision cache
-	DefaultRevisionCacheShardCount = 16
+	DefaultRevisionCacheShardCount uint16 = 16
 )
 
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.

@@ -80,7 +80,7 @@ func TestJSFunctionAsGuest(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
 				UserFunctions: &kUserFunctionAuthTestConfig,
-				Guest:         &auth.PrincipalConfig{Disabled: base.BoolPtr(false)},
+				Guest:         &auth.PrincipalConfig{Disabled: base.Ptr(false)},
 			},
 		},
 	})
@@ -215,7 +215,7 @@ func TestN1QLFunctionAsGuest(t *testing.T) {
 		EnableUserQueries: true,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				Guest:         &auth.PrincipalConfig{Disabled: base.BoolPtr(false)},
+				Guest:         &auth.PrincipalConfig{Disabled: base.Ptr(false)},
 				UserFunctions: &kUserN1QLFunctionsAuthTestConfig,
 			},
 		},

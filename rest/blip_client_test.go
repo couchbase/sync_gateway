@@ -375,7 +375,7 @@ func (btr *BlipTesterReplicator) handleProveAttachment(ctx context.Context, btc 
 
 // handleChanges handles changes messages on the blip tester client
 func (btr *BlipTesterReplicator) handleChanges(btc *BlipTesterClient) func(*blip.Message) {
-	revsLimit := base.IntDefault(btc.revsLimit, defaultBlipTesterClientRevsLimit)
+	revsLimit := base.ValDefault(btc.revsLimit, defaultBlipTesterClientRevsLimit)
 	return func(msg *blip.Message) {
 		btcc := btc.getCollectionClientFromMessage(msg)
 

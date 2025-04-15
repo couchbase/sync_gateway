@@ -118,7 +118,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb2.Close(ctx)
 
 	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify())},
+		Bootstrap: BootstrapConfig{UseTLSServer: base.Ptr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify())},
 		API:       APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
@@ -128,8 +128,8 @@ func TestAllDatabaseNames(t *testing.T) {
 	dbConfig := DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb1),
 		Name:               "imdb1",
-		AllowEmptyPassword: base.BoolPtr(true),
-		NumIndexReplicas:   base.UintPtr(0),
+		AllowEmptyPassword: base.Ptr(true),
+		NumIndexReplicas:   base.Ptr(uint(0)),
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
@@ -141,8 +141,8 @@ func TestAllDatabaseNames(t *testing.T) {
 	dbConfig = DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb2),
 		Name:               "imdb2",
-		AllowEmptyPassword: base.BoolPtr(true),
-		NumIndexReplicas:   base.UintPtr(0),
+		AllowEmptyPassword: base.Ptr(true),
+		NumIndexReplicas:   base.Ptr(uint(0)),
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
@@ -202,7 +202,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	dbConfig = DbConfig{
 		BucketConfig:       bucketConfig,
 		Name:               databaseName,
-		AllowEmptyPassword: base.BoolPtr(true),
+		AllowEmptyPassword: base.Ptr(true),
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
@@ -376,7 +376,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 	}{
 		{
 			name:                "CA Provided, explicitly not skipping TLS validation",
-			serverTLSSkipVerify: base.BoolPtr(false),
+			serverTLSSkipVerify: base.Ptr(false),
 			caCert:              "t.ca",
 			expectError:         false,
 		},
@@ -387,13 +387,13 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 		},
 		{
 			name:                "CA Provided and skipping TLS validation",
-			serverTLSSkipVerify: base.BoolPtr(true),
+			serverTLSSkipVerify: base.Ptr(true),
 			caCert:              "t.ca",
 			expectError:         true,
 		},
 		{
 			name:                "Skipping TLS validation, no CA",
-			serverTLSSkipVerify: base.BoolPtr(true),
+			serverTLSSkipVerify: base.Ptr(true),
 			caCert:              "",
 			expectError:         false,
 		},
@@ -403,7 +403,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 		},
 		{
 			name:                "No CA, no TLS validation skip explicitly",
-			serverTLSSkipVerify: base.BoolPtr(false),
+			serverTLSSkipVerify: base.Ptr(false),
 			expectError:         false,
 		},
 	}
@@ -439,7 +439,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	}{
 		{
 			name:                "CA Provided, explicitly not skipping TLS validation",
-			serverTLSSkipVerify: base.BoolPtr(false),
+			serverTLSSkipVerify: base.Ptr(false),
 			caCert:              "t.ca",
 		},
 		{
@@ -448,7 +448,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 		},
 		{
 			name:                "Skipping TLS validation, no CA",
-			serverTLSSkipVerify: base.BoolPtr(true),
+			serverTLSSkipVerify: base.Ptr(true),
 			caCert:              "",
 		},
 		{
@@ -456,7 +456,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 		},
 		{
 			name:                "No CA, no TLS validation skip explicitly",
-			serverTLSSkipVerify: base.BoolPtr(false),
+			serverTLSSkipVerify: base.Ptr(false),
 		},
 	}
 	for _, test := range testCases {
@@ -469,7 +469,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, test.caCert, spec.CACertPath)
 			if test.serverTLSSkipVerify == nil {
-				test.serverTLSSkipVerify = base.BoolPtr(false)
+				test.serverTLSSkipVerify = base.Ptr(false)
 			}
 			assert.Equal(t, spec.TLSSkipVerify, *test.serverTLSSkipVerify)
 		})
@@ -571,8 +571,8 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify()),
+			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
+			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
 		},
 		API: APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface},
 	}
@@ -581,14 +581,14 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 
 	dbConfig := DbConfig{
 		BucketConfig: BucketConfig{
-			Server:   base.StringPtr(base.UnitTestUrl()),
-			Bucket:   base.StringPtr(tb.GetName()),
+			Server:   base.Ptr(base.UnitTestUrl()),
+			Bucket:   base.Ptr(tb.GetName()),
 			Username: base.TestClusterUsername(),
 			Password: base.TestClusterPassword(),
 		},
 		Name:             tb.GetName(),
-		NumIndexReplicas: base.UintPtr(0),
-		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+		NumIndexReplicas: base.Ptr(uint(0)),
+		EnableXattrs:     base.Ptr(base.TestUseXattrs()),
 		Scopes: ScopesConfig{
 			"foo": ScopeConfig{
 				Collections: CollectionsConfig{
@@ -627,7 +627,7 @@ func TestLogFlush(t *testing.T) {
 			5,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Trace = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				}
 				return config
 			},
@@ -637,10 +637,10 @@ func TestLogFlush(t *testing.T) {
 			6,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Debug = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				}
 				config.Logging.Trace = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				}
 				return config
 			},
@@ -650,7 +650,7 @@ func TestLogFlush(t *testing.T) {
 			3,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Error = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(false),
+					Enabled: base.Ptr(false),
 				}
 				return config
 			},
@@ -759,8 +759,8 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 				ctx := base.TestCtx(t)
 				startupConfig := &StartupConfig{
 					Bootstrap: BootstrapConfig{
-						UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
-						ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify()),
+						UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
+						ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
 					},
 				}
 
@@ -770,13 +770,13 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 				dbConfig := DbConfig{
 					Name: "db",
 					BucketConfig: BucketConfig{
-						Server:   base.StringPtr(base.UnitTestUrl()),
-						Bucket:   base.StringPtr(bucket.GetName()),
+						Server:   base.Ptr(base.UnitTestUrl()),
+						Bucket:   base.Ptr(bucket.GetName()),
 						Username: base.TestClusterUsername(),
 						Password: base.TestClusterPassword(),
 					},
-					EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
-					UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+					EnableXattrs: base.Ptr(base.TestUseXattrs()),
+					UseViews:     base.Ptr(base.TestsDisableGSI()),
 				}
 				if scopes {
 					if !base.TestsUseNamedCollections() {
@@ -814,9 +814,9 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				StartOffline: base.BoolPtr(true),
+				StartOffline: base.Ptr(true),
 				AutoImport:   true,
-				EnableXattrs: base.BoolPtr(true),
+				EnableXattrs: base.Ptr(true),
 			},
 		},
 	})
@@ -865,17 +865,17 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 		},
 		{
 			name:                        "explicit 1",
-			compactIntervalDays:         base.Float32Ptr(1),
+			compactIntervalDays:         base.Ptr(float32(1)),
 			expectedCompactIntervalSecs: uint32((24 * time.Hour).Seconds()),
 		},
 		{
 			name:                        "1.5",
-			compactIntervalDays:         base.Float32Ptr(1.5),
+			compactIntervalDays:         base.Ptr(float32(1.5)),
 			expectedCompactIntervalSecs: uint32((1.5 * 24 * time.Hour).Seconds()),
 		},
 		{
 			name:                        "2",
-			compactIntervalDays:         base.Float32Ptr(2),
+			compactIntervalDays:         base.Ptr(float32(2)),
 			expectedCompactIntervalSecs: uint32((2 * 24 * time.Hour).Seconds()),
 		},
 	}
@@ -922,7 +922,7 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 		{
 			name: "HeapProfileCollectionThreshold",
 			startupConfig: &StartupConfig{
-				HeapProfileCollectionThreshold: base.Uint64Ptr(100),
+				HeapProfileCollectionThreshold: base.Ptr(uint64(100)),
 			},
 			heapProfileCollectionThreshold: 100,
 			heapProfileCollectionEnabled:   true,

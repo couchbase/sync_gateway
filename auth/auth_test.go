@@ -799,11 +799,11 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	var callbackURLFunc OIDCCallbackURLFunc
-	callbackURL := base.StringPtr("http://comcast:4984/_callback")
+	callbackURL := base.Ptr("http://comcast:4984/_callback")
 	providerGoogle := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Google",
 		JWTConfigCommon: JWTConfigCommon{
-			ClientID: base.StringPtr("aud1"),
+			ClientID: base.Ptr("aud1"),
 			Issuer:   issuerGoogleAccounts,
 		},
 		CallbackURL: callbackURL,
@@ -859,7 +859,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			JWTConfigCommon: JWTConfigCommon{
 				Register: true,
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud1"),
+				ClientID: base.Ptr("aud1"),
 			},
 			AllowUnsignedProviderTokens: true,
 		})
@@ -891,7 +891,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			JWTConfigCommon: JWTConfigCommon{
 				Register: true,
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud1"),
+				ClientID: base.Ptr("aud1"),
 			},
 		})
 		err = provider.InitUserPrefix(ctx)
@@ -920,7 +920,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			JWTConfigCommon: JWTConfigCommon{
 				Register: true,
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud4"),
+				ClientID: base.Ptr("aud4"),
 			},
 		})
 		err = provider.InitUserPrefix(ctx)
@@ -949,7 +949,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			JWTConfigCommon: JWTConfigCommon{
 				Register: true,
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud4"),
+				ClientID: base.Ptr("aud4"),
 			},
 		})
 		err = provider.InitUserPrefix(ctx)
@@ -977,7 +977,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			JWTConfigCommon: JWTConfigCommon{
 				Register: true,
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud1"),
+				ClientID: base.Ptr("aud1"),
 			},
 		})
 		err = provider.InitUserPrefix(ctx)
@@ -1007,7 +1007,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			JWTConfigCommon: JWTConfigCommon{
 				Register: true,
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud1"),
+				ClientID: base.Ptr("aud1"),
 			},
 		})
 		err = provider.InitUserPrefix(ctx)
@@ -1038,7 +1038,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud1"),
+				ClientID: base.Ptr("aud1"),
 				Register: true,
 			},
 		})
@@ -1068,7 +1068,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud1"),
+				ClientID: base.Ptr("aud1"),
 				Register: true,
 			},
 		})
@@ -1102,7 +1102,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer:     issuerGoogleAccounts,
-				ClientID:   base.StringPtr("aud1"),
+				ClientID:   base.Ptr("aud1"),
 				UserPrefix: strings.ToLower(providerGoogle.Name),
 				Register:   true,
 			},
@@ -1143,7 +1143,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer:     issuerGoogleAccounts,
-				ClientID:   base.StringPtr("aud1"),
+				ClientID:   base.Ptr("aud1"),
 				UserPrefix: strings.ToLower(providerGoogle.Name),
 				Register:   true,
 			},
@@ -1178,7 +1178,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer:     issuerGoogleAccounts,
-				ClientID:   base.StringPtr("aud1"),
+				ClientID:   base.Ptr("aud1"),
 				UserPrefix: strings.ToLower(providerGoogle.Name),
 				Register:   true,
 			},
@@ -1290,12 +1290,12 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 
 	issuerFacebookAccounts := "https://accounts.facebook.com"
 	issuerAmazonAccounts := "https://accounts.amazon.com"
-	callbackURL := base.StringPtr("http://comcast:4984/_callback")
+	callbackURL := base.Ptr("http://comcast:4984/_callback")
 	var callbackURLFunc OIDCCallbackURLFunc
 	providerGoogle := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Google",
 		JWTConfigCommon: JWTConfigCommon{
-			ClientID: base.StringPtr("aud1"),
+			ClientID: base.Ptr("aud1"),
 			Issuer:   issuerGoogleAccounts,
 		},
 		CallbackURL: callbackURL,
@@ -1303,7 +1303,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	providerFacebook := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Facebook",
 		JWTConfigCommon: JWTConfigCommon{
-			ClientID: base.StringPtr("aud1"),
+			ClientID: base.Ptr("aud1"),
 			Issuer:   issuerFacebookAccounts,
 		},
 		CallbackURL: callbackURL,
@@ -1415,7 +1415,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer:   issuerGoogleAccounts,
-				ClientID: base.StringPtr("aud1"),
+				ClientID: base.Ptr("aud1"),
 				Register: true,
 			},
 		})

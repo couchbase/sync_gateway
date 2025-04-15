@@ -475,7 +475,7 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 		info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
 		email := user.Email()
 		info.Email = &email
-		info.Disabled = base.BoolPtr(user.Disabled())
+		info.Disabled = base.Ptr(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		info.RoleNames = user.RoleNames().AllKeys()
 	} else {
@@ -732,7 +732,7 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 }
 
 // GetIndexPartitionCount returns the number of partitions for a given index. This function queries index nodes directly and would not be suitable for production use, since this port is not generally accessible.
-func GetIndexPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbucket.DataStoreName, indexName string) uint32 {
+func GetIndexPartitionCount(t testing.TB, bucket *base.GocbV2Bucket, dsName sgbucket.DataStoreName, indexName string) uint32 {
 	agent, err := bucket.GetGoCBAgent()
 	require.NoError(t, err)
 	gsiEps := agent.GSIEps()

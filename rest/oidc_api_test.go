@@ -412,7 +412,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			providers := auth.OIDCProviderMap{"foo": mockProvider("foo"), "bar": mockProvider("bar")}
-			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPtr("foo")}
+			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.Ptr("foo")}
 			rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &openIDConnectOptions}}}
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
@@ -461,9 +461,9 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 func mockProvider(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 		JWTConfigCommon: auth.JWTConfigCommon{
-			ClientID: base.StringPtr("baz"),
+			ClientID: base.Ptr("baz"),
 		},
 	}
 }
@@ -2618,7 +2618,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
-	oidcOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPtr(providerName)}
+	oidcOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.Ptr(providerName)}
 	dbConfig := rt.NewDbConfig()
 	dbConfig.OIDCConfig = &oidcOptions
 
@@ -2733,7 +2733,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 			"test": &auth.OIDCProvider{
 				JWTConfigCommon: auth.JWTConfigCommon{
 					Issuer:   fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name),
-					ClientID: base.StringPtr("sync_gateway"),
+					ClientID: base.Ptr("sync_gateway"),
 					Register: true,
 					// this UsernameClaim is critical - we'll generate two users from two different OIDC issuers but with the same username
 					UsernameClaim: "username",
@@ -2743,7 +2743,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 			"test2": &auth.OIDCProvider{
 				JWTConfigCommon: auth.JWTConfigCommon{
 					Issuer:        fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name),
-					ClientID:      base.StringPtr("sync_gateway"),
+					ClientID:      base.Ptr("sync_gateway"),
 					Register:      true,
 					UsernameClaim: "username",
 				},

@@ -50,8 +50,8 @@ type userGrant struct {
 
 func (g *userGrant) getUserPayload(rt *RestTester) string {
 	config := auth.PrincipalConfig{
-		Name:     base.StringPtr(g.user),
-		Password: base.StringPtr(RestTesterDefaultUserPassword),
+		Name:     base.Ptr(g.user),
+		Password: base.Ptr(RestTesterDefaultUserPassword),
 	}
 	if len(g.roles) > 0 {
 		config.ExplicitRoleNames = base.SetOf(g.roles...)
@@ -99,7 +99,7 @@ type roleGrant struct {
 
 func (g roleGrant) getPayload(rt *RestTester) string {
 	config := auth.PrincipalConfig{
-		Password: base.StringPtr(RestTesterDefaultUserPassword),
+		Password: base.Ptr(RestTesterDefaultUserPassword),
 	}
 	for keyspace, chans := range g.adminChannels {
 		_, scope, collection, err := ParseKeyspace(rt.mustTemplateResource(keyspace))

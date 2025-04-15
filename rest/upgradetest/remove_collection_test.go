@@ -43,7 +43,7 @@ func TestRemoveCollection(t *testing.T) {
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket:             bucket.NoCloseClone(),
 		PersistentConfig:             true,
-		GroupID:                      base.StringPtr(t.Name()),
+		GroupID:                      base.Ptr(t.Name()),
 		AdminInterfaceAuthentication: true,
 	}
 	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
@@ -66,7 +66,7 @@ func TestRemoveCollection(t *testing.T) {
 	rtConfig = &rest.RestTesterConfig{
 		CustomTestBucket:             bucket.NoCloseClone(),
 		PersistentConfig:             true,
-		GroupID:                      base.StringPtr(t.Name()),
+		GroupID:                      base.Ptr(t.Name()),
 		AdminInterfaceAuthentication: true,
 	}
 

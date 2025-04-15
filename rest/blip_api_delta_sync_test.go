@@ -33,7 +33,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -108,7 +108,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -346,7 +346,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		GuestEnabled: true,

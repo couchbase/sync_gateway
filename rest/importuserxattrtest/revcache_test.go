@@ -41,7 +41,7 @@ func TestUserXattrRevCache(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
-			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
 	})
@@ -53,7 +53,7 @@ func TestUserXattrRevCache(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
-			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
 	})
@@ -129,7 +129,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
 		}},
@@ -140,7 +140,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
 		}},

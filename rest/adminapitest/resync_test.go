@@ -76,7 +76,7 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeyChanges, base.KeyAccess)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		AutoImport: base.BoolPtr(false),
+		AutoImport: base.Ptr(false),
 	})
 
 	defer rt.Close()

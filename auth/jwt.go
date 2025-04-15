@@ -200,7 +200,7 @@ func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ 
 		ClientID:             *l.ClientID,
 		SkipClientIDCheck:    *l.ClientID == "",
 		SupportedSigningAlgs: l.Algorithms,
-		SkipExpiryCheck:      base.BoolDefault(l.SkipExpiryCheck, false),
+		SkipExpiryCheck:      base.ValDefault(l.SkipExpiryCheck, false),
 	})
 
 	idToken, err := verifier.Verify(ctx, token)

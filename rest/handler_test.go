@@ -101,14 +101,14 @@ func Test_parseKeyspace(t *testing.T) {
 			ks:             "d.c",
 			wantDb:         "d",
 			wantScope:      nil,
-			wantCollection: base.StringPtr("c"),
+			wantCollection: base.Ptr("c"),
 			wantErr:        assert.NoError,
 		},
 		{
 			ks:             "d.s.c",
 			wantDb:         "d",
-			wantScope:      base.StringPtr("s"),
-			wantCollection: base.StringPtr("c"),
+			wantScope:      base.Ptr("s"),
+			wantCollection: base.Ptr("c"),
 			wantErr:        assert.NoError,
 		},
 		{

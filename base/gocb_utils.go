@@ -30,7 +30,7 @@ func GoCBv2SecurityConfig(ctx context.Context, tlsSkipVerify *bool, caCertPath s
 		if err != nil {
 			return sc, err
 		}
-		tlsSkipVerify = BoolPtr(false)
+		tlsSkipVerify = Ptr(false)
 	}
 	sc.TLSRootCAs = certPool
 	sc.TLSSkipVerify = *tlsSkipVerify

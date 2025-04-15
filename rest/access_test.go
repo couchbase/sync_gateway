@@ -31,7 +31,7 @@ func TestPublicChanGuestAccess(t *testing.T) {
 			SyncFn: channels.DocChannelsSyncFunction,
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Guest: &auth.PrincipalConfig{
-					Disabled: base.BoolPtr(false),
+					Disabled: base.Ptr(false),
 				},
 			}},
 		})
@@ -282,13 +282,13 @@ func TestNumAccessErrors(t *testing.T) {
 func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Uint32Ptr(0),
+					MaxItemCount: base.Ptr(uint32(0)),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},
@@ -352,14 +352,14 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 							ForceAPIForbiddenErrors: test.forceForbiddenErrors,
 						},
 						Guest: &auth.PrincipalConfig{
-							Disabled: base.BoolPtr(false),
+							Disabled: base.Ptr(false),
 						},
 						Users: map[string]*auth.PrincipalConfig{
 							"NoPerms": {
-								Password: base.StringPtr("password"),
+								Password: base.Ptr("password"),
 							},
 							"Perms": {
-								Password: base.StringPtr("password"),
+								Password: base.Ptr("password"),
 							},
 						},
 					}},

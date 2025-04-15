@@ -31,7 +31,7 @@ func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *S
 
 	sc := DefaultStartupConfig(defaultLogFilePath)
 
-	lc.DisablePersistentConfig = base.BoolPtr(true)
+	lc.DisablePersistentConfig = base.Ptr(true)
 
 	migratedStartupConfig, databases, err := lc.ToStartupConfig(ctx)
 	if err != nil {
@@ -119,7 +119,7 @@ func fillConfigWithLegacyFlags(ctx context.Context, flags map[string]legacyConfi
 				if consoleLogLevelSet {
 					base.WarnfCtx(ctx, `Cannot use deprecated flag "-verbose" with flag "-logging.console.log_level". To set Sync Gateway to be verbose, please use flag "-logging.console.log_level info". Ignoring flag...`)
 				} else {
-					*cfgFlag.config.(**base.LogLevel) = base.LogLevelPtr(base.LevelInfo)
+					*cfgFlag.config.(**base.LogLevel) = base.Ptr(base.LevelInfo)
 					base.WarnfCtx(ctx, flagDeprecated, "-"+f.Name, "-logging.console.log_level info")
 				}
 			}

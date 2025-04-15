@@ -34,7 +34,7 @@ const (
 	DefaultPool = "default"
 )
 
-const DefaultViewTimeoutSecs = 75 // 75s
+const DefaultViewTimeoutSecs uint32 = 75 // 75s
 
 // WrappingBucket interface used to identify buckets that wrap an underlying
 // bucket (leaky bucket, logging bucket)
@@ -148,7 +148,7 @@ func (spec *BucketSpec) GetGoCBConnString() (string, error) {
 
 // //GetGoCBConnStringforDCP builds a gocb connection string from BucketSpec.Server for DCP connections.
 func (spec *BucketSpec) GetGoCBConnStringForDCP() (string, error) {
-	return spec.getGoCBConnString(IntPtr(GoCBPoolSizeDCP))
+	return spec.getGoCBConnString(Ptr(GoCBPoolSizeDCP))
 }
 
 // getGoCBConnString builds a gocb connection string based on BucketSpec.server values. This is used for bucket connections. KvPoolSize can be forced despite the values of the connection values.
@@ -178,7 +178,7 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 	// If the user doesn't specify any timeout, default to 75s
 	if b.ViewQueryTimeoutSecs == nil {
-		return DefaultViewTimeoutSecs * 1000
+		return uint64(DefaultViewTimeoutSecs) * 1000
 	}
 
 	// If the user specifies 0, then translate that to "No timeout"
@@ -186,7 +186,7 @@ func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 		return 1000 * 60 * 60 * 24 * 365 * 10 // 10 years in milliseconds
 	}
 
-	return uint64(*b.ViewQueryTimeoutSecs * 1000)
+	return uint64(*b.ViewQueryTimeoutSecs) * 1000
 }
 
 // TLSConfig creates a TLS configuration and populates the certificates

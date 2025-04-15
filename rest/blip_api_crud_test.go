@@ -798,16 +798,16 @@ func TestPublicPortAuthentication(t *testing.T) {
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
 	assert.Len(t, changesChannelUser1, 1)
 	change := changesChannelUser1[0]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.WaitForNumChanges(2)
 	assert.Len(t, changesChannelUser2, 2)
 	change = changesChannelUser2[0]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
 
 	change = changesChannelUser2[1]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: base.Ptr(false)})
 
 }
 
@@ -1211,7 +1211,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 				time.Sleep(time.Millisecond * 5) // slow down rosmar - it's too quick to be throttled
 			},
 		},
-		maxConcurrentRevs: base.IntPtr(maxConcurrentRevs),
+		maxConcurrentRevs: base.Ptr(maxConcurrentRevs),
 	})
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
@@ -2484,19 +2484,19 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 		{
 			name:                        "Valid _attachments",
 			inputBody:                   map[string]interface{}{"_attachments": map[string]interface{}{"attch": map[string]interface{}{"data": "c2d3IGZ0dw=="}}},
-			skipDocContentsVerification: base.BoolPtr(true),
+			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:                        "_revisions",
 			inputBody:                   map[string]interface{}{"_revisions": false},
-			skipDocContentsVerification: base.BoolPtr(true),
+			skipDocContentsVerification: base.Ptr(true),
 			rejectMsg:                   "top-level property '_revisions' is a reserved internal property",
 			errorCode:                   "404",
 		},
 		{
 			name:                        "Valid _exp",
 			inputBody:                   map[string]interface{}{"_exp": "123"},
-			skipDocContentsVerification: base.BoolPtr(true),
+			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:      "Invalid _exp",
@@ -2906,7 +2906,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 			}`,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				ChangesRequestPlus: base.BoolPtr(true),
+				ChangesRequestPlus: base.Ptr(true),
 			},
 		},
 	}
@@ -3053,7 +3053,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{
 			SyncFn:       syncFn,
 			ImportFilter: importFilter,
-			AutoImport:   base.BoolPtr(false),
+			AutoImport:   base.Ptr(false),
 		})
 		defer rt.Close()
 

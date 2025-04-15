@@ -1583,7 +1583,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportBackupOldRev: base.BoolPtr(true),
+			ImportBackupOldRev: base.Ptr(true),
 			AutoImport:         false,
 		}},
 	}
@@ -1643,7 +1643,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportBackupOldRev: base.BoolPtr(true),
+			ImportBackupOldRev: base.Ptr(true),
 			AutoImport:         false,
 		}},
 	}
@@ -1923,7 +1923,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
-			ImportFilter: base.StringPtr(`function (doc) {
+			ImportFilter: base.Ptr(`function (doc) {
 				console.log("Doc in Import Filter:" + JSON.stringify(doc));
 				if (doc.channels || doc._deleted) {
 					return true
@@ -1991,13 +1991,13 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			name:               "Invalid _sync",
 			importBody:         map[string]interface{}{"_sync": true},
 			expectReject:       true,
-			expectedStatusCode: base.IntPtr(500), // Internal server error due to unmarshal error
+			expectedStatusCode: base.Ptr(500), // Internal server error due to unmarshal error
 		},
 		{
 			name:               "Valid _id",
 			importBody:         map[string]interface{}{"_id": "documentid"},
 			expectReject:       true,
-			expectedStatusCode: base.IntPtr(http.StatusNotFound),
+			expectedStatusCode: base.Ptr(http.StatusNotFound),
 		},
 		{
 			name:         "Valid _rev",
@@ -2038,13 +2038,13 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			name:               "_purged true",
 			importBody:         map[string]interface{}{"_purged": true},
 			expectReject:       true,
-			expectedStatusCode: base.IntPtr(404), // Import gets cancelled and returns not found
+			expectedStatusCode: base.Ptr(404), // Import gets cancelled and returns not found
 		},
 		{
 			name:               "_removed",
 			importBody:         map[string]interface{}{"_removed": false},
 			expectReject:       true,
-			expectedStatusCode: base.IntPtr(404),
+			expectedStatusCode: base.Ptr(404),
 		},
 		{
 			name:         "_sync_cookies",
@@ -2212,7 +2212,7 @@ func TestImportOnWriteMigration(t *testing.T) {
 func TestImportFilterTimeout(t *testing.T) {
 	importFilter := `function(doc) { while(true) { } }`
 
-	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}
+	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Ptr(uint32(1))}}}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
@@ -2341,7 +2341,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		PersistentConfig: false,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Uint16Ptr(2),
+				ImportPartitions: base.Ptr(uint16(2)),
 			},
 		},
 	})
@@ -2415,7 +2415,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		PersistentConfig: false,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Uint16Ptr(2),
+				ImportPartitions: base.Ptr(uint16(2)),
 			},
 		},
 	})

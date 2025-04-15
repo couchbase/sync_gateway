@@ -172,7 +172,7 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 		collectionCheckpoints[i] = *checkpoint
 
 		arc.namedCollections[localCollectionsKeyspaces[i]] = &activeReplicatorCollection{
-			collectionIdx:       base.IntPtr(i),
+			collectionIdx:       base.Ptr(i),
 			metadataStore:       arc.config.ActiveDB.MetadataStore,
 			collectionDataStore: dbCollection.dataStore,
 		}
