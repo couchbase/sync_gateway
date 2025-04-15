@@ -258,13 +258,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.Password = password
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
-	sc.API.HideProductVersion = base.BoolPtr(rt.RestTesterConfig.HideProductInfo)
+	sc.API.HideProductVersion = base.Ptr(rt.RestTesterConfig.HideProductInfo)
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
 	sc.API.AdminInterfaceAuthentication = &rt.AdminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
-	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+	sc.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
@@ -294,13 +294,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.ConfigGroupID = uniqueUUID.String()
 	}
 
-	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
+	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
 
 	if rt.MutateStartupConfig != nil {
 		rt.MutateStartupConfig(&sc)
 	}
 
-	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
+	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
 
 	// Allow EE-only config even in CE for testing using group IDs.
 	if err := sc.Validate(base.TestCtx(rt.TB()), true); err != nil {
@@ -342,7 +342,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
 		if rt.DatabaseConfig.UseViews == nil {
-			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
+			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
 		}
 		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (!*rt.DatabaseConfig.UseViews || base.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
@@ -380,7 +380,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.AllowConflicts = &boolVal
 		}
 
-		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.SgReplicateEnabled)
+		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.SgReplicateEnabled)
 
 		// Check for override of AutoImport in the rt config
 		if rt.AutoImport != nil {
@@ -389,7 +389,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
-			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
+			rt.DatabaseConfig.ImportPartitions = base.Ptr(uint16(1))
 		}
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
 		var err error
@@ -2713,16 +2713,16 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	// make sure bucket has been initialized
 	config := DbConfig{
 		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(rt.Bucket().GetName()),
+			Bucket: base.Ptr(rt.Bucket().GetName()),
 		},
 		Index: &IndexConfig{
 			NumReplicas: base.Ptr(uint(0)),
 		},
-		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+		EnableXattrs: base.Ptr(base.TestUseXattrs()),
 	}
 	// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
 	if !base.UnitTestUrlIsWalrus() {
-		config.UseViews = base.BoolPtr(base.TestsDisableGSI())
+		config.UseViews = base.Ptr(base.TestsDisableGSI())
 	}
 	// Setup scopes.
 	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
@@ -2735,7 +2735,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	if rt.GuestEnabled {
 		config.Guest = &auth.PrincipalConfig{
 			Name:     stringPtrOrNil(base.GuestUsername),
-			Disabled: base.BoolPtr(false),
+			Disabled: base.Ptr(false),
 		}
 		setChannelsAllCollections(config, config.Guest, "*")
 	}
@@ -2760,7 +2760,7 @@ func stringPtrOrNil(s string) *string {
 	if s == "" {
 		return nil
 	}
-	return base.StringPtr(s)
+	return base.Ptr(s)
 }
 
 func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {

@@ -285,7 +285,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 			AutoImport: false,
 			CacheConfig: &CacheConfig{
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxWaitPending: base.Uint32Ptr(10),
+					MaxWaitPending: base.Ptr(10),
 				},
 			},
 		}},
@@ -356,7 +356,7 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 			AutoImport: false,
 			CacheConfig: &CacheConfig{
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxWaitPending: base.Uint32Ptr(1500),
+					MaxWaitPending: base.Ptr(1500),
 				},
 			},
 		}},

@@ -2296,7 +2296,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range db.Options.OIDCOptions.Providers {
-			if provider.Issuer == "" || base.StringDefault(provider.ClientID, "") == "" {
+			if provider.Issuer == "" || base.ValDefault(provider.ClientID, "") == "" {
 				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
 				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
 				continue

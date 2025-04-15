@@ -837,88 +837,18 @@ func sanitizeRequestURLQueryParams(urlStr string, values url.Values) string {
 	return urlStr
 }
 
-// StdlibDurationPtr returns a pointer to the given time.Duration literal.
-func StdlibDurationPtr(value time.Duration) *time.Duration {
-	return &value
-}
-
-// DurationPtr returns a pointer to the given ConfigDuration literal.
-func DurationPtr(value ConfigDuration) *ConfigDuration {
-	return &value
-}
-
-// LogLevelPtr returns a pointer to the given LogLevel literal.
-func LogLevelPtr(value LogLevel) *LogLevel {
-	return &value
-}
-
 // Ptr returns a pointer to the given literal.
 // This is useful for wrapping around function calls that return a value, where you can't just use `&`.
 func Ptr[T any](v T) *T {
 	return &v
 }
 
-// StringPtr returns a pointer to the given string literal.
-func StringPtr(value string) *string {
-	return &value
-}
-
-// StringDefault returns ifNil if s is nil, or else returns dereferenced value of s
-func StringDefault(s *string, ifNil string) string {
-	if s != nil {
-		return *s
+// ValDefault returns ifNil if val is nil, otherwise returns dereferenced value of val
+func ValDefault[T any](val *T, ifNil T) T {
+	if val != nil {
+		return *val
 	}
 	return ifNil
-}
-
-// Uint16Ptr returns a pointer to the given uint16 literal.
-func Uint16Ptr(u uint16) *uint16 {
-	return &u
-}
-
-// Uint32Ptr returns a pointer to the given uint32 literal.
-func Uint32Ptr(u uint32) *uint32 {
-	return &u
-}
-
-// Uint64Ptr returns a pointer to the given uint64 literal.
-func Uint64Ptr(u uint64) *uint64 {
-	return &u
-}
-
-// UintPtr returns a pointer to the given uint literal.
-func UintPtr(u uint) *uint {
-	return &u
-}
-
-// IntPtr returns a pointer to the given int literal.
-func IntPtr(i int) *int {
-	return &i
-}
-
-// IntDefault returns ifNil if i is nil, or else returns dereferenced value of i
-func IntDefault(i *int, ifNil int) int {
-	if i != nil {
-		return *i
-	}
-	return ifNil
-}
-
-// BoolPtr returns a pointer to the given bool literal.
-func BoolPtr(b bool) *bool {
-	return &b
-}
-
-// BoolDefault returns ifNil if b is nil, or else returns dereferenced value of b
-func BoolDefault(b *bool, ifNil bool) bool {
-	if b != nil {
-		return *b
-	}
-	return ifNil
-}
-
-func Float32Ptr(f float32) *float32 {
-	return &f
 }
 
 // Add auth credentials to the given urls, since CBGT cannot take auth handlers in certain API calls yet

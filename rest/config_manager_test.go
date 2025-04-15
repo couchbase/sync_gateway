@@ -236,7 +236,7 @@ func TestVersionDowngrade(t *testing.T) {
 			require.NoError(t, bootstrapContext.setGatewayRegistry(rt.Context(), rt.Bucket().GetName(), registry))
 
 			config := rt.NewDbConfig()
-			config.StartOffline = base.BoolPtr(true) // start offline to make test faster
+			config.StartOffline = base.Ptr(true) // start offline to make test faster
 
 			resp := rt.CreateDatabase("db1", config)
 			if test.hasError {

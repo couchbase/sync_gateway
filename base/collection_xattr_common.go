@@ -266,7 +266,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 			// Retry on cas failure.  ErrNotStored is returned in some concurrent insert races that appear to be related
 			// to the timing of concurrent xattr subdoc operations.  Treating as CAS failure as these will get the usual
 			// conflict/duplicate handling on retry.
-			previousLoopCas = Uint64Ptr(cas)
+			previousLoopCas = Ptr(cas)
 		} else {
 			// WriteWithXattrs already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
 			WarnfCtx(ctx, "Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKeys), writeErr)

@@ -854,7 +854,7 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 	var identity *Identity
 	if provider.AllowUnsignedProviderTokens {
 		// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
-		identity, err = VerifyClaims(token, base.StringDefault(provider.ClientID, ""), provider.Issuer)
+		identity, err = VerifyClaims(token, base.ValDefault(provider.ClientID, ""), provider.Issuer)
 		if err != nil {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
 			return nil, PrincipalConfig{}, time.Time{}, err
@@ -913,7 +913,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	}
 
 	updates = PrincipalConfig{
-		Name:        base.StringPtr(username),
+		Name:        base.Ptr(username),
 		Email:       &identity.Email,
 		JWTIssuer:   &common.Issuer,
 		JWTRoles:    jwtRoles,

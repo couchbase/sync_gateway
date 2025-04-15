@@ -206,7 +206,7 @@ func DevTestFetchConfigManual(t *testing.T) {
 		LogKeys:  []string{"HTTP", "Config", "CRUD", "DCP", "Sync"},
 	}
 
-	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
+	config.API.AdminInterfaceAuthentication = base.Ptr(false)
 
 	config.API.PublicInterface = "127.0.0.1:4984"
 	config.API.AdminInterface = "127.0.0.1:4985"
@@ -215,8 +215,8 @@ func DevTestFetchConfigManual(t *testing.T) {
 	config.Bootstrap.Server = "couchbase://localhost"
 	config.Bootstrap.Username = "configUser"
 	config.Bootstrap.Password = "password"
-	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
-	config.Bootstrap.UseTLSServer = base.BoolPtr(false)
+	config.Bootstrap.ServerTLSSkipVerify = base.Ptr(true)
+	config.Bootstrap.UseTLSServer = base.Ptr(false)
 
 	// Start SG with no databases, high frequency polling
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Second)

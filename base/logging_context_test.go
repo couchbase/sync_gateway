@@ -24,7 +24,7 @@ func requireLogIs(t testing.TB, s string, f func()) {
 	b := bytes.Buffer{}
 
 	config := &ConsoleLoggerConfig{
-		ColorEnabled: BoolPtr(false),
+		ColorEnabled: Ptr(false),
 	}
 	tempLogger, err := NewConsoleLogger(TestCtx(t), false, config)
 	require.NoError(t, err)

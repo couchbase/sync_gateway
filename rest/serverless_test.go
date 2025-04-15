@@ -537,19 +537,19 @@ func TestSuspendingFlags(t *testing.T) {
 		{
 			name:             "Serverless with suspendable db disallowed",
 			serverlessMode:   true,
-			dbSuspendable:    base.BoolPtr(false),
+			dbSuspendable:    base.Ptr(false),
 			expectCanSuspend: false,
 		},
 		{
 			name:             "Non-serverless with suspendable db",
 			serverlessMode:   false,
-			dbSuspendable:    base.BoolPtr(true),
+			dbSuspendable:    base.Ptr(true),
 			expectCanSuspend: true,
 		},
 		{
 			name:             "Non-serverless with unsuspendable db",
 			serverlessMode:   false,
-			dbSuspendable:    base.BoolPtr(false),
+			dbSuspendable:    base.Ptr(false),
 			expectCanSuspend: false,
 		},
 		{
@@ -696,18 +696,18 @@ func TestImportPartitionsServerless(t *testing.T) {
 	}{
 		{
 			name:               "serverless partitions",
-			expectedPartitions: base.Uint16Ptr(6),
+			expectedPartitions: base.Ptr(6),
 			serverless:         true,
 		},
 		{
 			name:               "serverless partitions with import_partition specified",
-			importPartition:    base.Uint16Ptr(8),
-			expectedPartitions: base.Uint16Ptr(8),
+			importPartition:    base.Ptr(8),
+			expectedPartitions: base.Ptr(8),
 			serverless:         true,
 		},
 		{
 			name:               "non serverless partitions",
-			expectedPartitions: base.Uint16Ptr(16),
+			expectedPartitions: base.Ptr(16),
 			serverless:         false,
 		},
 	}

@@ -246,7 +246,7 @@ func TestInitOIDCClient(t *testing.T) {
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer: "http://127.0.0.1:12345/auth",
 			},
-			CallbackURL: base.StringPtr("http://127.0.0.1:12345/callback"),
+			CallbackURL: base.Ptr("http://127.0.0.1:12345/callback"),
 		})
 		err := provider.initOIDCClient(ctx)
 		require.Error(t, err, "openid connect client with unavailable issuer")
@@ -256,10 +256,10 @@ func TestInitOIDCClient(t *testing.T) {
 	t.Run("initialize openid connect client with valid provider config", func(t *testing.T) {
 		provider := oidcProviderForTest(t, &OIDCProvider{
 			JWTConfigCommon: JWTConfigCommon{
-				ClientID: base.StringPtr("foo"),
+				ClientID: base.Ptr("foo"),
 				Issuer:   "https://accounts.google.com",
 			},
-			CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
+			CallbackURL: base.Ptr("http://sgw-test:4984/_callback"),
 		})
 		err := provider.initOIDCClient(ctx)
 		require.NoError(t, err, "openid connect client with unavailable issuer")
@@ -270,10 +270,10 @@ func TestConcurrentSetConfig(t *testing.T) {
 	providerLock := sync.Mutex{}
 	provider := oidcProviderForTest(t, &OIDCProvider{
 		JWTConfigCommon: JWTConfigCommon{
-			ClientID: base.StringPtr("foo"),
+			ClientID: base.Ptr("foo"),
 			Issuer:   "https://accounts.google.com",
 		},
-		CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
+		CallbackURL: base.Ptr("http://sgw-test:4984/_callback"),
 	})
 
 	ctx := base.TestCtx(t)

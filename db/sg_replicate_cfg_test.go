@@ -443,7 +443,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				Direction: "pull",
 			},
 			updatedConfig: &ReplicationUpsertConfig{
-				Direction: base.StringPtr("push"),
+				Direction: base.Ptr("push"),
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:        "foo",
@@ -460,7 +460,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				ConflictResolutionFn: "func(){}",
 			},
 			updatedConfig: &ReplicationUpsertConfig{
-				ConflictResolutionFn: base.StringPtr(""),
+				ConflictResolutionFn: base.Ptr(""),
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:                   "foo",
@@ -505,16 +505,16 @@ func TestUpsertReplicationConfig(t *testing.T) {
 			},
 			updatedConfig: &ReplicationUpsertConfig{
 				ID:                     "foo",
-				Remote:                 base.StringPtr("b"),
-				Direction:              base.StringPtr("b"),
-				ConflictResolutionType: base.StringPtr("b"),
-				ConflictResolutionFn:   base.StringPtr("b"),
-				PurgeOnRemoval:         base.BoolPtr(false),
-				DeltaSyncEnabled:       base.BoolPtr(false),
-				MaxBackoff:             base.IntPtr(10),
-				InitialState:           base.StringPtr("b"),
-				Continuous:             base.BoolPtr(false),
-				Filter:                 base.StringPtr("b"),
+				Remote:                 base.Ptr("b"),
+				Direction:              base.Ptr("b"),
+				ConflictResolutionType: base.Ptr("b"),
+				ConflictResolutionFn:   base.Ptr("b"),
+				PurgeOnRemoval:         base.Ptr(false),
+				DeltaSyncEnabled:       base.Ptr(false),
+				MaxBackoff:             base.Ptr(10),
+				InitialState:           base.Ptr("b"),
+				Continuous:             base.Ptr(false),
+				Filter:                 base.Ptr("b"),
 				QueryParams:            []interface{}{"DEF"},
 			},
 			expectedConfig: &ReplicationConfig{
@@ -577,42 +577,42 @@ func TestIsCfgChanged(t *testing.T) {
 		{
 			name: "remoteChanged",
 			updatedConfig: &ReplicationUpsertConfig{
-				Remote: base.StringPtr("b"),
+				Remote: base.Ptr("b"),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "directionChanged",
 			updatedConfig: &ReplicationUpsertConfig{
-				Direction: base.StringPtr(string(ActiveReplicatorTypePushAndPull)),
+				Direction: base.Ptr(string(ActiveReplicatorTypePushAndPull)),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "conflictResolverChanged",
 			updatedConfig: &ReplicationUpsertConfig{
-				ConflictResolutionType: base.StringPtr(string(ConflictResolverDefault)),
+				ConflictResolutionType: base.Ptr(string(ConflictResolverDefault)),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "conflictResolverFnChange",
 			updatedConfig: &ReplicationUpsertConfig{
-				ConflictResolutionFn: base.StringPtr("b"),
+				ConflictResolutionFn: base.Ptr("b"),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "passwordChanged", // Verify fix CBG-1858
 			updatedConfig: &ReplicationUpsertConfig{
-				Password: base.StringPtr("changed"),
+				Password: base.Ptr("changed"),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "collections enabled",
 			updatedConfig: &ReplicationUpsertConfig{
-				CollectionsEnabled: base.BoolPtr(true),
+				CollectionsEnabled: base.Ptr(true),
 			},
 			expectedChanged: true,
 		},
@@ -633,8 +633,8 @@ func TestIsCfgChanged(t *testing.T) {
 		{
 			name: "unchanged",
 			updatedConfig: &ReplicationUpsertConfig{
-				Remote:               base.StringPtr("a"),
-				ConflictResolutionFn: base.StringPtr("a"),
+				Remote:               base.Ptr("a"),
+				ConflictResolutionFn: base.Ptr("a"),
 				CollectionsLocal:     []string{"foo.bar"},
 			},
 			expectedChanged: false,

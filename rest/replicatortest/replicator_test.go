@@ -1998,7 +1998,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 	// just change the sync function to cause the database to reload
 	dbConfig := *rt2.ServerContext().GetDbConfig("db")
-	dbConfig.Sync = base.StringPtr(`function(doc){channel(doc.channels);}`)
+	dbConfig.Sync = base.Ptr(`function(doc){channel(doc.channels);}`)
 	resp := rt2.ReplaceDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -2024,7 +2024,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		&rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.StringPtr(rest.RestTesterDefaultUserPassword)},
+					username: {Password: base.Ptr(rest.RestTesterDefaultUserPassword)},
 				},
 			}},
 		})
@@ -2171,7 +2171,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 				CacheConfig: &rest.CacheConfig{
 					// shorten pending sequence handling to speed up test
 					ChannelCacheConfig: &rest.ChannelCacheConfig{
-						MaxWaitPending: base.Uint32Ptr(1),
+						MaxWaitPending: base.Ptr(1),
 					},
 				},
 			}},
@@ -5173,7 +5173,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				AllowConflicts: base.BoolPtr(false),
+				AllowConflicts: base.Ptr(false),
 			}},
 			SyncFn: channels.DocChannelsSyncFunction,
 		})
@@ -5186,7 +5186,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				AllowConflicts: base.BoolPtr(false),
+				AllowConflicts: base.Ptr(false),
 			}},
 			SyncFn: channels.DocChannelsSyncFunction,
 		})
@@ -6732,7 +6732,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				AllowConflicts: base.BoolPtr(false),
+				AllowConflicts: base.Ptr(false),
 			}},
 		})
 	defer rt2.Close()
@@ -6947,7 +6947,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.BoolPtr(true),
+						Enabled: base.Ptr(true),
 					},
 				},
 			},
@@ -6959,7 +6959,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.BoolPtr(true),
+						Enabled: base.Ptr(true),
 					},
 				},
 			},
@@ -7029,7 +7029,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.BoolPtr(true),
+						Enabled: base.Ptr(true),
 					},
 				},
 			},
@@ -7041,7 +7041,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.BoolPtr(true),
+						Enabled: base.Ptr(true),
 					},
 				},
 			},
@@ -7254,7 +7254,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			Name: passiveDBName,
 			Users: map[string]*auth.PrincipalConfig{
-				username: {Password: base.StringPtr(rest.RestTesterDefaultUserPassword)},
+				username: {Password: base.Ptr(rest.RestTesterDefaultUserPassword)},
 			},
 		}},
 	})
@@ -7317,7 +7317,7 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
-				"alice": {Password: base.StringPtr("pass")},
+				"alice": {Password: base.Ptr("pass")},
 			},
 		}},
 	})
@@ -7352,7 +7352,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 			DbConfig: rest.DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
 					"alice": {
-						Password: base.StringPtr("pass"),
+						Password: base.Ptr("pass"),
 					},
 				},
 			},
@@ -7492,18 +7492,18 @@ func TestGroupIDReplications(t *testing.T) {
 		dbConfig := rest.DbConfig{
 			AutoImport: true,
 			BucketConfig: rest.BucketConfig{
-				Bucket: base.StringPtr(activeBucket.GetName()),
+				Bucket: base.Ptr(activeBucket.GetName()),
 			},
-			EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+			EnableXattrs: base.Ptr(base.TestUseXattrs()),
 		}
 		if !base.UnitTestUrlIsWalrus() {
-			dbConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
+			dbConfig.UseViews = base.Ptr(base.TestsDisableGSI())
 		}
 
 		if rt.GetDatabase().OnlyDefaultCollection() {
-			dbConfig.Sync = base.StringPtr(channels.DocChannelsSyncFunction)
+			dbConfig.Sync = base.Ptr(channels.DocChannelsSyncFunction)
 		} else {
-			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, 1, base.StringPtr(channels.DocChannelsSyncFunction), nil)
+			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, 1, base.Ptr(channels.DocChannelsSyncFunction), nil)
 		}
 		dbcJSON, err := base.JSONMarshal(dbConfig)
 		require.NoError(t, err)
@@ -7932,7 +7932,7 @@ var emptyReplicationTestCases = []struct {
 }
 
 func TestBanEmptyReplicationID(t *testing.T) {
-	rt := rest.NewRestTesterPersistentConfig(t)
+	rt := rest.NewRestTesterPersistentConfigWithDB(t)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", `{"remote": "fakeremote", "direction": "pull", "initial_state": "stopped"}`)
@@ -8109,7 +8109,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	t.Cleanup(activeRT.Close)
 	_ = activeRT.Bucket()
 
-	passiveRT := rest.NewRestTesterPersistentConfig(t)
+	passiveRT := rest.NewRestTesterPersistentConfigWithDB(t)
 	t.Cleanup(passiveRT.Close)
 
 	username := "alice"

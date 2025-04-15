@@ -38,7 +38,7 @@ var (
 
 	sgPath, sgCollectPath, sgCollectPathErr = sgCollectPaths()
 	sgcollectInstance                       = sgCollect{
-		status:        base.Uint32Ptr(sgStopped),
+		status:        base.Ptr(sgStopped),
 		sgPath:        sgPath,
 		sgCollectPath: sgCollectPath,
 		pathError:     sgCollectPathErr,

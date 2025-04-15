@@ -264,7 +264,7 @@ func ottoStringParam(call otto.FunctionCall, arg int, what string) string {
 func ottoOptionalStringParam(call otto.FunctionCall, arg int, what string) *string {
 	val := call.Argument(arg)
 	if val.IsString() {
-		return base.StringPtr(val.String())
+		return base.Ptr(val.String())
 	} else if val.IsNull() || val.IsUndefined() {
 		return nil
 	} else {

@@ -438,7 +438,7 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 
 func TestUserFunctionsMaxFunctionCount(t *testing.T) {
 	var twoFunctionConfig = FunctionsConfig{
-		MaxFunctionCount: base.IntPtr(1),
+		MaxFunctionCount: base.Ptr(1),
 		Definitions: FunctionsDefs{
 			"square": &FunctionConfig{
 				Type:  "javascript",
@@ -459,7 +459,7 @@ func TestUserFunctionsMaxFunctionCount(t *testing.T) {
 
 func TestUserFunctionsMaxCodeSize(t *testing.T) {
 	var functionConfig = FunctionsConfig{
-		MaxCodeSize: base.IntPtr(20),
+		MaxCodeSize: base.Ptr(20),
 		Definitions: FunctionsDefs{
 			"square": &FunctionConfig{
 				Type:  "javascript",

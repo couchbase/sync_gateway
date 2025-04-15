@@ -97,7 +97,7 @@ func TestConfigToBucketPointName(t *testing.T) {
 
 	// create db config to point to bucket with . in the name
 	dbConfig := rt.NewDbConfig()
-	dbConfig.Bucket = base.StringPtr(testBucketName)
+	dbConfig.Bucket = base.Ptr(testBucketName)
 	dbConfig.Username = base.TestClusterUsername()
 	dbConfig.Password = base.TestClusterPassword()
 	dbConfig.Scopes = nil
@@ -203,7 +203,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 				Index: &IndexConfig{
 					NumPartitions: base.Ptr(uint32(2)),
 				},
-				EnableXattrs: base.BoolPtr(false),
+				EnableXattrs: base.Ptr(false),
 			},
 			expectedError: "incompatible with enable_shared_bucket_access=false",
 		},

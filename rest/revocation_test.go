@@ -1083,13 +1083,13 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Uint32Ptr(0),
+					MaxItemCount: base.Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},
@@ -1133,7 +1133,7 @@ func TestRevocationsWithQueryLimit2Channels(t *testing.T) {
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:           false,
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 		}},
 	})
 	defer rt.Close()
@@ -1172,13 +1172,13 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Uint32Ptr(0),
+					MaxItemCount: base.Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},
@@ -1223,13 +1223,13 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Uint32Ptr(0),
+					MaxItemCount: base.Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},

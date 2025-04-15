@@ -83,7 +83,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 	ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
 
 	auditLogFilePath := logFilePath
-	if audit != nil && audit.AuditLogFilePath != nil && BoolDefault(audit.Enabled, false) {
+	if audit != nil && audit.AuditLogFilePath != nil && ValDefault(audit.Enabled, false) {
 		auditLogFilePath = *audit.AuditLogFilePath
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Audit to %v", auditLogFilePath)
 	}

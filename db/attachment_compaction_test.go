@@ -921,7 +921,7 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 
 		attachmentSyncDataBytes, err := base.JSONMarshal(attachmentSyncData)
 		if err != nil {
-			return nil, base.Uint32Ptr(0), false, err
+			return nil, base.Ptr(0), false, err
 		}
 
 		updated, err = base.InjectJSONPropertiesFromBytes(current, base.KVPairBytes{
@@ -929,10 +929,10 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 			Val: attachmentSyncDataBytes,
 		})
 		if err != nil {
-			return nil, base.Uint32Ptr(0), false, err
+			return nil, base.Ptr(0), false, err
 		}
 
-		return updated, base.Uint32Ptr(0), false, nil
+		return updated, base.Ptr(0), false, nil
 	})
 	require.NoError(t, err)
 

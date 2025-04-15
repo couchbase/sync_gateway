@@ -137,7 +137,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			if testCase.contextFields != nil {
 				ctx = AuditLogCtx(ctx, testCase.contextFields)
 			}
-			logger, err := NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
+			logger, err := NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: Ptr(true)}}, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
 			auditLogger.Store(logger)
 
@@ -294,9 +294,9 @@ func BenchmarkAuditFieldwork(b *testing.B) {
 	buf := io.Discard
 	al, err := NewAuditLogger(TestCtx(b), &AuditLoggerConfig{
 		FileLoggerConfig: FileLoggerConfig{
-			Enabled:             BoolPtr(true),
+			Enabled:             Ptr(true),
 			Output:              buf,
-			CollationBufferSize: IntPtr(0),
+			CollationBufferSize: Ptr(0),
 		},
 	}, b.TempDir(), auditMinage, nil, map[string]any{"foo": "bar", "buzz": 1234})
 	require.NoError(b, err)

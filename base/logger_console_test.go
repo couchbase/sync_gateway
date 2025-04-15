@@ -107,7 +107,7 @@ func TestConsoleShouldLog(t *testing.T) {
 			LogLevel: &level,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
-				Enabled: BoolPtr(true),
+				Enabled: Ptr(true),
 				Output:  io.Discard,
 			}})
 
@@ -129,7 +129,7 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 			LogLevel: &level,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
-				Enabled: BoolPtr(true),
+				Enabled: Ptr(true),
 				Output:  io.Discard,
 			}})
 
@@ -202,7 +202,7 @@ func TestConsoleShouldLogWithDatabase(t *testing.T) {
 				LogLevel: &level,
 				LogKeys:  test.loggerKeys,
 				FileLoggerConfig: FileLoggerConfig{
-					Enabled: BoolPtr(true),
+					Enabled: Ptr(true),
 					Output:  io.Discard,
 				}})
 
@@ -337,8 +337,8 @@ func TestConsoleIrregularLogPaths(t *testing.T) {
 				LogKeys:    []string{"HTTP"},
 				FileOutput: filepath.Join(tempdir, test.logPath),
 				FileLoggerConfig: FileLoggerConfig{
-					Enabled:             BoolPtr(true),
-					CollationBufferSize: IntPtr(0),
+					Enabled:             Ptr(true),
+					CollationBufferSize: Ptr(0),
 					Rotation: logRotationConfig{
 						RotationInterval: NewConfigDuration(10 * time.Millisecond),
 					},

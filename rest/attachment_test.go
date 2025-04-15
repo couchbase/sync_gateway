@@ -2068,7 +2068,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				AllowConflicts: base.BoolPtr(true),
+				AllowConflicts: base.Ptr(true),
 			},
 		},
 	})
@@ -2207,7 +2207,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AutoImport = base.BoolPtr(base.TestUseXattrs())
+	dbConfig.AutoImport = base.Ptr(base.TestUseXattrs())
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()

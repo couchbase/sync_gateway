@@ -1708,17 +1708,17 @@ func TestAllOrNoneNil(t *testing.T) {
 		},
 		{
 			name: "one non-nil",
-			args: []interface{}{nil, StringPtr("foo"), nil},
+			args: []interface{}{nil, Ptr("foo"), nil},
 			want: false,
 		},
 		{
 			name: "one typed nil",
-			args: []interface{}{Uint64Ptr(1234), StringPtr("foo"), (*time.Time)(nil)},
+			args: []interface{}{Ptr(1234), Ptr("foo"), (*time.Time)(nil)},
 			want: false,
 		},
 		{
 			name: "all non-nil",
-			args: []interface{}{Uint64Ptr(1234), StringPtr("foo"), StdlibDurationPtr(time.Second)},
+			args: []interface{}{Ptr(1234), Ptr("foo"), Ptr(time.Second)},
 			want: true,
 		},
 	}

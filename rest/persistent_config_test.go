@@ -340,7 +340,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 func TestImportFilterEndpoint(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
-	rt := NewRestTesterPersistentConfig(t)
+	rt := NewRestTesterPersistentConfigWithDB(t)
 	defer rt.Close()
 
 	rt.CreateDatabase("db1", rt.NewDbConfig())
@@ -493,7 +493,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 
 			const dbName = "c1_db1"
 			collection1db1Config := getTestDatabaseConfig(bucketName, dbName, collection1ScopesConfig, "2-a")
-			collection1db1Config.RevsLimit = base.Uint32Ptr(1000)
+			collection1db1Config.RevsLimit = base.Ptr(1000)
 			cas, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
 			require.NoError(t, err)
 			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
@@ -508,7 +508,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 			docID := PersistentConfigKey(ctx, groupID, dbName)
 			updatedConfig := *collection1db1Config
 			updatedConfig.Version = "1-a"
-			updatedConfig.RevsLimit = base.Uint32Ptr(500)
+			updatedConfig.RevsLimit = base.Ptr(500)
 			_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas, &updatedConfig)
 			require.NoError(t, err)
 
@@ -527,7 +527,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 			// at this point the config and registry are re-aligned, but let's just write another config update to make sure it's in an updatable state
 			_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 				bucketDbConfig.Version = "3-c"
-				bucketDbConfig.RevsLimit = base.Uint32Ptr(1234)
+				bucketDbConfig.RevsLimit = base.Ptr(1234)
 				return bucketDbConfig, nil
 			})
 			require.NoError(t, err)
@@ -1185,7 +1185,7 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 
 	// Set up test for persistent config
 	config := BootstrapStartupConfigForTest(t)
-	config.Unsupported.UseXattrConfig = base.BoolPtr(true)
+	config.Unsupported.UseXattrConfig = base.Ptr(true)
 	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
@@ -1474,7 +1474,7 @@ func startBootstrapServerWithoutConfigPolling(t *testing.T, useXattrConfig bool)
 	config := BootstrapStartupConfigForTest(t)
 	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour * 24)
-	config.Unsupported.UseXattrConfig = base.BoolPtr(useXattrConfig)
+	config.Unsupported.UseXattrConfig = base.Ptr(useXattrConfig)
 	return StartServerWithConfig(t, &config)
 }
 
