@@ -1243,7 +1243,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		bcryptCost = auth.DefaultBcryptCost
 	}
 
-	slowQueryWarningThreshold := kDefaultSlowQueryWarningThreshold * time.Millisecond
+	slowQueryWarningThreshold := time.Duration(kDefaultSlowQueryWarningThreshold) * time.Millisecond
 	if config.SlowQueryWarningThresholdMs != nil {
 		slowQueryWarningThreshold = time.Duration(*config.SlowQueryWarningThresholdMs) * time.Millisecond
 	}
