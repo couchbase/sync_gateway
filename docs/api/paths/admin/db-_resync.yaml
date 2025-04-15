@@ -76,7 +76,8 @@ post:
             scopes:
               description: This controls for which collections resync will run
               type: object
-              $ref: ../../components/schemas.yaml#/ResyncScopesMap
+              allOf:
+                - $ref: ../../components/schemas.yaml#/ResyncScopesMap
             regenerate_sequences:
               description: This can be used as an alternative to query param `regenerate_sequences`. If either query param or this is set to true, then the request will regenerate the sequence numbers for each document processed.
               type: boolean
