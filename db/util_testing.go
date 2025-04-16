@@ -769,3 +769,8 @@ func GetIndexPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbu
 	require.Failf(t, "index not found", "index %s not found in %+v", indexName, output)
 	return 0
 }
+
+func (db *DatabaseContext) InitChannel(ctx context.Context, t *testing.T, chanName string) error {
+	_, err := db.channelCache.getSingleChannelCache(ctx, channels.NewID(chanName, base.DefaultCollectionID))
+	return err
+}

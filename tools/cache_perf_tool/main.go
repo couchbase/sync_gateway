@@ -39,7 +39,8 @@ func main() {
 	timeToRun := flag.Duration("duration", 5*time.Minute, "Duration to run the test for in minutes. Examples:  3m for 3 minutes, 30s for 30 seconds etc")
 	delays := flag.String("writeDelay", "0", "Delay between writes in milliseconds. Must be entered in format <delayMS>,<delayMS>,<delayMS>.")
 	profileInterval := flag.Duration("profileInterval", 0*time.Second, "Interval for profiling to be triggered on, example 10s would be every 10 seconds.")
-	numChannels := flag.Int("numChannels", 1, "Number of channels to create per document.")
+	numChannelsPerDoc := flag.Int("numChannels", 1, "Number of channels to create per document.")
+	totalNumberOfChans := flag.Int("totalNumberOfChans", 1, "Total number of channels to create.")
 	flag.Parse()
 
 	if *nodes < 1 {
@@ -51,11 +52,14 @@ func main() {
 	if *timeToRun < 1 {
 		log.Fatalf("Invalid duration: %d", *timeToRun)
 	}
-	if *numChannels < 1 {
-		log.Fatalf("Invalid number of channels: %d", *numChannels)
+	if *numChannelsPerDoc < 1 {
+		log.Fatalf("Invalid number of channels: %d", *numChannelsPerDoc)
 	}
 	if profileInterval.Seconds() != 0 && *profileInterval >= *timeToRun {
 		log.Fatalf("Invalid profile interval: %d, must be less than the duration of test: %d", *profileInterval, *timeToRun)
+	}
+	if *totalNumberOfChans < 1 && *totalNumberOfChans <= *numChannelsPerDoc {
+		log.Fatalf("Invalid total number of channels: %d", *totalNumberOfChans)
 	}
 	var delayList []time.Duration
 	delayList, err := extractDelays(*delays)
@@ -150,12 +154,22 @@ func main() {
 	// init change cache and unlock mutex for the test
 	dbContext.StartChangeCache(t, parentCtx)
 
+	// init channels
+	for i := 0; i < *totalNumberOfChans; i++ {
+		chanName := "test-" + strconv.Itoa(i)
+		err = dbContext.InitChannel(ctx, t, chanName)
+		if err != nil {
+			log.Printf("Error initializing channel %s: %v", chanName, err)
+			return
+		}
+	}
+
 	// mode selection logic
 	if *mode == "dcp" {
 		// todo: add dcp mode code
 	} else if *mode == "processEntry" {
 		p := &processEntryGen{t: t, dbCtx: dbContext, delays: delayList, seqAlloc: seqAllocator, numNodes: *nodes,
-			batchSize: *batchSize, numChans: *numChannels}
+			batchSize: *batchSize, numChansPerDoc: *numChannelsPerDoc, totalChans: *totalNumberOfChans}
 		// create new sgw node abstraction and spawn write goroutines
 		p.spawnDocCreationGoroutine(ctx)
 	} else {
