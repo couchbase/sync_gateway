@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -263,6 +264,103 @@ func (h *handler) handleDbOffline() error {
 		return err
 	}
 	base.Audit(h.ctx(), base.AuditIDDatabaseOffline, nil)
+	return nil
+}
+
+// handleIndexInit allows async index initialization status to be viewed
+func (h *handler) handleGetIndexInit() error {
+	//b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
+	//if err != nil {
+	//	return err
+	//}
+	// TODO: Response body
+	b := []byte(`{}`)
+	h.writeRawJSON(b)
+	return nil
+}
+
+type PostIndexInitRequest struct {
+	NumPartitions *uint32 `json:"num_partitions"`
+}
+
+func (req PostIndexInitRequest) Validate() error {
+	if req.NumPartitions == nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions is required")
+	}
+	if *req.NumPartitions < 1 {
+		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions must be greater than 0")
+	}
+	return nil
+}
+
+// handleIndexInit allows async index initialization to be run or managed
+func (h *handler) handlePostIndexInit() error {
+	action := cmp.Or(h.getQuery("action"), "start")
+
+	if action == "stop" {
+		//if err := h.db.AsyncIndexInitManager.Stop(); err != nil {
+		//	return err
+		//}
+		//status, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
+		//if err != nil {
+		//	return err
+		//}
+		h.server.DatabaseInitManager.Cancel(h.db.Name)
+		// TODO: Response body
+		status := []byte(`{}`)
+		h.writeRawJSON(status)
+		return nil
+	}
+
+	if action != "start" {
+		return base.HTTPErrorf(http.StatusBadRequest, "action %q not supported... must be either 'start' or 'stop'", action)
+	}
+
+	var req PostIndexInitRequest
+	if err := h.readJSONInto(&req); err != nil {
+		return err
+	}
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
+	currentDbConfig := h.server.GetDatabaseConfig(h.db.Name)
+	if currentDbConfig.Index.NumPartitions == req.NumPartitions {
+		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions is already %d", *req.NumPartitions)
+	}
+
+	var newDbConfig DatabaseConfig
+	if err := base.DeepCopyInefficient(&newDbConfig, currentDbConfig); err != nil {
+		return err
+	}
+	newDbConfig.Index.NumPartitions = req.NumPartitions
+
+	done, err := h.server.DatabaseInitManager.InitializeDatabase(h.ctx(), h.server.initialStartupConfig, &newDbConfig)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		select {
+		case err := <-done:
+			if err != nil {
+				base.InfofCtx(h.ctx(), base.KeyCRUD, "Error initializing database: %v", err)
+			} else {
+				base.InfofCtx(h.ctx(), base.KeyCRUD, "Database initialized successfully")
+			}
+		case <-h.ctx().Done():
+			base.InfofCtx(h.ctx(), base.KeyCRUD, "h.ctx() done, stopping database initialization err doneChan")
+		}
+	}()
+
+	//options := map[string]interface{}{
+	//	"databaseInitManager": h.server.DatabaseInitManager,
+	//	"newDbConfig":         newDbConfig,
+	//	"database":            h.db,
+	//}
+	//return h.db.AsyncIndexInitManager.Start(h.ctx(), options)
+
+	// TODO: Response body
 	return nil
 }
 

@@ -106,7 +106,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		return nil, err
 	}
 
-	indexOptions := m.BuildIndexOptions(startupConfig.IsServerless(), dbConfig)
+	indexOptions := m.buildIndexOptions(startupConfig.IsServerless(), dbConfig)
 
 	// Create new worker and add this caller as a watcher
 	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
@@ -140,7 +140,7 @@ func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
 	return ok
 }
 
-func (m *DatabaseInitManager) BuildIndexOptions(isServerless bool, dbConfig *DatabaseConfig) db.InitializeIndexOptions {
+func (m *DatabaseInitManager) buildIndexOptions(isServerless bool, dbConfig *DatabaseConfig) db.InitializeIndexOptions {
 	return db.InitializeIndexOptions{
 		WaitForIndexesOnlineOption: base.WaitForIndexesInfinite,
 		NumReplicas:                dbConfig.numIndexReplicas(),
