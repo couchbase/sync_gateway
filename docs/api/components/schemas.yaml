@@ -2968,14 +2968,8 @@ Status:
             description: The server unique identifier.
             type: string
           state:
-            description: Whether the database is online or offline.
-            type: string
-            enum:
-              - Online
-              - Offline
-              - Starting
-              - Stopping
-              - Resyncing
+            allOf: # use allOf to prevent DatabaseState from showing as the type in the display
+              - $ref: '#/DatabaseState'
           replication_status:
             type: array
             items:
@@ -3082,14 +3076,8 @@ CollectionNames:
         type: string
         description: The Couchbase Server backing bucket for the database.
       state:
-        description: The database state.
-        type: string
-        enum:
-          - Online
-          - Offline
-          - Starting
-          - Stopping
-          - Resyncing
+        allOf: # use allOf to prevent DatabaseState from showing as the type in the display
+          - $ref: '#/DatabaseState'
       require_resync:
         description: Indicates whether the database requires resync before it can be brought online.
         type: boolean
@@ -3140,3 +3128,18 @@ doc_access_spans:
             entries:
               type: array
               description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
+DatabaseState:
+  description: The state of the database.
+  type: string
+  enum:
+    - Online
+    - Offline
+    - Starting
+    - Stopping
+    - Resyncing
+  x-enumDescriptions:
+    Online: The database is online and available for use.
+    Offline: The database is offline, resync and other offline only endpoints are allowed.
+    Starting: The database is in the process of going online.
+    Stopping: The database is no longer accepting connections and is being taken offline or deleted.
+    Resyncing: The database is offline and performing a resync operation.
