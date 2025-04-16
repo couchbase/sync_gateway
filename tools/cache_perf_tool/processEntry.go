@@ -19,13 +19,14 @@ import (
 )
 
 type processEntryGen struct {
-	seqAlloc  *syncSeqMock
-	delays    []time.Duration
-	dbCtx     *db.DatabaseContext
-	t         *testing.T
-	numNodes  int
-	batchSize int
-	numChans  int
+	seqAlloc       *syncSeqMock
+	delays         []time.Duration
+	dbCtx          *db.DatabaseContext
+	t              *testing.T
+	numNodes       int
+	batchSize      int
+	numChansPerDoc int
+	totalChans     int
 }
 
 func (p *processEntryGen) spawnDocCreationGoroutine(ctx context.Context) {
@@ -41,14 +42,24 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 	docCount := uint64(0)
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
-	// create map of configured channels
-	chanMap := make(channels.ChannelMap)
-	for i := 0; i < p.numChans; i++ {
-		chanMap["test-"+strconv.Itoa(i)] = nil
-	}
+	// create map of configured channels, initialised channels are names test-x where x is integer between 0 and total
+	// number of system channels. Thus to assign to channels we can increment through channels initialised
+	chanCountZeroWait := 0
+	chanCountWait := 0
+	var chanMap channels.ChannelMap
 	if delay.Nanoseconds() == 0 {
 		// mutate as fast as possible
 		for {
+			chanMap = make(channels.ChannelMap)
+			for i := 0; i < p.numChansPerDoc; i++ {
+				if chanCountZeroWait == p.totalChans {
+					// when count gets to total number configured channels we rest index to 0
+					chanCountZeroWait = 0
+				}
+				chanName := "test-" + strconv.Itoa(chanCountZeroWait)
+				chanMap[chanName] = nil
+				chanCountZeroWait++
+			}
 			timeStamp := time.Now()
 			select {
 			case <-ctx.Done():
@@ -74,6 +85,16 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
 	for {
+		chanMap = make(channels.ChannelMap)
+		for i := 0; i < p.numChansPerDoc; i++ {
+			if chanCountWait == p.totalChans {
+				// when count gets to total number configured channels we rest index to 0
+				chanCountWait = 0
+			}
+			chanName := "test-" + strconv.Itoa(chanCountWait)
+			chanMap[chanName] = nil
+			chanCountWait++
+		}
 		timeStamp := time.Now()
 		select {
 		case <-ctx.Done():
