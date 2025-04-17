@@ -33,24 +33,22 @@ type DatabaseInitManager struct {
 	workers     map[string]*DatabaseInitWorker
 	workersLock sync.Mutex
 
-	// collectionCompleteCallback is defined for testability only.
+	// testCollectionCompleteCallback is defined for testability only.
 	// Invoked after collection initialization is complete for each collection
-	collectionCompleteCallback collectionCallbackFunc
+	testCollectionCompleteCallback CollectionCallbackFunc
 
-	// databaseCompleteCallback is defined for testability only.
+	// testDatabaseCompleteCallback is defined for testability only.
 	// Invoked after worker completes, but before worker is removed from workers set
-	databaseCompleteCallback func(databaseName string) // Callback for testability only
+	testDatabaseCompleteCallback func(databaseName string) // Callback for testability only
 }
 
-type collectionCallbackFunc func(dbName, collectionName string)
+type CollectionCallbackFunc func(dbName, collectionName string)
 
 // CollectionInitData defines the set of collections being created (by ScopeAneCollectionName), and the set of
 // indexes required for each collection.
 type CollectionInitData map[base.ScopeAndCollectionName]db.CollectionIndexesType
 
-// Initializes the database.  Will establish a new cluster connection using the provided server config.  Establishes a new
-// cluster-only N1QLStore based on the startup config to perform initialization.
-func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig) (doneChan chan error, err error) {
+func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, statusCallback CollectionCallbackFunc) (doneChan chan error, err error) {
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	if m.workers == nil {
@@ -108,8 +106,13 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 	indexOptions := m.buildIndexOptions(startupConfig.IsServerless(), dbConfig)
 
+	// allow the test callback to be overridden by the caller if desired
+	if statusCallback == nil {
+		statusCallback = m.testCollectionCompleteCallback
+	}
+
 	// Create new worker and add this caller as a watcher
-	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
+	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, statusCallback)
 	m.workers[dbConfig.Name] = worker
 	doneChan = worker.addWatcher()
 
@@ -119,8 +122,8 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		defer couchbaseCluster.Close()
 		// worker.Run blocks until completion, and returns any error on doneChan.
 		worker.Run()
-		if m.databaseCompleteCallback != nil {
-			m.databaseCompleteCallback(dbConfig.Name)
+		if m.testDatabaseCompleteCallback != nil {
+			m.testDatabaseCompleteCallback(dbConfig.Name)
 		}
 		// On success, remove worker
 		m.workersLock.Lock()
@@ -128,6 +131,12 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		m.workersLock.Unlock()
 	}()
 	return doneChan, nil
+}
+
+// Initializes the database.  Will establish a new cluster connection using the provided server config.  Establishes a new
+// cluster-only N1QLStore based on the startup config to perform initialization.
+func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig) (doneChan chan error, err error) {
+	return m.InitializeDatabaseWithStatusCallback(ctx, startupConfig, dbConfig, nil)
 }
 
 func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
@@ -151,9 +160,9 @@ func (m *DatabaseInitManager) buildIndexOptions(isServerless bool, dbConfig *Dat
 }
 
 // Intended for test usage.  Updates to callback function aren't synchronized
-func (m *DatabaseInitManager) SetCallbacks(collectionComplete collectionCallbackFunc, databaseComplete func(dbName string)) {
-	m.collectionCompleteCallback = collectionComplete
-	m.databaseCompleteCallback = databaseComplete
+func (m *DatabaseInitManager) SetCallbacks(collectionComplete CollectionCallbackFunc, databaseComplete func(dbName string)) {
+	m.testCollectionCompleteCallback = collectionComplete
+	m.testDatabaseCompleteCallback = databaseComplete
 }
 
 func (m *DatabaseInitManager) Cancel(dbName string) {
@@ -201,7 +210,7 @@ type DatabaseInitWorker struct {
 	ctx                        context.Context        // On close, terminates any goroutines associated with the worker
 	cancelFunc                 context.CancelFunc     // Cancel function for context, invoked if Cancel is called
 	collections                CollectionInitData     // The set of collections associated with the worker, mapped by name to their index set
-	collectionCompleteCallback collectionCallbackFunc // Callback for testability
+	collectionCompleteCallback CollectionCallbackFunc // Callback for status observability
 
 	// Multiple goroutines (watchers) may be waiting for database initialization.  To support sending error information to
 	// every goroutine, we maintain a channel for each of these watching goroutines.  On success, all channels are
@@ -217,7 +226,7 @@ type DatabaseInitOptions struct {
 	indexOptions db.InitializeIndexOptions // Options used for index initialization
 }
 
-func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback collectionCallbackFunc) *DatabaseInitWorker {
+func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback CollectionCallbackFunc) *DatabaseInitWorker {
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
 	return &DatabaseInitWorker{
 		dbName:                     dbName,

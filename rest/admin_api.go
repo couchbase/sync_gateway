@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -335,7 +336,10 @@ func (h *handler) handlePostIndexInit() error {
 	}
 	newDbConfig.Index.NumPartitions = req.NumPartitions
 
-	done, err := h.server.DatabaseInitManager.InitializeDatabase(h.ctx(), h.server.initialStartupConfig, &newDbConfig)
+	var statusCallback CollectionCallbackFunc = func(dbName, collectionName string) {
+		log.Printf("Index initialization status callback %s %s", dbName, collectionName)
+	}
+	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback)
 	if err != nil {
 		return err
 	}
