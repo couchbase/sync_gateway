@@ -111,24 +111,18 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	}
 
 	limit := 50
-	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user1", false)
-	assert.NoError(t, err, "Unexpected error")
-	require.Len(t, changesResults.Results, 50)
+	changesResults := rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user1", false)
 	since := changesResults.Results[49].Seq
 	assert.Equal(t, "doc48", changesResults.Results[49].ID)
 
 	// // Check the _changes feed with  since and limit, to get second half of feed
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
-	assert.NoError(t, err, "Unexpected error")
-	require.Len(t, changesResults.Results, 50)
+	changesResults = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
 	assert.Equal(t, "doc98", changesResults.Results[49].ID)
 
 	rt.CreateUser("user2", []string{"alpha"})
 
 	// Retrieve all changes for user2 with no limits
-	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/{{.keyspace}}/_changes"), "user2", false)
-	assert.NoError(t, err, "Unexpected error")
-	require.Len(t, changesResults.Results, 101)
+	changesResults = rt.WaitForChanges(101, fmt.Sprintf("/{{.keyspace}}/_changes"), "user2", false)
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
 
 	rt.CreateUser("user3", []string{"alpha"})
@@ -142,35 +136,28 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	userSequence := user3.Sequence()
 
 	// Get first 50 document changes.
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user3", false)
-	assert.NoError(t, err, "Unexpected error")
-	require.Len(t, changesResults.Results, 50)
+	changesResults = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user3", false)
 	since = changesResults.Results[49].Seq
 	assert.Equal(t, "doc49", changesResults.Results[49].ID)
 	assert.Equal(t, userSequence, since.TriggeredBy)
 
 	// // Get remainder of changes i.e. no limit parameter
-	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"", since), "user3", false)
-	assert.NoError(t, err, "Unexpected error")
-	require.Len(t, changesResults.Results, 51)
+	changesResults = rt.WaitForChanges(51, fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"", since), "user3", false)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
 	rt.CreateUser("user4", []string{"alpha"})
 	// Get the sequence from the user doc to validate against the triggered by value in the changes results
-	user4, _ := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user4")
+	user4, err := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user4")
+	require.NoError(t, err)
 	user4Sequence := user4.Sequence()
 
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user4", false)
-	assert.NoError(t, err, "Unexpected error")
-	require.Len(t, changesResults.Results, 50)
+	changesResults = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user4", false)
 	since = changesResults.Results[49].Seq
 	assert.Equal(t, "doc49", changesResults.Results[49].ID)
 	assert.Equal(t, user4Sequence, since.TriggeredBy)
 
 	// // Check the _changes feed with  since and limit, to get second half of feed
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&limit=%d", since, limit), "user4", false)
-	assert.Equal(t, nil, err)
-	require.Len(t, changesResults.Results, 50)
+	changesResults = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&limit=%d", since, limit), "user4", false)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
 }
@@ -330,8 +317,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 
 	doc1Vrs := rt.PutDoc("doc1", `{"prop":true}`)
 
-	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err)
+	changes := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	changes.RequireDocIDs(t, []string{"doc1", "doc"})
 	changes.RequireRevID(t, []string{docVrs.RevID, doc1Vrs.RevID})
 }
@@ -401,8 +387,7 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 
 	doc1Vrs := rt.PutDoc("doc1", `{"prop":true}`)
 
-	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err)
+	changes := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	changes.RequireDocIDs(t, []string{"doc1", "doc"})
 	changes.RequireRevID(t, []string{docVrs.RevID, doc1Vrs.RevID})
 }

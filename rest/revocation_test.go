@@ -890,9 +890,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", false)
-	require.NoError(t, err)
-	assert.Len(t, changes.Results, 2)
+	changes := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", false)
 
 	assert.Equal(t, "doc", changes.Results[1].ID)
 	assert.False(t, changes.Results[0].Revoked)
@@ -900,9 +898,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "", "letmein", "", dataStore, []string{}, nil))
 	RequireStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 2), "user", false)
-	require.NoError(t, err)
-	require.Len(t, changes.Results, 2)
+	changes = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 2), "user", false)
 
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
@@ -923,9 +919,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", false)
-	require.NoError(t, err)
-	assert.Len(t, changes.Results, 2)
+	changes := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", false)
 
 	assert.Equal(t, "doc", changes.Results[1].ID)
 	assert.False(t, changes.Results[1].Revoked)
@@ -933,9 +927,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": []}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 3), "user", false)
-	require.NoError(t, err)
-	require.Len(t, changes.Results, 2)
+	changes = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 3), "user", false)
 
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
@@ -1783,9 +1775,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for docs to turn up on local / rt1
-	changesResults, err := rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
-	require.Len(t, changesResults.Results, 5)
+	rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
 
 	// Revoke C and ensure docC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A", "B"}))
@@ -1891,9 +1881,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 
 	require.NoError(t, ar.Start(ctx1))
 
-	changesResults, err := rt1.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 4)
+	rt1.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
 
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
@@ -1990,9 +1978,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	}()
 
 	// Wait for docs to turn up on local / rt1
-	changesResults, err := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 1)
+	rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 
 	// Revoke A and ensure ABC chanel access and ensure DocA is purged from local
 	resp = rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2ds, []string{}, nil))
@@ -2073,9 +2059,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	}()
 
 	// Wait for docs to turn up on local / rt1
-	changesResults, err := rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 5)
+	rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
 
 	// Revoke A and ensure docA, docAB, docABC get purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", RestTesterDefaultUserPassword, "", rt2ds, []string{}, nil))
@@ -2162,9 +2146,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 	require.NoError(t, ar.Start(ctx1))
 
-	changesResults, err := rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 3)
+	rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
 
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
@@ -2562,9 +2544,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	require.NoError(t, ar.Start(ctx1))
 
-	changesResults, err := rt1.WaitForChanges(17, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 17)
+	changesResults := rt1.WaitForChanges(17, "/{{.keyspace}}/_changes?since=0", "", true)
 
 	// Going to stop & start replication between these actions to make out of order seq no's more likely. More likely
 	// to hit CBG-1591
@@ -2585,9 +2565,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
-	changesResults, err = rt1.WaitForChanges(8, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
-	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 8)
+	changesResults = rt1.WaitForChanges(8, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
 
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
@@ -2619,9 +2597,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	// Validate none of the documents are purged after flipping option
 	rt2.WaitForPendingChanges()
 
-	changesResults, err = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
-	assert.NoError(t, err)
-	assert.Len(t, changesResults.Results, 1)
+	changesResults = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
 
 	for i := 0; i < 10; i++ {
 		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/docA%d", i), "")

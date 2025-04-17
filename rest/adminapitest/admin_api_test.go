@@ -1721,8 +1721,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	require.NoError(t, err, "Error waiting for changes")
+	changes := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	base.RequireAllAssertions(t,
 		assert.Equal(t, "doc1", changes.Results[0].ID),
 		assert.Equal(t, "doc2", changes.Results[1].ID),
@@ -1735,8 +1734,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
-	changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	require.NoError(t, err, "Error waiting for changes")
+	changes = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	assert.Equal(t, "doc2", changes.Results[0].ID)
 
 }

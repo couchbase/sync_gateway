@@ -42,8 +42,7 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 	RequireStatus(t, tr, http.StatusCreated)
 
 	// wait for doc to come back over DCP
-	err := rt.WaitForDoc(t.Name())
-	require.NoError(t, err, "error waiting for doc over DCP")
+	rt.WaitForDoc(t.Name())
 }
 
 // TestX509RoundtripUsingDomain is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
@@ -63,8 +62,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 	RequireStatus(t, tr, http.StatusCreated)
 
 	// wait for doc to come back over DCP
-	err := rt.WaitForDoc(t.Name())
-	require.NoError(t, err, "error waiting for doc over DCP")
+	rt.WaitForDoc(t.Name())
 }
 
 func TestX509UnknownAuthorityWrap(t *testing.T) {

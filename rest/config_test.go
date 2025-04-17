@@ -1402,13 +1402,11 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			rt.WaitForPendingChanges()
 
 			// ensure doc is in expected channel and is not in the unexpected channels
-			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+test.expectedChannel, "", true)
-			require.NoError(t, err)
+			changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+test.expectedChannel, "", true)
 			changes.RequireDocIDs(t, []string{docID})
 
 			channels := strings.Join(test.unexpectedChannels, ",")
-			changes, err = rt.WaitForChanges(0, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+channels, "", true)
-			require.NoError(t, err)
+			changes = rt.WaitForChanges(0, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+channels, "", true)
 			changes.RequireDocIDs(t, []string{})
 		})
 	}
