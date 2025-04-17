@@ -18,27 +18,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func getDatabaseContextOptions(isServerless bool) db.DatabaseContextOptions {
+func getDatabaseContextOptions(useLegacySyncDocsIndex bool) db.DatabaseContextOptions {
 	defaultCacheOptions := db.DefaultCacheOptions()
 
 	return db.DatabaseContextOptions{
-		CacheOptions: &defaultCacheOptions,
-		Serverless:   isServerless,
+		CacheOptions:           &defaultCacheOptions,
+		UseLegacySyncDocsIndex: useLegacySyncDocsIndex,
+		Serverless:             !useLegacySyncDocsIndex, // after CBG-4614, this flag will not be used
 	}
 }
 
 // setupN1QLStore initializes the indexes for a database. This is normally done by the rest package
-func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isServerless bool, numPartitions uint32) {
+func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, useLegacySyncDocsIndex bool, numPartitions uint32) {
 	testBucket, ok := bucket.(*base.TestBucket)
 	require.True(t, ok)
 
 	hasOnlyDefaultDataStore := len(testBucket.GetNonDefaultDatastoreNames()) == 0
 
 	options := db.InitializeIndexOptions{
-		NumReplicas:   0,
-		Serverless:    isServerless,
-		UseXattrs:     base.TestUseXattrs(),
-		NumPartitions: numPartitions,
+		NumReplicas:         0,
+		LegacySyncDocsIndex: useLegacySyncDocsIndex,
+		UseXattrs:           base.TestUseXattrs(),
+		NumPartitions:       numPartitions,
 	}
 	if hasOnlyDefaultDataStore {
 		options.MetadataIndexes = db.IndexesAll
@@ -50,11 +51,11 @@ func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, isSer
 		return
 	}
 	options = db.InitializeIndexOptions{
-		NumReplicas:     0,
-		Serverless:      isServerless,
-		UseXattrs:       base.TestUseXattrs(),
-		MetadataIndexes: db.IndexesWithoutMetadata,
-		NumPartitions:   numPartitions,
+		NumReplicas:         0,
+		LegacySyncDocsIndex: useLegacySyncDocsIndex,
+		UseXattrs:           base.TestUseXattrs(),
+		MetadataIndexes:     db.IndexesWithoutMetadata,
+		NumPartitions:       numPartitions,
 	}
 
 	dataStore, err := testBucket.GetNamedDataStore(0)

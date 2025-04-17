@@ -173,7 +173,8 @@ type DatabaseContextOptions struct {
 	BcryptCost                    int
 	GroupID                       string
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
-	Serverless                    bool          // If running in serverless mode
+	UseLegacySyncDocsIndex        bool
+	Serverless                    bool // If running in serverless mode
 	Scopes                        ScopesOptions
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	MetadataID                    string         // MetadataID used for metadata storage
@@ -885,6 +886,10 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 
 func (context *DatabaseContext) IsServerless() bool {
 	return context.Options.Serverless
+}
+
+func (context *DatabaseContext) UseLegacySyncDocsIndex() bool {
+	return true // switch in CBG-4614
 }
 
 // Makes a Database object given its name and bucket.

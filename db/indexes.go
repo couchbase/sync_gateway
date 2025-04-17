@@ -72,8 +72,8 @@ type indexCreationMode int
 
 const (
 	Always indexCreationMode = iota
-	Serverless
-	Dedicated
+	SeparatePrincipalIndexes
+	LegacySyncDocsIndex
 )
 
 var (
@@ -153,9 +153,9 @@ var (
 		IndexChannels:   Always,
 		IndexAllDocs:    Always,
 		IndexTombstones: Always,
-		IndexSyncDocs:   Dedicated,
-		IndexUser:       Serverless,
-		IndexRole:       Serverless,
+		IndexSyncDocs:   LegacySyncDocsIndex,
+		IndexUser:       SeparatePrincipalIndexes,
+		IndexRole:       SeparatePrincipalIndexes,
 	}
 
 	// Queries used to check readiness on startup.  Only required for critical indexes.
@@ -263,12 +263,12 @@ func (i *SGIndex) isXattrOnly() bool {
 
 // shouldCreate returns if given index should be created based on Serverless mode
 func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
-	if options.Serverless {
-		if i.creationMode == Dedicated {
+	if options.LegacySyncDocsIndex {
+		if i.creationMode == SeparatePrincipalIndexes {
 			return false
 		}
 	} else {
-		if i.creationMode == Serverless {
+		if i.creationMode == LegacySyncDocsIndex {
 			return false
 		}
 
@@ -360,9 +360,9 @@ type InitializeIndexOptions struct {
 	WaitForIndexesOnlineOption base.WaitForIndexesOnlineOption // how long to wait for indexes to become online
 	NumReplicas                uint                            // number of indexer nodes for this index
 	MetadataIndexes            CollectionIndexesType           // indicate which indexes to create
-	Serverless                 bool                            // if true, create indexes for serverless
 	UseXattrs                  bool                            // if true, create indexes on xattrs, otherwise, use inline sync data
 	NumPartitions              uint32                          // number of partitions to use for the index
+	LegacySyncDocsIndex        bool                            // if true, create legacy sync docs index (for backwards compatibility)
 }
 
 // Initializes Sync Gateway indexes for datastore.  Creates required indexes if not found, then waits for index readiness.
@@ -532,7 +532,7 @@ func copySGIndexes(inputMap map[SGIndexType]SGIndex) map[SGIndexType]SGIndex {
 	return outputMap
 }
 
-// GetIndexesName returns names of the indexes that would be created for given Serverless mode and Xattr flag
+// GetIndexesName returns names of the indexes that would be created for specific options.
 // it meant to be used in tests to know which indexes to drop as a part of manual cleanup
 func GetIndexesName(options InitializeIndexOptions) []string {
 	indexesName := make([]string, 0)
