@@ -3307,3 +3307,59 @@ func TestServerUUIDRuntimeServerConfig(t *testing.T) {
 	}
 
 }
+
+func TestConfigUserXattrKeyValidation(t *testing.T) {
+	testCases := []struct {
+		name          string
+		dbConfig      DbConfig
+		expectedError *string
+	}{
+		{
+			name: "userXattrKey=nil",
+			dbConfig: DbConfig{
+				Name:         "db",
+				UserXattrKey: nil,
+			},
+			expectedError: nil,
+		},
+		{
+			// this probably isn't possible to hit due to JSON unmarshalling
+			name: "userXattrKey=empty str",
+			dbConfig: DbConfig{
+				Name:         "db",
+				UserXattrKey: base.Ptr(""),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "userXattrKey=shortstr",
+			dbConfig: DbConfig{
+				Name:         "db",
+				UserXattrKey: base.Ptr("shortstr"),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "userXattrKey=veryveryveryverylongstr",
+			dbConfig: DbConfig{
+				Name:         "db",
+				UserXattrKey: base.Ptr("veryveryveryverylongstr"),
+			},
+			expectedError: base.Ptr("maximum of 15 characters"),
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			validateOIDCConfig := false
+			validateReplications := true
+			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig, validateReplications)
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), *test.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+
+		})
+	}
+}

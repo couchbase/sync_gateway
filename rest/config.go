@@ -1125,6 +1125,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			multiError = multiError.Append(fmt.Errorf("index.num_partitions is incompatible with enable_shared_bucket_access=false"))
 		}
 	}
+	if dbConfig.UserXattrKey != nil && len(*dbConfig.UserXattrKey) > 15 {
+		multiError = multiError.Append(fmt.Errorf("user_xattr_key can only be a maximum of 15 characters"))
+	}
+
 	return multiError.ErrorOrNil()
 }
 

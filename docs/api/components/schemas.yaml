@@ -1809,8 +1809,12 @@ Database:
       type: integer
       default: 5000
     user_xattr_key:
-      description: 'The key to use for the user xattr that will be accessible from the sync function. IF empty, the feature will be disabled.'
+      description: |-
+        The key to use for the user xattr that will be accessible from the sync function. If empty, the feature will be disabled.
+
+        This is an Enterprise Edition feature only.
       type: string
+      maximum: 15
     client_partition_window_secs:
       description: |-
         How long (in seconds) clients can remain offline for without losing replication metadata.
