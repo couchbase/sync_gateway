@@ -93,12 +93,12 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	expectedCollectionCount := int64(3) // default, collection1, collection2
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionCompleteCallback = func(dbName, collectionName string) {
-		log.Printf("Collection complete callback invoked for %s %s", dbName, collectionName)
+	initMgr.testCollectionCompleteCallback = func(dbName string, scName base.ScopeAndCollectionName) {
+		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
-			notifyChannel(t, singleCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", collectionName)) // notify the test that indexes have been created for this collection
-			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))             // wait for the test to unblock before proceeding to the next collection
+			notifyChannel(t, singleCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName)) // notify the test that indexes have been created for this collection
+			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName))             // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -179,12 +179,12 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionCompleteCallback = func(dbName, collectionName string) {
-		log.Printf("Collection complete callback invoked for %s %s", dbName, collectionName)
+	initMgr.testCollectionCompleteCallback = func(dbName string, scName base.ScopeAndCollectionName) {
+		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
-			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", collectionName)) // notify the test that indexes have been created for this collection
-			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
+			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName.CollectionName())) // notify the test that indexes have been created for this collection
+			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName.CollectionName()))            // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -262,12 +262,12 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionCompleteCallback = func(dbName, collectionName string) {
-		log.Printf("Collection complete callback invoked for %s %s", dbName, collectionName)
+	initMgr.testCollectionCompleteCallback = func(dbName string, scName base.ScopeAndCollectionName) {
+		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
-			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", collectionName)) // notify the test that indexes have been created for this collection
-			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
+			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName)) // notify the test that indexes have been created for this collection
+			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName))            // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -349,12 +349,12 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionCompleteCallback = func(dbName, collectionName string) {
-		log.Printf("Collection complete callback invoked for %s %s", dbName, collectionName)
+	initMgr.testCollectionCompleteCallback = func(dbName string, scName base.ScopeAndCollectionName) {
+		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
-			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", collectionName)) // notify the test that indexes have been created for this collection
-			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
+			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName)) // notify the test that indexes have been created for this collection
+			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName))            // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -430,7 +430,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionCompleteCallback = func(dbName, collectionName string) {
+	initMgr.testCollectionCompleteCallback = func(_ string, _ base.ScopeAndCollectionName) {
 		atomic.AddInt64(&collectionCount, 1)
 	}
 	dbName := "dbName"

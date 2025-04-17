@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -270,12 +269,10 @@ func (h *handler) handleDbOffline() error {
 
 // handleIndexInit allows async index initialization status to be viewed
 func (h *handler) handleGetIndexInit() error {
-	//b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
-	//if err != nil {
-	//	return err
-	//}
-	// TODO: Response body
-	b := []byte(`{}`)
+	b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
+	if err != nil {
+		return err
+	}
 	h.writeRawJSON(b)
 	return nil
 }
@@ -299,16 +296,14 @@ func (h *handler) handlePostIndexInit() error {
 	action := cmp.Or(h.getQuery("action"), "start")
 
 	if action == "stop" {
-		//if err := h.db.AsyncIndexInitManager.Stop(); err != nil {
-		//	return err
-		//}
-		//status, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
-		//if err != nil {
-		//	return err
-		//}
 		h.server.DatabaseInitManager.Cancel(h.db.Name)
-		// TODO: Response body
-		status := []byte(`{}`)
+		if err := h.db.AsyncIndexInitManager.Stop(); err != nil {
+			return err
+		}
+		status, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
+		if err != nil {
+			return err
+		}
 		h.writeRawJSON(status)
 		return nil
 	}
@@ -336,36 +331,38 @@ func (h *handler) handlePostIndexInit() error {
 	}
 	newDbConfig.Index.NumPartitions = req.NumPartitions
 
-	var statusCallback CollectionCallbackFunc = func(dbName, collectionName string) {
-		log.Printf("Index initialization status callback %s %s", dbName, collectionName)
+	var statusMap = make(map[string]map[string]string, len(newDbConfig.Scopes))
+	for scope, _ := range newDbConfig.Scopes {
+		statusMap[scope] = make(map[string]string)
 	}
+	var statusCallback CollectionCallbackFunc = func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus) {
+		base.ErrorfCtx(h.ctx(), "Index initialization status callback %s %s %s", dbName, scName, status)
+		// even though the scope map is initialized above,
+		// it's possible we have a named scope and this triggers a `_default` index init,
+		// so we need to be defensive here and create if necessary
+		if _, ok := statusMap[scName.ScopeName()]; !ok {
+			statusMap[scName.ScopeName()] = make(map[string]string, 1)
+		}
+		statusMap[scName.ScopeName()][scName.CollectionName()] = string(status)
+	}
+
 	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback)
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		select {
-		case err := <-done:
-			if err != nil {
-				base.InfofCtx(h.ctx(), base.KeyCRUD, "Error initializing database: %v", err)
-			} else {
-				base.InfofCtx(h.ctx(), base.KeyCRUD, "Database initialized successfully")
-			}
-		case <-h.ctx().Done():
-			base.InfofCtx(h.ctx(), base.KeyCRUD, "h.ctx() done, stopping database initialization err doneChan")
+		if err := <-done; err != nil {
+			base.InfofCtx(h.ctx(), base.KeyQuery, "Error initializing database indexes: %v", err)
+		} else {
+			base.InfofCtx(h.ctx(), base.KeyQuery, "Database indexes initialized successfully")
 		}
 	}()
 
-	//options := map[string]interface{}{
-	//	"databaseInitManager": h.server.DatabaseInitManager,
-	//	"newDbConfig":         newDbConfig,
-	//	"database":            h.db,
-	//}
-	//return h.db.AsyncIndexInitManager.Start(h.ctx(), options)
-
-	// TODO: Response body
-	return nil
+	opts := map[string]interface{}{
+		"statusMap": &statusMap,
+	}
+	return h.db.AsyncIndexInitManager.Start(h.ctx(), opts)
 }
 
 // Get admin database info

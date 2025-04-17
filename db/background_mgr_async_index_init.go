@@ -10,66 +10,56 @@ package db
 
 import (
 	"context"
+	"log"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
 
-type IndexStatus string
-
-const (
-	IndexStatusInProgress IndexStatus = "in progress"
-	IndexStatusReady      IndexStatus = "ready"
-)
-
-// AsyncIndexInitManager is a background manager process that is able to initialize a new set of indexes on an already running database - assuming the new indexes are named differently such that both can co-exist simultaneously.
+// AsyncIndexInitManager is a background manager process that manages the cross-node job state and status of an async invocation of DatabaseInitManager (via /db/_index_init)
+// This manager does not do the actual work to initialize indexes, due to go package boundaries and import-cycles, but is being fed status updates from callbacks passed into rest.DatabaseInitManager
+// This status can be viewed cross-node, and similarly the start/stop actions can be used cross-node with this AsyncIndexInitManager layer.
 type AsyncIndexInitManager struct {
-	lock         sync.Mutex
-	_indexStatus map[string]map[string]IndexStatus // scope->collection->status
+	lock      sync.Mutex
+	statusMap *map[string]map[string]string
 }
 
-// Init is called synchronously to set up a run for the background manager process but must not block for the full process. See Run() for more info about the async part.
+// Init is called synchronously to set up a run for the background manager process. See Run() for the async part.
 func (a *AsyncIndexInitManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-	//database := options["database"].(*Database)
-
-	scopes := options["scopes"].([]string)
-	collections := options["collections"].([]string)
-	a._indexStatus = make(map[string]map[string]IndexStatus)
-	for _, scope := range scopes {
-		a._indexStatus[scope] = make(map[string]IndexStatus)
-		for _, collection := range collections {
-			// Init it with InProgress just to reduce complexity and number of states... we know we're about to hit Run shortly anyway.
-			a._indexStatus[scope][collection] = IndexStatusInProgress
-		}
-	}
-
+	log.Printf("Init: %v %v", options, clusterStatus)
+	a.statusMap = options["statusMap"].(*map[string]map[string]string)
 	return nil
 }
 
-// Run is called to start the process and is expected to be run inside a goroutine. This function should block until the job is complete.
+// Run is called inside a goroutine to perform the job of the job. This function should block until the job is complete.
 func (a *AsyncIndexInitManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-
+	log.Printf("Run: %v %v %v", options, persistClusterStatusCallback, terminator)
 	return nil
 }
 
 type AsyncIndexInitManagerResponse struct {
 	BackgroundManagerStatus
-	IndexStatus map[string]map[string]IndexStatus `json:"index_status"` // scope->collection->status
+	IndexStatus map[string]map[string]string `json:"index_status"` // scope->collection->status
 }
 
 type AsyncIndexInitManagerStatusDoc struct {
-	AttachmentManagerResponse `json:"status"`
+	AsyncIndexInitManagerResponse `json:"status"`
 }
 
 func (a *AsyncIndexInitManager) GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
+	log.Printf("GetProcessStatus: %v", status)
+	log.Printf("GetProcessStatus a.statusMap: %v", a.statusMap)
+	var statusMap map[string]map[string]string
+	if a.statusMap != nil {
+		statusMap = *a.statusMap
+	}
+
 	retStatus := AsyncIndexInitManagerResponse{
 		BackgroundManagerStatus: status,
-		IndexStatus:             a._indexStatus,
+		IndexStatus:             statusMap,
 	}
 
 	statusJSON, err := base.JSONMarshal(retStatus)
@@ -77,9 +67,8 @@ func (a *AsyncIndexInitManager) GetProcessStatus(status BackgroundManagerStatus)
 }
 
 func (a *AsyncIndexInitManager) ResetStatus() {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-	a._indexStatus = nil
+	a.statusMap = nil
+	return
 }
 
 var _ BackgroundManagerProcessI = &AsyncIndexInitManager{}

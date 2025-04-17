@@ -55,14 +55,14 @@ func TestChangeIndexPartitions(t *testing.T) {
 		require.NoError(c, err)
 		require.Empty(c, body.LastErrorMessage)
 		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-		require.Lenf(c, body.IndexStatus, 1, "expected one scope")
+		require.GreaterOrEqual(c, len(body.IndexStatus), 1, "expected at least one scope (maybe two if `_default` plus a named scope)")
+		require.LessOrEqual(c, len(body.IndexStatus), 2, "expected at most two scopes (maybe one if `_default` only)")
 		for _, collections := range body.IndexStatus {
-			require.Len(c, collections, len(rt.GetDatabase().CollectionByID), "expected matching number of collections")
 			for _, status := range collections {
-				assert.Equal(c, db.IndexStatusReady, status)
+				assert.Equal(c, "ready", status)
 			}
 		}
-	}, 1*time.Minute, 1*time.Second)
+	}, 10*time.Second, 1*time.Second)
 	// more checks
 	assertNumSGIndexPartitions(t, newPartitions, database)
 

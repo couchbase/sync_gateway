@@ -132,7 +132,10 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(dbName, collectionName string) {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
+		if status != rest.CollectionIndexStatusReady {
+			return
+		}
 		count := atomic.AddInt64(&collectionCount, 1)
 		// On first collection, close initStarted channel
 		log.Printf("collection callback count: %v", count)
@@ -142,7 +145,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 		}
 		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
 	}
-	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
+	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 
 	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
@@ -268,7 +271,10 @@ func TestAsyncInitWithResync(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(dbName, collectionName string) {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
+		if status != rest.CollectionIndexStatusReady {
+			return
+		}
 		count := atomic.AddInt64(&collectionCount, 1)
 		// On first collection, close initStarted channel
 		log.Printf("collection callback count: %v", count)
@@ -278,7 +284,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 		}
 		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
 	}
-	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
+	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 	// Recreate the database with offline=true and a modified sync function
 	syncFunc = "function(doc){ channel(doc.channel2);}"
 	dbConfig = makeDbConfig(t, tb, syncFunc, "")
@@ -348,7 +354,10 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(dbName, collectionName string) {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
+		if status != rest.CollectionIndexStatusReady {
+			return
+		}
 		count := atomic.AddInt64(&collectionCount, 1)
 		// On first collection, close initStarted channel
 		log.Printf("collection callback count: %v", count)
@@ -358,7 +367,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 		}
 		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
 	}
-	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
+	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 
 	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
@@ -466,7 +475,10 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(dbName, collectionName string) {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
+		if status != rest.CollectionIndexStatusReady {
+			return
+		}
 		count := atomic.AddInt64(&collectionCount, 1)
 		// On first collection, close initStarted channel
 		log.Printf("collection callback count: %v", count)
@@ -485,7 +497,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 			close(firstDatabaseComplete)
 		}
 	}
-	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, databaseCompleteCallback)
+	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, databaseCompleteCallback)
 
 	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
@@ -613,7 +625,10 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(dbName, collectionName string) {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
+		if status != rest.CollectionIndexStatusReady {
+			return
+		}
 		count := atomic.AddInt64(&collectionCount, 1)
 		// On first collection, close initStarted channel
 		log.Printf("collection callback count: %v", count)
@@ -623,7 +638,7 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 		}
 		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
 	}
-	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
+	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 
 	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
@@ -727,7 +742,10 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(dbName, collectionName string) {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
+		if status != rest.CollectionIndexStatusReady {
+			return
+		}
 		count := atomic.AddInt64(&collectionCount, 1)
 		// On first collection, close initStarted channel
 		log.Printf("collection callback count: %v", count)
@@ -737,7 +755,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 		}
 		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
 	}
-	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
+	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 
 	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
