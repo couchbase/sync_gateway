@@ -961,7 +961,7 @@ func TestImportConflictWithTombstone(t *testing.T) {
 	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
-	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -1076,7 +1076,7 @@ func TestImportCancelOnDocWithCorruptSequenceOndemand(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport, base.KeyCRUD)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(base.TestCtx(t))
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, DatabaseContextOptions{})
+	db, ctx := setupTestDBForBucket(t, tb)
 	key := t.Name()
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
