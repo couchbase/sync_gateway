@@ -1725,10 +1725,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		err := dataStore.Delete(docID)
 		require.NoError(t, err, "Unable to delete doc %q", docID)
 
-		// Wait until the "delete" mutation appears on the changes feed.
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
-		assert.NoError(t, err, "Error waiting for changes")
-		log.Printf("changes: %+v", changes)
+		// force import via GET
+		RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ""), http.StatusOK)
 		rt.RequireDocNotFound(docID)
 
 		// Check whether the attachment is removed from the underlying storage.
@@ -1772,10 +1770,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		err := dataStore.Set(docID, 0, nil, []byte(`{"prop": false}`))
 		require.NoError(t, err, "Error updating the document")
 
-		// Wait until the "update" mutation appears on the changes feed.
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
-		assert.NoError(t, err, "Error waiting for changes")
-		log.Printf("changes: %+v", changes)
+		// Wait until the "update" mutation is present by doing on demand import
+		rt.GetDoc(docID)
 
 		// Verify that the attachment is not removed.
 		actualAttBody = retrieveAttachment(t, docID, attName)

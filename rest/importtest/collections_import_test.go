@@ -262,6 +262,7 @@ const collectionsDbConfigUpsertScopes = `{
 
 func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 2)
 
@@ -310,8 +311,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	require.Equal(t, strings.ReplaceAll(dataStore1.GetName(), testBucket.GetName(), dbName), rt.GetSingleKeyspace())
 
 	// Wait for auto-import to work
-	_, err = rt.WaitForChanges(docCount, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err)
+	rt.WaitForChanges(docCount, "/{{.keyspace}}/_changes", "", true)
 
 	for _, dataStore := range dataStores {
 		for j := 0; j < docCount; j++ {
@@ -337,8 +337,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	require.Len(t, rt.GetDbCollections(), 2)
 
 	// Wait for auto-import to work
-	_, err = rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
-	require.NoError(t, err)
+	rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
 
 	for _, dataStore := range dataStores {
 		for j := 0; j < docCount; j++ {
@@ -400,10 +399,8 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	require.Len(t, rt.GetDbCollections(), 2)
 
 	// Wait for auto-import to work
-	_, err = rt.WaitForChanges(docCount, "/{{.keyspace1}}/_changes", "", true)
-	require.NoError(t, err)
-	_, err = rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
-	require.NoError(t, err)
+	rt.WaitForChanges(docCount, "/{{.keyspace1}}/_changes", "", true)
+	rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
 	require.Equal(t, int64(docCount*2), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
 	oneScopeConfig := rest.GetCollectionsConfig(t, testBucket, 1)
@@ -424,8 +421,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 		}
 	}
 
-	_, err = rt.WaitForChanges(docCount*2, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err)
+	rt.WaitForChanges(docCount*2, "/{{.keyspace}}/_changes", "", true)
 	// there should be 10 documents datastore1_{10..19}
 	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 

@@ -847,8 +847,7 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// ensure doc1 is imported now we're online
-	_, err = rt.WaitForChanges(3, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err)
+	rt.WaitForChanges(3, "/{{.keyspace}}/_changes", "", true)
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 }
 

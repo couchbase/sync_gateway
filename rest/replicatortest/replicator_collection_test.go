@@ -175,14 +175,10 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		}
 
 		localKeyspace := rt1DbName + "." + localCollection
-		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, expectedNumDocs)
+		rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
 
 		remoteKeyspace := rt2DbName + "." + remoteCollection
-		changes, err = rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, expectedNumDocs)
+		rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
 
 		for j := 1; j <= numDocsPerCollection; j++ {
 			expectedStatus := http.StatusOK
@@ -259,14 +255,10 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		}
 
 		localKeyspace := rt1DbName + "." + localCollection
-		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, expectedNumDocs)
+		rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
 
 		remoteKeyspace := rt2DbName + "." + remoteCollection
-		changes, err = rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, expectedNumDocs)
+		rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
 
 		// check rt1 for passive docs (pull)
 		resp = rt1.SendAdminRequest(http.MethodGet,
@@ -295,18 +287,14 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		expectedNumDocs := numDocsPerCollection + 1 // we created a set of 3 docs (plus one later), but didn't replicate any in or out of here...
 
 		localKeyspace := rt1DbName + "." + localCollection
-		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, expectedNumDocs)
+		rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
 	}
 	for _, remoteCollection := range nonReplicatedRemoteCollections {
 
 		expectedNumDocs := numDocsPerCollection + 1 // we created a set of 3 docs (plus one later), but didn't replicate any in or out of here...
 
 		remoteKeyspace := rt2DbName + "." + remoteCollection
-		changes, err := rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, expectedNumDocs)
+		rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
 	}
 }
 

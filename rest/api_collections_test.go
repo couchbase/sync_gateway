@@ -224,7 +224,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, rt.WaitForDoc(docID))
+	rt.WaitForDoc(docID)
 }
 
 func TestMultiCollectionDCP(t *testing.T) {
@@ -255,8 +255,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	rt.WaitForPendingChanges()
 
 	for _, ks := range rt.GetKeyspaces() {
-		_, err = rt.WaitForChanges(1, fmt.Sprintf("/%s/_changes", ks), "", true)
-		require.NoError(t, err)
+		rt.WaitForChanges(1, fmt.Sprintf("/%s/_changes", ks), "", true)
 	}
 }
 
@@ -588,8 +587,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+invalidDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
-	require.NoError(t, err)
+	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 }
 
 func TestCollectionsPutDBInexistentCollection(t *testing.T) {
