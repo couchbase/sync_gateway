@@ -2114,8 +2114,13 @@ func TestHandleGetConfig(t *testing.T) {
 }
 
 func TestHandleGetRevTree(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+
+	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	// Create three revisions of the user foo with different status and updated_at values;
 	reqBodyJson := `{"new_edits": false, "docs": [

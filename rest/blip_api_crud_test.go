@@ -48,10 +48,9 @@ import (
 //
 // Replication Spec: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#proposechanges
 func TestBlipPushRevisionInspectChanges(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTester(t)
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{allowConflicts: true, GuestEnabled: true})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
@@ -67,7 +66,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	body, err := changesResponse.Body()
 	assert.NoError(t, err, "Error reading changes response body")
 	err = base.JSONUnmarshal(body, &changeList)
-	assert.NoError(t, err, "Error unmarshalling response body")
+	require.NoError(t, err, "Error unmarshalling response body: %s", body)
 	require.Len(t, changeList, 1) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow := changeList[0]
 	assert.Len(t, changeRow, 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
@@ -603,8 +602,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode: true,
-		GuestEnabled:    true,
+		GuestEnabled: true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -643,8 +641,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode: true,
-		GuestEnabled:    true,
+		GuestEnabled: true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -1666,7 +1663,6 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode:    true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
@@ -1691,12 +1687,11 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 }
 
 func TestPutRevConflictsMode(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode:    false,
+		allowConflicts:     true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
@@ -2648,8 +2643,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode: true,
-		GuestEnabled:    true,
+		GuestEnabled: true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()

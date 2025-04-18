@@ -258,7 +258,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 		}
 	}`
 
-	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rtConfig := RestTesterConfig{SyncFn: syncFn, AllowConflicts: true}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

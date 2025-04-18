@@ -57,7 +57,7 @@ type RestTesterConfig struct {
 	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
 	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode           bool                        // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	AllowConflicts                  bool                        // Enable conflicts mode.  By default, conflicts will not allowed
 	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
 	CustomTestBucket                *base.TestBucket            // If set, use this bucket instead of requesting a new one.
 	LeakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
@@ -375,9 +375,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.Name = "db"
 		}
 		rt.DatabaseConfig.EnableXattrs = &useXattrs
-		if rt.EnableNoConflictsMode {
-			boolVal := false
-			rt.DatabaseConfig.AllowConflicts = &boolVal
+		if rt.AllowConflicts {
+			rt.DatabaseConfig.AllowConflicts = base.Ptr(true)
 		}
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.SgReplicateEnabled)
@@ -809,11 +808,6 @@ func (rt *RestTester) SendDiagnosticRequestWithHeaders(method, resource string, 
 
 	rt.TestDiagnosticHandler().ServeHTTP(response, request)
 	return response
-}
-
-func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
-	rt.EnableNoConflictsMode = true
-	return rt.TestAdminHandler()
 }
 
 var fakeRestTesterIP = net.IPv4(127, 0, 0, 99)
@@ -1326,8 +1320,8 @@ func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb
 // The parameters used to create a BlipTester
 type BlipTesterSpec struct {
 
-	// Run Sync Gateway in "No conflicts" mode.  Will be propgated to the underlying RestTester
-	noConflictsMode bool
+	// Run Sync Gateway with allow_conflicts.  Will be propgated to the underlying RestTester
+	allowConflicts bool
 
 	// If an underlying RestTester is created, it will propagate this setting to the underlying RestTester.
 	GuestEnabled bool
@@ -1443,10 +1437,10 @@ func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
 // NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
 func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
 	rtConfig := RestTesterConfig{
-		EnableNoConflictsMode: spec.noConflictsMode,
-		GuestEnabled:          spec.GuestEnabled,
-		DatabaseConfig:        &DatabaseConfig{},
-		SyncFn:                spec.syncFn,
+		AllowConflicts: spec.allowConflicts,
+		GuestEnabled:   spec.GuestEnabled,
+		DatabaseConfig: &DatabaseConfig{},
+		SyncFn:         spec.syncFn,
 	}
 	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
 	bt, err := createBlipTesterWithSpec(tb, spec, rt)
@@ -1461,9 +1455,9 @@ func NewBlipTester(tb testing.TB) (*BlipTester, error) {
 
 func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
 	rtConfig := RestTesterConfig{
-		EnableNoConflictsMode: spec.noConflictsMode,
-		GuestEnabled:          spec.GuestEnabled,
-		SyncFn:                spec.syncFn,
+		AllowConflicts: spec.allowConflicts,
+		GuestEnabled:   spec.GuestEnabled,
+		SyncFn:         spec.syncFn,
 	}
 	rt := NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)

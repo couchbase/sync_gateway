@@ -685,9 +685,12 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 }
 
 func TestConflictWithInvalidAttachment(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	// Create Doc
 	version := rt.CreateTestDoc("doc1")
 
@@ -779,8 +782,12 @@ func TestAttachmentRevposPre25Metadata(t *testing.T) {
 }
 
 func TestConflictingBranchAttachments(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	// Create a document
 	version := rt.CreateTestDoc("doc1")
@@ -830,8 +837,12 @@ func TestConflictingBranchAttachments(t *testing.T) {
 }
 
 func TestAttachmentsWithTombstonedConflict(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	version := rt.CreateTestDoc("doc1")
 
@@ -2132,8 +2143,12 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 func TestAttachmentsMissing(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	docID := t.Name()
 	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
@@ -2151,8 +2166,12 @@ func TestAttachmentsMissing(t *testing.T) {
 func TestAttachmentsMissingNoBody(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	docID := t.Name()
 	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
@@ -2386,10 +2405,13 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 
 // CBG-2004: Test that prove attachment over Blip works correctly when receiving a ErrAttachmentNotFound
 func TestProveAttachmentNotFound(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
-	})
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	require.NoError(t, rt.SetAdminParty(true))
 
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	assert.NoError(t, err, "Error creating BlipTester")

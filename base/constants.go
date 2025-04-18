@@ -85,8 +85,8 @@ const (
 	// TestEnvGoroutineDump if set to true will capture a goroutine pprof profile and log the location at the end of each package
 	TestEnvGoroutineDump = "SG_TEST_GOROUTINE_DUMP"
 
-	DefaultUseXattrs      = true // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
-	DefaultAllowConflicts = true // Whether Sync Gateway allows revision conflicts, if not specified in the config
+	DefaultUseXattrs      = true  // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+	DefaultAllowConflicts = false // Whether Sync Gateway allows revision conflicts, if not specified in the config
 
 	DefaultDropIndexes = false // Whether Sync Gateway drops GSI indexes before each test while running in integration mode
 

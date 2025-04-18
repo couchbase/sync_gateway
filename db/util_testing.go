@@ -556,10 +556,10 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 // override somedbcOptions properties.
 func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
+	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
 }
 
-func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	if dbcOptions.Scopes == nil {
@@ -585,7 +585,7 @@ func addDatabaseAndTestUserContext(ctx context.Context, db *Database) context.Co
 }
 
 // GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_DEFAULT_COLLECTION and whether the backing store supports collections.
-func GetScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
+func GetScopesOptions(t testing.TB, bucket base.Bucket, numCollections int) ScopesOptions {
 	if !base.TestsUseNamedCollections() {
 		if numCollections != 1 {
 			t.Fatal("Setting numCollections on a test that can't use collections is invalid")
@@ -593,8 +593,8 @@ func GetScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections 
 		return GetScopesOptionsDefaultCollectionOnly(t)
 	}
 	// Get a datastore as provided by the test
-	stores := testBucket.GetNonDefaultDatastoreNames()
-	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
+	stores := base.GetNonDefaultDatastoreNames(t, bucket)
+	require.GreaterOrEqual(t, len(stores), numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
 
 	scopesConfig := ScopesOptions{}
 	for i := 0; i < numCollections; i++ {

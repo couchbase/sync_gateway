@@ -129,25 +129,7 @@ func (tb *TestBucket) GetNamedDataStore(count int) (DataStore, error) {
 
 // Return a sorted list of data store names
 func (tb *TestBucket) GetNonDefaultDatastoreNames() []sgbucket.DataStoreName {
-	allDataStoreNames, err := tb.ListDataStores()
-	require.NoError(tb.t, err)
-	var keyspaces []string
-	for _, name := range allDataStoreNames {
-		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
-			continue
-		}
-		keyspaces = append(keyspaces, fmt.Sprintf("%s.%s", name.ScopeName(), name.CollectionName()))
-	}
-	sort.Strings(keyspaces)
-	var nonDefaultDataStoreNames []sgbucket.DataStoreName
-	for _, keyspace := range keyspaces {
-		scopeAndCollection := strings.Split(keyspace, ScopeCollectionSeparator)
-		nonDefaultDataStoreNames = append(nonDefaultDataStoreNames,
-			ScopeAndCollectionName{
-				Scope:      scopeAndCollection[0],
-				Collection: scopeAndCollection[1]})
-	}
-	return nonDefaultDataStoreNames
+	return GetNonDefaultDatastoreNames(tb.t, tb)
 }
 
 // GetSingleDataStore returns a DataStore that can be used for testing.
@@ -974,4 +956,27 @@ func numFilesInDir(t *testing.T, dir string, recursive bool) int {
 // CreateTestBucketName will create a test bucket name using the test bucket prefix and the suffix you pass in
 func CreateTestBucketName(suffix string) string {
 	return fmt.Sprintf("%s%s", tbpBucketNamePrefix, suffix)
+}
+
+// GetNonDefaultDatastoreNames returns a list of non-default datastore names from the given bucket.
+func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataStoreName {
+	allDataStoreNames, err := bucket.ListDataStores()
+	require.NoError(t, err)
+	var keyspaces []string
+	for _, name := range allDataStoreNames {
+		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
+			continue
+		}
+		keyspaces = append(keyspaces, fmt.Sprintf("%s.%s", name.ScopeName(), name.CollectionName()))
+	}
+	sort.Strings(keyspaces)
+	var nonDefaultDataStoreNames []sgbucket.DataStoreName
+	for _, keyspace := range keyspaces {
+		scopeAndCollection := strings.Split(keyspace, ScopeCollectionSeparator)
+		nonDefaultDataStoreNames = append(nonDefaultDataStoreNames,
+			ScopeAndCollectionName{
+				Scope:      scopeAndCollection[0],
+				Collection: scopeAndCollection[1]})
+	}
+	return nonDefaultDataStoreNames
 }

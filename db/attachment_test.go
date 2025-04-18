@@ -90,7 +90,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 func TestAttachments(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 
 	// Test creating & updating a document:
@@ -543,7 +543,7 @@ func TestSetAttachment(t *testing.T) {
 }
 
 func TestRetrieveAncestorAttachments(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 

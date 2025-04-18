@@ -1027,7 +1027,7 @@ func TestRevCacheHitMultiCollection(t *testing.T) {
 	dbOptions := DatabaseContextOptions{}
 	dbOptions.Scopes = GetScopesOptions(t, tb, 2)
 
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, dbOptions)
+	db, ctx := SetupTestDBForBucketWithOptions(t, tb, dbOptions)
 	defer db.Close(ctx)
 
 	var collectionList []*DatabaseCollectionWithUser
@@ -1081,7 +1081,7 @@ func TestRevCacheHitMultiCollectionLoadFromBucket(t *testing.T) {
 	}
 	dbOptions.Scopes = GetScopesOptions(t, tb, 2)
 
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, dbOptions)
+	db, ctx := SetupTestDBForBucketWithOptions(t, tb, dbOptions)
 	defer db.Close(ctx)
 
 	var collectionList []*DatabaseCollectionWithUser
