@@ -51,6 +51,7 @@ func NewSGBlipContextWithProtocols(ctx context.Context, id string, origin []stri
 	} else {
 		bc, err = blip.NewContextCustomID(id, opts)
 	}
+	ctx = base.CorrelationIDLogCtx(ctx, bc.ID)
 
 	bc.LogMessages = base.LogTraceEnabled(ctx, base.KeyWebSocket)
 	bc.LogFrames = base.LogTraceEnabled(ctx, base.KeyWebSocketFrame)
