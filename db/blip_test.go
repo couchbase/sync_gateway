@@ -9,8 +9,12 @@
 package db
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
+	"github.com/couchbase/go-blip"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,5 +25,39 @@ func TestSubprotocolString(t *testing.T) {
 		parsed, err := ParseSubprotocolString(str)
 		require.NoError(t, err)
 		require.Equal(t, i, parsed)
+	}
+}
+
+func TestBlipCorrelationID(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	ctx, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyWebSocket)
+	for _, explicitTestID := range []bool{true, false} {
+		t.Run(fmt.Sprintf("explicitTestID=%t", explicitTestID), func(t *testing.T) {
+			testID := "explicit-test-id"
+			if !explicitTestID {
+				testID = ""
+			}
+			bc, err := NewSGBlipContext(ctx, testID, nil, nil)
+			require.NoError(t, err)
+			if !explicitTestID {
+				require.NotEqual(t, testID, bc.ID)
+				require.NotEmpty(t, bc.ID)
+				testID = bc.ID
+			}
+			base.AssertLogContains(t, "c:"+testID, func() {
+				bc.Logger(blip.LogGeneral, "Sample log message")
+			})
+			bsc, err := NewBlipSyncContext(ctx, bc, db, nil, cancelFunc)
+			require.NoError(t, err)
+			defer bsc.Close()
+
+			base.AssertLogContains(t, "c:"+testID, func() {
+				base.InfofCtx(bsc.loggingCtx, base.KeyWebSocket, "Sample log message")
+			})
+		})
 	}
 }

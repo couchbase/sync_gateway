@@ -63,7 +63,7 @@ func (h *handler) handleBLIPSync() error {
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))
 	h.response.Header().Set(db.BLIPCorrelationIDResponseHeader, blipContext.ID)
 	// Create a new BlipSyncContext attached to the given blipContext.
-	ctx, err := db.NewBlipSyncContext(h.rqCtx, blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats), cancelCtxFunc)
+	ctx, err := db.NewBlipSyncContext(h.rqCtx, blipContext, h.db, db.BlipSyncStatsForCBL(h.db.DbStats), cancelCtxFunc)
 	if err != nil {
 		return err
 	}
