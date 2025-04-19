@@ -756,6 +756,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		isAsync        bool // blocks reading dbInitDoneChan if false
 	)
 	startOffline := base.ValDefault(config.StartOffline, false)
+	useLegacySyncDocsIndex := false // decide in CBG-4615
 	if !useViews {
 		// Initialize any required indexes
 		if gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql); !gsiSupported {
@@ -770,7 +771,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// If database has been requested to start offline, or there's an active async initialization, use async initialization
 		isAsync = startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
 
-		useLegacySyncDocsIndex := true // decide in CBG-4615
 		// Initialize indexes using DatabaseInitManager.
 		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, useLegacySyncDocsIndex)
 		if err != nil {
@@ -787,6 +787,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	contextOptions.UseViews = useViews
+	contextOptions.UseLegacySyncDocsIndex = useLegacySyncDocsIndex
 
 	javascriptTimeout := getJavascriptTimeout(&config.DbConfig)
 
@@ -1343,7 +1344,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
 		JavascriptTimeout:         javascriptTimeout,
-		Serverless:                sc.Config.IsServerless(),
 		ChangesRequestPlus:        base.ValDefault(config.ChangesRequestPlus, false),
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,

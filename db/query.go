@@ -599,7 +599,7 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 // query is covering.
 func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (string, map[string]interface{}) {
 	var queryStatement string
-	if context.IsServerless() {
+	if !context.UseLegacySyncDocsIndex() {
 		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs(), context.numIndexPartitions())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryUsersUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
@@ -643,7 +643,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (string, map[string]interface{}) {
 
 	var queryStatement string
-	if context.IsServerless() {
+	if !context.UseLegacySyncDocsIndex() {
 		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs(), context.numIndexPartitions())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
@@ -668,7 +668,7 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 	}
 
 	var queryStatement string
-	if context.IsServerless() {
+	if !context.UseLegacySyncDocsIndex() {
 		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs(), context.numIndexPartitions())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())

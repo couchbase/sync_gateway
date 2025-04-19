@@ -141,8 +141,8 @@ var (
 		IndexChannels:   IdxFlagIndexTombstones,
 		IndexAllDocs:    IdxFlagIndexTombstones,
 		IndexSyncDocs:   IdxFlagMetadataOnly | IdxFlagPrincipalDocsOnly,
-		IndexUser:       IdxFlagMetadataOnly,
-		IndexRole:       IdxFlagMetadataOnly,
+		IndexUser:       IdxFlagMetadataOnly | IdxFlagPrincipalDocsOnly,
+		IndexRole:       IdxFlagMetadataOnly | IdxFlagPrincipalDocsOnly,
 		IndexTombstones: IdxFlagXattrOnly | IdxFlagIndexTombstones,
 	}
 
@@ -261,7 +261,7 @@ func (i *SGIndex) isXattrOnly() bool {
 	return i.flags&IdxFlagXattrOnly != 0
 }
 
-// shouldCreate returns if given index should be created based on Serverless mode
+// shouldCreate returns if given index should be created.
 func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
 	if options.LegacySyncDocsIndex {
 		if i.creationMode == SeparatePrincipalIndexes {

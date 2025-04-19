@@ -232,6 +232,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 			NumReplicas:         0,
 			LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
 			UseXattrs:           base.TestUseXattrs(),
+			NumPartitions:       DefaultNumIndexPartitions,
 		}
 		if db.OnlyDefaultCollection() {
 			options.MetadataIndexes = IndexesAll

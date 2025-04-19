@@ -24,7 +24,6 @@ func getDatabaseContextOptions(useLegacySyncDocsIndex bool) db.DatabaseContextOp
 	return db.DatabaseContextOptions{
 		CacheOptions:           &defaultCacheOptions,
 		UseLegacySyncDocsIndex: useLegacySyncDocsIndex,
-		Serverless:             !useLegacySyncDocsIndex, // after CBG-4614, this flag will not be used
 	}
 }
 
