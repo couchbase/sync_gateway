@@ -2508,24 +2508,25 @@ func TestBadCredentialsPIndex(t *testing.T) {
 	)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: bucket.NoCloseClone(),
-		PersistentConfig: false,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Ptr(numPartitions),
-			},
-		},
+		PersistentConfig: true,
 	})
 	defer rt.Close()
 
+	dbConfig := rt.NewDbConfig()
+	dbConfig.ImportPartitions = base.Ptr(numPartitions)
+	rest.RequireStatus(t, rt.CreateDatabase(dbName, dbConfig), http.StatusCreated)
 	_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(`{"write": "1"}`))
 	require.NoError(t, err)
 
+	// this will increment the import count by one if the document is processed by cbgt
 	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
 	require.Equal(t, int64(numPartitions), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value())
 
+	prefix := rt.GetDatabase().MetadataKeys.SGCfgPrefix(rt.GetDatabase().Options.GroupID)
 	rt.TakeDbOffline()
 
-	const indexDefsID = "_sync:cfgindexDefs"
+	// indexDefs is always uniquely named in this test environment
+	indexDefsID := prefix + "indexDefs"
 	var indexDefs cbgt.IndexDefs
 	_, err = rt.GetSingleDataStore().Get(indexDefsID, &indexDefs)
 	require.NoError(t, err)
@@ -2560,14 +2561,13 @@ func TestBadCredentialsPIndex(t *testing.T) {
 
 		require.NoError(t, rt.GetSingleDataStore().Set(planPIndexesID, 0, nil, base.MustJSONMarshal(t, planPIndexes)))
 	*/
-	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_online", ""), http.StatusOK)
-	rt.WaitForDBOnline()
+	rt.TakeDbOnline(dbName)
 
 	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
 
 	require.Equal(t, 0, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
 	require.NoError(t, rt.GetSingleDataStore().Set(docID, 0, nil, []byte(`{"write": "2"}`)))
 
-	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
+	base.AssertWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
 	require.Equal(t, int64(numPartitions), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value())
 }
