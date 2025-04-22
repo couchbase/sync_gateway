@@ -28,8 +28,8 @@ const (
 	infoMinAge  = 3
 	debugMinAge = 1
 	traceMinAge = 1
-	statsMinage = 3
-	auditMinage = 3
+	statsMinAge = 90
+	auditMinAge = 3
 
 	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
 	// buffer and collate, before flushing the buffer to the output.
@@ -119,7 +119,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 	traceLogger.Store(rawTraceLogger)
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinage, &statsLogger.Load().buffer)
+	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinAge, &statsLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 	if prevAuditLogger != nil {
 		auditLoggerBuffer = &prevAuditLogger.buffer
 	}
-	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, auditLoggerBuffer, auditLogGlobalFields)
+	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinAge, auditLoggerBuffer, auditLogGlobalFields)
 	if err != nil {
 		return err
 	}

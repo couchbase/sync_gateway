@@ -298,7 +298,7 @@ func BenchmarkAuditFieldwork(b *testing.B) {
 			Output:              buf,
 			CollationBufferSize: Ptr(0),
 		},
-	}, b.TempDir(), auditMinage, nil, map[string]any{"foo": "bar", "buzz": 1234})
+	}, b.TempDir(), auditMinAge, nil, map[string]any{"foo": "bar", "buzz": 1234})
 	require.NoError(b, err)
 	auditLogger.Store(al)
 
