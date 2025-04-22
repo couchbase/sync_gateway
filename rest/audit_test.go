@@ -964,7 +964,7 @@ func TestNoAuditWhenDisabledAtDb(t *testing.T) {
 
 	// test event that is enabled by default on db (when audit is enabled)
 	output = base.AuditLogContents(t, func(t testing.TB) {
-		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"user_xattr_key":"user_xattr_value"}`)
+		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"user_xattr_key":"user_xattr"}`)
 		RequireStatus(t, resp, http.StatusCreated)
 	})
 	events = jsonLines(rt.TB(), output)
