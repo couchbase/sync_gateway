@@ -58,7 +58,11 @@ func TestResyncWithoutIndexes(t *testing.T) {
 		// the sync docs index)
 		numIndexes, err := defaultDataStore.GetIndexes()
 		require.NoError(t, err)
-		require.Len(t, numIndexes, 1)
+		if rt.GetDatabase().UseLegacySyncDocsIndex() {
+			require.Len(t, numIndexes, 1) // sg_syncDocs
+		} else {
+			require.Len(t, numIndexes, 2) // sg_roles, sg_syncDocs
+		}
 
 		for _, collection := range rt.GetDatabase().CollectionByID {
 			n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())

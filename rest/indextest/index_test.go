@@ -62,19 +62,33 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		// use example indexes to make sure metadata and non metadata are created
 		indexSyncDocs := "sg_syncDocs"
 		indexAccess := "sg_access"
+		indexRoles := "sg_roles"
+		indexUsers := "sg_users"
 		if base.TestUseXattrs() {
 			indexSyncDocs += "_x1"
 			indexAccess += "_x1"
+			indexRoles += "_x1"
+			indexUsers += "_x1"
 		} else {
 			indexSyncDocs += "_1"
 			indexAccess += "_1"
+			indexRoles += "_1"
+			indexUsers += "_1"
 		}
 		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore())
 		require.NoError(t, err)
 		indexNames, err := metadataCollection.GetIndexes()
 		require.NoError(t, err)
 
-		require.Contains(t, indexNames, indexSyncDocs)
+		if rt.GetDatabase().UseLegacySyncDocsIndex() {
+			require.Contains(t, indexNames, indexSyncDocs)
+			require.NotContains(t, indexNames, indexRoles)
+			require.NotContains(t, indexNames, indexUsers)
+		} else {
+			require.NotContains(t, indexNames, indexSyncDocs)
+			require.Contains(t, indexNames, indexRoles)
+			require.Contains(t, indexNames, indexUsers)
+		}
 
 		if base.TestsUseNamedCollections() {
 			require.NotContains(t, indexNames, indexAccess)
