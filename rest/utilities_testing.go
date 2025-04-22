@@ -220,17 +220,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 	rt.TestBucket = testBucket
 
-	if rt.InitSyncSeq > 0 {
-		if base.TestsUseNamedCollections() {
-			rt.TB().Fatalf("RestTester InitSyncSeq doesn't support non-default collections")
-		}
-
-		log.Printf("Initializing %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq)
-		tbDatastore := testBucket.GetMetadataStore()
-		_, incrErr := tbDatastore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq, rt.InitSyncSeq, 0)
-		if incrErr != nil {
-			rt.TB().Fatalf("Error initializing %s in test bucket: %v", base.DefaultMetadataKeys.SyncSeqKey(), incrErr)
-		}
+	if rt.PersistentConfig != false {
+		require.Zero(rt.TB(), rt.InitSyncSeq, "RestTesterConfig.InitSyncSeq is not supported on rosmar")
 	}
 
 	corsConfig := &auth.CORSConfig{
@@ -390,6 +381,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
 			rt.DatabaseConfig.ImportPartitions = base.Ptr(uint16(1))
+		}
+		if rt.InitSyncSeq > 0 {
+			metadataKeys := base.DefaultMetadataKeys
+			syncSeqKey := metadataKeys.SyncSeqKey()
+			base.InfofCtx(ctx, base.KeySGTest, "Initializing %s to %d", syncSeqKey, rt.InitSyncSeq)
+			_, err := rt.TestBucket.GetMetadataStore().Incr(syncSeqKey, 0, rt.InitSyncSeq, 0)
+			require.NoError(rt.TB(), err)
 		}
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
 		var err error

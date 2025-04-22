@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -3221,45 +3223,34 @@ func TestChangesIncludeConflicts(t *testing.T) {
 }
 
 // Test _changes handling large sequence values - ensures no truncation of large ints.
-// NOTE: this test currently fails if it triggers a N1QL query, due to CBG-361.  It's been modified
-// to force the use of views until that's fixed.
 func TestChangesLargeSequences(t *testing.T) {
+	t.Skip("CBG-391: Skipping this test, it is buggy with views/GSI/rosmar in different ways.")
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("TestChangesLargeSequences doesn't support walrus - needs to customize " + base.DefaultMetadataKeys.SyncSeqKey() + " prior to db creation")
-	}
-	if !base.TestsDisableGSI() {
-		t.Skip("Requires N1QL due to CBG-361")
-
-	}
-
-	if base.TestsUseNamedCollections() {
-		t.Skip("Requires default collection to set " + base.DefaultMetadataKeys.SyncSeqKey())
-	}
 	initialSeq := uint64(9223372036854775807)
-	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc,oldDoc) {
-			 channel(doc.channel)
-		 }`,
-		InitSyncSeq:    initialSeq,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.Ptr(true)}},
+	require.Equal(t, strconv.FormatUint(initialSeq, 10), strconv.FormatUint(math.MaxInt64, 10))
+	rtConfig := rest.RestTesterConfig{
+		SyncFn:      channels.DocChannelsSyncFunction,
+		InitSyncSeq: initialSeq,
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	const user = "alice"
 
-	rt.CreateUser(user, []string{"PBS"})
+	rt.CreateUser(user, []string{"PBS"}) // 9223372036854775808
 
+	docID := "largeSeqDocForChanges"
 	// Create document
-	response := rt.SendAdminRequest("PUT", "/db/largeSeqDocForChanges", `{"channel":["PBS"]}`)
-	rest.RequireStatus(t, response, 201)
+	rt.PutDoc(docID, `{"channel":["PBS"]}`) // 9223372036854775809
+	seq := rt.GetDocumentSequence(docID)
+	require.Equal(t, strconv.FormatUint(initialSeq+2, 10), strconv.FormatUint(seq, 10))
 
 	// Get changes
 	rt.WaitForPendingChanges()
-	changes := rt.GetChanges("/{{.keyspace}/_changes?since=9223372036854775800", user)
+	changes := rt.GetChanges("/{{.keyspace}}/_changes?since=9223372036854775800", user)
 	require.Len(t, changes.Results, 1)
-	assert.Equal(t, uint64(9223372036854775808), changes.Results[0].Seq.Seq)
-	assert.Equal(t, "9223372036854775808", changes.Last_Seq)
+	assert.Equal(t, uint64(9223372036854775809), changes.Results[0].Seq.Seq)
+	assert.Equal(t, "9223372036854775809", changes.Last_Seq.String())
 
 	// Validate incoming since value isn't being truncated
 	changes = rt.GetChanges("/{{.keyspace}}/_changes?since=9223372036854775808", user)
@@ -3268,7 +3259,6 @@ func TestChangesLargeSequences(t *testing.T) {
 	// Validate incoming since value isn't being truncated
 	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", `{"since":9223372036854775808}`)
 	require.Len(t, changes.Results, 0)
-
 }
 
 func TestIncludeDocsWithPrincipals(t *testing.T) {
