@@ -107,10 +107,6 @@ paths:
     $ref: './paths/admin/keyspace-_config-sync.yaml'
   '/{keyspace}/_config/import_filter':
     $ref: './paths/admin/keyspace-_config-import_filter.yaml'
-  '/{db}/':
-    $ref: './paths/admin/db-.yaml'
-  /_all_dbs:
-    $ref: ./paths/admin/_all_dbs.yaml
   '/{db}/_resync':
     $ref: './paths/admin/db-_resync.yaml'
   '/{db}/_index_init':
