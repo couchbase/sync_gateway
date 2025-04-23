@@ -3224,12 +3224,9 @@ func TestChangesIncludeConflicts(t *testing.T) {
 
 // Test _changes handling large sequence values - ensures no truncation of large ints.
 func TestChangesLargeSequences(t *testing.T) {
-	t.Skip("CBG-391: Skipping this test, it is buggy with views/GSI/rosmar in different ways.")
-
 	initialSeq := uint64(9223372036854775807)
 	require.Equal(t, strconv.FormatUint(initialSeq, 10), strconv.FormatUint(math.MaxInt64, 10))
 	rtConfig := rest.RestTesterConfig{
-		SyncFn:      channels.DocChannelsSyncFunction,
 		InitSyncSeq: initialSeq,
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -3242,23 +3239,88 @@ func TestChangesLargeSequences(t *testing.T) {
 	docID := "largeSeqDocForChanges"
 	// Create document
 	rt.PutDoc(docID, `{"channel":["PBS"]}`) // 9223372036854775809
-	seq := rt.GetDocumentSequence(docID)
-	require.Equal(t, strconv.FormatUint(initialSeq+2, 10), strconv.FormatUint(seq, 10))
-
-	// Get changes
 	rt.WaitForPendingChanges()
+	seq := rt.GetDocumentSequence(docID)
+	docSeq := uint64(9223372036854775809)
+
+	// Incorrect results
+	// Couchbase Server Views / GSI / rosmar views
+	// - alice can not access the document
+	response := rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "", user)
+	assert.Equal(t, response.Code, http.StatusOK)
+
+	// Incorrect results
+	//
+	// rosmar views:
+	// - returns sequence as 9223372036854776000
+	assert.Equal(t, strconv.FormatUint(initialSeq+2, 10), strconv.FormatUint(seq, 10))
+	assert.Equal(t, docSeq, seq)
+
+	// Get changes as user
 	changes := rt.GetChanges("/{{.keyspace}}/_changes?since=9223372036854775800", user)
-	require.Len(t, changes.Results, 1)
-	assert.Equal(t, uint64(9223372036854775809), changes.Results[0].Seq.Seq)
-	assert.Equal(t, "9223372036854775809", changes.Last_Seq.String())
+	// Incorrect results
+	//
+	// Couchbase Server Views:
+	// - returns only user doc, missing principal doc
+	// rosmar views:
+	// - returns only user doc, missing principal doc
+	assert.Len(t, changes.Results, 2)
+	assert.Equal(t, "_user/"+user, changes.Results[0].ID)
+	assert.Equal(t, uint64(9223372036854775808), changes.Results[0].Seq.Seq)
+	assert.Equal(t, "9223372036854775808", changes.Last_Seq.String())
 
-	// Validate incoming since value isn't being truncated
+	// Get changes as admin
+	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", `{"since": 9223372036854775800}`)
+	// Incorrect results
+	//
+	// Couchbase Server Views:
+	// - returns only user doc, missing largeSeqDocForChanges
+	// rosmar views:
+	// - returns only user doc, missing largeSeqDocForChanges
+	// GSI:
+	// - returns 0 results, missing user doc and largeSeqDocForChanges
+	assert.Len(t, changes.Results, 2)
+	if assert.Len(t, changes.Results, 1) {
+		assert.Equal(t, "_user/"+user, changes.Results[0].ID)
+		assert.Equal(t, uint64(9223372036854775808), changes.Results[0].Seq.Seq)
+		assert.Equal(t, "9223372036854775808", changes.Last_Seq.String())
+	}
+	if assert.Len(t, changes.Results, 2) {
+		assert.Equal(t, "_user/"+user, changes.Results[1].ID)
+		assert.Equal(t, uint64(9223372036854775809), changes.Results[1].Seq.Seq)
+		assert.Equal(t, "9223372036854775809", changes.Last_Seq.String())
+	}
+
+	// start at expected sequence of largeSeqDocForChanges
+	// Incorrect results
+
+	// Couchbase Server Views:
+	// - returns largeSeqDocForChanges, with the wrong sequence 9223372036854775808 (expected 9223372036854775809)
+	// rosmar views:
+	// - returns no docs, even though we expect largeSeqDocForChanges
+	// GSI:
+	// - returns no docs, even though we expect largeSeqDocForChanges
 	changes = rt.GetChanges("/{{.keyspace}}/_changes?since=9223372036854775808", user)
-	require.Len(t, changes.Results, 0)
+	if assert.Len(t, changes.Results, 1) {
+		assert.Equal(t, docID, changes.Results[0].ID)
+		assert.Equal(t, uint64(9223372036854775809), changes.Results[0].Seq.Seq)
+		assert.Equal(t, "9223372036854775809", changes.Last_Seq.String())
+	}
+	// Incorrect results
 
-	// Validate incoming since value isn't being truncated
+	// Couchbase Server Views:
+	// - returns largeSeqDocForChanges, with the wrong sequence 9223372036854775808 (expected 9223372036854775809)
+	// rosmar views:
+	// - returns largeSeqDocForChanges, with the wrong sequence 9223372036854775808 (expected 9223372036854775809)
+	// - this is different than non admin GetChanges above, which doesn't return any
+	// GSI:
+	// - returns no documents, even though we expect largeSeqDocForChanges
 	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", `{"since":9223372036854775808}`)
-	require.Len(t, changes.Results, 0)
+	if assert.Len(t, changes.Results, 1) {
+		assert.Equal(t, docID, changes.Results[0].ID)
+		assert.Equal(t, uint64(9223372036854775809), changes.Results[0].Seq.Seq)
+		assert.Equal(t, "9223372036854775809", changes.Last_Seq.String())
+	}
 }
 
 func TestIncludeDocsWithPrincipals(t *testing.T) {
