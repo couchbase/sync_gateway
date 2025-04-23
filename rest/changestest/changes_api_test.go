@@ -3228,6 +3228,7 @@ func TestChangesLargeSequences(t *testing.T) {
 	initialSeq := uint64(9223372036854775807)
 	require.Equal(t, strconv.FormatUint(initialSeq, 10), strconv.FormatUint(math.MaxInt64, 10))
 	rtConfig := rest.RestTesterConfig{
+		SyncFn:      channels.DocChannelsSyncFunction,
 		InitSyncSeq: initialSeq,
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -3239,7 +3240,7 @@ func TestChangesLargeSequences(t *testing.T) {
 
 	docID := "largeSeqDocForChanges"
 	// Create document
-	rt.PutDoc(docID, `{"channel":["PBS"]}`) // 9223372036854775809
+	rt.PutDoc(docID, `{"channels":["PBS"]}`) // 9223372036854775809
 	rt.WaitForPendingChanges()
 	seq := rt.GetDocumentSequence(docID)
 	docSeq := uint64(9223372036854775809)
@@ -3248,7 +3249,7 @@ func TestChangesLargeSequences(t *testing.T) {
 	// Couchbase Server Views / GSI / rosmar views
 	// - alice can not access the document
 	response := rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "", user)
-	assert.Equal(t, response.Code, http.StatusOK)
+	require.Equal(t, response.Code, http.StatusOK)
 
 	// Incorrect results
 	//
