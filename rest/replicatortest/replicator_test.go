@@ -1984,7 +1984,10 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	}()
 
 	// and wait for a few to be done before we proceed with updating database config underneath replication
-	rt2.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		changes := rt2.GetChanges("/{{.keyspace}}/_changes", "")
+		assert.GreaterOrEqual(c, 5, changes.Results)
+	}, time.Second*5, time.Millisecond*100)
 
 	// just change the sync function to cause the database to reload
 	dbConfig := *rt2.ServerContext().GetDbConfig("db")
