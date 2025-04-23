@@ -33,9 +33,9 @@ type DatabaseInitManager struct {
 	workers     map[string]*DatabaseInitWorker
 	workersLock sync.Mutex
 
-	// testCollectionCompleteCallback is defined for testability only.
+	// testCollectionStatusUpdateCallback is defined for testability only.
 	// Invoked after collection initialization is complete for each collection
-	testCollectionCompleteCallback CollectionCallbackFunc
+	testCollectionStatusUpdateCallback CollectionCallbackFunc
 
 	// testDatabaseCompleteCallback is defined for testability only.
 	// Invoked after worker completes, but before worker is removed from workers set
@@ -118,7 +118,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 
 	// allow the test callback to be overridden by the caller if desired
 	if statusCallback == nil {
-		statusCallback = m.testCollectionCompleteCallback
+		statusCallback = m.testCollectionStatusUpdateCallback
 	}
 
 	// Create new worker and add this caller as a watcher
@@ -171,7 +171,7 @@ func (m *DatabaseInitManager) buildIndexOptions(dbConfig *DatabaseConfig, useLeg
 
 // Intended for test usage.  Updates to callback function aren't synchronized
 func (m *DatabaseInitManager) SetTestCallbacks(collectionCallback CollectionCallbackFunc, databaseComplete func(dbName string)) {
-	m.testCollectionCompleteCallback = collectionCallback
+	m.testCollectionStatusUpdateCallback = collectionCallback
 	m.testDatabaseCompleteCallback = databaseComplete
 }
 
