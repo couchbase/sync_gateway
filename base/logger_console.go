@@ -190,7 +190,7 @@ func (lcc *ConsoleLoggerConfig) init(ctx context.Context) (chan struct{}, error)
 		return nil, errors.New("nil LogConsoleConfig")
 	}
 
-	if err := lcc.initRotationConfig("console", 0, 0, false); err != nil {
+	if err := lcc.initRotationConfig("console", 0, 0, nil, false); err != nil {
 		return nil, err
 	}
 

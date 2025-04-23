@@ -23,13 +23,17 @@ import (
 )
 
 const (
+	// hard limits for log levels - do not allow maxAge to be configured below this value.
 	errorMinAge = 180
 	warnMinAge  = 90
 	infoMinAge  = 3
 	debugMinAge = 1
 	traceMinAge = 1
-	statsMinage = 3
-	auditMinage = 3
+	statsMinAge = 3
+	auditMinAge = 3
+
+	// statsDefaultMaxAgeOverride tells the stats logger to not determine default max age based on minAge, but instead uses this fixed value.
+	statsDefaultMaxAgeOverride = 90
 
 	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
 	// buffer and collate, before flushing the buffer to the output.
@@ -88,38 +92,38 @@ func InitLogging(ctx context.Context, logFilePath string,
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Audit to %v", auditLogFilePath)
 	}
 
-	rawErrorlogger, err := NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.Load().buffer)
+	rawErrorlogger, err := NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, nil, &errorLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
 	errorLogger.Store(rawErrorlogger)
 
-	rawWarnLogger, err := NewFileLogger(ctx, warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, &warnLogger.Load().buffer)
+	rawWarnLogger, err := NewFileLogger(ctx, warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, nil, &warnLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
 	warnLogger.Store(rawWarnLogger)
 
-	rawInfoLogger, err := NewFileLogger(ctx, info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, &infoLogger.Load().buffer)
+	rawInfoLogger, err := NewFileLogger(ctx, info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, nil, &infoLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
 	infoLogger.Store(rawInfoLogger)
 
-	rawDebugLogger, err := NewFileLogger(ctx, debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, &debugLogger.Load().buffer)
+	rawDebugLogger, err := NewFileLogger(ctx, debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, nil, &debugLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
 	debugLogger.Store(rawDebugLogger)
 
-	rawTraceLogger, err := NewFileLogger(ctx, trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, &traceLogger.Load().buffer)
+	rawTraceLogger, err := NewFileLogger(ctx, trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, nil, &traceLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
 	traceLogger.Store(rawTraceLogger)
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinage, &statsLogger.Load().buffer)
+	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinAge, Ptr(statsDefaultMaxAgeOverride), &statsLogger.Load().buffer)
 	if err != nil {
 		return err
 	}
@@ -130,7 +134,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 	if prevAuditLogger != nil {
 		auditLoggerBuffer = &prevAuditLogger.buffer
 	}
-	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, auditLoggerBuffer, auditLogGlobalFields)
+	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinAge, auditLoggerBuffer, auditLogGlobalFields)
 	if err != nil {
 		return err
 	}

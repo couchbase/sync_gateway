@@ -89,7 +89,7 @@ type logRotationConfig struct {
 }
 
 // NewFileLogger returns a new FileLogger from a config.
-func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
+func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int, buffer *strings.Builder) (*FileLogger, error) {
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}
@@ -97,7 +97,7 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
 
 	// validate and set defaults
-	rotationDoneChan, err := config.init(cancelCtx, level, name, logFilePath, minAge)
+	rotationDoneChan, err := config.init(cancelCtx, level, name, logFilePath, minAge, defaultMaxAgeOverride)
 	if err != nil {
 		cancelFunc()
 		return nil, err
@@ -242,7 +242,7 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	return &fileLoggerConfig
 }
 
-func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int) (chan struct{}, error) {
+func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int) (chan struct{}, error) {
 	if lfc == nil {
 		return nil, errors.New("nil LogFileConfig")
 	}
@@ -252,7 +252,7 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		lfc.Enabled = Ptr(level < LevelDebug)
 	}
 
-	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge, true); err != nil {
+	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge, defaultMaxAgeOverride, true); err != nil {
 		return nil, err
 	}
 
@@ -331,7 +331,7 @@ func (lfc *FileLoggerConfig) initLumberjack(ctx context.Context, name string, lu
 }
 
 // initRotationConfig will validate the log rotation settings and set defaults where necessary.
-func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int, compress bool) error {
+func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int, defaultMaxAgeOverride *int, compress bool) error {
 	if lfc.Rotation.MaxSize == nil {
 		lfc.Rotation.MaxSize = &defaultMaxSize
 	} else if *lfc.Rotation.MaxSize == 0 {
@@ -341,8 +341,14 @@ func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, min
 	}
 
 	if lfc.Rotation.MaxAge == nil {
-		defaultMaxAge := minAge * defaultMaxAgeMultiplier
-		lfc.Rotation.MaxAge = &defaultMaxAge
+		if defaultMaxAgeOverride != nil {
+			// allows loggers to specify a custom default max age that isn't based on a multiple of minAge
+			lfc.Rotation.MaxAge = defaultMaxAgeOverride
+		} else {
+			// determine based on multiplier of minAge
+			defaultMaxAge := minAge * defaultMaxAgeMultiplier
+			lfc.Rotation.MaxAge = &defaultMaxAge
+		}
 	} else if *lfc.Rotation.MaxAge == 0 {
 		// A value of zero disables the age-based log cleanup in Lumberjack.
 	} else if *lfc.Rotation.MaxAge < minAge {
