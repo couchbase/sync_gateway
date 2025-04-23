@@ -770,8 +770,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// If database has been requested to start offline, or there's an active async initialization, use async initialization
 		isAsync = startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
 
+		useLegacySyncDocsIndex := true // decide in CBG-4615
 		// Initialize indexes using DatabaseInitManager.
-		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, useLegacySyncDocsIndex)
 		if err != nil {
 			if options.loadFromBucket {
 				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitializationIndexError))

@@ -27,24 +27,24 @@ import (
 
 func TestRoleQuery(t *testing.T) {
 	testCases := []struct {
-		isServerless bool
+		useLegacySyncDocsIndex bool
 	}{
 		{
-			isServerless: false,
+			useLegacySyncDocsIndex: false,
 		},
 		{
-			isServerless: true,
+			useLegacySyncDocsIndex: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("Serverless=%t", testCase.isServerless), func(t *testing.T) {
-			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
+		t.Run(fmt.Sprintf("useLegacySyncDocsIndex=%t", testCase.useLegacySyncDocsIndex), func(t *testing.T) {
+			dbContextConfig := getDatabaseContextOptions(testCase.useLegacySyncDocsIndex)
 
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, db.DefaultNumIndexPartitions)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.useLegacySyncDocsIndex, db.DefaultNumIndexPartitions)
 
 			authenticator := database.Authenticator(ctx)
 			require.NotNil(t, authenticator, "database.Authenticator(ctx) returned nil")
@@ -106,31 +106,31 @@ func TestRoleQuery(t *testing.T) {
 
 func TestAllPrincipalIDs(t *testing.T) {
 	testCases := []struct {
-		isServerless bool
+		useLegacySyncDocsIndex bool
 	}{
 		{
-			isServerless: false,
+			useLegacySyncDocsIndex: false,
 		},
 		{
-			isServerless: true,
+			useLegacySyncDocsIndex: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("TestAllPrincipalIDs in Serverless=%t", testCase.isServerless), func(t *testing.T) {
-			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
+		t.Run(fmt.Sprintf("TestAllPrincipalIDs with useLegacySyncDocsIndex=%t", testCase.useLegacySyncDocsIndex), func(t *testing.T) {
+			dbContextConfig := getDatabaseContextOptions(testCase.useLegacySyncDocsIndex)
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, db.DefaultNumIndexPartitions)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.useLegacySyncDocsIndex, db.DefaultNumIndexPartitions)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 			t.Run("roleQueryCovered", func(t *testing.T) {
 				roleStatement, _ := database.BuildRolesQuery("", 0)
-				requireCoveredQuery(t, database, roleStatement, testCase.isServerless)
+				requireCoveredQuery(t, database, roleStatement, !testCase.useLegacySyncDocsIndex)
 			})
 			t.Run("userQueryCovered", func(t *testing.T) {
 				userStatement, _ := database.BuildUsersQuery("", 0)
-				requireCoveredQuery(t, database, userStatement, testCase.isServerless)
+				requireCoveredQuery(t, database, userStatement, !testCase.useLegacySyncDocsIndex)
 			})
 
 			database.Options.QueryPaginationLimit = 100
@@ -178,23 +178,23 @@ func TestAllPrincipalIDs(t *testing.T) {
 
 func TestGetRoleIDs(t *testing.T) {
 	testCases := []struct {
-		isServerless bool
+		useLegacySyncDocsIndex bool
 	}{
 		{
-			isServerless: false,
+			useLegacySyncDocsIndex: false,
 		},
 		{
-			isServerless: true,
+			useLegacySyncDocsIndex: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("Serverless=%t", testCase.isServerless), func(t *testing.T) {
-			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
+		t.Run(fmt.Sprintf("useLegacySyncDocsIndex=%t", testCase.useLegacySyncDocsIndex), func(t *testing.T) {
+			dbContextConfig := getDatabaseContextOptions(testCase.useLegacySyncDocsIndex)
 			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
 			defer database.Close(ctx)
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.isServerless, db.DefaultNumIndexPartitions)
+			setupN1QLStore(ctx, t, database.Bucket, testCase.useLegacySyncDocsIndex, db.DefaultNumIndexPartitions)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
@@ -277,10 +277,10 @@ func TestInitializeIndexes(t *testing.T) {
 
 			// add and drop indexes that may be different from the way the bucket pool expects, so use specific options here for test
 			xattrSpecificIndexOptions := db.InitializeIndexOptions{
-				NumReplicas:   0,
-				Serverless:    database.IsServerless(),
-				UseXattrs:     test.xattrs,
-				NumPartitions: db.DefaultNumIndexPartitions,
+				NumReplicas:         0,
+				LegacySyncDocsIndex: database.UseLegacySyncDocsIndex(),
+				UseXattrs:           test.xattrs,
+				NumPartitions:       db.DefaultNumIndexPartitions,
 			}
 			if database.OnlyDefaultCollection() {
 				xattrSpecificIndexOptions.MetadataIndexes = db.IndexesAll
