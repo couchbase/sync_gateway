@@ -249,6 +249,11 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_repair",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleRepair)).Methods("POST")
 
+	dbr.Handle("/_index_init",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetIndexInit)).Methods("GET")
+	dbr.Handle("/_index_init",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePostIndexInit)).Methods("POST")
+
 	r.Handle("/_logging",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetLogging)).Methods("GET")
 	r.Handle("/_logging",

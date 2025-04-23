@@ -110,6 +110,7 @@ type DatabaseContext struct {
 	ResyncManager               *BackgroundManager
 	TombstoneCompactionManager  *BackgroundManager
 	AttachmentCompactionManager *BackgroundManager
+	AsyncIndexInitManager       *BackgroundManager
 	ExitChanges                 chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
@@ -662,6 +663,14 @@ func (context *DatabaseContext) stopBackgroundManagers() []*BackgroundManager {
 		if !isBackgroundManagerStopped(context.TombstoneCompactionManager.GetRunState()) {
 			if err := context.TombstoneCompactionManager.Stop(); err == nil {
 				bgManagers = append(bgManagers, context.TombstoneCompactionManager)
+			}
+		}
+	}
+
+	if context.AsyncIndexInitManager != nil {
+		if !isBackgroundManagerStopped(context.AsyncIndexInitManager.GetRunState()) {
+			if err := context.AsyncIndexInitManager.Stop(); err == nil {
+				bgManagers = append(bgManagers, context.AsyncIndexInitManager)
 			}
 		}
 	}
@@ -2395,6 +2404,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db.MetadataStore, db.MetadataKeys)
+	db.AsyncIndexInitManager = NewAsyncIndexInitManager(db.MetadataStore, db.MetadataKeys)
 
 	db.startReplications(ctx)
 

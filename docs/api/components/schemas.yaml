@@ -3147,3 +3147,65 @@ DatabaseState:
     Starting: The database is in the process of going online.
     Stopping: The database is no longer accepting connections and is being taken offline or deleted.
     Resyncing: The database is offline and performing a resync operation.
+IndexSettings:
+  type: object
+  description: Settings for Global Secondary Indexes (GSI).
+  properties:
+    num_partitions:
+      description: The number of partitions to use for the large indexes created by Sync Gateway. It is not recommended to set this unless you require additional horizontal scalability for individual indexes and have appropriately scaled your Query nodes to handle the increased query parallelism. If set, the recommended number is 8 and does not need to be directly related to the number of your Query nodes. Ensure documentation is read to understand the performance tradeoffs and instructions for migration if you have previously run with only one partition. See [/{db}/_index_init](#operation/post_db-_index_init) for more information.
+      type: number
+      default: 1
+IndexInitStatus:
+  description: The status of an asynchronous indexes initialization operation.
+  type: object
+  properties:
+    status:
+      description: The status of the current operation.
+      type: string
+      enum:
+        - completed
+        - error
+        - running
+        - stopped
+        - stopping
+      x-enumDescriptions:
+        running: Indexes are being created.
+        completed: All indexes were created.
+        error: The index initialization operation has failed.
+        stopped: The index initialization operation has been stopped. These indexes may still on Couchbase Server.
+        stopping: The index initialization operation is in the process of being stopped.
+    start_time:
+      description: The ISO-8601 date and time the index initialization operation was started.
+      type: string
+    last_error:
+      description: The last error that occurred in the index initialization operation (if any).
+      type: string
+    index_status:
+      description: 'scope name with one or more collection names and the status of their index creation'
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: scopename
+        description: An object keyed by scope, containing a set of collections and the status of their index creation.
+        type: object
+        additionalProperties:
+          x-additionalPropertiesName: collectionname
+          type: string
+          enum:
+            - "queued"
+            - "in progress"
+            - "ready"
+            - "error"
+          x-enumDescriptions:
+            "queued": Indexes are queued for creation.
+            "in progress": Indexes are being created.
+            "ready": All indexes were created.
+            "error": The index creation operation has failed.
+    settings:
+      allOf:
+        - $ref: '#/IndexSettings'
+  required:
+    - status
+    - start_time
+    - last_error
+    - index_status
+  title: IndexInitStatus

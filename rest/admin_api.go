@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -264,6 +265,100 @@ func (h *handler) handleDbOffline() error {
 	}
 	base.Audit(h.ctx(), base.AuditIDDatabaseOffline, nil)
 	return nil
+}
+
+// handleIndexInit allows async index initialization status to be viewed
+func (h *handler) handleGetIndexInit() error {
+	b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(b)
+	return nil
+}
+
+type PostIndexInitRequest struct {
+	NumPartitions *uint32 `json:"num_partitions"`
+}
+
+func (req PostIndexInitRequest) Validate() error {
+	if req.NumPartitions == nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions is required")
+	}
+	if *req.NumPartitions < 1 {
+		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions must be greater than 0")
+	}
+	return nil
+}
+
+// handleIndexInit allows async index initialization to be run or managed
+func (h *handler) handlePostIndexInit() error {
+	action := cmp.Or(h.getQuery("action"), "start")
+
+	if action == "stop" {
+		h.server.DatabaseInitManager.Cancel(h.db.Name)
+		if err := h.db.AsyncIndexInitManager.Stop(); err != nil {
+			return err
+		}
+		status, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
+		if err != nil {
+			return err
+		}
+		h.writeRawJSON(status)
+		return nil
+	}
+
+	if action != "start" {
+		return base.HTTPErrorf(http.StatusBadRequest, "action %q not supported... must be either 'start' or 'stop'", action)
+	}
+
+	var req PostIndexInitRequest
+	if err := h.readJSONInto(&req); err != nil {
+		return err
+	}
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
+	currentDbConfig := h.server.GetDatabaseConfig(h.db.Name)
+	if currentDbConfig.Index.NumPartitions == req.NumPartitions {
+		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions is already %d", *req.NumPartitions)
+	}
+
+	var newDbConfig DatabaseConfig
+	if err := base.DeepCopyInefficient(&newDbConfig, currentDbConfig); err != nil {
+		return err
+	}
+	newDbConfig.Index.NumPartitions = req.NumPartitions
+
+	var statusMap = make(map[string]map[string]string, len(newDbConfig.Scopes))
+	for scope, _ := range newDbConfig.Scopes {
+		statusMap[scope] = make(map[string]string)
+	}
+	var statusCallback CollectionCallbackFunc = func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus) {
+		// even though the scope map is initialized above,
+		// it's possible we have a named scope and this triggers a `_default` index init,
+		// so we need to be defensive here and create if necessary
+		if _, ok := statusMap[scName.ScopeName()]; !ok {
+			statusMap[scName.ScopeName()] = make(map[string]string, 1)
+		}
+		statusMap[scName.ScopeName()][scName.CollectionName()] = string(status)
+		if err := h.db.AsyncIndexInitManager.UpdateStatusClusterAware(h.ctx()); err != nil {
+			base.WarnfCtx(h.ctx(), "Unable to update async index job status on cluster : %v", err)
+		}
+	}
+
+	useLegacySyncDocsIndex := true // TODO: CBG-4615: Change when this API is updated to support the new principal indexes
+	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex)
+	if err != nil {
+		return err
+	}
+
+	opts := map[string]interface{}{
+		"statusMap": &statusMap,
+		"doneChan":  done,
+	}
+	return h.db.AsyncIndexInitManager.Start(h.ctx(), opts)
 }
 
 // Get admin database info

@@ -323,7 +323,7 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 		ctx := base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("test-node-%d", i))
 		go func() {
 			defer wg.Done()
-			setupN1QLStore(ctx, t, bucket, false, db.DefaultNumIndexPartitions)
+			setupN1QLStore(ctx, t, bucket, true, db.DefaultNumIndexPartitions)
 		}()
 	}
 	wg.Wait()
@@ -334,12 +334,12 @@ func TestPartitionedIndexes(t *testing.T) {
 		t.Skip("TestPartitionedIndexes only works with UseXattrs=true")
 	}
 	numPartitions := uint32(13)
-	serverless := false
+	useLegacySyncDocsIndex := true // CBG-4615
 
 	database, ctx := db.SetupTestDBWithOptions(t, db.DatabaseContextOptions{NumIndexPartitions: base.Ptr(numPartitions)})
 	defer database.Close(ctx)
 
-	setupN1QLStore(ctx, t, database.Bucket, serverless, numPartitions)
+	setupN1QLStore(ctx, t, database.Bucket, useLegacySyncDocsIndex, numPartitions)
 	gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
 	require.NoError(t, err)
 	for _, dsName := range []sgbucket.DataStoreName{db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionDatastore(), database.MetadataStore} {

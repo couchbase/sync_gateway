@@ -33,24 +33,32 @@ type DatabaseInitManager struct {
 	workers     map[string]*DatabaseInitWorker
 	workersLock sync.Mutex
 
-	// collectionCompleteCallback is defined for testability only.
+	// testCollectionCompleteCallback is defined for testability only.
 	// Invoked after collection initialization is complete for each collection
-	collectionCompleteCallback collectionCallbackFunc
+	testCollectionCompleteCallback CollectionCallbackFunc
 
-	// databaseCompleteCallback is defined for testability only.
+	// testDatabaseCompleteCallback is defined for testability only.
 	// Invoked after worker completes, but before worker is removed from workers set
-	databaseCompleteCallback func(databaseName string) // Callback for testability only
+	testDatabaseCompleteCallback func(databaseName string) // Callback for testability only
 }
 
-type collectionCallbackFunc func(dbName, collectionName string)
+type CollectionIndexStatus string
+
+const (
+	CollectionIndexStatusQueued     CollectionIndexStatus = "queued"
+	CollectionIndexStatusInProgress CollectionIndexStatus = "in progress"
+	CollectionIndexStatusReady      CollectionIndexStatus = "ready"
+	CollectionIndexStatusError      CollectionIndexStatus = "error"
+)
+
+// CollectionCallbackFunc is called when the initialization has completed for each collection on the database.
+type CollectionCallbackFunc func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus)
 
 // CollectionInitData defines the set of collections being created (by ScopeAneCollectionName), and the set of
 // indexes required for each collection.
 type CollectionInitData map[base.ScopeAndCollectionName]db.CollectionIndexesType
 
-// Initializes the database.  Will establish a new cluster connection using the provided server config.  Establishes a new
-// cluster-only N1QLStore based on the startup config to perform initialization.
-func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool) (doneChan chan error, err error) {
+func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, statusCallback CollectionCallbackFunc, useLegacySyncDocsIndex bool) (doneChan chan error, err error) {
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	if m.workers == nil {
@@ -106,10 +114,15 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		return nil, err
 	}
 
-	indexOptions := m.BuildIndexOptions(dbConfig, useLegacySyncDocsIndex)
+	indexOptions := m.buildIndexOptions(dbConfig, useLegacySyncDocsIndex)
+
+	// allow the test callback to be overridden by the caller if desired
+	if statusCallback == nil {
+		statusCallback = m.testCollectionCompleteCallback
+	}
 
 	// Create new worker and add this caller as a watcher
-	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
+	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, statusCallback)
 	m.workers[dbConfig.Name] = worker
 	doneChan = worker.addWatcher()
 
@@ -119,8 +132,8 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		defer couchbaseCluster.Close()
 		// worker.Run blocks until completion, and returns any error on doneChan.
 		worker.Run()
-		if m.databaseCompleteCallback != nil {
-			m.databaseCompleteCallback(dbConfig.Name)
+		if m.testDatabaseCompleteCallback != nil {
+			m.testDatabaseCompleteCallback(dbConfig.Name)
 		}
 		// On success, remove worker
 		m.workersLock.Lock()
@@ -128,6 +141,12 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		m.workersLock.Unlock()
 	}()
 	return doneChan, nil
+}
+
+// Initializes the database.  Will establish a new cluster connection using the provided server config.  Establishes a new
+// cluster-only N1QLStore based on the startup config to perform initialization.
+func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool) (doneChan chan error, err error) {
+	return m.InitializeDatabaseWithStatusCallback(ctx, startupConfig, dbConfig, nil, useLegacySyncDocsIndex)
 }
 
 func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
@@ -140,7 +159,7 @@ func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
 	return ok
 }
 
-func (m *DatabaseInitManager) BuildIndexOptions(dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool) db.InitializeIndexOptions {
+func (m *DatabaseInitManager) buildIndexOptions(dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool) db.InitializeIndexOptions {
 	return db.InitializeIndexOptions{
 		WaitForIndexesOnlineOption: base.WaitForIndexesInfinite,
 		NumReplicas:                dbConfig.numIndexReplicas(),
@@ -151,9 +170,9 @@ func (m *DatabaseInitManager) BuildIndexOptions(dbConfig *DatabaseConfig, useLeg
 }
 
 // Intended for test usage.  Updates to callback function aren't synchronized
-func (m *DatabaseInitManager) SetCallbacks(collectionComplete collectionCallbackFunc, databaseComplete func(dbName string)) {
-	m.collectionCompleteCallback = collectionComplete
-	m.databaseCompleteCallback = databaseComplete
+func (m *DatabaseInitManager) SetTestCallbacks(collectionCallback CollectionCallbackFunc, databaseComplete func(dbName string)) {
+	m.testCollectionCompleteCallback = collectionCallback
+	m.testDatabaseCompleteCallback = databaseComplete
 }
 
 func (m *DatabaseInitManager) Cancel(dbName string) {
@@ -195,13 +214,13 @@ func buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
 // DatabaseInitWorker performs async database initialization tasks that should be performed in the background,
 // independent of the database being reloaded for config changes
 type DatabaseInitWorker struct {
-	dbName                     string
-	n1qlStore                  *base.ClusterOnlyN1QLStore
-	options                    DatabaseInitOptions
-	ctx                        context.Context        // On close, terminates any goroutines associated with the worker
-	cancelFunc                 context.CancelFunc     // Cancel function for context, invoked if Cancel is called
-	collections                CollectionInitData     // The set of collections associated with the worker, mapped by name to their index set
-	collectionCompleteCallback collectionCallbackFunc // Callback for testability
+	dbName                   string
+	n1qlStore                *base.ClusterOnlyN1QLStore
+	options                  DatabaseInitOptions
+	ctx                      context.Context        // On close, terminates any goroutines associated with the worker
+	cancelFunc               context.CancelFunc     // Cancel function for context, invoked if Cancel is called
+	collections              CollectionInitData     // The set of collections associated with the worker, mapped by name to their index set
+	collectionStatusCallback CollectionCallbackFunc // Callback for status observability
 
 	// Multiple goroutines (watchers) may be waiting for database initialization.  To support sending error information to
 	// every goroutine, we maintain a channel for each of these watching goroutines.  On success, all channels are
@@ -217,21 +236,20 @@ type DatabaseInitOptions struct {
 	indexOptions db.InitializeIndexOptions // Options used for index initialization
 }
 
-func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback collectionCallbackFunc) *DatabaseInitWorker {
+func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback CollectionCallbackFunc) *DatabaseInitWorker {
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
 	return &DatabaseInitWorker{
-		dbName:                     dbName,
-		options:                    DatabaseInitOptions{indexOptions: indexOptions},
-		ctx:                        cancelCtx,
-		cancelFunc:                 cancelFunc,
-		collections:                collections,
-		n1qlStore:                  n1qlStore,
-		collectionCompleteCallback: callback,
+		dbName:                   dbName,
+		options:                  DatabaseInitOptions{indexOptions: indexOptions},
+		ctx:                      cancelCtx,
+		cancelFunc:               cancelFunc,
+		collections:              collections,
+		n1qlStore:                n1qlStore,
+		collectionStatusCallback: callback,
 	}
 }
 
 func (w *DatabaseInitWorker) Run() {
-
 	// Ensure cancelFunc resources are released on normal completion
 	defer func() {
 		if w.cancelFunc != nil {
@@ -239,8 +257,18 @@ func (w *DatabaseInitWorker) Run() {
 		}
 	}()
 
+	if w.collectionStatusCallback != nil {
+		for scName := range w.collections {
+			w.collectionStatusCallback(w.dbName, scName, CollectionIndexStatusQueued)
+		}
+	}
+
 	var indexErr error
 	for scName, indexSet := range w.collections {
+		if w.collectionStatusCallback != nil {
+			w.collectionStatusCallback(w.dbName, scName, CollectionIndexStatusInProgress)
+		}
+
 		// Add the index set to the common indexOptions
 		collectionIndexOptions := w.options.indexOptions
 		collectionIndexOptions.MetadataIndexes = indexSet
@@ -250,6 +278,9 @@ func (w *DatabaseInitWorker) Run() {
 		keyspaceCtx := base.KeyspaceLogCtx(w.ctx, w.n1qlStore.BucketName(), scName.ScopeName(), scName.CollectionName())
 		indexErr = db.InitializeIndexes(keyspaceCtx, w.n1qlStore, collectionIndexOptions)
 		if indexErr != nil {
+			if w.collectionStatusCallback != nil {
+				w.collectionStatusCallback(w.dbName, scName, CollectionIndexStatusError)
+			}
 			break
 		}
 
@@ -264,8 +295,8 @@ func (w *DatabaseInitWorker) Run() {
 			break
 		}
 
-		if w.collectionCompleteCallback != nil {
-			w.collectionCompleteCallback(w.dbName, scName.CollectionName())
+		if w.collectionStatusCallback != nil {
+			w.collectionStatusCallback(w.dbName, scName, CollectionIndexStatusReady)
 		}
 	}
 

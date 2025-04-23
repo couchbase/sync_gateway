@@ -150,12 +150,18 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return newRestTester(tb, restConfig, useSingleCollection, 1)
 }
 
-// NewRestTesterPersistentConfig returns a rest tester with persistent config setup and a single database. A convenience function for NewRestTester.
-func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
+// NewRestTesterPersistentConfigNoDB returns a rest tester with persistent config setup and no database. A convenience function for NewRestTester.
+func NewRestTesterPersistentConfigNoDB(tb testing.TB) *RestTester {
 	config := &RestTesterConfig{
 		PersistentConfig: true,
 	}
 	rt := newRestTester(tb, config, useSingleCollection, 1)
+	return rt
+}
+
+// NewRestTesterPersistentConfig returns a rest tester with persistent config setup and a single database. A convenience function for NewRestTester.
+func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
+	rt := NewRestTesterPersistentConfigNoDB(tb)
 	RequireStatus(tb, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 	return rt
 }
