@@ -343,7 +343,7 @@ func TestMaxRequestSize(t *testing.T) {
 	defer rt.Close()
 
 	t.Run("check MaxRequestSize config set", func(t *testing.T) {
-		testFunctionConfig.MaxRequestSize = base.IntPtr(20)
+		testFunctionConfig.MaxRequestSize = base.Ptr(20)
 
 		request, err := json.Marshal(testFunctionConfig)
 		assert.NoError(t, err)
@@ -362,7 +362,7 @@ func TestMaxRequestSize(t *testing.T) {
 
 	// positive cases:
 	t.Run("request size less than MaxRequestSize", func(t *testing.T) {
-		testFunctionConfig.MaxRequestSize = base.IntPtr(1000)
+		testFunctionConfig.MaxRequestSize = base.Ptr(1000)
 
 		request, err := json.Marshal(testFunctionConfig)
 		assert.NoError(t, err)
@@ -385,7 +385,7 @@ func TestMaxRequestSize(t *testing.T) {
 
 	// negative cases:
 	t.Run("request size greater than MaxRequestSize", func(t *testing.T) {
-		testFunctionConfig.MaxRequestSize = base.IntPtr(5)
+		testFunctionConfig.MaxRequestSize = base.Ptr(5)
 
 		request, err := json.Marshal(testFunctionConfig)
 		assert.NoError(t, err)

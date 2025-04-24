@@ -37,7 +37,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.StringPtr(password)},
+					username: {Password: base.Ptr(password)},
 				},
 			},
 		},
@@ -125,7 +125,7 @@ func TestCollectionsPublicChannel(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.StringPtr(password)},
+					username: {Password: base.Ptr(password)},
 				},
 			},
 		},
@@ -224,7 +224,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, rt.WaitForDoc(docID))
+	rt.WaitForDoc(docID)
 }
 
 func TestMultiCollectionDCP(t *testing.T) {
@@ -255,8 +255,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	rt.WaitForPendingChanges()
 
 	for _, ks := range rt.GetKeyspaces() {
-		_, err = rt.WaitForChanges(1, fmt.Sprintf("/%s/_changes", ks), "", true)
-		require.NoError(t, err)
+		rt.WaitForChanges(1, fmt.Sprintf("/%s/_changes", ks), "", true)
 	}
 }
 
@@ -283,7 +282,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Scopes:       scopesConfig,
-			EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+			EnableXattrs: base.Ptr(base.TestUseXattrs()),
 		},
 		},
 	}
@@ -538,7 +537,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	base.TestRequiresCollections(t)
 
 	// force GSI for this one test
-	useViews := base.BoolPtr(false)
+	useViews := base.Ptr(false)
 
 	const (
 		username       = "alice"
@@ -557,7 +556,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 				Users: map[string]*auth.PrincipalConfig{
 					username: {
 						ExplicitChannels: base.SetOf(validChannel),
-						Password:         base.StringPtr(password),
+						Password:         base.Ptr(password),
 					},
 				},
 			},
@@ -588,8 +587,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+invalidDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
-	require.NoError(t, err)
+	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 }
 
 func TestCollectionsPutDBInexistentCollection(t *testing.T) {
@@ -840,7 +838,7 @@ func TestCollectionStats(t *testing.T) {
 			DbConfig: DbConfig{
 				Scopes:       scopesConfig,
 				AutoImport:   base.TestUseXattrs(),
-				EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+				EnableXattrs: base.Ptr(base.TestUseXattrs()),
 			},
 		},
 	}

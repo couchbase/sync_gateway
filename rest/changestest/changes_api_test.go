@@ -180,9 +180,7 @@ func TestChangesFeedOnInheritedChannelsFromRoles(t *testing.T) {
 	}
 
 	// Start changes feed as the user filtered to channel A, expect 6 changes (5 docs + user doc)
-	changes, err := rt.WaitForChanges(6, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A", "alice", false)
-	require.NoError(t, err)
-	assert.Len(t, changes.Results, 6)
+	rt.WaitForChanges(6, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A", "alice", false)
 }
 
 // TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection:
@@ -212,9 +210,7 @@ func TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection(t *testing.T) 
 	}
 
 	// Start changes feed as the user filtered to channel A, expect 6 changes (5 docs + user doc)
-	changes, err := rt.WaitForChanges(6, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A", "alice", false)
-	require.NoError(t, err)
-	assert.Len(t, changes.Results, 6)
+	rt.WaitForChanges(6, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A", "alice", false)
 }
 
 func TestPostChanges(t *testing.T) {
@@ -241,9 +237,7 @@ func TestPostChanges(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	changes, err := rt.WaitForChanges(3, "/{{.keyspace}}/_changes?style=all_docs&heartbeat=300000&feed=longpoll&limit=50&since=0", "bernard", false)
-	assert.NoError(t, err)
-	assert.Len(t, changes.Results, 3)
+	rt.WaitForChanges(3, "/{{.keyspace}}/_changes?style=all_docs&heartbeat=300000&feed=longpoll&limit=50&since=0", "bernard", false)
 }
 
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
@@ -587,8 +581,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":26,"id":"abc-2","deleted":true,"removed":["ABC"],"changes":[{"rev":"2-6055be21d970eb690f48452505ea02ed"}]}`,
 		`{"seq":27,"id":"abc-3","removed":["ABC"],"changes":[{"rev":"2-09b89154aa9a0e1620da0d86528d406a"}]}`,
 	}
-	changes, err := rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes", "bernard", false)
-	require.NoError(t, err, "Error retrieving changes results")
+	changes := rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes", "bernard", false)
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -615,9 +608,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
 		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 	}
-	changes, err = rt.WaitForChanges(len(expectedResults),
+	changes = rt.WaitForChanges(len(expectedResults),
 		fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "bernard", false)
-	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -650,9 +642,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":31,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
-	changes, err = rt.WaitForChanges(len(expectedResults),
+	changes = rt.WaitForChanges(len(expectedResults),
 		fmt.Sprintf("/{{.keyspace}}/_changes?since=28:5"), "bernard", false)
-	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -711,18 +702,14 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(3)
 
 	// Issue changes request with limit less than 5.  Expect to get pbs-5, user doc, and abc-1
-	changes, err := rt.WaitForChanges(0, "/{{.keyspace}}/_changes?limit=3", "bernard", false)
-	assert.NoError(t, err)
-	require.Equal(t, len(changes.Results), 3)
+	changes := rt.WaitForChanges(3, "/{{.keyspace}}/_changes?limit=3", "bernard", false)
 	assert.Equal(t, "pbs-5", changes.Results[0].ID)
 	assert.Equal(t, "_user/bernard", changes.Results[1].ID)
 	assert.Equal(t, "abc-1", changes.Results[2].ID)
 	lastSeq := changes.Last_Seq
 
 	// Issue a second changes request, expect to see last 2 documents.
-	moreChanges, err := rt.WaitForChanges(0, fmt.Sprintf("/{{.keyspace}}/_changes?limit=3&since=%s", lastSeq), "bernard", false)
-	assert.NoError(t, err)
-	require.Len(t, moreChanges.Results, 2)
+	moreChanges := rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?limit=3&since=%s", lastSeq), "bernard", false)
 	assert.Equal(t, "abc-2", moreChanges.Results[0].ID)
 	assert.Equal(t, "abc-3", moreChanges.Results[1].ID)
 }
@@ -778,8 +765,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	expectedResults := []string{
 		`{"seq":7,"id":"abc-1","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
 	}
-	changes, err := rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes", "bernard", false)
-	require.NoError(t, err, "Error retrieving changes results")
+	changes := rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes", "bernard", false)
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
 		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
@@ -797,9 +783,8 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-c5098bb14d12d647c901850ff6a6292a"}]}`,
 	}
-	changes, err = rt.WaitForChanges(1,
+	changes = rt.WaitForChanges(3,
 		fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "bernard", false)
-	require.NoError(t, err, "Error retrieving changes results")
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
 		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
@@ -820,8 +805,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	}
 
 	rt.Run("grant via existing channel", func(t *testing.T) {
-		changes, err = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "alice", false)
-		require.NoError(t, err, "Error retrieving changes results for alice")
+		changes = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "alice", false)
 		for index, result := range changes.Results {
 			var expectedChange db.ChangeEntry
 			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
@@ -830,8 +814,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	})
 
 	rt.Run("grant via new channel", func(t *testing.T) {
-		changes, err = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "bernard", false)
-		require.NoError(t, err, "Error retrieving changes results for bernard")
+		changes = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "bernard", false)
 		for index, result := range changes.Results {
 			var expectedChange db.ChangeEntry
 			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
@@ -898,8 +881,7 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			// Create a doc and send an initial changes
 			resp := sendRequestFn(rt, test.username, http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`)
 			rest.RequireStatus(t, resp, http.StatusCreated)
-			c, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-			require.NoError(t, err)
+			c := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 
 			lastSeq := c.Last_Seq.String()
 
@@ -973,7 +955,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a missing doc - low sequence should move to 3
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
-	require.NoError(t, rt.WaitForSequence(3))
+	rt.WaitForSequence(3)
 
 	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
 	// low is updated before making the next changes request.
@@ -1069,7 +1051,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	db.WriteDirect(t, collection, []string{"PBS"}, 13)
 	db.WriteDirect(t, collection, []string{"PBS"}, 6)
-	require.NoError(t, rt.WaitForSequence(13))
+	rt.WaitForSequence(13)
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
@@ -1187,7 +1169,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	db.WriteDirect(t, collection, []string{"PBS"}, 13)
 	db.WriteDirect(t, collection, []string{"PBS"}, 6)
-	require.NoError(t, rt.WaitForSequence(13))
+	rt.WaitForSequence(13)
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
@@ -1246,6 +1228,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	skippedMaxWait := uint32(120000)
 
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+		AllowConflicts: base.Ptr(true),
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
 				MaxWaitPending: &pendingMaxWait,
@@ -1509,7 +1492,7 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 func TestChangesActiveOnlyInteger(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`, AllowConflicts: true})
 	defer rt.Close()
 
 	// Create user:
@@ -1627,6 +1610,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 				channel(doc.channels)
 			}
 		}`,
+		AllowConflicts: true,
 	}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
@@ -1751,7 +1735,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rtConfig := rest.RestTesterConfig{
-		SyncFn: `function(doc) {channel(doc.channels)}`,
+		SyncFn:         `function(doc) {channel(doc.channels)}`,
+		AllowConflicts: true,
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	testDB := rt.GetDatabase()
@@ -2725,10 +2710,9 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 }
 
 func TestChangesActiveOnlyWithLimit(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`, AllowConflicts: true})
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -2891,7 +2875,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`, AllowConflicts: true})
 	defer rt.Close()
 
 	// Create user:
@@ -3053,6 +3037,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 	cacheSize := 2
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+		AllowConflicts: base.Ptr(true),
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
 				MinLength: &cacheSize,
@@ -3107,9 +3092,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Get pre-delete changes
-	changes, err := rt.WaitForChanges(5, "/{{.keyspace}}/_changes?style=all_docs", "bernard", false)
-	require.NoError(t, err, "Error retrieving changes results")
-	require.Len(t, changes.Results, 5)
+	rt.WaitForChanges(5, "/{{.keyspace}}/_changes?style=all_docs", "bernard", false)
 
 	// Delete
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/deletedDoc?rev="+deletedRev, "")
@@ -3136,9 +3119,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Normal changes
-	changes, err = rt.WaitForChanges(10, "/{{.keyspace}}/_changes?style=all_docs", "bernard", false)
-	require.NoError(t, err, "Error retrieving changes results")
-	require.Len(t, changes.Results, 10)
+	changes := rt.WaitForChanges(10, "/{{.keyspace}}/_changes?style=all_docs", "bernard", false)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 		if entry.ID == "conflictedDoc" {
@@ -3194,12 +3175,13 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 // Test _changes returning conflicts
 func TestChangesIncludeConflicts(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
 
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
-		 }`}
+		 }`,
+		AllowConflicts: true,
+	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -3241,7 +3223,7 @@ func TestChangesLargeSequences(t *testing.T) {
 			 channel(doc.channel)
 		 }`,
 		InitSyncSeq:    initialSeq,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.BoolPtr(true)}},
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.Ptr(true)}},
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -3697,7 +3679,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 			}`,
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
-					ChangesRequestPlus: base.BoolPtr(true),
+					ChangesRequestPlus: base.Ptr(true),
 				},
 			},
 		})

@@ -57,7 +57,7 @@ type RestTesterConfig struct {
 	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
 	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode           bool                        // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	AllowConflicts                  bool                        // Enable conflicts mode.  By default, conflicts will not allowed
 	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
 	CustomTestBucket                *base.TestBucket            // If set, use this bucket instead of requesting a new one.
 	LeakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
@@ -258,13 +258,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.Password = password
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
-	sc.API.HideProductVersion = base.BoolPtr(rt.RestTesterConfig.HideProductInfo)
+	sc.API.HideProductVersion = base.Ptr(rt.RestTesterConfig.HideProductInfo)
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
 	sc.API.AdminInterfaceAuthentication = &rt.AdminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
-	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+	sc.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
@@ -294,13 +294,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.ConfigGroupID = uniqueUUID.String()
 	}
 
-	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
+	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
 
 	if rt.MutateStartupConfig != nil {
 		rt.MutateStartupConfig(&sc)
 	}
 
-	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
+	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
 
 	// Allow EE-only config even in CE for testing using group IDs.
 	if err := sc.Validate(base.TestCtx(rt.TB()), true); err != nil {
@@ -342,7 +342,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
 		if rt.DatabaseConfig.UseViews == nil {
-			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
+			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
 		}
 		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (!*rt.DatabaseConfig.UseViews || base.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
@@ -375,12 +375,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.Name = "db"
 		}
 		rt.DatabaseConfig.EnableXattrs = &useXattrs
-		if rt.EnableNoConflictsMode {
-			boolVal := false
-			rt.DatabaseConfig.AllowConflicts = &boolVal
+		if rt.AllowConflicts {
+			rt.DatabaseConfig.AllowConflicts = base.Ptr(true)
 		}
 
-		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.SgReplicateEnabled)
+		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.SgReplicateEnabled)
 
 		// Check for override of AutoImport in the rt config
 		if rt.AutoImport != nil {
@@ -389,7 +388,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
-			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
+			rt.DatabaseConfig.ImportPartitions = base.Ptr(uint16(1))
 		}
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
 		var err error
@@ -591,17 +590,10 @@ func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	return ds
 }
 
-func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
-	err := rt.WaitForDoc(docid)
-	assert.NoError(t, err)
-}
-
-func (rt *RestTester) WaitForDoc(docid string) (err error) {
+func (rt *RestTester) WaitForDoc(docid string) {
 	seq, err := rt.SequenceForDoc(docid)
-	if err != nil {
-		return err
-	}
-	return rt.WaitForSequence(seq)
+	require.NoError(rt.TB(), err, "Error getting sequence for doc %s", docid)
+	rt.WaitForSequence(seq)
 }
 
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
@@ -614,9 +606,9 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 }
 
 // Wait for sequence to be buffered by the channel cache
-func (rt *RestTester) WaitForSequence(seq uint64) error {
+func (rt *RestTester) WaitForSequence(seq uint64) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	return collection.WaitForSequence(ctx, seq)
+	require.NoError(rt.TB(), collection.WaitForSequence(ctx, seq))
 }
 
 func (rt *RestTester) WaitForPendingChanges() {
@@ -811,11 +803,6 @@ func (rt *RestTester) SendDiagnosticRequestWithHeaders(method, resource string, 
 	return response
 }
 
-func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
-	rt.EnableNoConflictsMode = true
-	return rt.TestAdminHandler()
-}
-
 var fakeRestTesterIP = net.IPv4(127, 0, 0, 99)
 
 func (rt *RestTester) TestAdminHandler() http.Handler {
@@ -857,7 +844,7 @@ type ChangesResults struct {
 }
 
 func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
-	require.Equal(t, len(docIDs), len(cr.Results))
+	require.Len(t, cr.Results, len(docIDs))
 	for _, docID := range docIDs {
 		var found bool
 		for _, changeEntry := range cr.Results {
@@ -884,61 +871,39 @@ func (cr ChangesResults) RequireRevID(t testing.TB, revIDs []string) {
 	}
 }
 
+func (cr ChangesResults) Summary() string {
+	var revs []string
+	for _, changeEntry := range cr.Results {
+		revs = append(revs, fmt.Sprintf("{ID:%s}", changeEntry.ID))
+	}
+	return strings.Join(revs, ", ")
+}
+
 // RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
 	RequireDocVersionEqual(t, expected, DocVersion{RevID: changeRev["rev"]})
 }
 
-func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesURL, username string, useAdminPort bool) (worker base.RetryWorker) {
-
-	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
-
-		var changes ChangesResults
+func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
+	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
+	if base.UnitTestUrlIsWalrus() {
+		// rosmar will never take a long time, so have faster failures
+		waitTime = 1 * time.Second
+	}
+	var changes *ChangesResults
+	url := rt.mustTemplateResource(changesURL)
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		var response *TestResponse
 		if useAdminPort {
-			response = rt.SendAdminRequest("GET", changesURL, "")
+			response = rt.SendAdminRequest("GET", url, "")
 
 		} else {
-			response = rt.Send(RequestByUser("GET", changesURL, "", username))
+			response = rt.Send(RequestByUser("GET", url, "", username))
 		}
-		err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-		if err != nil {
-			return false, err, nil
-		}
-		if len(changes.Results) < numChangesExpected {
-			// not enough results, retry
-			return true, fmt.Errorf("expecting %d changes, got %d", numChangesExpected, len(changes.Results)), nil
-		}
-		// If it made it this far, there is no errors and it got enough changes
-		return false, nil, changes
-	}
-
-	return waitForChangesWorker
-
-}
-
-func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) (
-	changes ChangesResults,
-	err error) {
-
-	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, rt.mustTemplateResource(changesURL), username, useAdminPort)
-
-	sleeper := base.CreateSleeperFunc(200, 100)
-
-	err, changesVal := base.RetryLoop(rt.Context(), "Wait for changes", waitForChangesWorker, sleeper)
-	if err != nil {
-		return changes, err
-	}
-
-	if changesVal == nil {
-		return changes, fmt.Errorf("Got nil value for changes")
-	}
-
-	if changesVal != nil {
-		changes = changesVal.(ChangesResults)
-	}
-
-	return changes, nil
+		assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %d changes", numChangesExpected, len(changes.Results))
+	}, waitTime, 10*time.Millisecond)
+	return *changes
 }
 
 // WaitForCondition runs a retry loop that evaluates the provided function, and terminates
@@ -1326,8 +1291,8 @@ func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb
 // The parameters used to create a BlipTester
 type BlipTesterSpec struct {
 
-	// Run Sync Gateway in "No conflicts" mode.  Will be propgated to the underlying RestTester
-	noConflictsMode bool
+	// Run Sync Gateway with allow_conflicts.  Will be propgated to the underlying RestTester
+	allowConflicts bool
 
 	// If an underlying RestTester is created, it will propagate this setting to the underlying RestTester.
 	GuestEnabled bool
@@ -1443,10 +1408,10 @@ func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
 // NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
 func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
 	rtConfig := RestTesterConfig{
-		EnableNoConflictsMode: spec.noConflictsMode,
-		GuestEnabled:          spec.GuestEnabled,
-		DatabaseConfig:        &DatabaseConfig{},
-		SyncFn:                spec.syncFn,
+		AllowConflicts: spec.allowConflicts,
+		GuestEnabled:   spec.GuestEnabled,
+		DatabaseConfig: &DatabaseConfig{},
+		SyncFn:         spec.syncFn,
 	}
 	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
 	bt, err := createBlipTesterWithSpec(tb, spec, rt)
@@ -1461,9 +1426,9 @@ func NewBlipTester(tb testing.TB) (*BlipTester, error) {
 
 func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
 	rtConfig := RestTesterConfig{
-		EnableNoConflictsMode: spec.noConflictsMode,
-		GuestEnabled:          spec.GuestEnabled,
-		SyncFn:                spec.syncFn,
+		AllowConflicts: spec.allowConflicts,
+		GuestEnabled:   spec.GuestEnabled,
+		SyncFn:         spec.syncFn,
 	}
 	rt := NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)
@@ -2713,16 +2678,16 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	// make sure bucket has been initialized
 	config := DbConfig{
 		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(rt.Bucket().GetName()),
+			Bucket: base.Ptr(rt.Bucket().GetName()),
 		},
 		Index: &IndexConfig{
 			NumReplicas: base.Ptr(uint(0)),
 		},
-		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+		EnableXattrs: base.Ptr(base.TestUseXattrs()),
 	}
 	// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
 	if !base.UnitTestUrlIsWalrus() {
-		config.UseViews = base.BoolPtr(base.TestsDisableGSI())
+		config.UseViews = base.Ptr(base.TestsDisableGSI())
 	}
 	// Setup scopes.
 	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
@@ -2735,7 +2700,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	if rt.GuestEnabled {
 		config.Guest = &auth.PrincipalConfig{
 			Name:     stringPtrOrNil(base.GuestUsername),
-			Disabled: base.BoolPtr(false),
+			Disabled: base.Ptr(false),
 		}
 		setChannelsAllCollections(config, config.Guest, "*")
 	}
@@ -2760,7 +2725,7 @@ func stringPtrOrNil(s string) *string {
 	if s == "" {
 		return nil
 	}
-	return base.StringPtr(s)
+	return base.Ptr(s)
 }
 
 func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {

@@ -69,11 +69,11 @@ func TestLogRotationInterval(t *testing.T) {
 
 	rotationInterval := time.Millisecond * 100
 	config := &FileLoggerConfig{
-		Enabled:             BoolPtr(true),
-		CollationBufferSize: IntPtr(0),
+		Enabled:             Ptr(true),
+		CollationBufferSize: Ptr(0),
 		Rotation: logRotationConfig{
 			RotationInterval: NewConfigDuration(rotationInterval),
-			compress:         BoolPtr(false),
+			compress:         Ptr(false),
 		},
 	}
 
@@ -82,7 +82,7 @@ func TestLogRotationInterval(t *testing.T) {
 	t.Logf("countBefore: %d", countBefore)
 
 	ctx := TestCtx(t)
-	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil)
+	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil, nil)
 	require.NoError(t, err)
 	defer func() {
 		assert.NoError(t, fl.Close())

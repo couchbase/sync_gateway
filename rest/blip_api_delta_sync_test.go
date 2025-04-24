@@ -12,6 +12,7 @@ package rest
 
 import (
 	"encoding/base64"
+	"net/http"
 	"testing"
 
 	"github.com/couchbase/go-blip"
@@ -33,7 +34,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -108,7 +109,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -346,7 +347,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -958,5 +959,36 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 
 		body := rt.GetDocVersion("doc1", version2)
 		require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
+	})
+}
+
+func TestBlipDeltaNoAccessPush(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeySyncMsg, base.KeyWebSocket, base.KeySGTest)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {}`, PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true)}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	const (
+		username = "alice"
+		docID    = "doc1"
+	)
+	rt.CreateUser(username, nil)
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, Username: username, ClientDeltas: true}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		version1 := btcRunner.AddRev(client.id, docID, nil, []byte(`{"foo": "bar", "version": "1"}`))
+		rt.WaitForVersion(docID, version1)
+
+		version2 := btcRunner.AddRev(client.id, docID, &version1, []byte(`{"foo": "bar", "version": "2"}`))
+		rt.WaitForVersion(docID, version2)
+
 	})
 }

@@ -31,7 +31,7 @@ func TestPublicChanGuestAccess(t *testing.T) {
 			SyncFn: channels.DocChannelsSyncFunction,
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Guest: &auth.PrincipalConfig{
-					Disabled: base.BoolPtr(false),
+					Disabled: base.Ptr(false),
 				},
 			}},
 		})
@@ -147,8 +147,7 @@ func TestStarAccess(t *testing.T) {
 
 	// Ensure docs have been processed before issuing changes requests
 	expectedSeq := uint64(6)
-	err = rt.WaitForSequence(expectedSeq)
-	require.NoError(t, err)
+	rt.WaitForSequence(expectedSeq)
 
 	// GET /db/_changes
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "bernard")
@@ -282,13 +281,13 @@ func TestNumAccessErrors(t *testing.T) {
 func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Uint32Ptr(0),
+					MaxItemCount: base.Ptr(uint32(0)),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},
@@ -352,14 +351,14 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 							ForceAPIForbiddenErrors: test.forceForbiddenErrors,
 						},
 						Guest: &auth.PrincipalConfig{
-							Disabled: base.BoolPtr(false),
+							Disabled: base.Ptr(false),
 						},
 						Users: map[string]*auth.PrincipalConfig{
 							"NoPerms": {
-								Password: base.StringPtr("password"),
+								Password: base.Ptr("password"),
 							},
 							"Perms": {
-								Password: base.StringPtr("password"),
+								Password: base.Ptr("password"),
 							},
 						},
 					}},
@@ -805,7 +804,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/d1", `{"channel":"delta"}`), 201)
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/g1", `{"channel":"gamma"}`), 201)
 
-	rt.MustWaitForDoc("g1", t)
+	rt.WaitForDoc("g1")
 
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "zegpold")
 	require.Len(t, changes.Results, 1)
@@ -875,7 +874,7 @@ func TestChannelAccessChanges(t *testing.T) {
 			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
 		}, zegpold.CollectionChannels(s, c))
 
-	rt.MustWaitForDoc("alpha", t)
+	rt.WaitForDoc("alpha")
 
 	// Look at alice's _changes feed:
 	changes = rt.GetChanges("/{{.keyspace}}/_changes", "alice")
@@ -903,7 +902,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
 	// below, which could lead to a data race if the cache processor is paused while it's processing a change
-	rt.MustWaitForDoc("epsilon", t)
+	rt.WaitForDoc("epsilon")
 
 	// Finally, throw a wrench in the works by changing the sync fn.
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", `function(doc) {access("alice", "beta");channel("beta");}`), http.StatusOK)
@@ -911,8 +910,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	require.Equal(t, int64(9), resyncStatus.DocsChanged)
 	rt.TakeDbOnline()
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	changes, err = rt.WaitForChanges(len(expectedIDs), "/{{.keyspace}}/_changes", "alice", false)
-	assert.NoError(t, err, "Unexpected error")
+	changes = rt.WaitForChanges(len(expectedIDs), "/{{.keyspace}}/_changes", "alice", false)
 	log.Printf("_changes looks like: %+v", changes)
 	assert.Equal(t, len(expectedIDs), len(changes.Results))
 

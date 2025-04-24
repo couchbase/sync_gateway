@@ -1712,9 +1712,9 @@ Database:
       type: boolean
       default: false
     allow_conflicts:
-      description: This controls whether to allow conflicting document revisions.
+      description: This controls whether to allow conflicting document revisions. This option is going to be removed from sync gateway, and conflicts will not be allowed.
       type: boolean
-      default: true
+      default: false
       deprecated: true
     num_index_replicas:
       description: |-
@@ -1806,8 +1806,12 @@ Database:
       type: integer
       default: 5000
     user_xattr_key:
-      description: 'The key to use for the user xattr that will be accessible from the sync function. IF empty, the feature will be disabled.'
+      description: |-
+        The key to use for the user xattr that will be accessible from the sync function. If empty, the feature will be disabled.
+
+        This is an Enterprise Edition feature only.
       type: string
+      maximum: 15
     client_partition_window_secs:
       description: |-
         How long (in seconds) clients can remain offline for without losing replication metadata.
@@ -2110,7 +2114,8 @@ Resync-status:
       type: integer
     collections_processing:
       description: The collections that the resync operation is running on.
-      $ref: '#/ResyncScopesMap'
+      allOf:
+        - $ref: '#/ResyncScopesMap'
   required:
     - status
     - start_time
@@ -2358,7 +2363,8 @@ Startup-config:
     logging:
       description: The configuration settings for modifying Sync Gateway logging.
       type: object
-      $ref: '#/Logging-config'
+      allOf:
+        - $ref: '#/Logging-config'
     auth:
       type: object
       properties:
@@ -2479,7 +2485,8 @@ Runtime-config:
   type: object
   properties:
     logging:
-      $ref: "#/Logging-config"
+      allOf:
+        - $ref: "#/Logging-config"
     max_concurrent_replications:
       description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
       type: integer
@@ -2503,7 +2510,8 @@ Logging-config:
         - unset
       readOnly: true
     console:
-      $ref: '#/Console-logging-config'
+      allOf:
+        - $ref: '#/Console-logging-config'
     error:
       type: object
       description: Error logging configuration.
@@ -2800,7 +2808,7 @@ Audit-logging-config:
         type: number
       example: [1234, 5678]
       readOnly: true
-Console-logging-config:
+Console-logging-keys-level:
   type: object
   properties:
     log_level:
@@ -2819,54 +2827,112 @@ Console-logging-config:
       type: array
       items:
         type: string
-    color_enabled:
-      description: Log with color for the console output
-      type: boolean
-      default: false
-      readOnly: true
-    file_output:
-      description: 'Override the default stderr output, and write to the file specified instead'
-      type: string
-      readOnly: true
-    enabled:
-      description: Toggle for this log output
-      type: boolean
-      default: false
-      readOnly: true
-    rotation:
-      type: object
-      readOnly: true
-      title: Log-rotation-config
+        enum:
+          - "*"
+          - "Admin"
+          - "Access"
+          - "Auth"
+          - "Bucket"
+          - "Cache"
+          - "Changes"
+          - "SGCluster"
+          - "Config"
+          - "CRUD"
+          - "DCP"
+          - "Diagnostic"
+          - "Events"
+          - "gocb"
+          - "HTTP"
+          - "HTTP+"
+          - "Import"
+          - "Javascript"
+          - "Migrate"
+          - "Query"
+          - "Replicate"
+          - "Sync"
+          - "SyncMsg"
+          - "WS"
+          - "WSFrame"
+        x-enumDescriptions:
+          "*": "This wildcard log key, enables all log keys."
+          "Access": "Anytime an access() call is made in the sync function."
+          "Admin": "Admin processes in Sync Gateway."
+          "Auth": "Authentication."
+          "Bucket": "Sync Gateway interactions with the bucket."
+          "CRUD": "CRUD operations."
+          "Cache": Interactions with Sync Gateway’s in-memory channel cache.
+          "Changes": "Processing of /{keyspace}/_changes requests and pull replications"
+          "Config": "Server or database configuration."
+          "DCP": "Updates made by Sync Gateway to documents."
+          "Diagnostic": "Operations used by dry run endpoints."
+          "Events": "Event processing (webhooks)."
+          "HTTP": "All requests made to the Sync Gateway REST APIs."
+          "HTTP+": "Additional information about HTTP requests (response times, status codes)."
+          "Import": "This log key can be useful to troubleshoot why a given document was not successfully imported."
+          "Javascript": "All logging from Javascript. This includes: sync function, import filters, webhook filter function, and custom inter-Sync Gateway replication conflict resolvers."
+          "Migrate": "Logs messages that show when old inline document metadata is upgraded to xattrs."
+          "Query": "Query is used for Sync Gateway code related to N1QL queries"
+          "Replicate": "Log messages related to Inter-Sync Gateway replications. This is not used for replications initiated by Couchbase Lite."
+          "SGCluster": "Log messages related to coordination of Sync Gateways for sharded import and Inter-Sync Gateway Replication."
+          "Sync": "Activity which relates to synchronization between Couchbase Lite and Sync Gateway"
+          "SyncMsg": "Additional logging on top of `Sync` key."
+          "WS": "Websocket replication log messages."
+          "WSFrame": "Additional logging on top of `WS` key."
+          "gocb": "All logging emitted by the gocb SDK"
+        example: ["CRUD", "HTTP", "Query"]
+Console-logging-config:
+  title: Configuration for console logging.
+  allOf:
+    - $ref: '#/Console-logging-keys-level'
+    - type: object
       properties:
-        max_size:
-          description: The maximum size in MB of the log file before it gets rotated.
-          type: integer
-          default: 100
-        localtime:
-          description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+        color_enabled:
+          description: Log with color for the console output
           type: boolean
           default: false
-        rotated_logs_size_limit:
-          description: Max Size (in mb) of log files before deletion
-          type: integer
-          default: 1024
-        rotation_interval:
-          description: |-
-            If set, the interval at which log files are rotated, even if max_size is not reached.
-
-            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          readOnly: true
+        file_output:
+          description: 'Override the default stderr output, and write to the file specified instead'
           type: string
-          default: 0
-        max_age:
-          description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
-          default: 0
+          readOnly: true
+        enabled:
+          description: Toggle for this log output
+          type: boolean
+          default: false
+          readOnly: true
+        rotation:
+          type: object
+          readOnly: true
+          title: Log-rotation-config
+          properties:
+            max_size:
+              description: The maximum size in MB of the log file before it gets rotated.
+              type: integer
+              default: 100
+            localtime:
+              description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+              type: boolean
+              default: false
+            rotated_logs_size_limit:
+              description: Max Size (in mb) of log files before deletion
+              type: integer
+              default: 1024
+            rotation_interval:
+              description: |-
+                If set, the interval at which log files are rotated, even if max_size is not reached.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              type: string
+              default: 0
+            max_age:
+              description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
+              default: 0
+              type: integer
+        collation_buffer_size:
+          description: The size of the log collation buffer. The default is 10 if the output is stderr, or 1000 if to a file.
           type: integer
-    collation_buffer_size:
-      description: The size of the log collation buffer. The default is 10 if the output is stderr, or 1000 if to a file.
-      type: integer
-      default: 10
-      readOnly: true
-  title: Console-logging-config
+          default: 10
+          readOnly: true
 Log-update-enabled:
   type: object
   properties:
@@ -2891,6 +2957,7 @@ Status:
       description: Contains a map of all the databases in the node along with their status.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: dbname
         description: The name of the database.
         type: object
         properties:
@@ -2902,14 +2969,8 @@ Status:
             description: The server unique identifier.
             type: string
           state:
-            description: Whether the database is online or offline.
-            type: string
-            enum:
-              - Online
-              - Offline
-              - Starting
-              - Stopping
-              - Resyncing
+            allOf: # use allOf to prevent DatabaseState from showing as the type in the display
+              - $ref: '#/DatabaseState'
           replication_status:
             type: array
             items:
@@ -2990,7 +3051,8 @@ ResyncScopesMap:
   description: 'scope name with one or more collection names for which resync will be triggered'
   type: object
   additionalProperties:
-    $ref: '#/CollectionNames'
+    allOf:
+      - $ref: '#/CollectionNames'
   example: {"scopeName": ["collection1", "collection2"]}
 CollectionNames:
   description: 'List of collection names'
@@ -3015,14 +3077,8 @@ CollectionNames:
         type: string
         description: The Couchbase Server backing bucket for the database.
       state:
-        description: The database state.
-        type: string
-        enum:
-          - Online
-          - Offline
-          - Starting
-          - Stopping
-          - Resyncing
+        allOf: # use allOf to prevent DatabaseState from showing as the type in the display
+          - $ref: '#/DatabaseState'
       require_resync:
         description: Indicates whether the database requires resync before it can be brought online.
         type: boolean
@@ -3073,3 +3129,18 @@ doc_access_spans:
             entries:
               type: array
               description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
+DatabaseState:
+  description: The state of the database.
+  type: string
+  enum:
+    - Online
+    - Offline
+    - Starting
+    - Stopping
+    - Resyncing
+  x-enumDescriptions:
+    Online: The database is online and available for use.
+    Offline: The database is offline, resync and other offline only endpoints are allowed.
+    Starting: The database is in the process of going online.
+    Stopping: The database is no longer accepting connections and is being taken offline or deleted.
+    Resyncing: The database is offline and performing a resync operation.

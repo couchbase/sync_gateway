@@ -42,7 +42,7 @@ func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 				CustomTestBucket: noCloseTB,
 				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 					AutoImport:       true,
-					ImportPartitions: base.Uint16Ptr(numImportPartitions),
+					ImportPartitions: base.Ptr(numImportPartitions),
 				}},
 			})
 			restTesters[i] = rt

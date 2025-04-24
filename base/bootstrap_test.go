@@ -30,12 +30,12 @@ func TestMergeStructPointer(t *testing.T) {
 	}
 	override := wrap{Ptr: &structPtr{nil, "changed"}}
 
-	source := wrap{Ptr: &structPtr{IntPtr(5), "test"}}
+	source := wrap{Ptr: &structPtr{Ptr(5), "test"}}
 	err := mergo.Merge(&source, &override, mergo.WithTransformers(&mergoNilTransformer{}), mergo.WithOverride)
 
 	require.Nil(t, err)
 	assert.Equal(t, "changed", source.Ptr.S)
-	assert.Equal(t, IntPtr(5), source.Ptr.I)
+	assert.Equal(t, Ptr(5), source.Ptr.I)
 }
 
 func TestBootstrapRefCounting(t *testing.T) {
@@ -54,7 +54,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	x509KeyPath := ""
 	caCertPath := ""
 	forcePerBucketAuth := false
-	tlsSkipVerify := BoolPtr(TestTLSSkipVerify())
+	tlsSkipVerify := Ptr(TestTLSSkipVerify())
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
 	cluster, err := NewCouchbaseCluster(ctx, UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, TestUseXattrs(), CachedClusterConnections)
 	require.NoError(t, err)

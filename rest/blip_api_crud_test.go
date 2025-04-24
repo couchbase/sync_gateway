@@ -48,10 +48,9 @@ import (
 //
 // Replication Spec: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#proposechanges
 func TestBlipPushRevisionInspectChanges(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTester(t)
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{allowConflicts: true, GuestEnabled: true})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
@@ -67,7 +66,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	body, err := changesResponse.Body()
 	assert.NoError(t, err, "Error reading changes response body")
 	err = base.JSONUnmarshal(body, &changeList)
-	assert.NoError(t, err, "Error unmarshalling response body")
+	require.NoError(t, err, "Error unmarshalling response body: %s", body)
 	require.Len(t, changeList, 1) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow := changeList[0]
 	assert.Len(t, changeRow, 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
@@ -603,8 +602,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode: true,
-		GuestEnabled:    true,
+		GuestEnabled: true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -643,8 +641,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode: true,
-		GuestEnabled:    true,
+		GuestEnabled: true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -798,16 +795,16 @@ func TestPublicPortAuthentication(t *testing.T) {
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
 	assert.Len(t, changesChannelUser1, 1)
 	change := changesChannelUser1[0]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.WaitForNumChanges(2)
 	assert.Len(t, changesChannelUser2, 2)
 	change = changesChannelUser2[0]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
 
 	change = changesChannelUser2[1]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: base.Ptr(false)})
 
 }
 
@@ -1211,7 +1208,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 				time.Sleep(time.Millisecond * 5) // slow down rosmar - it's too quick to be throttled
 			},
 		},
-		maxConcurrentRevs: base.IntPtr(maxConcurrentRevs),
+		maxConcurrentRevs: base.Ptr(maxConcurrentRevs),
 	})
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
@@ -1666,7 +1663,6 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode:    true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
@@ -1691,12 +1687,11 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 }
 
 func TestPutRevConflictsMode(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode:    false,
+		allowConflicts:     true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
@@ -2174,9 +2169,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		const docID = "doc"
 		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
 
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 1)
+		changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2185,9 +2178,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		version = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
 
-		changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 1)
+		changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2198,9 +2189,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		const docMarker = "docmarker"
 		docMarkerVersion := rt.PutDoc(docMarker, `{"channels": ["!"]}`)
 
-		changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 2)
+		changes = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 		assert.Equal(t, "3-1bc9dd04c8a257ba28a41eaad90d32de", changes.Results[0].Changes[0]["rev"])
@@ -2265,9 +2254,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		)
 		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
 
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 1)
+		changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2277,9 +2264,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		version = rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
 		rt.WaitForPendingChanges()
 		// At this point changes should send revocation, as document isn't in any of the user's channels
-		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 1)
+		changes = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2292,9 +2277,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		rt.WaitForPendingChanges()
 
 		// Revocation should not be sent over blip, as document is now in user's channels - only marker document should be received
-		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 2) // _changes still gets two results, as we don't support 3.0 removal handling over REST API
+		changes = rt.WaitForChanges(2, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		assert.Equal(t, markerID, changes.Results[1].ID)
 
@@ -2484,19 +2467,19 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 		{
 			name:                        "Valid _attachments",
 			inputBody:                   map[string]interface{}{"_attachments": map[string]interface{}{"attch": map[string]interface{}{"data": "c2d3IGZ0dw=="}}},
-			skipDocContentsVerification: base.BoolPtr(true),
+			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:                        "_revisions",
 			inputBody:                   map[string]interface{}{"_revisions": false},
-			skipDocContentsVerification: base.BoolPtr(true),
+			skipDocContentsVerification: base.Ptr(true),
 			rejectMsg:                   "top-level property '_revisions' is a reserved internal property",
 			errorCode:                   "404",
 		},
 		{
 			name:                        "Valid _exp",
 			inputBody:                   map[string]interface{}{"_exp": "123"},
-			skipDocContentsVerification: base.BoolPtr(true),
+			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:      "Invalid _exp",
@@ -2575,8 +2558,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 
 				// Wait for rev to be received on RT
 				rt.WaitForPendingChanges()
-				changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
-				require.NoError(t, err)
+				changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 
 				var bucketDoc map[string]interface{}
 				_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
@@ -2648,8 +2630,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode: true,
-		GuestEnabled:    true,
+		GuestEnabled: true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -2906,7 +2887,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 			}`,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				ChangesRequestPlus: base.BoolPtr(true),
+				ChangesRequestPlus: base.Ptr(true),
 			},
 		},
 	}
@@ -3053,7 +3034,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{
 			SyncFn:       syncFn,
 			ImportFilter: importFilter,
-			AutoImport:   base.BoolPtr(false),
+			AutoImport:   base.Ptr(false),
 		})
 		defer rt.Close()
 

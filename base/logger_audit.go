@@ -190,14 +190,14 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 	}
 
 	if config.FileLoggerConfig.Enabled == nil {
-		config.FileLoggerConfig.Enabled = BoolPtr(defaultAuditEnabled)
+		config.FileLoggerConfig.Enabled = Ptr(defaultAuditEnabled)
 	}
 
 	if config.CollationBufferSize == nil {
-		config.CollationBufferSize = IntPtr(defaultFileLoggerCollateBufferSize)
+		config.CollationBufferSize = Ptr(defaultFileLoggerCollateBufferSize)
 	}
 
-	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, buffer)
+	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, nil, buffer)
 	if err != nil {
 		return nil, err
 	}

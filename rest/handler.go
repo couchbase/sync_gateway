@@ -148,7 +148,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 // makeSilentHandler creates an http.Handler that will run a handler with the given method only logging at debug
 func makeSilentHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
-		httpLogLevel: base.LogLevelPtr(base.LevelDebug),
+		httpLogLevel: base.Ptr(base.LevelDebug),
 	})
 }
 
@@ -612,14 +612,14 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// endpoint like /db/doc where this matches /db._default._default/
 			// the check whether the _default._default actually exists on this database is performed below
 			if keyspaceScope == nil && keyspaceCollection == nil {
-				keyspaceScope = base.StringPtr(base.DefaultScope)
-				keyspaceCollection = base.StringPtr(base.DefaultCollection)
+				keyspaceScope = base.Ptr(base.DefaultScope)
+				keyspaceCollection = base.Ptr(base.DefaultCollection)
 			}
 			// endpoint like /db.collectionName/doc where this matches /db.scopeName.collectionName/doc because there's a single scope defined
 			if keyspaceScope == nil {
 				if len(dbContext.Scopes) == 1 {
 					for scopeName, _ := range dbContext.Scopes {
-						keyspaceScope = base.StringPtr(scopeName)
+						keyspaceScope = base.Ptr(scopeName)
 					}
 
 				} else {
@@ -642,8 +642,8 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				return ksNotFound
 			}
 			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
-			keyspaceScope = base.StringPtr(base.DefaultScope)
-			keyspaceCollection = base.StringPtr(base.DefaultCollection)
+			keyspaceScope = base.Ptr(base.DefaultScope)
+			keyspaceCollection = base.Ptr(base.DefaultCollection)
 		}
 		// explicitCollectionLogging is true if the collection was explicitly set in the keyspace string. When it is used, the log context will add a col:collection in log lines. If it is implicit, in the case of /db/doc, col: is omitted from the log information, but retained for audit logging purposes.
 		if explicitCollectionLogging {
@@ -964,7 +964,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			if username, password := h.getBasicAuth(); username != "" && password != "" {
 				provider := dbCtx.Options.OIDCOptions.Providers.GetProviderForIssuer(h.ctx(), issuerUrlForDB(h, dbCtx.Name), testProviderAudiences)
 				if provider != nil && provider.ValidationKey != nil {
-					if base.StringDefault(provider.ClientID, "") == username && *provider.ValidationKey == password {
+					if base.ValDefault(provider.ClientID, "") == username && *provider.ValidationKey == password {
 						auditFields = base.AuditFields{base.AuditFieldAuthMethod: "basic"}
 						return nil
 					}
@@ -1041,8 +1041,8 @@ func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, us
 	if !providerStillValid {
 		base.InfofCtx(ctx, base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
 		return &auth.PrincipalConfig{
-			Name:        base.StringPtr(user.Name()),
-			JWTIssuer:   base.StringPtr(""),
+			Name:        base.Ptr(user.Name()),
+			JWTIssuer:   base.Ptr(""),
 			JWTRoles:    base.Set{},
 			JWTChannels: base.Set{},
 		}
@@ -1498,7 +1498,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
-	if base.BoolDefault(h.server.Config.API.Pretty, false) {
+	if base.ValDefault(h.server.Config.API.Pretty, false) {
 		var buffer bytes.Buffer
 		_ = json.Indent(&buffer, jsonOut, "", "  ")
 		jsonOut = append(buffer.Bytes(), '\n')
@@ -1760,7 +1760,7 @@ func (h *handler) formatSerialNumber() string {
 // shouldShowProductVersion returns whether the handler should show detailed product info (version).
 // Admin requests can always see this, regardless of the HideProductVersion setting.
 func (h *handler) shouldShowProductVersion() bool {
-	hideProductVersion := base.BoolDefault(h.server.Config.API.HideProductVersion, false)
+	hideProductVersion := base.ValDefault(h.server.Config.API.HideProductVersion, false)
 	return h.serverType == adminServer || !hideProductVersion
 }
 

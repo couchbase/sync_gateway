@@ -217,7 +217,7 @@ func (opm OIDCProviderMap) getProviderWhenSingle() (*OIDCProvider, bool) {
 func (opm OIDCProviderMap) GetProviderForIssuer(ctx context.Context, issuer string, audiences []string) *OIDCProvider {
 	base.DebugfCtx(ctx, base.KeyAuth, "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
 	for _, provider := range opm {
-		clientID := base.StringDefault(provider.ClientID, "")
+		clientID := base.ValDefault(provider.ClientID, "")
 		if provider.Issuer == issuer && clientID != "" {
 			// Iterate over the audiences looking for a match
 			for _, aud := range audiences {
@@ -310,7 +310,7 @@ func (op *OIDCProvider) initOIDCClient(ctx context.Context) error {
 	}
 
 	config := oauth2.Config{
-		ClientID:    base.StringDefault(op.ClientID, ""),
+		ClientID:    base.ValDefault(op.ClientID, ""),
 		RedirectURL: *op.CallbackURL,
 	}
 
@@ -405,7 +405,7 @@ func (op *OIDCProvider) standardDiscovery(ctx context.Context, discoveryURL stri
 	for i := 1; i <= maxRetryAttempts; i++ {
 		provider, err = oidc.NewProvider(GetOIDCClientContext(op.InsecureSkipVerify), op.Issuer)
 		if err == nil && provider != nil {
-			verifier = provider.Verifier(&oidc.Config{ClientID: base.StringDefault(op.ClientID, "")})
+			verifier = provider.Verifier(&oidc.Config{ClientID: base.ValDefault(op.ClientID, "")})
 			if err = provider.Claims(&metadata); err != nil {
 				base.ErrorfCtx(ctx, "Error caching metadata from standard issuer-based discovery endpoint: %s", base.UD(discoveryURL))
 			}
@@ -566,7 +566,7 @@ func (op *OIDCProvider) generateVerifier(metadata *ProviderMetadata, ctx context
 	if len(signingAlgorithms.unsupportedAlgorithms) > 0 {
 		base.InfofCtx(ctx, base.KeyAuth, "Found algorithms not supported by underlying OpenID Connect library: %v", signingAlgorithms.unsupportedAlgorithms)
 	}
-	config := &oidc.Config{ClientID: base.StringDefault(op.ClientID, "")}
+	config := &oidc.Config{ClientID: base.ValDefault(op.ClientID, "")}
 	if len(signingAlgorithms.supportedAlgorithms) > 0 {
 		config.SupportedSigningAlgs = signingAlgorithms.supportedAlgorithms
 	}

@@ -52,8 +52,8 @@ func validateN1QLQuery(query string) error {
 func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	var userArg n1qlUserArgument
 	if user := fn.db.User(); user != nil {
-		userArg.Name = base.StringPtr(user.Name())
-		userArg.Email = base.StringPtr(user.Email())
+		userArg.Name = base.Ptr(user.Name())
+		userArg.Email = base.Ptr(user.Email())
 		userArg.Channels = user.Channels().AllKeys()
 		userArg.Roles = user.RoleNames().AllKeys()
 	}

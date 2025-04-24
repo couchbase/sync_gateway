@@ -40,10 +40,10 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	// construct indexes as the test expects
 	options := InitializeIndexOptions{
-		NumReplicas:   0,
-		Serverless:    db.IsServerless(),
-		UseXattrs:     db.UseXattrs(),
-		NumPartitions: DefaultNumIndexPartitions,
+		NumReplicas:         0,
+		LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
+		UseXattrs:           db.UseXattrs(),
+		NumPartitions:       DefaultNumIndexPartitions,
 	}
 	if db.OnlyDefaultCollection() {
 		options.MetadataIndexes = IndexesAll
@@ -101,10 +101,10 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	defer func() {
 		// Restore indexes after test
 		options := InitializeIndexOptions{
-			NumReplicas:   0,
-			Serverless:    db.IsServerless(),
-			UseXattrs:     db.UseXattrs(),
-			NumPartitions: DefaultNumIndexPartitions,
+			NumReplicas:         0,
+			LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
+			UseXattrs:           db.UseXattrs(),
+			NumPartitions:       DefaultNumIndexPartitions,
 		}
 		err := InitializeIndexes(ctx, n1qlStore, options)
 		assert.NoError(t, err)
@@ -155,7 +155,7 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 		dbOptions.Scopes = GetScopesOptions(t, tb, numCollections)
 	}
 
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, dbOptions)
+	db, ctx := SetupTestDBForBucketWithOptions(t, tb, dbOptions)
 	defer db.Close(ctx)
 
 	// make sure RemoveObsoleteIndexes is a no-op before adding obsolete indexes
@@ -166,10 +166,10 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	}
 	useXattrs := false
 	options := InitializeIndexOptions{
-		NumReplicas:   0,
-		Serverless:    false,
-		UseXattrs:     useXattrs,
-		NumPartitions: DefaultNumIndexPartitions,
+		NumReplicas:         0,
+		LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
+		UseXattrs:           useXattrs,
+		NumPartitions:       DefaultNumIndexPartitions,
 	}
 
 	for _, dataStore := range db.getDataStores() {
@@ -229,9 +229,9 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		err = InitializeViews(ctx, collection.dataStore)
 		assert.NoError(t, err)
 		options := InitializeIndexOptions{
-			NumReplicas: 0,
-			Serverless:  db.IsServerless(),
-			UseXattrs:   base.TestUseXattrs(),
+			NumReplicas:         0,
+			LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
+			UseXattrs:           base.TestUseXattrs(),
 		}
 		if db.OnlyDefaultCollection() {
 			options.MetadataIndexes = IndexesAll
@@ -249,10 +249,10 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 
 	options := InitializeIndexOptions{
-		NumReplicas:   0,
-		Serverless:    db.IsServerless(),
-		UseXattrs:     db.UseXattrs(),
-		NumPartitions: DefaultNumIndexPartitions,
+		NumReplicas:         0,
+		LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
+		UseXattrs:           db.UseXattrs(),
+		NumPartitions:       DefaultNumIndexPartitions,
 	}
 	if db.OnlyDefaultCollection() {
 		options.MetadataIndexes = IndexesAll
@@ -290,10 +290,10 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
 		assert.True(t, ok)
 		options := InitializeIndexOptions{
-			NumReplicas:   0,
-			Serverless:    db.IsServerless(),
-			UseXattrs:     db.UseXattrs(),
-			NumPartitions: DefaultNumIndexPartitions,
+			NumReplicas:         0,
+			LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
+			UseXattrs:           db.UseXattrs(),
+			NumPartitions:       DefaultNumIndexPartitions,
 		}
 		err := InitializeIndexes(ctx, n1qlStore, options)
 		assert.NoError(t, err)

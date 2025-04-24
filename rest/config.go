@@ -944,7 +944,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	if dbConfig.OIDCConfig != nil {
 		validProviders := len(dbConfig.OIDCConfig.Providers)
 		for name, oidc := range dbConfig.OIDCConfig.Providers {
-			if oidc.Issuer == "" || base.StringDefault(oidc.ClientID, "") == "" {
+			if oidc.Issuer == "" || base.ValDefault(oidc.ClientID, "") == "" {
 				// TODO: rather than being an error, this skips the current provider to avoid a backwards compatibility issue (previously valid
 				// configs becoming invalid). This also means it's duplicated in NewDatabaseContext.
 				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
@@ -1125,6 +1125,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			multiError = multiError.Append(fmt.Errorf("index.num_partitions is incompatible with enable_shared_bucket_access=false"))
 		}
 	}
+	if dbConfig.UserXattrKey != nil && len(*dbConfig.UserXattrKey) > 15 {
+		multiError = multiError.Append(fmt.Errorf("user_xattr_key can only be a maximum of 15 characters"))
+	}
+
 	return multiError.ErrorOrNil()
 }
 
@@ -1227,7 +1231,7 @@ func (dbConfig *DbConfig) ConflictsAllowed() *bool {
 	if dbConfig.AllowConflicts != nil {
 		return dbConfig.AllowConflicts
 	}
-	return base.BoolPtr(base.DefaultAllowConflicts)
+	return base.Ptr(base.DefaultAllowConflicts)
 }
 
 func (dbConfig *DbConfig) UseXattrs() bool {
@@ -1258,7 +1262,7 @@ func (config *DbConfig) redactInPlace(ctx context.Context) error {
 
 	for i := range config.Users {
 		if config.Users[i].Password != nil && *config.Users[i].Password != "" {
-			config.Users[i].Password = base.StringPtr(base.RedactedStr)
+			config.Users[i].Password = base.Ptr(base.RedactedStr)
 		}
 	}
 
@@ -1287,7 +1291,7 @@ func redactConfigAsStr(ctx context.Context, dbConfig string) (string, error) {
 			}
 			for i := range users {
 				if users[i].Password != nil && *users[i].Password != "" {
-					users[i].Password = base.StringPtr(base.RedactedStr)
+					users[i].Password = base.Ptr(base.RedactedStr)
 				}
 			}
 			redactedConfig["users"] = users
@@ -1320,7 +1324,7 @@ func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config int
 	}
 
 	// Expand environment variables.
-	b, err = sanitiseConfig(ctx, b, base.BoolPtr(true))
+	b, err = sanitiseConfig(ctx, b, base.Ptr(true))
 	if err != nil {
 		return err
 	}
@@ -1337,7 +1341,7 @@ func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config int
 func sanitiseConfig(ctx context.Context, configBytes []byte, allowEnvVars *bool) ([]byte, error) {
 	var err error
 	// Expand environment variables if needed
-	if base.BoolDefault(allowEnvVars, true) {
+	if base.ValDefault(allowEnvVars, true) {
 		configBytes, err = expandEnv(ctx, configBytes)
 		if err != nil {
 			return nil, err
@@ -1482,7 +1486,7 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 	}
 
 	secureServer := base.ServerIsTLS(sc.Bootstrap.Server)
-	if base.BoolDefault(sc.Bootstrap.UseTLSServer, DefaultUseTLSServer) {
+	if base.ValDefault(sc.Bootstrap.UseTLSServer, DefaultUseTLSServer) {
 		if !secureServer && !base.ServerIsWalrus(sc.Bootstrap.Server) {
 			multiError = multiError.Append(fmt.Errorf("Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %s", base.SD(sc.Bootstrap.Server)))
 		}
@@ -2362,7 +2366,7 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 		}
 
 		aud = &base.DbAuditLogConfig{
-			Enabled:       base.BoolDefault(l.Audit.Enabled, base.DefaultDbAuditEnabled),
+			Enabled:       base.ValDefault(l.Audit.Enabled, base.DefaultDbAuditEnabled),
 			EnabledEvents: enabledEvents,
 			DisabledUsers: disabledUsers,
 			DisabledRoles: disabledRoles,

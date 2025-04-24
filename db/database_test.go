@@ -42,12 +42,20 @@ func setupTestDB(t testing.TB) (*Database, context.Context) {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
-func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
+func setupTestDBAllowConflicts(t testing.TB) (*Database, context.Context) {
+	dbcOptions := DatabaseContextOptions{
+		AllowConflicts: base.Ptr(true),
+		CacheOptions:   base.Ptr(DefaultCacheOptions()),
+	}
+	return SetupTestDBWithOptions(t, dbcOptions)
+}
+
+func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.Context) {
 	cacheOptions := DefaultCacheOptions()
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
+	return SetupTestDBForBucketWithOptions(t, bucket, dbcOptions)
 }
 
 func setupTestDBForBucketDefaultCollection(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
@@ -56,7 +64,7 @@ func setupTestDBForBucketDefaultCollection(t testing.TB, bucket *base.TestBucket
 		CacheOptions: &cacheOptions,
 		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
 	}
-	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
+	return SetupTestDBForBucketWithOptions(t, bucket, dbcOptions)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
@@ -139,58 +147,12 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
+	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
-		Scopes:       GetScopesOptions(t, testBucket, 1),
 	}
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
-	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
-	if err != nil {
-		testBucket.Close(ctx)
-		t.Fatalf("Unable to create database context: %v", err)
-	}
-	ctx = dbCtx.AddDatabaseLogContext(ctx)
-	err = dbCtx.StartOnlineProcesses(ctx)
-	if err != nil {
-		dbCtx.Close(ctx)
-		t.Fatalf("Unable to start online processes: %v", err)
-	}
-	db, err := CreateDatabase(dbCtx)
-	if err != nil {
-		dbCtx.Close(ctx)
-		t.Fatalf("Unable to create database: %v", err)
-	}
-	return db, addDatabaseAndTestUserContext(ctx, db)
-}
-
-func setupTestDBWithLeakyBucket(t testing.TB, leakyBucket *base.LeakyBucket) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
-	testBucket, ok := leakyBucket.GetUnderlyingBucket().(*base.TestBucket)
-	require.True(t, ok)
-	dbcOptions := DatabaseContextOptions{
-		Scopes: GetScopesOptions(t, testBucket, 1),
-	}
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
-	if err != nil {
-		leakyBucket.Close(ctx)
-		t.Fatalf("Unable to create database context: %v", err)
-	}
-	ctx = dbCtx.AddDatabaseLogContext(ctx)
-	err = dbCtx.StartOnlineProcesses(ctx)
-	if err != nil {
-		dbCtx.Close(ctx)
-		t.Fatalf("Unable to start online processes: %v", err)
-	}
-	db, err := CreateDatabase(dbCtx)
-	if err != nil {
-		dbCtx.Close(ctx)
-		t.Fatalf("Unable to create database: %v", err)
-	}
-	return db, addDatabaseAndTestUserContext(ctx, db)
+	return SetupTestDBForBucketWithOptions(t, leakyBucket, dbcOptions)
 }
 
 func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
@@ -1105,7 +1067,7 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 		IgnoreClose: true,
 	})
 
-	db, ctx := setupTestDBWithLeakyBucket(t, lb)
+	db, ctx := setupTestDBForBucket(t, lb)
 	defer db.Close(ctx)
 
 	// Create a user with access to channel ABC
@@ -1152,7 +1114,7 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 // Re-apply one of the conflicting changes to make sure that PutExistingRevWithBody() treats it as a no-op (SG Issue #3048)
 func TestRepeatedConflict(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1189,7 +1151,7 @@ func TestRepeatedConflict(t *testing.T) {
 
 func TestConflicts(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1312,7 +1274,7 @@ func TestConflicts(t *testing.T) {
 func TestConflictRevLimitDefault(t *testing.T) {
 
 	// Test Default Is the higher of the two
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
 }
@@ -1320,7 +1282,7 @@ func TestConflictRevLimitDefault(t *testing.T) {
 func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 	// Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
-		AllowConflicts: base.BoolPtr(true),
+		AllowConflicts: base.Ptr(true),
 	}
 
 	db, ctx := SetupTestDBWithOptions(t, dbOptions)
@@ -1330,7 +1292,7 @@ func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 
 func TestConflictRevLimitAllowConflictsFalse(t *testing.T) {
 	dbOptions := DatabaseContextOptions{
-		AllowConflicts: base.BoolPtr(false),
+		AllowConflicts: base.Ptr(false),
 	}
 
 	db, ctx := SetupTestDBWithOptions(t, dbOptions)
@@ -1345,7 +1307,7 @@ func TestNoConflictsMode(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -1418,7 +1380,7 @@ func TestNoConflictsMode(t *testing.T) {
 
 // Test tombstoning of existing conflicts after AllowConflicts is set to false via Put
 func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1449,7 +1411,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
 	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false)
@@ -1495,7 +1457,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 // Test tombstoning of existing conflicts after AllowConflicts is set to false via PutExistingRev
 func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1526,7 +1488,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 	delete(body, "n")
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
@@ -2082,7 +2044,7 @@ func mockOIDCProvider() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.google.com",
-			ClientID: base.StringPtr(clientID),
+			ClientID: base.Ptr(clientID),
 		},
 		Name:          "Google",
 		CallbackURL:   &callbackURL,
@@ -2094,7 +2056,7 @@ func mockOIDCProviderWithCallbackURLQuery() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.google.com",
-			ClientID: base.StringPtr(clientID),
+			ClientID: base.Ptr(clientID),
 		},
 		Name:          "Google",
 		CallbackURL:   &callbackURLWithQuery,
@@ -2108,7 +2070,7 @@ func mockOIDCProviderWithNoValidationKey() auth.OIDCProvider {
 		CallbackURL: &callbackURL,
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.yahoo.com",
-			ClientID: base.StringPtr(clientID),
+			ClientID: base.Ptr(clientID),
 		},
 	}
 }
@@ -2306,24 +2268,24 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 	var db *Database
 	var enableCallback bool
-	var ctx context.Context
+	ctx := base.TestCtx(t)
 
-	writeUpdateCallback := func(key string) {
-		if enableCallback {
-			enableCallback = false
-			body := Body{"name": "Emily", "age": 20}
-			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false)
-			assert.NoError(t, err, "Adding revision 3-b")
-		}
-	}
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
 
-	// Use leaky bucket to inject callback in query invocation
-	queryCallbackConfig := base.LeakyBucketConfig{
-		UpdateCallback: writeUpdateCallback,
-	}
+	leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{
+		UpdateCallback: func(key string) {
+			if enableCallback {
+				enableCallback = false
+				body := Body{"name": "Emily", "age": 20}
+				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+				assert.NoError(t, err, "Adding revision 3-b")
+			}
+		},
+	})
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2364,24 +2326,21 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 	var db *Database
 	var enableCallback bool
-	var ctx context.Context
-
-	writeUpdateCallback := func(key string) {
-		if enableCallback {
-			enableCallback = false
-			body := Body{"name": "Charlie", "age": 10, BodyDeleted: true}
-			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
-			assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
-		}
-	}
-
-	// Use leaky bucket to inject callback in query invocation
-	queryCallbackConfig := base.LeakyBucketConfig{
-		UpdateCallback: writeUpdateCallback,
-	}
-
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{
+		UpdateCallback: func(key string) {
+			if enableCallback {
+				enableCallback = false
+				body := Body{"name": "Charlie", "age": 10, BodyDeleted: true}
+				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+				assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
+			}
+		},
+	})
+	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2422,24 +2381,23 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 	var db *Database
 	var enableCallback bool
-	var ctx context.Context
 
-	writeUpdateCallback := func(key string) {
-		if enableCallback {
-			enableCallback = false
-			body := Body{"name": "Joshua", "age": 11}
-			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b1", "2-b", "1-a"}, false)
-			assert.NoError(t, err, "Couldn't add revision 3-b1")
-		}
-	}
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{
+		UpdateCallback: func(key string) {
+			if enableCallback {
+				enableCallback = false
+				body := Body{"name": "Joshua", "age": 11}
+				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b1", "2-b", "1-a"}, false)
+				assert.NoError(t, err, "Couldn't add revision 3-b1")
+			}
+		},
+	})
 
-	// Use leaky bucket to inject callback in query invocation
-	queryCallbackConfig := base.LeakyBucketConfig{
-		UpdateCallback: writeUpdateCallback,
-	}
-
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2638,7 +2596,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	zero := time.Duration(0)
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{
+	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{
 		PurgeInterval: &zero,
 	})
 	defer db.Close(ctx)
@@ -2822,10 +2780,8 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 }
 
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close(base.TestCtx(t))
-
-	db, ctx := setupTestDBForBucket(t, bucket)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
 	db.Options.QueryPaginationLimit = 100
 
@@ -2887,13 +2843,13 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 		for i := 0; i < 1; i++ {
 			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
-			err = json.Unmarshal(raw, &invalPrinc)
-			assert.NoError(t, err)
-			assert.Equal(t, endSeq, invalPrinc.CollectionAccess[scopeName][collectionName].ChannelInvalSeq)
+			require.NoError(t, json.Unmarshal(raw, &invalPrinc))
+			fmt.Printf("raw=%s invalPrinc: %#+v\n", raw, invalPrinc)
+			assert.Equal(t, int(endSeq), int(invalPrinc.CollectionAccess[scopeName][collectionName].ChannelInvalSeq))
 			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
 
 			raw, _, err = db.MetadataStore.GetRaw(db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
 			assert.Equal(t, endSeq, invalPrinc.CollectionAccess[scopeName][collectionName].ChannelInvalSeq)
@@ -3336,7 +3292,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 10 * time.Millisecond
+		deadline := 50 * time.Millisecond
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopping, bgMngr.GetRunState())

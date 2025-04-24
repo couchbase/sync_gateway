@@ -685,9 +685,12 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 }
 
 func TestConflictWithInvalidAttachment(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	// Create Doc
 	version := rt.CreateTestDoc("doc1")
 
@@ -779,8 +782,12 @@ func TestAttachmentRevposPre25Metadata(t *testing.T) {
 }
 
 func TestConflictingBranchAttachments(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	// Create a document
 	version := rt.CreateTestDoc("doc1")
@@ -830,8 +837,12 @@ func TestConflictingBranchAttachments(t *testing.T) {
 }
 
 func TestAttachmentsWithTombstonedConflict(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	version := rt.CreateTestDoc("doc1")
 
@@ -1725,10 +1736,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		err := dataStore.Delete(docID)
 		require.NoError(t, err, "Unable to delete doc %q", docID)
 
-		// Wait until the "delete" mutation appears on the changes feed.
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
-		assert.NoError(t, err, "Error waiting for changes")
-		log.Printf("changes: %+v", changes)
+		// force import via GET
+		RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ""), http.StatusOK)
 		rt.RequireDocNotFound(docID)
 
 		// Check whether the attachment is removed from the underlying storage.
@@ -1772,10 +1781,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		err := dataStore.Set(docID, 0, nil, []byte(`{"prop": false}`))
 		require.NoError(t, err, "Error updating the document")
 
-		// Wait until the "update" mutation appears on the changes feed.
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
-		assert.NoError(t, err, "Error waiting for changes")
-		log.Printf("changes: %+v", changes)
+		// Wait until the "update" mutation is present by doing on demand import
+		rt.GetDoc(docID)
 
 		// Verify that the attachment is not removed.
 		actualAttBody = retrieveAttachment(t, docID, attName)
@@ -2068,7 +2075,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				AllowConflicts: base.BoolPtr(true),
+				AllowConflicts: base.Ptr(true),
 			},
 		},
 	})
@@ -2132,8 +2139,12 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 func TestAttachmentsMissing(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	docID := t.Name()
 	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
@@ -2151,8 +2162,12 @@ func TestAttachmentsMissing(t *testing.T) {
 func TestAttachmentsMissingNoBody(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	docID := t.Name()
 	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
@@ -2207,7 +2222,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AutoImport = base.BoolPtr(base.TestUseXattrs())
+	dbConfig.AutoImport = base.Ptr(base.TestUseXattrs())
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()
@@ -2386,10 +2401,13 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 
 // CBG-2004: Test that prove attachment over Blip works correctly when receiving a ErrAttachmentNotFound
 func TestProveAttachmentNotFound(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
-	})
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	require.NoError(t, rt.SetAdminParty(true))
 
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	assert.NoError(t, err, "Error creating BlipTester")

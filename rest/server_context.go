@@ -38,7 +38,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-const kDefaultSlowQueryWarningThreshold = 500 // ms
+const kDefaultSlowQueryWarningThreshold uint32 = 500 // ms
 const KDefaultNumShards = 16
 
 // defaultBytesStatsReportingInterval is the default interval when to report bytes transferred stats
@@ -172,8 +172,8 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		// Disable Admin API authentication when running as walrus on the default admin interface to support dev
 		// environments.
 		if sc.Config.API.AdminInterface == DefaultAdminInterface {
-			sc.Config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
-			sc.Config.API.MetricsInterfaceAuthentication = base.BoolPtr(false)
+			sc.Config.API.AdminInterfaceAuthentication = base.Ptr(false)
+			sc.Config.API.MetricsInterfaceAuthentication = base.Ptr(false)
 		}
 	}
 	if config.Replicator.MaxConcurrentReplications != 0 {
@@ -678,7 +678,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// If using a walrus bucket, force use of views
-	useViews := base.BoolDefault(config.UseViews, false)
+	useViews := base.ValDefault(config.UseViews, false)
 	if !useViews && spec.IsWalrusBucket() {
 		base.WarnfCtx(ctx, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
@@ -755,7 +755,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		dbInitDoneChan chan error
 		isAsync        bool // blocks reading dbInitDoneChan if false
 	)
-	startOffline := base.BoolDefault(config.StartOffline, false)
+	startOffline := base.ValDefault(config.StartOffline, false)
 	if !useViews {
 		// Initialize any required indexes
 		if gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql); !gsiSupported {
@@ -770,8 +770,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// If database has been requested to start offline, or there's an active async initialization, use async initialization
 		isAsync = startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
 
+		useLegacySyncDocsIndex := true // decide in CBG-4615
 		// Initialize indexes using DatabaseInitManager.
-		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, useLegacySyncDocsIndex)
 		if err != nil {
 			if options.loadFromBucket {
 				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitializationIndexError))
@@ -890,8 +891,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	}
 
-	dbcontext.AllowEmptyPassword = base.BoolDefault(config.AllowEmptyPassword, false)
-	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
+	dbcontext.AllowEmptyPassword = base.ValDefault(config.AllowEmptyPassword, false)
+	dbcontext.ServeInsecureAttachmentTypes = base.ValDefault(config.ServeInsecureAttachmentTypes, false)
 
 	dbcontext.Options.ConfigPrincipals = &db.ConfigPrincipals{
 		Users: config.Users,
@@ -1060,7 +1061,7 @@ func getJavascriptTimeout(config *DbConfig) time.Duration {
 func newBaseImportOptions(config *DbConfig, serverless bool) *db.ImportOptions {
 	// Identify import options
 	importOptions := &db.ImportOptions{
-		BackupOldRev: base.BoolDefault(config.ImportBackupOldRev, false),
+		BackupOldRev: base.ValDefault(config.ImportBackupOldRev, false),
 	}
 
 	if config.ImportPartitions == nil {
@@ -1243,7 +1244,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		bcryptCost = auth.DefaultBcryptCost
 	}
 
-	slowQueryWarningThreshold := kDefaultSlowQueryWarningThreshold * time.Millisecond
+	slowQueryWarningThreshold := time.Duration(kDefaultSlowQueryWarningThreshold) * time.Millisecond
 	if config.SlowQueryWarningThresholdMs != nil {
 		slowQueryWarningThreshold = time.Duration(*config.SlowQueryWarningThresholdMs) * time.Millisecond
 	}
@@ -1266,7 +1267,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	if config.Unsupported.WarningThresholds.XattrSize == nil {
-		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
+		config.Unsupported.WarningThresholds.XattrSize = base.Ptr(uint32(base.DefaultWarnThresholdXattrSize))
 	} else {
 		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
 		upperLimit := 1 * 1024 * 1024   // 1 MB
@@ -1308,8 +1309,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
 	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
-	if base.BoolDefault(config.DisablePasswordAuth, false) {
-		sendWWWAuthenticate = base.BoolPtr(false)
+	if base.ValDefault(config.DisablePasswordAuth, false) {
+		sendWWWAuthenticate = base.Ptr(false)
 	}
 
 	contextOptions := db.DatabaseContextOptions{
@@ -1325,10 +1326,10 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		EnableXattr:                   config.UseXattrs(),
 		SecureCookieOverride:          secureCookieOverride,
 		SessionCookieName:             config.SessionCookieName,
-		SessionCookieHttpOnly:         base.BoolDefault(config.SessionCookieHTTPOnly, false),
+		SessionCookieHttpOnly:         base.ValDefault(config.SessionCookieHTTPOnly, false),
 		AllowConflicts:                config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader:     sendWWWAuthenticate,
-		DisablePasswordAuthentication: base.BoolDefault(config.DisablePasswordAuth, false),
+		DisablePasswordAuthentication: base.ValDefault(config.DisablePasswordAuth, false),
 		DeltaSyncOptions:              deltaSyncOptions,
 		CompactInterval:               compactIntervalSecs,
 		QueryPaginationLimit:          queryPaginationLimit,
@@ -1343,7 +1344,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		GroupID:                   groupID,
 		JavascriptTimeout:         javascriptTimeout,
 		Serverless:                sc.Config.IsServerless(),
-		ChangesRequestPlus:        base.BoolDefault(config.ChangesRequestPlus, false),
+		ChangesRequestPlus:        base.ValDefault(config.ChangesRequestPlus, false),
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
@@ -1595,7 +1596,7 @@ func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) er
 	}
 
 	config := sc.dbConfigs[dbName]
-	if config != nil && !base.BoolDefault(config.Suspendable, sc.Config.IsServerless()) {
+	if config != nil && !base.ValDefault(config.Suspendable, sc.Config.IsServerless()) {
 		return ErrSuspendingDisallowed
 	}
 
@@ -1628,7 +1629,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		if !dbConfig.isSuspended {
 			base.WarnfCtx(ctx, "attempting to unsuspend database %q that is not suspended", base.MD(dbName))
 		}
-		if !base.BoolDefault(dbConfig.Suspendable, sc.Config.IsServerless()) {
+		if !base.ValDefault(dbConfig.Suspendable, sc.Config.IsServerless()) {
 			base.InfofCtx(ctx, base.KeyAll, "attempting to unsuspend db %q while not configured to be suspendable", base.MD(dbName))
 		}
 

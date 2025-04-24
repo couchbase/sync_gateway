@@ -473,14 +473,14 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	}
 
 	// Set Deprecated Values
-	dbConfig.DeprecatedRevCacheSize = base.Uint32Ptr(10)
-	dbConfig.CacheConfig.DeprecatedChannelCacheAge = base.IntPtr(10)
-	dbConfig.CacheConfig.DeprecatedChannelCacheMinLength = base.IntPtr(10)
-	dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength = base.IntPtr(10)
-	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.BoolPtr(true)
-	dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait = base.Uint32Ptr(10)
-	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum = base.IntPtr(10)
-	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait = base.Uint32Ptr(10)
+	dbConfig.DeprecatedRevCacheSize = base.Ptr(uint32(10))
+	dbConfig.CacheConfig.DeprecatedChannelCacheAge = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheMinLength = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.Ptr(true)
+	dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait = base.Ptr(uint32(10))
+	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait = base.Ptr(uint32(10))
 
 	// Run Deprecated Fallback
 	warnings := dbConfig.deprecatedConfigCacheFallback()
@@ -507,10 +507,10 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	}
 
 	// Set A Couple Deprecated Values AND Their New Counterparts
-	dbConfig.DeprecatedRevCacheSize = base.Uint32Ptr(10)
-	dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Uint32Ptr(20)
-	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.BoolPtr(false)
-	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.BoolPtr(true)
+	dbConfig.DeprecatedRevCacheSize = base.Ptr(uint32(10))
+	dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr(uint32(20))
+	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.Ptr(false)
+	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(true)
 
 	// Run Deprecated Fallback
 	warnings = dbConfig.deprecatedConfigCacheFallback()
@@ -704,7 +704,7 @@ func TestAuditLogConfigDatabaseEventInGlobal(t *testing.T) {
 
 	sc := NewEmptyStartupConfig()
 	sc.Logging.LogFilePath = t.TempDir()
-	sc.Logging.Audit.Enabled = base.BoolPtr(true)
+	sc.Logging.Audit.Enabled = base.Ptr(true)
 	sc.Logging.Audit.EnabledEvents = []uint{
 		uint(base.AuditIDSyncGatewayStartup),          // global, non-filterable
 		uint(base.AuditIDUserCreate),                  // database, filterable
@@ -977,8 +977,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	xattrs := base.TestUseXattrs()
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify()),
+			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
+			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
 		},
 	}
 	databases := DbConfigMap{
@@ -990,9 +990,9 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Password: tb1Password,
 			},
 			EnableXattrs: &xattrs,
-			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+			UseViews:     base.Ptr(base.TestsDisableGSI()),
 			Index: &IndexConfig{
-				NumReplicas: base.UintPtr(0),
+				NumReplicas: base.Ptr(uint(0)),
 			},
 		},
 		"db2": {
@@ -1003,7 +1003,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Password: tb1Password,
 			},
 			EnableXattrs: &xattrs,
-			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+			UseViews:     base.Ptr(base.TestsDisableGSI()),
 			Index: &IndexConfig{
 				NumReplicas: base.Ptr(uint(0)),
 			},
@@ -1016,7 +1016,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Password: tb2Password,
 			},
 			EnableXattrs: &xattrs,
-			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+			UseViews:     base.Ptr(base.TestsDisableGSI()),
 			Index: &IndexConfig{
 				NumReplicas: base.Ptr(uint(0)),
 			},
@@ -1359,13 +1359,13 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			unexpectedChannels:   []string{defaultVal, unexpandedVal},
 		},
 		{
-			allowDbConfigEnvVars: base.BoolPtr(true),
+			allowDbConfigEnvVars: base.Ptr(true),
 			setEnvVar:            false,
 			expectedChannel:      defaultVal,
 			unexpectedChannels:   []string{secretVal, unexpandedVal},
 		},
 		{
-			allowDbConfigEnvVars: base.BoolPtr(false),
+			allowDbConfigEnvVars: base.Ptr(false),
 			setEnvVar:            true,
 			expectedChannel:      unexpandedVal,
 			unexpectedChannels:   []string{secretVal, defaultVal},
@@ -1388,7 +1388,7 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			}
 
 			dbc := rt.NewDbConfig()
-			dbc.Sync = base.StringPtr(fmt.Sprintf(
+			dbc.Sync = base.Ptr(fmt.Sprintf(
 				"function(doc) {channel('%s');}",
 				unexpandedVal,
 			))
@@ -1402,13 +1402,11 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			rt.WaitForPendingChanges()
 
 			// ensure doc is in expected channel and is not in the unexpected channels
-			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+test.expectedChannel, "", true)
-			require.NoError(t, err)
+			changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+test.expectedChannel, "", true)
 			changes.RequireDocIDs(t, []string{docID})
 
 			channels := strings.Join(test.unexpectedChannels, ",")
-			changes, err = rt.WaitForChanges(0, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+channels, "", true)
-			require.NoError(t, err)
+			changes = rt.WaitForChanges(0, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+channels, "", true)
 			changes.RequireDocIDs(t, []string{})
 		})
 	}
@@ -1454,8 +1452,8 @@ func TestSetupServerContext(t *testing.T) {
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
-		config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
-		config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+		config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
+		config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
 		ctx := base.TestCtx(t)
@@ -1521,7 +1519,7 @@ func TestConfigGroupIDValidation(t *testing.T) {
 				Bootstrap: BootstrapConfig{
 					ConfigGroupID: test.cfgGroupID,
 					Server:        base.UnitTestUrl(),
-					UseTLSServer:  base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
+					UseTLSServer:  base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
 				},
 			}
 			err := sc.Validate(base.TestCtx(t), isEnterpriseEdition)
@@ -1919,7 +1917,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			}()
 			dbConfig := DbConfig{
 				Name: "db",
-				Sync: base.StringPtr(sync),
+				Sync: base.Ptr(sync),
 			}
 			if test.insecureSkipVerify {
 				dbConfig.Unsupported = &db.UnsupportedOptions{
@@ -2013,7 +2011,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			}()
 			dbConfig := DbConfig{
 				Name:         "db",
-				ImportFilter: base.StringPtr(importFilter),
+				ImportFilter: base.Ptr(importFilter),
 			}
 			if test.insecureSkipVerify {
 				dbConfig.Unsupported = &db.UnsupportedOptions{
@@ -2213,7 +2211,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 						{
 							HandlerType: "webhook",
 							Url:         "http://localhost:8080/",
-							Timeout:     base.Uint64Ptr(0),
+							Timeout:     base.Ptr(uint64(0)),
 							Filter:      webhookFilter,
 						},
 					},
@@ -2264,12 +2262,12 @@ func TestUseXattrs(t *testing.T) {
 		},
 		{
 			name:           "False Xattrs",
-			enableXattrs:   base.BoolPtr(false),
+			enableXattrs:   base.Ptr(false),
 			expectedXattrs: false,
 		},
 		{
 			name:           "True Xattrs",
-			enableXattrs:   base.BoolPtr(true),
+			enableXattrs:   base.Ptr(true),
 			expectedXattrs: true,
 		},
 	}
@@ -2301,39 +2299,39 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Valid Sync Fn No Import",
-			base.StringPtr(`function(){}`),
+			base.Ptr(`function(){}`),
 			nil,
 			0,
-			base.StringPtr(`function(){}`),
+			base.Ptr(`function(){}`),
 			nil,
 		},
 		{
 			"Valid Import Fn No Sync",
 			nil,
-			base.StringPtr(`function(){}`),
+			base.Ptr(`function(){}`),
 			0,
 			nil,
-			base.StringPtr(`function(){}`),
+			base.Ptr(`function(){}`),
 		},
 		{
 			"Both empty",
-			base.StringPtr(``),
-			base.StringPtr(``),
+			base.Ptr(``),
+			base.Ptr(``),
 			0,
 			nil,
 			nil,
 		},
 		{
 			"Both blank",
-			base.StringPtr(` `),
-			base.StringPtr(` `),
+			base.Ptr(` `),
+			base.Ptr(` `),
 			0,
 			nil,
 			nil,
 		},
 		{
 			"Invalid Sync Fn No Import",
-			base.StringPtr(`function(){`),
+			base.Ptr(`function(){`),
 			nil,
 			1,
 			nil,
@@ -2341,7 +2339,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Invalid Sync Fn No Import 2",
-			base.StringPtr(`function(doc){
+			base.Ptr(`function(doc){
 				if (t )){}
 			}`),
 			nil,
@@ -2352,15 +2350,15 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		{
 			"Invalid Import Fn No Sync",
 			nil,
-			base.StringPtr(`function(){`),
+			base.Ptr(`function(){`),
 			1,
 			nil,
 			nil,
 		},
 		{
 			"Both invalid",
-			base.StringPtr(`function(){`),
-			base.StringPtr(`function(){`),
+			base.Ptr(`function(){`),
+			base.Ptr(`function(){`),
 			2,
 			nil,
 			nil,
@@ -2479,27 +2477,27 @@ func TestStartupConfigReplicationThrottleValidation(t *testing.T) {
 		},
 		{
 			name:         "invalid-low",
-			revsThrottle: base.IntPtr(4),
+			revsThrottle: base.Ptr(4),
 			expectError:  true,
 		},
 		{
 			name:         "Valid-5",
-			revsThrottle: base.IntPtr(5),
+			revsThrottle: base.Ptr(5),
 			expectError:  false,
 		},
 		{
 			name:         "Valid-20",
-			revsThrottle: base.IntPtr(20),
+			revsThrottle: base.Ptr(20),
 			expectError:  false,
 		},
 		{
 			name:         "Valid-200",
-			revsThrottle: base.IntPtr(200),
+			revsThrottle: base.Ptr(200),
 			expectError:  false,
 		},
 		{
 			name:         "invalid-high",
-			revsThrottle: base.IntPtr(201),
+			revsThrottle: base.Ptr(201),
 			expectError:  true,
 		},
 	}
@@ -2532,19 +2530,19 @@ func Test_validateJavascriptFunction(t *testing.T) {
 		},
 		{
 			name:        "whitespace only",
-			jsFunc:      base.StringPtr("   \t \n "),
+			jsFunc:      base.Ptr("   \t \n "),
 			wantIsEmpty: true,
 			wantErr:     assert.NoError,
 		},
 		{
 			name:        "invalid js",
-			jsFunc:      base.StringPtr("  func() { console.log(\"foo\"); } "),
+			jsFunc:      base.Ptr("  func() { console.log(\"foo\"); } "),
 			wantIsEmpty: false,
 			wantErr:     assert.Error,
 		},
 		{
 			name:        "valid js",
-			jsFunc:      base.StringPtr(" function() { console.log(\"foo\"); }  "),
+			jsFunc:      base.Ptr(" function() { console.log(\"foo\"); }  "),
 			wantIsEmpty: false,
 			wantErr:     assert.NoError,
 		},
@@ -2641,7 +2639,7 @@ func TestBucketCredentialsValidation(t *testing.T) {
 		{
 			name: "Nil bucket credentials provided when running in serverless mode",
 			startupConfig: StartupConfig{
-				Unsupported: UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.BoolPtr(true)}},
+				Unsupported: UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.Ptr(true)}},
 			},
 			expectedError: &bucketNoCredsServerless,
 		},
@@ -2649,14 +2647,14 @@ func TestBucketCredentialsValidation(t *testing.T) {
 			name: "No bucket credentials provided when running in serverless mode",
 			startupConfig: StartupConfig{
 				BucketCredentials: base.PerBucketCredentialsConfig{},
-				Unsupported:       UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.BoolPtr(true)}},
+				Unsupported:       UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.Ptr(true)}},
 			},
 			expectedError: &bucketNoCredsServerless,
 		},
 		{
 			name: "Bucket credentials provided when running in serverless mode",
 			startupConfig: StartupConfig{
-				Unsupported:       UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.BoolPtr(true)}},
+				Unsupported:       UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.Ptr(true)}},
 				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{Username: "u", Password: "p"}},
 			},
 		},
@@ -2686,7 +2684,7 @@ func TestCollectionsValidation(t *testing.T) {
 			name: "views=true,collections=false",
 			dbConfig: DbConfig{
 				Name:     "db",
-				UseViews: base.BoolPtr(true),
+				UseViews: base.Ptr(true),
 			},
 			expectedError: nil,
 		},
@@ -2694,7 +2692,7 @@ func TestCollectionsValidation(t *testing.T) {
 			name: "views=true,collections=true",
 			dbConfig: DbConfig{
 				Name:     "db",
-				UseViews: base.BoolPtr(true),
+				UseViews: base.Ptr(true),
 				Scopes: ScopesConfig{
 					"fooScope": ScopeConfig{
 						map[string]*CollectionConfig{
@@ -2703,13 +2701,13 @@ func TestCollectionsValidation(t *testing.T) {
 					},
 				},
 			},
-			expectedError: base.StringPtr("requires GSI"),
+			expectedError: base.Ptr("requires GSI"),
 		},
 		{
 			name: "views_specified=false,collections=false",
 			dbConfig: DbConfig{
 				Name:     "db",
-				UseViews: base.BoolPtr(false),
+				UseViews: base.Ptr(false),
 			},
 			expectedError: nil,
 		},
@@ -2717,7 +2715,7 @@ func TestCollectionsValidation(t *testing.T) {
 			name: "views_specified=false,collections=true",
 			dbConfig: DbConfig{
 				Name:     "db",
-				UseViews: base.BoolPtr(false),
+				UseViews: base.Ptr(false),
 				Scopes: ScopesConfig{
 					"fooScope": ScopeConfig{
 						map[string]*CollectionConfig{
@@ -3094,8 +3092,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Uint32Ptr(100),
-		MaxMemoryCountMB: base.Uint32Ptr(51),
+		MaxItemCount:     base.Ptr(uint32(100)),
+		MaxMemoryCountMB: base.Ptr(uint32(51)),
 	}
 	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
 
@@ -3116,8 +3114,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Uint32Ptr(100),
-		MaxMemoryCountMB: base.Uint32Ptr(4),
+		MaxItemCount:     base.Ptr(uint32(100)),
+		MaxMemoryCountMB: base.Ptr(uint32(4)),
 	}
 	resp = rt.UpsertDbConfig("db1", dbConfig)
 	if base.IsEnterpriseEdition() {
@@ -3130,8 +3128,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	// test turing off the memory based rev cache
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Uint32Ptr(100),
-		MaxMemoryCountMB: base.Uint32Ptr(0),
+		MaxItemCount:     base.Ptr(uint32(100)),
+		MaxMemoryCountMB: base.Ptr(uint32(0)),
 	}
 	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
 
@@ -3306,4 +3304,60 @@ func TestServerUUIDRuntimeServerConfig(t *testing.T) {
 		})
 	}
 
+}
+
+func TestConfigUserXattrKeyValidation(t *testing.T) {
+	testCases := []struct {
+		name          string
+		dbConfig      DbConfig
+		expectedError *string
+	}{
+		{
+			name: "userXattrKey=nil",
+			dbConfig: DbConfig{
+				Name:         "db",
+				UserXattrKey: nil,
+			},
+			expectedError: nil,
+		},
+		{
+			// this probably isn't possible to hit due to JSON unmarshalling
+			name: "userXattrKey=empty str",
+			dbConfig: DbConfig{
+				Name:         "db",
+				UserXattrKey: base.Ptr(""),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "userXattrKey=shortstr",
+			dbConfig: DbConfig{
+				Name:         "db",
+				UserXattrKey: base.Ptr("shortstr"),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "userXattrKey=veryveryveryverylongstr",
+			dbConfig: DbConfig{
+				Name:         "db",
+				UserXattrKey: base.Ptr("veryveryveryverylongstr"),
+			},
+			expectedError: base.Ptr("maximum of 15 characters"),
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			validateOIDCConfig := false
+			validateReplications := true
+			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig, validateReplications)
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), *test.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+
+		})
+	}
 }

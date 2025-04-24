@@ -51,7 +51,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 		}
 	}`
 
-	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Uint32Ptr(0)}}}
+	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Ptr(uint32(0))}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -258,7 +258,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 		}
 	}`
 
-	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rtConfig := RestTesterConfig{SyncFn: syncFn, AllowConflicts: true}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -389,7 +389,7 @@ func TestSyncFunctionException(t *testing.T) {
 func TestSyncFnTimeout(t *testing.T) {
 	syncFn := `function(doc) { while(true) {} }`
 
-	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}
+	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Ptr(uint32(1))}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -464,7 +464,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 		&RestTesterConfig{
 			SyncFn: syncFn,
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-				QueryPaginationLimit: base.IntPtr(10),
+				QueryPaginationLimit: base.Ptr(10),
 			}},
 		},
 	)

@@ -153,7 +153,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
-	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfig.StartOffline = base.Ptr(true)
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
@@ -199,7 +199,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	close(unblockInit)
 
 	// Bring the database online
-	dbConfig.StartOffline = base.BoolPtr(false)
+	dbConfig.StartOffline = base.Ptr(false)
 	dbOnlineConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
@@ -237,7 +237,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 
 	syncFunc := "function(doc){ channel(doc.channel1); }"
 	dbConfig := makeDbConfig(t, tb, syncFunc, "")
-	dbConfig.StartOffline = base.BoolPtr(false)
+	dbConfig.StartOffline = base.Ptr(false)
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
@@ -282,7 +282,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	// Recreate the database with offline=true and a modified sync function
 	syncFunc = "function(doc){ channel(doc.channel2);}"
 	dbConfig = makeDbConfig(t, tb, syncFunc, "")
-	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfig.StartOffline = base.Ptr(true)
 	dbConfigPayload, err = json.Marshal(dbConfig)
 	require.NoError(t, err)
 
@@ -319,7 +319,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	close(unblockInit)
 
 	// Bring the database online
-	dbConfig.StartOffline = base.BoolPtr(false)
+	dbConfig.StartOffline = base.Ptr(false)
 	dbOnlineConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
@@ -369,7 +369,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
-	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfig.StartOffline = base.Ptr(true)
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
@@ -394,13 +394,13 @@ func TestAsyncOnlineOffline(t *testing.T) {
 
 	// Set up payloads for upserting db state
 	onlineConfigUpsert := rest.DbConfig{
-		StartOffline: base.BoolPtr(false),
+		StartOffline: base.Ptr(false),
 	}
 	dbOnlineConfigPayload, err := json.Marshal(onlineConfigUpsert)
 	require.NoError(t, err)
 
 	offlineConfigUpsert := rest.DbConfig{
-		StartOffline: base.BoolPtr(true),
+		StartOffline: base.Ptr(true),
 	}
 	dbOfflineConfigPayload, err := json.Marshal(offlineConfigUpsert)
 	require.NoError(t, err)
@@ -496,7 +496,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
-	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfig.StartOffline = base.Ptr(true)
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
@@ -508,7 +508,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 
 	// Set up payloads for upserting db state
 	onlineConfigUpsert := rest.DbConfig{
-		StartOffline: base.BoolPtr(false),
+		StartOffline: base.Ptr(false),
 	}
 	dbOnlineConfigPayload, err := json.Marshal(onlineConfigUpsert)
 	require.NoError(t, err)
@@ -578,7 +578,7 @@ func TestSyncOnline(t *testing.T) {
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
-	dbConfig.StartOffline = base.BoolPtr(false)
+	dbConfig.StartOffline = base.Ptr(false)
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
@@ -634,7 +634,7 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
-	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfig.StartOffline = base.Ptr(true)
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
@@ -656,7 +656,7 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 
 	// Set up payloads for upserting db state
 	onlineConfigUpsert := rest.DbConfig{
-		StartOffline: base.BoolPtr(false),
+		StartOffline: base.Ptr(false),
 	}
 	dbOnlineConfigPayload, err := json.Marshal(onlineConfigUpsert)
 	require.NoError(t, err)
@@ -750,7 +750,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	dbName := "db"
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
 	dbConfig.Name = dbName
-	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfig.StartOffline = base.Ptr(true)
 
 	keyspace := dbName
 	if len(dbConfig.Scopes) > 0 {
@@ -783,7 +783,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 
 	// Update the bucket config to bring the database online
 	_, err = sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
-		bucketDbConfig.StartOffline = base.BoolPtr(false)
+		bucketDbConfig.StartOffline = base.Ptr(false)
 		return bucketDbConfig, nil
 	})
 	require.NoError(t, err)

@@ -30,7 +30,7 @@ func GoCBv2SecurityConfig(ctx context.Context, tlsSkipVerify *bool, caCertPath s
 		if err != nil {
 			return sc, err
 		}
-		tlsSkipVerify = BoolPtr(false)
+		tlsSkipVerify = Ptr(false)
 	}
 	sc.TLSRootCAs = certPool
 	sc.TLSSkipVerify = *tlsSkipVerify
@@ -181,7 +181,7 @@ func MgmtRequest(client *http.Client, mgmtEp, method, uri, contentType, username
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		return nil, response.StatusCode, err
+		return nil, 0, err
 	}
 	defer func() { _ = response.Body.Close() }()
 

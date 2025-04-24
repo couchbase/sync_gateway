@@ -76,14 +76,14 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 				testProviderName: auth.LocalJWTAuthConfig{
 					JWTConfigCommon: auth.JWTConfigCommon{
 						Issuer:        testIssuer,
-						ClientID:      base.StringPtr(testClientID),
+						ClientID:      base.Ptr(testClientID),
 						Register:      register,
 						UsernameClaim: usernameClaim,
 						UserPrefix:    usernamePrefix,
 					},
 					Algorithms:      []string{"RS256"},
 					Keys:            []jose.JSONWebKey{testRSAJWK},
-					SkipExpiryCheck: base.BoolPtr(true),
+					SkipExpiryCheck: base.Ptr(true),
 				},
 			}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: providers}}}
@@ -216,7 +216,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 
 	common := auth.JWTConfigCommon{
 		Issuer:   testIssuer,
-		ClientID: base.StringPtr(testClientID),
+		ClientID: base.Ptr(testClientID),
 	}
 	baseProvider := auth.LocalJWTAuthConfig{
 		JWTConfigCommon: common,
@@ -342,7 +342,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 					oidcProviderName: &auth.OIDCProvider{
 						JWTConfigCommon: auth.JWTConfigCommon{
 							Issuer:     "TEST", // replaced by refreshProviderConfig
-							ClientID:   base.StringPtr(clientID),
+							ClientID:   base.Ptr(clientID),
 							Register:   true,
 							UserPrefix: oidcUserPrefix,
 						},
@@ -353,7 +353,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 				localProviderName: auth.LocalJWTAuthConfig{
 					JWTConfigCommon: auth.JWTConfigCommon{
 						Issuer:     localIssuer,
-						ClientID:   base.StringPtr(clientID),
+						ClientID:   base.Ptr(clientID),
 						Register:   true,
 						UserPrefix: localUserPrefix,
 					},
@@ -438,7 +438,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	baseProvider := auth.LocalJWTAuthConfig{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:        testIssuer,
-			ClientID:      base.StringPtr(testClientID),
+			ClientID:      base.Ptr(testClientID),
 			RolesClaim:    "roles",
 			ChannelsClaim: "channels",
 			Register:      true,

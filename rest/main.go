@@ -409,7 +409,7 @@ func setBootstrapConnectionOptsFromStartupConfig(opts *bootstrapConnectionOpts, 
 	opts.isServerless = config.IsServerless()
 	opts.bucketCredentials = config.BucketCredentials
 	opts.tlsSkipVerify = config.Bootstrap.ServerTLSSkipVerify
-	opts.useXattrConfig = base.BoolDefault(config.Unsupported.UseXattrConfig, false)
+	opts.useXattrConfig = base.ValDefault(config.Unsupported.UseXattrConfig, false)
 }
 
 // setBootstrapConnectionOptsFromDbConfig sets the bootstrapConnectionOpts struct with values from the db config.

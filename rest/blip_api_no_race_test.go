@@ -17,10 +17,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-
-	"github.com/stretchr/testify/require"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestBlipPusherUpdateDatabase starts a push replication and updates the database underneath the replication.
@@ -76,12 +77,14 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 		}()
 
 		// and wait for a few to be done before we proceed with updating database config underneath replication
-		_, err := rt.WaitForChanges(5, "/{{.keyspace}}/_changes", "", true)
-		require.NoError(t, err)
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			changes := rt.GetChanges("/{{.keyspace}}/_changes", "")
+			assert.GreaterOrEqual(c, 5, changes.Results)
+		}, time.Second*5, time.Millisecond*100)
 
 		// just change the sync function to cause the database to reload
 		dbConfig := *rt.ServerContext().GetDbConfig("db")
-		dbConfig.Sync = base.StringPtr(`function(doc){console.log("update");}`)
+		dbConfig.Sync = base.Ptr(`function(doc){console.log("update");}`)
 		resp := rt.ReplaceDbConfig("db", dbConfig)
 		RequireStatus(t, resp, http.StatusCreated)
 

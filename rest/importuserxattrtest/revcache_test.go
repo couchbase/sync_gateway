@@ -41,7 +41,7 @@ func TestUserXattrRevCache(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
-			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
 	})
@@ -53,7 +53,7 @@ func TestUserXattrRevCache(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
-			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
 	})
@@ -81,8 +81,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, "DEF")}, nil)
 	require.NoError(t, err)
 
-	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
-	assert.NoError(t, err)
+	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
 
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -96,10 +95,8 @@ func TestUserXattrRevCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
-	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
-	assert.NoError(t, err)
-	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
-	assert.NoError(t, err)
+	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
+	rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
 
 	// GET the doc with userABC to ensure it is accessible on both nodes
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userABC")
@@ -129,7 +126,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
 		}},
@@ -140,7 +137,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
 		}},
@@ -168,13 +165,11 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, "DEF")}, nil)
 	assert.NoError(t, err)
 
-	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
-	assert.NoError(t, err)
+	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
 
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	// FIXME, why is cas different after import?
 	cas, err = rt.GetSingleDataStore().Get(docKey, nil)
 	require.NoError(t, err)
 
@@ -183,10 +178,8 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
-	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
-	assert.NoError(t, err)
-	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
-	assert.NoError(t, err)
+	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
+	rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
 
 	// GET the doc with userDEF on both nodes to ensure userDEF no longer has access
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")

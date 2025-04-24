@@ -34,10 +34,10 @@ func TestUsersAPI(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				QueryPaginationLimit: base.IntPtr(5),
+				QueryPaginationLimit: base.Ptr(5),
 				// Disable the guest user to support testing the zero user boundary condition
 				Guest: &auth.PrincipalConfig{
-					Disabled: base.BoolPtr(false),
+					Disabled: base.Ptr(false),
 				},
 			},
 		},
@@ -88,10 +88,10 @@ func TestUsersAPIDetailsViews(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				QueryPaginationLimit: base.IntPtr(5),
+				QueryPaginationLimit: base.Ptr(5),
 				// Disable the guest user to support testing the zero user boundary condition
 				Guest: &auth.PrincipalConfig{
-					Disabled: base.BoolPtr(false),
+					Disabled: base.Ptr(false),
 				},
 			},
 		},
@@ -116,10 +116,10 @@ func TestUsersAPIDetails(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				QueryPaginationLimit: base.IntPtr(5),
+				QueryPaginationLimit: base.Ptr(5),
 				// Disable the guest user to support testing the zero user boundary condition
 				Guest: &auth.PrincipalConfig{
-					Disabled: base.BoolPtr(false),
+					Disabled: base.Ptr(false),
 				},
 			},
 		},
@@ -143,7 +143,7 @@ func TestUsersAPIDetailsWithoutGuest(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				QueryPaginationLimit: base.IntPtr(5),
+				QueryPaginationLimit: base.Ptr(5),
 			},
 		},
 		GuestEnabled: false,
@@ -166,10 +166,10 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				QueryPaginationLimit: base.IntPtr(5),
+				QueryPaginationLimit: base.Ptr(5),
 				// Disable the guest user to support testing the zero user boundary condition
 				Guest: &auth.PrincipalConfig{
-					Disabled: base.BoolPtr(false),
+					Disabled: base.Ptr(false),
 				},
 			},
 		},
@@ -691,7 +691,7 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.BoolPtr(true)}}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.Ptr(true)}}})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -1536,7 +1536,7 @@ func TestUserMultipleDBs(t *testing.T) {
 			userConfig := string(base.MustJSONMarshal(t,
 				auth.PrincipalConfig{
 					Name:     &username,
-					Password: base.StringPtr(RestTesterDefaultUserPassword),
+					Password: base.Ptr(RestTesterDefaultUserPassword),
 				}))
 			resp := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_user/"+username, userConfig)
 			RequireStatus(t, resp, http.StatusCreated)

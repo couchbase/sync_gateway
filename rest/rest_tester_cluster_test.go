@@ -85,7 +85,7 @@ type RestTesterClusterConfig struct {
 func defaultRestTesterClusterConfig(t *testing.T) *RestTesterClusterConfig {
 	return &RestTesterClusterConfig{
 		numNodes:   3,
-		groupID:    base.StringPtr(t.Name()),
+		groupID:    base.Ptr(t.Name()),
 		rtConfig:   nil,
 		testBucket: nil,
 	}
@@ -143,13 +143,13 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 func dbConfigForTestBucket(tb *base.TestBucket) DbConfig {
 	return DbConfig{
 		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(tb.GetName()),
+			Bucket: base.Ptr(tb.GetName()),
 		},
 		Index: &IndexConfig{
 			NumReplicas: base.Ptr(uint(0)),
 		},
-		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
-		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+		UseViews:     base.Ptr(base.TestsDisableGSI()),
+		EnableXattrs: base.Ptr(base.TestUseXattrs()),
 	}
 }
 
@@ -193,7 +193,7 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	rtNode := rtc.RoundRobin()
 
 	// upsert with an invalid config option
-	resp = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Uint32Ptr(0)})
+	resp = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Ptr(uint32(0))})
 	RequireStatus(t, resp, http.StatusBadRequest)
 
 	// On the same node, make sure the database is still running.
@@ -232,7 +232,7 @@ func TestPersistentDbConfigAsyncOnlineWithInvalidConfig(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfig.StartOffline = base.Ptr(true)
 	resp := rt.CreateDatabase("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 

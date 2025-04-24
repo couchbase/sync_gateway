@@ -37,7 +37,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DeltaSync: &DeltaSyncConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				},
 			},
 		},
@@ -109,7 +109,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DeltaSync: &DeltaSyncConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				},
 			},
 		},

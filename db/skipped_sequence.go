@@ -419,14 +419,14 @@ func (s *SkippedSequenceSlice) _removeSubsetOfRangeFromSkipped(ctx context.Conte
 			return -1
 		}
 		if startSeq >= value.getStartSeq() && startSeq <= value.getLastSeq() {
-			indexStart = base.IntPtr(i)
+			indexStart = base.Ptr(i)
 			// return 0 as there can't be any elems lower in skipped list with overlap with the range
 			// if the above is true
 			return 0
 		}
 		if value.getStartSeq() > startSeq {
 			if endSeq > value.getStartSeq() {
-				indexStart = base.IntPtr(i)
+				indexStart = base.Ptr(i)
 			}
 			return -1
 		}

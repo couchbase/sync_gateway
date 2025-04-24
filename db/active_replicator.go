@@ -114,7 +114,7 @@ func (ar *ActiveReplicator) Stop() error {
 		return pullErr
 	}
 
-	if base.BoolDefault(ar.config.reportHandlerPanicsOnStop, true) {
+	if base.ValDefault(ar.config.reportHandlerPanicsOnStop, true) {
 		if stats := ar.config.ReplicationStatsMap; stats != nil {
 			if val := stats.NumHandlersPanicked.Value(); val > 0 {
 				return fmt.Errorf("%d handlers panicked", val)

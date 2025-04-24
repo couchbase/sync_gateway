@@ -34,7 +34,7 @@ post:
 
     Generally, a resync operation might be wanted when the sync function has been modified in such a way that the channel or access mappings for any existing documents would change as a result.
 
-    A resync operation cannot be run if the database is online. The database can be taken offline by calling the `POST /{db}/_offline` endpoint.
+    A resync operation cannot be run if the database is online. The database can be taken offline by calling [POST /{db}/_config](#operation/post_db-_config) with `{"offline": true}` to set the database to offline.
 
     The `requireUser()` and `requireRole()` calls in the sync function will always return `true`.
 
@@ -74,7 +74,8 @@ post:
             scopes:
               description: This controls for which collections resync will run
               type: object
-              $ref: ../../components/schemas.yaml#/ResyncScopesMap
+              allOf:
+                - $ref: ../../components/schemas.yaml#/ResyncScopesMap
             regenerate_sequences:
               description: This can be used as an alternative to query param `regenerate_sequences`. If either query param or this is set to true, then the request will regenerate the sequence numbers for each document processed.
               type: boolean

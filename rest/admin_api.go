@@ -767,7 +767,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 
 		// grab runtime version of config, so that we can see what events would be enabled
 		if runtimeConfig.Logging != nil && runtimeConfig.Logging.Audit != nil {
-			dbAuditEnabled = base.BoolDefault(runtimeConfig.Logging.Audit.Enabled, false)
+			dbAuditEnabled = base.ValDefault(runtimeConfig.Logging.Audit.Enabled, false)
 			if runtimeConfig.Logging.Audit.EnabledEvents != nil {
 				for _, event := range *runtimeConfig.Logging.Audit.EnabledEvents {
 					enabledEvents[base.AuditID(event)] = struct{}{}
@@ -795,7 +795,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 				Name:        stringPtrOrNil(descriptor.Name),
 				Description: stringPtrOrNil(descriptor.Description),
 				Enabled:     &eventEnabled,
-				Filterable:  base.BoolPtr(descriptor.FilteringPermitted),
+				Filterable:  base.Ptr(descriptor.FilteringPermitted),
 			}
 		} else {
 			events[idStr] = &eventEnabled
@@ -1650,12 +1650,12 @@ func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynami
 	if user, ok := princ.(auth.User); ok {
 		email := user.Email()
 		info.Email = &email
-		info.Disabled = base.BoolPtr(user.Disabled())
+		info.Disabled = base.Ptr(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		if includeDynamicGrantInfo {
 			info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
-			info.JWTIssuer = base.StringPtr(user.JWTIssuer())
+			info.JWTIssuer = base.Ptr(user.JWTIssuer())
 			info.JWTRoles = user.JWTRoles().AsSet()
 			info.JWTChannels = user.JWTChannels().AsSet()
 			lastUpdated := user.JWTLastUpdated()

@@ -375,7 +375,7 @@ func (btr *BlipTesterReplicator) handleProveAttachment(ctx context.Context, btc 
 
 // handleChanges handles changes messages on the blip tester client
 func (btr *BlipTesterReplicator) handleChanges(btc *BlipTesterClient) func(*blip.Message) {
-	revsLimit := base.IntDefault(btc.revsLimit, defaultBlipTesterClientRevsLimit)
+	revsLimit := base.ValDefault(btc.revsLimit, defaultBlipTesterClientRevsLimit)
 	return func(msg *blip.Message) {
 		btcc := btc.getCollectionClientFromMessage(msg)
 
@@ -1054,6 +1054,12 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 	base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %v", change.docID, change.version)
 	// block until remote has actually processed the rev and sent a response
 	revResp := revRequest.Response()
+	errorCode := revResp.Properties["Error-Code"]
+	// if there is something wrong with the delta, resend as a non delta
+	if errorCode == strconv.Itoa(http.StatusUnprocessableEntity) && deltasSupported {
+		btcc.sendRev(ctx, change, false)
+		return
+	}
 	require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %v: %s", revResp)
 	base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
 	btcc.updateLastReplicatedRev(change.docID, change.version, revRequest)

@@ -439,16 +439,16 @@ func TestCORSBlipSync(t *testing.T) {
 	}{
 		{
 			name:   "CORS matching origin",
-			origin: base.StringPtr("http://example.com"),
+			origin: base.Ptr("http://example.com"),
 		},
 		{
 			name:         "CORS non-matching origin",
-			origin:       base.StringPtr("http://example2.com"),
+			origin:       base.Ptr("http://example2.com"),
 			errorMessage: "expected handshake response",
 		},
 		{
 			name:   "CORS empty",
-			origin: base.StringPtr(""),
+			origin: base.Ptr(""),
 		},
 	}
 	for _, test := range testCases {

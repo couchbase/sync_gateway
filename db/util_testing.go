@@ -76,6 +76,34 @@ func (db *DatabaseContext) NewStatWaiter(stat *base.SgwIntStat, tb testing.TB) *
 	}
 }
 
+// StartChangeCache is called from the cache benchmarking tool to init the change cache, not to be called
+// from outside test code
+func (db *DatabaseContext) StartChangeCache(t *testing.T, ctx context.Context) {
+	notifyChange := func(ctx context.Context, changedChannels channels.Set) {
+		db.mutationListener.Notify(ctx, changedChannels)
+	}
+
+	// Initialize the change cache
+	if err := db.changeCache.Init(
+		ctx,
+		db,
+		db.channelCache,
+		notifyChange,
+		db.Options.CacheOptions,
+		db.MetadataKeys,
+	); err != nil {
+		t.Fatal(err)
+	}
+	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
+	db.changeCache.lock.Unlock()
+}
+
+// CallProcessEntry allows the cache benchmarking tool to call directly into processEntry, not to
+// be used from outside test code
+func (db *DatabaseContext) CallProcessEntry(t *testing.T, ctx context.Context, log *LogEntry) {
+	db.changeCache.processEntry(ctx, log)
+}
+
 func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
 	return db.NewStatWaiter(db.DbStats.Database().DCPCachingCount, tb)
 }
@@ -347,7 +375,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			UseXattrs:                  base.TestUseXattrs(),
 			NumReplicas:                0,
 			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
-			Serverless:                 false,
+			LegacySyncDocsIndex:        true, // Change in CBG-4614
 			MetadataIndexes:            IndexesWithoutMetadata,
 			NumPartitions:              DefaultNumIndexPartitions,
 		}
@@ -447,7 +475,7 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 		info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
 		email := user.Email()
 		info.Email = &email
-		info.Disabled = base.BoolPtr(user.Disabled())
+		info.Disabled = base.Ptr(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		info.RoleNames = user.RoleNames().AllKeys()
 	} else {
@@ -528,10 +556,10 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 // override somedbcOptions properties.
 func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
+	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
 }
 
-func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	if dbcOptions.Scopes == nil {
@@ -557,7 +585,7 @@ func addDatabaseAndTestUserContext(ctx context.Context, db *Database) context.Co
 }
 
 // GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_DEFAULT_COLLECTION and whether the backing store supports collections.
-func GetScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
+func GetScopesOptions(t testing.TB, bucket base.Bucket, numCollections int) ScopesOptions {
 	if !base.TestsUseNamedCollections() {
 		if numCollections != 1 {
 			t.Fatal("Setting numCollections on a test that can't use collections is invalid")
@@ -565,8 +593,8 @@ func GetScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections 
 		return GetScopesOptionsDefaultCollectionOnly(t)
 	}
 	// Get a datastore as provided by the test
-	stores := testBucket.GetNonDefaultDatastoreNames()
-	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
+	stores := base.GetNonDefaultDatastoreNames(t, bucket)
+	require.GreaterOrEqual(t, len(stores), numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
 
 	scopesConfig := ScopesOptions{}
 	for i := 0; i < numCollections; i++ {
@@ -704,7 +732,7 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 }
 
 // GetIndexPartitionCount returns the number of partitions for a given index. This function queries index nodes directly and would not be suitable for production use, since this port is not generally accessible.
-func GetIndexPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbucket.DataStoreName, indexName string) uint32 {
+func GetIndexPartitionCount(t testing.TB, bucket *base.GocbV2Bucket, dsName sgbucket.DataStoreName, indexName string) uint32 {
 	agent, err := bucket.GetGoCBAgent()
 	require.NoError(t, err)
 	gsiEps := agent.GSIEps()

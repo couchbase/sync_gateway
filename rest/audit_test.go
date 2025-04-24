@@ -60,7 +60,7 @@ func TestAuditLoggingFields(t *testing.T) {
 		PersistentConfig:               true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
-				RequestInfoHeaderName: base.StringPtr(requestInfoHeaderName),
+				RequestInfoHeaderName: base.Ptr(requestInfoHeaderName),
 			}
 			config.Logging = getAuditLoggingTestConfig(tempdir)
 			config.Logging.Audit.EnabledEvents = base.AllGlobalAuditeventIDs
@@ -74,7 +74,7 @@ func TestAuditLoggingFields(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
-			Enabled:       base.BoolPtr(true),
+			Enabled:       base.Ptr(true),
 			EnabledEvents: &base.AllDbAuditeventIDs, // enable everything for testing
 			DisabledUsers: []base.AuditLoggingPrincipal{
 				{Name: filteredPublicUsername, Domain: string(base.UserDomainSyncGateway)},
@@ -560,7 +560,7 @@ func TestAuditDatabaseUpdate(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
-			Enabled: base.BoolPtr(true),
+			Enabled: base.Ptr(true),
 			EnabledEvents: base.Ptr([]uint{
 				uint(base.AuditIDUpdateDatabaseConfig),
 			}),
@@ -672,10 +672,10 @@ func TestRedactConfigAsStr(t *testing.T) {
 			input: string(base.MustJSONMarshal(t, DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
 					"alice": {
-						Password: base.StringPtr("password1"),
+						Password: base.Ptr("password1"),
 					},
 					"bob": {
-						Password: base.StringPtr("password2"),
+						Password: base.Ptr("password2"),
 					},
 				},
 			})),
@@ -731,7 +731,7 @@ func TestEffectiveUserID(t *testing.T) {
 		GuestEnabled:     true,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
-			config.Unsupported.EffectiveUserHeaderName = base.StringPtr("user_header")
+			config.Unsupported.EffectiveUserHeaderName = base.Ptr("user_header")
 			config.Logging = getAuditLoggingTestConfig(tempdir)
 			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 		},
@@ -763,7 +763,7 @@ func TestAuditDocumentRead(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
-			Enabled: base.BoolPtr(true),
+			Enabled: base.Ptr(true),
 			EnabledEvents: base.Ptr([]uint{
 				uint(base.AuditIDDocumentRead),
 				uint(base.AuditIDDocumentMetadataRead),
@@ -964,7 +964,7 @@ func TestNoAuditWhenDisabledAtDb(t *testing.T) {
 
 	// test event that is enabled by default on db (when audit is enabled)
 	output = base.AuditLogContents(t, func(t testing.TB) {
-		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"user_xattr_key":"user_xattr_value"}`)
+		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"user_xattr_key":"user_xattr"}`)
 		RequireStatus(t, resp, http.StatusCreated)
 	})
 	events = jsonLines(rt.TB(), output)
@@ -978,7 +978,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
-			Enabled: base.BoolPtr(true),
+			Enabled: base.Ptr(true),
 			EnabledEvents: base.Ptr([]uint{
 				uint(base.AuditIDAttachmentCreate),
 				uint(base.AuditIDAttachmentRead),
@@ -1139,7 +1139,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
-			Enabled: base.BoolPtr(true),
+			Enabled: base.Ptr(true),
 			EnabledEvents: base.Ptr([]uint{
 				uint(base.AuditIDDocumentCreate),
 				uint(base.AuditIDDocumentUpdate),
@@ -1148,7 +1148,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 	}
 	if base.TestUseXattrs() {
 		// this is not set automatically for CE
-		dbConfig.AutoImport = base.BoolPtr(true)
+		dbConfig.AutoImport = base.Ptr(true)
 	}
 
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
@@ -1228,7 +1228,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 		dbConfig := rt.NewDbConfig()
 		dbConfig.Logging = &DbLoggingConfig{
 			Audit: &DbAuditLoggingConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 				EnabledEvents: base.Ptr([]uint{
 					uint(base.AuditIDChangesFeedStarted),
 				}),
@@ -1542,26 +1542,26 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 				LogFilePath: tempdir,
 				Audit: &base.AuditLoggerConfig{
 					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled:             base.BoolPtr(true),
-						CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+						Enabled:             base.Ptr(true),
+						CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code
 					},
 				},
 				Console: &base.ConsoleLoggerConfig{
 					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.BoolPtr(true),
+						Enabled: base.Ptr(true),
 					},
 				},
 				Info: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+					Enabled:             base.Ptr(false),
+					CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code
 				},
 				Debug: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+					Enabled:             base.Ptr(false),
+					CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code
 				},
 				Trace: &base.FileLoggerConfig{
-					Enabled:             base.BoolPtr(false),
-					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+					Enabled:             base.Ptr(false),
+					CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code
 				},
 			}
 			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
@@ -1580,7 +1580,7 @@ func TestAuditBlipCRUD(t *testing.T) {
 		dbConfig := rt.NewDbConfig()
 		dbConfig.Logging = &DbLoggingConfig{
 			Audit: &DbAuditLoggingConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 				EnabledEvents: base.Ptr([]uint{
 					uint(base.AuditIDAttachmentCreate),
 					uint(base.AuditIDAttachmentRead),
@@ -1663,16 +1663,16 @@ func TestAuditLoggingGlobals(t *testing.T) {
 		},
 		{
 			name:              "with global fields",
-			globalAuditEvents: base.StringPtr(string(base.MustJSONMarshal(t, globalFields))),
+			globalAuditEvents: base.Ptr(string(base.MustJSONMarshal(t, globalFields))),
 		},
 		{
 			name:              "invalid json",
-			globalAuditEvents: base.StringPtr(`notjson`),
+			globalAuditEvents: base.Ptr(`notjson`),
 			startupErrorMsg:   "Unable to unmarshal",
 		},
 		{
 			name:              "empty env var",
-			globalAuditEvents: base.StringPtr(""),
+			globalAuditEvents: base.Ptr(""),
 			startupErrorMsg:   "Unable to unmarshal",
 		},
 	}
@@ -1693,7 +1693,7 @@ func TestAuditLoggingGlobals(t *testing.T) {
 			startupConfig.Logging = getAuditLoggingTestConfig(t.TempDir())
 			if testCase.globalAuditEvents != nil {
 				startupConfig.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
-					GlobalInfoEnvVarName: base.StringPtr(globalEnvVarName),
+					GlobalInfoEnvVarName: base.Ptr(globalEnvVarName),
 				}
 			}
 			err := startupConfig.SetupAndValidateLogging(ctx)
@@ -1741,7 +1741,7 @@ func TestDatabaseAuditChanges(t *testing.T) {
 	auditEnabledFullConfig := rt.NewDbConfig()
 	auditEnabledFullConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
-			Enabled: base.BoolPtr(true),
+			Enabled: base.Ptr(true),
 		},
 	}
 	auditEnabledPutConfigPayload := base.MustJSONMarshal(t, auditEnabledFullConfig)
@@ -1894,26 +1894,26 @@ func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
 		LogFilePath: tempdir,
 		Audit: &base.AuditLoggerConfig{
 			FileLoggerConfig: base.FileLoggerConfig{
-				Enabled:             base.BoolPtr(true),
-				CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+				Enabled:             base.Ptr(true),
+				CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
 			},
 		},
 		Console: &base.ConsoleLoggerConfig{
 			FileLoggerConfig: base.FileLoggerConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		},
 		Info: &base.FileLoggerConfig{
-			Enabled:             base.BoolPtr(false),
-			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+			Enabled:             base.Ptr(false),
+			CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
 		},
 		Debug: &base.FileLoggerConfig{
-			Enabled:             base.BoolPtr(false),
-			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+			Enabled:             base.Ptr(false),
+			CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
 		},
 		Trace: &base.FileLoggerConfig{
-			Enabled:             base.BoolPtr(false),
-			CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+			Enabled:             base.Ptr(false),
+			CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
 		},
 	}
 }
