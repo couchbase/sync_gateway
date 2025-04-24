@@ -94,8 +94,8 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	expectedCollectionCount := int64(3) // default, collection1, collection2
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus) {
-		if status != CollectionIndexStatusReady {
+	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
@@ -184,8 +184,8 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus) {
-		if status != CollectionIndexStatusReady {
+	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
@@ -271,8 +271,8 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus) {
-		if status != CollectionIndexStatusReady {
+	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
@@ -362,8 +362,8 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus) {
-		if status != CollectionIndexStatusReady {
+	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
@@ -447,8 +447,8 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
-	initMgr.testCollectionStatusUpdateCallback = func(_ string, _ base.ScopeAndCollectionName, status CollectionIndexStatus) {
-		if status != CollectionIndexStatusReady {
+	initMgr.testCollectionStatusUpdateCallback = func(_ string, _ base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		atomic.AddInt64(&collectionCount, 1)

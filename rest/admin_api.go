@@ -331,18 +331,16 @@ func (h *handler) handlePostIndexInit() error {
 	}
 	newDbConfig.Index.NumPartitions = req.NumPartitions
 
-	var statusMap = make(map[string]map[string]string, len(newDbConfig.Scopes))
-	for scope, _ := range newDbConfig.Scopes {
-		statusMap[scope] = make(map[string]string)
+	var statusMap = make(db.IndexStatusByCollection, len(newDbConfig.Scopes))
+	for scope := range newDbConfig.Scopes {
+		statusMap[scope] = make(map[string]db.CollectionIndexStatus)
 	}
-	var statusCallback CollectionCallbackFunc = func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus) {
-		// even though the scope map is initialized above,
-		// it's possible we have a named scope and this triggers a `_default` index init,
-		// so we need to be defensive here and create if necessary
-		if _, ok := statusMap[scName.ScopeName()]; !ok {
-			statusMap[scName.ScopeName()] = make(map[string]string, 1)
-		}
-		statusMap[scName.ScopeName()][scName.CollectionName()] = string(status)
+	// init _default scope because it's still possible that a named scope can still initialize metadata indexes in _default._default
+	if _, ok := statusMap[base.DefaultScope]; !ok {
+		statusMap[base.DefaultScope] = make(map[string]db.CollectionIndexStatus, 1)
+	}
+	var statusCallback CollectionCallbackFunc = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		statusMap[scName.ScopeName()][scName.CollectionName()] = status
 		if err := h.db.AsyncIndexInitManager.UpdateStatusClusterAware(h.ctx()); err != nil {
 			base.WarnfCtx(h.ctx(), "Unable to update async index job status on cluster : %v", err)
 		}

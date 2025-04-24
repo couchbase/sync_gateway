@@ -20,36 +20,48 @@ import (
 // This status can be viewed cross-node, and similarly the start/stop actions can be used cross-node with this AsyncIndexInitManager layer.
 type AsyncIndexInitManager struct {
 	lock      sync.Mutex
-	statusMap *map[string]map[string]string
+	statusMap *IndexStatusByCollection
 	doneChan  chan error
 }
 
 // Init is called synchronously to set up a run for the background manager process. See Run() for the async part.
 func (a *AsyncIndexInitManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
-	a.statusMap = options["statusMap"].(*map[string]map[string]string)
+	a.statusMap = options["statusMap"].(*IndexStatusByCollection)
 	a.doneChan = options["doneChan"].(chan error)
 	return nil
 }
 
 // Run is called inside a goroutine to perform the job of the job. This function should block until the job is complete.
 func (a *AsyncIndexInitManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-	return <-a.doneChan
+	select {
+	case err := <-a.doneChan:
+		return err
+	case <-terminator.Done():
+		return nil
+	}
 }
+
+type CollectionIndexStatus string
+
+const (
+	CollectionIndexStatusQueued     CollectionIndexStatus = "queued"
+	CollectionIndexStatusInProgress CollectionIndexStatus = "in progress"
+	CollectionIndexStatusReady      CollectionIndexStatus = "ready"
+	CollectionIndexStatusError      CollectionIndexStatus = "error"
+)
+
+type IndexStatusByCollection map[string]map[string]CollectionIndexStatus // scope->collection->status
 
 type AsyncIndexInitManagerResponse struct {
 	BackgroundManagerStatus
-	IndexStatus map[string]map[string]string `json:"index_status"` // scope->collection->status
-}
-
-type AsyncIndexInitManagerStatusDoc struct {
-	AsyncIndexInitManagerResponse `json:"status"`
+	IndexStatus IndexStatusByCollection `json:"index_status"`
 }
 
 func (a *AsyncIndexInitManager) GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	var statusMap map[string]map[string]string
+	var statusMap IndexStatusByCollection
 	if a.statusMap != nil {
 		statusMap = *a.statusMap
 	}

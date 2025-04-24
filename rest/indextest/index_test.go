@@ -132,8 +132,8 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
-		if status != rest.CollectionIndexStatusReady {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		count := atomic.AddInt64(&collectionCount, 1)
@@ -271,8 +271,8 @@ func TestAsyncInitWithResync(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
-		if status != rest.CollectionIndexStatusReady {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		count := atomic.AddInt64(&collectionCount, 1)
@@ -354,8 +354,8 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
-		if status != rest.CollectionIndexStatusReady {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		count := atomic.AddInt64(&collectionCount, 1)
@@ -475,8 +475,8 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
-		if status != rest.CollectionIndexStatusReady {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		count := atomic.AddInt64(&collectionCount, 1)
@@ -625,8 +625,8 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
-		if status != rest.CollectionIndexStatusReady {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		count := atomic.AddInt64(&collectionCount, 1)
@@ -742,8 +742,8 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
-	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status rest.CollectionIndexStatus) {
-		if status != rest.CollectionIndexStatusReady {
+	collectionCompleteCallback := func(_ string, _ base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
 			return
 		}
 		count := atomic.AddInt64(&collectionCount, 1)

@@ -42,17 +42,8 @@ type DatabaseInitManager struct {
 	testDatabaseCompleteCallback func(databaseName string) // Callback for testability only
 }
 
-type CollectionIndexStatus string
-
-const (
-	CollectionIndexStatusQueued     CollectionIndexStatus = "queued"
-	CollectionIndexStatusInProgress CollectionIndexStatus = "in progress"
-	CollectionIndexStatusReady      CollectionIndexStatus = "ready"
-	CollectionIndexStatusError      CollectionIndexStatus = "error"
-)
-
 // CollectionCallbackFunc is called when the initialization has completed for each collection on the database.
-type CollectionCallbackFunc func(dbName string, scName base.ScopeAndCollectionName, status CollectionIndexStatus)
+type CollectionCallbackFunc func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus)
 
 // CollectionInitData defines the set of collections being created (by ScopeAneCollectionName), and the set of
 // indexes required for each collection.
@@ -259,14 +250,14 @@ func (w *DatabaseInitWorker) Run() {
 
 	if w.collectionStatusCallback != nil {
 		for scName := range w.collections {
-			w.collectionStatusCallback(w.dbName, scName, CollectionIndexStatusQueued)
+			w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusQueued)
 		}
 	}
 
 	var indexErr error
 	for scName, indexSet := range w.collections {
 		if w.collectionStatusCallback != nil {
-			w.collectionStatusCallback(w.dbName, scName, CollectionIndexStatusInProgress)
+			w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusInProgress)
 		}
 
 		// Add the index set to the common indexOptions
@@ -279,7 +270,7 @@ func (w *DatabaseInitWorker) Run() {
 		indexErr = db.InitializeIndexes(keyspaceCtx, w.n1qlStore, collectionIndexOptions)
 		if indexErr != nil {
 			if w.collectionStatusCallback != nil {
-				w.collectionStatusCallback(w.dbName, scName, CollectionIndexStatusError)
+				w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusError)
 			}
 			break
 		}
@@ -296,7 +287,7 @@ func (w *DatabaseInitWorker) Run() {
 		}
 
 		if w.collectionStatusCallback != nil {
-			w.collectionStatusCallback(w.dbName, scName, CollectionIndexStatusReady)
+			w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusReady)
 		}
 	}
 
