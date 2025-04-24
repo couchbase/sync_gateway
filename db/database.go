@@ -647,7 +647,7 @@ func (dbCtx *DatabaseContext) stopBackgroundManagers() (stopped []*BackgroundMan
 		dbCtx.TombstoneCompactionManager,
 		dbCtx.AsyncIndexInitManager,
 	} {
-		if manager.Stop() == nil {
+		if manager != nil && !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop() == nil {
 			stopped = append(stopped, manager)
 		}
 	}
