@@ -34,7 +34,7 @@ post:
           - stop
         x-enumDescriptions:
           start: Starts the creation of indexes.
-          stop: Stops tracking the indexes by Sync Gateway. These indexes will still be created on Couchbase Server.
+          stop: Stops tracking the index creation by Sync Gateway. These indexes will still be created on Couchbase Server.
   requestBody:
     content:
       application/json:
@@ -43,7 +43,7 @@ post:
             - $ref: ../../components/schemas.yaml#/IndexSettings
   responses:
     '200':
-      description: successfully changed the status of the resync operation
+      description: successfully changed the status of the index initialization operation
       content:
         application/json:
           schema:

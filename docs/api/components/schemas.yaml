@@ -3164,7 +3164,7 @@ IndexInitStatus:
         running: Indexes are being created.
         completed: All indexes were created.
         error: The index initialization operation has failed.
-        stopped: The index initialization operation has been stopped. These indexes may still on Couchbase Server.
+        stopped: The index initialization operation has been stopped. These indexes may still exist on Couchbase Server.
         stopping: The index initialization operation is in the process of being stopped.
     start_time:
       description: The ISO-8601 date and time the index initialization operation was started.
