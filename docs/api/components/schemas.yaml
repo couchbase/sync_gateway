@@ -304,7 +304,7 @@ User:
         type: string
       readOnly: true
     jwt_channels:
-      description: The channels that the user has been granted access to through channels_claim.
+      description: The channels that the user has been granted access to through channels_claim for the default collection.
       type: array
       items:
         type: string
@@ -348,13 +348,13 @@ CollectionAccessConfig:
               type: string
             readOnly: true
           jwt_channels:
-            description: The channels that the user has been granted access to through channels_claim.
+            description: The channels that the user has been granted access to through channels_claim for this collection.
             type: array
             items:
               type: string
             readOnly: true
           jwt_last_updated:
-            description: The last time that the user's JWT roles/channels were updated.
+            description: The last time that the user's JWT channels were updated for this collection.
             type: string
             format: date-time
             readOnly: true
@@ -370,14 +370,14 @@ Role:
       type: string
     admin_channels:
       description: |-
-        The channels that users in the role are able to access for the default collection.
-        Use `collection_access.scopename.collectionname.admin_channels` for channels in named collections.
+        A list of channels to explicitly grant to the role for the default collection.
+        See `collection_access` for channels in named collections.
       type: array
       items:
         type: string
     all_channels:
       description: |-
-        The channels that the role grants access to for the default collection. See `collection_access.scopename.collectionname` for channels in named collections.
+        All the channels that the role has been granted access to for the default collection.
 
         These channels could have been assigned by the Sync function or using the `admin_channels` property.
       type: array
