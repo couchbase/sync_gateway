@@ -35,8 +35,8 @@ func TestChangeIndexPartitions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig, base.KeyQuery)
 	require.False(t, base.TestsDisableGSI(), "Test requires GSI to be enabled")
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig, base.KeyQuery)
 	const (
 		dbName            = "db"
 		initialPartitions = uint32(2)

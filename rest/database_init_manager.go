@@ -268,26 +268,19 @@ func (w *DatabaseInitWorker) Run() {
 		w.n1qlStore.SetScopeAndCollection(scName)
 		keyspaceCtx := base.KeyspaceLogCtx(w.ctx, w.n1qlStore.BucketName(), scName.ScopeName(), scName.CollectionName())
 		indexErr = db.InitializeIndexes(keyspaceCtx, w.n1qlStore, collectionIndexOptions)
-		if indexErr != nil {
-			if w.collectionStatusCallback != nil {
+		if w.collectionStatusCallback != nil {
+			if indexErr != nil {
 				w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusError)
+				break
 			}
-			break
+			w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusReady)
 		}
 
 		// Check for context cancellation after each collection is processed - if cancelled, return cancellation error
 		// to all watchers end exit
-		select {
-		case <-w.ctx.Done():
+		if w.ctx.Err() != nil {
 			indexErr = errors.New("Database initialization cancelled")
-		default:
-		}
-		if indexErr != nil {
 			break
-		}
-
-		if w.collectionStatusCallback != nil {
-			w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusReady)
 		}
 	}
 
