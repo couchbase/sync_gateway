@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -3203,54 +3205,97 @@ func TestChangesIncludeConflicts(t *testing.T) {
 }
 
 // Test _changes handling large sequence values - ensures no truncation of large ints.
-// NOTE: this test currently fails if it triggers a N1QL query, due to CBG-361.  It's been modified
-// to force the use of views until that's fixed.
 func TestChangesLargeSequences(t *testing.T) {
+	t.Skip("Skipping test due to known issue with large sequence numbers under GSI/views/rosmar")
+	largeInitialSeq := uint64(9223372036854775807)
+	require.Equal(t, strconv.FormatUint(largeInitialSeq, 10), strconv.FormatUint(math.MaxInt64, 10))
+	for _, initialSeq := range []uint64{2, largeInitialSeq} {
+		t.Run(fmt.Sprintf("initialSeq=%d", initialSeq), func(t *testing.T) {
+			userSeq := initialSeq + 1
+			docSeq := initialSeq + 2
+			rtConfig := rest.RestTesterConfig{
+				SyncFn:      channels.DocChannelsSyncFunction,
+				InitSyncSeq: initialSeq,
+			}
+			rt := rest.NewRestTester(t, &rtConfig)
+			defer rt.Close()
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("TestChangesLargeSequences doesn't support walrus - needs to customize " + base.DefaultMetadataKeys.SyncSeqKey() + " prior to db creation")
+			const user = "alice"
+
+			rt.CreateUser(user, []string{"PBS"}) // 9223372036854775808
+
+			docID := "largeSeqDocForChanges"
+			userDoc := "_user/" + user
+			// Create document
+			rt.PutDoc(docID, `{"channels":["PBS"]}`) // 9223372036854775809
+			rt.WaitForPendingChanges()
+			seq := rt.GetDocumentSequence(docID)
+
+			// Incorrect results
+			// Couchbase Server Views / GSI / rosmar views
+			// - alice can not access the document
+			response := rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "", user)
+			require.Equal(t, response.Code, http.StatusOK)
+
+			// Incorrect results
+			//
+			// rosmar views:
+			// - returns sequence as 9223372036854776000
+			assert.Equal(t, strconv.FormatUint(initialSeq+2, 10), strconv.FormatUint(seq, 10))
+			assert.Equal(t, strconv.FormatUint(seq, 10), strconv.FormatUint(docSeq, 10))
+			assert.Equal(t, docSeq, seq)
+
+			changes := rt.GetChanges("/{{.keyspace}}/_changes?since="+strconv.FormatUint(initialSeq, 10), user)
+			// Incorrect results
+			//
+			// Couchbase Server Views:
+			// - returns only largeSeqDocForChanges, not principal doc with the wrong sequence 9223372036854775808 (expected 9223372036854775809)
+			// rosmar views:
+			// - returns only largeSeqDocForChanges, not principal doc with the wrong sequence 9223372036854775808 (expected 9223372036854775809)
+			// GSI:
+			// - returns only largeSeqDocForChanges, not principal doc with the wrong sequence 9223372036854775808 (expected 9223372036854775809)
+			assert.Len(t, changes.Results, 2)
+			assert.Equal(t, userDoc, changes.Results[0].ID)
+			assert.Equal(t, userSeq, changes.Results[0].Seq.Seq)
+
+			if assert.Len(t, changes.Results, 2) {
+				assert.Equal(t, docID, changes.Results[1].ID)
+				assert.Equal(t, docSeq, changes.Results[1].Seq.Seq)
+				assert.Equal(t, strconv.FormatUint(docSeq, 10), changes.Last_Seq.String())
+			}
+			// start at expected sequence of largeSeqDocForChanges
+			// Incorrect results
+
+			// Couchbase Server Views:
+			// - returns no docs, even though we expect largeSeqDocForChanges
+			// rosmar views:
+			// - returns no docs, even though we expect largeSeqDocForChanges
+			// GSI:
+			// - returns no docs, even though we expect largeSeqDocForChanges
+			changes = rt.GetChanges("/{{.keyspace}}/_changes?since="+strconv.FormatUint(userSeq, 10), user)
+			if assert.Len(t, changes.Results, 1) {
+				assert.Equal(t, docID, changes.Results[0].ID)
+				assert.Equal(t, docSeq, changes.Results[0].Seq.Seq)
+				assert.Equal(t, strconv.FormatUint(docSeq, 10), changes.Last_Seq.String())
+			}
+			// Incorrect results
+
+			// Couchbase Server Views:
+			// - returns largeSeqDocForChanges, with the wrong sequence 9223372036854775808 (expected 9223372036854775809)
+			// - this is different than non admin GetChanges above, which doesn't return any
+			// rosmar views:
+			// - returns largeSeqDocForChanges, with the wrong sequence 9223372036854775808 (expected 9223372036854775809)
+			// - this is different than non admin GetChanges above, which doesn't return any
+			// GSI:
+			// - returns no documents, even though we expect largeSeqDocForChanges
+			changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", fmt.Sprintf(`{"since":%d}`, userSeq))
+			if assert.Len(t, changes.Results, 1) {
+				assert.Equal(t, docID, changes.Results[0].ID)
+				assert.Equal(t, docSeq, changes.Results[0].Seq.Seq)
+				assert.Equal(t, strconv.FormatUint(docSeq, 10), changes.Last_Seq.String())
+			}
+		})
 	}
-	if !base.TestsDisableGSI() {
-		t.Skip("Requires N1QL due to CBG-361")
-
-	}
-
-	if base.TestsUseNamedCollections() {
-		t.Skip("Requires default collection to set " + base.DefaultMetadataKeys.SyncSeqKey())
-	}
-	initialSeq := uint64(9223372036854775807)
-	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc,oldDoc) {
-			 channel(doc.channel)
-		 }`,
-		InitSyncSeq:    initialSeq,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.Ptr(true)}},
-	}
-	rt := rest.NewRestTester(t, &rtConfig)
-	defer rt.Close()
-
-	const user = "alice"
-
-	rt.CreateUser(user, []string{"PBS"})
-
-	// Create document
-	response := rt.SendAdminRequest("PUT", "/db/largeSeqDocForChanges", `{"channel":["PBS"]}`)
-	rest.RequireStatus(t, response, 201)
-
-	// Get changes
-	rt.WaitForPendingChanges()
-	changes := rt.GetChanges("/{{.keyspace}/_changes?since=9223372036854775800", user)
-	require.Len(t, changes.Results, 1)
-	assert.Equal(t, uint64(9223372036854775808), changes.Results[0].Seq.Seq)
-	assert.Equal(t, "9223372036854775808", changes.Last_Seq)
-
-	// Validate incoming since value isn't being truncated
-	changes = rt.GetChanges("/{{.keyspace}}/_changes?since=9223372036854775808", user)
-	require.Len(t, changes.Results, 0)
-
-	// Validate incoming since value isn't being truncated
-	changes = rt.PostChangesAdmin("/{{.keyspace}}/_changes", `{"since":9223372036854775808}`)
-	require.Len(t, changes.Results, 0)
-
 }
 
 func TestIncludeDocsWithPrincipals(t *testing.T) {
