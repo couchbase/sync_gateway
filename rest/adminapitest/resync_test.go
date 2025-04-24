@@ -74,6 +74,10 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't works with walrus")
 	}
+	if !base.TestUseXattrs() {
+		t.Skip("Test writes xattrs directly to modify sync metadata")
+	}
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeyChanges, base.KeyAccess)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		AutoImport: base.Ptr(false),
@@ -114,14 +118,10 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-	_, xattrs, _, err = ds.GetWithXattrs(ctx, "doc0", []string{base.SyncXattrName})
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	doc, _, err := collection.GetDocWithXattr(ctx, "doc0", db.DocUnmarshalSync)
 	require.NoError(t, err)
-	// assert doc sequence wasn't changed
-	var bucketSync map[string]interface{}
-	err = json.Unmarshal(xattrs[base.SyncXattrName], &bucketSync)
-	require.NoError(t, err)
-	seq := newSyncData["sequence"].(int)
-	require.Equal(t, uint64(corruptSequence), uint64(seq))
+	require.Equal(t, uint64(corruptSequence), doc.Sequence)
 
 	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.Database().CorruptSequenceCount.Value()
