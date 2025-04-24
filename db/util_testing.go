@@ -191,8 +191,6 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 	}
 
 	purgeCallback := func(event sgbucket.FeedEvent) bool {
-		var purgeErr error
-
 		processedDocCount.Add(1)
 		// We only need to purge mutations/deletions
 		if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {
@@ -206,11 +204,7 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 
 		key := string(event.Key)
 
-		if base.TestUseXattrs() {
-			purgeErr = dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
-		} else {
-			purgeErr = dataStore.Delete(key)
-		}
+		purgeErr := dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
 		if base.IsDocNotFoundError(purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := dataStore.Add(key, 0, purgeBody)
