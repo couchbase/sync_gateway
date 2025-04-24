@@ -968,7 +968,7 @@ func TestBlipDeltaNoAccessPush(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.BoolPtr(true)}
+	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true)}
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	const (
 		username = "alice"
