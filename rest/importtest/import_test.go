@@ -1056,8 +1056,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
-	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err, "Error waiting for changes")
+	changes := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 
 	log.Printf("changes: %+v", changes)
 	changeEntry := changes.Results[0]
@@ -1108,8 +1107,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	// Wait for doc to appear on changes feed
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	now := time.Now()
-	changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err, "Error waiting for changes")
+	changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
 	changeEntry := changes.Results[0]
 	assert.Equal(t, key, changeEntry.ID)
 	log.Printf("Saw doc on changes feed after %v", time.Since(now))
@@ -1273,8 +1271,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 			// Wait until the change appears on the changes feed to ensure that it's been imported by this point.
 			// This is probably unnecessary in the case of on-demand imports, but it doesn't hurt to leave it in as a double check.
-			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
-			require.NoError(t, err, "Error waiting for changes")
+			changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
 			changeEntry := changes.Results[0]
 			assert.Equal(t, key, changeEntry.ID)
 
@@ -1481,9 +1478,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 		t.Logf("Inserting doc %s: %s", docID, string(docBody))
 	}
 
-	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/{{.keyspace}}/_changes", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
-	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
+	rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/{{.keyspace}}/_changes", "", true)
 	ctx := base.TestCtx(t)
 
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
@@ -1547,9 +1542,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 		t.Logf("Inserting doc %s: %s", docID, string(docBody))
 	}
 
-	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/{{.keyspace}}/_changes", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
-	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
+	rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/{{.keyspace}}/_changes", "", true)
 
 	ctx := base.TestCtx(t)
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
@@ -2265,8 +2258,7 @@ func TestImportRollback(t *testing.T) {
 			require.NoError(t, err)
 
 			// wait for doc to be imported
-			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-			require.NoError(t, err)
+			changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 			lastSeq := changes.Last_Seq.String()
 
 			// Close db while we mess with checkpoints
@@ -2313,8 +2305,7 @@ func TestImportRollback(t *testing.T) {
 			require.NoError(t, err)
 
 			// wait for doc update to be imported
-			_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
-			require.NoError(t, err)
+			rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 		})
 	}
 }
@@ -2362,8 +2353,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	}
 
 	// wait for docs to be imported
-	changes, err := rt.WaitForChanges(20, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
+	changes := rt.WaitForChanges(20, "/{{.keyspace}}/_changes?since=0", "", true)
 	lastSeq := changes.Last_Seq.String()
 
 	// Close db while we alter checkpoints to force rollback
@@ -2436,8 +2426,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	require.True(t, added)
 
 	// wait for doc update to be imported
-	_, err = rt2.WaitForChanges(21, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
-	require.NoError(t, err)
+	rt2.WaitForChanges(21, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 }
 
 func TestImportUpdateExpiry(t *testing.T) {

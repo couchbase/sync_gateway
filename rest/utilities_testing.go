@@ -590,17 +590,10 @@ func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	return ds
 }
 
-func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
-	err := rt.WaitForDoc(docid)
-	assert.NoError(t, err)
-}
-
-func (rt *RestTester) WaitForDoc(docid string) (err error) {
+func (rt *RestTester) WaitForDoc(docid string) {
 	seq, err := rt.SequenceForDoc(docid)
-	if err != nil {
-		return err
-	}
-	return rt.WaitForSequence(seq)
+	require.NoError(rt.TB(), err, "Error getting sequence for doc %s", docid)
+	rt.WaitForSequence(seq)
 }
 
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
@@ -613,9 +606,9 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 }
 
 // Wait for sequence to be buffered by the channel cache
-func (rt *RestTester) WaitForSequence(seq uint64) error {
+func (rt *RestTester) WaitForSequence(seq uint64) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	return collection.WaitForSequence(ctx, seq)
+	require.NoError(rt.TB(), collection.WaitForSequence(ctx, seq))
 }
 
 func (rt *RestTester) WaitForPendingChanges() {
@@ -851,7 +844,7 @@ type ChangesResults struct {
 }
 
 func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
-	require.Equal(t, len(docIDs), len(cr.Results))
+	require.Len(t, cr.Results, len(docIDs))
 	for _, docID := range docIDs {
 		var found bool
 		for _, changeEntry := range cr.Results {
@@ -878,61 +871,39 @@ func (cr ChangesResults) RequireRevID(t testing.TB, revIDs []string) {
 	}
 }
 
+func (cr ChangesResults) Summary() string {
+	var revs []string
+	for _, changeEntry := range cr.Results {
+		revs = append(revs, fmt.Sprintf("{ID:%s}", changeEntry.ID))
+	}
+	return strings.Join(revs, ", ")
+}
+
 // RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
 	RequireDocVersionEqual(t, expected, DocVersion{RevID: changeRev["rev"]})
 }
 
-func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesURL, username string, useAdminPort bool) (worker base.RetryWorker) {
-
-	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
-
-		var changes ChangesResults
+func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
+	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
+	if base.UnitTestUrlIsWalrus() {
+		// rosmar will never take a long time, so have faster failures
+		waitTime = 1 * time.Second
+	}
+	var changes *ChangesResults
+	url := rt.mustTemplateResource(changesURL)
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		var response *TestResponse
 		if useAdminPort {
-			response = rt.SendAdminRequest("GET", changesURL, "")
+			response = rt.SendAdminRequest("GET", url, "")
 
 		} else {
-			response = rt.Send(RequestByUser("GET", changesURL, "", username))
+			response = rt.Send(RequestByUser("GET", url, "", username))
 		}
-		err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
-		if err != nil {
-			return false, err, nil
-		}
-		if len(changes.Results) < numChangesExpected {
-			// not enough results, retry
-			return true, fmt.Errorf("expecting %d changes, got %d", numChangesExpected, len(changes.Results)), nil
-		}
-		// If it made it this far, there is no errors and it got enough changes
-		return false, nil, changes
-	}
-
-	return waitForChangesWorker
-
-}
-
-func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) (
-	changes ChangesResults,
-	err error) {
-
-	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, rt.mustTemplateResource(changesURL), username, useAdminPort)
-
-	sleeper := base.CreateSleeperFunc(200, 100)
-
-	err, changesVal := base.RetryLoop(rt.Context(), "Wait for changes", waitForChangesWorker, sleeper)
-	if err != nil {
-		return changes, err
-	}
-
-	if changesVal == nil {
-		return changes, fmt.Errorf("Got nil value for changes")
-	}
-
-	if changesVal != nil {
-		changes = changesVal.(ChangesResults)
-	}
-
-	return changes, nil
+		assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %d changes", numChangesExpected, len(changes.Results))
+	}, waitTime, 10*time.Millisecond)
+	return *changes
 }
 
 // WaitForCondition runs a retry loop that evaluates the provided function, and terminates

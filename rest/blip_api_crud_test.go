@@ -2169,9 +2169,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		const docID = "doc"
 		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
 
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 1)
+		changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2180,9 +2178,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		version = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
 
-		changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 1)
+		changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2193,9 +2189,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		const docMarker = "docmarker"
 		docMarkerVersion := rt.PutDoc(docMarker, `{"channels": ["!"]}`)
 
-		changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 2)
+		changes = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 		assert.Equal(t, "3-1bc9dd04c8a257ba28a41eaad90d32de", changes.Results[0].Changes[0]["rev"])
@@ -2260,9 +2254,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		)
 		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
 
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 1)
+		changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2272,9 +2264,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		version = rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
 		rt.WaitForPendingChanges()
 		// At this point changes should send revocation, as document isn't in any of the user's channels
-		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 1)
+		changes = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2287,9 +2277,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		rt.WaitForPendingChanges()
 
 		// Revocation should not be sent over blip, as document is now in user's channels - only marker document should be received
-		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
-		require.NoError(t, err)
-		assert.Len(t, changes.Results, 2) // _changes still gets two results, as we don't support 3.0 removal handling over REST API
+		changes = rt.WaitForChanges(2, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		assert.Equal(t, markerID, changes.Results[1].ID)
 
@@ -2570,8 +2558,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 
 				// Wait for rev to be received on RT
 				rt.WaitForPendingChanges()
-				changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
-				require.NoError(t, err)
+				changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 
 				var bucketDoc map[string]interface{}
 				_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)

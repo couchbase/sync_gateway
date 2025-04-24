@@ -72,10 +72,3 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 
 	return base.Ptr(DocVersionFromPutResponse(rt.TB(), resp))
 }
-
-func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) ChangesResults {
-	changesResults, err := rt.WaitForChanges(numChangesExpected, "/{{.keyspace}}/_changes?since="+since, "", true)
-	require.NoError(rt.TB(), err)
-	require.Len(rt.TB(), changesResults.Results, numChangesExpected)
-	return changesResults
-}
