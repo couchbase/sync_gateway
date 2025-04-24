@@ -221,7 +221,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	rt.TestBucket = testBucket
 
 	if rt.PersistentConfig != false {
-		require.Zero(rt.TB(), rt.InitSyncSeq, "RestTesterConfig.InitSyncSeq is not supported on rosmar")
+		require.Zero(rt.TB(), rt.InitSyncSeq, "RestTesterConfig.InitSyncSeq is not supported with RestTesterConfig.PersistentConfig = true")
 	}
 
 	corsConfig := &auth.CORSConfig{
