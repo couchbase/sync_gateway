@@ -436,7 +436,8 @@ func isIndexerError(err error) bool {
 // Iterates over the index set, removing obsolete indexes:
 //   - indexes based on the inverse value of xattrs being used by the database
 //   - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
-func removeObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
+//   - indexes with a different number of partitions than the current database configuration
+func removeObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, numIndexPartitions uint32, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
 
 	// Build set of candidates for cleanup

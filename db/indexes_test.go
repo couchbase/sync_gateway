@@ -67,19 +67,19 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	require.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
-	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, true, !db.UseXattrs(), db.UseViews(), DefaultNumIndexPartitions, sgIndexes)
 	sort.Strings(removedIndexes)
 	require.EqualValues(t, expectedRemovedIndexes, removedIndexes)
 	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
-	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, false, !db.UseXattrs(), db.UseViews(), DefaultNumIndexPartitions, sgIndexes)
 	sort.Strings(removedIndexes)
 	require.Equal(t, expectedRemovedIndexes, removedIndexes)
 	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
-	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, false, !db.UseXattrs(), db.UseViews(), DefaultNumIndexPartitions, sgIndexes)
 	require.Len(t, removedIndexes, 0)
 	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
@@ -113,7 +113,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	copiedIndexes := copySGIndexes(sgIndexes)
 
 	// Validate that removeObsoleteIndexes is a no-op for the default case
-	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), DefaultNumIndexPartitions, copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.Len(t, removedIndexes, 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
@@ -130,7 +130,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	copiedIndexes[IndexAccess] = accessIndex
 
 	// Validate that removeObsoleteIndexes now triggers removal of one index
-	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), DefaultNumIndexPartitions, copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.Len(t, removedIndexes, 1)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
@@ -265,14 +265,62 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		}
 	}
 
-	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1QLStore, false, db.UseXattrs(), true, copiedIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1QLStore, false, db.UseXattrs(), true, DefaultNumIndexPartitions, copiedIndexes)
 	require.NoError(t, removeErr)
 	require.Len(t, removedIndexes, expectedIndexes)
 
-	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1QLStore, false, db.UseXattrs(), false, copiedIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1QLStore, false, db.UseXattrs(), false, DefaultNumIndexPartitions, copiedIndexes)
 	require.NoError(t, removeErr)
 	require.Len(t, removedIndexes, 0)
+}
 
+// TestRemoveObsoleteIndexesNumPartitions ensures that db.RemoveObsoleteIndexes can remove indexes with a differing number of partitions than the one currently configured.
+func TestRemoveObsoleteIndexesNumPartitions(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	const numPartitions = 4
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		NumIndexPartitions: base.Ptr(uint32(numPartitions)),
+	})
+	defer db.Close(ctx)
+
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
+	require.True(t, ok)
+
+	// manually init - since we expect test framework to do that already and won't have desired partitions
+	options := InitializeIndexOptions{
+		NumReplicas:         0,
+		LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
+		UseXattrs:           db.UseXattrs(),
+		NumPartitions:       db.numIndexPartitions(),
+	}
+	require.NoError(t, InitializeIndexes(ctx, n1QLStore, options))
+
+	defer func() {
+		// Restore default indexes after test
+		options := InitializeIndexOptions{
+			NumReplicas:         0,
+			LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
+			UseXattrs:           base.TestUseXattrs(),
+			NumPartitions:       DefaultNumIndexPartitions,
+		}
+		if db.OnlyDefaultCollection() {
+			options.MetadataIndexes = IndexesAll
+		}
+		require.NoError(t, InitializeIndexes(ctx, n1QLStore, options))
+	}()
+
+	removed, err := db.RemoveObsoleteIndexes(base.TestCtx(t), true)
+	require.NoError(t, err)
+	require.Lenf(t, removed, 2, "Expected non-partitioned indexes to be removed")
+	t.Logf("Removed indexes: %v", removed)
 }
 
 func TestRemoveObsoleteIndexOnError(t *testing.T) {
@@ -292,7 +340,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 		options := InitializeIndexOptions{
 			NumReplicas:         0,
 			LegacySyncDocsIndex: db.UseLegacySyncDocsIndex(),
-			UseXattrs:           db.UseXattrs(),
+			UseXattrs:           base.TestUseXattrs(),
 			NumPartitions:       DefaultNumIndexPartitions,
 		}
 		err := InitializeIndexes(ctx, n1qlStore, options)
@@ -321,7 +369,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	n1qlStore, ok := base.AsN1QLStore(dataStore)
 	require.True(t, ok)
 
-	removedIndex, removeErr := removeObsoleteIndexes(ctx, n1qlStore, false, db.UseXattrs(), db.UseViews(), testIndexes)
+	removedIndex, removeErr := removeObsoleteIndexes(ctx, n1qlStore, false, db.UseXattrs(), db.UseViews(), DefaultNumIndexPartitions, testIndexes)
 	assert.NoError(t, removeErr)
 
 	if base.TestUseXattrs() {

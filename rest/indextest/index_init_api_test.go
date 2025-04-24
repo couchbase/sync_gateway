@@ -136,13 +136,13 @@ func TestChangeIndexPartitions(t *testing.T) {
 			rest.RequireStatus(t, rt.ReplaceDbConfig(dbName, dbConfig), http.StatusCreated)
 
 			// CBG-4565 cleanup old indexes
-			//resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
-			//rest.RequireStatus(t, resp, http.StatusOK)
-			//var body rest.PostUpgradeResponse
-			//err := base.JSONUnmarshal(resp.BodyBytes(), &body)
-			//require.NoError(t, err)
-			//require.Lenf(t, body.Result, 1, "expected one database in post upgrade response")
-			//require.Lenf(t, body.Result[dbName].RemovedIndexes, 2, "expected two indexes to be removed")
+			resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			var body rest.PostUpgradeResponse
+			err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+			require.NoError(t, err)
+			require.Lenf(t, body.Result, 1, "expected one database in post upgrade response")
+			require.Lenf(t, body.Result[dbName].RemovedIndexes, 2, "expected two indexes to be removed")
 		})
 	}
 }
