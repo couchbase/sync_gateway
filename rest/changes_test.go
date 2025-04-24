@@ -218,6 +218,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 					},
 				},
 			},
+			AllowConflicts: base.Ptr(true),
 		},
 		}}
 	rt := NewRestTester(t, rtConfig)

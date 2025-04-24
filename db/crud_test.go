@@ -109,7 +109,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 func TestHasAttachmentsFlag(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -157,9 +157,9 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
 	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	require.NoError(t, err)
 	rev2b_body[BodyId] = doc.ID
 	rev2b_body[BodyRev] = newRev
-	assert.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
@@ -307,7 +307,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -491,7 +491,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 // TestRevisionStoragePruneTombstone - tests cleanup of external tombstone bodies when pruned.
 func TestRevisionStoragePruneTombstone(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -533,9 +533,9 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
 	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	require.NoError(t, err)
 	rev2b_body[BodyId] = doc.ID
 	rev2b_body[BodyRev] = newRev
-	assert.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
@@ -651,7 +651,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 // Checks for unwanted interaction between old revision body backups and revision cache
 func TestOldRevisionStorage(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -810,10 +810,13 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Use LeakyBucket to force a server error when persisting the old revision body for doc1, rev 2-b
 	forceErrorKey := oldRevisionKey("doc1", "2-b")
-	leakyConfig := base.LeakyBucketConfig{
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{
 		ForceErrorSetRawKeys: []string{forceErrorKey},
-	}
-	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
+	})
+	db, ctx := SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -862,9 +865,9 @@ func TestOldRevisionStorageError(t *testing.T) {
 	log.Printf("Create rev 2-b")
 	rev2b_body := Body{"key1": "value2", "v": "2b"}
 	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	require.NoError(t, err)
 	rev2b_body[BodyId] = doc.ID
 	rev2b_body[BodyRev] = newRev
-	assert.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify still rev 3-a")
@@ -981,7 +984,7 @@ const rawDocMalformedRevisionStorage = `
     }`
 
 func TestMalformedRevisionStorageRecovery(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

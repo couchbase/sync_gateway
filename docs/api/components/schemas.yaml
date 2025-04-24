@@ -1715,9 +1715,9 @@ Database:
       type: boolean
       default: false
     allow_conflicts:
-      description: This controls whether to allow conflicting document revisions.
+      description: This controls whether to allow conflicting document revisions. This option is going to be removed from sync gateway, and conflicts will not be allowed.
       type: boolean
-      default: true
+      default: false
       deprecated: true
     num_index_replicas:
       description: |-

@@ -1246,6 +1246,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	skippedMaxWait := uint32(120000)
 
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+		AllowConflicts: base.Ptr(true),
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
 				MaxWaitPending: &pendingMaxWait,
@@ -1509,7 +1510,7 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 func TestChangesActiveOnlyInteger(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`, AllowConflicts: true})
 	defer rt.Close()
 
 	// Create user:
@@ -1627,6 +1628,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 				channel(doc.channels)
 			}
 		}`,
+		AllowConflicts: true,
 	}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
@@ -1751,7 +1753,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rtConfig := rest.RestTesterConfig{
-		SyncFn: `function(doc) {channel(doc.channels)}`,
+		SyncFn:         `function(doc) {channel(doc.channels)}`,
+		AllowConflicts: true,
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	testDB := rt.GetDatabase()
@@ -2725,10 +2728,9 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 }
 
 func TestChangesActiveOnlyWithLimit(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`, AllowConflicts: true})
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -2891,7 +2893,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`, AllowConflicts: true})
 	defer rt.Close()
 
 	// Create user:
@@ -3053,6 +3055,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 	cacheSize := 2
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+		AllowConflicts: base.Ptr(true),
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
 				MinLength: &cacheSize,
@@ -3194,12 +3197,13 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 // Test _changes returning conflicts
 func TestChangesIncludeConflicts(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
 
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
-		 }`}
+		 }`,
+		AllowConflicts: true,
+	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
