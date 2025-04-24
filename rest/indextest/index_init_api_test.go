@@ -32,11 +32,12 @@ import (
 //  4. Ensure the database starts up using the indexes created in step 2 without any delay.
 //  5. Use the _post_upgrade endpoint to clean up the old set of indexes.
 func TestChangeIndexPartitions(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
-	require.False(t, base.TestsDisableGSI(), "Test requires GSI to be enabled")
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig, base.KeyQuery)
+
 	const (
 		dbName            = "db"
 		initialPartitions = uint32(2)
