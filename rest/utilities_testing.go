@@ -367,9 +367,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-		rt.DatabaseConfig.Index = &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
+		if rt.DatabaseConfig.Index == nil {
+			rt.DatabaseConfig.Index = &IndexConfig{}
 		}
+		rt.DatabaseConfig.Index.NumReplicas = base.Ptr(uint(0))
 
 		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
 		rt.DatabaseConfig.Username = username
@@ -2884,4 +2885,16 @@ func RequireNotFoundError(t *testing.T, response *TestResponse) {
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.Equal(t, db.Body{"error": "not_found", "reason": "missing"}, body)
+}
+
+func AssertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus int, expectedReason string) {
+	var httpError struct {
+		Reason string `json:"reason"`
+	}
+	err := base.JSONUnmarshal(response.BodyBytes(), &httpError)
+	require.NoError(t, err, "Failed to unmarshal HTTP error: %v", response.BodyBytes())
+
+	AssertStatus(t, response, expectedStatus)
+
+	assert.Equal(t, expectedReason, httpError.Reason)
 }

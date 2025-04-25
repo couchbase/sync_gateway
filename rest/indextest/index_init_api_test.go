@@ -118,7 +118,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 				require.NoError(c, err)
 				require.Empty(c, body.LastErrorMessage)
 				require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-				require.GreaterOrEqual(c, len(body.IndexStatus), 1, "expected at least one scope (maybe two if `_default` plu a named scope)")
+				require.GreaterOrEqual(c, len(body.IndexStatus), 1, "expected at least one scope (maybe two if `_default` and a named scope)")
 				require.LessOrEqual(c, len(body.IndexStatus), 2, "expected at most two scopes (maybe one if `_default` only)")
 				for _, collections := range body.IndexStatus {
 					for _, status := range collections {
@@ -174,4 +174,58 @@ func assertNumSGIndexPartitions(t testing.TB, database *db.DatabaseContext) {
 			}
 		}
 	}
+}
+
+func TestChangeIndexPartitionsErrors(t *testing.T) {
+	tests := []struct {
+		name          string
+		action        string
+		body          string
+		expectedError string
+	}{
+		{
+			name:          "invalid action",
+			action:        "invalid",
+			body:          `{"num_partitions":2}`,
+			expectedError: `action "invalid" not supported... must be either 'start' or 'stop'`,
+		},
+		{
+			name:          "bad json",
+			body:          `{num_partitions:2}`,
+			expectedError: `Bad JSON: invalid character 'n' looking for beginning of object key string`,
+		},
+		{
+			name:          "wrong body format",
+			body:          `2`,
+			expectedError: `Bad JSON: json: cannot unmarshal number into Go value of type rest.PostIndexInitRequest`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rt := rest.NewRestTester(t, nil)
+			defer rt.Close()
+
+			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/{{.db}}/_index_init?action=%s", test.action), test.body)
+			rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, test.expectedError)
+		})
+	}
+}
+
+func TestChangeIndexPartitionsSameNumber(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+		t.Skip("This test only works against Couchbase Server with GSI enabled")
+	}
+
+	// requires index init
+	base.LongRunningTest(t)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig, base.KeyQuery)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Index: &rest.IndexConfig{NumPartitions: base.Ptr(uint32(2))}}}})
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "num_partitions is already 2")
 }

@@ -397,7 +397,7 @@ func TestSyncFnTimeout(t *testing.T) {
 	syncFnFinishedWG.Add(1)
 	go func() {
 		response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"foo": "bar"}`)
-		assertHTTPErrorReason(t, response, 500, "JS sync function timed out")
+		AssertHTTPErrorReason(t, response, 500, "JS sync function timed out")
 		syncFnFinishedWG.Done()
 	}()
 	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*15)

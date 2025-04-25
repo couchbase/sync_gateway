@@ -321,8 +321,12 @@ func (h *handler) handlePostIndexInit() error {
 	}
 
 	currentDbConfig := h.server.GetDatabaseConfig(h.db.Name)
-	if currentDbConfig.Index.NumPartitions == req.NumPartitions {
+	if currentDbConfig.NumIndexPartitions() == *req.NumPartitions {
 		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions is already %d", *req.NumPartitions)
+	}
+
+	if h.db.UseViews() {
+		return base.HTTPErrorf(http.StatusBadRequest, "_index_init is a GSI-only feature and is not supported when using views")
 	}
 
 	var newDbConfig DatabaseConfig

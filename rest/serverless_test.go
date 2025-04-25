@@ -677,7 +677,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 
 	// Attempt to get DB that does not exist
 	resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/invaliddb/doc", "", base.TestClusterUsername(), base.TestClusterPassword())
-	assertHTTPErrorReason(t, resp, http.StatusForbidden, "")
+	AssertHTTPErrorReason(t, resp, http.StatusForbidden, "")
 }
 
 func TestImportPartitionsServerless(t *testing.T) {

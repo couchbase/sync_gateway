@@ -330,7 +330,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			// assertRespStatus changes behaviour depending on if forcing forbidden errors
 			assertRespStatus := func(resp *TestResponse, statusIfForbiddenErrorsFalse int) {
 				if test.forceForbiddenErrors {
-					assertHTTPErrorReason(t, resp, http.StatusForbidden, "forbidden")
+					AssertHTTPErrorReason(t, resp, http.StatusForbidden, "forbidden")
 					return
 				}
 				AssertStatus(t, resp, statusIfForbiddenErrorsFalse)
@@ -443,11 +443,11 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 
 			// PUT with access but no rev
 			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc", `{}`, nil, "Perms", "password")
-			assertHTTPErrorReason(t, resp, http.StatusConflict, "Document exists")
+			AssertHTTPErrorReason(t, resp, http.StatusConflict, "Document exists")
 
 			// PUT with access but wrong rev
 			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev=1-abc", `{}`, nil, "Perms", "password")
-			assertHTTPErrorReason(t, resp, http.StatusConflict, "Document revision conflict")
+			AssertHTTPErrorReason(t, resp, http.StatusConflict, "Document revision conflict")
 
 			// Confirm no access grants where granted
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/NoPerms", ``)
