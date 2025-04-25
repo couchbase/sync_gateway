@@ -188,6 +188,11 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 			expectedError: `action "invalid" not supported... must be either 'start' or 'stop'`,
 		},
 		{
+			name:          "empty num_partitions",
+			body:          `{}`,
+			expectedError: `num_partitions is required`,
+		},
+		{
 			name:          "invalid num_partitions",
 			body:          `{"num_partitions":0}`,
 			expectedError: `num_partitions must be greater than 0`,
@@ -239,7 +244,7 @@ func TestChangeIndexPartitionsStartAndStop(t *testing.T) {
 	// requires index init
 	base.LongRunningTest(t)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Index: &rest.IndexConfig{NumPartitions: base.Ptr(uint32(2))}}}})
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
@@ -247,14 +252,21 @@ func TestChangeIndexPartitionsStartAndStop(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// wait for stopped state
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
+		rest.AssertStatus(t, resp, http.StatusOK)
+		var body db.AsyncIndexInitManagerResponse
+		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+		require.NoError(c, err)
+		require.Equal(c, db.BackgroundProcessStateStopped, body.State)
+	}, 30*time.Second, 1*time.Second)
 }
 
 func TestChangeIndexPartitionsWithViews(t *testing.T) {
-	if !base.TestsDisableGSI() {
-		t.Skip("This test requires views since it is testing an error condition")
-	}
-
-	rt := rest.NewRestTester(t, nil)
+	// force views - doesn't matter what mode test framework is in since we're not actually using any
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.Ptr(true)}}})
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
