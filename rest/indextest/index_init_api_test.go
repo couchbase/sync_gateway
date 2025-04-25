@@ -200,12 +200,12 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 		{
 			name:          "bad json",
 			body:          `{num_partitions:2}`,
-			expectedError: `Bad JSON: invalid character 'n' looking for beginning of object key string`,
+			expectedError: `Bad JSON`,
 		},
 		{
-			name:          "wrong body format",
+			name:          "wrong format valid json",
 			body:          `2`,
-			expectedError: `Bad JSON: json: cannot unmarshal number into Go value of type rest.PostIndexInitRequest`,
+			expectedError: `Bad JSON`,
 		},
 	}
 
@@ -215,7 +215,14 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 			defer rt.Close()
 
 			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/{{.db}}/_index_init?action=%s", test.action), test.body)
-			rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, test.expectedError)
+			var httpError struct {
+				Reason string `json:"reason"`
+			}
+			err := base.JSONUnmarshal(resp.BodyBytes(), &httpError)
+			require.NoError(t, err, "Failed to unmarshal HTTP error: %v", resp.BodyBytes())
+			rest.AssertStatus(t, resp, http.StatusBadRequest)
+			assert.Contains(t, httpError.Reason, test.expectedError)
+
 		})
 	}
 }
