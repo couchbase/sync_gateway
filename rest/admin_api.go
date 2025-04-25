@@ -300,11 +300,11 @@ func (h *handler) handlePostIndexInit() error {
 		if err := h.db.AsyncIndexInitManager.Stop(); err != nil {
 			return err
 		}
-		status, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
+		b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
 		if err != nil {
 			return err
 		}
-		h.writeRawJSON(status)
+		h.writeRawJSON(b)
 		return nil
 	}
 
@@ -360,7 +360,17 @@ func (h *handler) handlePostIndexInit() error {
 		"statusMap": &statusMap,
 		"doneChan":  done,
 	}
-	return h.db.AsyncIndexInitManager.Start(h.ctx(), opts)
+	err = h.db.AsyncIndexInitManager.Start(h.ctx(), opts)
+	if err != nil {
+		return err
+	}
+
+	b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(b)
+	return nil
 }
 
 // Get admin database info
