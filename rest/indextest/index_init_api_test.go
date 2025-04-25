@@ -39,8 +39,6 @@ func TestChangeIndexPartitions(t *testing.T) {
 	// requires index init for many subtests
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig, base.KeyQuery)
-
 	const (
 		dbName = "db"
 	)
@@ -220,12 +218,23 @@ func TestChangeIndexPartitionsSameNumber(t *testing.T) {
 	// requires index init
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig, base.KeyQuery)
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Index: &rest.IndexConfig{NumPartitions: base.Ptr(uint32(2))}}}})
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "num_partitions is already 2")
+}
+
+func TestChangeIndexPartitionsWithViews(t *testing.T) {
+	if !base.TestsDisableGSI() {
+		t.Skip("This test requires views since it is testing an error condition")
+	}
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "_index_init is a GSI-only feature and is not supported when using views")
 }
