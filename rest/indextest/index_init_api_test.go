@@ -263,7 +263,7 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 	}, 30*time.Second, 1*time.Second)
 }
 
-func TestChangeIndexPartitionsStartAndStop(t *testing.T) {
+func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
@@ -288,6 +288,20 @@ func TestChangeIndexPartitionsStartAndStop(t *testing.T) {
 		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
 		require.NoError(c, err)
 		require.Equal(c, db.BackgroundProcessStateStopped, body.State)
+	}, 30*time.Second, 1*time.Second)
+
+	// restart with new params
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":3}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// wait for completion
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
+		rest.AssertStatus(t, resp, http.StatusOK)
+		var body db.AsyncIndexInitManagerResponse
+		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+		require.NoError(c, err)
+		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
 	}, 30*time.Second, 1*time.Second)
 }
 
