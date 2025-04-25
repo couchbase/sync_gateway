@@ -188,6 +188,11 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 			expectedError: `action "invalid" not supported... must be either 'start' or 'stop'`,
 		},
 		{
+			name:          "invalid num_partitions",
+			body:          `{"num_partitions":0}`,
+			expectedError: `num_partitions must be greater than 0`,
+		},
+		{
 			name:          "bad json",
 			body:          `{num_partitions:2}`,
 			expectedError: `Bad JSON: invalid character 'n' looking for beginning of object key string`,
@@ -224,6 +229,24 @@ func TestChangeIndexPartitionsSameNumber(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "num_partitions is already 2")
+}
+
+func TestChangeIndexPartitionsStartAndStop(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+		t.Skip("This test only works against Couchbase Server with GSI enabled")
+	}
+
+	// requires index init
+	base.LongRunningTest(t)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Index: &rest.IndexConfig{NumPartitions: base.Ptr(uint32(2))}}}})
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
 }
 
 func TestChangeIndexPartitionsWithViews(t *testing.T) {
