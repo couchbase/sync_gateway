@@ -10,7 +10,6 @@ package rest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -113,7 +112,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 	}
 
 	// Create new worker and add this caller as a watcher
-	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, statusCallback)
+	worker := NewDatabaseInitWorker(context.WithoutCancel(ctx), dbConfig.Name, n1qlStore, collectionSet, indexOptions, statusCallback)
 	m.workers[dbConfig.Name] = worker
 	doneChan = worker.addWatcher()
 
@@ -278,8 +277,8 @@ func (w *DatabaseInitWorker) Run() {
 
 		// Check for context cancellation after each collection is processed - if cancelled, return cancellation error
 		// to all watchers end exit
-		if w.ctx.Err() != nil {
-			indexErr = errors.New("Database initialization cancelled")
+		if err := w.ctx.Err(); err != nil {
+			indexErr = fmt.Errorf("Database initialization cancelled: %w", err)
 			break
 		}
 	}
