@@ -36,8 +36,6 @@ var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 // NewBlipSyncContext creates a new BlipSyncContext for a given database and register the handlers. This does not make a connection.
 func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelFunc) (*BlipSyncContext, error) {
-	// reset ctx to contain correlation id from blip
-	ctx = base.CorrelationIDLogCtx(ctx, bc.ID)
 	if ctxCancelFunc == nil {
 		return nil, errors.New("cancelCtxFunc is required")
 	}

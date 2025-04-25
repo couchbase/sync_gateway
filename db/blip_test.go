@@ -41,12 +41,12 @@ func TestBlipCorrelationID(t *testing.T) {
 			if !explicitTestID {
 				testID = ""
 			}
-			bc, err := NewSGBlipContext(ctx, testID, nil, nil)
+			ctx, bc, err := NewSGBlipContext(ctx, testID, nil, nil)
 			require.NoError(t, err)
 			if !explicitTestID {
 				require.NotEqual(t, testID, bc.ID)
 				require.NotEmpty(t, bc.ID)
-				testID = bc.ID
+				testID = "[" + bc.ID + "]"
 			}
 			base.AssertLogContains(t, "c:"+testID, func() {
 				bc.Logger(blip.LogGeneral, "Sample log message")

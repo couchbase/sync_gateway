@@ -220,7 +220,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	cancelCtx, cancelFunc := context.WithCancel(context.WithoutCancel(ctx)) // separate cancel context from parent cancel context
 
 	var originPatterns []string // no origin headers for ISGR
-	blipContext, err := NewSGBlipContext(ctx, arc.config.ID+idSuffix, originPatterns, cancelCtx)
+	ctx, blipContext, err := NewSGBlipContext(ctx, arc.config.ID+idSuffix, originPatterns, cancelCtx)
 	if err != nil {
 		cancelFunc()
 		return nil, nil, err
