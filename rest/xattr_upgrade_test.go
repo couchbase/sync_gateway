@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -187,11 +188,13 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	}
 
 	rtConfig := RestTesterConfig{
-		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	const user = "alice"
+	rt.CreateUser(user, []string{"A"})
 	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)
@@ -200,7 +203,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	key := "TestCheckForUpgrade"
 	bodyString := `
 {
-  "value": "2-d"
+  "channels": "A"
 }`
 	xattrString := `
 {
@@ -224,8 +227,10 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	rt.WaitForSequence(1)
 
+	// Use non admin channels since it is in the channel cache. Using admin using * channel which will not find this document.
+
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
-	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes", "{}")
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", user)
 	require.Len(t, changes.Results, 1)
 
 	// Validate non-xattr document doesn't get processed on attempted feed read

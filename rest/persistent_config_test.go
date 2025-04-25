@@ -1493,18 +1493,15 @@ func persistentConfigTestCases() []persistentConfigTestCase {
 				xattrConfig: false,
 			},
 		}
+	} else {
+		return []persistentConfigTestCase{
+			{
+				name:        "xattr_persistence",
+				xattrConfig: true,
+			}, {
+				name:        "document_persistence",
+				xattrConfig: false,
+			},
+		}
 	}
-	testCases := []persistentConfigTestCase{
-		{
-			name:        "document_persistence",
-			xattrConfig: false,
-		},
-	}
-	if base.TestUseXattrs() {
-		testCases = append(testCases, persistentConfigTestCase{
-			name:        "xattr_persistence",
-			xattrConfig: true,
-		})
-	}
-	return testCases
 }
