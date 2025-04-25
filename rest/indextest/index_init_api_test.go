@@ -36,61 +36,116 @@ func TestChangeIndexPartitions(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
 
+	// requires index init for many subtests
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig, base.KeyQuery)
 
 	const (
-		dbName            = "db"
-		initialPartitions = uint32(2)
-		newPartitions     = uint32(4)
+		dbName = "db"
 	)
 
-	dbConfig := rest.DbConfig{
-		Index: &rest.IndexConfig{
-			NumPartitions: base.Ptr(initialPartitions),
+	tests := []struct {
+		name                string
+		usePersistentConfig bool
+		initialPartitions   *uint32
+		newPartitions       uint32
+	}{
+		{
+			name:                "non-persistent config 2 to 4",
+			usePersistentConfig: false,
+			initialPartitions:   base.Ptr(uint32(2)),
+			newPartitions:       4,
+		},
+		{
+			name:                "persistent config 2 to 4",
+			usePersistentConfig: true,
+			initialPartitions:   base.Ptr(uint32(2)),
+			newPartitions:       4,
+		},
+		{
+			name:              "nil to 4",
+			initialPartitions: nil,
+			newPartitions:     4,
+		},
+		{
+			name:              "1 to 4",
+			initialPartitions: base.Ptr(uint32(1)),
+			newPartitions:     4,
+		},
+		{
+			name:              "4 to 1",
+			initialPartitions: base.Ptr(uint32(4)),
+			newPartitions:     1,
 		},
 	}
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: dbConfig},
-	})
-	defer rt.Close()
-	database := rt.GetDatabase()
-	assertNumSGIndexPartitions(t, database)
-
-	// init new indexes with different partitions
-	resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_index_init", dbName), fmt.Sprintf(`{"num_partitions":%d}`, newPartitions))
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	// wait for indexes to be ready using init api
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/_index_init", dbName), "")
-		rest.AssertStatus(t, resp, http.StatusOK)
-		var body db.AsyncIndexInitManagerResponse
-		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
-		require.NoError(c, err)
-		require.Empty(c, body.LastErrorMessage)
-		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-		require.GreaterOrEqual(c, len(body.IndexStatus), 1, "expected at least one scope (maybe two if `_default` plu a named scope)")
-		require.LessOrEqual(c, len(body.IndexStatus), 2, "expected at most two scopes (maybe one if `_default` only)")
-		for _, collections := range body.IndexStatus {
-			for _, status := range collections {
-				assert.Equal(c, db.CollectionIndexStatusReady, status)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var (
+				rt       *rest.RestTester
+				dbConfig rest.DbConfig
+			)
+			if test.usePersistentConfig {
+				rt = rest.NewRestTesterPersistentConfigNoDB(t)
+				dbConfig = rt.NewDbConfig()
+				dbConfig.Index.NumPartitions = test.initialPartitions
+				rest.RequireStatus(t, rt.CreateDatabase(dbName, dbConfig), http.StatusCreated)
+			} else {
+				rt = rest.NewRestTester(t, &rest.RestTesterConfig{
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Index: &rest.IndexConfig{
+							NumPartitions: test.initialPartitions,
+						},
+					}},
+				})
+				_ = rt.Bucket() // init db
+				dbConfig = rt.DatabaseConfig.DbConfig
 			}
-		}
-	}, 10*time.Second, 1*time.Second)
-	assertNumSGIndexPartitions(t, database)
+			defer rt.Close()
+			database := rt.GetDatabase()
+			assertNumSGIndexPartitions(t, database)
 
-	// update db config - shouldn't create indexes at this point since they already exist
-	dbConfig.Index.NumPartitions = base.Ptr(newPartitions)
-	rt.UpsertDbConfig(dbName, dbConfig)
+			// init new indexes with different partitions
+			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_index_init", dbName), fmt.Sprintf(`{"num_partitions":%d}`, test.newPartitions))
+			rest.RequireStatus(t, resp, http.StatusOK)
 
-	// cleanup old indexes
-	//resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
-	//rest.RequireStatus(t, resp, http.StatusOK)
-	//var body rest.PostUpgradeResponse
-	//err := base.JSONUnmarshal(resp.BodyBytes(), &body)
-	//require.NoError(t, err)
-	//require.Lenf(t, body.Result, 1, "expected one database in post upgrade response")
-	//require.Lenf(t, body.Result[dbName].RemovedIndexes, 2, "expected two indexes to be removed")
+			// wait for indexes to be ready using init api
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/_index_init", dbName), "")
+				rest.AssertStatus(t, resp, http.StatusOK)
+				var body db.AsyncIndexInitManagerResponse
+				err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+				require.NoError(c, err)
+				require.Empty(c, body.LastErrorMessage)
+				require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
+				require.GreaterOrEqual(c, len(body.IndexStatus), 1, "expected at least one scope (maybe two if `_default` plu a named scope)")
+				require.LessOrEqual(c, len(body.IndexStatus), 2, "expected at most two scopes (maybe one if `_default` only)")
+				for _, collections := range body.IndexStatus {
+					for _, status := range collections {
+						assert.Equal(c, db.CollectionIndexStatusReady, status)
+					}
+				}
+			}, 30*time.Second, 1*time.Second)
+			assertNumSGIndexPartitions(t, database)
+
+			// update db config with new partition count - shouldn't create indexes at this point since they already exist
+			if dbConfig.Index == nil {
+				dbConfig.Index = &rest.IndexConfig{}
+			}
+			dbConfig.Index.NumPartitions = base.Ptr(test.newPartitions)
+			t.Logf("dbconfig: %+v", dbConfig)
+			rest.RequireStatus(t, rt.ReplaceDbConfig(dbName, dbConfig), http.StatusCreated)
+
+			// cleanup old indexes
+			//resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
+			//rest.RequireStatus(t, resp, http.StatusOK)
+			//var body rest.PostUpgradeResponse
+			//err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+			//require.NoError(t, err)
+			//require.Lenf(t, body.Result, 1, "expected one database in post upgrade response")
+			//require.Lenf(t, body.Result[dbName].RemovedIndexes, 2, "expected two indexes to be removed")
+		})
+	}
 }
 
 // assertNumSGIndexPartitions ensures that the number of partitions for SG indexes is as expected. Some indexes aren't partitioned.
