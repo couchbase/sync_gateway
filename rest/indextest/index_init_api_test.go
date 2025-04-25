@@ -236,6 +236,33 @@ func TestChangeIndexPartitionsSameNumber(t *testing.T) {
 	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "num_partitions is already 2")
 }
 
+func TestChangeIndexPartitionsDbOffline(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+		t.Skip("This test only works against Couchbase Server with GSI enabled")
+	}
+
+	// requires index init
+	base.LongRunningTest(t)
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	rt.TakeDbOffline()
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// wait for completion
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
+		rest.AssertStatus(t, resp, http.StatusOK)
+		var body db.AsyncIndexInitManagerResponse
+		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+		require.NoError(c, err)
+		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
+	}, 30*time.Second, 1*time.Second)
+}
+
 func TestChangeIndexPartitionsStartAndStop(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
