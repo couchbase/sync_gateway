@@ -39,6 +39,8 @@ func TestChangeIndexPartitions(t *testing.T) {
 	// requires index init for many subtests
 	base.LongRunningTest(t)
 
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyQuery, base.KeyHTTP)
+
 	const (
 		dbName = "db"
 	)
@@ -131,10 +133,9 @@ func TestChangeIndexPartitions(t *testing.T) {
 				dbConfig.Index = &rest.IndexConfig{}
 			}
 			dbConfig.Index.NumPartitions = base.Ptr(test.newPartitions)
-			t.Logf("dbconfig: %+v", dbConfig)
 			rest.RequireStatus(t, rt.ReplaceDbConfig(dbName, dbConfig), http.StatusCreated)
 
-			// cleanup old indexes
+			// CBG-4565 cleanup old indexes
 			//resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
 			//rest.RequireStatus(t, resp, http.StatusOK)
 			//var body rest.PostUpgradeResponse
