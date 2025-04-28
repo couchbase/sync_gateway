@@ -383,6 +383,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
 
 		msg := client.pullReplication.WaitForMessage(5)
+		t.Logf("allMessages: %s\n", client.pullReplication.GetAllMessagesSummary())
 
 		// Check the request was initially sent with the correct deltaSrc property
 		assert.Equal(t, docVersion1.RevID, msg.Properties[db.RevMessageDeltaSrc])
