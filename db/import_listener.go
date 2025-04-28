@@ -233,7 +233,7 @@ func (il *importListener) Stop() {
 	}
 }
 
-func (db *DatabaseContext) PartitionCount() int {
+func (db *DatabaseContext) ImportPartitionCount() int {
 	il := db.ImportListener
 	_, pindexes := il.cbgtContext.Manager.CurrentMaps()
 	return len(pindexes)

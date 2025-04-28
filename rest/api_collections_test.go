@@ -803,7 +803,7 @@ func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
 			newCollection.CollectionName(): {},
 		}},
 	}})
-	assertHTTPErrorReason(t, resp, http.StatusBadRequest, "1 errors:\ncannot change scopes after database creation")
+	AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "1 errors:\ncannot change scopes after database creation")
 }
 
 // TestCollecitonStats ensures that stats are specific to each collection.

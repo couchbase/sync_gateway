@@ -110,6 +110,7 @@ type DatabaseContext struct {
 	ResyncManager               *BackgroundManager
 	TombstoneCompactionManager  *BackgroundManager
 	AttachmentCompactionManager *BackgroundManager
+	AsyncIndexInitManager       *BackgroundManager
 	ExitChanges                 chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
@@ -639,34 +640,18 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 // stopBackgroundManagers stops any running BackgroundManager.
 // Returns a list of BackgroundManager it signalled to stop
-func (context *DatabaseContext) stopBackgroundManagers() []*BackgroundManager {
-	bgManagers := make([]*BackgroundManager, 0)
-
-	if context.ResyncManager != nil {
-		if !isBackgroundManagerStopped(context.ResyncManager.GetRunState()) {
-			if err := context.ResyncManager.Stop(); err == nil {
-				bgManagers = append(bgManagers, context.ResyncManager)
-			}
+func (dbCtx *DatabaseContext) stopBackgroundManagers() (stopped []*BackgroundManager) {
+	for _, manager := range []*BackgroundManager{
+		dbCtx.ResyncManager,
+		dbCtx.AttachmentCompactionManager,
+		dbCtx.TombstoneCompactionManager,
+		dbCtx.AsyncIndexInitManager,
+	} {
+		if manager != nil && !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop() == nil {
+			stopped = append(stopped, manager)
 		}
 	}
-
-	if context.AttachmentCompactionManager != nil {
-		if !isBackgroundManagerStopped(context.AttachmentCompactionManager.GetRunState()) {
-			if err := context.AttachmentCompactionManager.Stop(); err == nil {
-				bgManagers = append(bgManagers, context.AttachmentCompactionManager)
-			}
-		}
-	}
-
-	if context.TombstoneCompactionManager != nil {
-		if !isBackgroundManagerStopped(context.TombstoneCompactionManager.GetRunState()) {
-			if err := context.TombstoneCompactionManager.Stop(); err == nil {
-				bgManagers = append(bgManagers, context.TombstoneCompactionManager)
-			}
-		}
-	}
-
-	return bgManagers
+	return stopped
 }
 
 // waitForBackgroundManagersToStop wait for given BackgroundManagers to stop within given time
@@ -2395,6 +2380,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db.MetadataStore, db.MetadataKeys)
+	db.AsyncIndexInitManager = NewAsyncIndexInitManager(db.MetadataStore, db.MetadataKeys)
 
 	db.startReplications(ctx)
 

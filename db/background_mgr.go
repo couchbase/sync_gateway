@@ -348,8 +348,7 @@ func (b *BackgroundManager) resetStatus() {
 }
 
 func (b *BackgroundManager) Stop() error {
-	err := b.markStop()
-	if err != nil {
+	if err := b.markStop(); err != nil {
 		return err
 	}
 

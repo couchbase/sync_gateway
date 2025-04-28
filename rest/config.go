@@ -2404,8 +2404,8 @@ func (c *DbConfig) numIndexReplicas() uint {
 	return DefaultNumIndexReplicas
 }
 
-// numIndexPartitions returns the number of index partitions for the database, populating the default value if necessary.
-func (c *DbConfig) numIndexPartitions() uint32 {
+// NumIndexPartitions returns the number of index partitions for the database, populating the default value if necessary.
+func (c *DbConfig) NumIndexPartitions() uint32 {
 	if c.Index != nil && c.Index.NumPartitions != nil {
 		return *c.Index.NumPartitions
 	}

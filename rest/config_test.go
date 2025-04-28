@@ -3119,7 +3119,7 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	}
 	resp = rt.UpsertDbConfig("db1", dbConfig)
 	if base.IsEnterpriseEdition() {
-		assertHTTPErrorReason(t, resp, http.StatusInternalServerError, "Internal error: maximum rev cache memory size cannot be lower than 50 MB")
+		AssertHTTPErrorReason(t, resp, http.StatusInternalServerError, "Internal error: maximum rev cache memory size cannot be lower than 50 MB")
 	} else {
 		// CE will roll back to no memory limit as it's an EE ony feature
 		RequireStatus(t, resp, http.StatusCreated)

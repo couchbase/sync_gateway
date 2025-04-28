@@ -64,7 +64,7 @@ func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 		balancedPartitions := true
 		currentPartitions := make([]int, len(restTesters))
 		for i, rt := range restTesters {
-			rtPartitions := rt.GetDatabase().PartitionCount()
+			rtPartitions := rt.GetDatabase().ImportPartitionCount()
 			currentPartitions[i] = rtPartitions
 			totalPartitions = totalPartitions + uint16(rtPartitions)
 			if rtPartitions != expectedPartitions {

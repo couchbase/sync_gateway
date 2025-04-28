@@ -2765,18 +2765,6 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	}
 }
 
-func assertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus int, expectedReason string) {
-	var httpError struct {
-		Reason string `json:"reason"`
-	}
-	err := base.JSONUnmarshal(response.BodyBytes(), &httpError)
-	require.NoError(t, err, "Failed to unmarshal HTTP error: %v", response.BodyBytes())
-
-	AssertStatus(t, response, expectedStatus)
-
-	assert.Equal(t, expectedReason, httpError.Reason)
-}
-
 // TestPing ensures that /_ping is accessible on all APIs for GET and HEAD without authentication.
 func TestPing(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp)

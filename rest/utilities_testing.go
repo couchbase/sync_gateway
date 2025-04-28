@@ -150,12 +150,18 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return newRestTester(tb, restConfig, useSingleCollection, 1)
 }
 
-// NewRestTesterPersistentConfig returns a rest tester with persistent config setup and a single database. A convenience function for NewRestTester.
-func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
+// NewRestTesterPersistentConfigNoDB returns a rest tester with persistent config setup and no database. A convenience function for NewRestTester.
+func NewRestTesterPersistentConfigNoDB(tb testing.TB) *RestTester {
 	config := &RestTesterConfig{
 		PersistentConfig: true,
 	}
 	rt := newRestTester(tb, config, useSingleCollection, 1)
+	return rt
+}
+
+// NewRestTesterPersistentConfig returns a rest tester with persistent config setup and a single database. A convenience function for NewRestTester.
+func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
+	rt := NewRestTesterPersistentConfigNoDB(tb)
 	RequireStatus(tb, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 	return rt
 }
@@ -352,9 +358,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-		rt.DatabaseConfig.Index = &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
+		if rt.DatabaseConfig.Index == nil {
+			rt.DatabaseConfig.Index = &IndexConfig{}
 		}
+		rt.DatabaseConfig.Index.NumReplicas = base.Ptr(uint(0))
 
 		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
 		rt.DatabaseConfig.Username = username
@@ -2841,4 +2848,16 @@ func RequireNotFoundError(t *testing.T, response *TestResponse) {
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.Equal(t, db.Body{"error": "not_found", "reason": "missing"}, body)
+}
+
+func AssertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus int, expectedReason string) {
+	var httpError struct {
+		Reason string `json:"reason"`
+	}
+	err := base.JSONUnmarshal(response.BodyBytes(), &httpError)
+	require.NoError(t, err, "Failed to unmarshal HTTP error: %v", response.BodyBytes())
+
+	AssertStatus(t, response, expectedStatus)
+
+	assert.Equal(t, expectedReason, httpError.Reason)
 }

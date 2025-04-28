@@ -1,0 +1,79 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Start asynchronous index initialization
+  description: |
+    This can be used to start index initialization with different parameters from a running database. The typical workflow is:
+
+    1. Start the process of creating new indexes with [POST /{db}/_index_init](#operation/post-db_index_init).
+    2. Wait for index initialization to complete with [GET /{db}/_index_init](#operation/get_db-_index_init).
+    3. Update the database configuration to use these new indexes with [POST /{db}/_config](#operation/post_db-_config).
+    4. Call [POST /_post_upgrade](#operation/post__post_upgrade) to remove the original indexes.
+
+    This operation will start creation of indexes, and the creation of indexes can not be stopped on Couchbase Server once it has been started.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - name: action
+      in: query
+      description: Defines whether the index creation operation is being started or stopped.
+      schema:
+        type: string
+        default: start
+        enum:
+          - start
+          - stop
+        x-enumDescriptions:
+          start: Starts the creation of indexes.
+          stop: Stops tracking the index creation by Sync Gateway. These indexes will still be created on Couchbase Server.
+  requestBody:
+    content:
+      application/json:
+        schema:
+          allOf:
+            - $ref: ../../components/schemas.yaml#/IndexSettings
+  responses:
+    '200':
+      description: successfully changed the status of the index initialization operation
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/IndexInitStatus
+    '503':
+      description: Service Unavailable
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+    - Database Management
+  operationId: post_db-_index_init
+get:
+  summary: Get status of index initialization.
+  description: |-
+    This will retrieve the status of last index initialization operation (whether it is running or not) in the Sync Gateway cluster.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  responses:
+    '200':
+      description: successfully retrieved the most recent index initialization
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/IndexInitStatus
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Management
+  operationId: get_db-_index_init
