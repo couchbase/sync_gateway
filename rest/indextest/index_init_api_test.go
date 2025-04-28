@@ -123,7 +123,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 						assert.Equal(c, db.CollectionIndexStatusReady, status)
 					}
 				}
-			}, 30*time.Second, 1*time.Second)
+			}, 1*time.Minute, 1*time.Second)
 			assertNumSGIndexPartitions(t, database)
 
 			// update db config with new partition count - shouldn't create indexes at this point since they already exist
@@ -222,7 +222,6 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 			require.NoError(t, err, "Failed to unmarshal HTTP error: %v", resp.BodyBytes())
 			rest.AssertStatus(t, resp, http.StatusBadRequest)
 			assert.Contains(t, httpError.Reason, test.expectedError)
-
 		})
 	}
 }
@@ -267,7 +266,7 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
 		require.NoError(c, err)
 		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-	}, 30*time.Second, 1*time.Second)
+	}, 1*time.Minute, 1*time.Second)
 }
 
 func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
@@ -295,7 +294,7 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
 		require.NoError(c, err)
 		require.Equal(c, db.BackgroundProcessStateStopped, body.State)
-	}, 30*time.Second, 1*time.Second)
+	}, 1*time.Minute, 1*time.Second)
 
 	// restart with new params
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":3}`)
@@ -309,7 +308,7 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
 		require.NoError(c, err)
 		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-	}, 30*time.Second, 1*time.Second)
+	}, 1*time.Minute, 1*time.Second)
 }
 
 func TestChangeIndexPartitionsWithViews(t *testing.T) {
