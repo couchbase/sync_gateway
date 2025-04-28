@@ -1,6 +1,7 @@
 module github.com/couchbase/sync_gateway
 
 go 1.23.0
+toolchain go1.24.1
 
 require (
 	dario.cat/mergo v1.0.0
@@ -19,7 +20,7 @@ require (
 	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78
 	github.com/elastic/gosigar v0.14.3
 	github.com/felixge/fgprof v0.9.5
-	github.com/go-jose/go-jose/v4 v4.0.5
+	github.com/go-jose/go-jose/v4 v4.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/json-iterator/go v1.1.12
