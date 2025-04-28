@@ -124,12 +124,9 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 		return err
 	}
 
-	// disassociate with request context lifespan for background goroutines
-	backgroundCtx := context.WithoutCancel(ctx)
-
 	if b.isClusterAware() {
 		b.backgroundManagerStatusUpdateWaitGroup.Add(1)
-		go func(ctx context.Context, terminator *base.SafeTerminator) {
+		go func(terminator *base.SafeTerminator) {
 			defer b.backgroundManagerStatusUpdateWaitGroup.Done()
 			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 			for {
@@ -144,10 +141,10 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 					return
 				}
 			}
-		}(backgroundCtx, b.terminator)
+		}(b.terminator)
 	}
 
-	go func(ctx context.Context) {
+	go func() {
 		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, b.terminator)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Error: %v", err)
@@ -176,7 +173,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 			// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
 			_ = b.clusterAwareOptions.metadataStore.Delete(b.clusterAwareOptions.HeartbeatDocID())
 		}
-	}(backgroundCtx)
+	}()
 
 	if b.isClusterAware() {
 		err := b.UpdateStatusClusterAware(ctx)
