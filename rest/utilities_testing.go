@@ -2678,15 +2678,19 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		BucketConfig: BucketConfig{
 			Bucket: base.Ptr(rt.Bucket().GetName()),
 		},
-		Index: &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
-		},
 		EnableXattrs: base.Ptr(base.TestUseXattrs()),
 	}
-	// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
-	if !base.UnitTestUrlIsWalrus() {
-		config.UseViews = base.Ptr(base.TestsDisableGSI())
+	if base.TestsDisableGSI() {
+		// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
+		if !base.UnitTestUrlIsWalrus() {
+			config.UseViews = base.Ptr(true)
+		}
+	} else {
+		config.Index = &IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		}
 	}
+
 	// Setup scopes.
 	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
 		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))

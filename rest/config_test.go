@@ -991,9 +991,6 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 			},
 			EnableXattrs: &xattrs,
 			UseViews:     base.Ptr(base.TestsDisableGSI()),
-			Index: &IndexConfig{
-				NumReplicas: base.Ptr(uint(0)),
-			},
 		},
 		"db2": {
 			BucketConfig: BucketConfig{
@@ -1004,9 +1001,6 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 			},
 			EnableXattrs: &xattrs,
 			UseViews:     base.Ptr(base.TestsDisableGSI()),
-			Index: &IndexConfig{
-				NumReplicas: base.Ptr(uint(0)),
-			},
 		},
 		"db3": {
 			BucketConfig: BucketConfig{
@@ -1017,17 +1011,17 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 			},
 			EnableXattrs: &xattrs,
 			UseViews:     base.Ptr(base.TestsDisableGSI()),
-			Index: &IndexConfig{
-				NumReplicas: base.Ptr(uint(0)),
-			},
 		},
 	}
 
-	require.Nil(t, SetupAndValidateDatabases(ctx, databases), "Unexpected error while validating databases")
+	require.NoError(t, SetupAndValidateDatabases(ctx, databases), "Unexpected error while validating databases")
 
 	sc := NewServerContext(ctx, config, false)
 	defer sc.Close(ctx)
 	for _, dbConfig := range databases {
+		if !base.TestsDisableGSI() {
+			dbConfig.Index = &IndexConfig{NumReplicas: base.Ptr(uint(0))}
+		}
 		_, err := sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: *dbConfig})
 		require.NoError(t, err, "Couldn't add database from config")
 	}

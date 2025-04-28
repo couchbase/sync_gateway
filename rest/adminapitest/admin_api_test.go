@@ -1385,14 +1385,17 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 	defer rt.Close()
 
 	numOfDocs := 1000
-	for i := 0; i < numOfDocs; i++ {
+	// gsi is slower than views, so update the number of documents for views so stopping the resync will not complete
+	if base.TestsDisableGSI() {
+		numOfDocs = 5000
+	}
+	for i := range numOfDocs {
 		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
-	err := rt.WaitForCondition(func() bool {
-		return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == numOfDocs
-	})
-	assert.NoError(t, err)
+	rt.WaitForPendingChanges()
+
+	require.Equal(t, int64(numOfDocs), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	rt.TakeDbOffline()
 
@@ -1405,8 +1408,8 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
 
-	syncFnCount := int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
-	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
+	// make sure resync stopped before it completed
+	require.Less(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), numOfDocs*2)
 }
 
 // Single threaded bring DB online
@@ -2898,9 +2901,9 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
 
-	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
-		`{"bucket": "`+tb2.GetName()+`", "num_index_replicas": 0, "unsupported": {"disable_clean_skipped_query": true}}`,
-	)
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "unsupported": {"disable_clean_skipped_query": true}}`, tb2.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+	))
 	resp.RequireStatus(http.StatusCreated)
 
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/_config?include_runtime=true", "")

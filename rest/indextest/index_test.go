@@ -872,12 +872,16 @@ func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, import
 		BucketConfig: rest.BucketConfig{
 			Bucket: &bucketName,
 		},
-		Index: &rest.IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
-		},
 		EnableXattrs: &enableXattrs,
 		Scopes:       scopesConfig,
 		AutoImport:   false, // disable import to streamline index tests and avoid teardown races
+	}
+	if base.TestsDisableGSI() {
+		dbConfig.UseViews = base.Ptr(true)
+	} else {
+		dbConfig.Index = &rest.IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		}
 	}
 	return dbConfig
 }
@@ -927,6 +931,9 @@ func TestPartitionedIndexes(t *testing.T) {
 	}
 	if !base.TestUseXattrs() {
 		t.Skip("Partitioned indexes are only supported with non xattr indexes")
+	}
+	if base.TestsDisableGSI() {
+		t.Skip("Partitioned indexes are not supported with views")
 	}
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,

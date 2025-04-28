@@ -1856,21 +1856,15 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 		db2 = "db2"
 		db1 = "db1"
 	)
-	resp := rt.SendAdminRequest(http.MethodPut, "/"+db2+"/", fmt.Sprintf(`{
-				"bucket": "%s",
-				"use_views": %t,
-				"num_index_replicas": 0
-	}`, tb.GetName(), base.TestsDisableGSI()))
-	rest.RequireStatus(t, resp, http.StatusCreated)
+	db2Config := rt.NewDbConfig()
+	db2Config.Bucket = base.Ptr(tb.GetName())
+	rest.RequireStatus(t, rt.CreateDatabase(db2, db2Config), http.StatusCreated)
 
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
-	resp = rt.SendAdminRequest(http.MethodPut, "/"+db1+"/", fmt.Sprintf(`{
-				"bucket": "%s",
-				"use_views": %t,
-				"num_index_replicas": 0
-	}`, tb2.GetName(), base.TestsDisableGSI()))
-	rest.RequireStatus(t, resp, http.StatusCreated)
+	db1Config := rt.NewDbConfig()
+	db1Config.Bucket = base.Ptr(tb2.GetName())
+	rest.RequireStatus(t, rt.CreateDatabase(db1, db1Config), http.StatusCreated)
 
 	rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 	rt.WaitForReplicationStatusForDB("{{.db1}}", "repl1", db.ReplicationStateRunning)
@@ -1886,7 +1880,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	require.NoError(t, err)
 
 	// Force DB reload by modifying config
-	resp = rt.SendAdminRequest(http.MethodPost, "/"+db1+"/_config", `{"import_docs": false}`)
+	resp := rt.SendAdminRequest(http.MethodPost, "/"+db1+"/_config", `{"import_docs": false}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// If CE, recreate the replication
