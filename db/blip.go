@@ -55,7 +55,6 @@ func NewSGBlipContextWithProtocols(ctx context.Context, id string, origin []stri
 	var err error
 	if id == "" {
 		bc, err = blip.NewContext(opts)
-		fmt.Printf("HONK base.FormatBlipContextID(bc.ID) %s\n", base.FormatBlipContextID(bc.ID))
 		ctx = base.CorrelationIDLogCtx(ctx, base.FormatBlipContextID(bc.ID))
 	} else {
 		bc, err = blip.NewContextCustomID(id, opts)
