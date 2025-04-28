@@ -278,14 +278,15 @@ func (h *handler) handleGetIndexInit() error {
 }
 
 type PostIndexInitRequest struct {
-	NumPartitions *uint32 `json:"num_partitions"`
+	NumPartitions            *uint32 `json:"num_partitions"`
+	SeparatePrincipalIndexes *bool   `json:"separate_principal_indexes"`
 }
 
 func (req PostIndexInitRequest) Validate() error {
-	if req.NumPartitions == nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions is required")
+	if req.NumPartitions == nil && req.SeparatePrincipalIndexes == nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "at least one of num_partitions or separate_principal_indexes is required")
 	}
-	if *req.NumPartitions < 1 {
+	if req.NumPartitions != nil && *req.NumPartitions < 1 {
 		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions must be greater than 0")
 	}
 	return nil
@@ -321,7 +322,7 @@ func (h *handler) handlePostIndexInit() error {
 	}
 
 	currentDbConfig := h.server.GetDatabaseConfig(h.db.Name)
-	if currentDbConfig.NumIndexPartitions() == *req.NumPartitions {
+	if req.NumPartitions != nil && currentDbConfig.NumIndexPartitions() == *req.NumPartitions {
 		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions is already %d", *req.NumPartitions)
 	}
 
@@ -350,7 +351,10 @@ func (h *handler) handlePostIndexInit() error {
 		}
 	}
 
-	useLegacySyncDocsIndex := h.db.UseLegacySyncDocsIndex() // TODO: CBG-4607: Change when this API is updated to support the new principal indexes
+	useLegacySyncDocsIndex := h.db.UseLegacySyncDocsIndex()
+	if req.SeparatePrincipalIndexes != nil {
+		useLegacySyncDocsIndex = !(*req.SeparatePrincipalIndexes)
+	}
 	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex)
 	if err != nil {
 		return err

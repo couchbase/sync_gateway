@@ -191,7 +191,7 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 		{
 			name:          "empty num_partitions",
 			body:          `{}`,
-			expectedError: `num_partitions is required`,
+			expectedError: `at least one of num_partitions or separate_principal_indexes is required" does not contain "num_partitions is required`,
 		},
 		{
 			name:          "invalid num_partitions",
@@ -320,4 +320,66 @@ func TestChangeIndexPartitionsWithViews(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "_index_init is a GSI-only feature and is not supported when using views")
+}
+
+func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+		t.Skip("This test only works against Couchbase Server with GSI enabled")
+	}
+
+	indexNameSuffix := "_1"
+	if base.TestUseXattrs() {
+		indexNameSuffix = "_x1"
+	}
+
+	// requires index init
+	base.LongRunningTest(t)
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	n1qlStore, ok := base.AsN1QLStore(rt.GetDatabase().MetadataStore)
+	require.True(t, ok)
+	indexes, err := n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	assert.Contains(t, indexes, "sg_syncDocs"+indexNameSuffix)
+	assert.NotContains(t, indexes, "sg_users"+indexNameSuffix)
+	assert.NotContains(t, indexes, "sg_roles"+indexNameSuffix)
+
+	// ensure we have legacy sync docs index running in the test by default - this may need to be explicitly configured in future changes?
+	require.True(t, rt.GetDatabase().UseLegacySyncDocsIndex())
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"separate_principal_indexes":true}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// wait for completion
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
+		rest.AssertStatus(t, resp, http.StatusOK)
+		var body db.AsyncIndexInitManagerResponse
+		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+		require.NoError(c, err)
+		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
+	}, 1*time.Minute, 1*time.Second)
+
+	indexes, err = n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	assert.Contains(t, indexes, "sg_syncDocs"+indexNameSuffix)
+	assert.Contains(t, indexes, "sg_users"+indexNameSuffix)
+	assert.Contains(t, indexes, "sg_roles"+indexNameSuffix)
+
+	// CBG-4608 cleanup old indexes
+	//resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
+	//rest.RequireStatus(t, resp, http.StatusOK)
+	//var body rest.PostUpgradeResponse
+	//err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+	//require.NoError(t, err)
+	//require.Lenf(t, body.Result, 1, "expected one database in post upgrade response")
+	//require.Lenf(t, body.Result[dbName].RemovedIndexes, 1, "expected one syncDocs index to be removed")
+
+	//indexes, err = n1qlStore.GetIndexes()
+	//require.NoError(t, err)
+	//assert.NotContains(t, indexes, "sg_syncDocs"+indexNameSuffix)
+	//assert.Contains(t, indexes, "sg_users"+indexNameSuffix)
+	//assert.Contains(t, indexes, "sg_roles"+indexNameSuffix)
 }
