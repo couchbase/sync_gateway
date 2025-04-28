@@ -388,3 +388,52 @@ func TestIsIndexerError(t *testing.T) {
 	err = errors.New("err:[5000]  MCResponse status=KEY_ENOENT, opcode=0x89, opaque=0")
 	assert.True(t, isIndexerError(err))
 }
+
+func TestSgIndexParamsFromName(t *testing.T) {
+	tests := []struct {
+		idxName            string
+		expectedName       string
+		expectedXattrs     bool
+		expectedVersion    int64
+		expectedPartitions uint32
+	}{
+		{
+			idxName:            "sg_roleAccess_1",
+			expectedName:       "roleAccess",
+			expectedXattrs:     false,
+			expectedVersion:    1,
+			expectedPartitions: 1,
+		},
+		{
+			idxName:            "sg_roleAccess_x1",
+			expectedName:       "roleAccess",
+			expectedXattrs:     true,
+			expectedVersion:    1,
+			expectedPartitions: 1,
+		},
+		{
+			idxName:            "sg_roleAccess_x1_p2",
+			expectedName:       "roleAccess",
+			expectedXattrs:     true,
+			expectedVersion:    1,
+			expectedPartitions: 2,
+		},
+		{
+			idxName:            "sg_roleAccess_1_p2",
+			expectedName:       "roleAccess",
+			expectedXattrs:     false,
+			expectedVersion:    1,
+			expectedPartitions: 2,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.idxName, func(t *testing.T) {
+			gotName, gotXattrs, gotVersion, gotPartitions, err := sgIndexParamsFromName(test.idxName)
+			require.NoError(t, err)
+			assert.Equalf(t, test.expectedName, gotName, "sgIndexParamsFromName(%v)", test.idxName)
+			assert.Equalf(t, test.expectedXattrs, gotXattrs, "sgIndexParamsFromName(%v)", test.idxName)
+			assert.Equalf(t, test.expectedVersion, gotVersion, "sgIndexParamsFromName(%v)", test.idxName)
+			assert.Equalf(t, test.expectedPartitions, gotPartitions, "sgIndexParamsFromName(%v)", test.idxName)
+		})
+	}
+}

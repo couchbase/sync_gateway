@@ -14,6 +14,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -35,6 +37,39 @@ const (
 
 	DefaultNumIndexPartitions uint32 = 1
 )
+
+// sgIndexRegex matches and captures subgroups of SG Index names. Examples:
+//   - sg_roleAccess_1     // normal version 1 index
+//   - sg_roleAccess_x1    // xattr version 1 index
+//   - sg_roleAccess_x1_p2 // xattr version 1 index with 2 partitions
+var sgIndexRegex = regexp.MustCompile(`^sg_([a-zA-Z]+)_(x)?(\d+)(?:_p(\d+))?$`)
+
+// sgIndexParamsFromName parses the index name and returns the index name, xattrs, version, and partitions.
+func sgIndexParamsFromName(idxName string) (name string, xattrs bool, version int, partitions uint32, err error) {
+	subMatches := sgIndexRegex.FindStringSubmatch(idxName)
+	if len(subMatches) == 0 {
+		return "", false, 0, 0, fmt.Errorf("index %q was not a recognizable Sync Gateway index name", idxName)
+	}
+	name = subMatches[1]
+	if subMatches[2] == "x" {
+		xattrs = true
+	}
+	versionInt64, err := strconv.ParseInt(subMatches[3], 10, 64)
+	if err != nil {
+		return "", false, 0, 0, fmt.Errorf("index %q had an invalid version number %q: %w", idxName, subMatches[3], err)
+	}
+	version = int(versionInt64)
+	if subMatches[4] != "" {
+		partitionsUint64, err := strconv.ParseUint(subMatches[4], 10, 32)
+		if err != nil {
+			return "", false, 0, 0, fmt.Errorf("index %q had an invalid partition number %q: %w", idxName, subMatches[4], err)
+		}
+		partitions = uint32(partitionsUint64)
+	} else {
+		partitions = DefaultNumIndexPartitions
+	}
+	return name, xattrs, version, partitions, nil
+}
 
 // Index and query definitions use syncToken ($sync) to represent the location of sync gateway's metadata.
 // When running with xattrs, that gets replaced with META().xattrs._sync (or META(bucketname).xattrs._sync for query).
@@ -185,6 +220,7 @@ var (
 )
 
 var sgIndexes map[SGIndexType]SGIndex
+var sgIndexesBySimpleName map[string]SGIndex
 
 // Initialize index definitions
 func init() {
@@ -207,6 +243,7 @@ func init() {
 			sgIndex.readinessQuery = fmt.Sprintf(readinessQuery, base.KeyspaceQueryToken, base.KeyspaceQueryAlias)
 		}
 
+		sgIndexesBySimpleName[indexNames[i]] = sgIndex
 		sgIndexes[i] = sgIndex
 	}
 }
@@ -433,33 +470,46 @@ func isIndexerError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "[5000]")
 }
 
-// Iterates over the index set, removing obsolete indexes:
+// Finds and removes obsolete indexes based on current database configuration:
 //   - indexes based on the inverse value of xattrs being used by the database
 //   - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
 //   - indexes with a different number of partitions than the current database configuration
-func removeObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, numIndexPartitions uint32, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
+func removeObsoleteIndexes(ctx context.Context, n1qlStore base.N1QLStore, previewOnly bool, currentUseXattrs bool, useViews bool, currentNumIndexPartitions uint32, indexMap map[string]SGIndex) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
+
+	indexes, err := n1qlStore.GetIndexes()
+	if err != nil {
+		return nil, err
+	}
 
 	// Build set of candidates for cleanup
 	removalCandidates := make([]string, 0)
-	numPartitions := DefaultNumIndexPartitions // obsolete indexes is always partitions 1, greater than 1 needs to be removed manually
-	for _, sgIndex := range indexMap {
-		// Current version, opposite xattr setting
-		removalCandidates = append(removalCandidates, sgIndex.fullIndexName(!useXattrs, numPartitions))
-		// If using views we can remove current version for xattr setting too
-		if useViews {
-			removalCandidates = append(removalCandidates, sgIndex.fullIndexName(useXattrs, numPartitions))
+	for _, indexName := range indexes {
+		// filter obvious non-SG indexes before running regexp
+		if !strings.HasPrefix(indexName, "sg_") {
+			continue
 		}
-		// Older versions, both xattr and non-xattr
-		for _, prevVersion := range sgIndex.previousVersions {
-			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, true, numPartitions))
-			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, false, numPartitions))
+
+		simpleName, xattrs, version, partitions, err := sgIndexParamsFromName(indexName)
+		if err != nil {
+			return nil, err
+		}
+
+		// FIXME: This approach introduces another edge case where the running database may share indexes with another
+		// database using a different configuration and can result in invalid removal of indexes that are actively being used.
+		// (non-xattr has always had this bug even with the current implementation, but num_partitions is more likely to be different across databases)
+		// The only way I can think of fixing this is to push the `GetIndexes()` and cleanup logic above to ServerContext and make it operate on all databases simultaneously.
+		if useViews ||
+			xattrs != currentUseXattrs ||
+			version < indexMap[simpleName].version ||
+			partitions != currentNumIndexPartitions {
+			removalCandidates = append(removalCandidates, indexName)
 		}
 	}
 
 	// Attempt removal of candidates, adding to set of removedIndexes when found
 	for _, indexName := range removalCandidates {
-		removed, err := removeObsoleteIndex(ctx, bucket, indexName, previewOnly)
+		removed, err := removeObsoleteIndex(ctx, n1qlStore, indexName, previewOnly)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unexpected error when removing index %q: %s", indexName, err)
 		}

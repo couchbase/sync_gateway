@@ -475,6 +475,7 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 
 	postUpgradeResults = make(map[string]PostUpgradeDatabaseResult, len(sc.databases_))
 
+	// FIXME: For partitions cleanup - this loop should be removed and instead this function should query all database indexes simultaneously to build the list of indexes to remove.
 	for name, database := range sc.databases_ {
 		// View cleanup
 		removedDDocs, _ := database.RemoveObsoleteDesignDocs(ctx, preview)

@@ -758,6 +758,7 @@ func (dbCtx *DatabaseContext) getDataStores() []sgbucket.DataStore {
 }
 
 // Removes previous versions of Sync Gateway's indexes found on the server. Returns a map of indexes removed by collection name.
+// FIXME: This does not take into account indexes being used by other databases on the same bucket (e.g. metadata indexes)
 func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) ([]string, error) {
 
 	if !dbCtx.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql) {
@@ -774,7 +775,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 			errs = errs.Append(errors.New(err))
 			continue
 		}
-		collectionRemovedIndexes, err := removeObsoleteIndexes(ctx, n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), dbCtx.numIndexPartitions(), sgIndexes)
+		collectionRemovedIndexes, err := removeObsoleteIndexes(ctx, n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), dbCtx.numIndexPartitions(), sgIndexesBySimpleName)
 		if err != nil {
 			errs = errs.Append(err)
 			continue
