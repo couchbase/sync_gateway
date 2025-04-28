@@ -1431,6 +1431,25 @@ func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]*blip.Mess
 	return messages
 }
 
+// GetAllMessagesSummary returns a pretty-printed set of messages that have been processed by the replicator. This is an expensive operation and should be used with caution.
+func (btr *BlipTesterReplicator) GetAllMessagesSummary() string {
+	output := strings.Builder{}
+	messages := btr.GetMessages()
+	output.WriteString("{")
+	for i := 1; i <= len(messages); i++ {
+		if i == 0 {
+			output.WriteString("\n")
+		}
+		msg, ok := messages[blip.MessageNumber(i)]
+		require.True(btr.TB(), ok, "Message %d not found in messages map", i)
+		body, err := msg.Body()
+		require.NoError(btr.TB(), err)
+		output.WriteString(fmt.Sprintf("\t%s:{Properties:%s Body: %s}\n", msg, msg.Properties, body))
+	}
+	output.WriteString("}")
+	return output.String()
+}
+
 // WaitForMessage blocks until the given message serial number has been stored by the replicator, and returns the message when found. The test will fail if message is not found after 10 seconds.
 func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message) {
 	require.EventuallyWithT(btr.TB(), func(c *assert.CollectT) {
