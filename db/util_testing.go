@@ -375,7 +375,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			UseXattrs:                  base.TestUseXattrs(),
 			NumReplicas:                0,
 			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
-			LegacySyncDocsIndex:        false, // Change in CBG-4614
+			LegacySyncDocsIndex:        false,
 			MetadataIndexes:            IndexesWithoutMetadata,
 			NumPartitions:              DefaultNumIndexPartitions,
 		}
