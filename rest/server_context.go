@@ -678,10 +678,25 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// If using a walrus bucket, force use of views
-	useViews := base.ValDefault(config.UseViews, false)
-	if !useViews && spec.IsWalrusBucket() {
+	contextOptions.UseViews = base.ValDefault(config.UseViews, false)
+	if !contextOptions.UseViews && spec.IsWalrusBucket() {
 		base.WarnfCtx(ctx, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
-		useViews = true
+		contextOptions.UseViews = true
+	}
+
+	// For now, we'll continue writing metadata into `_default`.`_default`, for a few reasons:
+	// - we know it is supported in all server versions
+	// - it cannot be dropped by customers, we always know it exists
+	// - it simplifies RBAC in terms of not having to create a metadata collection
+	// Once system scope/collection is well-supported, and we have a migration path, we can consider using those.
+	// contextOptions.MetadataStore = bucket.NamedDataStore(base.ScopeAndCollectionName{base.MobileMetadataScope, base.MobileMetadataCollection})
+	contextOptions.MetadataStore = bucket.DefaultDataStore()
+	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
+	if err != nil {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidDatastore))
+		}
+		return nil, err
 	}
 
 	hasDefaultCollection := false
@@ -707,7 +722,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				}
 
 				// Init views now. If we're using GSI we'll use DatabaseInitManager to handle creation later.
-				if useViews {
+				if contextOptions.UseViews {
 					if err := db.InitializeViews(ctx, dataStore); err != nil {
 						return nil, err
 					}
@@ -744,11 +759,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				collectionsRequiringResync = append(collectionsRequiringResync, scName)
 			}
 		}
-		if useViews {
-			if err := db.InitializeViews(ctx, ds); err != nil {
-				return nil, err
-			}
-		}
 	}
 
 	var (
@@ -756,13 +766,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		isAsync        bool // blocks reading dbInitDoneChan if false
 	)
 	startOffline := base.ValDefault(config.StartOffline, false)
-	useLegacySyncDocsIndex := false // decide in CBG-4615
-	if !useViews {
+	if !contextOptions.UseViews {
 		// Initialize any required indexes
 		if gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql); !gsiSupported {
 			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
+		metadataStore, ok := contextOptions.MetadataStore.(base.N1QLStore)
+		if !ok {
+			return nil, errors.New("Bucket %s is not %T and does not support N1QL.")
+		}
+		contextOptions.UseLegacySyncDocsIndex = !db.ShouldUsePrincipalIndexes(ctx, metadataStore, config.UseXattrs())
 		if sc.DatabaseInitManager == nil {
 			base.AssertfCtx(ctx, "DatabaseInitManager should always be initialized")
 			return nil, errors.New("DatabaseInitManager not initialized")
@@ -772,7 +786,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		isAsync = startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
 
 		// Initialize indexes using DatabaseInitManager.
-		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, useLegacySyncDocsIndex)
+		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, contextOptions.UseLegacySyncDocsIndex)
 		if err != nil {
 			if options.loadFromBucket {
 				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitializationIndexError))
@@ -785,9 +799,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if err != nil {
 		return nil, err
 	}
-
-	contextOptions.UseViews = useViews
-	contextOptions.UseLegacySyncDocsIndex = useLegacySyncDocsIndex
 
 	javascriptTimeout := getJavascriptTimeout(&config.DbConfig)
 
@@ -833,21 +844,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				},
 			},
 		}
-	}
-
-	// For now, we'll continue writing metadata into `_default`.`_default`, for a few reasons:
-	// - we know it is supported in all server versions
-	// - it cannot be dropped by customers, we always know it exists
-	// - it simplifies RBAC in terms of not having to create a metadata collection
-	// Once system scope/collection is well-supported, and we have a migration path, we can consider using those.
-	// contextOptions.MetadataStore = bucket.NamedDataStore(base.ScopeAndCollectionName{base.MobileMetadataScope, base.MobileMetadataCollection})
-	contextOptions.MetadataStore = bucket.DefaultDataStore()
-	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
-	if err != nil {
-		if options.loadFromBucket {
-			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidDatastore))
-		}
-		return nil, err
 	}
 
 	// If identified as default database, use metadataID of "" so legacy non namespaced docs are used

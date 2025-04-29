@@ -14,6 +14,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -546,4 +548,46 @@ func GetIndexesName(options InitializeIndexOptions) []string {
 		}
 	}
 	return indexesName
+}
+
+// ShouldUseLegacySyncDocsIndex returns true if   returns the principal indexes for the given collection.
+func ShouldUsePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) bool {
+	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection, useXattrs)
+	if err != nil {
+		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs indexe", err)
+		return false
+	}
+	return shouldUsePrincipalIndexes(onlinePrincipalIndexes)
+}
+
+// shouldUsePrincipalIndexes returns true users and roles index is available for use.
+func shouldUsePrincipalIndexes(onlineIndexes []SGIndexType) bool {
+	// if no syncDocs index, either user and role indexes are available or they need to be built
+	if !slices.Contains(onlineIndexes, IndexSyncDocs) {
+		return true
+	}
+	// if either user or role index is not available, we need to use syncDocs index
+	return slices.Contains(onlineIndexes, IndexUser) && slices.Contains(onlineIndexes, IndexRole)
+}
+
+// GetOnlinePrincipalIndexes returns the principal indexes that exist and are online for a given collection. This code runs without N1QL retries and will return an error quickly in the case of a retryable N1QL failure. Does not return an error if no indexes are found.
+func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) ([]SGIndexType, error) {
+	possibleIndexes := make(map[string]SGIndexType)
+	for sgIndexType, sgIndex := range sgIndexes {
+		if !sgIndex.isPrincipalOnly() {
+			continue
+		}
+		possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
+	}
+	meta, err := base.GetIndexesMeta(ctx, collection, slices.Collect(maps.Keys(possibleIndexes)))
+	if err != nil {
+		return nil, err
+	}
+	var onlineIndexes []SGIndexType
+	for _, index := range meta {
+		if index.State == base.IndexStateOnline {
+			onlineIndexes = append(onlineIndexes, possibleIndexes[index.Name])
+		}
+	}
+	return onlineIndexes, nil
 }

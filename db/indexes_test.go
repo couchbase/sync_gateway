@@ -341,3 +341,63 @@ func TestIsIndexerError(t *testing.T) {
 	err = errors.New("err:[5000]  MCResponse status=KEY_ENOENT, opcode=0x89, opaque=0")
 	assert.True(t, isIndexerError(err))
 }
+
+func TestShouldUsePrincipalIndexes(t *testing.T) {
+	testCases := []struct {
+		name                      string
+		indexes                   []SGIndexType
+		shouldUsePrincipalIndexes bool
+	}{
+		{
+			name:                      "no indexes",
+			indexes:                   []SGIndexType{},
+			shouldUsePrincipalIndexes: true,
+		},
+		{
+			name:                      "syncDocs only",
+			indexes:                   []SGIndexType{IndexSyncDocs},
+			shouldUsePrincipalIndexes: false,
+		},
+		{
+			name:                      "user only",
+			indexes:                   []SGIndexType{IndexUser},
+			shouldUsePrincipalIndexes: true,
+		},
+		{
+			name:                      "role only",
+			indexes:                   []SGIndexType{IndexRole},
+			shouldUsePrincipalIndexes: true,
+		},
+		{
+			name:                      "user and role",
+			indexes:                   []SGIndexType{IndexUser, IndexRole},
+			shouldUsePrincipalIndexes: true,
+		},
+		{
+			name:                      "syncDocs and role",
+			indexes:                   []SGIndexType{IndexSyncDocs, IndexRole},
+			shouldUsePrincipalIndexes: false,
+		},
+		{
+			name:                      "syncDocs and user",
+			indexes:                   []SGIndexType{IndexSyncDocs, IndexUser},
+			shouldUsePrincipalIndexes: false,
+		},
+		{
+			name:                      "syncDocs, user, role",
+			indexes:                   []SGIndexType{IndexSyncDocs, IndexUser, IndexRole},
+			shouldUsePrincipalIndexes: true,
+		},
+		{
+			name:                      "syncDocs, user, role, extraenous", // this would be a programming bug to include an extra index
+			indexes:                   []SGIndexType{IndexSyncDocs, IndexUser, IndexRole, IndexAccess},
+			shouldUsePrincipalIndexes: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			shouldUse := shouldUsePrincipalIndexes(testCase.indexes)
+			assert.Equal(t, testCase.shouldUsePrincipalIndexes, shouldUse)
+		})
+	}
+}

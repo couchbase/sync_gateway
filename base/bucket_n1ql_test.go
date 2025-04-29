@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package base
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -41,6 +40,10 @@ func TestN1qlQuery(t *testing.T) {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
+	defer func() {
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
+	}()
+
 	// Write a few docs to the bucket to query
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("doc%d", i)
@@ -54,9 +57,7 @@ func TestN1qlQuery(t *testing.T) {
 
 	indexExpression := "val"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_value", indexExpression, "", testN1qlOptions)
-	if err != nil && err != ErrAlreadyExists {
-		t.Errorf("Error creating index: %s", err)
-	}
+	require.NoError(t, err)
 
 	// Wait for index readiness
 	onlineErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, WaitForIndexesDefault)
@@ -65,23 +66,37 @@ func TestN1qlQuery(t *testing.T) {
 	}
 
 	// Check index state
-	exists, state, stateErr := n1qlStore.GetIndexMeta(ctx, "testIndex_value")
-	assert.NoError(t, stateErr, "Error validating index state")
-	assert.True(t, state != nil, "No state returned for index")
-	assert.Equal(t, "online", state.State)
+	exists, meta, stateErr := n1qlStore.GetIndexMeta(ctx, "testIndex_value")
+	require.NoError(t, stateErr, "Error validating index state")
+	require.NotNil(t, meta, "No state returned for index")
+	assert.Equal(t, IndexStateOnline, meta.State)
 	assert.True(t, exists)
+	expectedTestIndexMeta := IndexMeta{
+		Bucket:    bucket.GetName(),
+		IndexKey:  []string{"`val`"},
+		IsPrimary: false,
+		Keyspace:  dataStore.CollectionName(),
+		Name:      "testIndex_value",
+		Namespace: "default",
+		Scope:     dataStore.ScopeName(),
+		State:     IndexStateOnline,
+		Type:      "gsi",
+	}
+	if !TestsUseNamedCollections() {
+		expectedTestIndexMeta.Bucket = ""                 // for default collection, returns empty string and bucket name in Keyspace
+		expectedTestIndexMeta.Scope = ""                  // for default collection, returns bucket name rather than dataStore.ScopeName()
+		expectedTestIndexMeta.Keyspace = bucket.GetName() // for default collection, returns bucket name rather than dataStore.CollectionName()
+	}
+	require.Equal(t, expectedTestIndexMeta, *meta)
 
-	// Defer index teardown
-	defer func() {
-		// Drop the index
-		err = n1qlStore.DropIndex(ctx, "testIndex_value")
-		if err != nil {
-			t.Fatalf("Error dropping index: %s", err)
-		}
-	}()
+	metas, err := GetIndexesMeta(ctx, n1qlStore, []string{"testIndex_value"})
+	require.NoError(t, err)
+	require.Len(t, metas, 1)
+	require.Equal(t, expectedTestIndexMeta, metas["testIndex_value"])
 
-	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, WaitForIndexesDefault)
-	require.NoError(t, readyErr, "Error validating index online")
+	metas, err = GetIndexesMeta(ctx, n1qlStore, []string{"does_not_exist"})
+	require.NoError(t, err)
+	require.Len(t, metas, 0)
 
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", KeyspaceQueryToken)
@@ -131,6 +146,34 @@ func TestN1qlQuery(t *testing.T) {
 
 	assert.NoError(t, queryCloseErr, "Unexpected error closing query results")
 	assert.Equal(t, 0, count)
+
+	// test creation of a primary index
+	primaryIdx := t.Name() + "_primary"
+	require.NoError(t, n1qlStore.CreatePrimaryIndex(ctx, primaryIdx, nil))
+
+	expectedPrimaryIndexMeta := IndexMeta{
+		Bucket:    bucket.GetName(),
+		IndexKey:  []string{},
+		IsPrimary: true,
+		Keyspace:  dataStore.CollectionName(),
+		Name:      primaryIdx,
+		Namespace: "default",
+		Scope:     dataStore.ScopeName(),
+		State:     IndexStateOnline,
+		Type:      "gsi",
+	}
+	if !TestsUseNamedCollections() {
+		expectedPrimaryIndexMeta.Bucket = ""                 // for default collection, returns empty string and bucket name in Keyspace
+		expectedPrimaryIndexMeta.Scope = ""                  // for default collection, returns bucket name rather than dataStore.ScopeName()
+		expectedPrimaryIndexMeta.Keyspace = bucket.GetName() // for default collection, returns bucket name rather than dataStore.CollectionName()
+	}
+	metas, err = GetIndexesMeta(ctx, n1qlStore, []string{primaryIdx, "testIndex_value"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]IndexMeta{
+		primaryIdx:        expectedPrimaryIndexMeta,
+		"testIndex_value": expectedTestIndexMeta,
+	}, metas)
+
 }
 
 func TestN1qlFilterExpression(t *testing.T) {
@@ -172,11 +215,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 	// Defer index teardown
 	defer func() {
-		// Drop the index
-		err = n1qlStore.DropIndex(ctx, "testIndex_filtered_value")
-		if err != nil {
-			t.Fatalf("Error dropping index: %s", err)
-		}
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
 	}()
 
 	// Query the index
@@ -243,18 +282,14 @@ func TestIndexMeta(t *testing.T) {
 
 	// Defer index teardown
 	defer func() {
-		// Drop the index
-		err = n1qlStore.DropIndex(ctx, "testIndex_value")
-		if err != nil {
-			t.Fatalf("Error dropping index: %s", err)
-		}
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
 	}()
 
 	// Check index state post-creation
 	exists, meta, err = n1qlStore.GetIndexMeta(ctx, "testIndex_value")
 	require.NoError(t, err, "Error retrieving index state")
 	assert.True(t, exists)
-	assert.Equal(t, "online", meta.State)
+	assert.Equal(t, IndexStateOnline, meta.State)
 }
 
 // Ensure that n1ql query errors are handled and returned (and don't result in panic etc)
@@ -297,11 +332,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 
 	// Defer index teardown
 	defer func() {
-		// Drop the index
-		err = n1qlStore.DropIndex(ctx, "testIndex_value_malformed")
-		if err != nil {
-			t.Fatalf("Error dropping index: %s", err)
-		}
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
 	}()
 
 	// Query with syntax error
@@ -350,6 +381,9 @@ func TestCreateAndDropIndex(t *testing.T) {
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
+	defer func() {
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
+	}()
 
 	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_sequence", createExpression, "", testN1qlOptions)
@@ -381,6 +415,9 @@ func TestCreateDuplicateIndex(t *testing.T) {
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
+	defer func() {
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
+	}()
 
 	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, "testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
@@ -449,9 +486,11 @@ func TestDeferredCreateIndex(t *testing.T) {
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
+	defer func() {
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
+	}()
 
 	indexName := "testIndexDeferred"
-	assert.NoError(t, tearDownTestIndex(ctx, n1qlStore, indexName), "Error in pre-test cleanup")
 
 	deferN1qlOptions := &N1qlIndexOptions{
 		NumReplica: 0,
@@ -463,20 +502,21 @@ func TestDeferredCreateIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
-
-	// Drop the index
-	defer func() {
-		err = n1qlStore.DropIndex(ctx, indexName)
-		if err != nil {
-			t.Fatalf("Error dropping index: %s", err)
-		}
-	}()
+	exists, meta, err := n1qlStore.GetIndexMeta(ctx, indexName)
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.Equal(t, "deferred", meta.State)
 
 	buildErr := buildIndexes(ctx, n1qlStore, []string{indexName})
 	assert.NoError(t, buildErr, "Error building indexes")
 
 	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{indexName}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
+
+	exists, meta, err = n1qlStore.GetIndexMeta(ctx, indexName)
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.Equal(t, IndexStateOnline, meta.State)
 
 }
 
@@ -495,11 +535,12 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
+	defer func() {
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
+	}()
 
 	deferredIndexName := "testIndexDeferred"
 	nonDeferredIndexName := "testIndexNonDeferred"
-	assert.NoError(t, tearDownTestIndex(ctx, n1qlStore, deferredIndexName), "Error in pre-test cleanup")
-	assert.NoError(t, tearDownTestIndex(ctx, n1qlStore, nonDeferredIndexName), "Error in pre-test cleanup")
 
 	deferN1qlOptions := &N1qlIndexOptions{
 		NumReplica: 0,
@@ -518,20 +559,6 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
-
-	// Drop the indexes
-	defer func() {
-		err = n1qlStore.DropIndex(ctx, deferredIndexName)
-		if err != nil {
-			t.Fatalf("Error dropping deferred index: %s", err)
-		}
-	}()
-	defer func() {
-		err = n1qlStore.DropIndex(ctx, nonDeferredIndexName)
-		if err != nil {
-			t.Fatalf("Error dropping non-deferred index: %s", err)
-		}
-	}()
 
 	buildErr := n1qlStore.BuildDeferredIndexes(TestCtx(t), []string{deferredIndexName, nonDeferredIndexName})
 	assert.NoError(t, buildErr, "Error building indexes")
@@ -600,21 +627,6 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 	}
 }
 
-func tearDownTestIndex(ctx context.Context, n1qlStore N1QLStore, indexName string) (err error) {
-
-	exists, _, err := n1qlStore.GetIndexMeta(ctx, indexName)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		return n1qlStore.DropIndex(ctx, indexName)
-	} else {
-		return nil
-	}
-
-}
-
 func TestWaitForBucketExistence(t *testing.T) {
 
 	if TestsDisableGSI() {
@@ -641,15 +653,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 	var options = &N1qlIndexOptions{NumReplica: 0}
 
 	go func() {
-		indexExists, _, err := getIndexMetaWithoutRetry(ctx, n1qlStore, indexName)
-		assert.NoError(t, err, "No error while trying to fetch the index metadata")
-
-		if indexExists {
-			err := n1qlStore.DropIndex(ctx, indexName)
-			assert.NoError(t, err, "Index should be removed from the bucket")
-		}
-
-		err = n1qlStore.CreateIndex(ctx, indexName, expression, filterExpression, options)
+		err := n1qlStore.CreateIndex(ctx, indexName, expression, filterExpression, options)
 		assert.NoError(t, err, "Index should be created in the bucket")
 	}()
 	assert.NoError(t, n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{indexName}, WaitForIndexesDefault))

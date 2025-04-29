@@ -350,7 +350,7 @@ func (h *handler) handlePostIndexInit() error {
 		}
 	}
 
-	useLegacySyncDocsIndex := true // TODO: CBG-4615: Change when this API is updated to support the new principal indexes
+	useLegacySyncDocsIndex := h.db.UseLegacySyncDocsIndex() // TODO: CBG-4607: Change when this API is updated to support the new principal indexes
 	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex)
 	if err != nil {
 		return err
