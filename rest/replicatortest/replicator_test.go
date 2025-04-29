@@ -1871,13 +1871,12 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	// Wait for document to replicate from db to db2 to confirm replication start
 	marker1 := "marker1"
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", db1, marker1), `{"prop":true}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.db1keyspace}}/"+marker1, `{"prop":true}`), http.StatusCreated)
 
-	err = rt.WaitForCondition(func() bool {
-		getResp := rt.SendAdminRequest("GET", "/"+db2+"/"+marker1, "")
-		return getResp.Code == http.StatusOK
-	})
-	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest("GET", "/{{.db2keyspace}}/"+marker1, "")
+		assert.Equal(c, http.StatusOK, resp.Code)
+	}, 5*time.Second, 100*time.Millisecond)
 
 	// Force DB reload by modifying config
 	resp := rt.SendAdminRequest(http.MethodPost, "/"+db1+"/_config", `{"import_docs": false}`)
@@ -1891,13 +1890,11 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	// Wait for second document to replicate to confirm replication restart
 	marker2 := "marker2"
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", db1, marker2), `{"prop":true}`), http.StatusCreated)
-	err = rt.WaitForCondition(func() bool {
-		getResp := rt.SendAdminRequest("GET", "/"+db2+"/"+marker2, "")
-		return getResp.Code == http.StatusOK
-	})
-	require.NoError(t, err)
-
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.db1keyspace}}/"+marker2, `{"prop":true}`), http.StatusCreated)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest("GET", "/{{.db2keyspace}}/"+marker2, "")
+		assert.Equal(c, http.StatusOK, resp.Code)
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {

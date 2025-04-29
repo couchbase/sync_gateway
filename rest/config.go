@@ -1120,9 +1120,6 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 	if dbConfig.Index != nil {
 		if dbConfig.Index.NumPartitions != nil {
-			if !dbConfig.useGSI() {
-				multiError = multiError.Append(fmt.Errorf("index.num_partitions is incompatible with use_views=true"))
-			}
 			if *dbConfig.Index.NumPartitions < 1 {
 				multiError = multiError.Append(fmt.Errorf("index.num_partitions must be greater than 0"))
 			} else if !dbConfig.UseXattrs() {
