@@ -34,7 +34,8 @@ const (
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
-func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelFunc) (*BlipSyncContext, error) {
+// NewBlipSyncContext creates a new BlipSyncContext for a given database and register the handlers. This does not make a connection.
+func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelFunc) (*BlipSyncContext, error) {
 	if ctxCancelFunc == nil {
 		return nil, errors.New("cancelCtxFunc is required")
 	}
@@ -46,7 +47,6 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 	if db.Options.MaxConcurrentRevs != nil {
 		maxInFlightRevs = *db.Options.MaxConcurrentRevs
 	}
-
 	bsc := &BlipSyncContext{
 		blipContext:             bc,
 		blipContextDb:           db,
@@ -76,7 +76,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 	// Register default handlers
 	bc.DefaultHandler = bsc.NotFoundHandler
 	bc.FatalErrorHandler = func(err error) {
-		base.InfofCtx(ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", contextID, err)
+		base.InfofCtx(ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", bc.ID, err)
 	}
 
 	// Register 2.x replicator handlers
@@ -84,7 +84,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		bsc.register(profile, handlerFn)
 	}
 
-	if db.Options.UnsupportedOptions.ConnectedClient {
+	if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ConnectedClient {
 		// Register Connected Client handlers
 		for profile, handlerFn := range kConnectedClientHandlersByProfile {
 			bsc.register(profile, handlerFn)

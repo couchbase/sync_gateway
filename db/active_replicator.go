@@ -204,12 +204,23 @@ func (ar *ActiveReplicator) GetStatus(ctx context.Context) *ReplicationStatus {
 	return status
 }
 
+// connect establishes a blip connection to a remote host.
 func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
+	ctx := base.CorrelationIDLogCtx(
+		arc.config.ActiveDB.AddDatabaseLogContext(base.NewNonCancelCtx().Ctx),
+		arc.config.ID+idSuffix)
+	if arc.config.RunAs != "" {
+		ctx = base.UserLogCtx(ctx, arc.config.RunAs, base.UserDomainSyncGateway, nil)
+	} else {
+		ctx = arc.config.ActiveDB.AddBucketUserLogContext(ctx)
+	}
+
+	cancelCtx, cancelFunc := context.WithCancel(context.WithoutCancel(ctx)) // separate cancel context from parent cancel context
+
 	var originPatterns []string // no origin headers for ISGR
-	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns, cancelCtx)
+	ctx, blipContext, err := NewSGBlipContext(ctx, arc.config.ID+idSuffix, originPatterns, cancelCtx)
 	if err != nil {
 		cancelFunc()
 		return nil, nil, err
@@ -217,23 +228,14 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
 	blipContext.OnExitCallback = func() {
 		// fall into a reconnect loop only if the connection is unexpectedly closed.
-		if arc.ctx.Err() == nil {
+		if ctx.Err() == nil {
 			arc.reconnect()
 		}
 	}
 
-	bsc, err = NewBlipSyncContext(arc.ctx, blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats, cancelFunc)
+	bsc, err = NewBlipSyncContext(ctx, blipContext, arc.config.ActiveDB, arc.replicationStats, cancelFunc)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	bsc.loggingCtx = base.CorrelationIDLogCtx(
-		arc.config.ActiveDB.AddDatabaseLogContext(base.NewNonCancelCtx().Ctx),
-		arc.config.ID+idSuffix)
-	if arc.config.RunAs != "" {
-		bsc.loggingCtx = base.UserLogCtx(bsc.loggingCtx, arc.config.RunAs, base.UserDomainSyncGateway, nil)
-	} else {
-		bsc.loggingCtx = arc.config.ActiveDB.AddBucketUserLogContext(bsc.loggingCtx)
 	}
 
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
