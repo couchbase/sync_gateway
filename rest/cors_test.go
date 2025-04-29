@@ -91,7 +91,7 @@ func TestCORSDynamicSet(t *testing.T) {
 
 	// this falls back to the server config CORS without the user being authenticated
 	for _, method := range []string{http.MethodGet, http.MethodOptions} {
-		response := rt.SendRequestWithHeaders(method, "/{{.keyspace}}/", "", reqHeaders)
+		response := rt.SendRequestWithHeaders(method, "/{{.db}}/", "", reqHeaders)
 		if method == http.MethodGet {
 			require.Equal(t, "http://example.com", response.Header().Get(accessControlAllowOrigin))
 			RequireStatus(t, response, http.StatusUnauthorized)
