@@ -452,6 +452,9 @@ func TestResyncMou(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	if !base.TestUseXattrs() {
+		t.Skip("_mou is written to xattrs only")
+	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
