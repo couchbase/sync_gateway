@@ -4589,7 +4589,12 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	// rev assertions
 	numRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 	assert.Equal(t, startNumRevsSentTotal+1, numRevsSentTotal)
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().ProcessedSequenceCount)
+	// the checkpointer will be updated after the rev is sent
+	// , so we need to wait for it to be updated
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), pullCheckpointer.Stats().ProcessedSequenceCount)
+	}, 10*time.Second, 10*time.Millisecond)
+
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
