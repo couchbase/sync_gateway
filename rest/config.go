@@ -2419,6 +2419,5 @@ func (c *DbConfig) useGSI() bool {
 	if c.UseViews == nil {
 		return true
 	}
-	fmt.Printf("UseViews: %t\n", *c.UseViews)
 	return !*c.UseViews
 }

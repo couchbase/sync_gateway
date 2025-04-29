@@ -335,7 +335,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
 		}
-		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (!*rt.DatabaseConfig.UseViews || base.UnitTestUrlIsWalrus()) {
+		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || base.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
@@ -2692,7 +2692,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 
 	// Setup scopes.
-	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
+	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || config.useGSI()) {
 		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
 	} else {
 		config.Sync = stringPtrOrNil(rt.SyncFn)
