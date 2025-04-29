@@ -104,6 +104,12 @@ func (db *DatabaseContext) CallProcessEntry(t *testing.T, ctx context.Context, l
 	db.changeCache.processEntry(ctx, log)
 }
 
+// GetCachedChanges will grab cached changes form channel cache for caching tool, not to be used outside test code.
+func (db *DatabaseContext) GetCachedChanges(t *testing.T, ctx context.Context, chanID channels.ID) ([]*LogEntry, error) {
+	logs, err := db.changeCache.getChannelCache().GetCachedChanges(ctx, chanID)
+	return logs, err
+}
+
 func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
 	return db.NewStatWaiter(db.DbStats.Database().DCPCachingCount, tb)
 }
@@ -773,4 +779,10 @@ func GetIndexPartitionCount(t *testing.T, bucket *base.GocbV2Bucket, dsName sgbu
 // GetMutationListener retrieves mutation listener form database context, to be used only for testing purposes.
 func (db *DatabaseContext) GetMutationListener(t *testing.T) changeListener {
 	return db.mutationListener
+}
+
+// InitChannel is a test-only function to initialize a channel in the channel cache.
+func (db *DatabaseContext) InitChannel(ctx context.Context, t *testing.T, chanName string) error {
+	_, err := db.channelCache.getSingleChannelCache(ctx, channels.NewID(chanName, base.DefaultCollectionID))
+	return err
 }
