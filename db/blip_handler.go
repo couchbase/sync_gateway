@@ -1127,9 +1127,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// Pull out attachments
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
 		body := newDoc.Body(bh.loggingCtx)
-		// The above check for presence of _attachments in the json body will pass even if _attachments is
-		// used for json value rather than json key. So we need to perform a nil check on _attachments body property
-		// and if it returns nil we should skip any processing below on the document body.
+		// The bytes.Contains([]byte(BodyAttachments)) check will pass even if _attachments is not a toplevel key but rather a nested key or subkey. That check is an optimization to avoid having to unmarshal the document if there are no attachments. Therefore, check again that the unmarshalled body contains BodyAttachments.
 		if body[BodyAttachments] != nil {
 
 			var currentBucketDoc *Document
