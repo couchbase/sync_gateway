@@ -264,23 +264,20 @@ func startChanges(ctx context.Context, t *testing.T, dbContext *db.DatabaseConte
 			numGoroutines.Add(1)
 			defer numGoroutines.Add(-1)
 			for {
-				select {
-				case <-ctx.Done():
+				if ctx.Err() != nil {
 					return
-				default:
 				}
 				num := wait.Wait(ctx)
 				if num == db.WaiterClosed {
 					return
 				} else if num == db.WaiterHasChanges {
-					// get cached changes for map
+					// get cached changes for map, simulating changes feeds actually using the channel cache
 					for id := range chanMap {
 						_, err := dbContext.GetCachedChanges(t, ctx, id)
 						if err != nil {
 							log.Printf("Error getting cached changes: %v", err)
 							return
 						}
-						//break
 					}
 				}
 			}

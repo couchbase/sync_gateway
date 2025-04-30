@@ -50,21 +50,8 @@ func newSequenceAllocator(batchSize int, syncSeq *syncSeqMock) *sequenceAllocato
 }
 
 func (s *sequenceAllocator) nextSeq() uint64 {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	if s.lastSeq >= s.maxSeqInBatch {
-		maxSeq := s.syncSeqMock.nextBatch(uint64(s.batchSize))
-		s.maxSeqInBatch = maxSeq
-		s.lastSeq = maxSeq - uint64(s.batchSize)
-		// the motivation to have cap 1 on this buffered channel is to sort of dedupe from KV engine upon
-		// rapid updates to _sync:seq doc
-		select {
-		case s.syncSeqEvent <- struct{}{}:
-		default: // default clause to we don't block on this select statement
-		}
-	}
-	s.lastSeq++
-	return s.lastSeq
+	seq := s.nextNSequences(1)
+	return seq[0]
 }
 
 func (s *sequenceAllocator) nextNSequences(n int) []uint64 {
@@ -76,9 +63,11 @@ func (s *sequenceAllocator) nextNSequences(n int) []uint64 {
 			maxSeq := s.syncSeqMock.nextBatch(uint64(s.batchSize))
 			s.maxSeqInBatch = maxSeq
 			s.lastSeq = maxSeq - uint64(s.batchSize)
+			// the motivation to have cap 1 on this buffered channel is to sort of dedupe from KV engine upon
+			// rapid updates to _sync:seq doc
 			select {
 			case s.syncSeqEvent <- struct{}{}:
-			default:
+			default: // default clause to we don't block on this select statement
 			}
 		}
 		s.lastSeq++

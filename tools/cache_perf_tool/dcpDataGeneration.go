@@ -10,8 +10,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"expvar"
+	"fmt"
 	"log"
 	"strconv"
 	"testing"
@@ -73,6 +73,7 @@ func (dcp *dcpDataGen) vBucketGoroutine(ctx context.Context, vbNo uint16, delay 
 			} else {
 				sgwSeqno = dcp.seqAlloc.nextSeq()
 			}
+			casVal := uint64(hlc.Now())
 			select {
 			case <-ctx.Done():
 				return
@@ -85,15 +86,15 @@ func (dcp *dcpDataGen) vBucketGoroutine(ctx context.Context, vbNo uint16, delay 
 					Flags:    0,
 					RevNo:    1,
 					Expiry:   0,
-					Cas:      uint64(hlc.Now()),
+					Cas:      casVal,
 					Datatype: 5,
 					Key:      []byte("key-" + strconv.FormatUint(vbSeq, 10) + "-" + strconv.FormatUint(sgwSeqno, 10)),
 				}
 
 				if sgwSeqno == 0 {
-					newArr, chanCount, err = dcp.mutateWithDedupe(seqList, chanCount)
+					newArr, chanCount, err = dcp.mutateWithDedupe(seqList, chanCount, casVal)
 				} else {
-					newArr, chanCount, err = dcp.mutateSyncData(sgwSeqno, chanCount)
+					newArr, chanCount, err = dcp.mutateSyncData(sgwSeqno, chanCount, casVal)
 				}
 				if err != nil {
 					log.Printf("Error setting sequence: %v", err)
@@ -116,6 +117,7 @@ func (dcp *dcpDataGen) vBucketGoroutine(ctx context.Context, vbNo uint16, delay 
 		} else {
 			sgwSeqno = dcp.seqAlloc.nextSeq()
 		}
+		casVal := uint64(hlc.Now())
 		select {
 		case <-ctx.Done():
 			return
@@ -128,15 +130,15 @@ func (dcp *dcpDataGen) vBucketGoroutine(ctx context.Context, vbNo uint16, delay 
 				Flags:    0,
 				RevNo:    1,
 				Expiry:   0,
-				Cas:      uint64(hlc.Now()),
+				Cas:      casVal,
 				Datatype: 5,
 				Key:      []byte("key-" + strconv.FormatUint(vbSeq, 10) + "-" + strconv.FormatUint(sgwSeqno, 10)),
 			}
 
 			if sgwSeqno == 0 {
-				newArr, chanCount, err = dcp.mutateWithDedupe(seqList, chanCount)
+				newArr, chanCount, err = dcp.mutateWithDedupe(seqList, chanCount, casVal)
 			} else {
-				newArr, chanCount, err = dcp.mutateSyncData(sgwSeqno, chanCount)
+				newArr, chanCount, err = dcp.mutateSyncData(sgwSeqno, chanCount, casVal)
 			}
 			if err != nil {
 				log.Printf("Error setting sequence: %v", err)
@@ -188,6 +190,7 @@ func (dcp *dcpDataGen) syncSeqVBucketCreation(ctx context.Context, vbNo uint16, 
 		// only allocate sgw seqno on actual write (not sync seq event) and BEFORE the delay as sgw will have allocated
 		// it's seqno before any delay on vBuckets
 		sgwSeqno := dcp.seqAlloc.nextSeq()
+		casVal := uint64(hlc.Now())
 		select {
 		case <-ctx.Done():
 			return
@@ -200,12 +203,12 @@ func (dcp *dcpDataGen) syncSeqVBucketCreation(ctx context.Context, vbNo uint16, 
 				Flags:    0,
 				RevNo:    1,
 				Expiry:   0,
-				Cas:      uint64(hlc.Now()),
+				Cas:      casVal,
 				Datatype: 5,
 				Key:      []byte("key-" + strconv.FormatUint(vbSeq, 10) + "-" + strconv.FormatUint(sgwSeqno, 10)),
 			}
 
-			newArr, chanCount, err = dcp.mutateSyncData(sgwSeqno, chanCount)
+			newArr, chanCount, err = dcp.mutateSyncData(sgwSeqno, chanCount, casVal)
 			if err != nil {
 				log.Printf("Error setting sequence: %v", err)
 				return
@@ -216,7 +219,7 @@ func (dcp *dcpDataGen) syncSeqVBucketCreation(ctx context.Context, vbNo uint16, 
 	}
 }
 
-func (dcp *dcpDataGen) mutateSyncData(sgwSeqno uint64, chanCount int) ([]byte, int, error) {
+func (dcp *dcpDataGen) mutateSyncData(sgwSeqno uint64, chanCount int, casValue uint64) ([]byte, int, error) {
 	chanMap := make(channels.ChannelMap)
 	chanSet := make([]db.ChannelSetEntry, 0, dcp.numChannelsPerDoc)
 	chanSetMap := base.Set{}
@@ -248,12 +251,10 @@ func (dcp *dcpDataGen) mutateSyncData(sgwSeqno uint64, chanCount int) ([]byte, i
 		Channels:        chanMap,
 		ChannelSet:      chanSet,
 		TimeSaved:       time.Now(),
-		Cas:             "0x000008cc2ee83118",
-		ClusterUUID:     "6a1a82a8ea79aa8b82d3f5667892d9ce",
-		Crc32c:          "0x615126c4",
+		Cas:             base.CasToString(casValue),
 		RecentSequences: []uint64{sgwSeqno},
 	}
-	byteArrSync, err := json.Marshal(syncData)
+	byteArrSync, err := base.JSONMarshal(syncData)
 	if err != nil {
 		log.Printf("Error marshalling sync data: %v", err)
 		return nil, 0, err
@@ -267,7 +268,7 @@ func (dcp *dcpDataGen) mutateSyncData(sgwSeqno uint64, chanCount int) ([]byte, i
 	return encodedVal, chanCount, nil
 }
 
-func (dcp *dcpDataGen) mutateWithDedupe(seqs []uint64, chanCount int) ([]byte, int, error) {
+func (dcp *dcpDataGen) mutateWithDedupe(seqs []uint64, chanCount int, casValue uint64) ([]byte, int, error) {
 	chanMap := make(channels.ChannelMap)
 	chanSet := make([]db.ChannelSetEntry, 0, dcp.numChannelsPerDoc)
 	currSeq := seqs[len(seqs)-1] // grab current seq form end of seq list
@@ -285,27 +286,30 @@ func (dcp *dcpDataGen) mutateWithDedupe(seqs []uint64, chanCount int) ([]byte, i
 		chanSetMap[chanName] = struct{}{}
 		chanCount++
 	}
-	revInf := db.RevInfo{
-		ID:       "1-abc",
-		Channels: chanSetMap,
+
+	revTree := make(db.RevTree)
+	var revInf db.RevInfo
+	for i := 1; i <= len(seqs); i++ {
+		dummyRevID := fmt.Sprintf("%d-abc", i)
+		revInf = db.RevInfo{
+			ID:       dummyRevID,
+			Channels: chanSetMap,
+		}
+		revTree[dummyRevID] = &revInf
 	}
-	revTree := db.RevTree{
-		"1-abc": &revInf,
-	}
+	currRev := fmt.Sprintf("%d-abc", len(seqs))
 
 	syncData := db.SyncData{
 		Sequence:        currSeq,
-		CurrentRev:      "1-abc",
+		CurrentRev:      currRev,
 		History:         revTree,
 		Channels:        chanMap,
 		ChannelSet:      chanSet,
 		TimeSaved:       time.Now(),
-		Cas:             "0x000008cc2ee83118",
-		ClusterUUID:     "6a1a82a8ea79aa8b82d3f5667892d9ce",
-		Crc32c:          "0x615126c4",
+		Cas:             base.CasToString(casValue),
 		RecentSequences: seqs,
 	}
-	byteArrSync, err := json.Marshal(syncData)
+	byteArrSync, err := base.JSONMarshal(syncData)
 	if err != nil {
 		log.Printf("Error marshalling sync data: %v", err)
 		return nil, 0, err
