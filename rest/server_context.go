@@ -758,7 +758,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			if resyncRequired {
 				collectionsRequiringResync = append(collectionsRequiringResync, scName)
 			}
+
 		}
+		if contextOptions.UseViews {
+			if err := db.InitializeViews(ctx, ds); err != nil {
+				return nil, err
+			}
+		}
+
 	}
 
 	var (

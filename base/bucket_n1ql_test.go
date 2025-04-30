@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,31 +25,14 @@ var testN1qlOptions = &N1qlIndexOptions{
 }
 
 func TestN1qlQuery(t *testing.T) {
-
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
-
-	defer func() {
-		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
-	}()
+	n1qlStore := getN1QLStore(t)
 
 	// Write a few docs to the bucket to query
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := dataStore.AddRaw(key, 0, []byte(body))
+		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
@@ -72,20 +56,20 @@ func TestN1qlQuery(t *testing.T) {
 	assert.Equal(t, IndexStateOnline, meta.State)
 	assert.True(t, exists)
 	expectedTestIndexMeta := IndexMeta{
-		Bucket:    bucket.GetName(),
+		Bucket:    n1qlStore.BucketName(),
 		IndexKey:  []string{"`val`"},
 		IsPrimary: false,
-		Keyspace:  dataStore.CollectionName(),
+		Keyspace:  n1qlStore.(sgbucket.DataStore).CollectionName(),
 		Name:      "testIndex_value",
 		Namespace: "default",
-		Scope:     dataStore.ScopeName(),
+		Scope:     n1qlStore.(sgbucket.DataStore).ScopeName(),
 		State:     IndexStateOnline,
 		Type:      "gsi",
 	}
 	if !TestsUseNamedCollections() {
-		expectedTestIndexMeta.Bucket = ""                 // for default collection, returns empty string and bucket name in Keyspace
-		expectedTestIndexMeta.Scope = ""                  // for default collection, returns bucket name rather than dataStore.ScopeName()
-		expectedTestIndexMeta.Keyspace = bucket.GetName() // for default collection, returns bucket name rather than dataStore.CollectionName()
+		expectedTestIndexMeta.Bucket = ""                       // for default collection, returns empty string and bucket name in Keyspace
+		expectedTestIndexMeta.Scope = ""                        // for default collection, returns bucket name rather than dataStore.ScopeName()
+		expectedTestIndexMeta.Keyspace = n1qlStore.BucketName() // for default collection, returns bucket name rather than dataStore.CollectionName()
 	}
 	require.Equal(t, expectedTestIndexMeta, *meta)
 
@@ -152,20 +136,20 @@ func TestN1qlQuery(t *testing.T) {
 	require.NoError(t, n1qlStore.CreatePrimaryIndex(ctx, primaryIdx, nil))
 
 	expectedPrimaryIndexMeta := IndexMeta{
-		Bucket:    bucket.GetName(),
+		Bucket:    n1qlStore.BucketName(),
 		IndexKey:  []string{},
 		IsPrimary: true,
-		Keyspace:  dataStore.CollectionName(),
+		Keyspace:  n1qlStore.(sgbucket.DataStore).CollectionName(),
 		Name:      primaryIdx,
 		Namespace: "default",
-		Scope:     dataStore.ScopeName(),
+		Scope:     n1qlStore.(sgbucket.DataStore).ScopeName(),
 		State:     IndexStateOnline,
 		Type:      "gsi",
 	}
 	if !TestsUseNamedCollections() {
-		expectedPrimaryIndexMeta.Bucket = ""                 // for default collection, returns empty string and bucket name in Keyspace
-		expectedPrimaryIndexMeta.Scope = ""                  // for default collection, returns bucket name rather than dataStore.ScopeName()
-		expectedPrimaryIndexMeta.Keyspace = bucket.GetName() // for default collection, returns bucket name rather than dataStore.CollectionName()
+		expectedPrimaryIndexMeta.Bucket = ""                       // for default collection, returns empty string and bucket name in Keyspace
+		expectedPrimaryIndexMeta.Scope = ""                        // for default collection, returns bucket name rather than dataStore.ScopeName()
+		expectedPrimaryIndexMeta.Keyspace = n1qlStore.BucketName() // for default collection, returns bucket name rather than dataStore.CollectionName()
 	}
 	metas, err = GetIndexesMeta(ctx, n1qlStore, []string{primaryIdx, "testIndex_value"})
 	require.NoError(t, err)
@@ -177,25 +161,14 @@ func TestN1qlQuery(t *testing.T) {
 }
 
 func TestN1qlFilterExpression(t *testing.T) {
-
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-	dataStore := bucket.GetSingleDataStore()
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
+	n1qlStore := getN1QLStore(t)
 
 	// Write a few docs to the bucket to query
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := dataStore.AddRaw(key, 0, []byte(body))
+		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestIndexFilterExpression: %v", err)
 		}
@@ -249,27 +222,13 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 // Test index state retrieval
 func TestIndexMeta(t *testing.T) {
-
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
+	n1qlStore := getN1QLStore(t)
 
 	// Check index state pre-creation
-	exists, meta, err := n1qlStore.GetIndexMeta(ctx, "testIndex_value")
+	exists, _, err := n1qlStore.GetIndexMeta(ctx, "testIndex_value")
 	require.NoError(t, err, "Error getting meta for non-existent index")
-	assert.False(t, exists)
-	assert.Nil(t, meta)
+	require.False(t, exists)
 
 	indexExpression := "val"
 	err = n1qlStore.CreateIndex(ctx, "testIndex_value", indexExpression, "", testN1qlOptions)
@@ -280,13 +239,8 @@ func TestIndexMeta(t *testing.T) {
 	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, WaitForIndexesDefault)
 	require.NoError(t, readyErr, "Error validating index online")
 
-	// Defer index teardown
-	defer func() {
-		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
-	}()
-
 	// Check index state post-creation
-	exists, meta, err = n1qlStore.GetIndexMeta(ctx, "testIndex_value")
+	exists, meta, err := n1qlStore.GetIndexMeta(ctx, "testIndex_value")
 	require.NoError(t, err, "Error retrieving index state")
 	assert.True(t, exists)
 	assert.Equal(t, IndexStateOnline, meta.State)
@@ -294,27 +248,14 @@ func TestIndexMeta(t *testing.T) {
 
 // Ensure that n1ql query errors are handled and returned (and don't result in panic etc)
 func TestMalformedN1qlQuery(t *testing.T) {
-
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
+	n1qlStore := getN1QLStore(t)
 
 	// Write a few docs to the bucket to query
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := dataStore.AddRaw(key, 0, []byte(body))
+		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
@@ -329,11 +270,6 @@ func TestMalformedN1qlQuery(t *testing.T) {
 
 	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value_malformed"}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
-
-	// Defer index teardown
-	defer func() {
-		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
-	}()
 
 	// Query with syntax error
 	queryExpression := "SELECT META().id, val WHERE val > $minvalue"
@@ -367,23 +303,8 @@ func TestMalformedN1qlQuery(t *testing.T) {
 }
 
 func TestCreateAndDropIndex(t *testing.T) {
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
-	defer func() {
-		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
-	}()
+	n1qlStore := getN1QLStore(t)
 
 	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_sequence", createExpression, "", testN1qlOptions)
@@ -401,23 +322,8 @@ func TestCreateAndDropIndex(t *testing.T) {
 }
 
 func TestCreateDuplicateIndex(t *testing.T) {
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
-	defer func() {
-		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
-	}()
+	n1qlStore := getN1QLStore(t)
 
 	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, "testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
@@ -440,20 +346,8 @@ func TestCreateDuplicateIndex(t *testing.T) {
 }
 
 func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
+	n1qlStore := getN1QLStore(t)
 
 	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, "testIndex-sequence", createExpression, "", testN1qlOptions)
@@ -472,23 +366,8 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 }
 
 func TestDeferredCreateIndex(t *testing.T) {
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
-	defer func() {
-		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
-	}()
+	n1qlStore := getN1QLStore(t)
 
 	indexName := "testIndexDeferred"
 
@@ -505,7 +384,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 	exists, meta, err := n1qlStore.GetIndexMeta(ctx, indexName)
 	require.NoError(t, err)
 	require.True(t, exists)
-	require.Equal(t, "deferred", meta.State)
+	require.Equal(t, IndexStateDeferred, meta.State)
 
 	buildErr := buildIndexes(ctx, n1qlStore, []string{indexName})
 	assert.NoError(t, buildErr, "Error building indexes")
@@ -521,23 +400,8 @@ func TestDeferredCreateIndex(t *testing.T) {
 }
 
 func TestBuildDeferredIndexes(t *testing.T) {
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
-	defer func() {
-		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
-	}()
+	n1qlStore := getN1QLStore(t)
 
 	deferredIndexName := "testIndexDeferred"
 	nonDeferredIndexName := "testIndexNonDeferred"
@@ -577,20 +441,9 @@ func TestBuildDeferredIndexes(t *testing.T) {
 }
 
 func TestCreateAndDropIndexErrors(t *testing.T) {
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
+	n1qlStore := getN1QLStore(t)
 
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
 	// Malformed expression
 	createExpression := "_sync sequence"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_malformed", createExpression, "", testN1qlOptions)
@@ -628,21 +481,8 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 }
 
 func TestWaitForBucketExistence(t *testing.T) {
-
-	if TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-
-	dataStore := bucket.GetSingleDataStore()
-
-	n1qlStore, ok := AsN1QLStore(dataStore)
-	if !ok {
-		t.Fatalf("Requires bucket to be N1QLStore")
-	}
+	n1qlStore := getN1QLStore(t)
 
 	// Create index
 	const (
@@ -677,4 +517,23 @@ func TestIsTransientIndexerError(t *testing.T) {
 	assert.False(t, isTransientIndexerError(err))
 	err = errors.New("Indexer rollback")
 	assert.True(t, isTransientIndexerError(err))
+}
+
+// getN1QLStore returns a N1QLStore. This function will cause a test skip if GSI tests are not enabled. This function uses testing.T.Cleanup to delete all indexes before running the bucket to the bucket pool.
+func getN1QLStore(t *testing.T) N1QLStore {
+	if TestsDisableGSI() {
+		t.Skip("This test requires N1QL on Couchbase Server")
+	}
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	t.Cleanup(func() { bucket.Close(ctx) })
+	dataStore := bucket.GetSingleDataStore()
+
+	n1qlStore, ok := AsN1QLStore(bucket.GetSingleDataStore())
+	require.True(t, ok, "Requires bucket to be N1QLStore, was %T", dataStore)
+
+	t.Cleanup(func() {
+		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
+	})
+	return n1qlStore
 }
