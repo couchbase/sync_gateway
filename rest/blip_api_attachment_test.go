@@ -682,6 +682,7 @@ func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
 	doc1ID := t.Name() + "doc1"
 	doc2ID := t.Name() + "doc2"
 	doc3ID := t.Name() + "doc3"
+	doc4ID := t.Name() + "doc4"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -693,41 +694,33 @@ func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
 
 		btcRunner.StartPush(btc.id)
 
-		// add rev with _attachments property as value in json
-		doc1Version := btcRunner.AddRev(btc.id, doc1ID, EmptyDocVersion(), []byte(`{"data": "_attachments"}`))
-		rt.WaitForVersion(doc1ID, doc1Version)
+		testcases := []struct {
+			initialBody []byte
+			bodyUpdate  []byte
+			docID       string
+		}{
+			{docID: doc1ID, initialBody: []byte(`{"data": "_attachments"}`), bodyUpdate: []byte(`{"data1": "_attachments"}`)},
+			{docID: doc2ID, initialBody: []byte(`{"data": {"textfield": "_attachments"}}`), bodyUpdate: []byte(`{"data": {"textfield": "_attachments"}}`)},
+			{docID: doc3ID, initialBody: []byte(`{"data": {"data": {"textfield": "_attachments"}}}`), bodyUpdate: []byte(`{"data1": {"data": {"textfield": "_attachments"}}}`)},
+			{docID: doc4ID, initialBody: []byte(`{"parent": { "_attachments": "data" }}`), bodyUpdate: []byte(`{"parent": { "_attachments": "data1" }}`)},
+		}
+		for _, tc := range testcases {
+			// add rev with _attachments property as value in json
+			// pushing initial rev with _attachments in value on the json will work fine as there is different code path
+			// for when the doc is new to SGW and when you are pushing new data onto pre-existing doc as SGW will scan
+			// parent doc for attachment keys too, this is where the issue arose of assigning nil to _attachments key in the body
+			docVersion := btcRunner.AddRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
+			rt.WaitForVersion(tc.docID, docVersion)
 
-		// add some revs with _attachments at value in nested json
-		doc2Version := btcRunner.AddRev(btc.id, doc2ID, EmptyDocVersion(), []byte(`{"data": {"textfield": "_attachments"}}`))
-		rt.WaitForVersion(doc1ID, doc2Version)
+			// add rev2 for each doc and wait to be replicated to SGW
+			docVersion = btcRunner.AddRev(btc.id, tc.docID, &docVersion, tc.bodyUpdate)
+			rt.WaitForVersion(tc.docID, docVersion)
 
-		doc3Version := btcRunner.AddRev(btc.id, doc3ID, EmptyDocVersion(), []byte(`{"data": {"data": {"textfield": "_attachments"}}}`))
-		rt.WaitForVersion(doc1ID, doc3Version)
-
-		// add rev2 for each doc and wait for each to be replicated to SGW
-		doc1Version2Body := []byte(`{"data1": "_attachments"}`)
-		doc1Version2 := btcRunner.AddRev(btc.id, doc1ID, &doc1Version, doc1Version2Body)
-		rt.WaitForVersion(doc1ID, doc1Version2)
-
-		doc2Version2Body := []byte(`{"data": {"textfield": "_attachments"}}`)
-		doc2Version2 := btcRunner.AddRev(btc.id, doc2ID, &doc2Version, doc2Version2Body)
-		rt.WaitForVersion(doc1ID, doc2Version2)
-
-		doc3Version2Body := []byte(`{"data1": {"data": {"textfield": "_attachments"}}}`)
-		doc3Version2 := btcRunner.AddRev(btc.id, doc3ID, &doc3Version, doc3Version2Body)
-
-		// assert that the bodies that are replicated are as expected
-		body, ok := btcRunner.GetVersion(btc.id, doc1ID, doc1Version2)
-		require.True(t, ok)
-		assert.Equal(t, doc1Version2Body, body)
-
-		body, ok = btcRunner.GetVersion(btc.id, doc2ID, doc2Version2)
-		require.True(t, ok)
-		assert.Equal(t, doc2Version2Body, body)
-
-		body, ok = btcRunner.GetVersion(btc.id, doc3ID, doc3Version2)
-		require.True(t, ok)
-		assert.Equal(t, doc3Version2Body, body)
+			// assert that the bodies that are replicated are as expected
+			body, _, err := rt.GetSingleDataStore().GetRaw(tc.docID)
+			require.NoError(t, err)
+			assert.Equal(t, tc.bodyUpdate, body)
+		}
 	})
 
 }
