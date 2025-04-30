@@ -1150,54 +1150,60 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 		// Do we have a previous doc? If not don't need to do this check
 		if currentBucketDoc != nil {
+			// CBG-4619: The above check for presence of _attachments in the json body will pass even if _attachments is
+			// used for json value rather than json key. So we need to perform a nil check after fetching Body attachments
+			// in GetBodyAttachments() and if it returns nil we should skip any processing below on the document body
+			// attachments. downloadOrVerifyAttachments() will effectively be a no-op when no document body attachments are found
 			bodyAtts := GetBodyAttachments(body)
-			currentDigests = make(map[string]string, len(bodyAtts))
-			for name, value := range bodyAtts {
-				// Check if we have this attachment name already, if we do, continue check
-				currentAttachment, ok := currentBucketDoc.Attachments[name]
-				if !ok {
-					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
-					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
-					continue
+			if bodyAtts != nil {
+				currentDigests = make(map[string]string, len(bodyAtts))
+				for name, value := range bodyAtts {
+					// Check if we have this attachment name already, if we do, continue check
+					currentAttachment, ok := currentBucketDoc.Attachments[name]
+					if !ok {
+						// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
+						// update to ensure it's fetched and uploaded
+						bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
+						continue
+					}
+
+					currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
+					if !ok {
+						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+					}
+
+					currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
+					if !ok {
+						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+					}
+					currentDigests[name] = currentAttachmentDigest
+
+					incomingAttachmentMeta, ok := value.(map[string]interface{})
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					}
+
+					// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
+					// need the check.
+					if incomingAttachmentMeta["data"] != nil {
+						continue
+					}
+
+					incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					}
+
+					// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
+					// digest is different we need to override the revpos and set it to the current revision to ensure
+					// the attachment is requested and stored. revpos provided for SG/CBL<4.0 compatibility but is no longer used by Sync Gateway.
+					if currentAttachmentDigest != incomingAttachmentDigest {
+						bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
+					}
 				}
 
-				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-
-				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-				currentDigests[name] = currentAttachmentDigest
-
-				incomingAttachmentMeta, ok := value.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
-
-				// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
-				// need the check.
-				if incomingAttachmentMeta["data"] != nil {
-					continue
-				}
-
-				incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
-
-				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
-				// digest is different we need to override the revpos and set it to the current revision to ensure
-				// the attachment is requested and stored. revpos provided for SG/CBL<4.0 compatibility but is no longer used by Sync Gateway.
-				if currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
-				}
+				body[BodyAttachments] = bodyAtts
 			}
-
-			body[BodyAttachments] = bodyAtts
 		}
 
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, docID, currentDigests); err != nil {

@@ -670,3 +670,64 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		}
 	})
 }
+
+func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rtConfig := &RestTesterConfig{
+		GuestEnabled: true,
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	doc1ID := t.Name() + "doc1"
+	doc2ID := t.Name() + "doc2"
+	doc3ID := t.Name() + "doc3"
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		btcRunner.StartPush(btc.id)
+
+		// add rev with _attachments property as value in json
+		doc1Version := btcRunner.AddRev(btc.id, doc1ID, EmptyDocVersion(), []byte(`{"data": "_attachments"}`))
+		rt.WaitForVersion(doc1ID, doc1Version)
+
+		// add some revs with _attachments at value in nested json
+		doc2Version := btcRunner.AddRev(btc.id, doc2ID, EmptyDocVersion(), []byte(`{"data": {"textfield": "_attachments"}}`))
+		rt.WaitForVersion(doc1ID, doc2Version)
+
+		doc3Version := btcRunner.AddRev(btc.id, doc3ID, EmptyDocVersion(), []byte(`{"data": {"data": {"textfield": "_attachments"}}}`))
+		rt.WaitForVersion(doc1ID, doc3Version)
+
+		// add rev2 for each doc and wait for each to be replicated to SGW
+		doc1Version2Body := []byte(`{"data1": "_attachments"}`)
+		doc1Version2 := btcRunner.AddRev(btc.id, doc1ID, &doc1Version, doc1Version2Body)
+		rt.WaitForVersion(doc1ID, doc1Version2)
+
+		doc2Version2Body := []byte(`{"data": {"textfield": "_attachments"}}`)
+		doc2Version2 := btcRunner.AddRev(btc.id, doc2ID, &doc2Version, doc2Version2Body)
+		rt.WaitForVersion(doc1ID, doc2Version2)
+
+		doc3Version2Body := []byte(`{"data1": {"data": {"textfield": "_attachments"}}}`)
+		doc3Version2 := btcRunner.AddRev(btc.id, doc3ID, &doc3Version, doc3Version2Body)
+
+		// assert that the bodies that are replicated are as expected
+		body, ok := btcRunner.GetVersion(btc.id, doc1ID, doc1Version2)
+		require.True(t, ok)
+		assert.Equal(t, doc1Version2Body, body)
+
+		body, ok = btcRunner.GetVersion(btc.id, doc2ID, doc2Version2)
+		require.True(t, ok)
+		assert.Equal(t, doc2Version2Body, body)
+
+		body, ok = btcRunner.GetVersion(btc.id, doc3ID, doc3Version2)
+		require.True(t, ok)
+		assert.Equal(t, doc3Version2Body, body)
+	})
+
+}
