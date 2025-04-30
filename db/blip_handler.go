@@ -1127,35 +1127,34 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// Pull out attachments
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
 		body := newDoc.Body(bh.loggingCtx)
+		// The above check for presence of _attachments in the json body will pass even if _attachments is
+		// used for json value rather than json key. So we need to perform a nil check on _attachments body property
+		// and if it returns nil we should skip any processing below on the document body.
+		if body[BodyAttachments] != nil {
 
-		var currentBucketDoc *Document
+			var currentBucketDoc *Document
 
-		// Look at attachments with revpos > the last common ancestor's
-		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
-			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
-			// as we will already have any attachments on the common ancestor so don't need to ask for them.
-			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
-			if err == nil {
-				rawBucketDoc = rawDoc
-				currentBucketDoc = currentDoc
+			// Look at attachments with revpos > the last common ancestor's
+			if len(history) > 0 {
+				currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+				// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
+				// as we will already have any attachments on the common ancestor so don't need to ask for them.
+				// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
+				if err == nil {
+					rawBucketDoc = rawDoc
+					currentBucketDoc = currentDoc
+				}
 			}
-		}
-		// updatedRevPos is the revpos of the new revision, to be added to attachment metadata if needed for CBL<4.0 compatibility. revpos is no longer used by Sync Gateway.
-		updatedRevPos, _ := ParseRevID(bh.loggingCtx, revID)
+			// updatedRevPos is the revpos of the new revision, to be added to attachment metadata if needed for CBL<4.0 compatibility. revpos is no longer used by Sync Gateway.
+			updatedRevPos, _ := ParseRevID(bh.loggingCtx, revID)
 
-		// currentDigests is a map from attachment name to the current bucket doc digest,
-		// for any attachments on the incoming document that are also on the current bucket doc
-		var currentDigests map[string]string
+			// currentDigests is a map from attachment name to the current bucket doc digest,
+			// for any attachments on the incoming document that are also on the current bucket doc
+			var currentDigests map[string]string
 
-		// Do we have a previous doc? If not don't need to do this check
-		if currentBucketDoc != nil {
-			// CBG-4619: The above check for presence of _attachments in the json body will pass even if _attachments is
-			// used for json value rather than json key. So we need to perform a nil check after fetching Body attachments
-			// in GetBodyAttachments() and if it returns nil we should skip any processing below on the document body
-			// attachments. downloadOrVerifyAttachments() will effectively be a no-op when no document body attachments are found
-			bodyAtts := GetBodyAttachments(body)
-			if bodyAtts != nil {
+			// Do we have a previous doc? If not don't need to do this check
+			if currentBucketDoc != nil {
+				bodyAtts := GetBodyAttachments(body)
 				currentDigests = make(map[string]string, len(bodyAtts))
 				for name, value := range bodyAtts {
 					// Check if we have this attachment name already, if we do, continue check
@@ -1204,16 +1203,17 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 				body[BodyAttachments] = bodyAtts
 			}
+
+			if err := bh.downloadOrVerifyAttachments(rq.Sender, body, docID, currentDigests); err != nil {
+				base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
+				return err
+			}
+
+			newDoc.DocAttachments = GetBodyAttachments(body)
+			delete(body, BodyAttachments)
+			newDoc.UpdateBody(body)
 		}
 
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, docID, currentDigests); err != nil {
-			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
-			return err
-		}
-
-		newDoc.DocAttachments = GetBodyAttachments(body)
-		delete(body, BodyAttachments)
-		newDoc.UpdateBody(body)
 	}
 
 	if rawBucketDoc == nil && bh.collectionCtx.checkPendingInsertion(docID) {
