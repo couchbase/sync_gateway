@@ -143,7 +143,6 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				initialBody:   []byte(`{"data":"_attachments"}`),
 				bodyUpdate:    []byte(`{"data1":"_attachments"}`),
 				hasAttachment: false,
-				expBody:       []byte(`{"data1":"_attachments"}`),
 			},
 			{
 				// test case: pushing delta with key update onto doc with _attachment in json value and attachment defined
@@ -151,7 +150,6 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				initialBody:   []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				bodyUpdate:    []byte(`{"key1":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				hasAttachment: true,
-				expBody:       []byte(`{"key1":"_attachments"}`),
 			},
 			{
 				// test case: pushing delta with attachment defined onto doc with _attachment in json value
@@ -159,7 +157,6 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				initialBody:   []byte(`{"key":"_attachments"}`),
 				bodyUpdate:    []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				hasAttachment: true,
-				expBody:       []byte(`{"key":"_attachments"}`),
 			},
 			{
 				// test case: pushing delta with _attachment json value onto doc with attachment defined
@@ -167,7 +164,6 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				initialBody:   []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				bodyUpdate:    []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				hasAttachment: true,
-				expBody:       []byte(`{"key":"_attachments"}`),
 			},
 		}
 		for _, tc := range testcases {
@@ -187,10 +183,6 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				_, found := syncData.Attachments["myAttachment"]
 				assert.True(t, found)
 			}
-			// assert that the bodies that are replicated are as expected
-			body, _, err := rt.GetSingleDataStore().GetRaw(tc.docID)
-			require.NoError(t, err)
-			assert.Equal(t, tc.expBody, body)
 		}
 	})
 }

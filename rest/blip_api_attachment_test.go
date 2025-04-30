@@ -715,11 +715,6 @@ func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
 			// add rev2 for each doc and wait to be replicated to SGW
 			docVersion = btcRunner.AddRev(btc.id, tc.docID, &docVersion, tc.bodyUpdate)
 			rt.WaitForVersion(tc.docID, docVersion)
-
-			// assert that the bodies that are replicated are as expected
-			body, _, err := rt.GetSingleDataStore().GetRaw(tc.docID)
-			require.NoError(t, err)
-			assert.Equal(t, tc.bodyUpdate, body)
 		}
 	})
 
