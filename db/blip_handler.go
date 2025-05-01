@@ -1123,8 +1123,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// Pull out attachments
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
 		body := newDoc.Body(bh.loggingCtx)
+		// The bytes.Contains([]byte(BodyAttachments)) check will pass even if _attachments is not a toplevel key but rather a nested key or subkey. That check is an optimization to avoid having to unmarshal the document if there are no attachments. Therefore, check again that the unmarshalled body contains BodyAttachments.
+		if body[BodyAttachments] != nil {
 
-		var currentBucketDoc *Document
+			var currentBucketDoc *Document
 
 		// Look at attachments with revpos > the last common ancestor's
 		minRevpos := 1
@@ -1144,9 +1146,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			}
 		}
 
-		// currentDigests is a map from attachment name to the current bucket doc digest,
-		// for any attachments on the incoming document that are also on the current bucket doc
-		var currentDigests map[string]string
+			// currentDigests is a map from attachment name to the current bucket doc digest,
+			// for any attachments on the incoming document that are also on the current bucket doc
+			var currentDigests map[string]string
 
 		// Do we have a previous doc? If not don't need to do this check
 		if currentBucketDoc != nil {
@@ -1162,27 +1164,27 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 					continue
 				}
 
-				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
+					currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
+					if !ok {
+						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+					}
 
-				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-				currentDigests[name] = currentAttachmentDigest
+					currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
+					if !ok {
+						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+					}
+					currentDigests[name] = currentAttachmentDigest
 
-				incomingAttachmentMeta, ok := value.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
+					incomingAttachmentMeta, ok := value.(map[string]interface{})
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					}
 
-				// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
-				// need the check.
-				if incomingAttachmentMeta["data"] != nil {
-					continue
-				}
+					// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
+					// need the check.
+					if incomingAttachmentMeta["data"] != nil {
+						continue
+					}
 
 				incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
 				if !ok {
@@ -1202,17 +1204,19 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				}
 			}
 
-			body[BodyAttachments] = bodyAtts
-		}
+				body[BodyAttachments] = bodyAtts
+			}
 
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
 			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
 			return err
 		}
 
-		newDoc.DocAttachments = GetBodyAttachments(body)
-		delete(body, BodyAttachments)
-		newDoc.UpdateBody(body)
+			newDoc.DocAttachments = GetBodyAttachments(body)
+			delete(body, BodyAttachments)
+			newDoc.UpdateBody(body)
+		}
+
 	}
 
 	if rawBucketDoc == nil && bh.collectionCtx.checkPendingInsertion(docID) {

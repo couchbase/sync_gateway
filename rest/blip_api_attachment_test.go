@@ -700,3 +700,52 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		}
 	})
 }
+
+func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rtConfig := &RestTesterConfig{
+		GuestEnabled: true,
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	doc1ID := t.Name() + "doc1"
+	doc2ID := t.Name() + "doc2"
+	doc3ID := t.Name() + "doc3"
+	doc4ID := t.Name() + "doc4"
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		btcRunner.StartPush(btc.id)
+
+		testcases := []struct {
+			initialBody []byte
+			bodyUpdate  []byte
+			docID       string
+		}{
+			{docID: doc1ID, initialBody: []byte(`{"data": "_attachments"}`), bodyUpdate: []byte(`{"data1": "_attachments"}`)},
+			{docID: doc2ID, initialBody: []byte(`{"data": {"textfield": "_attachments"}}`), bodyUpdate: []byte(`{"data": {"textfield": "_attachments"}}`)},
+			{docID: doc3ID, initialBody: []byte(`{"data": {"data": {"textfield": "_attachments"}}}`), bodyUpdate: []byte(`{"data1": {"data": {"textfield": "_attachments"}}}`)},
+			{docID: doc4ID, initialBody: []byte(`{"parent": { "_attachments": "data" }}`), bodyUpdate: []byte(`{"parent": { "_attachments": "data1" }}`)},
+		}
+		for _, tc := range testcases {
+			// add rev with _attachments property as value in json
+			// pushing initial rev with _attachments in value on the json will work fine as there is different code path
+			// for when the doc is new to SGW and when you are pushing new data onto pre-existing doc as SGW will scan
+			// parent doc for attachment keys too, this is where the issue arose of assigning nil to _attachments key in the body
+			docVersion := btcRunner.AddRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
+			rt.WaitForVersion(tc.docID, docVersion)
+
+			// add rev2 for each doc and wait to be replicated to SGW
+			docVersion = btcRunner.AddRev(btc.id, tc.docID, &docVersion, tc.bodyUpdate)
+			rt.WaitForVersion(tc.docID, docVersion)
+		}
+	})
+
+}

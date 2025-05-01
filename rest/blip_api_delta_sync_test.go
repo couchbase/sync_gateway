@@ -90,6 +90,99 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	})
 }
 
+// TestDeltaWithAttachmentJsonProperty tests pushing a delta when _attachments is present in either delta or existing doc
+func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta test requires EE")
+	}
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.Ptr(true),
+			},
+		}},
+		GuestEnabled: true,
+	}
+
+	doc1ID := t.Name() + "_doc1"
+	doc2ID := t.Name() + "_doc2"
+	doc3ID := t.Name() + "_doc3"
+	doc4ID := t.Name() + "_doc4"
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, ClientDeltas: true}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+		btcRunner.StartPush(btc.id)
+
+		attData := base64.StdEncoding.EncodeToString([]byte("attach"))
+
+		testcases := []struct {
+			initialBody   []byte
+			bodyUpdate    []byte
+			expBody       []byte
+			docID         string
+			hasAttachment bool
+		}{
+			// test case: pushing delta with key update onto doc with _attachment in json value
+			{
+				docID:         doc1ID,
+				initialBody:   []byte(`{"data":"_attachments"}`),
+				bodyUpdate:    []byte(`{"data1":"_attachments"}`),
+				hasAttachment: false,
+			},
+			{
+				// test case: pushing delta with key update onto doc with _attachment in json value and attachment defined
+				docID:         doc2ID,
+				initialBody:   []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
+				bodyUpdate:    []byte(`{"key1":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
+				hasAttachment: true,
+			},
+			{
+				// test case: pushing delta with attachment defined onto doc with _attachment in json value
+				docID:         doc3ID,
+				initialBody:   []byte(`{"key":"_attachments"}`),
+				bodyUpdate:    []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
+				hasAttachment: true,
+			},
+			{
+				// test case: pushing delta with _attachment json value onto doc with attachment defined
+				docID:         doc4ID,
+				initialBody:   []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
+				bodyUpdate:    []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
+				hasAttachment: true,
+			},
+		}
+		for _, tc := range testcases {
+
+			// Push first rev
+			version := btcRunner.AddRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
+			rt.WaitForVersion(tc.docID, version)
+
+			// Push second rev
+			version = btcRunner.AddRev(btc.id, tc.docID, &version, tc.bodyUpdate)
+			rt.WaitForVersion(tc.docID, version)
+
+			if tc.hasAttachment {
+				syncData, err := collection.GetDocSyncData(ctx, tc.docID)
+				require.NoError(t, err)
+				assert.Len(t, syncData.Attachments, 1)
+				_, found := syncData.Attachments["myAttachment"]
+				assert.True(t, found)
+			}
+		}
+	})
+}
+
 // Test pushing and pulling new attachments through delta sync
 // 1. Create test client that have deltas enabled
 // 2. Start continuous push and pull replication in client
