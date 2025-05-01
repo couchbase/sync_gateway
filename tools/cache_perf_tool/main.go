@@ -46,10 +46,12 @@ func main() {
 	delays := flag.String("writeDelay", "0", "Delay between writes in milliseconds. Must be entered in format <delayMS>,<delayMS>,<delayMS>.")
 	profileInterval := flag.Duration("profileInterval", 0*time.Second, "Interval for profiling to be triggered on, example 10s would be every 10 seconds.")
 	numChannelsPerDoc := flag.Int("numChannels", 1, "Number of channels to create per document.")
-	totalNumberOfChans := flag.Int("totalNumberOfChans", 1, "Total number of channels to create.")
-	numOfChangesFeeds := flag.Int("numChangesFeeds", 0, "Number of changes feeds to create.")
-	channelsPerClient := flag.Int("channelsPerClient", 0, "Number of channels per client to wait on.")
-	rapidUpdateDocs := flag.Bool("rapidUpdateDocs", false, "Have documents rapidly updated (use of recent sequences).")
+	totalNumberOfChans := flag.Int("totalNumberOfChans", 1, "Total number of channels to create in the system.")
+	numOfChangesFeeds := flag.Int("numChangesFeeds", 0, "Number of changes feeds to create. Used only for DCP mode.")
+	channelsPerClient := flag.Int("channelsPerClient", 0, "Number of channels per client to wait on. Used only for DCP mode.")
+	rapidUpdateDocs := flag.Bool("rapidUpdateDocs", false, "Have documents rapidly updated (use of recent sequences). Used only for DCP mode.")
+	numDCPWorkers := flag.Int("numDCPWorkers", 8, "Number of DCP workers to create. Default is 8. Used only for DCP mode.")
+	numVBuckets := flag.Int("numVBuckets", 1024, "Number of vBuckets to create. Used only for DCP mode. Default is 1024.")
 	flag.Parse()
 
 	if *nodes < 1 {
@@ -75,6 +77,9 @@ func main() {
 	}
 	if *channelsPerClient < 0 {
 		log.Fatalf("Invalid number of channels per client: %d", *channelsPerClient)
+	}
+	if *numDCPWorkers < 1 {
+		log.Fatalf("Invalid number of DCP workers: %d", *numDCPWorkers)
 	}
 
 	delayList, err := extractDelays(*delays, *mode)
@@ -195,7 +200,7 @@ func main() {
 			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs}
 		mutationListener := dbContext.GetMutationListener(t)
 		cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
-		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, cacheFeedStatsMap.Map)
+		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, cacheFeedStatsMap.Map, *numDCPWorkers, *numVBuckets)
 		if err != nil {
 			log.Printf("Error creating DCP client: %v", err)
 			return

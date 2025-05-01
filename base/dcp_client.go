@@ -83,16 +83,20 @@ type DCPClientOptions struct {
 
 func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
 
-	numWorkers := DefaultNumWorkers
-	if options.NumWorkers > 0 {
-		numWorkers = options.NumWorkers
-	}
-
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
+	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
+}
+
+func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*DCPClient, error) {
+
+	numWorkers := DefaultNumWorkers
+	if options.NumWorkers > 0 {
+		numWorkers = options.NumWorkers
+	}
 	if options.AgentPriority == gocbcore.DcpAgentPriorityHigh {
 		return nil, fmt.Errorf("sync gateway should not set high priority for DCP feeds")
 	}
@@ -664,48 +668,7 @@ func (dc *DCPClient) StartWorkersForTest(t *testing.T) {
 	dc.startWorkers(dc.ctx)
 }
 
-// NewDCPClientForTest creates a dcp client object for caching test purposes, does not actually create a client you can stream to. TEST ONLY.
+// NewDCPClientForTest is a test-only function to create a DCP client with a specific number of vbuckets.
 func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*DCPClient, error) {
-	numWorkers := DefaultNumWorkers
-
-	client := &DCPClient{
-		ctx:                 ctx,
-		workers:             make([]*DCPWorker, numWorkers),
-		numVbuckets:         numVbuckets,
-		callback:            callback,
-		ID:                  ID,
-		spec:                bucket.GetSpec(),
-		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
-		terminator:          make(chan bool),
-		doneChannel:         make(chan error, 1),
-		failOnRollback:      options.FailOnRollback,
-		checkpointPrefix:    options.CheckpointPrefix,
-		dbStats:             options.DbStats,
-		agentPriority:       options.AgentPriority,
-		collectionIDs:       options.CollectionIDs,
-	}
-
-	// Initialize active vbuckets
-	client.activeVbuckets = make(map[uint16]struct{})
-	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
-		client.activeVbuckets[vbNo] = struct{}{}
-	}
-
-	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
-	switch options.MetadataStoreType {
-	case DCPMetadataStoreCS:
-		// TODO: Change GetSingleDataStore to a metadata Store?
-		metadataStore := bucket.DefaultDataStore()
-		client.metadata = NewDCPMetadataCS(ctx, metadataStore, numVbuckets, numWorkers, checkpointPrefix)
-	case DCPMetadataStoreInMemory:
-		client.metadata = NewDCPMetadataMem(numVbuckets)
-	default:
-		return nil, fmt.Errorf("Unknown Metadatatype: %d", options.MetadataStoreType)
-	}
-
-	if len(client.collectionIDs) == 0 {
-		client.collectionIDs = []uint32{DefaultCollectionID}
-	}
-
-	return client, nil
+	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
 }
