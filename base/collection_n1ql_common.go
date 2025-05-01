@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -294,15 +295,8 @@ func buildIndexes(ctx context.Context, s N1QLStore, indexNames []string) error {
 
 // IndexMeta represents a Couchbase GSI index.
 type IndexMeta struct {
-	Name      string   `json:"name"`         // name of the index
-	IsPrimary bool     `json:"is_primary"`   // true if a primary index
-	Type      string   `json:"using"`        // this is always "gsi"
-	State     string   `json:"state"`        // can be online, building, pending, online, offline, etc
-	Keyspace  string   `json:"keyspace_id"`  // returns the collection name if uses non default collection otherwise the bucket name
-	Namespace string   `json:"namespace_id"` // returns default, system, mobile, etc
-	IndexKey  []string `json:"index_key"`
-	Scope     string   `json:"scope_id"`  // scope name if named collections are used
-	Bucket    string   `json:"bucket_id"` // bucket name if collections are used, otherwise empty and the bucket name is populated in Keyspace field
+	Name  string `json:"name"`  // name of the index
+	State string `json:"state"` // can be online, building, pending, online, offline, etc
 }
 
 type getIndexMetaRetryValues struct {
@@ -346,9 +340,9 @@ func GetIndexesMeta(ctx context.Context, store N1QLStore, indexNames []string) (
 	}
 	whereIndexes := make([]string, 0, len(indexNames))
 	for _, indexName := range indexNames {
-		whereIndexes = append(whereIndexes, fmt.Sprintf("indexes.name = '%s'", indexName))
+		whereIndexes = append(whereIndexes, strconv.Quote(indexName))
 	}
-	statement := fmt.Sprintf("SELECT `indexes`.* FROM system:indexes WHERE (%s) AND indexes.keyspace_id = '%s'", strings.Join(whereIndexes, " OR "), store.IndexMetaKeyspaceID())
+	statement := fmt.Sprintf("SELECT name,state FROM system:indexes WHERE indexes.name IN [%s] AND indexes.keyspace_id = '%s'", strings.Join(whereIndexes, ","), store.IndexMetaKeyspaceID())
 	if store.IndexMetaBucketID() != "" {
 		statement += fmt.Sprintf(" AND indexes.bucket_id = '%s'", store.IndexMetaBucketID())
 	}

@@ -56,23 +56,9 @@ func TestN1qlQuery(t *testing.T) {
 	assert.Equal(t, IndexStateOnline, meta.State)
 	assert.True(t, exists)
 	expectedTestIndexMeta := IndexMeta{
-		Bucket:    n1qlStore.BucketName(),
-		IndexKey:  []string{"`val`"},
-		IsPrimary: false,
-		Keyspace:  n1qlStore.(sgbucket.DataStore).CollectionName(),
-		Name:      "testIndex_value",
-		Namespace: "default",
-		Scope:     n1qlStore.(sgbucket.DataStore).ScopeName(),
-		State:     IndexStateOnline,
-		Type:      "gsi",
+		Name:  "testIndex_value",
+		State: IndexStateOnline,
 	}
-	if !TestsUseNamedCollections() {
-		expectedTestIndexMeta.Bucket = ""                       // for default collection, returns empty string and bucket name in Keyspace
-		expectedTestIndexMeta.Scope = ""                        // for default collection, returns bucket name rather than dataStore.ScopeName()
-		expectedTestIndexMeta.Keyspace = n1qlStore.BucketName() // for default collection, returns bucket name rather than dataStore.CollectionName()
-	}
-	require.Equal(t, expectedTestIndexMeta, *meta)
-
 	metas, err := GetIndexesMeta(ctx, n1qlStore, []string{"testIndex_value"})
 	require.NoError(t, err)
 	require.Len(t, metas, 1)
@@ -136,20 +122,8 @@ func TestN1qlQuery(t *testing.T) {
 	require.NoError(t, n1qlStore.CreatePrimaryIndex(ctx, primaryIdx, nil))
 
 	expectedPrimaryIndexMeta := IndexMeta{
-		Bucket:    n1qlStore.BucketName(),
-		IndexKey:  []string{},
-		IsPrimary: true,
-		Keyspace:  n1qlStore.(sgbucket.DataStore).CollectionName(),
-		Name:      primaryIdx,
-		Namespace: "default",
-		Scope:     n1qlStore.(sgbucket.DataStore).ScopeName(),
-		State:     IndexStateOnline,
-		Type:      "gsi",
-	}
-	if !TestsUseNamedCollections() {
-		expectedPrimaryIndexMeta.Bucket = ""                       // for default collection, returns empty string and bucket name in Keyspace
-		expectedPrimaryIndexMeta.Scope = ""                        // for default collection, returns bucket name rather than dataStore.ScopeName()
-		expectedPrimaryIndexMeta.Keyspace = n1qlStore.BucketName() // for default collection, returns bucket name rather than dataStore.CollectionName()
+		Name:  primaryIdx,
+		State: IndexStateOnline,
 	}
 	metas, err = GetIndexesMeta(ctx, n1qlStore, []string{primaryIdx, "testIndex_value"})
 	require.NoError(t, err)

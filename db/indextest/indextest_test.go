@@ -259,10 +259,9 @@ func TestInitializeIndexes(t *testing.T) {
 		collections bool
 	}{
 		{true, false},
-		/*{false, false},
+		{false, false},
 		{true, true},
 		{false, true},
-		*/
 	}
 
 	for _, test := range tests {
