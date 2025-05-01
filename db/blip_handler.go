@@ -1127,87 +1127,91 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// Pull out attachments
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
 		body := newDoc.Body(bh.loggingCtx)
+		// The bytes.Contains([]byte(BodyAttachments)) check will pass even if _attachments is not a toplevel key but rather a nested key or subkey. That check is an optimization to avoid having to unmarshal the document if there are no attachments. Therefore, check again that the unmarshalled body contains BodyAttachments.
+		if body[BodyAttachments] != nil {
 
-		var currentBucketDoc *Document
+			var currentBucketDoc *Document
 
-		// Look at attachments with revpos > the last common ancestor's
-		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
-			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
-			// as we will already have any attachments on the common ancestor so don't need to ask for them.
-			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
-			if err == nil {
-				rawBucketDoc = rawDoc
-				currentBucketDoc = currentDoc
-			}
-		}
-		// updatedRevPos is the revpos of the new revision, to be added to attachment metadata if needed for CBL<4.0 compatibility. revpos is no longer used by Sync Gateway.
-		updatedRevPos, _ := ParseRevID(bh.loggingCtx, revID)
-
-		// currentDigests is a map from attachment name to the current bucket doc digest,
-		// for any attachments on the incoming document that are also on the current bucket doc
-		var currentDigests map[string]string
-
-		// Do we have a previous doc? If not don't need to do this check
-		if currentBucketDoc != nil {
-			bodyAtts := GetBodyAttachments(body)
-			currentDigests = make(map[string]string, len(bodyAtts))
-			for name, value := range bodyAtts {
-				// Check if we have this attachment name already, if we do, continue check
-				currentAttachment, ok := currentBucketDoc.Attachments[name]
-				if !ok {
-					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
-					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
-					continue
-				}
-
-				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-
-				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-				currentDigests[name] = currentAttachmentDigest
-
-				incomingAttachmentMeta, ok := value.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
-
-				// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
-				// need the check.
-				if incomingAttachmentMeta["data"] != nil {
-					continue
-				}
-
-				incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
-
-				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
-				// digest is different we need to override the revpos and set it to the current revision to ensure
-				// the attachment is requested and stored. revpos provided for SG/CBL<4.0 compatibility but is no longer used by Sync Gateway.
-				if currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
+			// Look at attachments with revpos > the last common ancestor's
+			if len(history) > 0 {
+				currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+				// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
+				// as we will already have any attachments on the common ancestor so don't need to ask for them.
+				// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
+				if err == nil {
+					rawBucketDoc = rawDoc
+					currentBucketDoc = currentDoc
 				}
 			}
+			// updatedRevPos is the revpos of the new revision, to be added to attachment metadata if needed for CBL<4.0 compatibility. revpos is no longer used by Sync Gateway.
+			updatedRevPos, _ := ParseRevID(bh.loggingCtx, revID)
 
-			body[BodyAttachments] = bodyAtts
+			// currentDigests is a map from attachment name to the current bucket doc digest,
+			// for any attachments on the incoming document that are also on the current bucket doc
+			var currentDigests map[string]string
+
+			// Do we have a previous doc? If not don't need to do this check
+			if currentBucketDoc != nil {
+				bodyAtts := GetBodyAttachments(body)
+				currentDigests = make(map[string]string, len(bodyAtts))
+				for name, value := range bodyAtts {
+					// Check if we have this attachment name already, if we do, continue check
+					currentAttachment, ok := currentBucketDoc.Attachments[name]
+					if !ok {
+						// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
+						// update to ensure it's fetched and uploaded
+						bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
+						continue
+					}
+
+					currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
+					if !ok {
+						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+					}
+
+					currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
+					if !ok {
+						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+					}
+					currentDigests[name] = currentAttachmentDigest
+
+					incomingAttachmentMeta, ok := value.(map[string]interface{})
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					}
+
+					// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
+					// need the check.
+					if incomingAttachmentMeta["data"] != nil {
+						continue
+					}
+
+					incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					}
+
+					// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
+					// digest is different we need to override the revpos and set it to the current revision to ensure
+					// the attachment is requested and stored. revpos provided for SG/CBL<4.0 compatibility but is no longer used by Sync Gateway.
+					if currentAttachmentDigest != incomingAttachmentDigest {
+						bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
+					}
+				}
+
+				body[BodyAttachments] = bodyAtts
+			}
+
+			if err := bh.downloadOrVerifyAttachments(rq.Sender, body, docID, currentDigests); err != nil {
+				base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
+				return err
+			}
+
+			newDoc.DocAttachments = GetBodyAttachments(body)
+			delete(body, BodyAttachments)
+			newDoc.UpdateBody(body)
 		}
 
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, docID, currentDigests); err != nil {
-			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
-			return err
-		}
-
-		newDoc.DocAttachments = GetBodyAttachments(body)
-		delete(body, BodyAttachments)
-		newDoc.UpdateBody(body)
 	}
 
 	if rawBucketDoc == nil && bh.collectionCtx.checkPendingInsertion(docID) {
