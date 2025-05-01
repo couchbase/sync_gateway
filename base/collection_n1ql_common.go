@@ -355,7 +355,12 @@ func GetIndexesMeta(ctx context.Context, store N1QLStore, indexNames []string) (
 	} else if err != nil {
 		return nil, err
 	}
-	defer results.Close()
+	defer func() {
+		err := results.Close()
+		if err != nil {
+			WarnfCtx(ctx, "Error closing results from GetIndexesMeta: %v", err)
+		}
+	}()
 
 	indexes := make(map[string]IndexMeta)
 	var meta IndexMeta
