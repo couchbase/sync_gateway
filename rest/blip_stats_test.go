@@ -10,8 +10,9 @@ package rest
 
 import (
 	"testing"
+	"time"
 
-	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,18 +28,9 @@ func sendGetCheckpointRequest(bt *BlipTester) {
 
 // waitForStatGreaterThan will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
 func waitForStatGreaterThan(t *testing.T, getStatFunc func() int64, expected int64) {
-	workerFunc := func() (shouldRetry bool, err error, val interface{}) {
-		val = getStatFunc()
-		stat, ok := val.(int64)
-		require.True(t, ok)
-		return stat <= expected, nil, val
-	}
-	// wait for up to 20 seconds for the stat to meet the expected value
-	err, val := base.RetryLoop(base.TestCtx(t), "waitForStatGreaterThan retry loop", workerFunc, base.CreateSleeperFunc(200, 100))
-	require.NoError(t, err)
-	valInt64, ok := val.(int64)
-	require.True(t, ok)
-	require.Greater(t, valInt64, expected)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.GreaterOrEqual(c, getStatFunc(), expected)
+	}, 20*time.Second, 10*time.Millisecond)
 }
 
 func TestBlipStatsBasic(t *testing.T) {

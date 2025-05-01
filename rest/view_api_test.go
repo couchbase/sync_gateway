@@ -53,12 +53,12 @@ func TestDesignDocs(t *testing.T) {
 }
 
 func TestViewQuery(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
-	defer rt.Close()
-
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
+
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
+	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	RequireStatus(t, response, http.StatusCreated)
@@ -69,20 +69,17 @@ func TestViewQuery(t *testing.T) {
 
 	// The wait is needed here because the query does not have stale=false.
 	// TODO: update the query to use stale=false and remove the wait
-	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
-	assert.NoError(t, err, "Got unexpected error")
+	result := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"}, result.Rows[1])
 
-	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?limit=1")
-	require.NoError(t, err)
+	result = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?limit=1")
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 
-	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?endkey=9")
-	require.NoError(t, err)
+	result = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?endkey=9")
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 
@@ -105,20 +102,17 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	response = rt.SendRequest(http.MethodPut, "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_age")
-	assert.NoError(t, err, "Unexpected error")
+	result := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_age")
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)}, result.Rows[1])
 
-	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_fname")
-	require.NoError(t, err)
+	result = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_fname")
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)}, result.Rows[1])
 
-	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_lname")
-	require.NoError(t, err)
+	result = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_lname")
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)}, result.Rows[1])
@@ -139,14 +133,12 @@ func TestViewQueryWithParams(t *testing.T) {
 	response = rt.SendRequest(http.MethodPut, "/db/doc2", `{"value": "foo", "key": "test2"}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	result, err := rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&endkey="test2"&endkey_docid=doc2&end_key_doc_id=doc2&startkey="test1"&startkey_docid=doc1`)
-	assert.NoError(t, err, "Unexpected error")
+	result := rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&endkey="test2"&endkey_docid=doc2&end_key_doc_id=doc2&startkey="test1"&startkey_docid=doc1`)
 	require.Len(t, result.Rows, 2)
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: interface{}(nil)})
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: interface{}(nil)})
 
-	result, err = rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&conflicts=true&descending=false&keys=["test1", "test2"]`)
-	assert.NoError(t, err, "Unexpected error")
+	result = rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&conflicts=true&descending=false&keys=["test1", "test2"]`)
 	require.Len(t, result.Rows, 2)
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: interface{}(nil)})
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: interface{}(nil)})
@@ -171,14 +163,12 @@ func TestViewQueryUserAccess(t *testing.T) {
 	response = rt.SendRequest(http.MethodPut, "/db/doc3", `{"type":"type2", "state":"state2"}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	assert.NoError(t, err, "Unexpected error in WaitForNAdminViewResults")
+	result := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"}, result.Rows[1])
 
-	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	assert.NoError(t, err, "Unexpected error in WaitForNAdminViewResults")
+	result = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
 
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"}, result.Rows[0])
@@ -190,8 +180,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	testUser, _ := a.NewUser("testUser", password, channels.BaseSetOf(t, "*"))
 	assert.NoError(t, a.Save(testUser))
 
-	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
-	assert.NoError(t, err, "Unexpected error in WaitForNUserViewResults")
+	result = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
 
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"}, result.Rows[0])
@@ -277,8 +266,7 @@ func TestUserViewQuery(t *testing.T) {
 	assert.NoError(t, a.Save(quinn))
 
 	// Have the user query the view:
-	result, err := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar", quinn, password)
-	assert.NoError(t, err, "Unexpected error")
+	result := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar", quinn, password)
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, 1, result.TotalRows)
 	row := result.Rows[0]
@@ -286,8 +274,7 @@ func TestUserViewQuery(t *testing.T) {
 	assert.Equal(t, "seven", row.Value)
 
 	// Admin should see both rows:
-	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
-	assert.NoError(t, err, "Unexpected error")
+	result = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	require.Len(t, result.Rows, 2)
 	row = result.Rows[0]
 	assert.Equal(t, float64(7), row.Key)
@@ -331,13 +318,10 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Wait for all created documents to avoid race when using "reduce"
-	_, err := rt.WaitForNAdminViewResults(10, "/db/_design/foo/_view/bar?reduce=false")
-	require.NoError(t, err, "Unexpected error")
+	rt.WaitForNAdminViewResults(10, "/db/_design/foo/_view/bar?reduce=false")
 
-	var result sgbucket.ViewResult
 	// Admin view query:
-	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
-	assert.NoError(t, err, "Unexpected error")
+	result := rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
 
 	// we should get 1 row with the reduce result
 	require.Len(t, result.Rows, 1)
@@ -385,13 +369,10 @@ func TestAdminReduceSumQuery(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Wait for all created documents to avoid race when using "reduce"
-	_, err := rt.WaitForNAdminViewResults(10, "/db/_design/foo/_view/bar?reduce=false")
-	require.NoError(t, err, "Unexpected error")
+	rt.WaitForNAdminViewResults(10, "/db/_design/foo/_view/bar?reduce=false")
 
-	var result sgbucket.ViewResult
 	// Admin view query:
-	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
-	require.NoError(t, err, "Unexpected error")
+	result := rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
 
 	// we should get 1 row with the reduce result
 	require.Len(t, result.Rows, 1)
@@ -425,11 +406,8 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	var result sgbucket.ViewResult
-
 	// Admin view query:
-	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group=true")
-	assert.NoError(t, err, "Unexpected error")
+	result := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group=true")
 
 	// we should get 2 row with the reduce result
 	require.Len(t, result.Rows, 2)
@@ -577,11 +555,8 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 	response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", 10), `{"key":["B",4,1], "value":99}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	var result sgbucket.ViewResult
-
 	// Admin view query:
-	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group_level=2")
-	assert.NoError(t, err, "Unexpected error")
+	result := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group_level=2")
 
 	// we should get 2 row with the reduce result
 	require.Len(t, result.Rows, 2)
@@ -675,8 +650,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	result, err := rt.WaitForNAdminViewResults(3, "/db/_design/foodoc/_view/foobarview")
-	assert.NoError(t, err)
+	result := rt.WaitForNAdminViewResults(3, "/db/_design/foodoc/_view/foobarview")
 	assert.Equal(t, 3, result.Len())
 
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -685,7 +659,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	err = a.Save(testUser)
 	assert.NoError(t, err)
 
-	result, err = rt.WaitForNUserViewResults(1, "/db/_design/foodoc/_view/foobarview", testUser, "password")
+	result = rt.WaitForNUserViewResults(1, "/db/_design/foodoc/_view/foobarview", testUser, "password")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, result.Len())
 	assert.Equal(t, "userdoc", result.Rows[0].ID)
@@ -729,8 +703,7 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
 	assert.Equal(t, 201, response.Code)
 
-	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foodoc/_view/foobarview")
-	assert.NoError(t, err)
+	result := rt.WaitForNAdminViewResults(2, "/db/_design/foodoc/_view/foobarview")
 	require.Len(t, result.Rows, 2)
 	assert.Contains(t, "doc1", result.Rows[0].ID)
 	assert.Contains(t, "doc2", result.Rows[1].ID)

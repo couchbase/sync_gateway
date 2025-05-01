@@ -54,7 +54,7 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 }
 
 func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username string) {
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+	retryWorker := func() (shouldRetry bool, err error, value *http.Response) {
 		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
 		require.NoError(t, err)
 
@@ -71,9 +71,9 @@ func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username strin
 	err, resp := base.RetryLoop(base.TestCtx(t), "Admin Auth testing DeleteUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
-	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	require.NoError(t, resp.(*http.Response).Body.Close(), "Error closing response body")
+	require.NoError(t, resp.Body.Close(), "Error closing response body")
 }
 
 func getBasicAuthHeader(username, password string) string {

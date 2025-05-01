@@ -422,7 +422,7 @@ type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 // return value determines whether the worker will retry, regardless of the err value.
 // If the worker has exceeded it's retry attempts, then it will not be called again
 // even if it returns shouldRetry = true.
-type RetryWorker func() (shouldRetry bool, err error, value interface{})
+type RetryWorker[T any] func() (shouldRetry bool, err error, value T)
 
 type RetryCasWorker func() (shouldRetry bool, err error, value uint64)
 
@@ -442,7 +442,7 @@ func (r *RetryTimeoutError) Error() string {
 	return fmt.Sprintf("RetryLoop for %v giving up after %v attempts", r.description, r.attempts)
 }
 
-func RetryLoop(ctx context.Context, description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
+func RetryLoop[T any](ctx context.Context, description string, worker RetryWorker[T], sleeper RetrySleeper) (error, T) {
 
 	numAttempts := 1
 
@@ -450,7 +450,7 @@ func RetryLoop(ctx context.Context, description string, worker RetryWorker, slee
 		shouldRetry, err, value := worker()
 		if !shouldRetry {
 			if err != nil {
-				return err, nil
+				return err, *new(T)
 			}
 			return nil, value
 		}
@@ -473,7 +473,7 @@ func RetryLoop(ctx context.Context, description string, worker RetryWorker, slee
 			} else if errors.Is(ctxErr, context.DeadlineExceeded) {
 				verb = "timed out"
 			}
-			return fmt.Errorf("Retry loop for %v %s based on context: %w", description, verb, ctxErr), nil
+			return fmt.Errorf("Retry loop for %v %s based on context: %w", description, verb, ctxErr), *new(T)
 		case <-time.After(time.Millisecond * time.Duration(sleepMs)):
 		}
 
