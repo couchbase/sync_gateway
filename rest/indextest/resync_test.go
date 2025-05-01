@@ -26,6 +26,7 @@ func TestResyncWithoutIndexes(t *testing.T) {
 
 	dbName := "db"
 
+	// CBG-4615: parametrize test to use legacy sync docs index, or users and roles indexes
 	rest.RequireStatus(t, rt.CreateDatabase(dbName, rt.NewDbConfig()), http.StatusCreated)
 	// create test doc to change sequence number
 	rt.CreateTestDoc("doc1")
@@ -55,10 +56,13 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	require.True(t, ok)
 
 	if !base.TestsDisableGSI() {
-		// the sync docs index)
 		numIndexes, err := defaultDataStore.GetIndexes()
 		require.NoError(t, err)
-		require.Len(t, numIndexes, 1)
+		if rt.GetDatabase().UseLegacySyncDocsIndex() {
+			require.Len(t, numIndexes, 1) // sg_syncDocs
+		} else {
+			require.Len(t, numIndexes, 2) // sg_roles, sg_syncDocs
+		}
 
 		for _, collection := range rt.GetDatabase().CollectionByID {
 			n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())

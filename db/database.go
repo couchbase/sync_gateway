@@ -175,7 +175,6 @@ type DatabaseContextOptions struct {
 	GroupID                       string
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	UseLegacySyncDocsIndex        bool
-	Serverless                    bool // If running in serverless mode
 	Scopes                        ScopesOptions
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	MetadataID                    string         // MetadataID used for metadata storage
@@ -869,12 +868,9 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	return authenticator
 }
 
-func (context *DatabaseContext) IsServerless() bool {
-	return context.Options.Serverless
-}
-
+// UseLegacySyncDocsIndex returns true there is an index over all docs starting with _sync, or if there are individual indexes for users and roles.
 func (context *DatabaseContext) UseLegacySyncDocsIndex() bool {
-	return true // switch in CBG-4614
+	return context.Options.UseLegacySyncDocsIndex
 }
 
 // Makes a Database object given its name and bucket.
@@ -1013,60 +1009,31 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 // Returns the IDs of all users and roles, including deleted Roles
 func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
 
-	if !db.IsServerless() || db.Options.UseViews {
+	if db.UseLegacySyncDocsIndex() || db.Options.UseViews {
 		return db.getAllPrincipalIDsSyncDocs(ctx)
 	}
 
-	// If running in Serverless mode, we can leverage `users` and `roles` index
-	// to fetch users and roles
-	usersCh := db.getUserNamesInBackground(ctx)
-	rolesCh := db.getRoleIDsInBackground(ctx)
-
-	userData := <-usersCh
-	if userData.err != nil {
-		return nil, nil, userData.err
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	var getUsersErr error
+	go func() {
+		defer wg.Done()
+		users, getUsersErr = db.GetUserNames(ctx)
+	}()
+	var getRolesErr error
+	go func() {
+		defer wg.Done()
+		includeDeleted := true
+		roles, getRolesErr = db.getRoleIDsUsingIndex(ctx, includeDeleted)
+	}()
+	wg.Wait()
+	if getUsersErr != nil {
+		return nil, nil, getUsersErr
 	}
-	users = userData.value
-
-	rolesData := <-rolesCh
-	if rolesData.err != nil {
-		return nil, nil, rolesData.err
+	if getRolesErr != nil {
+		return nil, nil, getRolesErr
 	}
-	roles = rolesData.value
-
 	return users, roles, err
-}
-
-// used to send users/roles data from background fetch
-type data struct {
-	value []string
-	err   error
-}
-
-func (db *DatabaseContext) getUserNamesInBackground(ctx context.Context) <-chan data {
-	ch := make(chan data, 1)
-	go func() {
-		defer close(ch)
-		users, err := db.GetUserNames(ctx)
-		ch <- data{
-			value: users,
-			err:   err,
-		}
-	}()
-	return ch
-}
-
-func (db *DatabaseContext) getRoleIDsInBackground(ctx context.Context) <-chan data {
-	ch := make(chan data, 1)
-	go func() {
-		defer close(ch)
-		roles, err := db.getRoleIDsUsingIndex(ctx, true)
-		ch <- data{
-			value: roles,
-			err:   err,
-		}
-	}()
-	return ch
 }
 
 // Returns the Names of all users
@@ -1337,6 +1304,7 @@ outerLoop:
 	return users, nil
 }
 
+// getRoleIDsUsingIndex returns names of all roles. includDeleted toggles whether or not to include deleted roles.
 func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
 	dbRoleIDPrefix := db.MetadataKeys.RoleKeyPrefix()
