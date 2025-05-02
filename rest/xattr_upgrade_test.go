@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -186,15 +185,18 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
 	}
+	if !base.TestsDisableGSI() {
+		// This test is trying to test a non xattr node while a non xattr -> xattr upgrade is occuring.
+		// Intentionally do not query both xattr and non-xattr when doing channel backfill because of the overhead. The assumption is that during upgrade the older (non-xattrs) nodes would have any new xattr entries resident in their cache.
+		t.Skip("Only views will find both xattr and non xattr documents.")
+	}
 
 	rtConfig := RestTesterConfig{
-		SyncFn: channels.DocChannelsSyncFunction,
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	const user = "alice"
-	rt.CreateUser(user, []string{"A"})
 	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)
@@ -203,7 +205,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	key := "TestCheckForUpgrade"
 	bodyString := `
 {
-  "channels": "A"
+  "value": "2-d"
 }`
 	xattrString := `
 {
@@ -227,10 +229,8 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	rt.WaitForSequence(1)
 
-	// Use non admin channels since it is in the channel cache. Using admin using * channel which will not find this document.
-
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
-	changes := rt.GetChanges("/{{.keyspace}}/_changes", user)
+	changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes", "{}")
 	require.Len(t, changes.Results, 1)
 
 	// Validate non-xattr document doesn't get processed on attempted feed read
