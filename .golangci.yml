@@ -34,11 +34,6 @@ linters:
         - fieldalignment
   exclusions:
     generated: strict
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
     rules:
       - linters:
           # Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.

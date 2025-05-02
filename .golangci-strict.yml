@@ -85,11 +85,6 @@ linters:
         - -ST1023 # Redundant type in variable declaration.
   exclusions:
     generated: strict
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
     rules:
       # Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.
       - linters:
@@ -100,6 +95,18 @@ linters:
       - linters:
           - unused
         path: rest/debug.go
+      - text: "ST1000:" # at least one file in a package should have a package comment
+        linters:
+          - staticcheck
+      - text: "ST1020:" # comment on exported method should be of the form "MethodName ..."
+        linters:
+          - staticcheck
+      - text: "ST1021:" # comment on exported type should be of the form "TypeName ..."
+        linters:
+          - staticcheck
+      - text: "ST1022:" # comment on exported type should be of the form "TypeName ..."
+        linters:
+          - staticcheck
 formatters:
   enable:
     - goimports
