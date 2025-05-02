@@ -160,11 +160,6 @@ func TestN1qlFilterExpression(t *testing.T) {
 	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_filtered_value"}, WaitForIndexesDefault)
 	require.NoError(t, readyErr, "Error validating index online")
 
-	// Defer index teardown
-	defer func() {
-		assert.NoError(t, DropAllIndexes(ctx, n1qlStore))
-	}()
-
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE %s AND META().id = 'doc1'", KeyspaceQueryToken, filterExpression)
 	queryResults, queryErr := n1qlStore.Query(ctx, queryExpression, nil, RequestPlus, false)
