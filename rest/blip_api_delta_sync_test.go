@@ -116,13 +116,11 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, ClientDeltas: true}
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
 		collection, ctx := rt.GetSingleTestDatabaseCollection()
-
-		btcRunner.StartPush(btc.id)
 
 		attData := base64.StdEncoding.EncodeToString([]byte("attach"))
 
@@ -165,11 +163,15 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 		for _, tc := range testcases {
 
 			// Push first rev
-			version := btcRunner.AddRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
+			version, err := btcRunner.PushRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
+			require.NoError(t, err)
 			rt.WaitForVersion(tc.docID, version)
 
+			btc.ClientDeltas = true
+
 			// Push second rev
-			version = btcRunner.AddRev(btc.id, tc.docID, &version, tc.bodyUpdate)
+			version, err = btcRunner.PushRev(btc.id, tc.docID, version, tc.bodyUpdate)
+			require.NoError(t, err)
 			rt.WaitForVersion(tc.docID, version)
 
 			if tc.hasAttachment {
@@ -179,6 +181,8 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				_, found := syncData.Attachments["myAttachment"]
 				assert.True(t, found)
 			}
+
+			btc.ClientDeltas = false
 		}
 	})
 }

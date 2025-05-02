@@ -722,8 +722,6 @@ func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		btcRunner.StartPush(btc.id)
-
 		testcases := []struct {
 			initialBody []byte
 			bodyUpdate  []byte
@@ -739,11 +737,13 @@ func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
 			// pushing initial rev with _attachments in value on the json will work fine as there is different code path
 			// for when the doc is new to SGW and when you are pushing new data onto pre-existing doc as SGW will scan
 			// parent doc for attachment keys too, this is where the issue arose of assigning nil to _attachments key in the body
-			docVersion := btcRunner.AddRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
+			docVersion, err := btcRunner.PushRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
+			require.NoError(t, err)
 			rt.WaitForVersion(tc.docID, docVersion)
 
 			// add rev2 for each doc and wait to be replicated to SGW
-			docVersion = btcRunner.AddRev(btc.id, tc.docID, &docVersion, tc.bodyUpdate)
+			docVersion, err = btcRunner.PushRev(btc.id, tc.docID, docVersion, tc.bodyUpdate)
+			require.NoError(t, err)
 			rt.WaitForVersion(tc.docID, docVersion)
 		}
 	})
