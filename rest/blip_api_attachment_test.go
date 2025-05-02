@@ -739,12 +739,12 @@ func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
 			// parent doc for attachment keys too, this is where the issue arose of assigning nil to _attachments key in the body
 			docVersion, err := btcRunner.PushRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
 			require.NoError(t, err)
-			rt.WaitForVersion(tc.docID, docVersion)
+			require.NoError(t, rt.WaitForVersion(tc.docID, docVersion))
 
 			// add rev2 for each doc and wait to be replicated to SGW
 			docVersion, err = btcRunner.PushRev(btc.id, tc.docID, docVersion, tc.bodyUpdate)
 			require.NoError(t, err)
-			rt.WaitForVersion(tc.docID, docVersion)
+			require.NoError(t, rt.WaitForVersion(tc.docID, docVersion))
 		}
 	})
 

@@ -165,14 +165,14 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 			// Push first rev
 			version, err := btcRunner.PushRev(btc.id, tc.docID, EmptyDocVersion(), tc.initialBody)
 			require.NoError(t, err)
-			rt.WaitForVersion(tc.docID, version)
+			require.NoError(t, rt.WaitForVersion(tc.docID, version))
 
 			btc.ClientDeltas = true
 
 			// Push second rev
 			version, err = btcRunner.PushRev(btc.id, tc.docID, version, tc.bodyUpdate)
 			require.NoError(t, err)
-			rt.WaitForVersion(tc.docID, version)
+			require.NoError(t, rt.WaitForVersion(tc.docID, version))
 
 			if tc.hasAttachment {
 				syncData, err := collection.GetDocSyncData(ctx, tc.docID)

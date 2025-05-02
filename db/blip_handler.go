@@ -1128,41 +1128,41 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 			var currentBucketDoc *Document
 
-		// Look at attachments with revpos > the last common ancestor's
-		minRevpos := 1
-		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
-			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
-			// as we will already have any attachments on the common ancestor so don't need to ask for them.
-			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
-			if err == nil {
-				commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
-				minRevpos, _ = ParseRevID(bh.loggingCtx, commonAncestor)
-				minRevpos++
-				rawBucketDoc = rawDoc
-				currentBucketDoc = currentDoc
-			} else {
-				minRevpos, _ = ParseRevID(bh.loggingCtx, history[len(history)-1])
+			// Look at attachments with revpos > the last common ancestor's
+			minRevpos := 1
+			if len(history) > 0 {
+				currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+				// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
+				// as we will already have any attachments on the common ancestor so don't need to ask for them.
+				// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
+				if err == nil {
+					commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
+					minRevpos, _ = ParseRevID(bh.loggingCtx, commonAncestor)
+					minRevpos++
+					rawBucketDoc = rawDoc
+					currentBucketDoc = currentDoc
+				} else {
+					minRevpos, _ = ParseRevID(bh.loggingCtx, history[len(history)-1])
+				}
 			}
-		}
 
 			// currentDigests is a map from attachment name to the current bucket doc digest,
 			// for any attachments on the incoming document that are also on the current bucket doc
 			var currentDigests map[string]string
 
-		// Do we have a previous doc? If not don't need to do this check
-		if currentBucketDoc != nil {
-			bodyAtts := GetBodyAttachments(body)
-			currentDigests = make(map[string]string, len(bodyAtts))
-			for name, value := range bodyAtts {
-				// Check if we have this attachment name already, if we do, continue check
-				currentAttachment, ok := currentBucketDoc.Attachments[name]
-				if !ok {
-					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
-					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
-					continue
-				}
+			// Do we have a previous doc? If not don't need to do this check
+			if currentBucketDoc != nil {
+				bodyAtts := GetBodyAttachments(body)
+				currentDigests = make(map[string]string, len(bodyAtts))
+				for name, value := range bodyAtts {
+					// Check if we have this attachment name already, if we do, continue check
+					currentAttachment, ok := currentBucketDoc.Attachments[name]
+					if !ok {
+						// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
+						// update to ensure it's fetched and uploaded
+						bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
+						continue
+					}
 
 					currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
 					if !ok {
@@ -1186,31 +1186,31 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 						continue
 					}
 
-				incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
+					incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					}
 
-				incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
+					incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+					}
 
-				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
-				// digest is different we need to override the revpos and set it to the current revision to ensure
-				// the attachment is requested and stored
-				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
+					// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
+					// digest is different we need to override the revpos and set it to the current revision to ensure
+					// the attachment is requested and stored
+					if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
+						bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
+					}
 				}
-			}
 
 				body[BodyAttachments] = bodyAtts
 			}
 
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
-			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
-			return err
-		}
+			if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
+				base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
+				return err
+			}
 
 			newDoc.DocAttachments = GetBodyAttachments(body)
 			delete(body, BodyAttachments)
