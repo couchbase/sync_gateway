@@ -14,6 +14,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -546,4 +548,46 @@ func GetIndexesName(options InitializeIndexOptions) []string {
 		}
 	}
 	return indexesName
+}
+
+// ShouldUseLegacySyncDocsIndex returns true if the syncDocs index should be used for queries of principal docs. Returns false if targeted users and roles indexes should be used.
+func ShouldUseLegacySyncDocsIndex(ctx context.Context, collection base.N1QLStore, useXattrs bool) bool {
+	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection, useXattrs)
+	if err != nil {
+		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs index", err)
+		return false
+	}
+	return shouldUseLegacySyncDocsIndex(onlinePrincipalIndexes)
+}
+
+// shouldUseLegacySyncDocsIndex returns true if the syncDocs index should be used for queries of principal docs. Returns false if targeted users and roles indexes should be used.
+func shouldUseLegacySyncDocsIndex(onlineIndexes []SGIndexType) bool {
+	// if user and role indexes are available, use them
+	if slices.Contains(onlineIndexes, IndexUser) && slices.Contains(onlineIndexes, IndexRole) {
+		return false
+	}
+	// use syncDocs index if is is available, otherwise build user and role indexes
+	return slices.Contains(onlineIndexes, IndexSyncDocs)
+}
+
+// GetOnlinePrincipalIndexes returns the principal indexes that exist and are online for a given collection. This code runs without N1QL retries and will return an error quickly in the case of a retryable N1QL failure. Does not return an error if no indexes are found.
+func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) ([]SGIndexType, error) {
+	possibleIndexes := make(map[string]SGIndexType)
+	for sgIndexType, sgIndex := range sgIndexes {
+		if !sgIndex.isPrincipalOnly() {
+			continue
+		}
+		possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
+	}
+	meta, err := base.GetIndexesMeta(ctx, collection, slices.Collect(maps.Keys(possibleIndexes)))
+	if err != nil {
+		return nil, err
+	}
+	var onlineIndexes []SGIndexType
+	for _, index := range meta {
+		if index.State == base.IndexStateOnline {
+			onlineIndexes = append(onlineIndexes, possibleIndexes[index.Name])
+		}
+	}
+	return onlineIndexes, nil
 }

@@ -116,6 +116,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 		},
 	}
 
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf("TestAllPrincipalIDs with useLegacySyncDocsIndex=%t", testCase.useLegacySyncDocsIndex), func(t *testing.T) {
 			dbContextConfig := getDatabaseContextOptions(testCase.useLegacySyncDocsIndex)
@@ -123,7 +124,16 @@ func TestAllPrincipalIDs(t *testing.T) {
 			defer database.Close(ctx)
 
 			setupN1QLStore(ctx, t, database.Bucket, testCase.useLegacySyncDocsIndex, db.DefaultNumIndexPartitions)
-			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
+
+			n1qlStore, ok := database.MetadataStore.(base.N1QLStore)
+			require.True(t, ok)
+			onlineMetadataIndexes, err := db.GetOnlinePrincipalIndexes(ctx, n1qlStore, database.UseXattrs())
+			require.NoError(t, err)
+			if testCase.useLegacySyncDocsIndex {
+				require.Equal(t, []db.SGIndexType{db.IndexSyncDocs}, onlineMetadataIndexes)
+			} else {
+				require.ElementsMatch(t, []db.SGIndexType{db.IndexUser, db.IndexRole}, onlineMetadataIndexes)
+			}
 			t.Run("roleQueryCovered", func(t *testing.T) {
 				roleStatement, _ := database.BuildRolesQuery("", 0)
 				requireCoveredQuery(t, database, roleStatement, !testCase.useLegacySyncDocsIndex)
@@ -299,8 +309,42 @@ func TestInitializeIndexes(t *testing.T) {
 			for _, index := range allIndexes {
 				require.Equal(t, "", index.Partition)
 			}
+			testGetIndexesMeta(t, database, xattrSpecificIndexOptions)
 		})
 	}
+}
+
+func testGetIndexesMeta(t *testing.T, database *db.Database, indexInitOptions db.InitializeIndexOptions) {
+	suffix := "x1"
+	if !indexInitOptions.UseXattrs {
+		suffix = "1"
+	}
+	accessIndexName := fmt.Sprintf("sg_access_%s", suffix)
+	roleAccessIndexName := fmt.Sprintf("sg_roleAccess_%s", suffix)
+	nonExistentIndexName := "notanindex"
+
+	dataStore, ok := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionDatastore().(base.N1QLStore)
+	require.True(t, ok, "Expected N1QLStore")
+	ctx := base.TestCtx(t)
+
+	// check existing and non existing indexes
+	indexes, err := base.GetIndexesMeta(ctx, dataStore, []string{accessIndexName, roleAccessIndexName, nonExistentIndexName})
+	require.NoError(t, err)
+	require.Len(t, indexes, 2)
+	require.Equal(t, base.IndexStateOnline, indexes[accessIndexName].State)
+	require.Equal(t, base.IndexStateOnline, indexes[roleAccessIndexName].State)
+
+	// check non existing indexes
+	indexes, err = base.GetIndexesMeta(ctx, dataStore, []string{nonExistentIndexName})
+	require.NoError(t, err)
+	require.Empty(t, indexes)
+
+	// check single index
+	indexes, err = base.GetIndexesMeta(ctx, dataStore, []string{accessIndexName})
+	require.NoError(t, err)
+	require.Len(t, indexes, 1)
+	require.Equal(t, base.IndexStateOnline, indexes[accessIndexName].State)
+
 }
 
 // TestInitializeIndexesConcurrentMultiNode simulates a large multi-node SG cluster starting up and racing to create indexes.
@@ -334,7 +378,7 @@ func TestPartitionedIndexes(t *testing.T) {
 		t.Skip("TestPartitionedIndexes only works with UseXattrs=true")
 	}
 	numPartitions := uint32(13)
-	useLegacySyncDocsIndex := true // CBG-4615
+	useLegacySyncDocsIndex := true
 
 	database, ctx := db.SetupTestDBWithOptions(t, db.DatabaseContextOptions{NumIndexPartitions: base.Ptr(numPartitions)})
 	defer database.Close(ctx)

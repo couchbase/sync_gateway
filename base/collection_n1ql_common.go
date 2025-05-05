@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -294,29 +295,24 @@ func buildIndexes(ctx context.Context, s N1QLStore, indexNames []string) error {
 
 // IndexMeta represents a Couchbase GSI index.
 type IndexMeta struct {
-	Name      string   `json:"name"`
-	IsPrimary bool     `json:"is_primary"`
-	Type      string   `json:"using"`
-	State     string   `json:"state"`
-	Keyspace  string   `json:"keyspace_id"`
-	Namespace string   `json:"namespace_id"`
-	IndexKey  []string `json:"index_key"`
+	Name  string `json:"name"`  // name of the index
+	State string `json:"state"` // can be online, building, pending, online, offline, etc
 }
 
 type getIndexMetaRetryValues struct {
 	exists bool
-	meta   *IndexMeta
+	meta   IndexMeta
 }
 
 func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
-
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		exists, meta, err := getIndexMetaWithoutRetry(ctx, store, indexName)
+		metas, err := GetIndexesMeta(ctx, store, []string{indexName})
 		if err != nil {
 			// retry
 			WarnfCtx(ctx, "Error from GetIndexMeta for index %s: %v will retry", indexName, err)
 			return true, err, nil
 		}
+		meta, exists := metas[indexName]
 		return false, nil, getIndexMetaRetryValues{
 			exists: exists,
 			meta:   meta,
@@ -334,32 +330,44 @@ func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exist
 		return false, nil, fmt.Errorf("Expected GetIndexMeta retry value to be getIndexMetaRetryValues but got %T", val)
 	}
 
-	return valTyped.exists, valTyped.meta, nil
+	return valTyped.exists, &valTyped.meta, nil
 }
 
-func getIndexMetaWithoutRetry(ctx context.Context, store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
-	statement := fmt.Sprintf("SELECT state FROM system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, store.IndexMetaKeyspaceID())
+// GetIndexesMeta returns the status of a given set of indexes as a map. If an index is not present, the value will be omitted from the map.
+func GetIndexesMeta(ctx context.Context, store N1QLStore, indexNames []string) (map[string]IndexMeta, error) {
+	if indexNames == nil {
+		return nil, fmt.Errorf("Must specify index names")
+	}
+	whereIndexes := make([]string, 0, len(indexNames))
+	for _, indexName := range indexNames {
+		whereIndexes = append(whereIndexes, strconv.Quote(indexName))
+	}
+	statement := fmt.Sprintf("SELECT name,state FROM system:indexes WHERE indexes.name IN [%s] AND indexes.keyspace_id = '%s'", strings.Join(whereIndexes, ","), store.IndexMetaKeyspaceID())
 	if store.IndexMetaBucketID() != "" {
 		statement += fmt.Sprintf(" AND indexes.bucket_id = '%s'", store.IndexMetaBucketID())
 	}
 	if store.IndexMetaScopeID() != "" {
 		statement += fmt.Sprintf(" AND indexes.scope_id = '%s'", store.IndexMetaScopeID())
 	}
-	results, queryErr := store.executeQuery(statement)
-	if queryErr != nil {
-		return false, nil, queryErr
+	results, err := store.executeQuery(statement)
+	if store.IsErrNoResults(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
 	}
-
-	indexInfo := &IndexMeta{}
-	err = results.One(ctx, indexInfo)
-	if err != nil {
-		if store.IsErrNoResults(err) {
-			return false, nil, nil
-		} else {
-			return true, nil, err
+	defer func() {
+		err := results.Close()
+		if err != nil {
+			WarnfCtx(ctx, "Error closing results from GetIndexesMeta: %v", err)
 		}
+	}()
+
+	indexes := make(map[string]IndexMeta)
+	var meta IndexMeta
+	for results.Next(ctx, &meta) {
+		indexes[meta.Name] = meta
 	}
-	return true, indexInfo, nil
+	return indexes, nil
 }
 
 // DropIndex drops the specified index from the N1QLStore keyspace.
