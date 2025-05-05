@@ -575,7 +575,7 @@ func GetOnlineMetadataIndexes(ctx context.Context, collection base.N1QLStore, us
 	possibleIndexes := make(map[string]SGIndexType)
 	for sgIndexType, sgIndex := range sgIndexes {
 		if sgIndex.isPrincipalOnly() {
-		    possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
+			possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
 		}
 	}
 	meta, err := base.GetIndexesMeta(ctx, collection, slices.Collect(maps.Keys(possibleIndexes)))
