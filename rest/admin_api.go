@@ -279,7 +279,7 @@ func (h *handler) handleGetIndexInit() error {
 
 type PostIndexInitRequest struct {
 	NumPartitions            *uint32 `json:"num_partitions"`
-	SeparatePrincipalIndexes *bool   `json:"separate_principal_indexes"`
+	SeparatePrincipalIndexes *bool   `json:"create_separate_principal_indexes"`
 }
 
 func (req PostIndexInitRequest) Validate() error {
