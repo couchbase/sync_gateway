@@ -342,62 +342,62 @@ func TestIsIndexerError(t *testing.T) {
 	assert.True(t, isIndexerError(err))
 }
 
-func TestShouldUsePrincipalIndexes(t *testing.T) {
+func TestShouldUseLegacySyncDocsIndex(t *testing.T) {
 	testCases := []struct {
-		name                      string
-		indexes                   []SGIndexType
-		shouldUsePrincipalIndexes bool
+		name                         string
+		indexes                      []SGIndexType
+		shouldUseLegacySyncDocsIndex bool
 	}{
 		{
-			name:                      "no indexes",
-			indexes:                   []SGIndexType{},
-			shouldUsePrincipalIndexes: true,
+			name:                         "no indexes",
+			indexes:                      []SGIndexType{},
+			shouldUseLegacySyncDocsIndex: false,
 		},
 		{
-			name:                      "syncDocs only",
-			indexes:                   []SGIndexType{IndexSyncDocs},
-			shouldUsePrincipalIndexes: false,
+			name:                         "syncDocs only",
+			indexes:                      []SGIndexType{IndexSyncDocs},
+			shouldUseLegacySyncDocsIndex: true,
 		},
 		{
-			name:                      "user only",
-			indexes:                   []SGIndexType{IndexUser},
-			shouldUsePrincipalIndexes: true,
+			name:                         "user only",
+			indexes:                      []SGIndexType{IndexUser},
+			shouldUseLegacySyncDocsIndex: false,
 		},
 		{
-			name:                      "role only",
-			indexes:                   []SGIndexType{IndexRole},
-			shouldUsePrincipalIndexes: true,
+			name:                         "role only",
+			indexes:                      []SGIndexType{IndexRole},
+			shouldUseLegacySyncDocsIndex: false,
 		},
 		{
-			name:                      "user and role",
-			indexes:                   []SGIndexType{IndexUser, IndexRole},
-			shouldUsePrincipalIndexes: true,
+			name:                         "user and role",
+			indexes:                      []SGIndexType{IndexUser, IndexRole},
+			shouldUseLegacySyncDocsIndex: false,
 		},
 		{
-			name:                      "syncDocs and role",
-			indexes:                   []SGIndexType{IndexSyncDocs, IndexRole},
-			shouldUsePrincipalIndexes: false,
+			name:                         "syncDocs and role",
+			indexes:                      []SGIndexType{IndexSyncDocs, IndexRole},
+			shouldUseLegacySyncDocsIndex: true,
 		},
 		{
-			name:                      "syncDocs and user",
-			indexes:                   []SGIndexType{IndexSyncDocs, IndexUser},
-			shouldUsePrincipalIndexes: false,
+			name:                         "syncDocs and user",
+			indexes:                      []SGIndexType{IndexSyncDocs, IndexUser},
+			shouldUseLegacySyncDocsIndex: true,
 		},
 		{
-			name:                      "syncDocs, user, role",
-			indexes:                   []SGIndexType{IndexSyncDocs, IndexUser, IndexRole},
-			shouldUsePrincipalIndexes: true,
+			name:                         "syncDocs, user, role",
+			indexes:                      []SGIndexType{IndexSyncDocs, IndexUser, IndexRole},
+			shouldUseLegacySyncDocsIndex: false,
 		},
 		{
-			name:                      "syncDocs, user, role, extraenous", // this would be a programming bug to include an extra index
-			indexes:                   []SGIndexType{IndexSyncDocs, IndexUser, IndexRole, IndexAccess},
-			shouldUsePrincipalIndexes: true,
+			name:                         "syncDocs, user, role, extraenous", // this would be a programming bug to include an extra index
+			indexes:                      []SGIndexType{IndexSyncDocs, IndexUser, IndexRole, IndexAccess},
+			shouldUseLegacySyncDocsIndex: false,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			shouldUse := shouldUsePrincipalIndexes(testCase.indexes)
-			assert.Equal(t, testCase.shouldUsePrincipalIndexes, shouldUse)
+			shouldUse := shouldUseLegacySyncDocsIndex(testCase.indexes)
+			assert.Equal(t, testCase.shouldUseLegacySyncDocsIndex, shouldUse)
 		})
 	}
 }

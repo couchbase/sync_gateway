@@ -127,7 +127,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 
 			n1qlStore, ok := database.MetadataStore.(base.N1QLStore)
 			require.True(t, ok)
-			onlineMetadataIndexes, err := db.GetOnlineMetadataIndexes(ctx, n1qlStore, database.UseXattrs())
+			onlineMetadataIndexes, err := db.GetOnlinePrincipalIndexes(ctx, n1qlStore, database.UseXattrs())
 			require.NoError(t, err)
 			if testCase.useLegacySyncDocsIndex {
 				require.Equal(t, []db.SGIndexType{db.IndexSyncDocs}, onlineMetadataIndexes)

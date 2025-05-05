@@ -783,7 +783,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if !ok {
 			return nil, errors.New("Bucket %s is not %T and does not support N1QL.")
 		}
-		contextOptions.UseLegacySyncDocsIndex = !db.ShouldUsePrincipalIndexes(ctx, metadataStore, config.UseXattrs())
+		contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, metadataStore, config.UseXattrs())
 		if sc.DatabaseInitManager == nil {
 			base.AssertfCtx(ctx, "DatabaseInitManager should always be initialized")
 			return nil, errors.New("DatabaseInitManager not initialized")

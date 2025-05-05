@@ -550,33 +550,34 @@ func GetIndexesName(options InitializeIndexOptions) []string {
 	return indexesName
 }
 
-// ShouldUsePrincipalIndexes returns true if the user and role indexes should be used for principal queries for the specified collection.
-func ShouldUsePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) bool {
-	onlinePrincipalIndexes, err := GetOnlineMetadataIndexes(context.Background(), collection, useXattrs)
+// ShouldUseLegacySyncDocsIndex returns true if the syncDocs index should be used for queries of principal docs. Returns false if targeted users and roles indexes should be used.
+func ShouldUseLegacySyncDocsIndex(ctx context.Context, collection base.N1QLStore, useXattrs bool) bool {
+	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection, useXattrs)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs index", err)
+		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs indexe", err)
 		return false
 	}
-	return shouldUsePrincipalIndexes(onlinePrincipalIndexes)
+	return shouldUseLegacySyncDocsIndex(onlinePrincipalIndexes)
 }
 
-// shouldUsePrincipalIndexes returns true if syncDocs does not already exist, or if both the user and role index exist
-func shouldUsePrincipalIndexes(onlineIndexes []SGIndexType) bool {
-	// if no syncDocs index, either user and role indexes are available or they need to be built
-	if !slices.Contains(onlineIndexes, IndexSyncDocs) {
-		return true
+// shouldUseLegacySyncDocsIndex returns true if the syncDocs index should be used for queries of principal docs. Returns false if targeted users and roles indexes should be used.
+func shouldUseLegacySyncDocsIndex(onlineIndexes []SGIndexType) bool {
+	// if user and role indexes are available, use them
+	if slices.Contains(onlineIndexes, IndexUser) && slices.Contains(onlineIndexes, IndexRole) {
+		return false
 	}
-	// if either user or role index is not available, we need to use syncDocs index
-	return slices.Contains(onlineIndexes, IndexUser) && slices.Contains(onlineIndexes, IndexRole)
+	// use syncDocs index if is is available, otherwise build user and role indexes
+	return slices.Contains(onlineIndexes, IndexSyncDocs)
 }
 
-// GetOnlineMetadataIndexes returns the metadata indexes that exist and are online for a given collection. This code runs without N1QL retries and will return an error quickly in the case of a retryable N1QL failure. Does not return an error if no indexes are found.
-func GetOnlineMetadataIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) ([]SGIndexType, error) {
+// GetOnlinePrincipalIndexes returns the principal indexes that exist and are online for a given collection. This code runs without N1QL retries and will return an error quickly in the case of a retryable N1QL failure. Does not return an error if no indexes are found.
+func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) ([]SGIndexType, error) {
 	possibleIndexes := make(map[string]SGIndexType)
 	for sgIndexType, sgIndex := range sgIndexes {
-		if sgIndex.isPrincipalOnly() {
-			possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
+		if !sgIndex.isPrincipalOnly() {
+			continue
 		}
+		possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
 	}
 	meta, err := base.GetIndexesMeta(ctx, collection, slices.Collect(maps.Keys(possibleIndexes)))
 	if err != nil {
