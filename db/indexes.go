@@ -552,7 +552,7 @@ func GetIndexesName(options InitializeIndexOptions) []string {
 
 // ShouldUsePrincipalIndexes returns true if the user and role indexes should be used for principal queries for the specified collection.
 func ShouldUsePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) bool {
-	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection, useXattrs)
+	onlinePrincipalIndexes, err := GetOnlineMetadataIndexes(context.Background(), collection, useXattrs)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs index", err)
 		return false
@@ -570,8 +570,8 @@ func shouldUsePrincipalIndexes(onlineIndexes []SGIndexType) bool {
 	return slices.Contains(onlineIndexes, IndexUser) && slices.Contains(onlineIndexes, IndexRole)
 }
 
-// GetOnlinePrincipalIndexes returns the principal indexes that exist and are online for a given collection. This code runs without N1QL retries and will return an error quickly in the case of a retryable N1QL failure. Does not return an error if no indexes are found.
-func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) ([]SGIndexType, error) {
+// GetOnlineMetadataIndexes returns the metadata indexes that exist and are online for a given collection. This code runs without N1QL retries and will return an error quickly in the case of a retryable N1QL failure. Does not return an error if no indexes are found.
+func GetOnlineMetadataIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) ([]SGIndexType, error) {
 	possibleIndexes := make(map[string]SGIndexType)
 	for sgIndexType, sgIndex := range sgIndexes {
 		if sgIndex.isPrincipalOnly() {
