@@ -327,46 +327,70 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
 
+	// requires index init
+	base.LongRunningTest(t)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	n1qlStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
+	require.True(t, ok)
+
+	ctx := base.TestCtx(t)
+	require.NoError(t, db.InitializeIndexes(ctx, n1qlStore,
+		db.InitializeIndexOptions{
+			NumReplicas:         0,
+			LegacySyncDocsIndex: true, // force use of legacy sync docs index
+			UseXattrs:           base.TestUseXattrs(),
+			MetadataIndexes:     db.IndexesMetadataOnly,
+			NumPartitions:       1,
+		}))
+
 	indexNameSuffix := "_1"
 	if base.TestUseXattrs() {
 		indexNameSuffix = "_x1"
 	}
+	userIdx := "sg_users" + indexNameSuffix
+	roleIdx := "sg_roles" + indexNameSuffix
+	syncDocsIdx := "sg_syncDocs" + indexNameSuffix
 
-	// requires index init
-	base.LongRunningTest(t)
-
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
-
-	n1qlStore, ok := base.AsN1QLStore(rt.GetDatabase().MetadataStore)
-	require.True(t, ok)
+	// prior to database creation, there should be only syncDocs
 	indexes, err := n1qlStore.GetIndexes()
 	require.NoError(t, err)
-	assert.Contains(t, indexes, "sg_syncDocs"+indexNameSuffix)
-	assert.NotContains(t, indexes, "sg_users"+indexNameSuffix)
-	assert.NotContains(t, indexes, "sg_roles"+indexNameSuffix)
+	require.Contains(t, indexes, syncDocsIdx)
+	require.NotContains(t, indexes, userIdx)
+	require.NotContains(t, indexes, roleIdx)
 
-	// ensure we have legacy sync docs index running in the test by default - this may need to be explicitly configured in future changes?
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	// ensure we have legacy sync docs index
 	require.True(t, rt.GetDatabase().UseLegacySyncDocsIndex())
 
-	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"separate_principal_indexes":true}`)
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	// wait for completion
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
-		rest.AssertStatus(t, resp, http.StatusOK)
-		var body db.AsyncIndexInitManagerResponse
-		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
-		require.NoError(c, err)
-		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-	}, 1*time.Minute, 1*time.Second)
-
+	// after database creation, there should be only syncDocs
 	indexes, err = n1qlStore.GetIndexes()
 	require.NoError(t, err)
-	assert.Contains(t, indexes, "sg_syncDocs"+indexNameSuffix)
-	assert.Contains(t, indexes, "sg_users"+indexNameSuffix)
-	assert.Contains(t, indexes, "sg_roles"+indexNameSuffix)
+	require.Contains(t, indexes, syncDocsIdx)
+	require.NotContains(t, indexes, userIdx)
+	require.NotContains(t, indexes, roleIdx)
+
+	// this call should not create new indexes
+	runIndexInit(rt, `{"create_separate_principal_indexes":false}`)
+	indexes, err = n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	require.NotContains(t, indexes, userIdx)
+	require.NotContains(t, indexes, roleIdx)
+	require.Contains(t, indexes, syncDocsIdx)
+
+	// this should create new indexes
+	runIndexInit(rt, `{"create_separate_principal_indexes":true}`)
+	indexes, err = n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	require.Contains(t, indexes, syncDocsIdx)
+	require.Contains(t, indexes, userIdx)
+	require.Contains(t, indexes, roleIdx)
+
+	rt.TakeDbOffline()
+	rt.TakeDbOnline()
+	require.False(t, rt.GetDatabase().UseLegacySyncDocsIndex())
 
 	// CBG-4608 cleanup old indexes
 	//resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
@@ -379,7 +403,24 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 
 	//indexes, err = n1qlStore.GetIndexes()
 	//require.NoError(t, err)
-	//assert.NotContains(t, indexes, "sg_syncDocs"+indexNameSuffix)
-	//assert.Contains(t, indexes, "sg_users"+indexNameSuffix)
-	//assert.Contains(t, indexes, "sg_roles"+indexNameSuffix)
+	//require.NotContains(t, indexes, syncDocsIdx)
+	//require.Contains(t, indexes, userIdx)
+	//require.Contains(t, indexes, roleIdx)
+}
+
+// runIndexInit is a helper function to run the index init process.
+func runIndexInit(rt *rest.RestTester, body string) {
+	t := rt.TB()
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// wait for completion
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
+		rest.AssertStatus(t, resp, http.StatusOK)
+		var body db.AsyncIndexInitManagerResponse
+		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+		require.NoError(c, err)
+		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
+	}, 1*time.Minute, 500*time.Millisecond)
 }
