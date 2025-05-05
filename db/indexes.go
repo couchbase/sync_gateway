@@ -550,7 +550,7 @@ func GetIndexesName(options InitializeIndexOptions) []string {
 	return indexesName
 }
 
-// ShouldUseLegacySyncDocsIndex returns true if   returns the principal indexes for the given collection.
+// ShouldUsePrincipalIndexes returns true if the user and role indexes should be used for principal queries for the specified collection.
 func ShouldUsePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) bool {
 	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection, useXattrs)
 	if err != nil {
@@ -560,7 +560,7 @@ func ShouldUsePrincipalIndexes(ctx context.Context, collection base.N1QLStore, u
 	return shouldUsePrincipalIndexes(onlinePrincipalIndexes)
 }
 
-// shouldUsePrincipalIndexes returns true users and roles index is available for use.
+// shouldUsePrincipalIndexes returns true if syncDocs does not already exist, or if both the user and role index exist
 func shouldUsePrincipalIndexes(onlineIndexes []SGIndexType) bool {
 	// if no syncDocs index, either user and role indexes are available or they need to be built
 	if !slices.Contains(onlineIndexes, IndexSyncDocs) {
@@ -574,10 +574,9 @@ func shouldUsePrincipalIndexes(onlineIndexes []SGIndexType) bool {
 func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) ([]SGIndexType, error) {
 	possibleIndexes := make(map[string]SGIndexType)
 	for sgIndexType, sgIndex := range sgIndexes {
-		if !sgIndex.isPrincipalOnly() {
-			continue
+		if sgIndex.isPrincipalOnly() {
+		    possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
 		}
-		possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
 	}
 	meta, err := base.GetIndexesMeta(ctx, collection, slices.Collect(maps.Keys(possibleIndexes)))
 	if err != nil {
