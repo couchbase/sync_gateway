@@ -554,7 +554,7 @@ func GetIndexesName(options InitializeIndexOptions) []string {
 func ShouldUseLegacySyncDocsIndex(ctx context.Context, collection base.N1QLStore, useXattrs bool) bool {
 	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection, useXattrs)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs indexe", err)
+		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs index", err)
 		return false
 	}
 	return shouldUseLegacySyncDocsIndex(onlinePrincipalIndexes)
