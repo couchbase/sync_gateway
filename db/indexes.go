@@ -186,16 +186,22 @@ var (
 	}
 )
 
+// sgIndexes is the global definition of indexes defined at initialization time
 var sgIndexes map[SGIndexType]SGIndex
 
 // Initialize index definitions
 func init() {
-	sgIndexes = make(map[SGIndexType]SGIndex, indexTypeCount)
+	sgIndexes = GetSGIndexes()
+}
+
+// GetSGIndexes returns the set of indexes defined for Sync Gateway.
+func GetSGIndexes() map[SGIndexType]SGIndex {
+	sgIndexes := make(map[SGIndexType]SGIndex, indexTypeCount)
 	for i := SGIndexType(0); i < indexTypeCount; i++ {
 		sgIndex := SGIndex{
 			simpleName:       indexNames[i],
-			version:          indexVersions[i],
-			previousVersions: indexPreviousVersions[i],
+			Version:          indexVersions[i],
+			PreviousVersions: indexPreviousVersions[i],
 			expression:       indexExpressions[i],
 			filterExpression: indexFilterExpressions[i],
 			flags:            indexFlags[i],
@@ -211,6 +217,7 @@ func init() {
 
 		sgIndexes[i] = sgIndex
 	}
+	return sgIndexes
 }
 
 // SGIndex is used to manage the set of constants associated with each index definition
@@ -218,8 +225,8 @@ type SGIndex struct {
 	simpleName       string            // Simplified index name (used to build fullIndexName)
 	expression       string            // Expression used to create index
 	filterExpression string            // (Optional) Filter expression used to create index
-	version          int               // Index version.  Must be incremented any time the index definition changes
-	previousVersions []int             // Previous versions of the index that will be removed during post_upgrade cleanup
+	Version          int               // Index version.  Must be incremented any time the index definition changes
+	PreviousVersions []int             // Previous versions of the index that will be removed during post_upgrade cleanup
 	required         bool              // Whether SG blocks on startup until this index is ready
 	readinessQuery   string            // Query used to determine view readiness
 	flags            SGIndexFlags      // Additional index options
@@ -228,7 +235,7 @@ type SGIndex struct {
 }
 
 func (i *SGIndex) fullIndexName(useXattrs bool, numPartitions uint32) string {
-	return i.indexNameForVersion(i.version, useXattrs, numPartitions)
+	return i.indexNameForVersion(i.Version, useXattrs, numPartitions)
 }
 
 func (i *SGIndex) indexNameForVersion(version int, useXattrs bool, numPartitions uint32) string {
@@ -438,7 +445,7 @@ func isIndexerError(err error) bool {
 // Iterates over the index set, removing obsolete indexes:
 //   - indexes based on the inverse value of xattrs being used by the database
 //   - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
-func removeObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
+func RemoveObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
 
 	// Build set of candidates for cleanup
@@ -452,7 +459,7 @@ func removeObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOn
 			removalCandidates = append(removalCandidates, sgIndex.fullIndexName(useXattrs, numPartitions))
 		}
 		// Older versions, both xattr and non-xattr
-		for _, prevVersion := range sgIndex.previousVersions {
+		for _, prevVersion := range sgIndex.PreviousVersions {
 			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, true, numPartitions))
 			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, false, numPartitions))
 		}
@@ -522,16 +529,6 @@ func replaceSyncTokensQuery(statement string, useXattrs bool) string {
 // Replace index tokens ($idx) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
 func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool, numPartitions uint32) string {
 	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs, numPartitions), -1)
-}
-
-func copySGIndexes(inputMap map[SGIndexType]SGIndex) map[SGIndexType]SGIndex {
-	outputMap := make(map[SGIndexType]SGIndex, len(inputMap))
-
-	for idx, value := range inputMap {
-		outputMap[idx] = value
-	}
-
-	return outputMap
 }
 
 // GetIndexesName returns names of the indexes that would be created for specific options.

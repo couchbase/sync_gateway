@@ -27,44 +27,54 @@ func getDatabaseContextOptions(useLegacySyncDocsIndex bool) db.DatabaseContextOp
 	}
 }
 
-// setupN1QLStore initializes the indexes for a database. This is normally done by the rest package
-func setupN1QLStore(ctx context.Context, t *testing.T, bucket base.Bucket, useLegacySyncDocsIndex bool, numPartitions uint32) {
+// testIndexCreationOptions are used for db.indextest package to create database like rest.DatabaseInitManager would
+type testIndexCreationOptions struct {
+	numPartitions                uint32
+	useLegacySyncDocsIndex       bool
+	useXattrs                    bool
+	forceSingleDefaultCollection bool
+	numCollections               int // if specified forces the number of collections to be created
+}
+
+// setupIndexes initializes the indexes for a database. This is normally done by the rest.DatabaseInitManager
+func setupIndexes(t *testing.T, bucket base.Bucket, createOpts testIndexCreationOptions) {
 	testBucket, ok := bucket.(*base.TestBucket)
 	require.True(t, ok)
 
-	hasOnlyDefaultDataStore := len(testBucket.GetNonDefaultDatastoreNames()) == 0
+	hasOnlyDefaultDataStore := len(testBucket.GetNonDefaultDatastoreNames()) == 0 || createOpts.forceSingleDefaultCollection
 
 	options := db.InitializeIndexOptions{
 		NumReplicas:         0,
-		LegacySyncDocsIndex: useLegacySyncDocsIndex,
-		UseXattrs:           base.TestUseXattrs(),
-		NumPartitions:       numPartitions,
+		LegacySyncDocsIndex: createOpts.useLegacySyncDocsIndex,
+		UseXattrs:           createOpts.useXattrs,
+		NumPartitions:       createOpts.numPartitions,
 	}
 	if hasOnlyDefaultDataStore {
 		options.MetadataIndexes = db.IndexesAll
 	} else {
 		options.MetadataIndexes = db.IndexesMetadataOnly
 	}
-	initializeIndexes(ctx, t, testBucket, bucket.DefaultDataStore(), options)
+	ctx := base.TestCtx(t)
+	initializeCollectionIndexes(ctx, t, testBucket, bucket.DefaultDataStore(), options)
 	if hasOnlyDefaultDataStore {
 		return
 	}
-	options = db.InitializeIndexOptions{
-		NumReplicas:         0,
-		LegacySyncDocsIndex: useLegacySyncDocsIndex,
-		UseXattrs:           base.TestUseXattrs(),
-		MetadataIndexes:     db.IndexesWithoutMetadata,
-		NumPartitions:       numPartitions,
+	options.MetadataIndexes = db.IndexesWithoutMetadata
+
+	numCollections := 1
+	if createOpts.numCollections != 0 {
+		numCollections = createOpts.numCollections
 	}
+	for collectionIndex := range numCollections {
+		dataStore, err := testBucket.GetNamedDataStore(collectionIndex)
+		require.NoError(t, err)
 
-	dataStore, err := testBucket.GetNamedDataStore(0)
-	require.NoError(t, err)
-
-	initializeIndexes(ctx, t, testBucket, dataStore, options)
+		initializeCollectionIndexes(ctx, t, testBucket, dataStore, options)
+	}
 }
 
-// initializeIndexes initializes the indexes for a data store like rest.DatabaseInitManager's DatabaseInitWorker
-func initializeIndexes(ctx context.Context, t *testing.T, testBucket base.Bucket, dsName sgbucket.DataStoreName, options db.InitializeIndexOptions) {
+// initializeCollectionIndexes initializes the indexes for a data store like rest.DatabaseInitManager's DatabaseInitWorker
+func initializeCollectionIndexes(ctx context.Context, t *testing.T, testBucket base.Bucket, dsName sgbucket.DataStoreName, options db.InitializeIndexOptions) {
 	gocbBucket, err := base.AsGocbV2Bucket(testBucket)
 	require.NoError(t, err)
 
@@ -85,4 +95,28 @@ func requireCoveredQuery(t *testing.T, database *db.Database, statement string, 
 	planJSON, err := base.JSONMarshal(plan)
 	require.NoError(t, err)
 	require.Equal(t, isCovered, covered, "query covered by index; expectedToBeCovered: %t, Plan: %s", isCovered, planJSON)
+}
+
+// setupIndexAndDB creates the indexes for a database like rest.DatabaseInitManager and creates an online test database. The bucket and database will be cleaned up by testing.T.Cleanup.
+func setupIndexAndDB(t *testing.T, opts testIndexCreationOptions) *db.Database {
+	bucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	t.Cleanup(func() { bucket.Close(ctx) })
+	setupIndexes(t, bucket, opts)
+	dbOptions := getDatabaseContextOptions(opts.useLegacySyncDocsIndex)
+	numCollections := 1
+	if opts.numCollections != 0 {
+		numCollections = opts.numCollections
+	}
+	if opts.forceSingleDefaultCollection {
+		dbOptions.Scopes = db.GetScopesOptionsDefaultCollectionOnly(t)
+	} else {
+		dbOptions.Scopes = db.GetScopesOptions(t, bucket, numCollections)
+	}
+	dbOptions.EnableXattr = opts.useXattrs
+
+	database, ctx := db.CreateTestDatabase(t, bucket, dbOptions)
+
+	t.Cleanup(func() { database.Close(ctx) })
+	return database
 }
