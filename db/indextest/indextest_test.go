@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package indextest
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -39,13 +38,13 @@ func TestRoleQuery(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf("useLegacySyncDocsIndex=%t", testCase.useLegacySyncDocsIndex), func(t *testing.T) {
-			dbContextConfig := getDatabaseContextOptions(testCase.useLegacySyncDocsIndex)
+			database := setupIndexAndDB(t, testIndexCreationOptions{
+				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
+				numPartitions:          db.DefaultNumIndexPartitions,
+				useXattrs:              base.TestUseXattrs(),
+			})
 
-			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
-			defer database.Close(ctx)
-
-			setupN1QLStore(ctx, t, database.Bucket, testCase.useLegacySyncDocsIndex, db.DefaultNumIndexPartitions)
-
+			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
 			authenticator := database.Authenticator(ctx)
 			require.NotNil(t, authenticator, "database.Authenticator(ctx) returned nil")
 			// Add roles
@@ -119,11 +118,13 @@ func TestAllPrincipalIDs(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf("TestAllPrincipalIDs with useLegacySyncDocsIndex=%t", testCase.useLegacySyncDocsIndex), func(t *testing.T) {
-			dbContextConfig := getDatabaseContextOptions(testCase.useLegacySyncDocsIndex)
-			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
-			defer database.Close(ctx)
+			database := setupIndexAndDB(t, testIndexCreationOptions{
+				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
+				numPartitions:          db.DefaultNumIndexPartitions,
+				useXattrs:              base.TestUseXattrs(),
+			})
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.useLegacySyncDocsIndex, db.DefaultNumIndexPartitions)
+			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
 
 			n1qlStore, ok := database.MetadataStore.(base.N1QLStore)
 			require.True(t, ok)
@@ -200,13 +201,13 @@ func TestGetRoleIDs(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf("useLegacySyncDocsIndex=%t", testCase.useLegacySyncDocsIndex), func(t *testing.T) {
-			dbContextConfig := getDatabaseContextOptions(testCase.useLegacySyncDocsIndex)
-			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
-			defer database.Close(ctx)
+			database := setupIndexAndDB(t, testIndexCreationOptions{
+				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
+				numPartitions:          db.DefaultNumIndexPartitions,
+				useXattrs:              base.TestUseXattrs(),
+			})
 
-			setupN1QLStore(ctx, t, database.Bucket, testCase.useLegacySyncDocsIndex, db.DefaultNumIndexPartitions)
-			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
-
+			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
 			database.Options.QueryPaginationLimit = 100
 			authenticator := database.Authenticator(ctx)
 
@@ -364,10 +365,13 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numSGNodes)
 	for i := 0; i < numSGNodes; i++ {
-		ctx := base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("test-node-%d", i))
 		go func() {
 			defer wg.Done()
-			setupN1QLStore(ctx, t, bucket, true, db.DefaultNumIndexPartitions)
+			setupIndexes(t, bucket, testIndexCreationOptions{
+				numPartitions:          db.DefaultNumIndexPartitions,
+				useLegacySyncDocsIndex: false,
+				useXattrs:              base.TestUseXattrs(),
+			})
 		}()
 	}
 	wg.Wait()
@@ -377,13 +381,14 @@ func TestPartitionedIndexes(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("TestPartitionedIndexes only works with UseXattrs=true")
 	}
+
 	numPartitions := uint32(13)
-	useLegacySyncDocsIndex := true
+	database := setupIndexAndDB(t, testIndexCreationOptions{
+		useLegacySyncDocsIndex: true,
+		numPartitions:          numPartitions,
+		useXattrs:              base.TestUseXattrs(),
+	})
 
-	database, ctx := db.SetupTestDBWithOptions(t, db.DatabaseContextOptions{NumIndexPartitions: base.Ptr(numPartitions)})
-	defer database.Close(ctx)
-
-	setupN1QLStore(ctx, t, database.Bucket, useLegacySyncDocsIndex, numPartitions)
 	gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
 	require.NoError(t, err)
 	for _, dsName := range []sgbucket.DataStoreName{db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionDatastore(), database.MetadataStore} {

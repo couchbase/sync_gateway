@@ -558,20 +558,25 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	}
 }
 
-// Sets up test db with the specified database context options.  Note that environment variables can
+// SetupTestDBWithOptions creates an online test db with the specified database context options. Note that environment variables will override values (SG_TEST_USE_XATTRS, SG_TEST_USE_DEFAULT_COLLECTION).
 // override somedbcOptions properties.
 func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	tBucket := base.GetTestBucket(t)
 	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
 }
 
+// SetupTestDBForBucketWithOptions sets up a test database with the specified database context options.  Note that environment variables will override values (SG_TEST_USE_XATTRS, SG_TEST_USE_DEFAULT_COLLECTION).
 func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	if dbcOptions.Scopes == nil {
 		dbcOptions.Scopes = GetScopesOptions(t, tBucket, 1)
 	}
+	return CreateTestDatabase(t, tBucket, dbcOptions)
+}
 
+// CreateTestDatabase creates a DatabaseContext and makes it online. Returns a context suitable for use with the database which has information sufficient for audit logging.
+func CreateTestDatabase(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+	ctx := base.TestCtx(t)
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 
