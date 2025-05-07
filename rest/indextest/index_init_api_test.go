@@ -50,33 +50,54 @@ func TestChangeIndexPartitions(t *testing.T) {
 		usePersistentConfig bool
 		initialPartitions   *uint32
 		newPartitions       uint32
+		removedIndexes      []string
 	}{
 		{
 			name:                "non-persistent config 2 to 4",
 			usePersistentConfig: false,
 			initialPartitions:   base.Ptr(uint32(2)),
 			newPartitions:       4,
+			removedIndexes: []string{
+				"sg_allDocs_x1_p2",
+				"sg_channels_x1_p2",
+			},
 		},
 		{
 			name:                "persistent config 2 to 4",
 			usePersistentConfig: true,
 			initialPartitions:   base.Ptr(uint32(2)),
 			newPartitions:       4,
+			removedIndexes: []string{
+				"sg_allDocs_x1_p2",
+				"sg_channels_x1_p2",
+			},
 		},
 		{
 			name:              "nil to 4",
 			initialPartitions: nil,
 			newPartitions:     4,
+			removedIndexes: []string{
+				"sg_allDocs_x1",
+				"sg_channels_x1",
+			},
 		},
 		{
 			name:              "1 to 4",
 			initialPartitions: base.Ptr(uint32(1)),
 			newPartitions:     4,
+			removedIndexes: []string{
+				"sg_allDocs_x1",
+				"sg_channels_x1",
+			},
 		},
 		{
 			name:              "4 to 1",
 			initialPartitions: base.Ptr(uint32(4)),
 			newPartitions:     1,
+			removedIndexes: []string{
+				"sg_allDocs_x1_p4",
+				"sg_channels_x1_p4",
+			},
 		},
 	}
 	for _, test := range tests {
@@ -104,6 +125,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 			defer rt.Close()
 			database := rt.GetDatabase()
 			assertNumSGIndexPartitions(t, database)
+			require.Equal(t, test.initialPartitions, rt.GetDatabase().Options.NumIndexPartitions)
 
 			// init new indexes with different partitions
 			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_index_init", dbName), fmt.Sprintf(`{"num_partitions":%d}`, test.newPartitions))
@@ -134,15 +156,29 @@ func TestChangeIndexPartitions(t *testing.T) {
 			}
 			dbConfig.Index.NumPartitions = base.Ptr(test.newPartitions)
 			rest.RequireStatus(t, rt.ReplaceDbConfig(dbName, dbConfig), http.StatusCreated)
+			require.Equal(t, test.newPartitions, *rt.GetDatabase().Options.NumIndexPartitions)
 
 			// CBG-4565 cleanup old indexes
-			//resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
-			//rest.RequireStatus(t, resp, http.StatusOK)
-			//var body rest.PostUpgradeResponse
-			//err := base.JSONUnmarshal(resp.BodyBytes(), &body)
-			//require.NoError(t, err)
-			//require.Lenf(t, body.Result, 1, "expected one database in post upgrade response")
-			//require.Lenf(t, body.Result[dbName].RemovedIndexes, 2, "expected two indexes to be removed")
+			resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			var body rest.PostUpgradeResponse
+			err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+			collection := db.GetSingleDatabaseCollection(t, database)
+			var removedIndexes []string
+			for _, index := range test.removedIndexes {
+				removedIndexes = append(removedIndexes, fmt.Sprintf("`%s`.`%s`.%s", collection.ScopeName, collection.Name, index))
+			}
+
+			expectedOutput := rest.PostUpgradeResponse{
+				Result: rest.PostUpgradeResult{
+					"db": rest.PostUpgradeDatabaseResult{
+						RemovedDDocs:   []string{},
+						RemovedIndexes: removedIndexes,
+					},
+				},
+			}
+			require.NoError(t, err)
+			require.Equal(t, expectedOutput, body)
 		})
 	}
 }
@@ -151,8 +187,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 func assertNumSGIndexPartitions(t testing.TB, database *db.DatabaseContext) {
 	gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
 	require.NoError(t, err)
-	re, err := regexp.Compile(`sg_(?:allDocs|channels)_x1(?:_p(\d+))?$`)
-	require.NoError(t, err)
+	re := regexp.MustCompile(`sg_(?:allDocs|channels)_x1(?:_p(\d+))?$`)
 	for _, dsName := range []sgbucket.DataStoreName{db.GetSingleDatabaseCollection(t, database).GetCollectionDatastore(), database.MetadataStore} {
 		allIndexes, err := gocbBucket.GetCluster().Bucket(gocbBucket.BucketName()).Scope(dsName.ScopeName()).Collection(dsName.CollectionName()).QueryIndexes().GetAllIndexes(nil)
 		require.NoError(t, err)

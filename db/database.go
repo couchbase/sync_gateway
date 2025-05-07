@@ -756,39 +756,47 @@ func (dbCtx *DatabaseContext) getDataStores() []sgbucket.DataStore {
 	return datastores
 }
 
-// Removes previous versions of Sync Gateway's indexes found on the server. Returns a map of indexes removed by collection name.
-func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) ([]string, error) {
+// GetInUseIndexes returns the names of the indexes on this database.
+func (dbCtx *DatabaseContext) GetInUseIndexes() CollectionIndexes {
+	return dbCtx.GetInUseIndexesFromDefs(sgIndexes)
+}
 
-	if !dbCtx.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql) {
-		return nil, nil
-	}
-	var errs *base.MultiError
-	var removedIndexes []string
-	for _, dataStore := range dbCtx.getDataStores() {
-		collectionName := fmt.Sprintf("`%s`.`%s`", dataStore.ScopeName(), dataStore.CollectionName())
-		n1qlStore, ok := base.AsN1QLStore(dataStore)
-		if !ok {
-			err := fmt.Sprintf("Cannot remove obsolete indexes for non-gocb collection %s - skipping.", base.MD(collectionName))
-			base.WarnfCtx(ctx, err)
-			errs = errs.Append(errors.New(err))
-			continue
+// GetInUseIndexesFromDefs returns the name of the indexes on this database. indexDefs refers to the global indexDefs as sgIndexes, or a testing seam passed in.
+func (dbCtx *DatabaseContext) GetInUseIndexesFromDefs(indexDefs map[SGIndexType]SGIndex) CollectionIndexes {
+	dataStores := dbCtx.getDataStores()
+	inUseIndexes := make(CollectionIndexes)
+	for _, ds := range dataStores {
+		options := InitializeIndexOptions{
+			NumPartitions:       dbCtx.numIndexPartitions(),
+			NumReplicas:         dbCtx.Options.NumIndexReplicas,
+			UseXattrs:           dbCtx.UseXattrs(),
+			LegacySyncDocsIndex: dbCtx.UseLegacySyncDocsIndex(),
 		}
-		collectionRemovedIndexes, err := RemoveObsoleteIndexes(ctx, n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
-		if err != nil {
-			errs = errs.Append(err)
-			continue
-		}
-		onlyDefaultCollection := dbCtx.OnlyDefaultCollection()
-		for _, idxName := range collectionRemovedIndexes {
-			if onlyDefaultCollection {
-				removedIndexes = append(removedIndexes, idxName)
+		if base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
+			if dbCtx.HasDefaultCollection() {
+				options.MetadataIndexes = IndexesAll
 			} else {
-				removedIndexes = append(removedIndexes,
-					fmt.Sprintf("%s.%s", collectionName, idxName))
+				options.MetadataIndexes = IndexesMetadataOnly
 			}
+		} else {
+			options.MetadataIndexes = IndexesWithoutMetadata
+		}
+		dsName := base.ScopeAndCollectionName{
+			Scope:      ds.ScopeName(),
+			Collection: ds.CollectionName(),
+		}
+		// datastore can be listed twice for explicit default and for metadata store
+		if _, ok := inUseIndexes[dsName]; !ok {
+			inUseIndexes[dsName] = make(map[string]struct{})
+		}
+		if dbCtx.UseViews() {
+			continue
+		}
+		for _, index := range GetIndexNames(options, indexDefs) {
+			inUseIndexes[dsName][index] = struct{}{}
 		}
 	}
-	return removedIndexes, errs.ErrorOrNil()
+	return inUseIndexes
 }
 
 // Trigger terminate check handling for connected continuous replications.

@@ -255,30 +255,105 @@ func TestInitializeIndexes(t *testing.T) {
 	}
 	base.LongRunningTest(t)
 
+	defaultCollection := base.DefaultScopeAndCollectionName()
+	namedCollection := base.ScopeAndCollectionName{Scope: "placeHolderScope", Collection: "placeHolderCollection"}
 	tests := []struct {
-		xattrs      bool
-		collections bool
+		xattrs          bool
+		collections     bool
+		expectedIndexes db.CollectionIndexes
 	}{
-		{true, false},
-		{false, false},
-		{true, true},
-		{false, true},
+		{
+			xattrs:      true,
+			collections: false,
+			expectedIndexes: db.CollectionIndexes{
+				defaultCollection: map[string]struct{}{
+					"sg_access_x1":     struct{}{},
+					"sg_allDocs_x1":    struct{}{},
+					"sg_channels_x1":   struct{}{},
+					"sg_roleAccess_x1": struct{}{},
+					"sg_roles_x1":      struct{}{},
+					"sg_tombstones_x1": struct{}{},
+					"sg_users_x1":      struct{}{},
+				},
+			},
+		},
+		{
+			xattrs:      false,
+			collections: false,
+			expectedIndexes: db.CollectionIndexes{
+				defaultCollection: map[string]struct{}{
+					"sg_access_1":     struct{}{},
+					"sg_allDocs_1":    struct{}{},
+					"sg_channels_1":   struct{}{},
+					"sg_roleAccess_1": struct{}{},
+					"sg_roles_1":      struct{}{},
+					"sg_users_1":      struct{}{},
+				},
+			},
+		},
+		{
+			xattrs:      true,
+			collections: true,
+			expectedIndexes: db.CollectionIndexes{
+				defaultCollection: map[string]struct{}{
+					"sg_roles_x1": struct{}{},
+					"sg_users_x1": struct{}{},
+				},
+				namedCollection: map[string]struct{}{
+					"sg_access_x1":     struct{}{},
+					"sg_allDocs_x1":    struct{}{},
+					"sg_channels_x1":   struct{}{},
+					"sg_roleAccess_x1": struct{}{},
+					"sg_tombstones_x1": struct{}{},
+				},
+			},
+		},
+		{
+			xattrs:      false,
+			collections: true,
+			expectedIndexes: db.CollectionIndexes{
+				defaultCollection: map[string]struct{}{
+					"sg_roles_1": struct{}{},
+					"sg_users_1": struct{}{},
+				},
+				namedCollection: map[string]struct{}{
+					"sg_access_1":     struct{}{},
+					"sg_allDocs_1":    struct{}{},
+					"sg_channels_1":   struct{}{},
+					"sg_roleAccess_1": struct{}{},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			bucket := base.GetTestBucket(t)
+			defer bucket.Close(ctx)
+
 			options := db.DatabaseContextOptions{
 				EnableXattr: test.xattrs,
 			}
 			if test.collections {
 				base.TestRequiresCollections(t)
-				// uses Scopes implicitly through test harness
+				options.Scopes = db.GetScopesOptions(t, bucket, 1)
 			} else {
 				options.Scopes = db.GetScopesOptionsDefaultCollectionOnly(t)
 			}
-			database, ctx := db.SetupTestDBWithOptions(t, options)
+			database, ctx := db.CreateTestDatabase(t, bucket, options)
 			defer database.Close(ctx)
+
 			collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
+
+			expectedIndexes := test.expectedIndexes
+			// namedCollection with the actual collection name after the bucket pool has defined it
+			namedCollectionIndexes, ok := expectedIndexes[namedCollection]
+			if ok {
+				expectedIndexes[collection.ScopeAndCollectionName()] = namedCollectionIndexes
+				delete(expectedIndexes, namedCollection)
+			}
+			require.Equal(t, expectedIndexes, database.GetInUseIndexes())
 
 			gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
 			require.NoError(t, err)
@@ -311,6 +386,7 @@ func TestInitializeIndexes(t *testing.T) {
 				require.Equal(t, "", index.Partition)
 			}
 			testGetIndexesMeta(t, database, xattrSpecificIndexOptions)
+
 		})
 	}
 }

@@ -357,6 +357,8 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 // CollectionIndexesType defines whether a collection represents the metadata collection, a standard collection, or both
 type CollectionIndexesType int
 
+type CollectionIndexes map[base.ScopeAndCollectionName]map[string]struct{}
+
 const (
 	IndexesWithoutMetadata CollectionIndexesType = iota // indexes for non-default collection that holds data
 	IndexesMetadataOnly                                 // indexes for metadata collection where default collection is not on the database
@@ -442,68 +444,6 @@ func isIndexerError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "[5000]")
 }
 
-// Iterates over the index set, removing obsolete indexes:
-//   - indexes based on the inverse value of xattrs being used by the database
-//   - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
-func RemoveObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
-	removedIndexes = make([]string, 0)
-
-	// Build set of candidates for cleanup
-	removalCandidates := make([]string, 0)
-	numPartitions := DefaultNumIndexPartitions // obsolete indexes is always partitions 1, greater than 1 needs to be removed manually
-	for _, sgIndex := range indexMap {
-		// Current version, opposite xattr setting
-		removalCandidates = append(removalCandidates, sgIndex.fullIndexName(!useXattrs, numPartitions))
-		// If using views we can remove current version for xattr setting too
-		if useViews {
-			removalCandidates = append(removalCandidates, sgIndex.fullIndexName(useXattrs, numPartitions))
-		}
-		// Older versions, both xattr and non-xattr
-		for _, prevVersion := range sgIndex.PreviousVersions {
-			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, true, numPartitions))
-			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, false, numPartitions))
-		}
-	}
-
-	// Attempt removal of candidates, adding to set of removedIndexes when found
-	for _, indexName := range removalCandidates {
-		removed, err := removeObsoleteIndex(ctx, bucket, indexName, previewOnly)
-		if err != nil {
-			base.WarnfCtx(ctx, "Unexpected error when removing index %q: %s", indexName, err)
-		}
-		if removed {
-			removedIndexes = append(removedIndexes, indexName)
-		}
-	}
-
-	return removedIndexes, nil
-}
-
-// Removes an obsolete index from the database.  In preview mode, checks for existence of the index only.
-func removeObsoleteIndex(ctx context.Context, bucket base.N1QLStore, indexName string, previewOnly bool) (removed bool, err error) {
-	if previewOnly {
-		// Check for index existence
-		exists, _, getMetaErr := bucket.GetIndexMeta(ctx, indexName)
-		if getMetaErr != nil {
-			return false, getMetaErr
-		}
-		return exists, nil
-	} else {
-		err = bucket.DropIndex(ctx, indexName)
-		// If no error, add to set of removed indexes and return
-		if err == nil {
-			return true, nil
-		}
-		// If not found, no action required
-		if base.IsIndexNotFoundError(err) {
-			return false, nil
-		}
-		// Unrecoverable error
-		return false, err
-	}
-
-}
-
 // Replace sync tokens ($sync and $relativesync) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
 func replaceSyncTokensIndex(statement string, useXattrs bool) string {
 	if useXattrs {
@@ -531,20 +471,19 @@ func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool, numP
 	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs, numPartitions), -1)
 }
 
-// GetIndexesName returns names of the indexes that would be created for specific options.
-// it meant to be used in tests to know which indexes to drop as a part of manual cleanup
-func GetIndexesName(options InitializeIndexOptions) []string {
-	indexesName := make([]string, 0)
+// GetIndexName returns names of the indexes that would be created for specific options.
+func GetIndexNames(options InitializeIndexOptions, indexDefs map[SGIndexType]SGIndex) []string {
+	indexNames := make([]string, 0)
 
-	for _, sgIndex := range sgIndexes {
+	for _, sgIndex := range indexDefs {
 		if sgIndex.isXattrOnly() && !options.UseXattrs {
 			continue
 		}
 		if sgIndex.shouldCreate(options) {
-			indexesName = append(indexesName, sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions))
+			indexNames = append(indexNames, sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions))
 		}
 	}
-	return indexesName
+	return indexNames
 }
 
 // ShouldUseLegacySyncDocsIndex returns true if the syncDocs index should be used for queries of principal docs. Returns false if targeted users and roles indexes should be used.
@@ -587,4 +526,60 @@ func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, u
 		}
 	}
 	return onlineIndexes, nil
+}
+
+// RemoveUnusedIndexes removes indexes that are not in use from the bucket given a collection of indexes that are in use. Only datastores which are keys of inUseIndexes are considered, other datastores will be ignored. It returns a list of removed indexes. Running with preview=true will not remove any indexes, but will return the list of indexes that would be removed.
+func RemoveUnusedIndexes(ctx context.Context, bucket base.Bucket, inUseIndexes CollectionIndexes, preview bool) (removedIndexes []string, err error) {
+	var errs *base.MultiError
+	for dsName, inUseIndexes := range inUseIndexes {
+		dsName, err := bucket.NamedDataStore(dsName)
+		if err != nil {
+			errs = errs.Append(fmt.Errorf("failed to get datastore %s: %w", base.MD(dsName), err))
+			continue
+		}
+		n1qlStore, ok := dsName.(base.N1QLStore)
+		if !ok {
+			errs = errs.Append(fmt.Errorf("datastore %s(%T) is not a N1QLStore", base.MD(dsName), dsName))
+			continue
+		}
+		allIndexes, err := n1qlStore.GetIndexes()
+		if err != nil {
+			errs = errs.Append(fmt.Errorf("failed to get indexes for datastore %s: %w", base.MD(dsName), err))
+			continue
+		}
+		// Iterate over all indexes and remove those that are not in use
+		for _, indexName := range allIndexes {
+			if !isSGIndex(indexName) {
+				continue
+			}
+			if _, ok := inUseIndexes[indexName]; ok {
+				continue
+			}
+			removedIndexes = append(removedIndexes,
+				fmt.Sprintf("`%s`.`%s`.%s", dsName.ScopeName(), dsName.CollectionName(), indexName))
+			if preview {
+				continue
+			}
+			err = n1qlStore.DropIndex(ctx, indexName)
+			if err != nil {
+				errs = errs.Append(fmt.Errorf("failed to drop index %s %s: %w", base.MD(dsName), indexName, err))
+				continue
+			}
+		}
+	}
+	slices.Sort(removedIndexes) // sort for ease of testing
+	return removedIndexes, errs.ErrorOrNil()
+}
+
+// isSGIndex returns true if the index name is a Sync Gateway index lexicographically.
+func isSGIndex(indexName string) bool {
+	if !strings.HasPrefix(indexName, "sg_") {
+		return false
+	}
+	for _, sgIndex := range sgIndexes {
+		if strings.HasPrefix(indexName, "sg_"+sgIndex.simpleName+"_") {
+			return true
+		}
+	}
+	return false
 }
