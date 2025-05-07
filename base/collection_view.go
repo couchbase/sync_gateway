@@ -104,7 +104,7 @@ func (c *Collection) PutDDoc(ctx context.Context, docname string, sgDesignDoc *s
 	}
 
 	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
-	var worker RetryWorker = func() (bool, error, interface{}) {
+	worker := func() (bool, error, interface{}) {
 		err := manager.UpsertDesignDocument(gocbDesignDoc, gocb.DesignDocumentNamespaceProduction, nil)
 		if err != nil {
 			WarnfCtx(ctx, "Got error from UpsertDesignDocument: %v - Retrying...", err)

@@ -486,11 +486,9 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	assert.True(t, sent)
 
 	// Get all docs and attachment via subChanges request
-	allDocs, ok := bt.WaitForNumDocsViaChanges(1)
-	require.True(t, ok)
+	allDocs := bt.WaitForNumDocsViaChanges(1)
 
 	// make assertions on allDocs -- make sure attachment is present w/ expected body
-	require.Len(t, allDocs, 1)
 	retrievedDoc := allDocs[input.docId]
 
 	// doc assertions

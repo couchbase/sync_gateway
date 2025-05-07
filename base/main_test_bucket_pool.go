@@ -450,7 +450,7 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 
 	url := fmt.Sprintf("/pools/default/buckets/%s", store.GetName())
 	// retry for 1 minute to get this bucket setting, MB-63675
-	_, err := RetryLoop(ctx, "setXDCRBucketSetting", func() (bool, error, interface{}) {
+	err, _ := RetryLoop(ctx, "setXDCRBucketSetting", func() (bool, error, interface{}) {
 		output, statusCode, err := store.MgmtRequest(ctx, http.MethodPost, url, "application/x-www-form-urlencoded", strings.NewReader(posts.Encode()))
 		if err != nil {
 			tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %w output: %s", statusCode, err, string(output))

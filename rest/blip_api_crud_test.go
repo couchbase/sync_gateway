@@ -1843,9 +1843,7 @@ func TestMissingNoRev(t *testing.T) {
 	}
 
 	// Pull docs, expect to pull 5 docs since none of them has purged yet.
-	docs, ok := bt.WaitForNumDocsViaChanges(5)
-	require.True(t, ok)
-	assert.Len(t, docs, 5)
+	bt.WaitForNumDocsViaChanges(5)
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
@@ -1857,9 +1855,7 @@ func TestMissingNoRev(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
-	docs, ok = bt.WaitForNumDocsViaChanges(4)
-	assert.True(t, ok)
-	assert.Len(t, docs, 4)
+	bt.WaitForNumDocsViaChanges(4)
 
 }
 

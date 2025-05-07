@@ -305,7 +305,7 @@ type getIndexMetaRetryValues struct {
 }
 
 func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value *getIndexMetaRetryValues) {
 		metas, err := GetIndexesMeta(ctx, store, []string{indexName})
 		if err != nil {
 			// retry
@@ -313,7 +313,7 @@ func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exist
 			return true, err, nil
 		}
 		meta, exists := metas[indexName]
-		return false, nil, getIndexMetaRetryValues{
+		return false, nil, &getIndexMetaRetryValues{
 			exists: exists,
 			meta:   meta,
 		}
@@ -325,12 +325,7 @@ func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exist
 		return false, nil, pkgerrors.Wrapf(err, "Error during GetIndexMeta for index %s", indexName)
 	}
 
-	valTyped, ok := val.(getIndexMetaRetryValues)
-	if !ok {
-		return false, nil, fmt.Errorf("Expected GetIndexMeta retry value to be getIndexMetaRetryValues but got %T", val)
-	}
-
-	return valTyped.exists, &valTyped.meta, nil
+	return val.exists, &val.meta, nil
 }
 
 // GetIndexesMeta returns the status of a given set of indexes as a map. If an index is not present, the value will be omitted from the map.
