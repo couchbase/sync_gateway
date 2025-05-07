@@ -20,6 +20,9 @@ import (
 )
 
 func TestPostUpgrade(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar doesn't support N1QLStore")
+	}
 	base.RequireNumTestDataStores(t, 2)
 
 	ctx := base.TestCtx(t)
