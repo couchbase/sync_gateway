@@ -211,7 +211,7 @@ func main() {
 		dcpGen.vBucketCreation(ctx)
 	} else if *mode == processEntry {
 		p := &processEntryGen{t: t, dbCtx: dbContext, delays: delayList, seqAlloc: seqAllocator, numNodes: *nodes,
-			batchSize: *batchSize, numChans: *numChannelsPerDoc}
+			batchSize: *batchSize, numChansPerDoc: *numChannelsPerDoc, totalChans: *totalNumberOfChans}
 		// create new sgw node abstraction and spawn write goroutines
 		p.spawnDocCreationGoroutine(ctx)
 	} else {
