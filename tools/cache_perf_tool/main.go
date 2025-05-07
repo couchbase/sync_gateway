@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/felixge/fgprof"
@@ -32,18 +33,32 @@ import (
 
 var numGoroutines atomic.Int32
 
+const (
+	processEntry = "processEntry"
+	dcp          = "dcp"
+)
+
 func main() {
-	mode := flag.String("mode", "processEntry", "Mode for the tool to run in, either dcp or processEntry.")
-	nodes := flag.Int("sgwNodes", 1, "Number of sgw nodes to abstract.")
+	mode := flag.String("mode", processEntry, "Mode for the tool to run in, either dcp or processEntry.")
+	nodes := flag.Int("sgwNodes", 1, "Number of sgw nodes to abstract. NOTE only relevant for processEntry mode.")
 	batchSize := flag.Int("batchSize", 10, "Batch size for the sequence allocator.")
 	timeToRun := flag.Duration("duration", 5*time.Minute, "Duration to run the test for in minutes. Examples:  3m for 3 minutes, 30s for 30 seconds etc")
 	delays := flag.String("writeDelay", "0", "Delay between writes in milliseconds. Must be entered in format <delayMS>,<delayMS>,<delayMS>.")
 	profileInterval := flag.Duration("profileInterval", 0*time.Second, "Interval for profiling to be triggered on, example 10s would be every 10 seconds.")
-	numChannels := flag.Int("numChannels", 1, "Number of channels to create per document.")
+	numChannelsPerDoc := flag.Int("numChannels", 1, "Number of channels to create per document.")
+	totalNumberOfChans := flag.Int("totalNumberOfChans", 1, "Total number of channels to create in the system.")
+	numOfChangesFeeds := flag.Int("numChangesFeeds", 0, "Number of changes feeds to create. Used only for DCP mode.")
+	channelsPerClient := flag.Int("channelsPerClient", 0, "Number of channels per client to wait on. Used only for DCP mode.")
+	rapidUpdateDocs := flag.Bool("rapidUpdateDocs", false, "Have documents rapidly updated (use of recent sequences). Used only for DCP mode.")
+	numDCPWorkers := flag.Int("numDCPWorkers", 8, "Number of DCP workers to create. Default is 8. Used only for DCP mode.")
+	numVBuckets := flag.Int("numVBuckets", 1024, "Number of vBuckets to create. Used only for DCP mode. Default is 1024.")
 	flag.Parse()
 
 	if *nodes < 1 {
 		log.Fatalf("Invalid number of nodes: %d", *nodes)
+	}
+	if *numOfChangesFeeds < 0 {
+		log.Fatalf("Invalid number of changes feeds: %d", *numOfChangesFeeds)
 	}
 	if *batchSize < 1 || *batchSize > 10 {
 		log.Fatalf("Invalid batch size: %d", *batchSize)
@@ -51,19 +66,28 @@ func main() {
 	if *timeToRun < 1 {
 		log.Fatalf("Invalid duration: %d", *timeToRun)
 	}
-	if *numChannels < 1 {
-		log.Fatalf("Invalid number of channels: %d", *numChannels)
+	if *numChannelsPerDoc < 1 {
+		log.Fatalf("Invalid number of channels: %d", *numChannelsPerDoc)
 	}
 	if profileInterval.Seconds() != 0 && *profileInterval >= *timeToRun {
 		log.Fatalf("Invalid profile interval: %d, must be less than the duration of test: %d", *profileInterval, *timeToRun)
 	}
-	var delayList []time.Duration
-	delayList, err := extractDelays(*delays)
+	if *totalNumberOfChans < 1 && *totalNumberOfChans <= *numChannelsPerDoc {
+		log.Fatalf("Invalid total number of channels: %d", *totalNumberOfChans)
+	}
+	if *channelsPerClient < 0 {
+		log.Fatalf("Invalid number of channels per client: %d", *channelsPerClient)
+	}
+	if *numDCPWorkers < 1 {
+		log.Fatalf("Invalid number of DCP workers: %d", *numDCPWorkers)
+	}
+
+	delayList, err := extractDelays(*delays, *mode)
 	if err != nil {
 		return
 	}
 	// need to have a delay for each node defined so we have variable write throughput
-	if len(delayList) != *nodes {
+	if len(delayList) != *nodes && *mode == processEntry {
 		log.Printf("invalid number of delays, number of input delays should match number of nodes: "+
 			"Delays=%d and number of nodes=%d", len(delayList), *nodes)
 		return
@@ -129,6 +153,7 @@ func main() {
 	_ = seqAllocator.nextBatch(1) // init atomic on syncSeqMock to 1
 
 	var t *testing.T
+	cacheOpts := db.DefaultCacheOptions()
 	dbContext, err := db.NewDatabaseContext(ctx, "db", walrusBucket, false, db.DatabaseContextOptions{
 		Scopes: map[string]db.ScopeOptions{
 			base.DefaultScope: {
@@ -137,6 +162,7 @@ func main() {
 				},
 			},
 		},
+		CacheOptions: &cacheOpts,
 	})
 	if err != nil {
 		log.Printf("Error creating database context: %v", err)
@@ -150,12 +176,42 @@ func main() {
 	// init change cache and unlock mutex for the test
 	dbContext.StartChangeCache(t, parentCtx)
 
+	// init channels
+	for i := 0; i < *totalNumberOfChans; i++ {
+		chanName := "test-" + strconv.Itoa(i)
+		err = dbContext.InitChannel(ctx, t, chanName)
+		if err != nil {
+			log.Printf("Error initializing channel %s: %v", chanName, err)
+			return
+		}
+	}
+
+	// build change waiters (spoofing running changes feeds)
+	if *numOfChangesFeeds > 0 && *mode == dcp {
+		go startChanges(ctx, t, dbContext, *channelsPerClient, *numOfChangesFeeds, *totalNumberOfChans)
+	}
+
 	// mode selection logic
-	if *mode == "dcp" {
-		// todo: add dcp mode code
-	} else if *mode == "processEntry" {
+	if *mode == dcp {
+		bucket := &base.GocbV2Bucket{}
+		// setup dcp generator object and create fake dcp client
+		seqAlloc := newSequenceAllocator(*batchSize, seqAllocator)
+		dcpGen := &dcpDataGen{seqAlloc: seqAlloc, delays: delayList, dbCtx: dbContext, numChannelsPerDoc: *numChannelsPerDoc,
+			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs}
+		mutationListener := dbContext.GetMutationListener(t)
+		cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
+		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, cacheFeedStatsMap.Map, *numDCPWorkers, *numVBuckets)
+		if err != nil {
+			log.Printf("Error creating DCP client: %v", err)
+			return
+		}
+		dcpGen.client = client
+
+		// create vBucket mutations
+		dcpGen.vBucketCreation(ctx)
+	} else if *mode == processEntry {
 		p := &processEntryGen{t: t, dbCtx: dbContext, delays: delayList, seqAlloc: seqAllocator, numNodes: *nodes,
-			batchSize: *batchSize, numChans: *numChannels}
+			batchSize: *batchSize, numChans: *numChannelsPerDoc}
 		// create new sgw node abstraction and spawn write goroutines
 		p.spawnDocCreationGoroutine(ctx)
 	} else {
@@ -185,6 +241,53 @@ outerloop:
 		log.Printf("Error waiting for stat value (%d) to reach 0: %v", numGoroutines.Load(), err)
 	}
 
+}
+
+func startChanges(ctx context.Context, t *testing.T, dbContext *db.DatabaseContext, clientChans int, numClients int, totalSystemChannels int) {
+	mutationListener := dbContext.GetMutationListener(t)
+	chanIDList := make([]channels.ID, 0, clientChans)
+	chanCount := 0
+	var chanID channels.ID
+	for i := 0; i < numClients; i++ {
+		for j := 0; j < clientChans; j++ { // create clientChans number of channels for each change waiter
+			if chanCount == totalSystemChannels {
+				chanCount = 0 // reset channel count so we don't go over system channels count
+			}
+			chanID = channels.NewID("test-"+strconv.Itoa(chanCount), base.DefaultCollectionID)
+			chanIDList = append(chanIDList, chanID)
+			chanCount++
+		}
+		chans, err := channels.SetOf(chanIDList...)
+		if err != nil {
+			log.Printf("Error creating channel set: %v", err)
+			return
+		}
+		chanIDList = make([]channels.ID, 0, clientChans) // overwrite the list for next client
+		waiter := mutationListener.NewWaiterWithChannels(chans, nil, true)
+
+		go func(ctx context.Context, wait *db.ChangeWaiter, chanMap channels.Set) {
+			numGoroutines.Add(1)
+			defer numGoroutines.Add(-1)
+			for {
+				if ctx.Err() != nil {
+					return
+				}
+				num := wait.Wait(ctx)
+				if num == db.WaiterClosed {
+					return
+				} else if num == db.WaiterHasChanges {
+					// get cached changes for map, simulating changes feeds actually using the channel cache
+					for id := range chanMap {
+						_, err := dbContext.GetCachedChanges(t, ctx, id)
+						if err != nil {
+							log.Printf("Error getting cached changes: %v", err)
+							return
+						}
+					}
+				}
+			}
+		}(ctx, waiter, chans)
+	}
 }
 
 func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext) {
@@ -273,7 +376,7 @@ func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
 	}
 }
 
-func extractDelays(delayStr string) ([]time.Duration, error) {
+func extractDelays(delayStr string, mode string) ([]time.Duration, error) {
 	var delays []time.Duration
 	if delayStr == "" {
 		return delays, nil
@@ -285,9 +388,15 @@ func extractDelays(delayStr string) ([]time.Duration, error) {
 			log.Printf("Error parsing delay: %v", err)
 			return nil, err
 		}
-		if delayInt > 150 || delayInt < 0 {
-			log.Printf("Invalid delay: %d, you can have a max delay of 150ms and minimum delay of 0ms", delayInt)
-			return nil, err
+		if delayInt < 0 {
+			log.Printf("Invalid delay: %d, you can have a minimum delay of 0ms", delayInt)
+			return nil, fmt.Errorf("invalid delay")
+		}
+		if mode == processEntry {
+			if delayInt > 150 {
+				log.Printf("Invalid delay: %d, you can have a max delay of 150ms and minimum delay of 0ms", delayInt)
+				return nil, fmt.Errorf("invalid delay")
+			}
 		}
 		delays = append(delays, time.Duration(delayInt)*time.Millisecond)
 	}

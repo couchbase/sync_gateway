@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10"
@@ -82,16 +83,20 @@ type DCPClientOptions struct {
 
 func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
 
-	numWorkers := DefaultNumWorkers
-	if options.NumWorkers > 0 {
-		numWorkers = options.NumWorkers
-	}
-
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
+	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
+}
+
+func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*DCPClient, error) {
+
+	numWorkers := DefaultNumWorkers
+	if options.NumWorkers > 0 {
+		numWorkers = options.NumWorkers
+	}
 	if options.AgentPriority == gocbcore.DcpAgentPriorityHigh {
 		return nil, fmt.Errorf("sync gateway should not set high priority for DCP feeds")
 	}
@@ -656,4 +661,14 @@ func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUU
 
 func (dc *DCPClient) GetMetadataKeyPrefix() string {
 	return dc.metadata.GetKeyPrefix()
+}
+
+// StartWorkersForTest will iterate through dcp workers to start them, to be used for caching testing purposes only.
+func (dc *DCPClient) StartWorkersForTest(t *testing.T) {
+	dc.startWorkers(dc.ctx)
+}
+
+// NewDCPClientForTest is a test-only function to create a DCP client with a specific number of vbuckets.
+func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*DCPClient, error) {
+	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
 }
