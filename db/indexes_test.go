@@ -85,3 +85,33 @@ func TestShouldUseLegacySyncDocsIndex(t *testing.T) {
 		})
 	}
 }
+
+func TestIsSGIndex(t *testing.T) {
+	validSGIndexes := []string{
+		"sg_access_foo", // this will get marked as a sync gateway index
+		"sg_access_x1",
+		"sg_access_x2",
+		"sg_channels_1",
+		"sg_roleAccess_x1",
+		"sg_syncDocs_x1",
+		"sg_syncDocs_x1_p1",
+		"sg_syncDocs_x2",
+		"sg_tombstones_x1",
+	}
+	for _, indexName := range validSGIndexes {
+		t.Run(indexName, func(t *testing.T) {
+			assert.True(t, isSGIndex(indexName), "expected %s to be a sync gateway index", indexName)
+		})
+	}
+	invalidSGIndexes := []string{
+		"sg_sync_docs_1",
+		"sg_sync_docs",
+		"some_index",
+		"_sg_access_x1",
+	}
+	for _, indexName := range invalidSGIndexes {
+		t.Run(indexName, func(t *testing.T) {
+			assert.False(t, isSGIndex(indexName), "expected %s to not be a sync gateway index", indexName)
+		})
+	}
+}

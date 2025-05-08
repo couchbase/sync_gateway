@@ -39,6 +39,10 @@ func TestPostUpgrade(t *testing.T) {
 		LegacySyncDocsIndex: true,
 		MetadataIndexes:     db.IndexesAll,
 	}))
+	// create non SG indexes to make sure they aren't removed by post upgrade
+	require.NoError(t, defaultDataStore.CreatePrimaryIndex(ctx, "sg_primary", &base.N1qlIndexOptions{}))
+	require.NoError(t, defaultDataStore.CreateIndex(ctx, "sg_nonSGIndex", "val", "val > 3", &base.N1qlIndexOptions{}))
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 		CustomTestBucket: bucket.NoCloseClone(),

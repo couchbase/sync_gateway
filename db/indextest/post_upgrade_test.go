@@ -80,6 +80,12 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 			database, ctx := db.CreateTestDatabase(t, bucket, test.dbOptions)
 			defer database.Close(ctx)
 
+			// add some non SG indexes to the bucket to make sure they aren't removed when running post upgrade
+			n1qlStore, ok := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionDatastore().(base.N1QLStore)
+			require.True(t, ok)
+			require.NoError(t, n1qlStore.CreatePrimaryIndex(ctx, "sg_primary", &base.N1qlIndexOptions{}))
+			require.NoError(t, n1qlStore.CreateIndex(ctx, "sg_nonSGIndex", "val", "val > 3", &base.N1qlIndexOptions{}))
+
 			// Preview removing indexes
 			removedIndexes, removeErr := db.RemoveUnusedIndexes(ctx, database.Bucket, database.GetInUseIndexes(), true)
 			require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")

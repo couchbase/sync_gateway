@@ -528,7 +528,7 @@ func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, u
 	return onlineIndexes, nil
 }
 
-// RemoveUnusedIndexes removes indexes that are not in use from the bucket given a collection of indexes that are in use. Only datastores which are keys of inUseIndexes are considered, other datastores will be ignored. It returns a list of removed indexes. Running with preview=true will not remove any indexes, but will return the list of indexes that would be removed.
+// RemoveUnusedIndexes removes Sync Gateway indexes that are not in use from the bucket given a collection of indexes that are in use. Only datastores which are keys of inUseIndexes are considered, other datastores will be ignored. It returns a list of removed indexes. Running with preview=true will not remove any indexes, but will return the list of indexes that would be removed.
 func RemoveUnusedIndexes(ctx context.Context, bucket base.Bucket, inUseIndexes CollectionIndexes, preview bool) (removedIndexes []string, err error) {
 	var errs *base.MultiError
 	for dsName, inUseIndexes := range inUseIndexes {
