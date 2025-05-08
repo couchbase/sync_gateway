@@ -141,6 +141,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 }
 
 func TestPostUpgradeMultipleCollections(t *testing.T) {
+	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyQuery)
 
 	bucket := base.GetTestBucket(t)

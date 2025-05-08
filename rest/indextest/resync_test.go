@@ -70,7 +70,11 @@ func TestResyncWithoutIndexes(t *testing.T) {
 			numIndexes, err := n1qlStore.GetIndexes()
 			require.NoError(t, err)
 			if collection.IsDefaultCollection() {
-				require.Len(t, numIndexes, 1, "Expected 1 index for default collection")
+				if rt.GetDatabase().UseLegacySyncDocsIndex() {
+					require.Len(t, numIndexes, 1) // sg_syncDocs
+				} else {
+					require.Len(t, numIndexes, 2) // sg_roles, sg_syncDocs
+				}
 			} else {
 				require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection")
 			}

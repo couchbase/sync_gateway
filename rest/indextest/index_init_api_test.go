@@ -35,6 +35,9 @@ func TestChangeIndexPartitions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
+	if !base.TestUseXattrs() {
+		t.Skip("To simplify testing to allow for exact string matching on indexes, skip for xattrs")
+	}
 
 	// requires index init for many subtests
 	base.LongRunningTest(t)
@@ -183,7 +186,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 	}
 }
 
-// assertNumSGIndexPartitions ensures that the number of partitions for SG indexes is as expected. Some indexes aren't partitioned.
+// requireNumSGIndexPartitions ensures that the number of partitions for SG indexes is as expected. Some indexes aren't partitioned.
 func assertNumSGIndexPartitions(t testing.TB, database *db.DatabaseContext) {
 	gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
 	require.NoError(t, err)
