@@ -341,7 +341,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
 		}
-		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (!*rt.DatabaseConfig.UseViews || base.UnitTestUrlIsWalrus()) {
+		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || base.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
@@ -2664,17 +2664,21 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		BucketConfig: BucketConfig{
 			Bucket: base.Ptr(rt.Bucket().GetName()),
 		},
-		Index: &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
-		},
 		EnableXattrs: base.Ptr(base.TestUseXattrs()),
 	}
-	// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
-	if !base.UnitTestUrlIsWalrus() {
-		config.UseViews = base.Ptr(base.TestsDisableGSI())
+	if base.TestsDisableGSI() {
+		// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
+		if !base.UnitTestUrlIsWalrus() {
+			config.UseViews = base.Ptr(true)
+		}
+	} else {
+		config.Index = &IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		}
 	}
+
 	// Setup scopes.
-	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
+	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || config.useGSI()) {
 		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
 	} else {
 		config.Sync = stringPtrOrNil(rt.SyncFn)

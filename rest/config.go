@@ -1032,7 +1032,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	if len(dbConfig.Scopes) > 1 {
 		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
 	} else {
-		if len(dbConfig.Scopes) != 0 && dbConfig.UseViews != nil && *dbConfig.UseViews {
+		if len(dbConfig.Scopes) != 0 && !dbConfig.useGSI() {
 			multiError = multiError.Append(fmt.Errorf("use_views=true is incompatible with collections which requires GSI"))
 		}
 
@@ -1118,11 +1118,13 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			multiError = multiError.Append(fmt.Errorf("num_index_replicas and index.num_replicas are mutually exclusive. Remove num_index_replicas deprecated option."))
 		}
 	}
-	if dbConfig.Index != nil && dbConfig.Index.NumPartitions != nil {
-		if *dbConfig.Index.NumPartitions < 1 {
-			multiError = multiError.Append(fmt.Errorf("index.num_partitions must be greater than 0"))
-		} else if !dbConfig.UseXattrs() {
-			multiError = multiError.Append(fmt.Errorf("index.num_partitions is incompatible with enable_shared_bucket_access=false"))
+	if dbConfig.Index != nil {
+		if dbConfig.Index.NumPartitions != nil {
+			if *dbConfig.Index.NumPartitions < 1 {
+				multiError = multiError.Append(fmt.Errorf("index.num_partitions must be greater than 0"))
+			} else if !dbConfig.UseXattrs() {
+				multiError = multiError.Append(fmt.Errorf("index.num_partitions is incompatible with enable_shared_bucket_access=false"))
+			}
 		}
 	}
 	if dbConfig.UserXattrKey != nil && len(*dbConfig.UserXattrKey) > 15 {
@@ -2410,4 +2412,12 @@ func (c *DbConfig) NumIndexPartitions() uint32 {
 		return *c.Index.NumPartitions
 	}
 	return db.DefaultNumIndexPartitions
+}
+
+// useGSI returns whether to use GSI for the database.
+func (c *DbConfig) useGSI() bool {
+	if c.UseViews == nil {
+		return true
+	}
+	return !*c.UseViews
 }

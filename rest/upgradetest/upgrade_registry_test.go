@@ -202,7 +202,7 @@ func TestLegacyMetadataID(t *testing.T) {
 	defer persistentRT.Close()
 
 	resp = persistentRT.SendAdminRequest("PUT", "/db/", dbConfigString)
-	assert.Equal(t, http.StatusCreated, resp.Code)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// check if database is online
 	dbRoot := persistentRT.GetDatabaseRoot("db")
