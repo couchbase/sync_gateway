@@ -24,7 +24,7 @@ get:
     '500':
       $ref: ../../components/responses.yaml#/OIDC-testing-internal-error
   tags:
-    - Authentication
+    - Unsupported
   operationId: get_db-_oidc_testing-authorize
 post:
   summary: OpenID Connect mock login page
@@ -43,5 +43,5 @@ post:
     '500':
       $ref: ../../components/responses.yaml#/OIDC-testing-internal-error
   tags:
-    - Authentication
+    - Unsupported
   operationId: post_db-_oidc_testing-authorize

@@ -68,19 +68,3 @@ post:
   tags:
     - Database Security
   operationId: post_db-_role-
-head:
-  summary: /{db}/_role/
-  responses:
-    '200':
-      description: OK
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
-  tags:
-    - Database Security
-  description: |-
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Architect
-    * Sync Gateway Application
-    * Sync Gateway Application Read Only
-  operationId: head_db-_role-

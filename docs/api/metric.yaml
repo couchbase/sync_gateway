@@ -41,6 +41,8 @@ paths:
     $ref: ./paths/metric/metrics.yaml
   /_expvar:
     $ref: ./paths/metric/_expvar.yaml
+    tags:
+      - JSON
 tags:
   - name: Prometheus
     description: Endpoints for use with Prometheus

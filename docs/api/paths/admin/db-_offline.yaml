@@ -10,7 +10,9 @@ parameters:
 post:
   summary: Take the database offline
   description: |-
-    This will take the database offline meaning actions can be taken without disrupting current operations ungracefully or having the restart the Sync Gateway instance.
+    This will take the database offline on this node only. Actions can be taken without disrupting current operations ungracefully or having the restart the Sync Gateway instance.
+
+    If using persistent config, call [POST /{db}/_config](#operation/post_db-_config) with `{"offline": true}` to set the database to offline.
 
     This will not take the backing Couchbase Server bucket offline.
 

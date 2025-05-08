@@ -192,3 +192,12 @@ user_access_span_response:
     application/json:
       schema:
         $ref: ./schemas.yaml#/doc_access_spans
+expvar_reponses:
+  '200':
+    description: |-
+        Successfully returned statistics.
+        For details, see [JSON Metrics](stats-monitoring-json.html).
+    content:
+      application/json:
+        schema:
+          $ref: ./schemas.yaml#/ExpVars

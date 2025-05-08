@@ -99,7 +99,7 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Database Management
+    - Document
   operationId: get_keyspace-_changes
 post:
   summary: Get changes list
@@ -154,5 +154,5 @@ post:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Database Management
+    - Document
   operationId: post_keyspace-_changes
