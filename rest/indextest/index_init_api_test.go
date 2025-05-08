@@ -78,6 +78,11 @@ func TestChangeIndexPartitions(t *testing.T) {
 			initialPartitions: base.Ptr(uint32(4)),
 			newPartitions:     1,
 		},
+		{
+			name:              "2 to 2",
+			initialPartitions: base.Ptr(uint32(2)),
+			newPartitions:     2,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
