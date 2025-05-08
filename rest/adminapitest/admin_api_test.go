@@ -2902,7 +2902,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	defer tb2.Close(ctx)
 
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "unsupported": {"disable_clean_skipped_query": true}}`, tb2.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "unsupported": {"disable_clean_skipped_query": true}}`, tb2.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
