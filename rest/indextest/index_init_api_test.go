@@ -191,7 +191,7 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 		{
 			name:          "empty num_partitions",
 			body:          `{}`,
-			expectedError: `at least one of num_partitions or separate_principal_indexes is required`,
+			expectedError: `at least one of num_partitions or create_separate_principal_indexes is required`,
 		},
 		{
 			name:          "invalid num_partitions",
