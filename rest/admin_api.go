@@ -284,7 +284,7 @@ type PostIndexInitRequest struct {
 
 func (req PostIndexInitRequest) Validate() error {
 	if req.NumPartitions == nil && req.SeparatePrincipalIndexes == nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "at least one of num_partitions or separate_principal_indexes is required")
+		return base.HTTPErrorf(http.StatusBadRequest, "at least one of num_partitions or create_separate_principal_indexes is required")
 	}
 	if req.NumPartitions != nil && *req.NumPartitions < 1 {
 		return base.HTTPErrorf(http.StatusBadRequest, "num_partitions must be greater than 0")
