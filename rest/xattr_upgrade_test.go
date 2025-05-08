@@ -186,7 +186,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
 	}
 	if !base.TestsDisableGSI() {
-		// This test is trying to test a non xattr node while a non xattr -> xattr upgrade is occuring.
+		// This test is trying to test a non xattr node while a non xattr -> xattr upgrade is occurring.
 		// Intentionally do not query both xattr and non-xattr when doing channel backfill because of the overhead. The assumption is that during upgrade the older (non-xattrs) nodes would have any new xattr entries resident in their cache.
 		t.Skip("Only views will find both xattr and non xattr documents.")
 	}
