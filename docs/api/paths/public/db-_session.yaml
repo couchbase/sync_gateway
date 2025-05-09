@@ -64,11 +64,13 @@ post:
                     description: A map of the channels the user is in along with the sequence number the user was granted access.
                     type: object
                     additionalProperties:
-                      oneOf:
-                        - type: number
-                        - type: string
+                      type: number
                       minimum: 1
-                      description: The channel name (as the key) and the channel sequence number the user was granted access to that channel.
+                      description: The sequence number the user was granted access.
+                      title: sequence number
+                    example:
+                      "!": 1
+                      "channelA": 2
                   name:
                     description: The name of the user.
                     type: string
@@ -80,17 +82,6 @@ post:
               - authentication_handlers
               - ok
               - userCtx
-          examples:
-            Example:
-              value:
-                authentication_handlers:
-                  - default
-                  - cookie
-                ok: true
-                userCtx:
-                  channels:
-                    '!': 1
-                  name: Bob
     '400':
       $ref: ../../components/responses.yaml#/Invalid-CORS
     '404':

@@ -3042,13 +3042,27 @@ CollectionNames:
   items:
     type: string
 "All DBs":
+  title: Simple
   description: "The names of all databases."
   type: array
   items:
     type: string
+  example: ["db1", "db2"] # example required to work around https://github.com/Redocly/redoc/issues/2676
 "All DBs Verbose":
+  title: Verbose
   description: "Description of all databases."
   type: array
+  example: # example required to work around https://github.com/Redocly/redoc/issues/2676
+    - db_name: "db1"
+      bucket: "bucket1"
+      state: "Online"
+      require_resync: false
+      init_in_progress: false
+    - db_name: "db2"
+      bucket: "bucket2"
+      state: "Starting"
+      require_resync: true
+      init_in_progress: true
   items:
     type: object
     properties:
