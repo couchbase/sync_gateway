@@ -491,9 +491,6 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 		}
 		dbDesignDocs[dbName] = removedDDocs
 
-		if database.UseViews() {
-			continue
-		}
 		// Index cleanup
 		inUseIndexes := database.GetInUseIndexes()
 		if _, ok := bucketInUseIndexes[database.Bucket.GetName()]; !ok {
