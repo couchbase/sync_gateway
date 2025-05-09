@@ -78,6 +78,11 @@ func TestChangeIndexPartitions(t *testing.T) {
 			initialPartitions: base.Ptr(uint32(4)),
 			newPartitions:     1,
 		},
+		{
+			name:              "2 to 2",
+			initialPartitions: base.Ptr(uint32(2)),
+			newPartitions:     2,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -191,7 +196,7 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 		{
 			name:          "empty num_partitions",
 			body:          `{}`,
-			expectedError: `num_partitions is required`,
+			expectedError: `at least one of num_partitions or create_separate_principal_indexes is required`,
 		},
 		{
 			name:          "invalid num_partitions",
@@ -225,22 +230,6 @@ func TestChangeIndexPartitionsErrors(t *testing.T) {
 			assert.Contains(t, httpError.Reason, test.expectedError)
 		})
 	}
-}
-
-func TestChangeIndexPartitionsSameNumber(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
-		t.Skip("This test only works against Couchbase Server with GSI enabled")
-	}
-
-	// requires index init
-	base.LongRunningTest(t)
-
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Index: &rest.IndexConfig{NumPartitions: base.Ptr(uint32(2))}}}})
-	defer rt.Close()
-
-	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
-	rest.RequireStatus(t, resp, http.StatusBadRequest)
-	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "num_partitions is already 2")
 }
 
 func TestChangeIndexPartitionsDbOffline(t *testing.T) {
@@ -320,4 +309,107 @@ func TestChangeIndexPartitionsWithViews(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "_index_init is a GSI-only feature and is not supported when using views")
+}
+
+func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+		t.Skip("This test only works against Couchbase Server with GSI enabled")
+	}
+
+	// requires index init
+	base.LongRunningTest(t)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	n1qlStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
+	require.True(t, ok)
+
+	ctx := base.TestCtx(t)
+	require.NoError(t, db.InitializeIndexes(ctx, n1qlStore,
+		db.InitializeIndexOptions{
+			NumReplicas:         0,
+			LegacySyncDocsIndex: true, // force use of legacy sync docs index
+			UseXattrs:           base.TestUseXattrs(),
+			MetadataIndexes:     db.IndexesMetadataOnly,
+			NumPartitions:       1,
+		}))
+
+	indexNameSuffix := "_1"
+	if base.TestUseXattrs() {
+		indexNameSuffix = "_x1"
+	}
+	userIdx := "sg_users" + indexNameSuffix
+	roleIdx := "sg_roles" + indexNameSuffix
+	syncDocsIdx := "sg_syncDocs" + indexNameSuffix
+
+	// prior to database creation, there should be only syncDocs
+	indexes, err := n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	require.Contains(t, indexes, syncDocsIdx)
+	require.NotContains(t, indexes, userIdx)
+	require.NotContains(t, indexes, roleIdx)
+
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	// ensure we have legacy sync docs index
+	require.True(t, rt.GetDatabase().UseLegacySyncDocsIndex())
+
+	// after database creation, there should be only syncDocs
+	indexes, err = n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	require.Contains(t, indexes, syncDocsIdx)
+	require.NotContains(t, indexes, userIdx)
+	require.NotContains(t, indexes, roleIdx)
+
+	// this call should not create new indexes
+	runIndexInit(rt, `{"create_separate_principal_indexes":false}`)
+	indexes, err = n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	require.NotContains(t, indexes, userIdx)
+	require.NotContains(t, indexes, roleIdx)
+	require.Contains(t, indexes, syncDocsIdx)
+
+	// this should create new indexes
+	runIndexInit(rt, `{"create_separate_principal_indexes":true}`)
+	indexes, err = n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	require.Contains(t, indexes, syncDocsIdx)
+	require.Contains(t, indexes, userIdx)
+	require.Contains(t, indexes, roleIdx)
+
+	rt.TakeDbOffline()
+	rt.TakeDbOnline()
+	require.False(t, rt.GetDatabase().UseLegacySyncDocsIndex())
+
+	// CBG-4608 cleanup old indexes
+	//resp = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
+	//rest.RequireStatus(t, resp, http.StatusOK)
+	//var body rest.PostUpgradeResponse
+	//err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+	//require.NoError(t, err)
+	//require.Lenf(t, body.Result, 1, "expected one database in post upgrade response")
+	//require.Lenf(t, body.Result[dbName].RemovedIndexes, 1, "expected one syncDocs index to be removed")
+
+	//indexes, err = n1qlStore.GetIndexes()
+	//require.NoError(t, err)
+	//require.NotContains(t, indexes, syncDocsIdx)
+	//require.Contains(t, indexes, userIdx)
+	//require.Contains(t, indexes, roleIdx)
+}
+
+// runIndexInit is a helper function to run the index init process.
+func runIndexInit(rt *rest.RestTester, body string) {
+	t := rt.TB()
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// wait for completion
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
+		rest.AssertStatus(t, resp, http.StatusOK)
+		var body db.AsyncIndexInitManagerResponse
+		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
+		require.NoError(c, err)
+		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
+	}, 1*time.Minute, 500*time.Millisecond)
 }
