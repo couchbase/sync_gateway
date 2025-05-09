@@ -569,11 +569,10 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	changedChannels := c.processEntry(ctx, change)
-	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
 	if changedChannels == nil {
-		changedChannels = channels.SetOfNoValidate(unusedSeq)
+		changedChannels = channels.SetOfNoValidate(unusedSeqChannelID)
 	} else {
-		changedChannels.Add(unusedSeq)
+		changedChannels.Add(unusedSeqChannelID)
 	}
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(ctx, changedChannels)
@@ -586,8 +585,7 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d-#%d (unused sequence range)", fromSequence, toSequence)
 
-	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
-	allChangedChannels := channels.SetOfNoValidate(unusedSeq)
+	allChangedChannels := channels.SetOfNoValidate(unusedSeqChannelID)
 
 	// if range is single value, just run sequence through process entry and return early
 	if fromSequence == toSequence {
