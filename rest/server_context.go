@@ -512,6 +512,11 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 			errs = errs.Append(fmt.Errorf("Error getting bucket %q for index cleanup: %v", bucketName, err))
 			continue
 		}
+		// if running with rosmar, can not remove indexes
+		_, ok = base.AsN1QLStore(bucket.DefaultDataStore())
+		if !ok {
+			continue
+		}
 		removedIndexes, err := db.RemoveUnusedIndexes(ctx, bucket, indexes, preview)
 		if err != nil {
 			errs = errs.Append(fmt.Errorf("Error removing obsolete indexes for bucket %q: %v", bucketName, err))
