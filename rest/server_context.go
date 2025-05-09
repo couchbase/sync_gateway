@@ -473,24 +473,64 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 
-	postUpgradeResults = make(map[string]PostUpgradeDatabaseResult, len(sc.databases_))
-
-	for name, database := range sc.databases_ {
+	var errs *base.MultiError
+	buckets := make(map[string]base.Bucket)                       // map of bucket name to bucket object
+	dbs := make(map[string]string, len(sc.databases_))            // map of db name to bucket name
+	dbDesignDocs := make(map[string][]string, len(sc.databases_)) // map of db name to removed design docs
+	bucketInUseIndexes := make(map[string]db.CollectionIndexes)   // map of buckets to in use index names
+	bucketRemovedIndexes := make(map[string][]string)             // map of bucket name to removed index names
+	for dbName, database := range sc.databases_ {
+		bucketName := database.Bucket.GetName()
+		dbs[dbName] = bucketName
+		buckets[bucketName] = database.Bucket
 		// View cleanup
-		removedDDocs, _ := database.RemoveObsoleteDesignDocs(ctx, preview)
+		removedDDocs, err := database.RemoveObsoleteDesignDocs(ctx, preview)
+		if err != nil {
+			errs = errs.Append(fmt.Errorf("Error removing obsolete design docs for database %q: %v", dbName, err))
+			continue
+		}
+		dbDesignDocs[dbName] = removedDDocs
 
 		// Index cleanup
-		var removedIndexes []string
-		if !base.TestsDisableGSI() {
-			removedIndexes, _ = database.RemoveObsoleteIndexes(ctx, preview)
+		inUseIndexes := database.GetInUseIndexes()
+		if _, ok := bucketInUseIndexes[database.Bucket.GetName()]; !ok {
+			bucketInUseIndexes[database.Bucket.GetName()] = make(db.CollectionIndexes)
 		}
-
-		postUpgradeResults[name] = PostUpgradeDatabaseResult{
-			RemovedDDocs:   removedDDocs,
-			RemovedIndexes: removedIndexes,
+		for dsName, indexes := range inUseIndexes {
+			if _, ok := bucketInUseIndexes[database.Bucket.GetName()][dsName]; !ok {
+				bucketInUseIndexes[database.Bucket.GetName()][dsName] = make(map[string]struct{})
+			}
+			for indexName := range indexes {
+				bucketInUseIndexes[database.Bucket.GetName()][dsName][indexName] = struct{}{}
+			}
 		}
 	}
-	return postUpgradeResults, nil
+
+	for bucketName, indexes := range bucketInUseIndexes {
+		bucket, ok := buckets[bucketName]
+		if !ok {
+			errs = errs.Append(fmt.Errorf("Error getting bucket %q for index cleanup: %v", bucketName, err))
+			continue
+		}
+		if !bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql) {
+			continue
+		}
+		removedIndexes, err := db.RemoveUnusedIndexes(ctx, bucket, indexes, preview)
+		if err != nil {
+			errs = errs.Append(fmt.Errorf("Error removing obsolete indexes for bucket %q: %v", bucketName, err))
+			continue
+		}
+		bucketRemovedIndexes[bucketName] = removedIndexes
+	}
+	postUpgradeResults = make(map[string]PostUpgradeDatabaseResult, len(sc.databases_))
+	for dbName, database := range sc.databases_ {
+		postUpgradeResults[dbName] = PostUpgradeDatabaseResult{
+			RemovedDDocs:   dbDesignDocs[dbName],
+			RemovedIndexes: bucketRemovedIndexes[database.Bucket.GetName()],
+		}
+	}
+	return postUpgradeResults, errs.ErrorOrNil()
+
 }
 
 // Removes and re-adds a database to the ServerContext.
@@ -1354,6 +1394,9 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		NumIndexReplicas:            config.numIndexReplicas(),
 	}
 
+	if config.Index != nil && config.Index.NumPartitions != nil {
+		contextOptions.NumIndexPartitions = config.Index.NumPartitions
+	}
 	// Per-database logging config overrides
 	contextOptions.LoggingConfig = config.toDbLogConfig(ctx)
 

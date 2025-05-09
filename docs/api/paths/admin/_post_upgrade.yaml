@@ -18,8 +18,8 @@ post:
       in: query
       description: 'If set, a dry-run will be done to return what would be removed.'
       schema:
-        type: string
-        default: 'false'
+        type: boolean
+        default: false
   responses:
     '200':
       description: Returned results
@@ -46,6 +46,7 @@ post:
                       type: array
                       items:
                         type: string
+                      example: ["`_default`.`_default`.syncDocs_x1`", "`scope`.`collection1`.sg_allDocs_1"]
                   required:
                     - removed_design_docs
                     - removed_indexes

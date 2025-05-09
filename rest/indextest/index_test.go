@@ -958,7 +958,7 @@ func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, ch
 }
 
 func TestPartitionedIndexes(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test requires Couchbase Server for GSI")
 	}
 	if !base.TestUseXattrs() {
@@ -994,7 +994,8 @@ func TestPartitionedIndexes(t *testing.T) {
 	}
 	if !base.TestsUseNamedCollections() {
 		// metadata index, unpartitioned
-		expectedIndexNames = append(expectedIndexNames, "sg_syncDocs_x1")
+		expectedIndexNames = append(expectedIndexNames, "sg_users_x1")
+		expectedIndexNames = append(expectedIndexNames, "sg_roles_x1")
 	}
 	require.ElementsMatch(t, expectedIndexNames, indexNames)
 
