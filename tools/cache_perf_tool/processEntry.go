@@ -50,8 +50,8 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 	if delay.Nanoseconds() == 0 {
 		// mutate as fast as possible
 		for {
-			chanMap = make(channels.ChannelMap)
-			for i := 0; i < p.numChansPerDoc; i++ {
+			chanMap = make(channels.ChannelMap, p.numChansPerDoc)
+			for range p.numChansPerDoc {
 				if chanCountZeroWait == p.totalChans {
 					// when count gets to total number configured channels we rest index to 0
 					chanCountZeroWait = 0
@@ -60,11 +60,11 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 				chanMap[chanName] = nil
 				chanCountZeroWait++
 			}
-			timeStamp := time.Now()
 			select {
 			case <-ctx.Done():
 				return
 			default:
+				timeStamp := time.Now()
 				sgwSeqno := node.seqAlloc.nextSeq()
 				docCount++
 				logEntry := &db.LogEntry{
@@ -85,8 +85,8 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
 	for {
-		chanMap = make(channels.ChannelMap)
-		for i := 0; i < p.numChansPerDoc; i++ {
+		chanMap = make(channels.ChannelMap, p.numChansPerDoc)
+		for range p.numChansPerDoc {
 			if chanCountWait == p.totalChans {
 				// when count gets to total number configured channels we rest index to 0
 				chanCountWait = 0
@@ -95,11 +95,11 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 			chanMap[chanName] = nil
 			chanCountWait++
 		}
-		timeStamp := time.Now()
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			timeStamp := time.Now()
 			docCount++
 			sgwSeqno := node.seqAlloc.nextSeq()
 			logEntry := &db.LogEntry{
