@@ -1778,6 +1778,43 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
 }
 
+func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := t.Name()
+
+	// add a doc and wait for it to be cached
+	body := Body{"val": "one"}
+	_, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err)
+	err = db.changeCache.waitForSequence(ctx, 1, base.DefaultWaitForSequence)
+	require.NoError(t, err)
+
+	// grab doc and alter syn cdata as if it had been rapidly updated and deduplicated over dcp
+	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	var retrievedXattr map[string]interface{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
+	retrievedXattr["sequence"] = uint64(6)
+	retrievedXattr["recent_sequences"] = []uint64{1, 2, 3, 4, 5, 6}
+	newXattrVal := map[string][]byte{
+		base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
+	}
+	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, newXattrVal, nil)
+	require.NoError(t, err)
+
+	// asser that sequence 6 is seen over caching feed, no pending changes or skipped changes
+	err = db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence)
+	require.NoError(t, err)
+	db.UpdateCalculatedStats(ctx)
+	assert.Equal(t, int64(0), db.DbStats.Cache().NumCurrentSeqsSkipped.Value())
+	assert.Equal(t, int64(0), db.DbStats.Cache().PendingSeqLen.Value())
+}
+
 func TestRecentSequenceHistory(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
