@@ -1779,6 +1779,10 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 }
 
 func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it writes directly to the xattr")
+	}
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	db, ctx := setupTestDB(t)
