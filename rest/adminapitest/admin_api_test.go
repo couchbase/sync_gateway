@@ -3017,7 +3017,8 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	// Get config values before taking db offline
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	dbConfigBeforeOffline := resp.Body.String()
+	var dbConfigBeforeOffline rest.DatabaseConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbConfigBeforeOffline))
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -3033,7 +3034,17 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	// Check offline config matches online config
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	require.Equal(t, dbConfigBeforeOffline, resp.Body.String())
+
+	// two fields will be different, "offline" and "updated_at", assert and account for this before comparing
+	var dbConfigAfterOffline rest.DatabaseConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbConfigAfterOffline))
+	require.True(t, *dbConfigAfterOffline.StartOffline)
+	require.True(t, dbConfigBeforeOffline.UpdatedAt.Before(*dbConfigAfterOffline.UpdatedAt), "expected %s to be before %s", dbConfigBeforeOffline.UpdatedAt, dbConfigAfterOffline.UpdatedAt)
+	dbConfigBeforeOffline.UpdatedAt = nil
+	dbConfigBeforeOffline.StartOffline = nil
+	dbConfigAfterOffline.UpdatedAt = nil
+	dbConfigAfterOffline.StartOffline = nil
+	require.Equal(t, dbConfigBeforeOffline, dbConfigAfterOffline)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -3164,13 +3175,11 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	// Make sure import and sync fail
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/TestSyncDoc", "{}"), http.StatusForbidden)
 
-	// Take DB offline
 	rt.TakeDbOffline()
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/sync", ""), http.StatusOK)
 
-	// Take DB online
-	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", ""), http.StatusOK)
+	rt.TakeDbOnline()
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/sync", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -3214,8 +3223,7 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", syncFunc), http.StatusOK)
 
-	// Take DB online
-	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_online", ""), http.StatusOK)
+	rt.TakeDbOnline()
 
 	// Check configs match
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
