@@ -3,7 +3,7 @@ module github.com/couchbase/sync_gateway
 go 1.23.0
 
 require (
-	dario.cat/mergo v1.0.0
+	dario.cat/mergo v1.0.2
 	github.com/KimMachineGun/automemlimit v0.7.2
 	github.com/coreos/go-oidc/v3 v3.13.0
 	github.com/couchbase/cbgt v1.3.10-0.20250128173458-04138cb9d33d
