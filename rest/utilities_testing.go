@@ -961,19 +961,19 @@ func (rt *RestTester) SendUserRequest(method, resource, body, username string) *
 	return rt.Send(RequestByUser(method, rt.mustTemplateResource(resource), body, username))
 }
 
-func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
+func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult) {
 	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, user, password)
 }
 
-func (rt *RestTester) WaitForNAdminViewResults(numResultsExpected int, viewUrlPath string) (viewResult sgbucket.ViewResult, err error) {
+func (rt *RestTester) WaitForNAdminViewResults(numResultsExpected int, viewUrlPath string) (viewResult sgbucket.ViewResult) {
 	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, nil, "")
 }
 
 // Wait for a certain number of results to be returned from a view query
 // viewUrlPath: is the path to the view, including the db name.  Eg: "/db/_design/foo/_view/bar"
-func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
+func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult) {
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value sgbucket.ViewResult) {
 		var response *TestResponse
 		if user != nil {
 			request := Request("GET", viewUrlPath, "")
@@ -987,14 +987,14 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 		// See https://github.com/couchbase/sync_gateway/issues/3570#issuecomment-390487982
 		if strings.Contains(response.Body.String(), "view_undefined") {
 			base.InfofCtx(rt.Context(), base.KeyAll, "view_undefined error: %v.  Retrying", response.Body.String())
-			return true, nil, nil
+			return true, nil, sgbucket.ViewResult{}
 		}
 
 		if response.Code != 200 {
 			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200", response.Code), sgbucket.ViewResult{}
 		}
 		var result sgbucket.ViewResult
-		_ = base.JSONUnmarshal(response.Body.Bytes(), &result)
+		require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &result))
 
 		if len(result.Rows) >= numResultsExpected {
 			// Got enough results, break out of retry loop
@@ -1009,13 +1009,8 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 	description := fmt.Sprintf("Wait for %d view results for query to %v", numResultsExpected, viewUrlPath)
 	sleeper := base.CreateSleeperFunc(200, 100)
 	err, returnVal := base.RetryLoop(rt.Context(), description, worker, sleeper)
-
-	if err != nil {
-		return sgbucket.ViewResult{}, err
-	}
-
-	return returnVal.(sgbucket.ViewResult), nil
-
+	require.NoError(rt.TB(), err, "Error waiting for view results: %v", err)
+	return returnVal
 }
 
 // Waits for view to be defined on the server.  Used to avoid view_undefined errors.
@@ -1942,7 +1937,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]interface{}) {
 
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+	retryWorker := func() (shouldRetry bool, err error, value [][]any) {
 		currentChanges := bt.GetChanges()
 		if len(currentChanges) >= numChangesExpected {
 			return false, nil, currentChanges
@@ -1953,14 +1948,13 @@ func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]int
 
 	}
 
-	_, rawChanges := base.RetryLoop(
+	err, changes := base.RetryLoop(
 		bt.restTester.Context(),
 		"WaitForNumChanges",
 		retryWorker,
 		base.CreateDoublingSleeperFunc(10, 10),
 	)
-
-	changes, _ = rawChanges.([][]interface{})
+	require.NoError(bt.restTester.TB(), err, "WaitForNumChanges failed")
 	return changes
 
 }
@@ -2007,29 +2001,14 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 }
 
-func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument, ok bool) {
+// WaitForNumDocsViaChanges waits for the number of documents to be seen on the BlipTester from a subChanges request. Fails the test if expected number of documents is not found.
+func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument) {
 
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		fmt.Println("BT WaitForNumDocsViaChanges retry")
-		allDocs := bt.PullDocs()
-		if len(allDocs) >= numDocsExpected {
-			return false, nil, allDocs
-		}
-
-		// haven't seen numDocsExpected yet, so wait and retry
-		return true, nil, nil
-
-	}
-
-	_, allDocs := base.RetryLoop(
-		bt.restTester.Context(),
-		"WaitForNumDocsViaChanges",
-		retryWorker,
-		base.CreateDoublingSleeperFunc(20, 10),
-	)
-
-	docs, ok = allDocs.(map[string]RestDocument)
-	return docs, ok
+	require.EventuallyWithT(bt.restTester.TB(), func(c *assert.CollectT) {
+		docs = bt.PullDocs()
+		assert.Len(c, docs, numDocsExpected)
+	}, 10*time.Second, 10*time.Millisecond)
+	return docs
 }
 
 // Get all documents and their attachments via the following steps:
@@ -2395,7 +2374,7 @@ func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func(
 
 func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundProcessState, getStateFunc func(t testing.TB) db.BackgroundProcessState) bool {
 	t.Helper()
-	err, actual := base.RetryLoop(base.TestCtx(t), t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value interface{}) {
+	err, actual := base.RetryLoop(base.TestCtx(t), t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value db.BackgroundProcessState) {
 		actual := getStateFunc(t)
 		return expected != actual, nil, actual
 	}, base.CreateMaxDoublingSleeperFunc(30, 100, 1000))
@@ -2404,12 +2383,12 @@ func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundPro
 
 func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.BackgroundManager) bool {
 	t.Helper()
-	err, b := base.RetryLoop(base.TestCtx(t), t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value interface{}) {
+	err, b := base.RetryLoop(base.TestCtx(t), t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value []byte) {
 		b, err := bm.GetHeartbeatDoc(t)
 		return !base.IsDocNotFoundError(err), err, b
 	}, base.CreateMaxDoublingSleeperFunc(30, 100, 1000))
 	if b != nil {
-		return assert.NoErrorf(t, err, "expected heartbeat doc to expire, but found one: %v", b)
+		return assert.NoErrorf(t, err, "expected heartbeat doc to expire, but found one with contents: %s", b)
 	}
 	return assert.Truef(t, base.IsDocNotFoundError(err), "expected heartbeat doc to expire, but got a different error: %v", err)
 }

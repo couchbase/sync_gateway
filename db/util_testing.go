@@ -96,6 +96,8 @@ func (db *DatabaseContext) StartChangeCache(t *testing.T, ctx context.Context) {
 	}
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
 	db.changeCache.lock.Unlock()
+
+	db.mutationListener.NotifyBroadcast()
 }
 
 // CallProcessEntry allows the cache benchmarking tool to call directly into processEntry, not to

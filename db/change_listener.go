@@ -209,8 +209,29 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 	}
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(keys), listener.counter)
-	listener.tapNotifier.Broadcast()
+	//listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
+}
+
+func (listener *changeListener) NotifyBroadcast() {
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		currCount := uint64(0)
+		for {
+			select {
+			case <-listener.terminator:
+				return
+			case <-ticker.C:
+				listener.tapNotifier.L.Lock()
+				if listener.counter > currCount {
+					listener.tapNotifier.Broadcast()
+					currCount = listener.counter
+				}
+				listener.tapNotifier.L.Unlock()
+			}
+		}
+	}()
 }
 
 // Changes the counter, notifying waiting clients. Only use for a key update.
