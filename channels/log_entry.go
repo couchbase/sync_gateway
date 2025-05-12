@@ -28,19 +28,18 @@ const (
 
 )
 
+// LogEntry stores information about a change to a document in a cache.
 type LogEntry struct {
-	Sequence     uint64     // Sequence number
-	EndSequence  uint64     // End sequence on range of sequences that have been released by the sequence allocator (0 if entry is single sequence)
-	DocID        string     // Document ID
-	RevID        string     // Revision ID
-	Flags        uint8      // Deleted/Removed/Hidden flags
-	TimeSaved    time.Time  // Time doc revision was saved (just used for perf metrics)
-	TimeReceived time.Time  // Time received from tap feed
-	Channels     ChannelMap // Channels this entry is in or was removed from
-	Skipped      bool       // Late arriving entry
-	PrevSequence uint64     // Sequence of previous active revision
-	IsPrincipal  bool       // Whether the log-entry is a tracking entry for a principal doc
-	CollectionID uint32     // Collection ID
+	Channels     ChannelMap    // Channels this entry is in or was removed from
+	DocID        string        // Document ID
+	RevID        string        // Revision ID
+	Sequence     uint64        // Sequence number
+	EndSequence  uint64        // End sequence on range of sequences that have been released by the sequence allocator (0 if entry is single sequence)
+	TimeReceived FeedTimestamp // Time received from tap feed
+	CollectionID uint32        // Collection ID
+	Flags        uint8         // Deleted/Removed/Hidden flags
+	Skipped      bool          // Late arriving entry
+	IsPrincipal  bool          // Whether the log-entry is a tracking entry for a principal doc
 }
 
 func (l LogEntry) String() string {
@@ -51,6 +50,36 @@ func (l LogEntry) String() string {
 		l.RevID,
 		l.CollectionID,
 	)
+}
+
+// IsRemoved returns true if the entry represents a channel removal.
+func (l *LogEntry) IsRemoved() bool {
+	return l.Flags&Removed != 0
+}
+
+// IsDeleted returns true if the entry represents a document deletion.
+func (l *LogEntry) IsDeleted() bool {
+	return l.Flags&Deleted != 0
+}
+
+// IsActive returns false if the entry is either a removal or a delete.
+func (l *LogEntry) IsActive() bool {
+	return !l.IsRemoved() && !l.IsDeleted()
+}
+
+// SetRemoved marks the entry as a channel removal.
+func (l *LogEntry) SetRemoved() {
+	l.Flags |= Removed
+}
+
+// SetDeleted marks the entry as a document deletion.
+func (l *LogEntry) SetDeleted() {
+	l.Flags |= Deleted
+}
+
+// IsUnusedRange returns true if the entry represents an unused sequence document with more than one sequence.
+func (l *LogEntry) IsUnusedRange() bool {
+	return l.DocID == "" && l.EndSequence > 0
 }
 
 type ChannelMap map[string]*ChannelRemoval
@@ -80,4 +109,37 @@ func (channelMap ChannelMap) KeySet() []string {
 		i++
 	}
 	return result
+}
+
+// FeedTimestamp is a timestamp struct used by DCP. This avoids a conversion from time.Time, while reducing the size from 24 bytes to 8 bytes while having type safety. The time is always assumed to be in local time.
+type FeedTimestamp int64
+
+// NewFeedTimestampFromNow creates a new FeedTimestamp from the current time.
+func NewFeedTimestampFromNow() FeedTimestamp {
+	return FeedTimestamp(time.Now().UnixNano())
+}
+
+// NewFeedTimestamp creates a new FeedTimestamp from a specific time.Time.
+func NewFeedTimestamp(t *time.Time) FeedTimestamp {
+	return FeedTimestamp(t.UnixNano())
+}
+
+// Since returns the nanoseconds that have passed since this timestamp. This function can overflow.
+func (t FeedTimestamp) Since() int64 {
+	return time.Now().UnixNano() - int64(t)
+}
+
+// OlderThan returns true if the timestamp is older than the given duration.
+func (t FeedTimestamp) OlderThan(duration time.Duration) bool {
+	return t.Since() > int64(duration)
+}
+
+// OlderOrEqual returns true if the timestamp is older or equal to the given duration.
+func (t FeedTimestamp) OlderOrEqual(duration time.Duration) bool {
+	return t.Since() >= int64(duration)
+}
+
+// After returns true if the timestamp is after the given time.
+func (t FeedTimestamp) After(other time.Time) bool {
+	return int64(t) > other.UnixNano()
 }

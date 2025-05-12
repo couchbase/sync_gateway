@@ -64,7 +64,7 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 			case <-ctx.Done():
 				return
 			default:
-				timeStamp := time.Now()
+				timeStamp := channels.NewFeedTimestampFromNow()
 				sgwSeqno := node.seqAlloc.nextSeq()
 				docCount++
 				logEntry := &db.LogEntry{
@@ -73,7 +73,6 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 					RevID:        "1-abc",
 					Flags:        0,
 					TimeReceived: timeStamp,
-					TimeSaved:    timeStamp,
 					Channels:     chanMap,
 					CollectionID: 0,
 				}
@@ -99,7 +98,7 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			timeStamp := time.Now()
+			timeStamp := channels.NewFeedTimestampFromNow()
 			docCount++
 			sgwSeqno := node.seqAlloc.nextSeq()
 			logEntry := &db.LogEntry{
@@ -108,7 +107,6 @@ func (p *processEntryGen) nodeWrites(ctx context.Context, node *sgwNode, delay t
 				RevID:        "1-abc",
 				Flags:        0,
 				TimeReceived: timeStamp,
-				TimeSaved:    timeStamp,
 				Channels:     chanMap,
 				CollectionID: 0,
 			}

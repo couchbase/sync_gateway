@@ -98,36 +98,7 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	c.db.DbStats.Cache().SkippedSeqCap.Set(skippedSequenceListStats.ListCapacityStat)
 }
 
-type LogEntry channels.LogEntry
-
-func (l LogEntry) String() string {
-	return channels.LogEntry(l).String()
-}
-
-func (entry *LogEntry) IsRemoved() bool {
-	return entry.Flags&channels.Removed != 0
-}
-
-func (entry *LogEntry) IsDeleted() bool {
-	return entry.Flags&channels.Deleted != 0
-}
-
-// Returns false if the entry is either a removal or a delete
-func (entry *LogEntry) IsActive() bool {
-	return !entry.IsRemoved() && !entry.IsDeleted()
-}
-
-func (entry *LogEntry) SetRemoved() {
-	entry.Flags |= channels.Removed
-}
-
-func (entry *LogEntry) SetDeleted() {
-	entry.Flags |= channels.Deleted
-}
-
-func (entry *LogEntry) IsUnusedRange() bool {
-	return entry.DocID == "" && entry.EndSequence > 0
-}
+type LogEntry = channels.LogEntry
 
 type LogEntries []*LogEntry
 
@@ -332,19 +303,20 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	docJSON := event.Value
 	changedChannelsCombined := channels.Set{}
 
+	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc for this database?
 	if strings.HasPrefix(docID, c.metaKeys.UserKeyPrefix()) {
-		c.processPrincipalDoc(ctx, docID, docJSON, true, event.TimeReceived)
+		c.processPrincipalDoc(ctx, docID, docJSON, true, timeReceived)
 		return
 	} else if strings.HasPrefix(docID, c.metaKeys.RoleKeyPrefix()) {
-		c.processPrincipalDoc(ctx, docID, docJSON, false, event.TimeReceived)
+		c.processPrincipalDoc(ctx, docID, docJSON, false, timeReceived)
 		return
 	}
 
 	// Is this an unused sequence notification?
 	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqPrefix()) {
-		c.processUnusedSequence(ctx, docID, event.TimeReceived)
+		c.processUnusedSequence(ctx, docID, timeReceived)
 		return
 	}
 	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqRangePrefix()) {
@@ -454,7 +426,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		base.InfofCtx(ctx, base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
-			TimeReceived: event.TimeReceived,
+			TimeReceived: timeReceived,
 			CollectionID: event.CollectionID,
 		}
 		changedChannels := c.processEntry(ctx, change)
@@ -478,7 +450,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
-					TimeReceived: event.TimeReceived,
+					TimeReceived: timeReceived,
 					CollectionID: event.CollectionID,
 				}
 
@@ -505,8 +477,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		DocID:        docID,
 		RevID:        syncData.CurrentRev,
 		Flags:        syncData.Flags,
-		TimeReceived: event.TimeReceived,
-		TimeSaved:    syncData.TimeSaved,
+		TimeReceived: timeReceived,
 		Channels:     syncData.Channels,
 		CollectionID: event.CollectionID,
 	}
@@ -548,7 +519,7 @@ func (c *changeCache) unmarshalCachePrincipal(docJSON []byte) (cachePrincipal, e
 }
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
-func (c *changeCache) processUnusedSequence(ctx context.Context, docID string, timeReceived time.Time) {
+func (c *changeCache) processUnusedSequence(ctx context.Context, docID string, timeReceived channels.FeedTimestamp) {
 	sequenceStr := strings.TrimPrefix(docID, c.metaKeys.UnusedSeqPrefix())
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
@@ -559,7 +530,7 @@ func (c *changeCache) processUnusedSequence(ctx context.Context, docID string, t
 
 }
 
-func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64, timeReceived time.Time) {
+func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64, timeReceived channels.FeedTimestamp) {
 	change := &LogEntry{
 		Sequence:     sequence,
 		TimeReceived: timeReceived,
@@ -582,7 +553,7 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 
 // releaseUnusedSequenceRange will handle unused sequence range arriving over DCP. It will batch remove from skipped or
 // push a range to pending sequences, or both.
-func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequence uint64, toSequence uint64, timeReceived time.Time) {
+func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequence uint64, toSequence uint64, timeReceived channels.FeedTimestamp) {
 
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d-#%d (unused sequence range)", fromSequence, toSequence)
 
@@ -612,7 +583,7 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 }
 
 // processUnusedRange handles pushing unused range to pending or skipped lists
-func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSequence uint64, allChangedChannels channels.Set, timeReceived time.Time) channels.Set {
+func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSequence uint64, allChangedChannels channels.Set, timeReceived channels.FeedTimestamp) channels.Set {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -639,7 +610,7 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 }
 
 // _pushRangeToPending will push a sequence range to pendingLogs
-func (c *changeCache) _pushRangeToPending(ctx context.Context, startSeq, endSeq uint64, timeReceived time.Time) {
+func (c *changeCache) _pushRangeToPending(ctx context.Context, startSeq, endSeq uint64, timeReceived channels.FeedTimestamp) {
 
 	entry := &LogEntry{
 		TimeReceived: timeReceived,
@@ -670,10 +641,10 @@ func (c *changeCache) processUnusedSequenceRange(ctx context.Context, docID stri
 		return
 	}
 
-	c.releaseUnusedSequenceRange(ctx, fromSequence, toSequence, time.Now())
+	c.releaseUnusedSequenceRange(ctx, fromSequence, toSequence, channels.NewFeedTimestampFromNow())
 }
 
-func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, docJSON []byte, isUser bool, timeReceived time.Time) {
+func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, docJSON []byte, isUser bool, timeReceived channels.FeedTimestamp) {
 
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
@@ -816,9 +787,9 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) channel
 		base.DebugfCtx(ctx, base.KeyChanges, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}
 
-	if !change.TimeReceived.IsZero() {
+	if change.TimeReceived != 0 {
 		c.db.DbStats.Database().DCPCachingCount.Add(1)
-		c.db.DbStats.Database().DCPCachingTime.Add(time.Since(change.TimeReceived).Nanoseconds())
+		c.db.DbStats.Database().DCPCachingTime.Add(change.TimeReceived.Since())
 	}
 
 	return updatedChannels
@@ -847,7 +818,7 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
 			if oldestPending.IsUnusedRange() && oldestPending.EndSequence >= c.nextSequence {
 				c.nextSequence = oldestPending.EndSequence + 1
 			}
-		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
+		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || c.pendingLogs[0].TimeReceived.OlderOrEqual(c.options.CachePendingSeqMaxWait) {
 			//  Skip all sequences up to the oldest Pending
 			c.PushSkipped(ctx, c.nextSequence, oldestPending.Sequence-1)
 			c.nextSequence = oldestPending.Sequence
