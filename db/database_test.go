@@ -1793,7 +1793,7 @@ func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
 	err = db.changeCache.waitForSequence(ctx, 1, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
-	// grab doc and alter syn cdata as if it had been rapidly updated and deduplicated over dcp
+	// grab doc and alter sync data as if it had been rapidly updated and deduplicated over dcp
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
 	require.NoError(t, err)
 
@@ -1807,7 +1807,7 @@ func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
 	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, newXattrVal, nil)
 	require.NoError(t, err)
 
-	// asser that sequence 6 is seen over caching feed, no pending changes or skipped changes
+	// assert that sequence 6 is seen over caching feed, no pending changes or skipped changes
 	err = db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 	db.UpdateCalculatedStats(ctx)
