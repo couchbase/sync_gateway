@@ -226,7 +226,8 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) cha
 			if channelName == channels.UserStarChannel {
 				explicitStarChannel = true
 			}
-			channelCache, ok := c.getActiveChannelCache(ctx, channels.NewID(channelName, change.CollectionID))
+			channelID := channels.NewID(channelName, change.CollectionID)
+			channelCache, ok := c.getActiveChannelCache(ctx, channelID)
 			if ok {
 				channelCache.addToCache(ctx, change, removal != nil)
 				if change.Skipped {
@@ -234,19 +235,20 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) cha
 				}
 			}
 			// Need to notify even if channel isn't active, for case where number of connected changes channels exceeds cache capacity
-			updatedChannels.Add(channels.NewID(channelName, change.CollectionID))
+			updatedChannels.Add(channelID)
 		}
 	}
 
 	if EnableStarChannelLog && !explicitStarChannel {
-		channelCache, ok := c.getActiveChannelCache(ctx, channels.NewID(channels.UserStarChannel, change.CollectionID))
+		starChannelID := channels.NewID(channels.UserStarChannel, change.CollectionID)
+		channelCache, ok := c.getActiveChannelCache(ctx, starChannelID)
 		if ok {
 			channelCache.addToCache(ctx, change, false)
 			if change.Skipped {
 				channelCache.AddLateSequence(change)
 			}
 		}
-		updatedChannels.Add(channels.NewID(channels.UserStarChannel, change.CollectionID))
+		updatedChannels.Add(starChannelID)
 	}
 
 	c.updateHighCacheSequence(change.Sequence)
