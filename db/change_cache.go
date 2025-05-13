@@ -641,7 +641,7 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 	return allChangedChannels
 }
 
-// _pushRangeToPending will push a sequence range to pendingLogs
+// _pushRangeToPending will push an unused sequence range to pendingLogs
 func (c *changeCache) _pushRangeToPending(ctx context.Context, startSeq, endSeq uint64, timeReceived time.Time) {
 
 	entry := &LogEntry{
