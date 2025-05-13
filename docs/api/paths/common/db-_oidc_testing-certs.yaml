@@ -57,5 +57,5 @@ get:
               reason:
                 type: string
   tags:
-    - Authentication
+    - Unsupported
   operationId: get_db-_oidc_testing-certs

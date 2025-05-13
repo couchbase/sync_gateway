@@ -10,12 +10,13 @@ parameters:
 post:
   summary: Ensure Full Commit
   description: |-
-    This endpoint is non-functional but is present for CouchDB compatibility.
+    This endpoint is non-functional but is present for CouchDB compatibility. This was deprecated in CouchDB 3.0.
 
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Application
     * Sync Gateway Application Read Only
+  deprecated: true
   responses:
     '201':
       description: OK
