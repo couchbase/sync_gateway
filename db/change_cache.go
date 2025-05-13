@@ -126,7 +126,7 @@ func (entry *LogEntry) SetDeleted() {
 }
 
 func (entry *LogEntry) IsUnusedRange() bool {
-	return entry.DocID == "" && entry.EndSequence > 0
+	return entry.UnusedSequence && entry.EndSequence > 0
 }
 
 type LogEntries []*LogEntry
@@ -562,8 +562,9 @@ func (c *changeCache) processUnusedSequence(ctx context.Context, docID string, t
 
 func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64, timeReceived time.Time) {
 	change := &LogEntry{
-		Sequence:     sequence,
-		TimeReceived: timeReceived,
+		Sequence:       sequence,
+		TimeReceived:   timeReceived,
+		UnusedSequence: true,
 	}
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d (unused sequence)", sequence)
 
@@ -593,8 +594,9 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 	// if range is single value, just run sequence through process entry and return early
 	if fromSequence == toSequence {
 		change := &LogEntry{
-			Sequence:     toSequence,
-			TimeReceived: timeReceived,
+			Sequence:       toSequence,
+			TimeReceived:   timeReceived,
+			UnusedSequence: true,
 		}
 		changedChannels := c.processEntry(ctx, change)
 		allChangedChannels = allChangedChannels.Update(changedChannels)
@@ -639,13 +641,14 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 	return allChangedChannels
 }
 
-// _pushRangeToPending will push a sequence range to pendingLogs
+// _pushRangeToPending will push an unused sequence range to pendingLogs
 func (c *changeCache) _pushRangeToPending(ctx context.Context, startSeq, endSeq uint64, timeReceived time.Time) {
 
 	entry := &LogEntry{
-		TimeReceived: timeReceived,
-		Sequence:     startSeq,
-		EndSequence:  endSeq,
+		TimeReceived:   timeReceived,
+		Sequence:       startSeq,
+		EndSequence:    endSeq,
+		UnusedSequence: true,
 	}
 	heap.Push(&c.pendingLogs, entry)
 
@@ -800,7 +803,7 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) channel
 	delete(c.receivedSeqs, change.Sequence)
 
 	// If unused sequence, notify the cache and return
-	if change.DocID == "" {
+	if change.UnusedSequence {
 		c.channelCache.AddUnusedSequence(change)
 		return nil
 	}
