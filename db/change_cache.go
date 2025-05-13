@@ -472,9 +472,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	if len(syncData.RecentSequences) > 0 {
+		nextSequence := c.getNextSequence()
 
 		for _, seq := range syncData.RecentSequences {
-			if seq >= c.getNextSequence() && seq < currentSequence {
+			if seq >= nextSequence && seq < currentSequence {
 				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
