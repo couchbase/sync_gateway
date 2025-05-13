@@ -30,16 +30,17 @@ const (
 
 // LogEntry stores information about a change to a document in a cache.
 type LogEntry struct {
-	Channels     ChannelMap    // Channels this entry is in or was removed from
-	DocID        string        // Document ID
-	RevID        string        // Revision ID
-	Sequence     uint64        // Sequence number
-	EndSequence  uint64        // End sequence on range of sequences that have been released by the sequence allocator (0 if entry is single sequence)
-	TimeReceived FeedTimestamp // Time received from tap feed
-	CollectionID uint32        // Collection ID
-	Flags        uint8         // Deleted/Removed/Hidden flags
-	Skipped      bool          // Late arriving entry
-	IsPrincipal  bool          // Whether the log-entry is a tracking entry for a principal doc
+	Channels       ChannelMap    // Channels this entry is in or was removed from
+	DocID          string        // Document ID
+	RevID          string        // Revision ID
+	Sequence       uint64        // Sequence number
+	EndSequence    uint64        // End sequence on range of sequences that have been released by the sequence allocator (0 if entry is single sequence)
+	TimeReceived   FeedTimestamp // Time received from tap feed
+	CollectionID   uint32        // Collection ID
+	Flags          uint8         // Deleted/Removed/Hidden flags
+	Skipped        bool          // Late arriving entry
+	IsPrincipal    bool          // Whether the log-entry is a tracking entry for a principal doc
+	UnusedSequence bool          // Whether the log-entry is a tracking entry for a unused sequence(s)
 }
 
 func (l LogEntry) String() string {
@@ -79,7 +80,7 @@ func (l *LogEntry) SetDeleted() {
 
 // IsUnusedRange returns true if the entry represents an unused sequence document with more than one sequence.
 func (l *LogEntry) IsUnusedRange() bool {
-	return l.DocID == "" && l.EndSequence > 0
+	return l.UnusedSequence && l.EndSequence > 0
 }
 
 type ChannelMap map[string]*ChannelRemoval

@@ -444,9 +444,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	if len(syncData.RecentSequences) > 0 {
+		nextSequence := c.getNextSequence()
 
 		for _, seq := range syncData.RecentSequences {
-			if seq >= c.getNextSequence() && seq < currentSequence {
+			if seq >= nextSequence && seq < currentSequence {
 				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
@@ -532,19 +533,19 @@ func (c *changeCache) processUnusedSequence(ctx context.Context, docID string, t
 
 func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64, timeReceived channels.FeedTimestamp) {
 	change := &LogEntry{
-		Sequence:     sequence,
-		TimeReceived: timeReceived,
+		Sequence:       sequence,
+		TimeReceived:   timeReceived,
+		UnusedSequence: true,
 	}
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d (unused sequence)", sequence)
 
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	changedChannels := c.processEntry(ctx, change)
-	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
 	if changedChannels == nil {
-		changedChannels = channels.SetOfNoValidate(unusedSeq)
+		changedChannels = channels.SetOfNoValidate(unusedSeqChannelID)
 	} else {
-		changedChannels.Add(unusedSeq)
+		changedChannels.Add(unusedSeqChannelID)
 	}
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(ctx, changedChannels)
@@ -557,14 +558,14 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d-#%d (unused sequence range)", fromSequence, toSequence)
 
-	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
-	allChangedChannels := channels.SetOfNoValidate(unusedSeq)
+	allChangedChannels := channels.SetOfNoValidate(unusedSeqChannelID)
 
 	// if range is single value, just run sequence through process entry and return early
 	if fromSequence == toSequence {
 		change := &LogEntry{
-			Sequence:     toSequence,
-			TimeReceived: timeReceived,
+			Sequence:       toSequence,
+			TimeReceived:   timeReceived,
+			UnusedSequence: true,
 		}
 		changedChannels := c.processEntry(ctx, change)
 		allChangedChannels = allChangedChannels.Update(changedChannels)
@@ -592,7 +593,7 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
 	} else if fromSequence >= c.nextSequence {
 		// whole range to pending
-		c._pushRangeToPending(ctx, fromSequence, toSequence, timeReceived)
+		c._pushRangeToPending(fromSequence, toSequence, timeReceived)
 		// unblock any pending sequences we can after new range(s) have been pushed to pending
 		changedChannels := c._addPendingLogs(ctx)
 		allChangedChannels = allChangedChannels.Update(changedChannels)
@@ -609,13 +610,14 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 	return allChangedChannels
 }
 
-// _pushRangeToPending will push a sequence range to pendingLogs
-func (c *changeCache) _pushRangeToPending(ctx context.Context, startSeq, endSeq uint64, timeReceived channels.FeedTimestamp) {
+// _pushRangeToPending will push an unused sequence range to pendingLogs
+func (c *changeCache) _pushRangeToPending(startSeq, endSeq uint64, timeReceived channels.FeedTimestamp) {
 
 	entry := &LogEntry{
-		TimeReceived: timeReceived,
-		Sequence:     startSeq,
-		EndSequence:  endSeq,
+		TimeReceived:   timeReceived,
+		Sequence:       startSeq,
+		EndSequence:    endSeq,
+		UnusedSequence: true,
 	}
 	heap.Push(&c.pendingLogs, entry)
 
@@ -770,7 +772,7 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) channel
 	delete(c.receivedSeqs, change.Sequence)
 
 	// If unused sequence, notify the cache and return
-	if change.DocID == "" {
+	if change.UnusedSequence {
 		c.channelCache.AddUnusedSequence(change)
 		return nil
 	}

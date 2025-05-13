@@ -43,6 +43,9 @@ type changeListener struct {
 	metaKeys               *base.MetadataKeys // Metadata key formatter
 }
 
+// unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
+var unusedSeqChannelID = channels.NewID(unusedSeqKey, unusedSeqCollectionID)
+
 type DocChangedFunc func(event sgbucket.FeedEvent)
 
 func (listener *changeListener) Init(name string, groupID string, metaKeys *base.MetadataKeys) {
@@ -390,7 +393,7 @@ func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channel
 		updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID).String())
 	}
 	if waiter.trackUnusedSequences {
-		updatedKeys = append(updatedKeys, channels.NewID(unusedSeqKey, unusedSeqCollectionID).String())
+		updatedKeys = append(updatedKeys, unusedSeqChannelID.String())
 	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)
