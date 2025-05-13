@@ -2937,7 +2937,7 @@ func TestAddPendingLogs(t *testing.T) {
 					logEntry.TimeReceived = backdatedTimeReceived
 					heap.Push(&testChangeCache.pendingLogs, logEntry)
 				} else {
-					testChangeCache._pushRangeToPending(ctx, incomingRange.start, incomingRange.end, backdatedTimeReceived)
+					testChangeCache._pushRangeToPending(incomingRange.start, incomingRange.end, backdatedTimeReceived)
 				}
 			}
 			// Call _addPendingLogs to trigger eviction from pendingLogs based on age
