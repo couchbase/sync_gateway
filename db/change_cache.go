@@ -447,7 +447,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		nextSequence := c.getNextSequence()
 
 		for _, seq := range syncData.RecentSequences {
-			if seq >= nextSequence && seq < currentSequence {
+			// we need to check if it's possible that one of the recent sequences has been pushed to skipped
+			isSkipped := seq < currentSequence && seq >= c.getOldestSkippedSequence(ctx)
+			if (seq >= nextSequence && seq < currentSequence) || isSkipped {
 				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
