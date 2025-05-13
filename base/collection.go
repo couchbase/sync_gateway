@@ -289,8 +289,14 @@ func (b *GocbV2Bucket) queryHLVBucketSetting(ctx context.Context) error {
 }
 
 func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	groupID := ""
-	return StartGocbDCPFeed(ctx, b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
+	return StartGocbDCPFeed(ctx, GocbFeedOptions{
+		Bucket:            b,
+		FeedArgs:          args,
+		Callback:          callback,
+		DbStats:           dbStats,
+		MetadataStoreType: DCPMetadataStoreInMemory,
+		GroupID:           "",
+	})
 }
 
 func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {

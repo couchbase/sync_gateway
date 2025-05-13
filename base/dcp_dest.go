@@ -17,6 +17,7 @@ import (
 	"expvar"
 	"io"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/gomemcached"
@@ -39,13 +40,14 @@ type DCPDest struct {
 	*DCPCommon
 	stats              *expvar.Map // DCP feed stats (rollback, backfill)
 	partitionCountStat *SgwIntStat // Stat for partition count.  Stored outside the DCP feed stats map
-	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
-	janitorRollback    func()      // This function will trigger a janitor_pindex_rollback
+	activeVBucketCount *atomic.Int32
+	metaInitComplete   []bool // Whether metadata initialization has been completed, per vbNo
+	janitorRollback    func() // This function will trigger a janitor_pindex_rollback
 }
 
 // NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It optionally stores checkpoints in the _default._default collection if persistentCheckpoints is true with prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID have a unique string appended. Specific stats for DCP are stored in expvars rather than SgwStats, except for importPartitionStat representing the number of import partitions. Each import partition will have a DCPDest object. The rollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr.
 func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool,
-	dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string, metaKeys *MetadataKeys, rollback func()) (SGDest, context.Context, error) {
+	dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, activevBuckets *atomic.Int32, checkpointPrefix string, metaKeys *MetadataKeys, rollback func()) (SGDest, context.Context, error) {
 
 	// TODO: Metadata store?
 	metadataStore := bucket.DefaultDataStore()
@@ -58,6 +60,7 @@ func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bu
 		DCPCommon:          dcpCommon,
 		stats:              dcpStats,
 		partitionCountStat: importPartitionStat,
+		activeVBucketCount: activevBuckets,
 		metaInitComplete:   make([]bool, dcpCommon.maxVbNo),
 		janitorRollback:    rollback,
 	}
@@ -77,6 +80,10 @@ func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bu
 }
 
 func (d *DCPDest) Close(_ bool) error {
+	d.activeVBucketCount.Add(-int32(len(d.activeVBuckets)))
+	for vbNo := range d.activeVBuckets {
+		delete(d.activeVBuckets, vbNo)
+	}
 	// ignore param remove since sync gateway pindexes are not persisted on disk, cbgt.Manager dataDir is set to empty string
 	if d.partitionCountStat != nil {
 		d.partitionCountStat.Add(-1)
@@ -186,6 +193,12 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 	if !d.metaInitComplete[vbNo] {
 		d.InitVbMeta(vbNo)
 		d.metaInitComplete[vbNo] = true
+	}
+	if !d.activeVBuckets[vbNo] {
+		// log with KeyImport to match cbgt logging
+		DebugfCtx(d.loggingCtx, KeyImport, "Opened vBucket %d for sharded import feed for %s.", vbNo, d.feedID)
+		d.activeVBucketCount.Add(1)
+		d.activeVBuckets[vbNo] = true
 	}
 	_ = d.setMetaData(vbNo, value, false)
 	return nil

@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -55,16 +56,17 @@ type DCPClient struct {
 	metadata                   DCPMetadataStore               // Implementation of DCPMetadataStore for metadata persistence
 	activeVbuckets             map[uint16]struct{}            // vbuckets that have an open stream
 	activeVbucketLock          sync.Mutex                     // Synchronization for activeVbuckets
-	oneShot                    bool                           // Whether DCP feed should be one-shot
-	closing                    AtomicBool                     // Set when the client is closing (either due to internal or external request)
-	closeError                 error                          // Will be set to a non-nil value for unexpected error
-	closeErrorLock             sync.Mutex                     // Synchronization on close error
-	failOnRollback             bool                           // When true, close when rollback detected
-	checkpointPrefix           string                         // DCP checkpoint key prefix
-	checkpointPersistFrequency *time.Duration                 // Used to override the default checkpoint persistence frequency
-	dbStats                    *expvar.Map                    // Stats for database
-	agentPriority              gocbcore.DcpAgentPriority      // agentPriority specifies the priority level for a dcp stream
-	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
+	activeVBucketCount         *atomic.Int32
+	oneShot                    bool                      // Whether DCP feed should be one-shot
+	closing                    AtomicBool                // Set when the client is closing (either due to internal or external request)
+	closeError                 error                     // Will be set to a non-nil value for unexpected error
+	closeErrorLock             sync.Mutex                // Synchronization on close error
+	failOnRollback             bool                      // When true, close when rollback detected
+	checkpointPrefix           string                    // DCP checkpoint key prefix
+	checkpointPersistFrequency *time.Duration            // Used to override the default checkpoint persistence frequency
+	dbStats                    *expvar.Map               // Stats for database
+	agentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
+	collectionIDs              []uint32                  // collectionIDs used by gocbcore, if empty, uses default collections
 }
 
 type DCPClientOptions struct {
@@ -79,6 +81,7 @@ type DCPClientOptions struct {
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
 	CheckpointPrefix           string
+	ActiveVBucketCount         *atomic.Int32 // Optional stat to track number of active vbuckets
 }
 
 func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
@@ -121,6 +124,7 @@ func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucke
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
+		activeVBucketCount:  options.ActiveVBucketCount,
 	}
 
 	// Initialize active vbuckets
@@ -535,6 +539,9 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 
 	select {
 	case err := <-openStreamError:
+		if err == nil && dc.activeVBucketCount != nil {
+			dc.activeVBucketCount.Add(1)
+		}
 		return err
 	case <-time.After(openStreamTimeout):
 		op.Cancel()
@@ -569,6 +576,9 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 	delete(dc.activeVbuckets, vbID)
 	activeCount := len(dc.activeVbuckets)
 	dc.activeVbucketLock.Unlock()
+	if dc.activeVBucketCount != nil {
+		dc.activeVBucketCount.Add(-1)
+	}
 	if activeCount == 0 {
 		dc.close()
 		// On successful one-shot feed completion, purge persisted checkpoints

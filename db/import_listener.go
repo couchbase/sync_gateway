@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -24,18 +25,19 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName       string                                // Used for logging
-	terminator       chan bool                             // Signal to cause DCP Client.Close() to be called, which removes dcp receiver
-	dbName           string                                // used for naming the DCP feed
-	bucket           base.Bucket                           // bucket to get vb stats for feed
-	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
-	dbStats          *base.DatabaseStats                   // Database stats group
-	importStats      *base.SharedBucketImportStats         // import stats group
-	metadataKeys     *base.MetadataKeys
-	cbgtContext      *base.CbgtContext // Handle to cbgt manager,cfg
-	checkpointPrefix string            // DCP checkpoint key prefix
-	loggingCtx       context.Context   // ctx for logging on event callbacks
-	importDestKey    string            // cbgt index name
+	bucketName         string                                // Used for logging
+	terminator         chan bool                             // Signal to cause DCP Client.Close() to be called, which removes dcp receiver
+	dbName             string                                // used for naming the DCP feed
+	bucket             base.Bucket                           // bucket to get vb stats for feed
+	collections        map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
+	dbStats            *base.DatabaseStats                   // Database stats group
+	importStats        *base.SharedBucketImportStats         // import stats group
+	metadataKeys       *base.MetadataKeys
+	cbgtContext        *base.CbgtContext // Handle to cbgt manager,cfg
+	checkpointPrefix   string            // DCP checkpoint key prefix
+	loggingCtx         context.Context   // ctx for logging on event callbacks
+	importDestKey      string            // cbgt index name
+	activeVBucketCount atomic.Int32      // Number of active vbuckets in the import feed
 }
 
 // NewImportListener constructs an object to start an import feed.
@@ -112,12 +114,19 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	}
 
 	if !base.IsEnterpriseEdition() {
-		groupID := ""
 		gocbv2Bucket, err := base.AsGocbV2Bucket(il.bucket)
 		if err != nil {
 			return err
 		}
-		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(il.loggingCtx, base.GocbFeedOptions{
+			Bucket:                 gocbv2Bucket,
+			FeedArgs:               feedArgs,
+			Callback:               il.ProcessFeedEvent,
+			DbStats:                importFeedStatsMap.Map,
+			MetadataStoreType:      base.DCPMetadataStoreCS,
+			GroupID:                "",
+			ActiveVBucketCountStat: &il.activeVBucketCount,
+		})
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
@@ -237,4 +246,9 @@ func (db *DatabaseContext) ImportPartitionCount() int {
 	il := db.ImportListener
 	_, pindexes := il.cbgtContext.Manager.CurrentMaps()
 	return len(pindexes)
+}
+
+// Returns the number of active vbuckets in the import feed
+func (db *DatabaseContext) ImportActiveVBucketCount() int32 {
+	return db.ImportListener.activeVBucketCount.Load()
 }

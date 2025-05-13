@@ -2306,6 +2306,11 @@ func TestImportRollback(t *testing.T) {
 
 			// wait for doc update to be imported
 			rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+			vbCount, err := rt2.GetDatabase().Bucket.GetMaxVbno()
+			require.NoError(t, err)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Equal(c, int(vbCount), int(rt2.GetDatabase().ImportActiveVBucketCount()))
+			}, 5*time.Second, 10*time.Millisecond)
 		})
 	}
 }
@@ -2427,6 +2432,11 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 
 	// wait for doc update to be imported
 	rt2.WaitForChanges(21, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+	vbCount, err := rt2.GetDatabase().Bucket.GetMaxVbno()
+	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int(vbCount), int(rt2.GetDatabase().ImportActiveVBucketCount()))
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 func TestImportUpdateExpiry(t *testing.T) {

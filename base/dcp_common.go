@@ -58,6 +58,7 @@ type DCPCommon struct {
 	feedID                 string                         // Unique feed ID, used for logging
 	loggingCtx             context.Context                // Logging context, prefixes feedID
 	checkpointPrefix       string                         // DCP checkpoint key prefix
+	activeVBuckets         map[uint16]bool                // Map of active vbuckets
 }
 
 // NewDCPCommon creates a new DCPCommon which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It stores checkpoints in the metaStore collection prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID and DCPCommon will add unique string. Specific stats for DCP are stored in expvars rather than SgwStats. The janitorRollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr and is supplied.
@@ -88,6 +89,7 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 		backfill:               &newBackfillStatus,
 		feedID:                 feedID,
 		checkpointPrefix:       checkpointPrefix,
+		activeVBuckets:         make(map[uint16]bool, maxVbNo),
 	}
 
 	c.loggingCtx = CorrelationIDLogCtx(ctx, feedID)

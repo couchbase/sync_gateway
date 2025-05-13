@@ -84,6 +84,7 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 	// Add logging info before passing ctx down
 	ctx = CorrelationIDLogCtx(ctx, DCPImportFeedID)
 
+	fmt.Printf("numPartitions=%+v\n", numPartitions)
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
 	if err != nil {

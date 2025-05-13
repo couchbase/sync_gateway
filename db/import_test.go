@@ -1117,3 +1117,19 @@ func TestImportCancelOnDocWithCorruptSequenceOndemand(t *testing.T) {
 	}, 1)
 
 }
+
+func TestImportStats(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test requires Couchbase Server to pull stats from gocb/cbgt")
+	}
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+	if base.IsEnterpriseEdition() {
+		base.RequireWaitForStat(t, db.DbStats.SharedBucketImport().ImportPartitions.Value, base.DefaultImportPartitions)
+	}
+	vbCount, err := db.Bucket.GetMaxVbno()
+	require.NoError(t, err)
+	require.Equal(t, int(vbCount), int(db.ImportActiveVBucketCount()))
+}
