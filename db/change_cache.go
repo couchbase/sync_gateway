@@ -472,9 +472,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	if len(syncData.RecentSequences) > 0 {
+		nextSequence := c.getNextSequence()
 
 		for _, seq := range syncData.RecentSequences {
-			if seq >= c.getNextSequence() && seq < currentSequence {
+			if seq >= nextSequence && seq < currentSequence {
 				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
@@ -740,7 +741,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	var changedChannels channels.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
-		changedChannels = channels.SetFromArrayNoValidate(c._addToCache(ctx, change))
+		changedChannels = c._addToCache(ctx, change)
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Update(c._addPendingLogs(ctx))
 	} else if sequence > c.nextSequence {
@@ -772,7 +773,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 			change.Skipped = true
 		}
 
-		changedChannels = changedChannels.UpdateWithSlice(c._addToCache(ctx, change))
+		changedChannels = changedChannels.Update(c._addToCache(ctx, change))
 		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
 		// in cache
 		err := c.RemoveSkipped(sequence)
@@ -785,7 +786,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []channels.ID {
+func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) channels.Set {
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
@@ -835,7 +836,7 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
 
 		if isNext {
 			oldestPending = c._popPendingLog(ctx)
-			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(ctx, oldestPending))
+			changedChannels = changedChannels.Update(c._addToCache(ctx, oldestPending))
 		} else if oldestPending.Sequence < c.nextSequence {
 			// oldest pending is lower than next sequence, should be ignored
 			base.InfofCtx(ctx, base.KeyCache, "Oldest entry in pending logs %v (%d, %d) is earlier than cache next sequence (%d), ignoring as sequence has already been cached", base.UD(oldestPending.DocID), oldestPending.Sequence, oldestPending.EndSequence, c.nextSequence)

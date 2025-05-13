@@ -39,7 +39,7 @@ type ChannelCache interface {
 	Init(initialSequence uint64)
 
 	// Adds an entry to the cache, returns set of channels it was added to
-	AddToCache(ctx context.Context, change *LogEntry) []channels.ID
+	AddToCache(ctx context.Context, change *LogEntry) channels.Set
 
 	// Notifies the cache of a principal update.  Updates the cache's high sequence
 	AddPrincipal(change *LogEntry)
@@ -197,14 +197,14 @@ func (c *channelCacheImpl) AddUnusedSequence(change *LogEntry) {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) (updatedChannels []channels.ID) {
+func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) channels.Set {
 
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
 
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels = make([]channels.ID, 0, len(ch))
+	updatedChannels := make(channels.Set, len(ch)+1) // +1 for the star channel
 
 	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
 	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
@@ -235,7 +235,7 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) (up
 				}
 			}
 			// Need to notify even if channel isn't active, for case where number of connected changes channels exceeds cache capacity
-			updatedChannels = append(updatedChannels, channelID)
+			updatedChannels.Add(channelID)
 		}
 	}
 
@@ -248,7 +248,7 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) (up
 				channelCache.AddLateSequence(change)
 			}
 		}
-		updatedChannels = append(updatedChannels, starChannelID)
+		updatedChannels.Add(starChannelID)
 	}
 
 	c.updateHighCacheSequence(change.Sequence)
