@@ -204,7 +204,7 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) cha
 
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels := make(channels.Set, len(ch))
+	updatedChannels := make(channels.Set, len(ch)+1) // +1 for the star channel
 
 	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
 	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
