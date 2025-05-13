@@ -947,12 +947,9 @@ func (c *changeCache) getNextSequence() (nextSequence uint64) {
 	return nextSequence
 }
 
-// Concurrent-safe get value of initialSequence
-func (c *changeCache) getInitialSequence() (initialSequence uint64) {
-	c.lock.RLock()
-	initialSequence = c.initialSequence
-	c.lock.RUnlock()
-	return initialSequence
+// Gets value of initialSequence on the change cache, this value will not change once db is up running so no need for mutex
+func (c *changeCache) getInitialSequence() uint64 {
+	return c.initialSequence
 }
 
 // ////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
