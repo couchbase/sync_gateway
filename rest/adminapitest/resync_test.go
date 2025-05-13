@@ -220,6 +220,7 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 				require.NotEqual(t, originalUserSeq, user.Sequence())
 			}
 
+			collection, ctx = rt.GetSingleTestDatabaseCollection()
 			// regular doc will always change sequence
 			doc, err = collection.GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
 			require.NoError(t, err)
