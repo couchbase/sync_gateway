@@ -32,9 +32,6 @@ const kCheckpointThreshold = 1
 // Only persist checkpoint once per kCheckpointTimeThreshold (per vbucket)
 const kCheckpointTimeThreshold = 1 * time.Minute
 
-// Persist backfill progress every 10s
-const kBackfillPersistInterval = 10 * time.Second
-
 // DCP Feed IDs are used to build unique DCP identifiers
 const DCPCachingFeedID = "SG"
 const DCPImportFeedID = "SGI"
