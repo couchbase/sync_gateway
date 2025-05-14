@@ -52,7 +52,7 @@ type changeCache struct {
 	logCtx             context.Context                     // fix in sg-bucket to ProcessEvent
 	logsDisabled       bool                                // If true, ignore incoming tap changes
 	nextSequence       uint64                              // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence    uint64                              // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
+	initialSequence    uint64                              // DB's current sequence at startup time.
 	receivedSeqs       map[uint64]struct{}                 // Set of all sequences received
 	pendingLogs        LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
 	notifyChange       func(context.Context, channels.Set) // Client callback that notifies of channel changes
@@ -429,7 +429,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		}
 	}
 
-	if syncData.Sequence <= c.getInitialSequence() {
+	if syncData.Sequence <= c.initialSequence {
 		return // DCP is sending us an old value from before I started up; ignore it
 	}
 
@@ -686,7 +686,7 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 	}
 	sequence := princ.Sequence
 
-	if sequence <= c.getInitialSequence() {
+	if sequence <= c.initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -945,11 +945,6 @@ func (c *changeCache) getNextSequence() (nextSequence uint64) {
 	nextSequence = c.nextSequence
 	c.lock.RUnlock()
 	return nextSequence
-}
-
-// Gets value of initialSequence on the change cache, this value will not change once db is up running so no need for mutex
-func (c *changeCache) getInitialSequence() uint64 {
-	return c.initialSequence
 }
 
 // ////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
