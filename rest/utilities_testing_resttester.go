@@ -390,15 +390,26 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 
 // TakeDbOffline takes the database offline.
 func (rt *RestTester) TakeDbOffline() {
-	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
-	RequireStatus(rt.TB(), resp, http.StatusOK)
+	if rt.PersistentConfig {
+		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"offline":true}`)
+		RequireStatus(rt.TB(), resp, http.StatusCreated)
+		rt.WaitForDBState(db.RunStateString[db.DBOffline])
+	} else {
+		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
+		RequireStatus(rt.TB(), resp, http.StatusOK)
+	}
 	require.Equal(rt.TB(), db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
 }
 
 // TakeDbOnline takes the database online and waits for online status.
 func (rt *RestTester) TakeDbOnline() {
-	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", "")
-	RequireStatus(rt.TB(), resp, http.StatusOK)
+	if rt.PersistentConfig {
+		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"offline":false}`)
+		RequireStatus(rt.TB(), resp, http.StatusCreated)
+	} else {
+		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", "")
+		RequireStatus(rt.TB(), resp, http.StatusOK)
+	}
 	rt.WaitForDBOnline()
 }
 

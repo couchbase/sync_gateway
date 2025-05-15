@@ -44,7 +44,6 @@ func TestResyncWithoutIndexes(t *testing.T) {
 		}
 	}
 
-	rt.TakeDbOffline()
 	// gocb pipeline bootstrap errors can occur before this stage
 	warningsBeforeResync := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)

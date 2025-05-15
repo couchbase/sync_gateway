@@ -3014,7 +3014,7 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
-	// Get config values before taking db offline
+	// Get config values before taking db offline, locally only
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	dbConfigBeforeOffline := resp.Body.String()
@@ -3027,8 +3027,10 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	require.Equal(t, syncFunc, resp.Body.String())
 
-	// Take DB offline
-	rt.TakeDbOffline()
+	// take db offline, locally online, not using rt.TakeDbOffline which will update the bucket configuration
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", ""), http.StatusOK)
+
+	require.Equal(t, "Offline", rt.GetDBState())
 
 	// Check offline config matches online config
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
@@ -3164,13 +3166,11 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	// Make sure import and sync fail
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/TestSyncDoc", "{}"), http.StatusForbidden)
 
-	// Take DB offline
 	rt.TakeDbOffline()
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/sync", ""), http.StatusOK)
 
-	// Take DB online
-	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", ""), http.StatusOK)
+	rt.TakeDbOnline()
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/sync", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -3214,8 +3214,7 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", syncFunc), http.StatusOK)
 
-	// Take DB online
-	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_online", ""), http.StatusOK)
+	rt.TakeDbOffline()
 
 	// Check configs match
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
