@@ -2493,3 +2493,114 @@ func TestImportUpdateExpiry(t *testing.T) {
 		})
 	}
 }
+
+// TestImportRollbackAll
+// - start database (cbgt) with importPartitions
+// - create one document per vBucket
+// - wait for import of all documents
+// - assert number of partitions, as measured by number of cbgt.Dest instances, is correct
+// - shut down database / cbgt
+// - manually modify checkpoints for each vBucket to force rollback
+//   - move forward start,end,snapStart,snapEnd
+//   - modify vBucketUUID in failover log to mismatch
+//
+// - start database (cbgt)
+// - mutate (rev 2) all documents
+// - wait to see rev 2
+// - assert number of partitions, as measured by number of cbgt.Dest instances, is correct
+func TestImportRollbackAll(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("This test only works against EE")
+	}
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server - needs cbgt and import checkpointing")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	// importPartitions defaults to 16, but modifying this in a test can make it easier to debug
+	importPartitions := uint16(16)
+
+	// creates a Sync Gateway database, starts cbgt
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
+		PersistentConfig: false,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				ImportPartitions: base.Ptr(importPartitions),
+			},
+		},
+	})
+
+	vbCount, err := bucket.GetMaxVbno()
+	require.NoError(t, err)
+	docPerVBucket := getDocPerVbucket(t, bucket)
+	// create one document per vBucket to ensure we have a checkpoint for each vBucket
+	for _, docID := range docPerVBucket {
+		added, err := rt.GetSingleDataStore().Add(docID, 0, []byte(`{"mutation": 1}`))
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	// wait for docs to be imported
+	changes := rt.WaitForChanges(int(vbCount), "/{{.keyspace}}/_changes?since=0", "", true)
+	lastSeq := changes.Last_Seq.String()
+
+	// validate the number of cbgt.Dest instances matches the expected number of partitions
+	require.Equal(t, int(importPartitions), int(rt.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value()))
+
+	// Close db while we alter checkpoints to force rollback
+	db := rt.GetDatabase()
+	checkpointPrefix := rt.GetDatabase().MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, db.Options.ImportVersion)
+	rt.Close()
+
+	metaStore := bucket.GetMetadataStore()
+	// fetch each vBucket checkpoint, modify the checkpoint values back to the bucket
+	for vbNo := range docPerVBucket {
+		checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
+		var checkpointData base.ShardedImportDCPMetadata
+		checkpointBytes, _, err := metaStore.GetRaw(checkpointKey)
+		require.NoError(t, err)
+		require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
+		// run sequence data ahead
+		checkpointData.SnapStart = 3000 + checkpointData.SnapStart
+		checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
+		checkpointData.SeqStart = 3000 + checkpointData.SeqStart
+		checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+		existingVbUUID := checkpointData.FailOverLog[0][0]
+		// mutate vbUUID to force rollback
+		checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
+
+		updatedBytes, err := base.JSONMarshal(checkpointData)
+		require.NoError(t, err)
+		err = metaStore.SetRaw(checkpointKey, 0, nil, updatedBytes)
+		require.NoError(t, err)
+	}
+
+	// Reopen the db, start cbgt, expect DCP rollback
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
+		PersistentConfig: false,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				ImportPartitions: base.Ptr(importPartitions),
+			},
+		},
+	})
+	defer rt2.Close()
+
+	for _, docID := range docPerVBucket {
+		require.NoError(t, rt2.GetSingleDataStore().Set(docID, 0, nil, []byte(`{"mutation": 2}`)))
+	}
+
+	// wait for doc update to be imported, these documents won't be imported until the rollback is complete for all vBuckets
+	rt2.WaitForChanges(1024, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+
+	// after all documents are imported, I expect that cbgt.Dest == number of partitions
+	require.Equal(t, importPartitions, rt2.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value())
+	//time.Sleep(2 * time.Minute)
+}
