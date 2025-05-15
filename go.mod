@@ -13,10 +13,10 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.5.4
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20241018143914-45ef51a0c1be
+	github.com/couchbase/sg-bucket v0.0.0-20250515102824-2e9e70c29697
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
-	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78
+	github.com/couchbaselabs/rosmar v0.0.0-20250515111626-5372f7a73ae5
 	github.com/elastic/gosigar v0.14.3
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.0.5
@@ -66,7 +66,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/mattn/go-sqlite3 v1.14.24 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

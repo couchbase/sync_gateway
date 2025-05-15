@@ -14,7 +14,6 @@ import (
 	"context"
 	"expvar"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
@@ -75,6 +74,15 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		Terminator: listener.terminator,
 		DoneChan:   make(chan struct{}),
 	}
+
+	listener.FeedArgs.MetadataKeys = &sgbucket.FeedMetadataKeys{
+		RolePrefix:      listener.metaKeys.RoleKeyPrefix(),
+		UserPrefix:      listener.metaKeys.UserKeyPrefix(),
+		UnusedSeqPrefix: listener.metaKeys.UnusedSeqPrefix(),
+		UnusedSeqRange:  listener.metaKeys.UnusedSeqRangePrefix(),
+		SgCFGPrefix:     listener.sgCfgPrefix,
+		SyncPrefix:      base.SyncDocPrefix,
+	}
 	if len(scopes) > 0 {
 		// build the set of collections to be requested
 
@@ -124,33 +132,26 @@ func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket ba
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed (TAP or DCP).  Uses document
 // key to determine handling, based on whether the incoming mutation is an internal Sync Gateway document.
 func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
-	requiresCheckpointPersistence := true
-	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
-		key := string(event.Key)
-		if !strings.HasPrefix(key, base.SyncDocPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
+	key := string(event.Key)
+	// run key through cache if event is app data
+	if event.ItemType == sgbucket.FeedItemTypeCustomerDocument {
+		listener.OnDocChanged(event)
+	}
+	if event.ItemType == sgbucket.FeedItemTypeUserDoc || event.ItemType == sgbucket.FeedItemTypeRoleDoc {
+		if event.Opcode == sgbucket.FeedOpMutation {
 			listener.OnDocChanged(event)
-
-		} else if strings.HasPrefix(key, listener.metaKeys.UserKeyPrefix()) ||
-			strings.HasPrefix(key, listener.metaKeys.RoleKeyPrefix()) { // SG users and roles
-			if event.Opcode == sgbucket.FeedOpMutation {
-				listener.OnDocChanged(event)
-			}
-			listener.notifyKey(listener.ctx, key)
-		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) || strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) { // SG unused sequence marker docs
-			if event.Opcode == sgbucket.FeedOpMutation {
-				listener.OnDocChanged(event)
-			}
-		} else if strings.HasPrefix(key, base.DCPCheckpointRootPrefix) { // SG DCP checkpoint docs (including other config group IDs)
-			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
-			// we'll end up in a feedback loop for their vbucket if persistence is enabled
-			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
-			// defensively.
-			requiresCheckpointPersistence = false
-		} else if strings.HasPrefix(key, listener.sgCfgPrefix) {
+		}
+		listener.notifyKey(listener.ctx, key)
+	}
+	if event.ItemType == sgbucket.FeedItemTypeUnusedSeqDoc || event.ItemType == sgbucket.FeedItemTypeUnusedSeqRangeDoc {
+		if event.Opcode == sgbucket.FeedOpMutation {
 			listener.OnDocChanged(event)
 		}
 	}
-	return requiresCheckpointPersistence
+	if event.ItemType == sgbucket.FeedItemTypeSgCFGDoc {
+		listener.OnDocChanged(event)
+	}
+	return false
 }
 
 // MutationFeedStopMaxWait is the maximum amount of time to wait for
