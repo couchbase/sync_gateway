@@ -42,23 +42,36 @@ type DCPDest struct {
 	janitorRollback    func()      // This function will trigger a janitor_pindex_rollback
 }
 
-// NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It optionally stores checkpoints in the _default._default collection if persistentCheckpoints is true with prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID have a unique string appended. Specific stats for DCP are stored in expvars rather than SgwStats, except for importPartitionStat representing the number of import partitions. Each import partition will have a DCPDest object. The rollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr.
-func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool,
-	dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string, metaKeys *MetadataKeys, rollback func()) (SGDest, context.Context, error) {
+type DCPDestOptions struct {
+	Callback            sgbucket.FeedEventCallbackFunc // Callback function to receive events from a DCP feed
+	Bucket              *GocbV2Bucket                  // gocb bucket to stream events from
+	MetadataStore       DataStore
+	PersistCheckpoints  bool          // Whether to persist checkpoints in the MetadataStore
+	DcpStats            *expvar.Map   // DCP stats to store in expvars
+	FeedID              string        // Feed ID to use for the DCP feed
+	PIndexName          string        // PIndex name to find DCP feed
+	ImportPartitionStat *SgwIntStat   // Stat for import partition count, if nil, no partition count stat will be created
+	CheckpointPrefix    string        // Checkpoint prefix to use for storing checkpoints. This will be appended to MetadataKeys + checkpointPrefix
+	MetadataKeys        *MetadataKeys // Metadata keys to use for filtering DCP keys
+	Rollback            func()        // Rollback function to be called when a DCP stream request returns as error
+	DCPStats            *expvar.Map   // Database stats to store in expvars, if nil, no database stats will be created. These stats are used in /_expvar but not for prometheus metrics, this should be deprecated so the stats so show up in prometheus metrics.
+	CbgtManager         *cbgt.Manager // cbgt manager to use for DCP feed management
+}
 
-	// TODO: Metadata store?
-	metadataStore := bucket.DefaultDataStore()
-	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix, metaKeys)
+// NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The feed name will start with feedID have a unique string appended. Each import partition will have its own DCPDest object.
+func NewDCPDest(ctx context.Context, opts DCPDestOptions) (SGDest, context.Context, error) {
+
+	dcpCommon, err := NewDCPCommon(ctx, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	d := &DCPDest{
 		DCPCommon:          dcpCommon,
-		stats:              dcpStats,
-		partitionCountStat: importPartitionStat,
+		stats:              opts.DCPStats,
+		partitionCountStat: opts.ImportPartitionStat,
 		metaInitComplete:   make([]bool, dcpCommon.maxVbNo),
-		janitorRollback:    rollback,
+		janitorRollback:    opts.Rollback,
 	}
 
 	if d.partitionCountStat != nil {

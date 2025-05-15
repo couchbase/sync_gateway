@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -28,10 +29,12 @@ type importListener struct {
 	terminator       chan bool                             // Signal to cause DCP Client.Close() to be called, which removes dcp receiver
 	dbName           string                                // used for naming the DCP feed
 	bucket           base.Bucket                           // bucket to get vb stats for feed
+	metadataStore    base.DataStore                        // collection to store metadata for import
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                   // Database stats group
 	importStats      *base.SharedBucketImportStats         // import stats group
 	metadataKeys     *base.MetadataKeys
+	cbgtManager      *cbgt.Manager
 	cbgtContext      *base.CbgtContext // Handle to cbgt manager,cfg
 	checkpointPrefix string            // DCP checkpoint key prefix
 	loggingCtx       context.Context   // ctx for logging on event callbacks
@@ -50,6 +53,7 @@ func NewImportListener(ctx context.Context, checkpointPrefix string, dbContext *
 		importStats:      dbContext.DbStats.SharedBucketImport(),
 		loggingCtx:       ctx,
 		metadataKeys:     dbContext.MetadataKeys,
+		metadataStore:    dbContext.MetadataStore,
 		terminator:       make(chan bool),
 	}
 
@@ -98,17 +102,18 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
-	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(il.loggingCtx, il.importDestKey, il.NewImportDest)
-
 	// Start DCP mutation feed
 	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(il.bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
-	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
+	_, ok := base.AsCouchbaseBucketStore(il.bucket)
 	if !ok {
 		// walrus is not a couchbasestore
 		return il.bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+	}
+	gocbv2Bucket, err := base.AsGocbV2Bucket(il.bucket)
+	if err != nil {
+		return err
 	}
 
 	if !base.IsEnterpriseEdition() {
@@ -120,8 +125,28 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 
-	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
-		il.bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+	var eventHandlers *base.SGMgrEventHandlers
+	il.cbgtManager, eventHandlers, err = base.NewCBGTManager(il.loggingCtx, gocbv2Bucket, dbContext.CfgSG, dbContext.UUID)
+	if err != nil {
+		return fmt.Errorf("error creating cbgt manager for import feed: %w", err)
+	}
+
+	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
+	base.StoreDestFactory(il.loggingCtx, il.importDestKey, il.NewImportDest)
+
+	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, base.ShardedDCPOptions{
+		DBName:        dbContext.Name,
+		ConfigGroup:   dbContext.Options.GroupID,
+		DBUUID:        dbContext.UUID,
+		Heartbeater:   dbContext.Heartbeater,
+		Bucket:        gocbv2Bucket,
+		Scope:         scopeName,
+		Collections:   collectionNamesByScope[scopeName],
+		NumPartitions: dbContext.Options.ImportOptions.ImportPartitions,
+		Cfg:           dbContext.CfgSG,
+		Mgr:           il.cbgtManager,
+		EventHandlers: eventHandlers,
+	})
 	return err
 }
 

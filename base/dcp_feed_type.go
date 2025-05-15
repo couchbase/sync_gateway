@@ -156,7 +156,8 @@ type SGFeedSourceParams struct {
 
 type SGFeedIndexParams struct {
 	// Used to retrieve the dest implementation (importListener))
-	DestKey string `json:"destKey,omitempty"`
+	DestKey   string `json:"destKey,omitempty"`
+	IndexName string `json:"indexName,omitempty"`
 }
 
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.

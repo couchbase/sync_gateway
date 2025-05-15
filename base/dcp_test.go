@@ -159,17 +159,20 @@ func TestCBGTIndexCreation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := TestCtx(t)
-			bucket := GetTestBucket(t)
-			defer bucket.Close(ctx)
+			b := GetTestBucket(t)
+			defer b.Close(ctx)
 
-			spec := bucket.BucketSpec
+			bucket, err := AsGocbV2Bucket(b)
+			require.NoError(t, err)
 
 			// Use an in-memory cfg, set up cbgt manager
 			ctx = DatabaseLogCtx(ctx, tc.dbName, nil)
 			cfg, err := NewCbgtCfgMem()
 			require.NoError(t, err)
-			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName)
-			assert.NoError(t, err)
+			mgr, eventHandlers, err := NewCBGTManager(ctx, bucket, cfg, "testIndexCreation")
+			require.NoError(t, err)
+			context, err := newCbgtContext(ctx, mgr, bucket, eventHandlers, tc.dbName)
+			require.NoError(t, err)
 			defer context.RemoveFeedCredentials(tc.dbName)
 
 			// Start Manager
@@ -191,7 +194,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 				t.Skip("TODO: can't create indexes of type cbgt.SOURCE_GOCOUCHBASE")
 				// Define a CBGT index with legacy naming
 				bucketUUID, _ := bucket.UUID()
-				sourceParams, err := legacyFeedParams(spec)
+				sourceParams, err := legacyFeedParams(bucket.GetSpec())
 				require.NoError(t, err)
 				legacyIndexName := GenerateLegacyIndexName(tc.dbName)
 				indexParams := `{"name": "` + tc.dbName + `"}`
@@ -217,7 +220,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			if tc.existingCurrentIndex {
 				// Define an existing CBGT index with current naming
 				bucketUUID, _ := bucket.UUID()
-				sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, tc.dbName)
+				sourceParams, err := cbgtFeedParams(ctx, bucket.GetSpec(), "", nil, tc.dbName)
 				require.NoError(t, err)
 				legacyIndexName := GenerateIndexName(tc.dbName)
 				indexParams := `{"name": "` + tc.dbName + `"}`
@@ -241,7 +244,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			}
 
 			// Create cbgt index via SG handling
-			err = createCBGTIndex(ctx, context, tc.dbName, configGroup, bucket, spec, "", nil, 16)
+			err = createCBGTIndex(ctx, context, tc.dbName, configGroup, bucket, bucket.GetSpec(), "", nil, 16)
 			require.NoError(t, err)
 
 			// Verify single index exists, and matches expected naming
@@ -264,17 +267,22 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
+	b := GetTestBucket(t)
+	defer b.Close(ctx)
 
-	spec := bucket.BucketSpec
+	bucket, err := AsGocbV2Bucket(b)
+	require.NoError(t, err)
+
 	testDbName := "testDB"
 
 	// Use an in-memory cfg, set up cbgt manager
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
-	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName)
-	assert.NoError(t, err)
+
+	mgr, eventHandlers, err := NewCBGTManager(ctx, bucket, cfg, "testIndexCreation")
+	require.NoError(t, err)
+	context, err := newCbgtContext(ctx, mgr, bucket, eventHandlers, testDbName)
+	require.NoError(t, err)
 	defer context.RemoveFeedCredentials(testDbName)
 
 	// Start Manager
@@ -290,7 +298,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 
 	// Define a CBGT index with legacy naming within safe limits
 	bucketUUID, _ := bucket.UUID()
-	sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, testDbName)
+	sourceParams, err := cbgtFeedParams(ctx, bucket.GetSpec(), "", nil, testDbName)
 	require.NoError(t, err)
 	legacyIndexName := GenerateLegacyIndexName(testDbName)
 	indexParams := `{"name": "` + testDbName + `"}`
@@ -313,7 +321,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, spec, "", nil, 16)
+	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, bucket.GetSpec(), "", nil, 16)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -322,7 +330,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
-	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, spec, "", nil, 16)
+	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, bucket.GetSpec(), "", nil, 16)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -339,10 +347,12 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
+	b := GetTestBucket(t)
+	defer b.Close(ctx)
 
-	spec := bucket.BucketSpec
+	bucket, err := AsGocbV2Bucket(b)
+	require.NoError(t, err)
+
 	unsafeTestDBName := "testDB" +
 		"01234567890123456789012345678901234567890123456789" +
 		"01234567890123456789012345678901234567890123456789" +
@@ -351,8 +361,10 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	// Use an in-memory cfg, set up cbgt manager
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
-	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName)
-	assert.NoError(t, err)
+	mgr, eventHandlers, err := NewCBGTManager(ctx, bucket, cfg, "testIndexCreation")
+	require.NoError(t, err)
+	context, err := newCbgtContext(ctx, mgr, bucket, eventHandlers, unsafeTestDBName)
+	require.NoError(t, err)
 	defer context.RemoveFeedCredentials(unsafeTestDBName)
 
 	// Start Manager
@@ -368,7 +380,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 
 	// Define a CBGT index with legacy naming not within safe limits
 	bucketUUID, _ := bucket.UUID()
-	sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, unsafeTestDBName)
+	sourceParams, err := cbgtFeedParams(ctx, bucket.GetSpec(), "", nil, unsafeTestDBName)
 	require.NoError(t, err)
 	legacyIndexName := GenerateLegacyIndexName(unsafeTestDBName)
 	indexParams := `{"name": "` + unsafeTestDBName + `"}`
@@ -391,7 +403,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, spec, "", nil, 16)
+	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, bucket.GetSpec(), "", nil, 16)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -400,7 +412,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
-	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, spec, "", nil, 16)
+	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, bucket.GetSpec(), "", nil, 16)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -419,12 +431,13 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
+	b := GetTestBucket(t)
+	defer b.Close(ctx)
 
-	dataStore := bucket.GetSingleDataStore()
+	dataStore := b.GetSingleDataStore()
 
-	spec := bucket.BucketSpec
+	bucket, err := AsGocbV2Bucket(b)
+	require.NoError(t, err)
 	testDBName := "testDB"
 
 	// Use a bucket-backed cfg
@@ -452,12 +465,16 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 			ctx := TestCtx(t)
 			managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
-			context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName)
-			assert.NoError(t, err)
+
+			mgr, eventHandlers, err := NewCBGTManager(ctx, bucket, cfg, managerUUID)
+			require.NoError(t, err)
+			context, err := newCbgtContext(ctx, mgr, bucket, eventHandlers, testDBName)
+			require.NoError(t, err)
+			defer context.RemoveFeedCredentials(testDBName)
 
 			// StartManager starts the manager and creates the index
 			log.Printf("Starting manager for %s", managerUUID)
-			startErr := context.StartManager(ctx, testDBName, configGroup, bucket, spec, "", nil, DefaultImportPartitions)
+			startErr := context.StartManager(ctx, configGroup, bucket, "", nil, DefaultImportPartitions)
 			assert.NoError(t, startErr)
 			managerWg.Done()
 
@@ -499,16 +516,23 @@ func legacyFeedParams(spec BucketSpec) (string, error) {
 
 func TestCBGTKvPoolSize(t *testing.T) {
 	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
+	b := GetTestBucket(t)
+	defer b.Close(ctx)
 
-	spec := bucket.BucketSpec
+	spec := b.BucketSpec
 	spec.Server += "?kv_pool_size=8"
+
+	bucket, err := AsGocbV2Bucket(b)
+	require.NoError(t, err)
 
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
-	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, t.Name(), "fakeDb")
-	assert.NoError(t, err)
+
+	mgr, eventHandlers, err := NewCBGTManager(ctx, bucket, cfg, t.Name())
+	require.NoError(t, err)
+	cbgtContext, err := newCbgtContext(ctx, mgr, bucket, eventHandlers, "fakeDb")
+	require.NoError(t, err)
+	defer cbgtContext.RemoveFeedCredentials("fakeDb")
 	defer cbgtContext.Stop()
 	require.Contains(t, cbgtContext.Manager.Server(), "kv_pool_size=1")
 }

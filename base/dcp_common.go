@@ -13,12 +13,14 @@ package base
 import (
 	"bytes"
 	"context"
-	"errors"
 	"expvar"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/google/uuid"
 )
@@ -39,7 +41,7 @@ const DCPImportFeedID = "SGI"
 type DCPCommon struct {
 	dbStatsExpvars         *expvar.Map
 	m                      sync.Mutex
-	couchbaseStore         CouchbaseBucketStore
+	couchbaseStore         *GocbV2Bucket
 	metaStore              DataStore                      // For metadata persistence/retrieval
 	metaKeys               *MetadataKeys                  // Metadata key generator for filtering and checkpoints
 	maxVbNo                uint16                         // Number of vbuckets being used for this feed
@@ -53,35 +55,37 @@ type DCPCommon struct {
 	feedID                 string                         // Unique feed ID, used for logging
 	loggingCtx             context.Context                // Logging context, prefixes feedID
 	checkpointPrefix       string                         // DCP checkpoint key prefix
+	cbgtManager            *cbgt.Manager
+	pIndexName             string // PIndex name
 }
 
 // NewDCPCommon creates a new DCPCommon which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It stores checkpoints in the metaStore collection prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID and DCPCommon will add unique string. Specific stats for DCP are stored in expvars rather than SgwStats. The janitorRollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr and is supplied.
-func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore,
-	maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string, metaKeys *MetadataKeys) (*DCPCommon, error) {
+func NewDCPCommon(ctx context.Context, opts DCPDestOptions) (*DCPCommon, error) {
 
-	couchbaseStore, ok := AsCouchbaseBucketStore(bucket)
-	if !ok {
-		return nil, errors.New("DCP not supported for non-Couchbase data source")
+	maxVbNo, err := opts.Bucket.GetMaxVbno()
+	if err != nil {
+		return nil, err
 	}
-
 	c := &DCPCommon{
-		dbStatsExpvars:         dbStats,
-		couchbaseStore:         couchbaseStore,
-		metaStore:              metaStore,
-		metaKeys:               metaKeys,
+		dbStatsExpvars:         opts.DCPStats,
+		couchbaseStore:         opts.Bucket,
+		metaStore:              opts.MetadataStore,
+		metaKeys:               opts.MetadataKeys,
 		maxVbNo:                maxVbNo,
-		persistCheckpoints:     persistCheckpoints,
+		persistCheckpoints:     opts.PersistCheckpoints,
 		seqs:                   make([]uint64, maxVbNo),
 		meta:                   make([][]byte, maxVbNo),
 		vbuuids:                make(map[uint16]uint64, maxVbNo),
 		updatesSinceCheckpoint: make([]uint64, maxVbNo),
-		callback:               callback,
+		callback:               opts.Callback,
 		lastCheckpointTime:     make([]time.Time, maxVbNo),
-		feedID:                 feedID,
-		checkpointPrefix:       checkpointPrefix,
+		feedID:                 opts.FeedID,
+		checkpointPrefix:       opts.CheckpointPrefix,
+		cbgtManager:            opts.CbgtManager,
+		pIndexName:             opts.PIndexName,
 	}
 
-	c.loggingCtx = CorrelationIDLogCtx(ctx, feedID)
+	c.loggingCtx = CorrelationIDLogCtx(ctx, opts.FeedID)
 
 	return c, nil
 }
@@ -145,14 +149,35 @@ func (c *DCPCommon) getMetaData(vbucketId uint16) (
 	return value, lastSeq, nil
 }
 
-// rollbackEx is called when a DCP stream issues a rollback. The metadata persisted for a given uuid and sequence number and then cbgt.Mgr JANITOR_ROLLBACK_PINDEX is issued via janitorRollback function.
+// rollbackEx is called when a DCP stream issues a rollback. The metadata persisted for a given uuid and sequence number and then the feed.InitiateStream is called.
 func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64, rollbackMetaData []byte, janitorRollback func()) error {
-	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
+	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x pIndexName %s.", vbucketId, rollbackSeq, c.pIndexName)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, rollbackSeq, false)
 	err := c.setMetaData(vbucketId, rollbackMetaData, true)
-	// if we fail to persist the metadata, we still want to rollback to keep retrying to reconnect. Returning the error will log in cbgt.
-	janitorRollback()
+	if err != nil {
+		AssertfCtx(c.loggingCtx, "DCP RollbackEx request - error setting metadata for vbucket %d: %v", vbucketId, err)
+	}
+	feeds, _ := c.cbgtManager.CurrentMaps()
+	for _, f := range feeds {
+		if f.IndexName() != c.pIndexName {
+			continue
+		}
+		fmt.Printf("Dests for feed %s, looking for vBucketID %d: %v\n", f.IndexName(), vbucketId, slices.Collect(maps.Keys(f.Dests())))
+		if f.Dests()[fmt.Sprintf("%d", vbucketId)] == nil {
+			continue
+		}
+		feed, ok := f.(*cbgt.GocbcoreDCPFeed)
+		if !ok {
+			AssertfCtx(c.loggingCtx, "DCP RollbackEx request - feed %s (%T) is not a GocbcoreDCPFeed", f, f)
+		}
+		err := feed.InitiateStream(vbucketId)
+		if err != nil {
+			AssertfCtx(c.loggingCtx, "DCP RollbackEx request - error initiating stream for vbucket %d: %v", vbucketId, err)
+		}
+		return nil
+	}
+	AssertfCtx(c.loggingCtx, "DCP RollbackEx request - could not find feed %s in cbgt manager %#+v for vBucket id %d", c.pIndexName, feeds, vbucketId)
 	return err
 }
 
