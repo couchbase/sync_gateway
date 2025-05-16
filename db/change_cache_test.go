@@ -921,8 +921,6 @@ func TestChannelQueryCancellation(t *testing.T) {
 	assert.NoError(t, err, "Put failed with error: %v", err)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 4, base.DefaultWaitForSequence))
 
-	// Flush the cache, to ensure view query on subsequent changes requests
-
 	// Issue two one-shot since=0 changes request.  Both will attempt a view query.  The first will block based on queryWg,
 	// the second will block waiting for the view lock
 	initialQueryCount := db.DbStats.Cache().ViewQueries.Value()
