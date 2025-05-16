@@ -14,6 +14,7 @@ import (
 	"context"
 	"expvar"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,16 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+)
+
+// Document Types seen over mutation feed
+const (
+	AppData           = "ApplicationData"
+	UserDoc           = "UserDoc"
+	RoleDoc           = "RoleDoc"
+	UnusedSeqDoc      = "UnusedSeqDoc"
+	UnusedSeqRangeDoc = "UnusedSeqRangeDoc"
+	SGCfgDoc          = "SgCfgDoc"
 )
 
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
@@ -73,16 +84,9 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: listener.terminator,
 		DoneChan:   make(chan struct{}),
+		FilterFunc: listener.FeedArgs.FilterFunc,
 	}
 
-	listener.FeedArgs.MetadataKeys = &sgbucket.FeedMetadataKeys{
-		RolePrefix:      listener.metaKeys.RoleKeyPrefix(),
-		UserPrefix:      listener.metaKeys.UserKeyPrefix(),
-		UnusedSeqPrefix: listener.metaKeys.UnusedSeqPrefix(),
-		UnusedSeqRange:  listener.metaKeys.UnusedSeqRangePrefix(),
-		SgCFGPrefix:     listener.sgCfgPrefix,
-		SyncPrefix:      base.SyncDocPrefix,
-	}
 	if len(scopes) > 0 {
 		// build the set of collections to be requested
 
@@ -134,24 +138,51 @@ func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket ba
 func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 	key := string(event.Key)
 	// run key through cache if event is app data
-	if event.ItemType == sgbucket.FeedItemTypeCustomerDocument {
+	if event.FilterType == AppData {
 		listener.OnDocChanged(event)
 	}
-	if event.ItemType == sgbucket.FeedItemTypeUserDoc || event.ItemType == sgbucket.FeedItemTypeRoleDoc {
+	if event.FilterType == UserDoc || event.FilterType == RoleDoc {
 		if event.Opcode == sgbucket.FeedOpMutation {
 			listener.OnDocChanged(event)
 		}
 		listener.notifyKey(listener.ctx, key)
 	}
-	if event.ItemType == sgbucket.FeedItemTypeUnusedSeqDoc || event.ItemType == sgbucket.FeedItemTypeUnusedSeqRangeDoc {
+	if event.FilterType == UnusedSeqDoc || event.FilterType == UnusedSeqRangeDoc {
 		if event.Opcode == sgbucket.FeedOpMutation {
 			listener.OnDocChanged(event)
 		}
 	}
-	if event.ItemType == sgbucket.FeedItemTypeSgCFGDoc {
+	if event.FilterType == SGCfgDoc {
 		listener.OnDocChanged(event)
 	}
 	return false
+}
+
+// filteredKey will filter keys we don't care about off the mutation DCP feed and will return DCP event type on non-filtered docs
+func (c *changeCache) FilteredKey(key []byte) (bool, sgbucket.FeedFilterType) {
+	// if not metadata keys are defined then don't filter, this will be nil for non sharded import feed
+	docID := string(key)
+	// any keys that doesn't have _sync prefix need to be processed
+	if !strings.HasPrefix(docID, base.SyncDocPrefix) {
+		return false, AppData
+	}
+	if strings.HasPrefix(docID, c.metaKeys.UserKeyPrefix()) {
+		return false, UserDoc
+	}
+	if strings.HasPrefix(docID, c.metaKeys.RoleKeyPrefix()) {
+		return false, RoleDoc
+	}
+	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqPrefix()) {
+		return false, UnusedSeqDoc
+	}
+	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqRangePrefix()) {
+		return false, UnusedSeqRangeDoc
+	}
+	if strings.HasPrefix(docID, c.sgCfgPrefix) {
+		return false, SGCfgDoc
+	}
+
+	return true, ""
 }
 
 // MutationFeedStopMaxWait is the maximum amount of time to wait for

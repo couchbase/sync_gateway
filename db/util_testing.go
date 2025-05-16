@@ -95,6 +95,7 @@ func (db *DatabaseContext) StartChangeCache(t *testing.T, ctx context.Context) {
 		t.Fatal(err)
 	}
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
+	db.mutationListener.FeedArgs.FilterFunc = db.changeCache.FilteredKey
 	db.changeCache.lock.Unlock()
 }
 

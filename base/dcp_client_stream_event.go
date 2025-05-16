@@ -41,17 +41,17 @@ type snapshotEvent struct {
 
 // mutationEvent represents a DCP mutation event (opcode 0x57).
 type mutationEvent struct {
-	key        []byte
-	value      []byte
-	seq        uint64
-	cas        uint64
-	revNo      uint64
-	flags      uint32
-	expiry     uint32
-	collection uint32
+	FeedFilterDocType sgbucket.FeedFilterType
+	key               []byte
+	value             []byte
+	seq               uint64
+	cas               uint64
+	revNo             uint64
+	flags             uint32
+	expiry            uint32
+	collection        uint32
 	streamEventCommon
-	DCPDocEventType sgbucket.FeedItemDocType
-	datatype        uint8
+	datatype uint8
 }
 
 // asFeedEvent converts a mutationEvent to a sgbucket.FeedEvent.
@@ -68,20 +68,20 @@ func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 		RevNo:        e.revNo,
 		VbNo:         e.vbID,
 		TimeReceived: time.Now(),
-		ItemType:     e.DCPDocEventType,
+		FilterType:   e.FeedFilterDocType,
 	}
 }
 
 // deletionEvent represents a DCP deletion event (opcode 0x58).
 type deletionEvent struct {
-	key             []byte
-	value           []byte
-	seq             uint64
-	cas             uint64
-	revNo           uint64
-	collection      uint32
-	datatype        uint8
-	DCPDocEventType sgbucket.FeedItemDocType
+	FeedFilterDocType sgbucket.FeedFilterType
+	key               []byte
+	value             []byte
+	seq               uint64
+	cas               uint64
+	revNo             uint64
+	collection        uint32
+	datatype          uint8
 	streamEventCommon
 }
 
@@ -97,7 +97,7 @@ func (e deletionEvent) asFeedEvent() sgbucket.FeedEvent {
 		RevNo:        e.revNo,
 		VbNo:         e.vbID,
 		TimeReceived: time.Now(),
-		ItemType:     e.DCPDocEventType,
+		FilterType:   e.FeedFilterDocType,
 	}
 }
 

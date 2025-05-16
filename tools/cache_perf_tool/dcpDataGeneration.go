@@ -323,7 +323,7 @@ func (dcp *dcpDataGen) mutateWithDedupe(seqs []uint64, chanCount int, casValue u
 	return encodedVal, chanCount, nil
 }
 
-func createDCPClient(t *testing.T, ctx context.Context, bucket *base.GocbV2Bucket, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, numWorkers, numVBuckets int) (*base.DCPClient, error) {
+func createDCPClient(t *testing.T, ctx context.Context, bucket *base.GocbV2Bucket, callback sgbucket.FeedEventCallbackFunc, filterFunc func(key []byte) (bool, sgbucket.FeedFilterType), dbStats *expvar.Map, numWorkers, numVBuckets int) (*base.DCPClient, error) {
 	options := base.DCPClientOptions{
 		MetadataStoreType: base.DCPMetadataStoreInMemory,
 		GroupID:           "",
@@ -332,6 +332,7 @@ func createDCPClient(t *testing.T, ctx context.Context, bucket *base.GocbV2Bucke
 		AgentPriority:     gocbcore.DcpAgentPriorityMed,
 		CheckpointPrefix:  "",
 		NumWorkers:        numWorkers,
+		FilterFunc:        filterFunc,
 	}
 	// fake client that we want to hook into
 	client, err := base.NewDCPClientForTest(ctx, t, "test", callback, options, bucket, uint16(numVBuckets))

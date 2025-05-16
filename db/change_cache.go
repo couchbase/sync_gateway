@@ -334,25 +334,25 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc for this database?
-	if event.ItemType == sgbucket.FeedItemTypeUserDoc {
+	if event.FilterType == UserDoc {
 		c.processPrincipalDoc(ctx, docID, docJSON, true, event.TimeReceived)
 		return
-	} else if event.ItemType == sgbucket.FeedItemTypeRoleDoc {
+	} else if event.FilterType == RoleDoc {
 		c.processPrincipalDoc(ctx, docID, docJSON, false, event.TimeReceived)
 		return
 	}
 
 	// Is this an unused sequence notification?
-	if event.ItemType == sgbucket.FeedItemTypeUnusedSeqDoc {
+	if event.FilterType == UnusedSeqDoc {
 		c.processUnusedSequence(ctx, docID, event.TimeReceived)
 		return
 	}
-	if event.ItemType == sgbucket.FeedItemTypeUnusedSeqRangeDoc {
+	if event.FilterType == UnusedSeqRangeDoc {
 		c.processUnusedSequenceRange(ctx, docID)
 		return
 	}
 
-	if event.ItemType == sgbucket.FeedItemTypeSgCFGDoc {
+	if event.FilterType == SGCfgDoc {
 		if c.cfgEventCallback != nil {
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}
