@@ -1778,6 +1778,80 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
 }
 
+func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it writes directly to the xattr")
+	}
+	defer SuspendSequenceBatching()() // turn off sequence batching to avoid unused sequence(s) being released
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
+
+	opts := DefaultCacheOptions()
+	opts.CachePendingSeqMaxNum = 1
+	opts.CachePendingSeqMaxWait = 10 * time.Nanosecond
+	db, ctx := setupTestDBWithCacheOptions(t, opts)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := t.Name() + "_doc1"
+	docID2 := t.Name() + "_doc2"
+
+	// add a couple of docs and wait for them to be cached
+	body := Body{"val": "one"}
+	_, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err)
+	_, _, err = collection.Put(ctx, docID2, body)
+	require.NoError(t, err)
+	err = db.changeCache.waitForSequence(ctx, 2, base.DefaultWaitForSequence)
+	require.NoError(t, err)
+
+	// grab doc and alter sync data of one to artificially create gap in sequences at cache
+	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+	var retrievedXattr map[string]interface{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
+	retrievedXattr["sequence"] = uint64(6)
+	retrievedXattr["recent_sequences"] = []uint64{1, 6}
+	newXattrVal := map[string][]byte{
+		base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
+	}
+	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, newXattrVal, nil)
+	require.NoError(t, err)
+
+	// assert that sequence 6 is seen over caching feed
+	err = db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence)
+	require.NoError(t, err)
+	// assert that skipped is filled + stable sequence and high sequence is as expected
+	require.NoError(t, db.changeCache.InsertPendingEntries(ctx)) // empty pending
+	db.UpdateCalculatedStats(ctx)
+	assert.Equal(t, int64(3), db.DbStats.Cache().NumCurrentSeqsSkipped.Value())
+	assert.Equal(t, int64(0), db.DbStats.Cache().PendingSeqLen.Value())
+	assert.Equal(t, int64(6), db.DbStats.Cache().HighSeqCached.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().HighSeqStable.Value())
+	assert.Equal(t, uint64(7), db.changeCache.getNextSequence())
+
+	// alter sync data on doc2 to create recent sequence history to plug gap in sequences that have been pushed to skipped
+	xattrs, cas, err = collection.dataStore.GetXattrs(ctx, docID2, []string{base.SyncXattrName})
+	require.NoError(t, err)
+	retrievedXattr = map[string]interface{}{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
+	retrievedXattr["sequence"] = uint64(5)
+	retrievedXattr["recent_sequences"] = []uint64{2, 3, 4, 5}
+	newXattrVal = map[string][]byte{
+		base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
+	}
+	_, err = collection.dataStore.UpdateXattrs(ctx, docID2, 0, cas, newXattrVal, nil)
+	require.NoError(t, err)
+
+	// assert that skipped emptied + stable sequence is moved to high seq cached
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		db.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(0), db.DbStats.Cache().NumCurrentSeqsSkipped.Value())
+	}, time.Second*10, time.Millisecond*100)
+	assert.Equal(t, int64(0), db.DbStats.Cache().PendingSeqLen.Value())
+	highCachedSeq := db.DbStats.Cache().HighSeqCached.Value()
+	assert.Equal(t, highCachedSeq, db.DbStats.Cache().HighSeqStable.Value())
+}
+
 func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test requires xattrs because it writes directly to the xattr")
