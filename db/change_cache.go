@@ -425,9 +425,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	for _, seq := range syncData.UnusedSequences {
 		base.InfofCtx(ctx, base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
-			Sequence:     seq,
-			TimeReceived: timeReceived,
-			CollectionID: event.CollectionID,
+			Sequence:       seq,
+			TimeReceived:   timeReceived,
+			CollectionID:   event.CollectionID,
+			UnusedSequence: true,
 		}
 		changedChannels := c.processEntry(ctx, change)
 		changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
