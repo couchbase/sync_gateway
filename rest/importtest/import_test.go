@@ -1747,61 +1747,6 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	assert.Equal(t, 404, response.Code)
 }
 
-// Test DCP backfill stats
-func TestDcpBackfill(t *testing.T) {
-
-	t.Skip("Test disabled pending CBG-560")
-
-	rt := rest.NewRestTester(t, nil)
-
-	log.Printf("Starting get bucket....")
-
-	dataStore := rt.GetSingleDataStore()
-
-	// Write enough documents directly to the bucket to ensure multiple docs per vbucket (on average)
-	docBody := make(map[string]interface{})
-	docBody["type"] = "sdk_write"
-	for i := 0; i < 2500; i++ {
-		err := dataStore.Set(fmt.Sprintf("doc_%d", i), 0, nil, docBody)
-		assert.NoError(t, err, fmt.Sprintf("error setting doc_%d", i))
-	}
-
-	// Close the previous test context
-	rt.Close()
-
-	log.Print("Creating new database context")
-
-	// Create a new context, with import docs enabled, to process backfill
-	newRtConfig := rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AutoImport: true,
-		}},
-	}
-	newRt := rest.NewRestTester(t, &newRtConfig)
-	defer newRt.Close()
-	log.Printf("Poke the rest tester so it starts DCP processing:")
-
-	backfillComplete := false
-	var expectedBackfill, completedBackfill int
-	for i := 0; i < 20; i++ {
-		importFeedStats := newRt.GetDatabase().DbStats.Database().ImportFeedMapStats
-		expectedBackfill, _ := strconv.Atoi(importFeedStats.Get("dcp_backfill_expected").String())
-		completedBackfill, _ := strconv.Atoi(importFeedStats.Get("dcp_backfill_completed").String())
-		if expectedBackfill > 0 && completedBackfill >= expectedBackfill {
-			log.Printf("backfill complete: %d/%d", completedBackfill, expectedBackfill)
-			backfillComplete = true
-			break
-		} else {
-			log.Printf("backfill still in progress: %d/%d", completedBackfill, expectedBackfill)
-			time.Sleep(1 * time.Second)
-		}
-	}
-	assert.True(t, backfillComplete, fmt.Sprintf("Backfill didn't complete after 20s. Latest: %d/%d", completedBackfill, expectedBackfill))
-
-	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database(newRt.Context(), "db").Name, completedBackfill, expectedBackfill)
-
-}
-
 // Validate SG behaviour if there's an unexpected body on a tombstone
 func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
