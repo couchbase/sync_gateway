@@ -313,8 +313,24 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType) {
 	ctx := c.logCtx
 	docID := string(event.Key)
-	docJSON := event.Value
+	dcpValue := event.Value
 	changedChannelsCombined := channels.Set{}
+
+	// HACK: fetchDocBodyByKV can be called to lazily fetch the document body
+	// used to work around some non-xattr/doc body dependencies without enabling doc bodies on the full xattr-only DCP feed
+	fetchDocBodyByKV := func(docID string) []byte {
+		// HACK: Hardcoded metadata store
+		docBody, cas, err := c.db.MetadataStore.GetRaw(docID)
+		if err != nil {
+			base.WarnfCtx(ctx, "DocChanged kv fallback: Unable to get doc %q from metadata store: %v", base.UD(docID), err)
+			return nil
+		}
+		if cas != event.Cas {
+			base.WarnfCtx(ctx, "DocChanged kv fallback: CAS mismatch for doc %q - expected %d, got %d", base.UD(docID), event.Cas, cas)
+			return nil
+		}
+		return docBody
+	}
 
 	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
 	// ** This method does not directly access any state of c, so it doesn't lock.
@@ -323,10 +339,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	case DocTypeUnknown:
 		return // no-op unknown doc type
 	case DocTypeUser:
-		c.processPrincipalDoc(ctx, docID, docJSON, true, timeReceived)
+		c.processPrincipalDoc(ctx, docID, fetchDocBodyByKV(docID), true, timeReceived)
 		return
 	case DocTypeRole:
-		c.processPrincipalDoc(ctx, docID, docJSON, false, timeReceived)
+		c.processPrincipalDoc(ctx, docID, fetchDocBodyByKV(docID), false, timeReceived)
 		return
 	case DocTypeUnusedSeq:
 		c.processUnusedSequence(ctx, docID, timeReceived)
@@ -361,7 +377,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	ctx = collection.AddCollectionContext(ctx)
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
-	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
+	if event.Opcode == sgbucket.FeedOpDeletion && len(dcpValue) == 0 {
 		base.DebugfCtx(ctx, base.KeyCache, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
 		return
 	}
@@ -373,7 +389,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	syncData, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
+	syncData, _, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(dcpValue, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
@@ -391,10 +407,11 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		if syncData == nil {
 			return
 		}
-		isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
-		if !isSGWrite {
-			return
-		}
+		// FIXME: We can't perform this type of check when turning on the xattr only DCP feed
+		//isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
+		//if !isSGWrite {
+		//	return
+		//}
 	}
 
 	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
