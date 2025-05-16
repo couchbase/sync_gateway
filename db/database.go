@@ -2185,6 +2185,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
+	db.mutationListener.FeedArgs.FilterFunc = db.changeCache.FilteredKey
 
 	if base.IsEnterpriseEdition() {
 		cfgSG, ok := db.CfgSG.(*base.CfgSG)

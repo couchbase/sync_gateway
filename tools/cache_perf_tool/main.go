@@ -200,7 +200,7 @@ func main() {
 			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs}
 		mutationListener := dbContext.GetMutationListener(t)
 		cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
-		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, cacheFeedStatsMap.Map, *numDCPWorkers, *numVBuckets)
+		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, mutationListener.FeedArgs.FilterFunc, cacheFeedStatsMap.Map, *numDCPWorkers, *numVBuckets)
 		if err != nil {
 			log.Printf("Error creating DCP client: %v", err)
 			return

@@ -24,6 +24,16 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
+// Document Types seen over mutation feed
+const (
+	AppData           = "ApplicationData"
+	UserDoc           = "UserDoc"
+	RoleDoc           = "RoleDoc"
+	UnusedSeqDoc      = "UnusedSeqDoc"
+	UnusedSeqRangeDoc = "UnusedSeqRangeDoc"
+	SGCfgDoc          = "SgCfgDoc"
+)
+
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
@@ -74,7 +84,9 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: listener.terminator,
 		DoneChan:   make(chan struct{}),
+		FilterFunc: listener.FeedArgs.FilterFunc,
 	}
+
 	if len(scopes) > 0 {
 		// build the set of collections to be requested
 
@@ -124,33 +136,53 @@ func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket ba
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed (TAP or DCP).  Uses document
 // key to determine handling, based on whether the incoming mutation is an internal Sync Gateway document.
 func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
-	requiresCheckpointPersistence := true
-	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
-		key := string(event.Key)
-		if !strings.HasPrefix(key, base.SyncDocPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
+	key := string(event.Key)
+	// run key through cache if event is app data
+	if event.FilterType == AppData {
+		listener.OnDocChanged(event)
+	}
+	if event.FilterType == UserDoc || event.FilterType == RoleDoc {
+		if event.Opcode == sgbucket.FeedOpMutation {
 			listener.OnDocChanged(event)
-
-		} else if strings.HasPrefix(key, listener.metaKeys.UserKeyPrefix()) ||
-			strings.HasPrefix(key, listener.metaKeys.RoleKeyPrefix()) { // SG users and roles
-			if event.Opcode == sgbucket.FeedOpMutation {
-				listener.OnDocChanged(event)
-			}
-			listener.notifyKey(listener.ctx, key)
-		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) || strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) { // SG unused sequence marker docs
-			if event.Opcode == sgbucket.FeedOpMutation {
-				listener.OnDocChanged(event)
-			}
-		} else if strings.HasPrefix(key, base.DCPCheckpointRootPrefix) { // SG DCP checkpoint docs (including other config group IDs)
-			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
-			// we'll end up in a feedback loop for their vbucket if persistence is enabled
-			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
-			// defensively.
-			requiresCheckpointPersistence = false
-		} else if strings.HasPrefix(key, listener.sgCfgPrefix) {
+		}
+		listener.notifyKey(listener.ctx, key)
+	}
+	if event.FilterType == UnusedSeqDoc || event.FilterType == UnusedSeqRangeDoc {
+		if event.Opcode == sgbucket.FeedOpMutation {
 			listener.OnDocChanged(event)
 		}
 	}
-	return requiresCheckpointPersistence
+	if event.FilterType == SGCfgDoc {
+		listener.OnDocChanged(event)
+	}
+	return false
+}
+
+// filteredKey will filter keys we don't care about off the mutation DCP feed and will return DCP event type on non-filtered docs
+func (c *changeCache) FilteredKey(key []byte) (bool, sgbucket.FeedFilterType) {
+	// if not metadata keys are defined then don't filter, this will be nil for non sharded import feed
+	docID := string(key)
+	// any keys that doesn't have _sync prefix need to be processed
+	if !strings.HasPrefix(docID, base.SyncDocPrefix) {
+		return false, AppData
+	}
+	if strings.HasPrefix(docID, c.metaKeys.UserKeyPrefix()) {
+		return false, UserDoc
+	}
+	if strings.HasPrefix(docID, c.metaKeys.RoleKeyPrefix()) {
+		return false, RoleDoc
+	}
+	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqPrefix()) {
+		return false, UnusedSeqDoc
+	}
+	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqRangePrefix()) {
+		return false, UnusedSeqRangeDoc
+	}
+	if strings.HasPrefix(docID, c.sgCfgPrefix) {
+		return false, SGCfgDoc
+	}
+
+	return true, ""
 }
 
 // MutationFeedStopMaxWait is the maximum amount of time to wait for

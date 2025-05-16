@@ -10,6 +10,7 @@ package base
 
 import (
 	"github.com/couchbase/gocbcore/v10"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 // DCPClient implementation of the gocbcore.StreamObserver interface.  Primarily routes events
@@ -32,8 +33,13 @@ func (dc *DCPClient) SnapshotMarker(snapshotMarker gocbcore.DcpSnapshotMarker) {
 
 func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 
-	if dc.filteredKey(mutation.Key) {
-		return
+	var dcpEventType sgbucket.FeedFilterType
+	var filterKey bool
+	if dc.FilterFunc != nil {
+		filterKey, dcpEventType = dc.FilterFunc(mutation.Key)
+		if filterKey {
+			return
+		}
 	}
 
 	e := mutationEvent{
@@ -41,13 +47,14 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 			vbID:     mutation.VbID,
 			streamID: mutation.StreamID,
 		},
-		seq:        mutation.SeqNo,
-		revNo:      mutation.RevNo,
-		flags:      mutation.Flags,
-		expiry:     mutation.Expiry,
-		cas:        mutation.Cas,
-		datatype:   mutation.Datatype,
-		collection: mutation.CollectionID,
+		seq:               mutation.SeqNo,
+		revNo:             mutation.RevNo,
+		flags:             mutation.Flags,
+		expiry:            mutation.Expiry,
+		cas:               mutation.Cas,
+		datatype:          mutation.Datatype,
+		collection:        mutation.CollectionID,
+		FeedFilterDocType: dcpEventType,
 
 		// The byte slices must be copied to ensure that memory associated with the underlying memd mutationEvent and Packet are independent and can be released or reused by gocbcore as needed.
 		key:   EfficientBytesClone(mutation.Key),
@@ -58,19 +65,26 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 
 func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 
-	if dc.filteredKey(deletion.Key) {
-		return
+	var dcpEventType sgbucket.FeedFilterType
+	var filterKey bool
+	if dc.FilterFunc != nil {
+		filterKey, dcpEventType = dc.FilterFunc(deletion.Key)
+		if filterKey {
+			return
+		}
 	}
+
 	e := deletionEvent{
 		streamEventCommon: streamEventCommon{
 			vbID:     deletion.VbID,
 			streamID: deletion.StreamID,
 		},
-		seq:        deletion.SeqNo,
-		cas:        deletion.Cas,
-		revNo:      deletion.RevNo,
-		datatype:   deletion.Datatype,
-		collection: deletion.CollectionID,
+		seq:               deletion.SeqNo,
+		cas:               deletion.Cas,
+		revNo:             deletion.RevNo,
+		datatype:          deletion.Datatype,
+		collection:        deletion.CollectionID,
+		FeedFilterDocType: dcpEventType,
 
 		// The byte slices must be copied to ensure that memory associated with the underlying memd mutationEvent and Packet are independent and can be released or reused by gocbcore as needed.
 		key:   EfficientBytesClone(deletion.Key),
@@ -134,8 +148,4 @@ func (dc *DCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
 		},
 		seq: seqNoAdvanced.SeqNo,
 	})
-}
-
-func (dc *DCPClient) filteredKey(key []byte) bool {
-	return false
 }
