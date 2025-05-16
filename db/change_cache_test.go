@@ -31,7 +31,7 @@ func testLogEntry(seq uint64, docid string, revid string) *LogEntry {
 		Sequence:     seq,
 		DocID:        docid,
 		RevID:        revid,
-		TimeReceived: time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 }
 
@@ -46,7 +46,7 @@ func testLogEntryForChannels(seq int, channelNames []string) *LogEntry {
 		Sequence:     uint64(seq),
 		DocID:        fmt.Sprintf("doc_%d", seq),
 		RevID:        "1-abc",
-		TimeReceived: time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 		Channels:     channelMap,
 	}
 }
@@ -63,7 +63,7 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string, col
 		Sequence:     seq,
 		DocID:        docid,
 		RevID:        revid,
-		TimeReceived: time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 		CollectionID: collectionID,
 	}
 	channelMap := make(channels.ChannelMap)
@@ -1615,13 +1615,13 @@ type testProcessEntryFeed struct {
 	nextSeq     uint64
 	channelMaps []channels.ChannelMap
 	sources     []uint64 // Used for non-sequential sequence delivery when numSources > 1
-	fixedTime   time.Time
+	fixedTime   channels.FeedTimestamp
 }
 
 func NewTestProcessEntryFeed(numChannels int, numSources int) *testProcessEntryFeed {
 
 	feed := &testProcessEntryFeed{
-		fixedTime: time.Now(),
+		fixedTime: channels.NewFeedTimestampFromNow(),
 		sources:   make([]uint64, numSources),
 	}
 
@@ -1661,7 +1661,6 @@ func (f *testProcessEntryFeed) Next() *LogEntry {
 		RevID:        "1-abcdefabcdefabcdef",
 		Channels:     f.channelMaps[rand.Intn(len(f.channelMaps))],
 		TimeReceived: f.fixedTime,
-		TimeSaved:    f.fixedTime,
 	}
 }
 
@@ -1766,13 +1765,13 @@ type testDocChangedFeed struct {
 	nextSeq      uint64
 	channelNames []string
 	sources      []uint64 // Used for non-sequential sequence delivery when numSources > 1
-	fixedTime    time.Time
+	fixedTime    channels.FeedTimestamp
 }
 
 func NewTestDocChangedFeed(numChannels int, numSources int) *testDocChangedFeed {
 
 	feed := &testDocChangedFeed{
-		fixedTime: time.Now(),
+		fixedTime: channels.NewFeedTimestampFromNow(),
 		sources:   make([]uint64, numSources),
 	}
 	feed.channelNames = make([]string, numChannels)
@@ -1971,8 +1970,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 		Sequence:     20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, highEntry)
 
@@ -2045,8 +2043,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 		Sequence:     20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, highEntry)
 
@@ -2124,8 +2121,7 @@ func TestSkippedSequenceCompact(t *testing.T) {
 		Sequence:     20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, highEntry)
 
@@ -2181,8 +2177,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 		Sequence:     20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, highEntry)
 
@@ -2195,7 +2190,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// process unused sequence range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, channels.NewFeedTimestampFromNow())
 
 	// assert on cache stats after removal from, skipped list
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2248,13 +2243,12 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 		Sequence:     1,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
 	// process unused sequence range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 21, 25, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 21, 25, channels.NewFeedTimestampFromNow())
 
 	// assert that whole range is processed onto pending
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2304,7 +2298,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 	require.NoError(t, err)
 
 	// process unused sequence range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 25, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 25, channels.NewFeedTimestampFromNow())
 
 	// assert that we have pending as expected
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2317,8 +2311,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 		Sequence:     1,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2371,7 +2364,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	require.NoError(t, err)
 
 	// process unused sequence range, will be sent to pending.  Triggers seq 1 being sent to skipped
-	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 25, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 25, channels.NewFeedTimestampFromNow())
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
@@ -2383,8 +2376,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 		Sequence:     30,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2407,8 +2399,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 		Sequence:     26,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2420,7 +2411,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	}, time.Second*10, time.Millisecond*100)
 
 	// process unused sequence range to catch up with pending seq in cache
-	testChangeCache.releaseUnusedSequenceRange(ctx, 27, 29, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 27, 29, channels.NewFeedTimestampFromNow())
 
 	// assert on cache state after cache is caught up with pending
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2471,7 +2462,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 	require.NoError(t, err)
 
 	// process single unused sequence range that should end up going to pending
-	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 2, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 2, 2, channels.NewFeedTimestampFromNow())
 
 	// assert single sequence range is pending
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2489,8 +2480,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 		Sequence:     4,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2505,7 +2495,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// process single unused sequence range that should empty skipped list
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 1, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 1, channels.NewFeedTimestampFromNow())
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
@@ -2559,8 +2549,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 		Sequence:     20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2574,7 +2563,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// process unusedSeq range with pending seq equal to end
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, channels.NewFeedTimestampFromNow())
 
 	// assert that the pending list is empty + high seq cached + next seq is as expected
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2629,8 +2618,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 		Sequence:     20,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2645,7 +2633,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// process unusedSeq range with pending seq equal to end
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, channels.NewFeedTimestampFromNow())
 
 	// assert that the pending list is empty + high seq cached + next seq is as expected
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2701,8 +2689,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		Sequence:     14,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2710,8 +2697,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		Sequence:     18,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2728,7 +2714,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 
 	// process unusedSeq range with range containing duplicate sipped sequences
 	// Skipped should contain: (1-13), (15-17) before processing this range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 10, 17, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 10, 17, channels.NewFeedTimestampFromNow())
 
 	// assert skipped list altered to reflect the above range is processed
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2742,7 +2728,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	}, time.Second*10, time.Millisecond*100)
 
 	// Skipped should contain: (1-9) before processing this range
-	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 9, time.Now())
+	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 9, channels.NewFeedTimestampFromNow())
 
 	// assert skipped list is emptied after the above range is processed
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2760,8 +2746,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		Sequence:     19,
 		DocID:        fmt.Sprintf("doc_%d", 50),
 		RevID:        "1-abcdefabcdefabcdef",
-		TimeReceived: time.Now(),
-		TimeSaved:    time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
 	_ = testChangeCache.processEntry(ctx, entry)
 
@@ -2941,7 +2926,7 @@ func TestAddPendingLogs(t *testing.T) {
 			// process overlapping unused sequence ranges that should end up going to pending without duplicates
 			// acquire cache lock to push to pending logs
 			testChangeCache.lock.Lock()
-			backdatedTimeReceived := time.Now().Add(-1 * time.Hour)
+			backdatedTimeReceived := channels.NewFeedTimestamp(base.Ptr(time.Now().Add(-1 * time.Hour)))
 			for i, incomingRange := range testCase.incoming {
 				if incomingRange.end == 0 {
 					// treat as a document pushed to pending
@@ -2949,7 +2934,7 @@ func TestAddPendingLogs(t *testing.T) {
 					logEntry.TimeReceived = backdatedTimeReceived
 					heap.Push(&testChangeCache.pendingLogs, logEntry)
 				} else {
-					testChangeCache._pushRangeToPending(ctx, incomingRange.start, incomingRange.end, backdatedTimeReceived)
+					testChangeCache._pushRangeToPending(incomingRange.start, incomingRange.end, backdatedTimeReceived)
 				}
 			}
 			// Call _addPendingLogs to trigger eviction from pendingLogs based on age

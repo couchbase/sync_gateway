@@ -298,7 +298,7 @@ func (c *singleChannelCacheImpl) pruneCacheAge(ctx context.Context) {
 	pruned := 0
 	// Remove all entries who've been in the cache longer than channelCacheAge, except
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
-	for len(c.logs) > c.options.ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.ChannelCacheAge {
+	for len(c.logs) > c.options.ChannelCacheMinLength && c.logs[0].TimeReceived.OlderThan(c.options.ChannelCacheAge) {
 		c.validFrom = c.logs[0].Sequence + 1
 		c.UpdateCacheUtilization(c.logs[0], -1)
 		delete(c.cachedDocIDs, c.logs[0].DocID)

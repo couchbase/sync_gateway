@@ -18,6 +18,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // One "changes" row in a channelsViewResult
@@ -44,7 +45,7 @@ func nextChannelViewEntry(ctx context.Context, results sgbucket.QueryResultItera
 		DocID:        viewRow.ID,
 		RevID:        viewRow.Value.Rev,
 		Flags:        viewRow.Value.Flags,
-		TimeReceived: time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 		CollectionID: collectionID,
 	}
 	return entry, true
@@ -63,7 +64,7 @@ func nextChannelQueryEntry(ctx context.Context, results sgbucket.QueryResultIter
 		DocID:        queryRow.Id,
 		RevID:        queryRow.Rev,
 		Flags:        queryRow.Flags,
-		TimeReceived: time.Now(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
 		CollectionID: collectionID,
 	}
 
