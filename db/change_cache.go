@@ -453,7 +453,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 			// the two conditions above together means that the cache expect ue to run processEntry on this sequence as its pending
 			// If seq >= c.getOldestSkippedSequence(ctx) and seq < current sequence allocated to the doc this means
 			// that this sequence never arrived over the caching feed due to deduplication and was pushed to a skipped sequence list
-			isSkipped := seq < currentSequence && seq >= oldestSkipped
+			isSkipped := (seq < currentSequence && seq >= oldestSkipped) && oldestSkipped != 0
 			if (seq >= nextSequence && seq < currentSequence) || isSkipped {
 				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
@@ -468,6 +468,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 					change.DocID = docID
 					change.RevID = atRevId
 					change.Channels = channelRemovals
+				} else {
+					// Todo: add unused seq flag here (needs rebase)
 				}
 
 				changedChannels := c.processEntry(ctx, change)
