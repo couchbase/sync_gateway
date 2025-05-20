@@ -181,7 +181,7 @@ func MgmtRequest(client *http.Client, mgmtEp, method, uri, contentType, username
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		return nil, response.StatusCode, err
+		return nil, 0, err
 	}
 	defer func() { _ = response.Body.Close() }()
 
