@@ -1524,7 +1524,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	}
 	// Make BLIP/Websocket connection.  Not specifying cancellation context here as this is a
 	// client blip context that doesn't require cancellation-based close
-	bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", origin, protocols, nil)
+	_, bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", origin, protocols, nil)
 	if err != nil {
 		return nil, err
 	}
