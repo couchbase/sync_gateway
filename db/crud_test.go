@@ -1807,3 +1807,24 @@ func TestDocUpdateCorruptSequence(t *testing.T) {
 		return db.DbStats.Database().CorruptSequenceCount.Value()
 	}, 1)
 }
+
+func TestPutResurrection(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	const docID = "doc1"
+	_, _, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	require.NoError(t, collection.Purge(ctx, docID, false))
+	// assert no warnings when re-pushing a resurrection
+	_, _, err = collection.Put(ctx, docID, Body{"resurrect": true})
+	require.NoError(t, err)
+
+	require.Equal(t, startWarnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value())
+}

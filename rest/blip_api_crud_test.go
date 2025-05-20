@@ -3195,3 +3195,37 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 		}, time.Second*10, time.Millisecond*100)
 	})
 }
+
+func TestBlipPushRevOnResurrection(t *testing.T) {
+	for _, allowConflicts := range []bool{true, false} {
+		t.Run(fmt.Sprintf("allowConflicts=%t", allowConflicts), func(t *testing.T) {
+			btcRunner := NewBlipTesterClientRunner(t)
+			btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+				rt := NewRestTester(t, &RestTesterConfig{
+					PersistentConfig: true,
+				})
+				defer rt.Close()
+
+				dbConfig := rt.NewDbConfig()
+				dbConfig.AllowConflicts = base.Ptr(allowConflicts)
+				RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+				startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
+				docID := "doc1"
+				rt.CreateTestDoc(docID)
+
+				rt.PurgeDoc(docID)
+
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, ""), http.StatusNotFound)
+
+				opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, Username: "alice"}
+				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+				defer btc.Close()
+
+				btcRunner.StartPush(btc.id)
+				docVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(`{"resurrect":true}`))
+				rt.WaitForVersion(docID, docVersion)
+				require.Equal(t, startWarnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value())
+			})
+		})
+	}
+}
