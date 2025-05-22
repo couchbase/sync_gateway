@@ -27,6 +27,10 @@ import (
 
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
+	if h.privs != adminPrivs && h.db.DatabaseContext.Options.DisablePublicAllDocs {
+		return base.HTTPErrorf(http.StatusForbidden, "public access to _all_docs is disabled for this database")
+	}
+
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
 	includeDocs := h.getBoolQuery("include_docs")
 	includeChannels := h.getBoolQuery("channels")

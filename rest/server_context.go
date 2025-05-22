@@ -1392,6 +1392,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
 		NumIndexReplicas:            config.numIndexReplicas(),
+		DisablePublicAllDocs:        base.ValDefault(config.DisablePublicAllDocs, false),
 	}
 
 	if config.Index != nil && config.Index.NumPartitions != nil {
