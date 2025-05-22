@@ -1060,7 +1060,9 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 		btcc.sendRev(ctx, change, false)
 		return
 	}
-	require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %v: %s", revResp)
+	body, err := revResp.Body()
+	require.NoError(btcc.TB(), err)
+	require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %v: %s", change.version, string(body))
 	base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
 	btcc.updateLastReplicatedRev(change.docID, change.version, revRequest)
 }
