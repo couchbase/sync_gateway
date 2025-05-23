@@ -99,6 +99,7 @@ func TestImportFeedWithRecursiveSyncFunction(t *testing.T) {
 
 	// Verify this didn't trigger an on-demand import
 	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportErrorCount.Value, 2)
 }
 
 // Test import of an SDK delete.
