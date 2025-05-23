@@ -2619,6 +2619,191 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 }
 
+// TestReleasedSequenceRangeHandlingEdgeCase2:
+//   - Test releasing unused sequence range with everything startSeq to endSeq - 1 in skipped
+//   - Test the handling at the cache when endSeq on unused sequence range is in the pending list
+//   - This test is lower level version of TestJumpInSequencesAtAllocatorSkippedSequenceFill
+func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	testChangeCache := &changeCache{}
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: 100 * time.Millisecond,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
+		CachePendingSeqMaxNum:  1,
+	}, dbContext.MetadataKeys); err != nil {
+		log.Printf("Init failed for testChangeCache: %v", err)
+		t.Fail()
+	}
+
+	if err := testChangeCache.Start(0); err != nil {
+		log.Printf("Start error for testChangeCache: %v", err)
+		t.Fail()
+	}
+	defer testChangeCache.Stop(ctx)
+	require.NoError(t, err)
+
+	// process change that should push pending and subsequently be cached
+	entry := &LogEntry{
+		Sequence:     20,
+		DocID:        fmt.Sprintf("doc_%d", 50),
+		RevID:        "1-abcdefabcdefabcdef",
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+	}
+	_ = testChangeCache.processEntry(ctx, entry)
+
+	// assert that the skipped list is filled
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		testChangeCache.updateStats(ctx)
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
+		dbContext.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// process unusedSeq range with pending seq equal to end
+	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 20, channels.NewFeedTimestampFromNow())
+
+	// assert that the pending list is empty + high seq cached + next seq is as expected
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		testChangeCache.updateStats(ctx)
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
+		dbContext.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+	}, time.Second*10, time.Millisecond*100)
+}
+
+// TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped:
+//   - Test releasing unused sequence range that has duplicate sequences in skipped sequence list
+//   - Assert sequences in the range are removed from skipped
+//   - Empty skipped through unused sequence release
+//   - Add new contiguous sequence and assert it is processed correctly
+func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	testChangeCache := &changeCache{}
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: 20 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
+		CachePendingSeqMaxNum:  0,
+	}, dbContext.MetadataKeys); err != nil {
+		log.Printf("Init failed for testChangeCache: %v", err)
+		t.Fail()
+	}
+
+	if err := testChangeCache.Start(0); err != nil {
+		log.Printf("Start error for testChangeCache: %v", err)
+		t.Fail()
+	}
+	defer testChangeCache.Stop(ctx)
+	require.NoError(t, err)
+
+	// push two entries that will be pushed to pending and subsequently skipped will be filled with sequence gaps
+	entry := &LogEntry{
+		Sequence:     14,
+		DocID:        fmt.Sprintf("doc_%d", 50),
+		RevID:        "1-abcdefabcdefabcdef",
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+	}
+	_ = testChangeCache.processEntry(ctx, entry)
+
+	entry = &LogEntry{
+		Sequence:     18,
+		DocID:        fmt.Sprintf("doc_%d", 50),
+		RevID:        "1-abcdefabcdefabcdef",
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+	}
+	_ = testChangeCache.processEntry(ctx, entry)
+
+	// assert skipped is filled
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		testChangeCache.updateStats(ctx)
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
+		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(16), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
+		dbContext.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// process unusedSeq range with range containing duplicate sipped sequences
+	// Skipped should contain: (1-13), (15-17) before processing this range
+	testChangeCache.releaseUnusedSequenceRange(ctx, 10, 17, channels.NewFeedTimestampFromNow())
+
+	// assert skipped list altered to reflect the above range is processed
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		testChangeCache.updateStats(ctx)
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(9), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
+		dbContext.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// Skipped should contain: (1-9) before processing this range
+	testChangeCache.releaseUnusedSequenceRange(ctx, 1, 9, channels.NewFeedTimestampFromNow())
+
+	// assert skipped list is emptied after the above range is processed
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		testChangeCache.updateStats(ctx)
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
+		dbContext.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// assert a new contiguous sequence is processed correctly
+	entry = &LogEntry{
+		Sequence:     19,
+		DocID:        fmt.Sprintf("doc_%d", 50),
+		RevID:        "1-abcdefabcdefabcdef",
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+	}
+	_ = testChangeCache.processEntry(ctx, entry)
+
+	// assert on stats
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		testChangeCache.updateStats(ctx)
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, uint64(20), testChangeCache.nextSequence)
+		dbContext.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+	}, time.Second*10, time.Millisecond*100)
+}
+
 // getChanges is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
 func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
 	require.NotNil(t, options.ChangesCtx)
