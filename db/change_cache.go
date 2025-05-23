@@ -71,7 +71,7 @@ type changeCache struct {
 	notifyChange       func(context.Context, channels.Set) // Client callback that notifies of channel changes
 	started            base.AtomicBool                     // Set by the Start method
 	stopped            base.AtomicBool                     // Set by the Stop method
-	skippedSeqs        *SkippedSequenceSlice               // Skipped sequences still pending on the DCP caching feed
+	skippedSeqs        *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
 	lock               sync.RWMutex                        // Coordinates access to struct fields
 	options            CacheOptions                        // Cache config
 	terminator         chan bool                           // Signal termination of background goroutines
@@ -107,8 +107,7 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached(ctx)))
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(skippedSequenceListStats.NumCurrentSkippedSequencesStat)
 	c.db.DbStats.Cache().NumSkippedSeqs.Set(skippedSequenceListStats.NumCumulativeSkippedSequencesStat)
-	c.db.DbStats.Cache().SkippedSeqLen.Set(skippedSequenceListStats.ListLengthStat)
-	c.db.DbStats.Cache().SkippedSeqCap.Set(skippedSequenceListStats.ListCapacityStat)
+	c.db.DbStats.Cache().SkippedSeqLen.Set(skippedSequenceListStats.ListLengthStat) // depreciated on older version is think check and bring up
 }
 
 type LogEntry = channels.LogEntry
@@ -158,7 +157,7 @@ func (c *changeCache) Init(ctx context.Context, dbContext *DatabaseContext, chan
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
-	c.skippedSeqs = NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
+	c.skippedSeqs = NewSkippedSequenceSkiplist()
 	c.lastAddPendingTime = time.Now().UnixNano()
 	c.sgCfgPrefix = dbContext.MetadataKeys.SGCfgPrefix(c.db.Options.GroupID)
 	c.metaKeys = metaKeys
@@ -778,9 +777,9 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 		changedChannels = changedChannels.Update(c._addToCache(ctx, change))
 		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
 		// in cache
-		err := c.RemoveSkipped(sequence)
-		if err != nil {
-			base.DebugfCtx(ctx, base.KeyCache, "Error removing skipped sequence: #%d from cache: %v", sequence, err)
+		ok := c.RemoveSkipped(sequence)
+		if !ok {
+			base.DebugfCtx(ctx, base.KeyCache, "Error removing skipped sequence: #%d from cache", sequence)
 		}
 	}
 	return changedChannels
@@ -968,9 +967,9 @@ func (h *LogPriorityQueue) Pop() interface{} {
 // ////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	numSkipped, err := c.skippedSeqs.removeSeq(x)
-	if err != nil {
-		return err
+	elem := c.skippedSeqs.list.Remove(NewSingleSkippedSequenceEntryAt(x, 0))
+	if elem != nil {
+		return fmt.Errorf("error removing seq")
 	}
 	if numSkipped == 0 {
 		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
