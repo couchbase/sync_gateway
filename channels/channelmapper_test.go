@@ -663,3 +663,12 @@ func TestGetDefaultSyncFunction(t *testing.T) {
 		})
 	}
 }
+
+// TestSyncFunctionRecursion ensures that an infinite recursion in the sync function does not cause a stack overflow.
+func TestSyncFunctionRecursion(t *testing.T) {
+	ctx := base.TestCtx(t)
+	mapper := NewChannelMapper(ctx, `function access(doc) { access("foo", "bar"); }`, 0)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"blank": "doc"}`), `{}`, emptyMetaMap(), noUser)
+	require.ErrorContains(t, err, "Maximum call stack size exceeded")
+	require.Nil(t, res)
+}
