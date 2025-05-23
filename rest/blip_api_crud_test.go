@@ -3271,7 +3271,7 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 
 				docVersion, err := btcRunner.PushRev(btc.id, docID, EmptyDocVersion(), []byte(`{"resurrect":true}`))
 				require.NoError(t, err)
-				rt.WaitForVersion(docID, docVersion)
+				require.NoError(t, rt.WaitForVersion(docID, docVersion))
 				require.Equal(t, startWarnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value())
 			})
 		})
