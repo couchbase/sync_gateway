@@ -185,6 +185,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		JavascriptTimeoutSecs:            base.Ptr(base.DefaultJavascriptTimeoutSecs),
 		Suspendable:                      base.Ptr(sc.IsServerless()),
 		Logging:                          DefaultPerDBLogging(sc.Logging),
+		DisablePublicAllDocs:             base.Ptr(false),
 	}
 
 	if useXattrs {

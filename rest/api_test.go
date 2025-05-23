@@ -1228,22 +1228,7 @@ func TestResponseEncoding(t *testing.T) {
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
-	type allDocsRow struct {
-		ID    string `json:"id"`
-		Key   string `json:"key"`
-		Value struct {
-			Rev      string              `json:"rev"`
-			Channels []string            `json:"channels,omitempty"`
-			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
-		} `json:"value"`
-		Doc   db.Body `json:"doc,omitempty"`
-		Error string  `json:"error"`
-	}
-	var allDocsResult struct {
-		TotalRows int          `json:"total_rows"`
-		Offset    int          `json:"offset"`
-		Rows      []allDocsRow `json:"rows"`
-	}
+	var allDocsResult allDocsResponse
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
 	rt := NewRestTester(t, &rtConfig)

@@ -196,6 +196,7 @@ type DbConfig struct {
 	Logging                          *DbLoggingConfig                 `json:"logging,omitempty"`                              // Per-database Logging config
 	UpdatedAt                        *time.Time                       `json:"updated_at,omitempty"`                           // Time at which the database config was last updated
 	CreatedAt                        *time.Time                       `json:"created_at,omitempty"`                           // Time at which the database config was created
+	DisablePublicAllDocs             *bool                            `json:"disable_public_all_docs,omitempty"`              // Whether to disable public access to the _all_docs endpoint for this database
 }
 
 type ScopesConfig map[string]ScopeConfig
