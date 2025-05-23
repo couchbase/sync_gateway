@@ -25,6 +25,27 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+type allDocsResponse struct {
+	Rows      []allDocsRow `json:"rows"`
+	TotalRows int          `json:"total_rows"`
+	UpdateSeq uint64       `json:"update_seq"`
+}
+
+type allDocsRowValue struct {
+	Rev      string              `json:"rev"`
+	Channels []string            `json:"channels,omitempty"`
+	Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+}
+type allDocsRow struct {
+	Key       string           `json:"key"`
+	ID        string           `json:"id,omitempty"`
+	Value     *allDocsRowValue `json:"value,omitempty"`
+	Doc       json.RawMessage  `json:"doc,omitempty"`
+	UpdateSeq uint64           `json:"update_seq,omitempty"`
+	Error     string           `json:"error,omitempty"`
+	Status    int              `json:"status,omitempty"`
+}
+
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
 	if h.privs != adminPrivs && h.db.DatabaseContext.Options.DisablePublicAllDocs {
@@ -101,21 +122,6 @@ func (h *handler) handleAllDocs() error {
 			}
 		}
 		return result
-	}
-
-	type allDocsRowValue struct {
-		Rev      string              `json:"rev"`
-		Channels []string            `json:"channels,omitempty"`
-		Access   map[string]base.Set `json:"access,omitempty"` // for admins only
-	}
-	type allDocsRow struct {
-		Key       string           `json:"key"`
-		ID        string           `json:"id,omitempty"`
-		Value     *allDocsRowValue `json:"value,omitempty"`
-		Doc       json.RawMessage  `json:"doc,omitempty"`
-		UpdateSeq uint64           `json:"update_seq,omitempty"`
-		Error     string           `json:"error,omitempty"`
-		Status    int              `json:"status,omitempty"`
 	}
 
 	// Subroutine that creates a response row for a document:

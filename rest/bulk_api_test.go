@@ -70,12 +70,7 @@ func TestDisablePublicAllDocs(t *testing.T) {
 			t.Run("admin", func(t *testing.T) {
 				response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_all_docs", "")
 				RequireStatus(t, response, http.StatusOK)
-				var result struct {
-					Rows []struct {
-						ID  string `json:"id"`
-						Key string `json:"key"`
-					} `json:"rows"`
-				}
+				var result allDocsResponse
 				require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
 				assert.Equal(t, 2, len(result.Rows))
 				assert.Equal(t, "doc1", result.Rows[0].ID)
