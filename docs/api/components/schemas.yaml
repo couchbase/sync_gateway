@@ -1915,6 +1915,14 @@ Database:
                   name:
                     description: The name of the role for which audit logging is disabled.
                     type: string
+    disable_public_all_docs:
+      description: |-
+        This controls whether the `_all_docs` REST API endpoint is publicly accessible or not.
+
+        If set to `true`, the `_all_docs` endpoint will not be publicly accessible, and will only be available on the Admin API.
+        Setting this to `false`, or leaving it as the default value is deprecated, and will default to `true` in a future release.
+      type: boolean
+      default: false
   title: Database-config
 Disabled-users-and-roles:
   type: object
