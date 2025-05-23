@@ -1917,10 +1917,12 @@ Database:
                     type: string
     disable_public_all_docs:
       description: |-
-        This controls whether the `_all_docs` REST API endpoint is publicly accessible or not.
+        This controls whether the [GET /{keyspace}/_all_docs](#operation/get_keyspace-_all_docs) REST API endpoint is publicly accessible or not.
+        Disabling this endpoint is recommended for larger datasets or production workloads.
+        [GET /{keyspace}/_changes](#operation/get_keyspace-_changes) or [POST /{keyspace}/_bulk_get](#operation/post_keyspace-_bulk_get) have more efficient implementations and should be used instead.
 
-        If set to `true`, the `_all_docs` endpoint will not be publicly accessible, and will only be available on the Admin API.
-        Setting this to `false`, or leaving it as the default value is deprecated, and will default to `true` in a future release.
+        If set to `true`, the endpoint will not be publicly accessible, and will only be available on the Admin API.
+        Setting this to `false`, or leaving it as the default value is deprecated, and may default to `true` in a future release.
       type: boolean
       default: false
   title: Database-config

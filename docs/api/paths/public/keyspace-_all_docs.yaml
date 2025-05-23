@@ -12,7 +12,8 @@ get:
   description: |-
     Returns all documents in the database based on the specified parameters.
 
-    This endpoint may be disabled by the administrator and can return '403'.
+    This endpoint is not recommended for larger datasets or production workloads.
+    [GET /{keyspace}/_changes](#operation/get_keyspace-_changes) or [POST /{keyspace}/_bulk_get](#operation/post_keyspace-_bulk_get) have more efficient implementations and should be used instead.
   parameters:
     - $ref: ../../components/parameters.yaml#/include_docs
     - $ref: ../../components/parameters.yaml#/Include-channels
@@ -44,7 +45,8 @@ post:
   description: |-
     Returns all documents in the database based on the specified parameters.
 
-    This endpoint may be disabled by the administrator and can return '403'.
+    This endpoint is not recommended for larger datasets or production workloads.
+    [GET /{keyspace}/_changes](#operation/get_keyspace-_changes) or [POST /{keyspace}/_bulk_get](#operation/post_keyspace-_bulk_get) have more efficient implementations and should be used instead.
   parameters:
     - $ref: ../../components/parameters.yaml#/include_docs
     - $ref: ../../components/parameters.yaml#/Include-channels
