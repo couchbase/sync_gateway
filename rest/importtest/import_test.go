@@ -73,6 +73,35 @@ func TestImportFeed(t *testing.T) {
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
 }
 
+func TestImportFeedWithRecursiveSyncFunction(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn:     `function access(doc) { access("foo", "bar"); }`,
+		AutoImport: base.Ptr(true),
+	})
+	defer rt.Close()
+
+	// Create doc via the SDK
+	mobileKey := t.Name()
+	mobileBody := map[string]any{"channels": "ABC"}
+	added, err := rt.GetSingleDataStore().Add(mobileKey, 0, mobileBody)
+	require.NoError(t, err, "Error writing SDK doc")
+	require.True(t, added)
+
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportErrorCount.Value, 1)
+
+	// Attempt to get the document via Sync Gateway.
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
+	assert.Equal(t, 404, response.Code)
+
+	// Verify this didn't trigger an on-demand import
+	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportErrorCount.Value, 2)
+}
+
 // Test import of an SDK delete.
 func TestXattrImportOldDoc(t *testing.T) {
 	rtConfig := rest.RestTesterConfig{
