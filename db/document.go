@@ -272,7 +272,6 @@ func (doc *Document) Body(ctx context.Context) Body {
 	}
 
 	if doc._rawBody == nil {
-		base.WarnfCtx(ctx, "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil
 	}
 
@@ -319,17 +318,11 @@ func (doc *Document) HasBody() bool {
 }
 
 func (doc *Document) BodyBytes(ctx context.Context) ([]byte, error) {
-	var caller string
-	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
-		caller = base.GetCallersName(1, true)
-	}
-
 	if doc._rawBody != nil {
 		return doc._rawBody, nil
 	}
 
 	if doc._body == nil {
-		base.WarnfCtx(ctx, "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil, nil
 	}
 
