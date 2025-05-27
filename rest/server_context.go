@@ -1349,12 +1349,17 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	if config.Unsupported.DisableCleanSkippedQuery {
-		base.WarnfCtx(ctx, `Deprecation notice: setting databse configuration option "disable_clean_skipped_query" no longer has any functionality. In the future, this option will be removed.`)
+		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "disable_clean_skipped_query" no longer has any functionality. In the future, this option will be removed.`)
 	}
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
 	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
 	if base.ValDefault(config.DisablePasswordAuth, false) {
 		sendWWWAuthenticate = base.Ptr(false)
+	}
+
+	disablePublicAllDocs := base.ValDefault(config.DisablePublicAllDocs, false)
+	if !disablePublicAllDocs {
+		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "disable_public_all_docs" to false is deprecated. In the future, public access to the all_docs API will be disabled by default.`)
 	}
 
 	contextOptions := db.DatabaseContextOptions{
@@ -1392,6 +1397,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
 		NumIndexReplicas:            config.numIndexReplicas(),
+		DisablePublicAllDocs:        disablePublicAllDocs,
 	}
 
 	if config.Index != nil && config.Index.NumPartitions != nil {
