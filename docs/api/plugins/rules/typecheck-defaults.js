@@ -1,5 +1,22 @@
 module.exports = TypeCheckDefaults;
 
+function checkMinMaxInteger(schema, ctx) {
+  if (schema.default > schema.maximum) {
+    ctx.report({
+      message:
+        "Default value for integer type exceeds maximum value of " +
+        schema.maximum,
+    });
+  }
+  if (schema.default < schema.minimum) {
+    ctx.report({
+      message:
+        "Default value for integer type is below minimum value of " +
+        schema.minimum,
+    });
+  }
+}
+
 function TypeCheckDefaults() {
   return {
     Schema: {
@@ -18,15 +35,15 @@ function TypeCheckDefaults() {
             }
             break;
           case "number":
-            if (
-              schema.default !== undefined &&
-              typeof schema.default !== "number"
-            ) {
-              ctx.report({
-                message:
-                  "Default value for number type must be a number was " +
-                  typeof schema.default,
-              });
+            if (schema.default !== undefined) {
+              if (typeof schema.default !== "number") {
+                ctx.report({
+                  message:
+                    "Default value for number type must be a number was " +
+                    typeof schema.default,
+                });
+              }
+              checkMinMaxInteger(schema, ctx);
             }
             break;
           case "string":
@@ -42,15 +59,28 @@ function TypeCheckDefaults() {
             }
             break;
           case "integer":
-            if (
-              schema.default !== undefined &&
-              !Number.isInteger(schema.default)
-            ) {
-              ctx.report({
-                message:
-                  "Default value for integer type must be an integer was " +
-                  typeof schema.default,
-              });
+            if (schema.default !== undefined) {
+              if (!Number.isInteger(schema.default)) {
+                ctx.report({
+                  message:
+                    "Default value for integer type must be an integer was " +
+                    typeof schema.default,
+                });
+              }
+              if (schema.default > schema.maximum) {
+                ctx.report({
+                  message:
+                    "Default value for integer type exceeds maximum value of " +
+                    schema.maximum,
+                });
+              }
+              if (schema.default < schema.minimum) {
+                ctx.report({
+                  message:
+                    "Default value for integer type is below minimum value of " +
+                    schema.minimum,
+                });
+              }
             }
             break;
           case "array":
