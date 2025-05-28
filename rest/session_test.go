@@ -498,6 +498,38 @@ func TestSessionAPI(t *testing.T) {
 
 }
 
+func TestSessionResponseWithRoleChannels(t *testing.T) {
+	// The /db/_session endpoint only returns info about the default collection
+	rt := NewRestTesterDefaultCollection(t, nil)
+	defer rt.Close()
+
+	// create session test users
+	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234", "admin_channels":["userChan1"], "admin_roles":["role1"]}`)
+	RequireStatus(t, response, 201)
+
+	// create role for user with a channel
+	response = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"role1", "admin_channels":["roleChan1"]}`)
+	RequireStatus(t, response, 201)
+
+	// create a session for the user
+	response = rt.SendRequest("POST", "/db/_session", `{"name":"user1", "password":"1234"}`)
+	RequireStatus(t, response, 200)
+
+	var body struct {
+		UserCtx struct {
+			Channels map[string]uint64 `json:"channels"`
+		} `json:"userCtx"`
+	}
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+
+	// Check that the response contains userCtx with channels populated from the role
+	require.NotNil(t, body.UserCtx.Channels)
+	require.Equal(t, 3, len(body.UserCtx.Channels))
+	assert.Contains(t, body.UserCtx.Channels, "!")
+	assert.Contains(t, body.UserCtx.Channels, "userChan1")
+	assert.Contains(t, body.UserCtx.Channels, "roleChan1")
+}
+
 func TestSessionPasswordInvalidation(t *testing.T) {
 	testCases := []struct {
 		name     string
