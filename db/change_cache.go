@@ -107,7 +107,7 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached(ctx)))
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(skippedSequenceListStats.NumCurrentSkippedSequencesStat)
 	c.db.DbStats.Cache().NumSkippedSeqs.Set(skippedSequenceListStats.NumCumulativeSkippedSequencesStat)
-	c.db.DbStats.Cache().SkippedSeqLen.Set(skippedSequenceListStats.ListLengthStat) // depreciated on older version is think check and bring up
+	c.db.DbStats.Cache().SkippedSequenceNodes.Set(skippedSequenceListStats.ListLengthStat)
 }
 
 type LogEntry = channels.LogEntry

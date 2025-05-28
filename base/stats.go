@@ -94,6 +94,7 @@ const (
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
+	StatDeprecatedVersion3dot2dot2     = "3.2.2"
 	StatDeprecatedVersion3dot3dot0     = "3.3.0"
 
 	StatStabilityCommitted = "committed"
@@ -490,10 +491,12 @@ type CacheStats struct {
 	RevisionCacheMisses *SgwIntStat `json:"rev_cache_misses"`
 	// Total memory used by the rev cache
 	RevisionCacheTotalMemory *SgwIntStat `json:"revision_cache_total_memory"`
-	// The current length of the pending skipped sequence slice.
-	SkippedSeqLen *SgwIntStat `json:"skipped_seq_len"`
-	// The current capacity of the skipped sequence slice
-	SkippedSeqCap *SgwIntStat `json:"skipped_seq_cap"`
+	// Deprecated: DeprecatedSkippedSeqLen UNUSED
+	DeprecatedSkippedSeqLen *SgwIntStat `json:"skipped_seq_len"`
+	// Deprecated: DeprecatedSkippedSeqCap UNUSED
+	DeprecatedSkippedSeqCap *SgwIntStat `json:"skipped_seq_cap"`
+	// The number of nodes in skipped sequence skiplist data structure
+	SkippedSequenceNodes *SgwIntStat `json:"skipped_sequence_nodes"`
 	// The number of sequences currently in the skipped sequence slice
 	NumCurrentSeqsSkipped *SgwIntStat `json:"current_skipped_seq_count"`
 	// The total view_queries.
@@ -1429,11 +1432,15 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.SkippedSeqLen, err = NewIntStat(SubsystemCacheKey, "skipped_seq_len", StatUnitNoUnits, SkippedSeqLengthDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	resUtil.DeprecatedSkippedSeqLen, err = NewIntStat(SubsystemCacheKey, "skipped_seq_len", StatUnitNoUnits, SkippedSeqLengthDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersion3dot2dot2, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.SkippedSeqCap, err = NewIntStat(SubsystemCacheKey, "skipped_seq_cap", StatUnitNoUnits, SkippedSeqCapDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	resUtil.DeprecatedSkippedSeqCap, err = NewIntStat(SubsystemCacheKey, "skipped_seq_cap", StatUnitNoUnits, SkippedSeqCapDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersion3dot2dot2, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.SkippedSequenceNodes, err = NewIntStat(SubsystemCacheKey, "skipped_sequence_nodes", StatUnitNoUnits, SkippedSequenceNodesDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1471,7 +1478,7 @@ func (d *DbStats) unregisterCacheStats() {
 	prometheus.Unregister(d.CacheStats.NonMobileIgnoredCount)
 	prometheus.Unregister(d.CacheStats.NumActiveChannels)
 	prometheus.Unregister(d.CacheStats.NumSkippedSeqs)
-	prometheus.Unregister(d.CacheStats.SkippedSeqCap)
+	prometheus.Unregister(d.CacheStats.DeprecatedSkippedSeqCap)
 	prometheus.Unregister(d.CacheStats.NumCurrentSeqsSkipped)
 	prometheus.Unregister(d.CacheStats.PendingSeqLen)
 	prometheus.Unregister(d.CacheStats.RevisionCacheNumItems)
@@ -1479,7 +1486,8 @@ func (d *DbStats) unregisterCacheStats() {
 	prometheus.Unregister(d.CacheStats.RevisionCacheHits)
 	prometheus.Unregister(d.CacheStats.RevisionCacheMisses)
 	prometheus.Unregister(d.CacheStats.RevisionCacheTotalMemory)
-	prometheus.Unregister(d.CacheStats.SkippedSeqLen)
+	prometheus.Unregister(d.CacheStats.DeprecatedSkippedSeqLen)
+	prometheus.Unregister(d.CacheStats.SkippedSequenceNodes)
 	prometheus.Unregister(d.CacheStats.ViewQueries)
 }
 
