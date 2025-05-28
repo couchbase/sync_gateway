@@ -81,3 +81,4 @@ rules:
   no-path-trailing-slash: off # Some endpoints require a trailing slash
   security-defined: off       # TODO: Denote public and authenticated API endpoints with https://redocly.com/docs/cli/rules/security-defined
   custom-rules/require-type-with-additionalProperties: error
+  custom-rules/typecheck-defaults: error
