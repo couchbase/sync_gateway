@@ -1995,14 +1995,14 @@ func (h *handler) getRoleInfo() error {
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
 	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
-	bytes, err := base.JSONMarshal(info)
+	b, err := base.JSONMarshal(info)
 	if err == nil {
 		base.Audit(h.ctx(), base.AuditIDRoleRead, base.AuditFields{
 			"db":   h.db.Name,
 			"role": name,
 		})
 	}
-	_, _ = h.response.Write(bytes)
+	h.writeRawJSON(b)
 	return err
 }
 
