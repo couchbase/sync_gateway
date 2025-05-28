@@ -144,6 +144,8 @@ const (
 
 	SkippedSeqCapDesc = "The current capacity of the skipped sequence slice."
 
+	SkippedSequenceNodesDesc = "The total number of nodes in the skipped sequence skiplist."
+
 	NumCurrentSkippedSeq = "The number of sequences currently in the skipped sequence slice."
 
 	ViewQueriesDesc = "The total view_queries."
