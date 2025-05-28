@@ -79,6 +79,71 @@ func TestFeedImport(t *testing.T) {
 	}
 }
 
+func TestOnDemandImportWithSpecialChars(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCRUD, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// RFC 4627 2.5
+	// > All Unicode characters may be placed within the
+	// > quotation marks except for the characters that _must_ be escaped:
+	// > quotation mark, reverse solidus, and the control characters (U+0000
+	// > through U+001F).
+	// > Any character _may_ be escaped.
+	tests := []struct {
+		name        string
+		docBody     string
+		expectError bool
+	}{
+		{name: "question", docBody: `{"question":"?"}`},
+		{name: "exclamation", docBody: `{"exclamation":"!"}`},
+		{name: "interrobang", docBody: `{"interrobang":"‽"}`},
+		{name: "single_quote", docBody: `{"single_quote":"'"}`},
+		{name: "ampersand", docBody: `{"ampersand":"&"}`},
+		{name: "ltgt", docBody: `{"ltgt":"<>"}`},
+		{name: "ltgt_html", docBody: `{"ltgt_html":"&lt;&gt;"}`},
+		{name: "double_quote_escaped", docBody: `{"double_quote_escaped":"\""}`},
+		{name: "reverse_solidus_escaped", docBody: `{"reverse_solidus_escaped":"\u005C"}`},
+		{name: "reverse_solidus_compact", docBody: `{"reverse_solidus_compact":"\\"}`},
+		{name: "g_cleff_unescaped", docBody: `{"g_cleff_unescaped":"𝄞"}`},
+		{name: "g_cleff_utf16", docBody: `{"g_cleff_utf16":"\uD834\uDD1E"}`},
+		{name: "g_cleff_utf16_lower", docBody: `{"g_cleff_utf16_lower":"\ud834\udd1e"}`},
+		// the following are actually invalid json, and we expect the import to fail
+		{name: "double_quote_unescaped_invalid", docBody: `{"double_quote_unescaped_invalid":"""}`, expectError: true},
+		{name: "reverse_solidus_unescaped_invalid", docBody: `{"reverse_solidus_unescaped_invalid":"\"}`, expectError: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			docID := fmt.Sprintf("TestOnDemandImportWithSpecialChars_%s", test.name)
+
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			casWrite, err := collection.dataStore.WriteCas(docID, 0, 0, []byte(test.docBody), 0)
+			require.NoError(t, err)
+
+			// fetch the document to trigger on-demand import
+			_, err = collection.GetDocument(ctx, docID, DocUnmarshalAll)
+			if test.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			// ensure doc body remains unchanged after import
+			bodyGet, casGet, err := collection.dataStore.GetRaw(docID)
+			require.NoError(t, err)
+			if test.expectError {
+				require.Equal(t, casWrite, casGet, "CAS should not change after failed import")
+			} else {
+				assert.Greater(t, casGet, casWrite, "CAS should change after successful import")
+			}
+			assert.Equal(t, string(bodyGet), test.docBody, "Raw document body should remain unchanged after import")
+		})
+	}
+}
+
 // TestOnDemandImportMou ensures that _mou is written correctly during an on-demand import
 func TestOnDemandImportMou(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
