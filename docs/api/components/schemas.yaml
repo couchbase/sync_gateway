@@ -1223,10 +1223,12 @@ Database:
       type: string
       default: 'function(doc){channel(doc.channels);}'
     users:
+      type: object
       additionalProperties:
         x-additionalPropertiesName: username
         $ref: '#/User'
     roles:
+      type: object
       additionalProperties:
         x-additionalPropertiesName: rolename
         $ref: '#/Role'
