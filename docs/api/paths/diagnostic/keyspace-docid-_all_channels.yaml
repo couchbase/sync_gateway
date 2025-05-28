@@ -20,6 +20,7 @@ get:
       content:
         application/json:
           schema:
+            type: object
             additionalProperties:
               x-additionalPropertiesName: channel
               description: The channels the document has been in.
