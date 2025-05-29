@@ -149,17 +149,17 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 		r.DocsProcessed.Add(1)
 		databaseCollection := db.CollectionByID[event.CollectionID]
-		ctx = databaseCollection.AddCollectionContext(ctx)
+		collectionCtx := databaseCollection.AddCollectionContext(ctx)
 		_, unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
-		}).resyncDocument(ctx, docID, key, regenerateSequences, []uint64{})
+		}).resyncDocument(collectionCtx, docID, key, regenerateSequences, []uint64{})
 
-		databaseCollection.releaseSequences(ctx, unusedSequences)
+		databaseCollection.releaseSequences(collectionCtx, unusedSequences)
 
 		if err == nil {
 			r.DocsChanged.Add(1)
 		} else if err != base.ErrUpdateCancel {
-			base.WarnfCtx(ctx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
+			base.WarnfCtx(collectionCtx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
 		}
 		return true
 	}
