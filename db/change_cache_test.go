@@ -1425,6 +1425,49 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 }
 
+func TestUnusedSequencesInSyncData(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it writes directly to the xattr")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := t.Name()
+
+	// add a doc and wait for it to be cached
+	body := Body{"val": "one"}
+	_, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err)
+	err = db.changeCache.waitForSequence(ctx, 1, base.DefaultWaitForSequence)
+	require.NoError(t, err)
+
+	// grab doc and alter sync data as it had some unused sequences allocated ot it
+	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	var retrievedXattr map[string]interface{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
+	retrievedXattr["sequence"] = uint64(6)
+	retrievedXattr["unused_sequences"] = []uint64{2, 3, 4, 5}
+	newXattrVal := map[string][]byte{
+		base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
+	}
+	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, newXattrVal, nil)
+	require.NoError(t, err)
+
+	// assert that sequence 6 is seen over caching feed
+	err = db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence)
+	require.NoError(t, err)
+
+	// assert that only 2 sequences have been cached (unused sequences are not cached)
+	db.UpdateCalculatedStats(ctx)
+	assert.Equal(t, int64(6), db.DbStats.Cache().HighSeqCached.Value())
+	assert.Equal(t, int64(2), db.DbStats.Database().DCPCachingCount.Value())
+}
+
 // Trigger initialization of empty cache, then write and validate a subsequent changes request returns expected data.
 func TestInitializeEmptyCache(t *testing.T) {
 
