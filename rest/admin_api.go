@@ -1410,7 +1410,7 @@ func (h *handler) handleDeleteDB() error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
 		}
 		h.server.RemoveDatabase(h.ctx(), dbName) // unhandled 404 to allow broken config deletion (CBG-2420)
-		_, _ = h.response.Write([]byte("{}"))
+		h.writeRawJSON([]byte("{}"))
 		base.Audit(h.ctx(), base.AuditIDDeleteDatabase, nil)
 		return nil
 	}
@@ -1418,7 +1418,7 @@ func (h *handler) handleDeleteDB() error {
 	if !h.server.RemoveDatabase(h.ctx(), dbName) {
 		return base.HTTPErrorf(http.StatusNotFound, "no such database %q", dbName)
 	}
-	_, _ = h.response.Write([]byte("{}"))
+	h.writeRawJSON([]byte("{}"))
 	base.Audit(h.ctx(), base.AuditIDDeleteDatabase, nil)
 	return nil
 }
@@ -1995,14 +1995,14 @@ func (h *handler) getRoleInfo() error {
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
 	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
-	bytes, err := base.JSONMarshal(info)
+	b, err := base.JSONMarshal(info)
 	if err == nil {
 		base.Audit(h.ctx(), base.AuditIDRoleRead, base.AuditFields{
 			"db":   h.db.Name,
 			"role": name,
 		})
 	}
-	_, _ = h.response.Write(bytes)
+	h.writeRawJSON(b)
 	return err
 }
 
