@@ -20,6 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const multiplier = 8 // used to multiply sequence numbers in benchmarks
+
 // TestPushSingleSkippedSequence:
 //   - Populate 10 single skipped sequence items in the list
 //   - Assert that each one is added in the correct order
@@ -40,6 +42,17 @@ func TestPushSingleSkippedSequence(t *testing.T) {
 		prevTime = c.Key().Timestamp
 		j++
 	}
+
+	// add a new single entry that is contiguous with end of the slice which should replace last
+	// single entry with a range
+	skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(19))
+
+	// grab last entry in list
+	elem := skippedList.list.GetLastElement()
+	// assert last entry is range entry and start + end sequence on range is as expected
+	assert.False(t, isSingleEntry(elem.Key()))
+	assert.Equal(t, uint64(18), elem.Key().Start)
+	assert.Equal(t, uint64(19), elem.Key().End)
 }
 
 // TestPushSkippedSequenceRange:
@@ -65,6 +78,15 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 		j++
 	}
 
+	// add a new range entry that is contiguous with end of the slice which should alter range last element in list
+	skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(96, 110))
+	// grab last entry in list
+	elem := skippedList.list.GetLastElement()
+	// assert last entry is range entry and start + end sequence on range is as expected
+	assert.False(t, isSingleEntry(elem.Key()))
+	assert.Equal(t, uint64(90), elem.Key().Start)
+	assert.Equal(t, uint64(110), elem.Key().End)
+
 	// add new single entry that is not contiguous with last element on list
 	skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(500))
 
@@ -73,20 +95,30 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 	newTimeStamp := time.Now().Unix() + 10000
 	skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(501, 510, newTimeStamp))
 
-	elem := skippedList.list.GetLastElement()
+	elem = skippedList.list.GetLastElement()
 
 	// assert that last element in list is a range and holds sequences we expect + timestamp
 	// is what the new pushed range above holds
-	assert.Equal(t, uint64(501), elem.Key().Start)
+	assert.Equal(t, uint64(500), elem.Key().Start)
 	assert.Equal(t, uint64(510), elem.Key().End)
 	assert.Equal(t, newTimeStamp, elem.Key().Timestamp)
 }
 
 func BenchmarkPushSkippedSequenceEntryLargeList(b *testing.B) {
 	skippedList := setupBenchmark(true, false)
-	i := uint64(30000005)
+	i := uint64(240000005)
+	for b.Loop() {
+		skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(i*2, 0))
+		i++
+	}
+}
+
+func BenchmarkPushSkippedSequenceEntryLargeListContiguous(b *testing.B) {
+	skippedList := setupBenchmark(true, false)
+	i := uint64(240000005)
 	for b.Loop() {
 		skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(i, 0))
+		i++
 	}
 }
 
@@ -187,8 +219,10 @@ func BenchmarkContainsFunction(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				bm.inputList.Contains(uint64(i * 2))
+			loopNum := uint64(1)
+			for b.Loop() {
+				bm.inputList.Contains(loopNum * multiplier)
+				loopNum++
 			}
 		})
 	}
@@ -412,9 +446,9 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			i := 0
+			i := uint64(0)
 			for b.Loop() {
-				_ = bm.inputList.list.Remove(NewSingleSkippedSequenceEntryAt(uint64(i*2), 0))
+				_ = bm.inputList.list.Remove(NewSingleSkippedSequenceEntryAt(multiplier*i, 0))
 				i++
 			}
 		})
@@ -423,9 +457,9 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 
 func BenchmarkRemoveSeqRangeFromSkippedList(b *testing.B) {
 	skipedList := setupBenchmark(true, true)
-	i := uint64(0)
+	i := uint64(1)
 	for b.Loop() {
-		_ = skipedList.list.Remove(NewSkippedSequenceRangeEntryAt(i*2, (i*2)+5, 0))
+		_ = skipedList.list.Remove(NewSkippedSequenceRangeEntryAt(i*multiplier, (i*multiplier)+1, 0))
 		i++
 	}
 }
@@ -507,13 +541,12 @@ func BenchmarkInsertSkippedItem(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			sequenceNum := uint64(5)
 			i := uint64(2)
 			for b.Loop() {
 				if !bm.rangeEntries {
-					bm.inputSlice.list.Set(NewSingleSkippedSequenceEntryAt(sequenceNum*i, 0))
+					bm.inputSlice.list.Set(NewSingleSkippedSequenceEntryAt(multiplier*i, 0))
 				} else {
-					bm.inputSlice.list.Set(NewSkippedSequenceRangeEntryAt(sequenceNum*i, (sequenceNum*i)+5, 0))
+					bm.inputSlice.list.Set(NewSkippedSequenceRangeEntryAt(multiplier*i, (multiplier*i)+2, 0))
 				}
 				i++
 			}
@@ -787,7 +820,6 @@ func TestRemoveSequenceRange(t *testing.T) {
 
 }
 
-// don't think this is necessary now
 func TestProcessUnusedSequenceRangeAtSkipped(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -877,78 +909,98 @@ func TestProcessUnusedSequenceRangeAtSkipped(t *testing.T) {
 
 // setupBenchmark sets up a skipped sequence list for benchmark tests
 func setupBenchmark(largeSlice bool, rangeEntries bool) *SkippedSequenceSkiplist {
-	skippedSlice := NewSkippedSequenceSkiplist()
+	skippedList := NewSkippedSequenceSkiplist()
+	skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, 0))
 	if largeSlice {
-		for i := 0; i < 30000000; i++ {
+		for i := uint64(1); i < 30000000; i++ {
 			if rangeEntries {
-				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*2), uint64(i*2)+5))
+				skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(i*multiplier, (i*multiplier)+2))
 			} else {
-				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+				skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(i * multiplier))
 			}
 		}
 	} else {
-		for i := 0; i < 100; i++ {
+		for i := uint64(1); i < 1000; i++ {
 			if rangeEntries {
-				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*2), uint64(i*2)+5))
+				skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(i*multiplier, (i*multiplier)+5))
 			} else {
-				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+				skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(i * multiplier))
 			}
 		}
 	}
-	return skippedSlice
+	return skippedList
 }
 
 func setupBenchmarkForInsert(largeSlice bool, rangeEntries bool) *SkippedSequenceSkiplist {
-	skippedSlice := NewSkippedSequenceSkiplist()
-	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, 0))
+	skippedList := NewSkippedSequenceSkiplist()
+	// add low entry and very high entries then benchmark will insert in middle of these values high and low values
+	skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, 0))
+	skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(30000000, 0))
 	if largeSlice {
-		for i := 30000000; i < 60000000; i++ {
+		for i := 0; i < 30000000; i++ {
+			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
-				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*2), uint64(i*2)+5))
+				skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq+2, startSeq+5))
 			} else {
-				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+				skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(startSeq + 2))
 			}
 		}
 	} else {
-		for i := 0; i < 100; i++ {
+		for i := 1000; i < 2000; i++ {
+			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
-				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*2), uint64(i*2)+5))
+				skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq+2, startSeq+5))
 			} else {
-				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+				skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(startSeq + 2))
 			}
 		}
 	}
-	return skippedSlice
+	return skippedList
 }
 
 // setupBenchmarkToCompact sets up a skipped sequence list for compaction based benchmark tests
 func setupBenchmarkToCompact(largeSlice bool, rangeEntries bool) *SkippedSequenceSkiplist {
-	skippedSlice := NewSkippedSequenceSkiplist()
+	skippedList := NewSkippedSequenceSkiplist()
 	inputTime := time.Now().Unix() - 1000
+	skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, inputTime))
 	if largeSlice {
 		for i := 0; i < 30000000; i++ {
+			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
 				// add range entries with old timestamps for compaction
-				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(uint64(i*2), uint64(i*2)+5, inputTime))
+				skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(startSeq+2, startSeq+5, inputTime))
 			} else {
 				// add single entries with old timestamps for compaction
-				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(uint64(i*2), inputTime))
+				skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(startSeq+2, inputTime))
 			}
 		}
 	} else {
-		for i := 0; i < 100; i++ {
+		for i := 0; i < 1000; i++ {
+			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
 				// add range entries with old timestamps for compaction
-				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(uint64(i*2), uint64(i*2)+5, inputTime))
+				skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(startSeq+2, startSeq+5, inputTime))
 			} else {
 				// add single entries with old timestamps for compaction
-				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(uint64(i*2), inputTime))
+				skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(startSeq+2, inputTime))
 			}
 		}
 	}
 	// have one entry to not be compacted
-	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(60000))
-	return skippedSlice
+	skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(100000000))
+	return skippedList
+}
+
+func TestContainsAcrossRange(t *testing.T) {
+	skippedList := NewSkippedSequenceSkiplist()
+
+	skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(10, 15))
+
+	// run contains on each seq in above range and assert it returns true
+	for i := 10; i < 16; i++ {
+		assert.True(t, skippedList.Contains(uint64(i)))
+	}
+
 }
 
 // isSingleEntry returns true if the entry is a single sequence entry, false if not. Used for testing purposes

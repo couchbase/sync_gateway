@@ -105,10 +105,12 @@ func (s *SkippedSequenceSkiplist) SkippedSequenceCompact(ctx context.Context, ma
 }
 
 func (s *SkippedSequenceSkiplist) PushSkippedSequenceEntry(entry skiplist.SkippedSequenceEntry) {
-	s.list.Set(entry)
-	// update num current skipped sequences count + the cumulative count of skipped sequences
-	numSequencesIncoming := entry.GetNumSequencesInEntry()
-	s.NumCumulativeSkippedSequences += numSequencesIncoming
+	elem := s.list.Set(entry)
+	if elem != nil {
+		// update num current skipped sequences count + the cumulative count of skipped sequences
+		numSequencesIncoming := entry.GetNumSequencesInEntry()
+		s.NumCumulativeSkippedSequences += numSequencesIncoming
+	}
 }
 
 // getOldest returns the start sequence of the first element in the skipped sequence list
