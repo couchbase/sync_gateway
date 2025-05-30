@@ -445,22 +445,21 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	if len(syncData.RecentSequences) > 0 {
 		nextSequence := c.getNextSequence()
-		oldestSkipped := c.getOldestSkippedSequence(ctx)
 
 		for _, seq := range syncData.RecentSequences {
 			// seq < currentSequence means the sequence is not the latest allocated to this document
 			// seq >= nextSequence means this sequence is a pending sequence to be expected in the cache
 			// the two conditions above together means that the cache expect ue to run processEntry on this sequence as its pending
-			// If seq >= c.getOldestSkippedSequence(ctx) and seq < current sequence allocated to the doc this means
-			// that this sequence never arrived over the caching feed due to deduplication and was pushed to a skipped sequence list
-			// We need check for 0 oldestSkipped because if the skipped list is empty 0 is returned
-			isSkipped := (seq < currentSequence && seq >= oldestSkipped) && oldestSkipped != 0
+			// If seq < current sequence allocated to the doc and seq is in skipped list this means that this sequence
+			// never arrived over the caching feed due to deduplication and was pushed to a skipped sequence list
+			isSkipped := (seq < currentSequence && seq < nextSequence) && c.WasSkipped(seq)
 			if (seq >= nextSequence && seq < currentSequence) || isSkipped {
 				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: timeReceived,
 					CollectionID: event.CollectionID,
+					Skipped:      isSkipped,
 				}
 
 				// if the doc was removed from one or more channels at this sequence
@@ -710,9 +709,13 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	//   - principal mutations that don't increment sequence
 	// We can cancel processing early in these scenarios.
 	// Check if this is a duplicate of an already processed sequence
-	if sequence < c.nextSequence && !c.WasSkipped(sequence) {
-		base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
-		return nil
+	if sequence < c.nextSequence && !change.Skipped {
+		// check for presence in skippedSeqs, it's possible that change.skipped can be false but subsequently change
+		// is pushed to skipped before hitting this point
+		if !c.WasSkipped(sequence) {
+			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
+			return nil
+		}
 	}
 
 	// Check if this is a duplicate of a pending sequence
