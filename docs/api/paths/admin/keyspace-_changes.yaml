@@ -102,7 +102,7 @@ get:
       description: When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.
       schema:
         type: boolean
-        default: 'false'
+        default: false
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed
@@ -165,7 +165,8 @@ post:
               type: string
             request_plus:
               description: 'When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.'
-              type: string
+              type: boolean
+              default: false
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed
