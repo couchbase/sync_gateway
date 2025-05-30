@@ -16,6 +16,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -24,23 +25,29 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
+const (
+	DefaultBroadcastChangesTime         = 50 * time.Millisecond
+	SkippedSequenceBroadcastChangesTime = 500 * time.Millisecond
+)
+
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	ctx                    context.Context
-	bucket                 base.Bucket
-	bucketName             string                 // Used for logging
-	tapFeed                base.TapFeed           // Observes changes to bucket
-	tapNotifier            *sync.Cond             // Posts notifications when documents are updated
-	FeedArgs               sgbucket.FeedArguments // The Tap Args (backfill, etc)
-	counter                uint64                 // Event counter; increments on every doc update
-	_terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts              map[string]uint64      // Latest count at which each doc key was updated
-	OnChangeCallback       DocChangedFunc
-	terminator             chan bool          // Signal to cause DCP feed to exit
-	sgCfgPrefix            string             // SG config key prefix
-	started                base.AtomicBool    // whether the feed has been started
-	metaKeys               *base.MetadataKeys // Metadata key formatter
+	ctx                      context.Context
+	bucket                   base.Bucket
+	bucketName               string                 // Used for logging
+	tapFeed                  base.TapFeed           // Observes changes to bucket
+	tapNotifier              *sync.Cond             // Posts notifications when documents are updated
+	FeedArgs                 sgbucket.FeedArguments // The Tap Args (backfill, etc)
+	counter                  uint64                 // Event counter; increments on every doc update
+	_terminateCheckCounter   uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts                map[string]uint64      // Latest count at which each doc key was updated
+	OnChangeCallback         DocChangedFunc
+	terminator               chan bool          // Signal to cause DCP feed to exit
+	sgCfgPrefix              string             // SG config key prefix
+	started                  base.AtomicBool    // whether the feed has been started
+	SkippedSequenceBroadcast atomic.Bool        // bool to indicate if a skipped sequence ticker value should be used to notify changes feeds of changes
+	metaKeys                 *base.MetadataKeys // Metadata key formatter
 }
 
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
@@ -104,6 +111,8 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		listener.FeedArgs.Scopes = scopeArgs
 
 	}
+	listener.BroadcastChanges(ctx) // start broadcast changes goroutine
+
 	return listener.StartMutationFeed(ctx, bucket, dbStats)
 }
 
@@ -212,8 +221,46 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 	}
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(keys), listener.counter)
-	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
+}
+
+func (listener *changeListener) BroadcastChanges(ctx context.Context) {
+	ticker := time.NewTicker(DefaultBroadcastChangesTime)
+	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
+	// for a value it already has
+	defaultTickerValue := true
+	go func() {
+		var currCount uint64
+		for {
+			select {
+			case <-listener.terminator:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				// if the counter has changed, notify waiting clients
+				listener.tapNotifier.L.Lock()
+				if listener.counter > currCount {
+					listener.tapNotifier.Broadcast()
+					currCount = listener.counter
+				}
+				listener.tapNotifier.L.Unlock()
+
+				// check if we need to reset ticker value based on skipped sequence presence
+				shouldUseSkippedValue := listener.SkippedSequenceBroadcast.Load()
+				if shouldUseSkippedValue && defaultTickerValue {
+					// change the ticker from default value to use skipped sequence value
+					base.DebugfCtx(ctx, base.KeyChanges, "Changing broadcast changes interval to the skipped sequence value for %q", base.MD(listener.bucketName))
+					ticker.Reset(SkippedSequenceBroadcastChangesTime)
+					defaultTickerValue = false // update local bool to indicate ticker value is no longer using the default value
+				} else if !shouldUseSkippedValue && !defaultTickerValue {
+					// change the ticker from skipped sequence value to default value
+					base.DebugfCtx(ctx, base.KeyChanges, "Changing broadcast changes interval to the default value for %q", base.MD(listener.bucketName))
+					ticker.Reset(DefaultBroadcastChangesTime)
+					defaultTickerValue = true // update local bool to indicate ticker value is using the default value
+				}
+			}
+		}
+	}()
 }
 
 // Changes the counter, notifying waiting clients. Only use for a key update.

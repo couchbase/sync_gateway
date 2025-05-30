@@ -589,9 +589,10 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	var isEmpty bool
 	if toSequence < c.nextSequence {
 		// batch remove from skipped
-		c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
+		isEmpty = c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
 	} else if fromSequence >= c.nextSequence {
 		// whole range to pending
 		c._pushRangeToPending(fromSequence, toSequence, timeReceived)
@@ -607,6 +608,11 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		// a duplicate entry with a sequence within the bounds of the range was previously present
 		// in pending.
 		base.WarnfCtx(ctx, "unused sequence range of #%d to %d contains duplicate sequences, will be ignored", fromSequence, toSequence)
+	}
+	if isEmpty {
+		if c.db.mutationListener.SkippedSequenceBroadcast.Load() {
+			c.db.mutationListener.SkippedSequenceBroadcast.Store(false)
+		}
 	}
 	return allChangedChannels
 }
@@ -941,7 +947,12 @@ func (h *LogPriorityQueue) Pop() interface{} {
 // ////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	err := c.skippedSeqs.removeSeq(x)
+	isEmpty, err := c.skippedSeqs.removeSeq(x)
+	if isEmpty {
+		if c.db.mutationListener.SkippedSequenceBroadcast.Load() {
+			c.db.mutationListener.SkippedSequenceBroadcast.Store(false)
+		}
+	}
 	return err
 }
 
@@ -955,6 +966,9 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 		return
 	}
 	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
+	if !c.db.mutationListener.SkippedSequenceBroadcast.Load() {
+		c.db.mutationListener.SkippedSequenceBroadcast.Store(true)
+	}
 }
 
 // waitForSequence blocks up to maxWaitTime until the given sequence has been received.

@@ -96,6 +96,9 @@ func (db *DatabaseContext) StartChangeCache(t *testing.T, ctx context.Context) {
 	}
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
 	db.changeCache.lock.Unlock()
+
+	// start broadcast goroutine
+	db.mutationListener.BroadcastChanges(ctx)
 }
 
 // CallProcessEntry allows the cache benchmarking tool to call directly into processEntry, not to
@@ -777,8 +780,8 @@ func GetIndexPartitionCount(t testing.TB, bucket *base.GocbV2Bucket, dsName sgbu
 }
 
 // GetMutationListener retrieves mutation listener form database context, to be used only for testing purposes.
-func (db *DatabaseContext) GetMutationListener(t *testing.T) changeListener {
-	return db.mutationListener
+func (db *DatabaseContext) GetMutationListener(t *testing.T) *changeListener {
+	return &db.mutationListener
 }
 
 // InitChannel is a test-only function to initialize a channel in the channel cache.

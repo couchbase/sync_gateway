@@ -215,9 +215,9 @@ func binarySearchFunc(a *SkippedSequenceListEntry, seq uint64) int {
 }
 
 // _removeSeqRange will remove sequence between x and y from the skipped sequence slice
-func (s *SkippedSequenceSlice) _removeSeqRange(ctx context.Context, startSeq, endSeq uint64) error {
+func (s *SkippedSequenceSlice) _removeSeqRange(ctx context.Context, startSeq, endSeq uint64) (bool, error) {
 	if len(s.list) == 0 {
-		return fmt.Errorf("skipped sequence list is empty, unable to remove sequence range %d to %d", startSeq, endSeq)
+		return true, fmt.Errorf("skipped sequence list is empty, unable to remove sequence range %d to %d", startSeq, endSeq)
 	}
 
 	startIndex, found := s._findSequence(startSeq)
@@ -226,13 +226,13 @@ func (s *SkippedSequenceSlice) _removeSeqRange(ctx context.Context, startSeq, en
 	// if startSeq and endSeq are in different elements there is at least one sequence between these values not in the list
 	if !found {
 		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
-		return base.ErrSkippedSequencesMissing
+		return false, base.ErrSkippedSequencesMissing
 	}
 	// put this below a check for !found to avoid out of bound error
 	rangeElem := s.list[startIndex]
 	if endSeq > rangeElem.getLastSeq() {
 		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
-		return base.ErrSkippedSequencesMissing
+		return false, base.ErrSkippedSequencesMissing
 	}
 
 	// handle sequence range removal
@@ -240,44 +240,48 @@ func (s *SkippedSequenceSlice) _removeSeqRange(ctx context.Context, startSeq, en
 	numCurrSkippedSequences := (endSeq - startSeq) + 1
 	s.NumCurrentSkippedSequences -= int64(numCurrSkippedSequences)
 
+	isEmpty := s.NumCurrentSkippedSequences == 0
+
 	// if single sequence element
 	if rangeElem.getStartSeq() == startSeq && rangeElem.getLastSeq() == endSeq {
 		// simply remove the element
 		s.list = slices.Delete(s.list, startIndex, startIndex+1)
-		return nil
+		return isEmpty, nil
 	}
 	// check if one of x or y is equal to start or end seq
 	if rangeElem.getStartSeq() == startSeq {
 		rangeElem.setStartSeq(endSeq + 1)
-		return nil
+		return isEmpty, nil
 	}
 	if rangeElem.getLastSeq() == endSeq {
 		rangeElem.setLastSeq(startSeq - 1)
-		return nil
+		return isEmpty, nil
 	}
 	// assume we are removing from middle of the range
 	newElem := NewSkippedSequenceRangeEntryAt(endSeq+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
 	s._insert(startIndex+1, newElem)
 	rangeElem.setLastSeq(startSeq - 1)
-	return nil
+	return isEmpty, nil
 
 }
 
 // removeSeq will remove a given sequence from the slice if it exists
-func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
+func (s *SkippedSequenceSlice) removeSeq(x uint64) (bool, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	if len(s.list) == 0 {
-		return fmt.Errorf("skipped sequence list is empty, unable to remove sequence %d", x)
+		return true, fmt.Errorf("skipped sequence list is empty, unable to remove sequence %d", x)
 	}
 
 	index, found := s._findSequence(x)
 	if !found {
-		return fmt.Errorf("sequence %d not found in the skipped list", x)
+		return false, fmt.Errorf("sequence %d not found in the skipped list", x)
 	}
 	// if found we need to decrement the current num skipped sequences stat
 	s.NumCurrentSkippedSequences -= 1
+
+	listNowEmpty := s.NumCurrentSkippedSequences == 0
 
 	// take the element at the index and handle cases required to removal of a sequence
 	rangeElem := s.list[index]
@@ -286,18 +290,18 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	if numSequences == 1 {
 		// if not a range, we can just remove the single entry from the slice
 		s.list = slices.Delete(s.list, index, index+1)
-		return nil
+		return listNowEmpty, nil
 	}
 
 	// range entry handling
 	// if x == startSeq set startSeq+1, if x == lastSeq set lastSeq-1
 	if rangeElem.getStartSeq() == x {
 		rangeElem.setStartSeq(x + 1)
-		return nil
+		return listNowEmpty, nil
 	}
 	if rangeElem.getLastSeq() == x {
 		rangeElem.setLastSeq(x - 1)
-		return nil
+		return listNowEmpty, nil
 	}
 
 	if numSequences == 3 {
@@ -308,7 +312,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 		s._insert(index+1, newElem)
 		// make rangeElem a single entry
 		rangeElem.setLastSeq(rangeElem.getStartSeq())
-		return nil
+		return listNowEmpty, nil
 	}
 
 	// if we get here we can assume that startSeq < x < lastSeq
@@ -317,7 +321,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	s._insert(index+1, newElem)
 	rangeElem.setLastSeq(x - 1)
 
-	return nil
+	return listNowEmpty, nil
 }
 
 // _insert will insert element in middle of slice maintaining order of rest of slice
@@ -381,17 +385,17 @@ func (s *SkippedSequenceSlice) getStats() SkippedSequenceStats {
 
 // processUnusedSequenceRangeAtSkipped will batch remove unused sequence range form skipped sequences, if duplicate
 // sequences are present, we will iterate through skipped list removing the non-duplicate sequences
-func (s *SkippedSequenceSlice) processUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) {
+func (s *SkippedSequenceSlice) processUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) bool {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	// batch remove from skipped
-	err := s._removeSeqRange(ctx, fromSequence, toSequence)
+	isEmpty, err := s._removeSeqRange(ctx, fromSequence, toSequence)
 	if err != nil && err == base.ErrSkippedSequencesMissing {
 		base.DebugfCtx(ctx, base.KeyCache, err.Error())
 		// we have sequences (possibly duplicate sequences) in the unused range that don't exist in skipped list
 		// handle any potential duplicate sequences between the unused range and the skipped list
-		err = s._removeSubsetOfRangeFromSkipped(ctx, fromSequence, toSequence)
+		isEmpty, err = s._removeSubsetOfRangeFromSkipped(ctx, fromSequence, toSequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "error processing subset of unused sequences in skipped list: %v", err)
 		}
@@ -399,15 +403,16 @@ func (s *SkippedSequenceSlice) processUnusedSequenceRangeAtSkipped(ctx context.C
 		// if we get here then the skipped list must be empty
 		base.InfofCtx(ctx, base.KeyCache, "error attempting to remove unused sequence range form skipped: %v", err)
 	}
+	return isEmpty
 }
 
 // _removeSubsetOfRangeFromSkipped will be called if we get error removing the unused sequence range indicating we have duplicate sequence in the unused sequence range
 // in the unused sequence range. This function will iterate through each skipped list element from the minimum index that has overlap with unused range
 // and remove any sequences within the unused sequence range
-func (s *SkippedSequenceSlice) _removeSubsetOfRangeFromSkipped(ctx context.Context, startSeq, endSeq uint64) error {
+func (s *SkippedSequenceSlice) _removeSubsetOfRangeFromSkipped(ctx context.Context, startSeq, endSeq uint64) (bool, error) {
 	if len(s.list) == 0 {
 		base.DebugfCtx(ctx, base.KeyCache, "unused sequence range of #%d to %d is a duplicate sequence range", startSeq, endSeq)
-		return nil
+		return true, nil
 	}
 	var indexStart *int // the minimum index that has overlap from unused sequence range (thus index to start iterating from)
 
@@ -434,6 +439,8 @@ func (s *SkippedSequenceSlice) _removeSubsetOfRangeFromSkipped(ctx context.Conte
 		return 1
 	})
 
+	var isEmpty bool
+	var err error
 	skippedLen := len(s.list)
 	if indexStart != nil {
 		// We have found the lowest elem in skipped list with overlap with unused range
@@ -457,9 +464,9 @@ func (s *SkippedSequenceSlice) _removeSubsetOfRangeFromSkipped(ctx context.Conte
 			} else if skippedElem.getLastSeq() >= endSeq {
 				removeEndSequence = endSeq
 			}
-			err := s._removeSeqRange(ctx, removeStartSequence, removeEndSequence)
+			isEmpty, err = s._removeSeqRange(ctx, removeStartSequence, removeEndSequence)
 			if err != nil {
-				return err
+				return isEmpty, err
 			}
 			// if above operation removes an entire element, list length wil need updating and index
 			// needs to be reprocessed
@@ -477,5 +484,5 @@ func (s *SkippedSequenceSlice) _removeSubsetOfRangeFromSkipped(ctx context.Conte
 			}
 		}
 	}
-	return nil
+	return isEmpty, nil
 }
