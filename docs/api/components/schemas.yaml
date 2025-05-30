@@ -826,6 +826,9 @@ Retrieved-replication:
         - error
         - starting
         - reconnecting
+    cluster_uuid:
+      description: The cluster unique identifier.
+      type: string
   title: Replication
 Replication:
   description: Properties of a replication
@@ -2969,6 +2972,9 @@ Status:
           server_uuid:
             description: The server unique identifier.
             type: string
+          require_resync:
+            description: Indicates whether the database requires resync before it can be brought online.
+            type: boolean
           state:
             allOf: # use allOf to prevent DatabaseState from showing as the type in the display
               - $ref: '#/DatabaseState'
@@ -2979,6 +2985,9 @@ Status:
           cluster:
             type: object
             properties:
+              cluster_uuid:
+                description: The cluster unique identifier.
+                type: string
               replication:
                 description: Map of replication configs defined for the cluster.
                 type: object
@@ -3005,6 +3014,10 @@ Status:
 
         Blank if `api.hide_product_version=true` in the startup configuration.
       type: string
+    vendor:
+      description: Product name
+      type: string
+      example: Couchbase Sync Gateway
   title: Status
 NodeInfo:
   type: object
