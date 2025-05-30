@@ -104,7 +104,7 @@ deprecated-redact:
   required: false
   schema:
     type: boolean
-    default: 'true'
+    default: true
   description: No longer supported field.
 docid:
   name: docid
@@ -228,7 +228,7 @@ new_edits:
   required: false
   schema:
     type: boolean
-    default: 'true'
+    default: true
   description: 'Setting this to false indicates that the request body is an already-existing revision that should be directly inserted into the database, instead of a modification to apply to the current document. This mode is used for replication.  This option must be used in conjunction with the `_revisions` property in the request body.'
 offline:
   name: offline
@@ -293,7 +293,7 @@ replication-active-only:
   required: false
   schema:
     type: boolean
-    default: 'false'
+    default: false
   description: Only return replications that are actively running (`state=running`).
 replication-include-config:
   name: includeConfig
@@ -301,7 +301,7 @@ replication-include-config:
   required: false
   schema:
     type: boolean
-    default: 'false'
+    default: false
   description: Include the replication configuration with each replicator status in the response.
 replication-include-error:
   name: includeError
@@ -309,7 +309,7 @@ replication-include-error:
   required: false
   schema:
     type: boolean
-    default: 'true'
+    default: true
   description: Include replications that have stopped due to an error (`state=error`).
 replication-local-only:
   name: localOnly
@@ -317,7 +317,7 @@ replication-local-only:
   required: false
   schema:
     type: boolean
-    default: 'false'
+    default: false
   description: Only return replications that were started on the current Sync Gateway node.
 replicationid:
   name: replicationid

@@ -24,6 +24,7 @@ get:
             type: object
             properties:
               memstats:
+                type: object
                 description: A set of Go runtime memory statistics.
                 additionalProperties: true
   tags:
