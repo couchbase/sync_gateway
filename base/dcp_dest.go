@@ -55,6 +55,7 @@ type DCPDestOptions struct {
 	MetadataKeys        *MetadataKeys // Metadata keys to use for filtering DCP keys
 	Rollback            func()        // Rollback function to be called when a DCP stream request returns as error
 	DCPStats            *expvar.Map   // Database stats to store in expvars, if nil, no database stats will be created. These stats are used in /_expvar but not for prometheus metrics, this should be deprecated so the stats so show up in prometheus metrics.
+	CbgtManager         *cbgt.Manager // cbgt manager to use for DCP feed management
 }
 
 // NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The feed name will start with feedID have a unique string appended. Each import partition will have its own DCPDest object.

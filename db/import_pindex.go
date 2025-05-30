@@ -116,6 +116,7 @@ func (il *importListener) NewImportDest(janitorRollback func()) (cbgt.Dest, erro
 		MetadataStore:       il.metadataStore,
 		MetadataKeys:        il.metadataKeys,
 		Rollback:            janitorRollback,
+		CbgtManager:         il.cbgtManager,
 	})
 
 	if err != nil {

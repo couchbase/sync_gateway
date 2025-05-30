@@ -54,7 +54,7 @@ type CbgtContext struct {
 	Cfg               cbgt.Cfg                 // Cfg manages storage of the current pindex set and node assignment
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
-	eventHandlers     *sgMgrEventHandlers      // Event handler callbacks
+	eventHandlers     *SGMgrEventHandlers      // Event handler callbacks
 	ctx               context.Context          // Log context
 	dbName            string                   // Database name
 	sourceName        string                   // cbgt source name. Store on CbgtContext for access during teardown
@@ -72,7 +72,7 @@ type ShardedDCPOptions struct {
 	NumPartitions uint16
 	Cfg           cbgt.Cfg
 	Mgr           *cbgt.Manager
-	EventHandlers *sgMgrEventHandlers // Event manager for cbgt events
+	EventHandlers *SGMgrEventHandlers // Event manager for cbgt events
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -239,7 +239,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID str
 // NewCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func NewCBGTManager(ctx context.Context, bucket *GocbV2Bucket, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*cbgt.Manager, error) {
+func NewCBGTManager(ctx context.Context, bucket *GocbV2Bucket, cfgSG cbgt.Cfg, dbUUID string) (*cbgt.Manager, *SGMgrEventHandlers, error) {
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
 	// 		 the previous version of that node from the cfg, and assign pindexes to the new one.
@@ -271,7 +271,7 @@ func NewCBGTManager(ctx context.Context, bucket *GocbV2Bucket, cfgSG cbgt.Cfg, d
 	// from Helium (3.1.0) onwards, empty for older versions.
 	extras, err := JSONMarshal(&nodeExtras{Version: ProductVersion})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// bindHttp: Used for REST binding (not needed by Sync Gateway), but also as a unique identifier
@@ -286,7 +286,7 @@ func NewCBGTManager(ctx context.Context, bucket *GocbV2Bucket, cfgSG cbgt.Cfg, d
 	spec := bucket.GetSpec()
 	serverURL, err := spec.GetGoCBConnStringForDCP()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// dataDir: file system location for files persisted by cbgt.  Not required by SG, setting to empty
@@ -294,7 +294,7 @@ func NewCBGTManager(ctx context.Context, bucket *GocbV2Bucket, cfgSG cbgt.Cfg, d
 	dataDir := ""
 
 	eventHandlersCtx, eventHandlersCancel := context.WithCancel(ctx)
-	eventHandlers := &sgMgrEventHandlers{ctx: eventHandlersCtx, ctxCancel: eventHandlersCancel}
+	eventHandlers := &SGMgrEventHandlers{ctx: eventHandlersCtx, ctxCancel: eventHandlersCancel}
 
 	// Specify one feed per pindex
 	options := make(map[string]string)
@@ -335,10 +335,10 @@ func NewCBGTManager(ctx context.Context, bucket *GocbV2Bucket, cfgSG cbgt.Cfg, d
 		eventHandlers,
 		options)
 	eventHandlers.manager = mgr
-	return mgr, nil
+	return mgr, eventHandlers, nil
 }
 
-func newCbgtContext(ctx context.Context, mgr *cbgt.Manager, bucket *GocbV2Bucket, eventHandlers *sgMgrEventHandlers, dbName string) (*CbgtContext, error) {
+func newCbgtContext(ctx context.Context, mgr *cbgt.Manager, bucket *GocbV2Bucket, eventHandlers *SGMgrEventHandlers, dbName string) (*CbgtContext, error) {
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
@@ -684,28 +684,28 @@ func GetDefaultImportPartitions(serverless bool) uint16 {
 	}
 }
 
-type sgMgrEventHandlers struct {
+type SGMgrEventHandlers struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 	manager   *cbgt.Manager
 }
 
-func (meh *sgMgrEventHandlers) OnRefreshManagerOptions(options map[string]string) {
+func (meh *SGMgrEventHandlers) OnRefreshManagerOptions(options map[string]string) {
 	// No-op for SG
 }
 
-func (meh *sgMgrEventHandlers) OnRegisterPIndex(pindex *cbgt.PIndex) {
+func (meh *SGMgrEventHandlers) OnRegisterPIndex(pindex *cbgt.PIndex) {
 	// No-op for SG
 }
 
-func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
+func (meh *SGMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 	// No-op for SG
 }
 
 // OnFeedError is required to trigger reconnection to a feed on a closed connection (EOF).
 // NotifyMgrOnClose will trigger cbgt closing and then attempt to reconnect to the feed, if the manager hasn't
 // been stopped.
-func (meh *sgMgrEventHandlers) OnFeedError(_ string, r cbgt.Feed, feedErr error) {
+func (meh *SGMgrEventHandlers) OnFeedError(_ string, r cbgt.Feed, feedErr error) {
 
 	// cbgt always passes srcType = SOURCE_GOCBCORE, but we have a wrapped type associated with our indexes - use that instead
 	// for our logging
