@@ -61,22 +61,35 @@ type CbgtContext struct {
 	sourceUUID        string                   // cbgt source UUID.  Store on CbgtContext for access during teardown
 }
 
+type ShardedDCPOptions struct {
+	DBName        string
+	ConfigGroup   string
+	DBUUID        string
+	Heartbeater   Heartbeater
+	Bucket        *GocbV2Bucket
+	Scope         string
+	Collections   []string
+	NumPartitions uint16
+	Cfg           cbgt.Cfg
+	Mgr           *cbgt.Manager
+	EventHandlers *sgMgrEventHandlers // Event manager for cbgt events
+}
+
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
-// dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtContext, error) {
 	// Ensure we don't try to start collections-enabled feed if there are any pre-collection SG nodes in the cluster.
-	minVersion, err := getMinNodeVersion(cfg)
+	minVersion, err := getMinNodeVersion(opts.Cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
 	}
 	if minVersion.Less(firstVersionToSupportCollections) {
 		// DefaultScope is allowed by older versions of CBGT as long as no collections are specified.
-		if len(collections) > 0 {
+		if len(opts.Collections) > 0 {
 			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
 		}
 	}
 
-	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
+	cbgtContext, err := newCbgtContext(ctx, opts.Mgr, opts.Bucket, opts.EventHandlers, opts.DBName)
 	if err != nil {
 		return nil, err
 	}
@@ -85,19 +98,19 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 	ctx = CorrelationIDLogCtx(ctx, DCPImportFeedID)
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
+	err = cbgtContext.StartManager(ctx, opts.ConfigGroup, opts.Bucket, opts.Scope, opts.Collections, opts.NumPartitions)
 	if err != nil {
 		return nil, err
 	}
 
 	// Register heartbeat listener to trigger removal from cfg when
 	// other SG nodes stop sending heartbeats.
-	listener, err := registerHeartbeatListener(ctx, heartbeater, cbgtContext)
+	listener, err := registerHeartbeatListener(ctx, opts.Heartbeater, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
 
-	cbgtContext.heartbeater = heartbeater
+	cbgtContext.heartbeater = opts.Heartbeater
 	cbgtContext.heartbeatListener = listener
 
 	return cbgtContext, nil
@@ -223,10 +236,10 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID str
 	}
 }
 
-// createCBGTManager creates a new manager for a given bucket and bucketSpec
+// NewCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
+func NewCBGTManager(ctx context.Context, bucket *GocbV2Bucket, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*cbgt.Manager, error) {
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
 	// 		 the previous version of that node from the cfg, and assign pindexes to the new one.
@@ -270,6 +283,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   		https://github.com/couchbaselabs/cbgt/issues/25
 	bindHttp := uuid
 
+	spec := bucket.GetSpec()
 	serverURL, err := spec.GetGoCBConnStringForDCP()
 	if err != nil {
 		return nil, err
@@ -321,7 +335,10 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		eventHandlers,
 		options)
 	eventHandlers.manager = mgr
+	return mgr, nil
+}
 
+func newCbgtContext(ctx context.Context, mgr *cbgt.Manager, bucket *GocbV2Bucket, eventHandlers *sgMgrEventHandlers, dbName string) (*CbgtContext, error) {
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
@@ -329,7 +346,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 
 	cbgtContext := &CbgtContext{
 		Manager:       mgr,
-		Cfg:           cfgSG,
+		Cfg:           mgr.Cfg(),
 		eventHandlers: eventHandlers,
 		ctx:           ctx,
 		dbName:        dbName,
@@ -337,6 +354,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		sourceUUID:    bucketUUID,
 	}
 
+	spec := bucket.GetSpec()
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
 		username, password, _ := spec.Auth.GetCredentials()
 		addCbgtCredentials(dbName, bucket.GetName(), username, password, spec.Certpath, spec.Keypath)
@@ -358,7 +376,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGroup string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) (err error) {
+func (c *CbgtContext) StartManager(ctx context.Context, configGroup string, bucket *GocbV2Bucket, scope string, collections []string, numPartitions uint16) (err error) {
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
 	if err := c.Manager.Start(registerType); err != nil {
@@ -367,7 +385,7 @@ func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGro
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(ctx, c, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
+	err = createCBGTIndex(ctx, c, c.dbName, configGroup, bucket, bucket.GetSpec(), scope, collections, numPartitions)
 	if err != nil {
 		if strings.Contains(err.Error(), "an index with the same name already exists") {
 			InfofCtx(ctx, KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")

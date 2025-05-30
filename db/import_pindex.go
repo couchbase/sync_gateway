@@ -101,20 +101,25 @@ func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, indexPara
 
 // NewImportDest returns a cbgt.Dest targeting the importListener's ProcessFeedEvent
 func (il *importListener) NewImportDest(janitorRollback func()) (cbgt.Dest, error) {
-	callback := il.ProcessFeedEvent
+	bucket, err := base.AsGocbV2Bucket(il.bucket)
+	if err != nil {
+		return nil, base.RedactErrorf("Bucket %s in NewImportDest must be a gocb bucket, was %T", base.MD(il.bucket), il.bucket)
+	}
+	importDest, _, err := base.NewDCPDest(il.loggingCtx, base.DCPDestOptions{
+		Callback:            il.ProcessFeedEvent,
+		Bucket:              bucket,
+		PersistCheckpoints:  true,
+		DCPStats:            il.dbStats.ImportFeedMapStats.Map,
+		FeedID:              base.DCPImportFeedID,
+		ImportPartitionStat: il.importStats.ImportPartitions,
+		CheckpointPrefix:    il.checkpointPrefix,
+		MetadataStore:       il.metadataStore,
+		MetadataKeys:        il.metadataKeys,
+		Rollback:            janitorRollback,
+	})
 
-	maxVbNo, err := il.bucket.GetMaxVbno() // can safely assume that all collections on the same bucket will have the same vbNo
 	if err != nil {
 		return nil, err
 	}
-
-	importFeedStatsMap := il.dbStats.ImportFeedMapStats
-	importPartitionStat := il.importStats.ImportPartitions
-
-	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix, il.metadataKeys, janitorRollback)
-	if err != nil {
-		return nil, err
-	}
-
 	return importDest, nil
 }

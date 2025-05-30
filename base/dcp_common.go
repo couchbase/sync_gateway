@@ -13,7 +13,6 @@ package base
 import (
 	"bytes"
 	"context"
-	"errors"
 	"expvar"
 	"fmt"
 	"sync"
@@ -43,7 +42,7 @@ const DCPImportFeedID = "SGI"
 type DCPCommon struct {
 	dbStatsExpvars         *expvar.Map
 	m                      sync.Mutex
-	couchbaseStore         CouchbaseBucketStore
+	couchbaseStore         *GocbV2Bucket
 	metaStore              DataStore                      // For metadata persistence/retrieval
 	metaKeys               *MetadataKeys                  // Metadata key generator for filtering and checkpoints
 	maxVbNo                uint16                         // Number of vbuckets being used for this feed
@@ -61,36 +60,34 @@ type DCPCommon struct {
 }
 
 // NewDCPCommon creates a new DCPCommon which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It stores checkpoints in the metaStore collection prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID and DCPCommon will add unique string. Specific stats for DCP are stored in expvars rather than SgwStats. The janitorRollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr and is supplied.
-func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore,
-	maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string, metaKeys *MetadataKeys) (*DCPCommon, error) {
+func NewDCPCommon(ctx context.Context, opts DCPDestOptions) (*DCPCommon, error) {
 	newBackfillStatus := backfillStatus{
-		metaKeys: metaKeys,
+		metaKeys: opts.MetadataKeys,
 	}
 
-	couchbaseStore, ok := AsCouchbaseBucketStore(bucket)
-	if !ok {
-		return nil, errors.New("DCP not supported for non-Couchbase data source")
+	maxVbNo, err := opts.Bucket.GetMaxVbno()
+	if err != nil {
+		return nil, err
 	}
-
 	c := &DCPCommon{
-		dbStatsExpvars:         dbStats,
-		couchbaseStore:         couchbaseStore,
-		metaStore:              metaStore,
-		metaKeys:               metaKeys,
+		dbStatsExpvars:         opts.DCPStats,
+		couchbaseStore:         opts.Bucket,
+		metaStore:              opts.MetadataStore,
+		metaKeys:               opts.MetadataKeys,
 		maxVbNo:                maxVbNo,
-		persistCheckpoints:     persistCheckpoints,
+		persistCheckpoints:     opts.PersistCheckpoints,
 		seqs:                   make([]uint64, maxVbNo),
 		meta:                   make([][]byte, maxVbNo),
 		vbuuids:                make(map[uint16]uint64, maxVbNo),
 		updatesSinceCheckpoint: make([]uint64, maxVbNo),
-		callback:               callback,
+		callback:               opts.Callback,
 		lastCheckpointTime:     make([]time.Time, maxVbNo),
 		backfill:               &newBackfillStatus,
-		feedID:                 feedID,
-		checkpointPrefix:       checkpointPrefix,
+		feedID:                 opts.FeedID,
+		checkpointPrefix:       opts.CheckpointPrefix,
 	}
 
-	c.loggingCtx = CorrelationIDLogCtx(ctx, feedID)
+	c.loggingCtx = CorrelationIDLogCtx(ctx, opts.FeedID)
 
 	return c, nil
 }
