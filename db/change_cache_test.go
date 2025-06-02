@@ -3004,6 +3004,9 @@ func TestAddPendingLogs(t *testing.T) {
 }
 
 func TestChangeInBroadcastForSkipped(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Skipped test as it requires xattrs")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
 
 	opts := DefaultCacheOptions()

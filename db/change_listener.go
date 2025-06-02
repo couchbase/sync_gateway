@@ -229,11 +229,12 @@ func (listener *changeListener) BroadcastChanges(ctx context.Context) {
 	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
 	// for a value it already has
 	defaultTickerValue := true
+	terminator := listener.terminator // take copy of this to avoid race when restarting change listener in tests
 	go func() {
 		var currCount uint64
 		for {
 			select {
-			case <-listener.terminator:
+			case <-terminator:
 				ticker.Stop()
 				return
 			case <-ticker.C:
