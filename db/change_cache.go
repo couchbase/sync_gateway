@@ -36,6 +36,18 @@ const (
 	unusedSeqCollectionID         = 0                // Collection ID used by ChangeWaiter to mark unused sequences
 )
 
+// DocumentType indicates the type of document being processed in the change cache (e.g. User doc etc).
+type DocumentType uint8
+
+const (
+	DocTypeDocument       DocumentType = iota // Customer data document type
+	DocTypeUser                               // User document
+	DocTypeRole                               // Role document
+	DocTypeUnusedSeq                          // Unused sequence notification
+	DocTypeUnusedSeqRange                     // Unused sequence range notification
+	DocTypeSGConfig                           // Sync Gateway config document
+)
+
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
 var EnableStarChannelLog = true
@@ -291,17 +303,6 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", compactedSequences, base.MD(c.db.Name))
 	return nil
 }
-
-type DocumentType uint8
-
-const (
-	DocTypeDocument       DocumentType = iota // Unknown document type
-	DocTypeUser                               // User document
-	DocTypeRole                               // Role document
-	DocTypeUnusedSeq                          // Unused sequence notification
-	DocTypeUnusedSeqRange                     // Unused sequence range notification
-	DocTypeSGConfig                           // Sync Gateway config document
-)
 
 // ////// ADDING CHANGES:
 
