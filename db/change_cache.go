@@ -292,12 +292,23 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	return nil
 }
 
+type DocumentType uint8
+
+const (
+	DocTypeDocument       DocumentType = iota // Unknown document type
+	DocTypeUser                               // User document
+	DocTypeRole                               // Role document
+	DocTypeUnusedSeq                          // Unused sequence notification
+	DocTypeUnusedSeqRange                     // Unused sequence range notification
+	DocTypeSGConfig                           // Sync Gateway config document
+)
+
 // ////// ADDING CHANGES:
 
 // Note that DocChanged may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
-func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
+func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType) {
 	ctx := c.logCtx
 	docID := string(event.Key)
 	docJSON := event.Value
@@ -306,25 +317,25 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc for this database?
-	if strings.HasPrefix(docID, c.metaKeys.UserKeyPrefix()) {
+	if docType == DocTypeUser {
 		c.processPrincipalDoc(ctx, docID, docJSON, true, timeReceived)
 		return
-	} else if strings.HasPrefix(docID, c.metaKeys.RoleKeyPrefix()) {
+	} else if docType == DocTypeRole {
 		c.processPrincipalDoc(ctx, docID, docJSON, false, timeReceived)
 		return
 	}
 
 	// Is this an unused sequence notification?
-	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqPrefix()) {
+	if docType == DocTypeUnusedSeq {
 		c.processUnusedSequence(ctx, docID, timeReceived)
 		return
 	}
-	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqRangePrefix()) {
+	if docType == DocTypeUnusedSeqRange {
 		c.processUnusedSequenceRange(ctx, docID)
 		return
 	}
 
-	if strings.HasPrefix(docID, c.sgCfgPrefix) {
+	if docType == DocTypeSGConfig {
 		if c.cfgEventCallback != nil {
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}

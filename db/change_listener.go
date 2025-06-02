@@ -46,7 +46,7 @@ type changeListener struct {
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
 var unusedSeqChannelID = channels.NewID(unusedSeqKey, unusedSeqCollectionID)
 
-type DocChangedFunc func(event sgbucket.FeedEvent)
+type DocChangedFunc func(event sgbucket.FeedEvent, docType DocumentType)
 
 func (listener *changeListener) Init(name string, groupID string, metaKeys *base.MetadataKeys) {
 	listener.bucketName = name
@@ -58,9 +58,9 @@ func (listener *changeListener) Init(name string, groupID string, metaKeys *base
 	listener.metaKeys = metaKeys
 }
 
-func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent) {
+func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent, docType DocumentType) {
 	// TODO: When principal grants are implemented (CBG-2333), perform collection filtering here
-	listener.OnChangeCallback(event)
+	listener.OnChangeCallback(event, docType)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -128,17 +128,24 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
 		if !strings.HasPrefix(key, base.SyncDocPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
-			listener.OnDocChanged(event)
-
-		} else if strings.HasPrefix(key, listener.metaKeys.UserKeyPrefix()) ||
-			strings.HasPrefix(key, listener.metaKeys.RoleKeyPrefix()) { // SG users and roles
+			listener.OnDocChanged(event, DocTypeDocument)
+		} else if strings.HasPrefix(key, listener.metaKeys.UserKeyPrefix()) {
 			if event.Opcode == sgbucket.FeedOpMutation {
-				listener.OnDocChanged(event)
+				listener.OnDocChanged(event, DocTypeUser)
 			}
 			listener.notifyKey(listener.ctx, key)
-		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) || strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) { // SG unused sequence marker docs
+		} else if strings.HasPrefix(key, listener.metaKeys.RoleKeyPrefix()) { // SG users and roles
 			if event.Opcode == sgbucket.FeedOpMutation {
-				listener.OnDocChanged(event)
+				listener.OnDocChanged(event, DocTypeRole)
+			}
+			listener.notifyKey(listener.ctx, key)
+		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) { // SG unused sequence marker docs
+			if event.Opcode == sgbucket.FeedOpMutation {
+				listener.OnDocChanged(event, DocTypeUnusedSeq)
+			}
+		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) {
+			if event.Opcode == sgbucket.FeedOpMutation {
+				listener.OnDocChanged(event, DocTypeUnusedSeqRange)
 			}
 		} else if strings.HasPrefix(key, base.DCPCheckpointRootPrefix) { // SG DCP checkpoint docs (including other config group IDs)
 			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
@@ -147,7 +154,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			// defensively.
 			requiresCheckpointPersistence = false
 		} else if strings.HasPrefix(key, listener.sgCfgPrefix) {
-			listener.OnDocChanged(event)
+			listener.OnDocChanged(event, DocTypeSGConfig)
 		}
 	}
 	return requiresCheckpointPersistence
