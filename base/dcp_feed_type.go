@@ -140,18 +140,9 @@ func init() {
 }
 
 type SGFeedSourceParams struct {
-	// Used to specify whether the applications are interested
-	// in receiving the xattrs information in a dcp stream.
-	IncludeXAttrs bool `json:"includeXAttrs,omitempty"`
-
+	cbgt.DCPFeedParams
 	// Used to pass the SG database name to SGFeed* shims
 	DbName string `json:"sg_dbname,omitempty"`
-
-	// Scope within the bucket to stream data from.
-	Scope string `json:"scope,omitempty"`
-
-	// Collections within the scope that the feed would cover.
-	Collections []string `json:"collections,omitempty"`
 }
 
 type SGFeedIndexParams struct {
@@ -168,6 +159,7 @@ func cbgtFeedParams(ctx context.Context, spec BucketSpec, scope string, collecti
 	if spec.UseXattrs {
 		feedParams.IncludeXAttrs = true
 	}
+	feedParams.AutomaticReconnectOnRollback = true // SG always reconnects on rollback
 
 	if len(collections) > 0 {
 		feedParams.Scope = scope
