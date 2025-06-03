@@ -2954,6 +2954,23 @@ DeprecatedLogKeyMap:
   additionalProperties:
     description: The log key and whether it is enabled or not.
     type: boolean
+Vendor:
+  description: Product vendor
+  type: object
+  properties:
+    name:
+      description: Product name
+      type: string
+      example: Couchbase Sync Gateway
+    version:
+      description: |-
+        API version.
+        Omitted if `api.hide_product_version=true`
+      type: string
+      example: 3.1
+  required:
+    - name
+  title: Vendor
 Status:
   type: object
   properties:
@@ -3015,9 +3032,8 @@ Status:
         Blank if `api.hide_product_version=true` in the startup configuration.
       type: string
     vendor:
-      description: Product name
-      type: string
-      example: Couchbase Sync Gateway
+      allOf:
+        - $ref: '#/Vendor'
   title: Status
 NodeInfo:
   type: object
@@ -3031,21 +3047,8 @@ NodeInfo:
       type: string
       example: Welcome
     vendor:
-      description: Product vendor
-      type: object
-      properties:
-        name:
-          description: Product name
-          type: string
-          example: Couchbase Sync Gateway
-        version:
-          description: |-
-            API version.
-            Omitted if `api.hide_product_version=true`
-          type: string
-          example: 3.1
-      required:
-        - name
+      allOf:
+        - $ref: '#/Vendor'
     version:
       description: |-
         Product version, including the build number and edition (i.e. `EE` or `CE`)
