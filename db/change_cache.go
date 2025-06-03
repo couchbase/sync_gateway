@@ -40,12 +40,13 @@ const (
 type DocumentType uint8
 
 const (
-	DocTypeDocument       DocumentType = iota // Customer data document type
+	DocTypeUnknown        DocumentType = iota // Unknown document type
+	DocTypeDocument                           // Customer data document type
 	DocTypeUser                               // User document
 	DocTypeRole                               // Role document
 	DocTypeUnusedSeq                          // Unused sequence notification
 	DocTypeUnusedSeqRange                     // Unused sequence range notification
-	DocTypeSGConfig                           // Sync Gateway config document
+	DocTypeSGCfg                              // Cfg docs for import feed management
 )
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
@@ -318,25 +319,22 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc for this database?
-	if docType == DocTypeUser {
+	switch docType {
+	case DocTypeUnknown:
+		return // no-op unknown doc type
+	case DocTypeUser:
 		c.processPrincipalDoc(ctx, docID, docJSON, true, timeReceived)
 		return
-	} else if docType == DocTypeRole {
+	case DocTypeRole:
 		c.processPrincipalDoc(ctx, docID, docJSON, false, timeReceived)
 		return
-	}
-
-	// Is this an unused sequence notification?
-	if docType == DocTypeUnusedSeq {
+	case DocTypeUnusedSeq:
 		c.processUnusedSequence(ctx, docID, timeReceived)
 		return
-	}
-	if docType == DocTypeUnusedSeqRange {
+	case DocTypeUnusedSeqRange:
 		c.processUnusedSequenceRange(ctx, docID)
 		return
-	}
-
-	if docType == DocTypeSGConfig {
+	case DocTypeSGCfg:
 		if c.cfgEventCallback != nil {
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}
