@@ -3038,7 +3038,7 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		db.UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(1), db.DbStats.CacheStats.SkippedSeqLen.Value())
-		assert.True(t, db.mutationListener.SkippedSequenceBroadcast.Load())
+		assert.True(t, db.mutationListener.BroadcastSlowMode.Load())
 	}, time.Second*10, time.Millisecond*100)
 
 }

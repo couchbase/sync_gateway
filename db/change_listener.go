@@ -33,21 +33,21 @@ const (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	ctx                      context.Context
-	bucket                   base.Bucket
-	bucketName               string                 // Used for logging
-	tapFeed                  base.TapFeed           // Observes changes to bucket
-	tapNotifier              *sync.Cond             // Posts notifications when documents are updated
-	FeedArgs                 sgbucket.FeedArguments // The Tap Args (backfill, etc)
-	counter                  uint64                 // Event counter; increments on every doc update
-	_terminateCheckCounter   uint64                 // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts                map[string]uint64      // Latest count at which each doc key was updated
-	OnChangeCallback         DocChangedFunc
-	terminator               chan bool          // Signal to cause DCP feed to exit
-	sgCfgPrefix              string             // SG config key prefix
-	started                  base.AtomicBool    // whether the feed has been started
-	SkippedSequenceBroadcast atomic.Bool        // bool to indicate if a skipped sequence ticker value should be used to notify changes feeds of changes
-	metaKeys                 *base.MetadataKeys // Metadata key formatter
+	ctx                    context.Context
+	bucket                 base.Bucket
+	bucketName             string                 // Used for logging
+	tapFeed                base.TapFeed           // Observes changes to bucket
+	tapNotifier            *sync.Cond             // Posts notifications when documents are updated
+	FeedArgs               sgbucket.FeedArguments // The Tap Args (backfill, etc)
+	counter                uint64                 // Event counter; increments on every doc update
+	_terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts              map[string]uint64      // Latest count at which each doc key was updated
+	OnChangeCallback       DocChangedFunc
+	terminator             chan bool          // Signal to cause DCP feed to exit
+	sgCfgPrefix            string             // SG config key prefix
+	started                base.AtomicBool    // whether the feed has been started
+	BroadcastSlowMode      atomic.Bool        // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
+	metaKeys               *base.MetadataKeys // Metadata key formatter
 }
 
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
@@ -219,8 +219,8 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 	for key := range keys {
 		listener.keyCounts[key.String()] = listener.counter
 	}
-	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
-		base.MD(listener.bucketName), base.UD(keys), listener.counter)
+	base.DebugfCtx(ctx, base.KeyChanges, "Listener keys %q for %s have changed, count=%d",
+		base.UD(keys), base.MD(listener.bucketName), listener.counter)
 	listener.tapNotifier.L.Unlock()
 }
 
@@ -229,8 +229,7 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
 	// for a value it already has
 	broadcastSlowMode := false
-	terminator := listener.terminator
-	go func() {
+	go func(terminator chan bool) {
 		var currCount uint64
 		for {
 			select {
@@ -241,13 +240,14 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 				// if the counter has changed, notify waiting clients
 				listener.tapNotifier.L.Lock()
 				if listener.counter > currCount {
+					base.DebugfCtx(ctx, base.KeyChanges, "Notifying changes for %s count=%d", base.MD(listener.bucketName), listener.counter)
 					listener.tapNotifier.Broadcast()
 					currCount = listener.counter
 				}
 				listener.tapNotifier.L.Unlock()
 
 				// check if we need to reset ticker value based on skipped sequence presence
-				newBroadcastSlowMode := listener.SkippedSequenceBroadcast.Load()
+				newBroadcastSlowMode := listener.BroadcastSlowMode.Load()
 				if broadcastSlowMode != newBroadcastSlowMode {
 					// broadcast changes interval has changed, reset ticker
 					duration := tickerValForBroadcastSpeed(newBroadcastSlowMode)
@@ -257,7 +257,7 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 				}
 			}
 		}
-	}()
+	}(listener.terminator)
 }
 
 // tickerValForBroadcastSpeed will return the duration for the ticker to be reset to based on input boolean to indicate

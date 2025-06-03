@@ -73,7 +73,7 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			rt.GetDatabase().UpdateCalculatedStats(ctx)
 			assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
-			assert.True(c, listener.SkippedSequenceBroadcast.Load())
+			assert.True(c, listener.BroadcastSlowMode.Load())
 		}, time.Second*10, time.Millisecond*100)
 
 		// assert new change added still replicates to client
@@ -88,7 +88,7 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			rt.GetDatabase().UpdateCalculatedStats(ctx)
 			assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
-			assert.False(c, listener.SkippedSequenceBroadcast.Load())
+			assert.False(c, listener.BroadcastSlowMode.Load())
 		}, time.Second*10, time.Millisecond*100)
 	})
 }
