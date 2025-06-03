@@ -358,7 +358,7 @@ function sync(doc, oldDoc){
 	assert.Equal(t, int64(1), status.DocsProcessed)
 
 	// ensure doc body remains unchanged after resync
-	collection, ctx = rt.GetSingleTestDatabaseCollectionWithUser()
+	collection, _ = rt.GetSingleTestDatabaseCollectionWithUser()
 	ds = collection.GetCollectionDatastore()
 	bodyGet, _, err := ds.GetRaw(docID)
 	require.NoError(t, err)
