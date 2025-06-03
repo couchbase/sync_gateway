@@ -315,3 +315,52 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 	_, ok = roles["roleDEF"]
 	require.True(t, ok, "user should have role roleDEF")
 }
+
+func TestResyncDoesNotWriteDocBody(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+	docID := t.Name()
+
+	cfg := rt.NewDbConfig()
+	cfg.AutoImport = base.Ptr(false)
+	rest.RequireStatus(t, rt.CreateDatabase("db", cfg), http.StatusCreated)
+
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	ds := collection.GetCollectionDatastore()
+
+	specBody := []byte(`{"test":"<>"}`) // use a special character that is currently escaped to ensure it is not modified by the import process
+	_, err := ds.WriteCas(docID, 0, 0, specBody, 0)
+	require.NoError(t, err)
+
+	_, err = collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+
+	syncFn := `
+function sync(doc, oldDoc){
+	channel("resync_channel");
+}`
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", syncFn)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	rt.TakeDbOffline()
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	status := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	assert.Equal(t, int64(1), status.DocsProcessed)
+
+	// ensure doc body remains unchanged after resync
+	collection, ctx = rt.GetSingleTestDatabaseCollectionWithUser()
+	ds = collection.GetCollectionDatastore()
+	bodyGet, _, err := ds.GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, string(bodyGet), string(specBody))
+}

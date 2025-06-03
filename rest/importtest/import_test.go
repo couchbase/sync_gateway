@@ -2467,3 +2467,31 @@ func TestImportUpdateExpiry(t *testing.T) {
 		})
 	}
 }
+
+func TestDoNotWriteBodyBackOnImport(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCRUD, base.KeyImport)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		AutoImport: base.Ptr(true),
+	})
+	defer rt.Close()
+
+	docID := t.Name()
+
+	collection, _ := rt.GetSingleTestDatabaseCollectionWithUser()
+	ds := collection.GetCollectionDatastore()
+
+	specBody := []byte(`{"test":"<>"}`) // use a special character that is currently escaped to ensure it is not modified by the import process
+	_, err := ds.WriteCas(docID, 0, 0, specBody, 0)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
+
+	// ensure doc body remains unchanged after import
+	bodyGet, _, err := ds.GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, string(bodyGet), string(specBody))
+}
