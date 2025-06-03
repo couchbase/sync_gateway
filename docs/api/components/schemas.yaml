@@ -1827,7 +1827,7 @@ Database:
       type: boolean
       default: false
       description: |-
-        When true, ensures all valid documents written prior to the request being issued are included in the response. This is only applicable for non-continuous feeds. Setting this value at a database level is required for Couchbase Lite replications.
+        Sets the default value of `request_plus` for one-shot/non-continuous changes feeds, which when true, ensures all valid documents written prior to the request being issued are included in the response. Setting this option at the database level is required to ensure Couchbase Lite utilizes this changes feed mode.
 
         This also sets the default value of query param `request_plus` for [GET /{keyspace}/_changes](#operation/get_keyspace-_changes) or `request_plus` for [POST /{keyspace}/_changes](#operation/post_keyspace-_changes).
     cors:
