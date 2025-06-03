@@ -38,6 +38,8 @@ func initExternalLoggers() {
 
 	logging.SetLogger(CBGoUtilsLogger{})
 	clog.SetLoggerCallback(ClogCallback)
+	// Set the clog level to DEBUG and do filtering for debug inside ClogCallback functions
+	clog.SetLevel(clog.LevelDebug)
 
 	// Redirect Walrus logging to SG logs, and set an appropriate level:
 	rosmar.LoggingCallback = rosmarLogger

@@ -2520,7 +2520,7 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 	assert.Greater(t, newXattrBytes, preImportDocXattrBytes)
 }
 
-// TestImportRollbackAll
+// TestImportRollbackAllPartitions
 // - start database (cbgt) with importPartitions
 // - create one document per vBucket
 // - wait for import of all documents
@@ -2534,7 +2534,7 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 // - mutate (rev 2) all documents
 // - wait to see rev 2
 // - assert number of partitions, as measured by number of cbgt.Dest instances, is correct
-func TestImportRollbackAll(t *testing.T) {
+func TestImportRollbackAllPartitions(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("This test only works against EE")
 	}

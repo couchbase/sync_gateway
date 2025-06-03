@@ -152,14 +152,14 @@ type SGFeedIndexParams struct {
 
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
 // Used to pass basic auth credentials and xattr flag to cbgt.
-func cbgtFeedParams(ctx context.Context, spec BucketSpec, scope string, collections []string, dbName string) (string, error) {
-	feedParams := &SGFeedSourceParams{}
-	feedParams.DbName = dbName
-
-	if spec.UseXattrs {
-		feedParams.IncludeXAttrs = true
+func cbgtFeedParams(ctx context.Context, scope string, collections []string, dbName string) (string, error) {
+	feedParams := &SGFeedSourceParams{
+		DbName: dbName,
+		DCPFeedParams: cbgt.DCPFeedParams{
+			AutoReconnectAfterRollback: true,
+			IncludeXAttrs:              true,
+		},
 	}
-	feedParams.AutomaticReconnectOnRollback = true // SG always reconnects on rollback
 
 	if len(collections) > 0 {
 		feedParams.Scope = scope
