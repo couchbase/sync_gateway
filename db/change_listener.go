@@ -157,7 +157,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	}
 
 	// Cfg callback supports both mutation and deletion events
-	if !bytes.HasPrefix(event.Key, []byte(listener.sgCfgPrefix)) {
+	if bytes.HasPrefix(event.Key, []byte(listener.sgCfgPrefix)) {
 		listener.OnDocChanged(event, DocTypeSGCfg)
 		return true
 	}
