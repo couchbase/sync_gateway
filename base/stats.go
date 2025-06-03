@@ -868,6 +868,8 @@ type SharedBucketImportStats struct {
 	ImportHighSeq *SgwIntStat `json:"import_high_seq"`
 	// The total number of import partitions.
 	ImportPartitions *SgwIntStat `json:"import_partitions"`
+	// The total number of documents processed by the import feed.
+	ImportFeedProcessedCount *SgwIntStat `json:"import_feed_processed_count"`
 }
 
 type SgwStatWrapper interface {
@@ -2303,7 +2305,10 @@ func (d *DbStats) InitSharedBucketImportStats() error {
 		if err != nil {
 			return err
 		}
-
+		resUtil.ImportFeedProcessedCount, err = NewIntStat(SubsystemSharedBucketImport, "import_processed_count", StatUnitNoUnits, ImportFeedProcessedCountDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+		if err != nil {
+			return err
+		}
 		d.SharedBucketImportStats = resUtil
 	}
 	return nil
@@ -2316,6 +2321,7 @@ func (d *DbStats) unregisterSharedBucketImportStats() {
 	prometheus.Unregister(d.SharedBucketImportStats.ImportProcessingTime)
 	prometheus.Unregister(d.SharedBucketImportStats.ImportHighSeq)
 	prometheus.Unregister(d.SharedBucketImportStats.ImportPartitions)
+	prometheus.Unregister(d.SharedBucketImportStats.ImportFeedProcessedCount)
 }
 
 func (d *DbStats) SharedBucketImport() *SharedBucketImportStats {

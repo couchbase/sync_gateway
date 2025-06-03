@@ -381,6 +381,8 @@ const (
 	ImportPartitionsDesc = "The total number of import partitions."
 
 	ImportProcessingTimeDesc = "The total time taken to process a document import."
+
+	ImportFeedProcessedCountDesc = "The total number of documents processed by import feed."
 )
 
 // DB Replicators stats descriptions (ISGR Specific)

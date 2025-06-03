@@ -164,6 +164,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 	}
 
 	il.ImportFeedEvent(ctx, &collection, event)
+	il.importStats.ImportFeedProcessedCount.Add(1)
 	return true
 }
 
