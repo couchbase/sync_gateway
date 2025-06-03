@@ -1823,6 +1823,13 @@ Database:
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean
       default: false
+    changes_request_plus:
+      type: boolean
+      default: false
+      description: |-
+        Sets the default value of `request_plus` for one-shot/non-continuous changes feeds, which when true, ensures all valid documents written prior to the request being issued are included in the response. Setting this option at the database level is required to ensure Couchbase Lite utilizes this changes feed mode.
+
+        This also sets the default value of query param `request_plus` for [GET /{keyspace}/_changes](#operation/get_keyspace-_changes) or `request_plus` for [POST /{keyspace}/_changes](#operation/post_keyspace-_changes).
     cors:
       description: CORS configuration for this database; if present, overrides server's config.
       type: object
