@@ -449,7 +449,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		for _, seq := range syncData.RecentSequences {
 			// seq < currentSequence means the sequence is not the latest allocated to this document
 			// seq >= nextSequence means this sequence is a pending sequence to be expected in the cache
-			// the two conditions above together means that the cache expect ue to run processEntry on this sequence as its pending
+			// the two conditions above together means that the cache expects us to run processEntry on this sequence as its pending
 			// If seq < current sequence allocated to the doc and seq is in skipped list this means that this sequence
 			// never arrived over the caching feed due to deduplication and was pushed to a skipped sequence list
 			isSkipped := (seq < currentSequence && seq < nextSequence) && c.WasSkipped(seq)
@@ -710,8 +710,8 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	// We can cancel processing early in these scenarios.
 	// Check if this is a duplicate of an already processed sequence
 	if sequence < c.nextSequence && !change.Skipped {
-		// check for presence in skippedSeqs, it's possible that change.skipped can be false but subsequently change
-		// is pushed to skipped before hitting this point
+		// check for presence in skippedSeqs, it's possible that change.skipped can be marked false in recent sequence handling
+		// but this change is subsequently pushed to skipped before acquiring cache mutex in this function
 		if !c.WasSkipped(sequence) {
 			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 			return nil
