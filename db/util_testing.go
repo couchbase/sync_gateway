@@ -98,7 +98,7 @@ func (db *DatabaseContext) StartChangeCache(t *testing.T, ctx context.Context) {
 	db.changeCache.lock.Unlock()
 
 	// start broadcast goroutine
-	db.mutationListener.BroadcastChanges(ctx)
+	db.mutationListener.StartNotifierBroadcaster(ctx)
 }
 
 // CallProcessEntry allows the cache benchmarking tool to call directly into processEntry, not to

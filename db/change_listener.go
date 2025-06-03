@@ -111,7 +111,7 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		listener.FeedArgs.Scopes = scopeArgs
 
 	}
-	listener.BroadcastChanges(ctx) // start broadcast changes goroutine
+	listener.StartNotifierBroadcaster(ctx) // start broadcast changes goroutine
 
 	return listener.StartMutationFeed(ctx, bucket, dbStats)
 }
@@ -224,12 +224,12 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 	listener.tapNotifier.L.Unlock()
 }
 
-func (listener *changeListener) BroadcastChanges(ctx context.Context) {
+func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 	ticker := time.NewTicker(DefaultBroadcastChangesTime)
 	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
 	// for a value it already has
-	defaultTickerValue := true
-	terminator := listener.terminator // take copy of this to avoid race when restarting change listener in tests
+	broadcastSlowMode := false
+	terminator := listener.terminator
 	go func() {
 		var currCount uint64
 		for {
@@ -247,21 +247,28 @@ func (listener *changeListener) BroadcastChanges(ctx context.Context) {
 				listener.tapNotifier.L.Unlock()
 
 				// check if we need to reset ticker value based on skipped sequence presence
-				shouldUseSkippedValue := listener.SkippedSequenceBroadcast.Load()
-				if shouldUseSkippedValue && defaultTickerValue {
-					// change the ticker from default value to use skipped sequence value
-					base.DebugfCtx(ctx, base.KeyChanges, "Changing broadcast changes interval to the skipped sequence value for %q", base.MD(listener.bucketName))
-					ticker.Reset(SkippedSequenceBroadcastChangesTime)
-					defaultTickerValue = false // update local bool to indicate ticker value is no longer using the default value
-				} else if !shouldUseSkippedValue && !defaultTickerValue {
-					// change the ticker from skipped sequence value to default value
-					base.DebugfCtx(ctx, base.KeyChanges, "Changing broadcast changes interval to the default value for %q", base.MD(listener.bucketName))
-					ticker.Reset(DefaultBroadcastChangesTime)
-					defaultTickerValue = true // update local bool to indicate ticker value is using the default value
+				newBroadcastSlowMode := listener.SkippedSequenceBroadcast.Load()
+				if broadcastSlowMode != newBroadcastSlowMode {
+					// broadcast changes interval has changed, reset ticker
+					duration := tickerValForBroadcastSpeed(newBroadcastSlowMode)
+					base.DebugfCtx(ctx, base.KeyChanges, "Updating broadcast changes interval for %q to %v", base.MD(listener.bucketName), duration)
+					broadcastSlowMode = newBroadcastSlowMode
+					ticker.Reset(duration)
 				}
 			}
 		}
 	}()
+}
+
+// tickerValForBroadcastSpeed will return the duration for the ticker to be reset to based on input boolean to indicate
+// if skipped sequences are present or not
+func tickerValForBroadcastSpeed(skippedSequencePresent bool) time.Duration {
+	// if the skipped sequence broadcast is enabled, return the slow ticker value
+	if skippedSequencePresent {
+		return SkippedSequenceBroadcastChangesTime
+	}
+	// otherwise return the default ticker value
+	return DefaultBroadcastChangesTime
 }
 
 // Changes the counter, notifying waiting clients. Only use for a key update.

@@ -589,10 +589,10 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	var isEmpty bool
+	var numSkipped int64
 	if toSequence < c.nextSequence {
 		// batch remove from skipped
-		isEmpty = c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
+		numSkipped = c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
 	} else if fromSequence >= c.nextSequence {
 		// whole range to pending
 		c._pushRangeToPending(fromSequence, toSequence, timeReceived)
@@ -609,10 +609,8 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		// in pending.
 		base.WarnfCtx(ctx, "unused sequence range of #%d to %d contains duplicate sequences, will be ignored", fromSequence, toSequence)
 	}
-	if isEmpty {
-		if c.db.mutationListener.SkippedSequenceBroadcast.Load() {
-			c.db.mutationListener.SkippedSequenceBroadcast.Store(false)
-		}
+	if numSkipped == 0 {
+		c.db.mutationListener.SkippedSequenceBroadcast.CompareAndSwap(true, false)
 	}
 	return allChangedChannels
 }
@@ -947,11 +945,9 @@ func (h *LogPriorityQueue) Pop() interface{} {
 // ////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	isEmpty, err := c.skippedSeqs.removeSeq(x)
-	if isEmpty {
-		if c.db.mutationListener.SkippedSequenceBroadcast.Load() {
-			c.db.mutationListener.SkippedSequenceBroadcast.Store(false)
-		}
+	numSkipped, err := c.skippedSeqs.removeSeq(x)
+	if numSkipped == 0 {
+		c.db.mutationListener.SkippedSequenceBroadcast.CompareAndSwap(true, false)
 	}
 	return err
 }
@@ -966,9 +962,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 		return
 	}
 	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
-	if !c.db.mutationListener.SkippedSequenceBroadcast.Load() {
-		c.db.mutationListener.SkippedSequenceBroadcast.Store(true)
-	}
+	c.db.mutationListener.SkippedSequenceBroadcast.CompareAndSwap(false, true)
 }
 
 // waitForSequence blocks up to maxWaitTime until the given sequence has been received.
