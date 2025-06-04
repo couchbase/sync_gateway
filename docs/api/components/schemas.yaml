@@ -1223,12 +1223,10 @@ Database:
       type: string
       default: 'function(doc){channel(doc.channels);}'
     users:
-      type: object
       additionalProperties:
         x-additionalPropertiesName: username
         $ref: '#/User'
     roles:
-      type: object
       additionalProperties:
         x-additionalPropertiesName: rolename
         $ref: '#/Role'
@@ -1965,7 +1963,6 @@ Disabled-users-and-roles:
 Database-audit:
   title: Simple
   description: A map of audit events and whether they are enabled or not.
-  type: object
   properties:
     enabled:
       type: boolean
@@ -2010,7 +2007,6 @@ Database-audit:
             description: The name of the role for which audit logging is disabled.
             type: string
 Database-audit-verbose:
-  type: object
   title: Verbose
   description: A map of detailed audit events.
   properties:
@@ -2097,7 +2093,6 @@ Event-config:
       description: The options for the event.
       type: object
       additionalProperties:
-        type: object
         description: The option key and value.
   title: Event-config
 Resync-status:
