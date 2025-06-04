@@ -78,7 +78,7 @@ pipeline {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
-                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./auth > verbose_ee.out.raw || true"
+                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -count=1 -v ./auth > verbose_ee.out.raw || true"
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
@@ -135,10 +135,10 @@ pipeline {
     post {
         always {
             // Publish the cobertura formatted test coverage reports into Jenkins
-            cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
+            //cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
             // record with general Coverage plugin and push coverage back out to GitHub
             discoverGitReferenceBuild() // required before recordCoverage to infer base branch/commit for PR
-            recordCoverage(tools: [[parser: 'COBERTURA', pattern: 'reports/coverage-*.xml']])
+            recordCoverage(tools: [[parser: 'XUnit', pattern: 'reports/coverage-*.xml']],)
 
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
@@ -171,7 +171,6 @@ pipeline {
         }
         cleanup {
             cleanWs(disableDeferredWipeout: true)
-            sh "go clean -cache"
 	}
     }
 }
