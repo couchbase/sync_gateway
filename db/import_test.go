@@ -961,7 +961,9 @@ func TestImportConflictWithTombstone(t *testing.T) {
 	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
-	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
+		UnsupportedOptions: &UnsupportedOptions{WarningThresholds: &WarningThresholds{XattrSize: base.Ptr(uint32(base.DefaultWarnThresholdXattrSize))}},
+		AllowConflicts:     base.Ptr(true)})
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -987,12 +989,19 @@ func TestImportConflictWithTombstone(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "2-def", docRev.RevID)
 
+	preImportDocBytes := db.DbStats.Database().DocWritesBytes.Value()
+	preImportDocXattrBytes := db.DbStats.Database().DocWritesXattrBytes.Value()
+
 	// Issue delete through SDK
 	err = collection.dataStore.Delete(docID)
 	require.NoError(t, err)
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 1)
+
+	// assert after the import resurrection that doc body was written as doc body is needed for doc resurrection
+	assert.Greater(t, db.DbStats.Database().DocWritesBytes.Value(), preImportDocBytes)
+	assert.Greater(t, db.DbStats.Database().DocWritesXattrBytes.Value(), preImportDocXattrBytes)
 
 	// Verify that post-import, the document is not a tombstone, and 2-abc has been promoted (GetRev with revID = "" returns active rev)
 	docRev, err = collection.GetRev(ctx, docID, "", false, nil)

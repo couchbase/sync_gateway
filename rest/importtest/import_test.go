@@ -2494,7 +2494,21 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 	}, 1)
 
 	// ensure bytes for doc bodies is unchanged
-	assert.Equal(t, preImportDocBytes, rt.GetDatabase().DbStats.Database().DocWritesBytes.Value())
+	newDocBytes := rt.GetDatabase().DbStats.Database().DocWritesBytes.Value()
+	assert.Equal(t, preImportDocBytes, newDocBytes)
 	// assert that doc xattr bytes have been written
-	assert.Greater(t, rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value(), preImportDocXattrBytes)
+	newXattrBytes := rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value()
+	assert.Greater(t, newXattrBytes, preImportDocXattrBytes)
+
+	err = collection.GetCollectionDatastore().Delete(docID)
+	require.NoError(t, err)
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+
+	newDocBytes = rt.GetDatabase().DbStats.Database().DocWritesBytes.Value()
+	assert.Equal(t, preImportDocBytes, newDocBytes)
+	// assert that doc xattr bytes have been written
+	newXattrBytes = rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value()
+	assert.Greater(t, newXattrBytes, preImportDocXattrBytes)
 }
