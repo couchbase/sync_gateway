@@ -532,6 +532,8 @@ func BenchmarkInsertSkippedItem(b *testing.B) {
 //   - Run compact and assert that each item is compacted apart from the last added item
 //   - Assert on number sequences removed
 func TestCompactSkippedList(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
 	testCases := []struct {
 		name       string
 		inputList  [][]uint64
