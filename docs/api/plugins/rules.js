@@ -9,11 +9,13 @@
  */
 
 const TypeCheckDefaults = require("./rules/typecheck-defaults.js");
+const CheckAdditionalPropertiesNames = require("./rules/check-additional-properties-names.js");
 
 module.exports = {
   rules: {
     oas3: {
       "typecheck-defaults": TypeCheckDefaults,
+      "check-additional-properties-names": CheckAdditionalPropertiesNames,
     },
   },
   id: "custom-rules",

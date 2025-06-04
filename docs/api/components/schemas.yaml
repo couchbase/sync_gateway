@@ -1281,7 +1281,18 @@ Database:
           description: The maximum amount of time (in milliseconds) to wait when the even queue is full.
           type: string
         document_changed:
-          $ref: '#/Event-config'
+          allOf:
+            - $ref: '#/Event-config'
+            - type: object
+              properties:
+                options:
+                  description: Options for the document changed event.
+                  type: object
+                  properties:
+                    winning_rev_only:
+                      description: If true, only the winning revision of the document will be sent to the webhook.
+                      type: boolean
+                      default: false
         db_state_changed:
           $ref: '#/Event-config'
     feed_type:
@@ -2089,11 +2100,6 @@ Event-config:
     timeout:
       description: The amount of time (in seconds) to attempt connect to the webhook before giving up.
       type: number
-    options:
-      description: The options for the event.
-      type: object
-      additionalProperties:
-        description: The option key and value.
   title: Event-config
 Resync-status:
   description: The status of a resync operation
