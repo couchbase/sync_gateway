@@ -910,7 +910,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 		}
 	}
 	if changed != nil {
-		base.DebugfCtx(ctx, base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
+		base.InfofCtx(ctx, base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
 		changedChannels, err = channels.SetFromArray(changed, channels.KeepStar)
 	}
 	return
@@ -991,7 +991,7 @@ func (accessMap *UserAccessMap) updateAccess(ctx context.Context, doc *Document,
 		if accessMap == &doc.RoleAccess {
 			what = "role"
 		}
-		base.DebugfCtx(ctx, base.KeyAccess, "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
+		base.InfofCtx(ctx, base.KeyAccess, "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
 	}
 	return changedUsers
 }
