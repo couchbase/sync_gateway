@@ -604,11 +604,6 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 		},
 	}
 
-	sleeper := base.CreateDoublingSleeperFunc(
-		11, // MaxNumRetries approx 10 seconds total retry duration
-		5,  // InitialRetrySleepTimeMS
-	)
-
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
 
@@ -622,7 +617,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 		}
 
 		description := fmt.Sprintf("Attempt to install Couchbase design doc")
-		err, _ := base.RetryLoop(ctx, description, worker, sleeper)
+		err, _ := base.RetryLoop(ctx, description, worker, designDocSleeperFunc())
 
 		if err != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Error installing Couchbase Design doc: %v.  Error: %v", base.UD(designDocName), err))
@@ -734,7 +729,15 @@ func removeObsoleteDesignDocs(ctx context.Context, viewStore sgbucket.ViewStore,
 					removedDesignDocs = append(removedDesignDocs, ddocName)
 				}
 			} else {
-				_, existsDDocErr := viewStore.GetDDoc(ddocName)
+				// possible errors are "error_text":"{\"error\":\"case_clause\",\"reason\":\"false\"}\n","status_code":500}
+				// which is a retryable error
+				existsDDocErr, _ := base.RetryLoop(ctx, fmt.Sprintf("Checking existence of design doc %q", ddocName), func() (shouldRetry bool, err error, value any) {
+					_, err = viewStore.GetDDoc(ddocName)
+					if err != nil && !IsMissingDDocError(err) {
+						return true, err, nil // retry on unexpected error
+					}
+					return false, err, nil
+				}, designDocSleeperFunc())
 				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
 					base.WarnfCtx(ctx, "Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
 				}
@@ -790,4 +793,12 @@ func getViewStoreForDefaultCollection(dbContext *DatabaseContext) (sgbucket.View
 		return nil, fmt.Errorf("%T is not a ViewStore", dbCollection.dataStore)
 	}
 	return vs, nil
+}
+
+// designDocSleeperFunc returns a RetrySleeperFunc for idempotent design doc operations
+func designDocSleeperFunc() base.RetrySleeper {
+	return base.CreateDoublingSleeperFunc(
+		11, // MaxNumRetries approx 10 seconds total retry duration
+		5,  // InitialRetrySleepTimeMS
+	)
 }
