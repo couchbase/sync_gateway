@@ -826,6 +826,9 @@ Retrieved-replication:
         - error
         - starting
         - reconnecting
+    cluster_uuid:
+      description: The cluster unique identifier.
+      type: string
   title: Replication
 Replication:
   description: Properties of a replication
@@ -2958,6 +2961,23 @@ DeprecatedLogKeyMap:
   additionalProperties:
     description: The log key and whether it is enabled or not.
     type: boolean
+Vendor:
+  description: Product vendor
+  type: object
+  properties:
+    name:
+      description: Product name
+      type: string
+      example: Couchbase Sync Gateway
+    version:
+      description: |-
+        API version.
+        Omitted if `api.hide_product_version=true`
+      type: string
+      example: 3.1
+  required:
+    - name
+  title: Vendor
 Status:
   type: object
   properties:
@@ -2976,6 +2996,9 @@ Status:
           server_uuid:
             description: The server unique identifier.
             type: string
+          require_resync:
+            description: Indicates whether the database requires resync before it can be brought online.
+            type: boolean
           state:
             allOf: # use allOf to prevent DatabaseState from showing as the type in the display
               - $ref: '#/DatabaseState'
@@ -2986,6 +3009,9 @@ Status:
           cluster:
             type: object
             properties:
+              cluster_uuid:
+                description: The cluster unique identifier.
+                type: string
               replication:
                 description: Map of replication configs defined for the cluster.
                 type: object
@@ -3012,6 +3038,9 @@ Status:
 
         Blank if `api.hide_product_version=true` in the startup configuration.
       type: string
+    vendor:
+      allOf:
+        - $ref: '#/Vendor'
   title: Status
 NodeInfo:
   type: object
@@ -3025,21 +3054,8 @@ NodeInfo:
       type: string
       example: Welcome
     vendor:
-      description: Product vendor
-      type: object
-      properties:
-        name:
-          description: Product name
-          type: string
-          example: Couchbase Sync Gateway
-        version:
-          description: |-
-            API version.
-            Omitted if `api.hide_product_version=true`
-          type: string
-          example: 3.1
-      required:
-        - name
+      allOf:
+        - $ref: '#/Vendor'
     version:
       description: |-
         Product version, including the build number and edition (i.e. `EE` or `CE`)
