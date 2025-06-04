@@ -2482,16 +2482,19 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 	collection, _ := rt.GetSingleTestDatabaseCollectionWithUser()
 	ds := collection.GetCollectionDatastore()
 
-	specBody := []byte(`{"test":"<>"}`) // use a special character that is currently escaped to ensure it is not modified by the import process
-	_, err := ds.WriteCas(docID, 0, 0, specBody, 0)
+	preImportDocBytes := rt.GetDatabase().DbStats.Database().DocWritesBytes.Value()
+	preImportDocXattrBytes := rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value()
+
+	body := []byte(`{"test":"doc"}`)
+	_, err := ds.WriteCas(docID, 0, 0, body, 0)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
 	}, 1)
 
-	// ensure doc body remains unchanged after import
-	bodyGet, _, err := ds.GetRaw(docID)
-	require.NoError(t, err)
-	assert.Equal(t, string(bodyGet), string(specBody))
+	// ensure bytes for doc bodies is unchanged
+	assert.Equal(t, preImportDocBytes, rt.GetDatabase().DbStats.Database().DocWritesBytes.Value())
+	// assert that doc xattr bytes have been written
+	assert.Greater(t, rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value(), preImportDocXattrBytes)
 }
