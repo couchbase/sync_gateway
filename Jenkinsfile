@@ -138,7 +138,7 @@ pipeline {
             //cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
             // record with general Coverage plugin and push coverage back out to GitHub
             discoverGitReferenceBuild() // required before recordCoverage to infer base branch/commit for PR
-            recordCoverage(tools: [[parser: 'XUnit', pattern: 'reports/coverage-*.xml']],)
+	    recordCoverage(tools: [[parser: 'GO_COV', pattern: 'verbose_*.out']])
 
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
