@@ -55,10 +55,6 @@ pipeline {
                     steps {
                         // unhandled error checker
                         sh 'go install github.com/kisielk/errcheck@latest'
-                        // goveralls is used to send coverprofiles to coveralls.io
-                        sh 'go install github.com/mattn/goveralls@latest'
-                        // Jenkins test reporting tools
-                        sh 'go install github.com/tebeka/go2xunit@latest'
                     }
                 }
             }
@@ -96,10 +92,8 @@ pipeline {
                                         env.TEST_EE_TOTAL = readFile 'test-ee-total.count'
                                     }
 
-                                    // Generate junit-formatted test report
                                     script {
                                         try {
-                                            sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
@@ -135,8 +129,6 @@ pipeline {
             //recordCoverage(tools: [[parser: 'COBERTURA', pattern: 'reports/coverage-*.xml']])
             recordCoverage(tools: [[parser: 'GO_COV', pattern: 'cover*.out']])
 
-            // Publish the junit test reports
-            junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
         }
         unstable {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
