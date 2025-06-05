@@ -16,12 +16,18 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+)
+
+const (
+	DefaultBroadcastChangesTime         = 50 * time.Millisecond
+	SkippedSequenceBroadcastChangesTime = 500 * time.Millisecond
 )
 
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
@@ -40,6 +46,7 @@ type changeListener struct {
 	terminator             chan bool          // Signal to cause DCP feed to exit
 	sgCfgPrefix            string             // SG config key prefix
 	started                base.AtomicBool    // whether the feed has been started
+	BroadcastSlowMode      atomic.Bool        // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	metaKeys               *base.MetadataKeys // Metadata key formatter
 }
 
@@ -104,6 +111,8 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		listener.FeedArgs.Scopes = scopeArgs
 
 	}
+	listener.StartNotifierBroadcaster(ctx) // start broadcast changes goroutine
+
 	return listener.StartMutationFeed(ctx, bucket, dbStats)
 }
 
@@ -210,10 +219,56 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 	for key := range keys {
 		listener.keyCounts[key.String()] = listener.counter
 	}
-	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
-		base.MD(listener.bucketName), base.UD(keys), listener.counter)
-	listener.tapNotifier.Broadcast()
+	base.DebugfCtx(ctx, base.KeyChanges, "Listener keys %q for %s have changed, count=%d",
+		base.UD(keys), base.MD(listener.bucketName), listener.counter)
 	listener.tapNotifier.L.Unlock()
+}
+
+func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
+	ticker := time.NewTicker(DefaultBroadcastChangesTime)
+	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
+	// for a value it already has
+	broadcastSlowMode := false
+	go func(terminator chan bool) {
+		var currCount uint64
+		for {
+			select {
+			case <-terminator:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				// if the counter has changed, notify waiting clients
+				listener.tapNotifier.L.Lock()
+				if listener.counter > currCount {
+					base.DebugfCtx(ctx, base.KeyChanges, "Notifying changes for %s count=%d", base.MD(listener.bucketName), listener.counter)
+					listener.tapNotifier.Broadcast()
+					currCount = listener.counter
+				}
+				listener.tapNotifier.L.Unlock()
+
+				// check if we need to reset ticker value based on skipped sequence presence
+				newBroadcastSlowMode := listener.BroadcastSlowMode.Load()
+				if broadcastSlowMode != newBroadcastSlowMode {
+					// broadcast changes interval has changed, reset ticker
+					duration := tickerValForBroadcastSpeed(newBroadcastSlowMode)
+					base.DebugfCtx(ctx, base.KeyChanges, "Updating broadcast changes interval for %q to %v", base.MD(listener.bucketName), duration)
+					broadcastSlowMode = newBroadcastSlowMode
+					ticker.Reset(duration)
+				}
+			}
+		}
+	}(listener.terminator)
+}
+
+// tickerValForBroadcastSpeed will return the duration for the ticker to be reset to based on input boolean to indicate
+// if skipped sequences are present or not
+func tickerValForBroadcastSpeed(skippedSequencePresent bool) time.Duration {
+	// if the skipped sequence broadcast is enabled, return the slow ticker value
+	if skippedSequencePresent {
+		return SkippedSequenceBroadcastChangesTime
+	}
+	// otherwise return the default ticker value
+	return DefaultBroadcastChangesTime
 }
 
 // Changes the counter, notifying waiting clients. Only use for a key update.
