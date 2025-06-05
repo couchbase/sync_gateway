@@ -786,7 +786,7 @@ Retrieved-replication:
       type: string
     collections_enabled:
       description: |-
-        If true, the replicator will run with collections, and will replicate all collections, unless otherwise limited by `keyspace_map`.
+        If true, the replicator will run with collections, and will replicate all collections, unless otherwise limited by `collections_local`.
 
         If false, the replicator will only replicate the default collection.
       type: boolean
@@ -1017,7 +1017,7 @@ Replication:
       type: string
     collections_enabled:
       description: |-
-        If true, the replicator will run with collections, and will replicate all collections, unless otherwise limited by `keyspace_map`.
+        If true, the replicator will run with collections, and will replicate all collections, unless otherwise limited by `collections_local`.
 
         If false, the replicator will only replicate the default collection.
       type: boolean
