@@ -1652,7 +1652,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		return nil, false, nil, doc.Sequence, unusedSequences, base.ErrUpdateCancel
 	}
 
-	base.DebugfCtx(ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
+	base.TracefCtx(ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
 
 	// Run the sync fn over each current/leaf revision, in case there are conflicts:
 	changed := 0
@@ -1728,7 +1728,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if !shouldUpdate {
 				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 			}
-			base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+			base.TracefCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
 			if updatedExpiry != nil {
 				updatedDoc.UpdateExpiry(*updatedExpiry)
 			}
@@ -1775,7 +1775,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				return nil, nil, false, err
 			}
 			if shouldUpdate {
-				base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+				base.TracefCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
 				if updatedExpiry != nil {
 					updatedDoc.UpdateExpiry(*updatedExpiry)
 				}
