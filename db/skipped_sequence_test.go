@@ -309,7 +309,7 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 				}
 			}
 
-			err := skippedSlice.removeSeq(testCase.remove)
+			_, err := skippedSlice.removeSeq(testCase.remove)
 			require.NoError(t, err)
 
 			for i := 0; i < len(skippedSlice.list); i++ {
@@ -332,7 +332,7 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 			}
 
 			// attempt remove on non existent sequence
-			err = skippedSlice.removeSeq(testCase.errorRemove)
+			_, err = skippedSlice.removeSeq(testCase.errorRemove)
 			require.Error(t, err)
 		})
 	}
@@ -365,7 +365,7 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 	timestampAtSequence := skippedSlice.list[i].getTimestamp()
 
 	// remove seq in middle of above range
-	err := skippedSlice.removeSeq(61)
+	_, err := skippedSlice.removeSeq(61)
 	require.NoError(t, err)
 
 	skippedLen := len(skippedSlice.list)
@@ -394,10 +394,10 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(85, 87))
 
 	// remove start seq from range 80-32
-	err = skippedSlice.removeSeq(80)
+	_, err = skippedSlice.removeSeq(80)
 	require.NoError(t, err)
 	// remove last seq from range 85-87
-	err = skippedSlice.removeSeq(87)
+	_, err = skippedSlice.removeSeq(87)
 	require.NoError(t, err)
 
 	skippedLen = len(skippedSlice.list)
@@ -425,7 +425,7 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = bm.inputSlice.removeSeq(uint64(i * 2))
+				_, _ = bm.inputSlice.removeSeq(uint64(i * 2))
 			}
 		})
 	}
@@ -435,7 +435,7 @@ func BenchmarkRemoveSeqRangeFromSkippedList(b *testing.B) {
 	ctx := base.TestCtx(b)
 	skipedSlice := setupBenchmark(true, true, DefaultClipCapacityHeadroom)
 	for i := 0; i < b.N; i++ {
-		_ = skipedSlice._removeSeqRange(ctx, uint64(i*2), uint64(i*2)+5)
+		_, _ = skipedSlice._removeSeqRange(ctx, uint64(i*2), uint64(i*2)+5)
 	}
 }
 
@@ -820,7 +820,7 @@ func TestRemoveSequenceRange(t *testing.T) {
 				}
 			}
 
-			err := skippedSlice._removeSeqRange(ctx, testCase.rangeToRemove[0], testCase.rangeToRemove[1])
+			_, err := skippedSlice._removeSeqRange(ctx, testCase.rangeToRemove[0], testCase.rangeToRemove[1])
 			if testCase.errorCase {
 				require.Error(t, err)
 			} else {
