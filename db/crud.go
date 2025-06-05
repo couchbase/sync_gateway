@@ -2064,7 +2064,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			rawDocBody, rawSyncXattr, rawMouXattr, err = doc.MarshalWithXattrs()
 			// If isImport is true, we don't generally want to update the document body, only the xattrs. One exception
 			// being when a import is resurrecting a document then we need a body to write back
-			if (!isImport && len(rawDocBody) > 0) || (isImport && doc.Deleted && len(rawDocBody) > 0) {
+			if (!isImport && len(rawDocBody) > 0) || (isImport && doc.Deleted) {
 				updatedDoc.Doc = rawDocBody
 				docBytes = len(updatedDoc.Doc)
 			}
