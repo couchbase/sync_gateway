@@ -946,10 +946,13 @@ func (h *LogPriorityQueue) Pop() interface{} {
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
 	numSkipped, err := c.skippedSeqs.removeSeq(x)
+	if err != nil {
+		return err
+	}
 	if numSkipped == 0 {
 		c.db.mutationListener.BroadcastSlowMode.CompareAndSwap(true, false)
 	}
-	return err
+	return nil
 }
 
 func (c *changeCache) WasSkipped(x uint64) bool {
