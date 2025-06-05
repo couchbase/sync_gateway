@@ -2296,7 +2296,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server - needs cbgt and import checkpointing")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster, base.KeyCRUD)
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -2386,11 +2386,11 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	defer rt2.Close()
 
 	for _, v := range vb0DocIDs {
-		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "6"}`)))
+		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "7"}`)))
 		require.NoError(t, err)
 	}
 	for _, v := range vb800DocIDs {
-		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "6"}`)))
+		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "7"}`)))
 		require.NoError(t, err)
 	}
 
