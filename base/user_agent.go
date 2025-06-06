@@ -14,6 +14,10 @@ import (
 	"strings"
 )
 
+const (
+	HTTPHeaderUserAgent = "User-Agent"
+)
+
 // NewSGProcessUserAgent returns a new user agent string for the given process name.
 // A process may be something like "ISGR" and is used in place of "Platform" when compared with CBL user agents.
 //

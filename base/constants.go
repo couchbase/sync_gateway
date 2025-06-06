@@ -182,10 +182,6 @@ const (
 	EmptyDocument = `{}`
 )
 
-const (
-	HTTPHeaderUserAgent = "User-Agent"
-)
-
 var (
 	SyncFnAccessErrors = []string{
 		HTTPErrorf(403, SyncFnErrorMissingRole).Error(),
