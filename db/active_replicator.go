@@ -22,6 +22,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+var ISGRUserAgent = base.NewSGProcessUserAgent("ISGR")
+
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
 	ID     string
@@ -302,12 +304,13 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 	config := blip.DialOptions{
 		URL:        target.String() + "/_blipsync?" + BLIPSyncClientTypeQueryParam + "=" + string(BLIPClientTypeSGR2),
 		HTTPClient: client,
+		HTTPHeader: http.Header{
+			base.HTTPHeaderUserAgent: []string{ISGRUserAgent},
+		},
 	}
 
 	if basicAuthCreds != nil {
-		config.HTTPHeader = http.Header{
-			"Authorization": []string{"Basic " + base64UserInfo(basicAuthCreds)},
-		}
+		config.HTTPHeader.Add("Authorization", "Basic "+base64UserInfo(basicAuthCreds))
 	}
 
 	return blipContext.DialConfig(&config)

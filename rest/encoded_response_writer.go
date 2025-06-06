@@ -50,7 +50,7 @@ func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request, st
 	// the entire response for requests to the _bulk_get endpoint, since the clients
 	// are not equipped to handle that.
 	if strings.Contains(rq.URL.Path, "_bulk_get") {
-		userAgentVersion := NewUserAgentVersion(rq.Header.Get("User-Agent"))
+		userAgentVersion := NewUserAgentVersion(rq.Header.Get(base.HTTPHeaderUserAgent))
 		if userAgentVersion.IsBefore(1, 2) {
 			return nil
 		}

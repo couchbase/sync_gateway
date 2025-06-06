@@ -148,6 +148,8 @@ func (a *ComparableBuildVersion) AtLeastMinorDowngrade(b *ComparableBuildVersion
 	return a.minor > b.minor
 }
 
+// String returns the full string representation of the ComparableBuildVersion.
+// e.g. "1:22-3-25@33-EE"
 func (pv ComparableBuildVersion) String() string {
 	return pv.str
 }
