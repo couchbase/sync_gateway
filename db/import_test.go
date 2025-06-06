@@ -45,6 +45,7 @@ func TestFeedImport(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling body")
 
 	initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
+	initialImportFeedProcessedCount := db.DbStats.SharedBucketImport().ImportFeedProcessedCount.Value()
 
 	// Create via the SDK
 	writeCas, err := collection.dataStore.WriteCas(key, 0, 0, bodyBytes, 0)
@@ -53,6 +54,10 @@ func TestFeedImport(t *testing.T) {
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, initialImportCount+1)
+	// processed twice:
+	// - initial write
+	// - after import
+	base.RequireWaitForStat(t, db.DbStats.SharedBucketImport().ImportFeedProcessedCount.Value, initialImportFeedProcessedCount+2)
 
 	// fetch the xattrs directly doc to confirm import (to avoid triggering on-demand import)
 	var syncData SyncData
