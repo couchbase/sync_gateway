@@ -36,6 +36,19 @@ const (
 	unusedSeqCollectionID         = 0                // Collection ID used by ChangeWaiter to mark unused sequences
 )
 
+// DocumentType indicates the type of document being processed in the change cache (e.g. User doc etc).
+type DocumentType uint8
+
+const (
+	DocTypeUnknown        DocumentType = iota // Unknown document type
+	DocTypeDocument                           // Customer data document type
+	DocTypeUser                               // User document
+	DocTypeRole                               // Role document
+	DocTypeUnusedSeq                          // Unused sequence notification
+	DocTypeUnusedSeqRange                     // Unused sequence range notification
+	DocTypeSGCfg                              // Cfg docs for import feed management
+)
+
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
 var EnableStarChannelLog = true
@@ -297,7 +310,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 // Note that DocChanged may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
-func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
+func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType) {
 	ctx := c.logCtx
 	docID := string(event.Key)
 	docJSON := event.Value
@@ -306,25 +319,22 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc for this database?
-	if strings.HasPrefix(docID, c.metaKeys.UserKeyPrefix()) {
+	switch docType {
+	case DocTypeUnknown:
+		return // no-op unknown doc type
+	case DocTypeUser:
 		c.processPrincipalDoc(ctx, docID, docJSON, true, timeReceived)
 		return
-	} else if strings.HasPrefix(docID, c.metaKeys.RoleKeyPrefix()) {
+	case DocTypeRole:
 		c.processPrincipalDoc(ctx, docID, docJSON, false, timeReceived)
 		return
-	}
-
-	// Is this an unused sequence notification?
-	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqPrefix()) {
+	case DocTypeUnusedSeq:
 		c.processUnusedSequence(ctx, docID, timeReceived)
 		return
-	}
-	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqRangePrefix()) {
+	case DocTypeUnusedSeqRange:
 		c.processUnusedSequenceRange(ctx, docID)
 		return
-	}
-
-	if strings.HasPrefix(docID, c.sgCfgPrefix) {
+	case DocTypeSGCfg:
 		if c.cfgEventCallback != nil {
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}

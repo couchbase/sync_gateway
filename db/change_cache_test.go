@@ -1406,7 +1406,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		CollectionID: collectionID,
 		DataType:     dataType,
 	}
-	db.changeCache.DocChanged(feedEventDoc2)
+	db.changeCache.DocChanged(feedEventDoc2, DocTypeDocument)
 
 	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
@@ -1415,7 +1415,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		Value:        doc1DCPBytes,
 		CollectionID: collectionID,
 	}
-	db.changeCache.DocChanged(feedEventDoc1)
+	db.changeCache.DocChanged(feedEventDoc1, DocTypeDocument)
 
 	// -------- Wait for waitgroup ----------------
 
@@ -1958,7 +1958,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				feedEntry := bm.feed.Next()
-				changeCache.DocChanged(feedEntry)
+				changeCache.DocChanged(feedEntry, DocTypeDocument)
 			}
 
 			// log.Printf("maxNumPending: %v", changeCache.context.DbStats.StatsCblReplicationPull().Get(base.StatKeyMaxPending))

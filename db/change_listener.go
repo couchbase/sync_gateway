@@ -11,10 +11,10 @@ licenses/APL2.txt.
 package db
 
 import (
+	"bytes"
 	"context"
 	"expvar"
 	"math"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -53,7 +53,7 @@ type changeListener struct {
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
 var unusedSeqChannelID = channels.NewID(unusedSeqKey, unusedSeqCollectionID)
 
-type DocChangedFunc func(event sgbucket.FeedEvent)
+type DocChangedFunc func(event sgbucket.FeedEvent, docType DocumentType)
 
 func (listener *changeListener) Init(name string, groupID string, metaKeys *base.MetadataKeys) {
 	listener.bucketName = name
@@ -65,9 +65,9 @@ func (listener *changeListener) Init(name string, groupID string, metaKeys *base
 	listener.metaKeys = metaKeys
 }
 
-func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent) {
+func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent, docType DocumentType) {
 	// TODO: When principal grants are implemented (CBG-2333), perform collection filtering here
-	listener.OnChangeCallback(event)
+	listener.OnChangeCallback(event, docType)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -130,36 +130,60 @@ func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket ba
 	return bucket.StartDCPFeed(ctx, listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
 }
 
+// DocumentType returns the type of document received over mutation feed based on its key prefix.
+func (listener *changeListener) DocumentType(key []byte) DocumentType {
+	if bytes.HasPrefix(key, []byte(listener.metaKeys.UserKeyPrefix())) {
+		return DocTypeUser
+	} else if bytes.HasPrefix(key, []byte(listener.metaKeys.RoleKeyPrefix())) {
+		return DocTypeRole
+	} else if bytes.HasPrefix(key, []byte(listener.metaKeys.UnusedSeqPrefix())) {
+		return DocTypeUnusedSeq
+	} else if bytes.HasPrefix(key, []byte(listener.metaKeys.UnusedSeqRangePrefix())) {
+		return DocTypeUnusedSeqRange
+	}
+	return DocTypeUnknown
+}
+
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed (TAP or DCP).  Uses document
 // key to determine handling, based on whether the incoming mutation is an internal Sync Gateway document.
 func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
-	requiresCheckpointPersistence := true
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
-		key := string(event.Key)
-		if !strings.HasPrefix(key, base.SyncDocPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
-			listener.OnDocChanged(event)
-
-		} else if strings.HasPrefix(key, listener.metaKeys.UserKeyPrefix()) ||
-			strings.HasPrefix(key, listener.metaKeys.RoleKeyPrefix()) { // SG users and roles
-			if event.Opcode == sgbucket.FeedOpMutation {
-				listener.OnDocChanged(event)
-			}
-			listener.notifyKey(listener.ctx, key)
-		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) || strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) { // SG unused sequence marker docs
-			if event.Opcode == sgbucket.FeedOpMutation {
-				listener.OnDocChanged(event)
-			}
-		} else if strings.HasPrefix(key, base.DCPCheckpointRootPrefix) { // SG DCP checkpoint docs (including other config group IDs)
-			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
-			// we'll end up in a feedback loop for their vbucket if persistence is enabled
-			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
-			// defensively.
-			requiresCheckpointPersistence = false
-		} else if strings.HasPrefix(key, listener.sgCfgPrefix) {
-			listener.OnDocChanged(event)
+		if !bytes.HasPrefix(event.Key, []byte(base.SyncDocPrefix)) {
+			listener.OnDocChanged(event, DocTypeDocument)
+			return true
 		}
+	} else {
+		// backfill or unknown opcodes
+		return true
 	}
-	return requiresCheckpointPersistence
+	// SG DCP checkpoint docs (including other config group IDs)
+	if bytes.HasPrefix(event.Key, []byte(base.DCPCheckpointRootPrefix)) {
+		// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
+		// we'll end up in a feedback loop for their vbucket if persistence is enabled
+		// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
+		// defensively.
+		return false
+	}
+
+	// Cfg callback supports both mutation and deletion events
+	if bytes.HasPrefix(event.Key, []byte(listener.sgCfgPrefix)) {
+		listener.OnDocChanged(event, DocTypeSGCfg)
+		return true
+	}
+
+	if event.Opcode != sgbucket.FeedOpMutation {
+		// nothing more to handle and this point if the event is not a mutation
+		return true
+	}
+
+	docType := listener.DocumentType(event.Key)
+	if docType == DocTypeUser || docType == DocTypeRole {
+		// defer to notify after callback completion
+		defer listener.notifyKey(listener.ctx, string(event.Key))
+	}
+
+	listener.OnDocChanged(event, docType)
+	return true
 }
 
 // MutationFeedStopMaxWait is the maximum amount of time to wait for
