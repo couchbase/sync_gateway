@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -42,6 +43,16 @@ type SkippedSequenceListEntry struct {
 	start     uint64 // start sequence of a range
 	end       uint64 // end sequence of the range (0 if a singular skipped sequence)
 	timestamp int64  // timestamp this entry was created in unix format
+}
+
+// String will return a string representation of the SkippedSequenceListEntry
+// Formats: Singular: "#<seq>" or ranges: "#<start>-#<end>"
+func (s *SkippedSequenceListEntry) String() string {
+	seqStr := "#" + strconv.FormatUint(s.start, 10)
+	if s.end != 0 && s.end != s.start {
+		seqStr += "-#" + strconv.FormatUint(s.end, 10)
+	}
+	return seqStr
 }
 
 // SkippedSequenceStats will hold all stats associated with the skipped sequence slice, used for getStats()
@@ -160,6 +171,7 @@ func (s *SkippedSequenceSlice) SkippedSequenceCompact(ctx context.Context, maxWa
 	for _, v := range s.list {
 		timeStamp := v.getTimestamp()
 		if (timeNow - timeStamp) >= maxWait {
+			base.WarnfCtx(ctx, "Abandoning previously skipped sequence entry: %v after %s", v, time.Duration(timeNow-timeStamp)*time.Second)
 			indexToDelete++
 			// update count of sequences being compacted from the slice
 			numSequencesCompacted = numSequencesCompacted + v.getNumSequencesInEntry()
