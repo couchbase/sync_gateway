@@ -862,8 +862,8 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 	bulkGetBody += `]}`
 
 	bulkGetHeaders := map[string]string{
-		base.HTTPHeaderUserAgent:   "CouchbaseLite/1.2",
-		"Content-Type": "application/json",
+		base.HTTPHeaderUserAgent: "CouchbaseLite/1.2",
+		"Content-Type":           "application/json",
 	}
 
 	// request an uncompressed _bulk_get
