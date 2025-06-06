@@ -2055,7 +2055,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
 	const (
