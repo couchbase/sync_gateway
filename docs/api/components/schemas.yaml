@@ -1237,9 +1237,9 @@ Database:
       description: |-
         The maximum depth a document's revision tree can grow too.
 
-        The minimum is `20` if conflicts are allowed and 0 if not. It is not recommended to go below `100` when conflicts are allowed.
+        The minimum is `20` if conflicts are allowed and 0 if not. It is not recommended to go below `100` when conflicts are allowed. The default is `100` if conflicts are allowed and `50` if not.
       type: number
-      default: 100 if conflict allowed and 50 if not
+      default: 50
       minimum: 0
     import_docs:
       description: |-
@@ -1284,7 +1284,18 @@ Database:
           description: The maximum amount of time (in milliseconds) to wait when the even queue is full.
           type: string
         document_changed:
-          $ref: '#/Event-config'
+          allOf:
+            - $ref: '#/Event-config'
+            - type: object
+              properties:
+                options:
+                  description: Options for the document changed event.
+                  type: object
+                  properties:
+                    winning_rev_only:
+                      description: If true, only the winning revision of the document will be sent to the webhook.
+                      type: boolean
+                      default: false
         db_state_changed:
           $ref: '#/Event-config'
     feed_type:
@@ -1310,7 +1321,7 @@ Database:
                 The maximum number of revisions that can be stored in the revision cache.
                 Note when running with greater than 1 shard count we add 10% capacity overall to avoid early eviction when some shards fill up before others, so
                 you may find that the capacity stat (revision_cache_num_items) will climb to the defined rev cache size + 10%.
-              type: string
+              type: integer
               default: 5000
             max_memory_count_mb:
               description: |-
@@ -1322,7 +1333,7 @@ Database:
               default: 0
             shard_count:
               description: The number of shards the revision cache should be split into.
-              type: string
+              type: integer
               default: 16
         channel_cache:
           description: The channel cache config settings.
@@ -2092,11 +2103,6 @@ Event-config:
     timeout:
       description: The amount of time (in seconds) to attempt connect to the webhook before giving up.
       type: number
-    options:
-      description: The options for the event.
-      type: object
-      additionalProperties:
-        description: The option key and value.
   title: Event-config
 Resync-status:
   description: The status of a resync operation
@@ -2485,7 +2491,6 @@ Startup-config:
       description: Threshold in bytes for automatic collection of heap profiles. If not specified, defaults to 85% of the lesser of cgroup or system memory.
       readOnly: true
       type: integer
-      default: max memory
     heap_profile_disable_collection:
       description: Disables automatic heap profile collection.
       default: false
@@ -2553,7 +2558,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 360
@@ -2593,7 +2598,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 180
@@ -2633,7 +2638,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 6
@@ -2673,7 +2678,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 2
@@ -2713,7 +2718,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 2
@@ -2753,7 +2758,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 6
@@ -2803,7 +2808,7 @@ Audit-logging-config:
 
             This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
           type: string
-          default: 0
+          default: ""
         max_age:
           description: The maximum number of days to retain old log files.
           default: 6
@@ -2934,7 +2939,7 @@ Console-logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
               default: 0
