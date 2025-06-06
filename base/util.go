@@ -35,6 +35,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/couchbase/gomemcached"
 	"github.com/gorilla/mux"
@@ -1715,4 +1716,14 @@ func EfficientBytesClone(b []byte) []byte {
 	nb := make([]byte, len(b))
 	copy(nb, b)
 	return nb
+}
+
+// removeAllWhitespace removes all whitespace characters from the input string.
+func removeAllWhitespace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

@@ -1224,7 +1224,7 @@ func (h *handler) getJSONStringArrayQuery(param string) ([]string, error) {
 }
 
 func (h *handler) userAgentIs(agent string) bool {
-	userAgent := h.rq.Header.Get("User-Agent")
+	userAgent := h.rq.Header.Get(base.HTTPHeaderUserAgent)
 	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
 }
 
