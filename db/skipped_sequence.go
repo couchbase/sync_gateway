@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	skiplist "github.com/gregns1/fast-skiplist"
+	skiplist "github.com/couchbasedeps/fast-skiplist"
 )
 
 // SkippedSequenceSkiplist is a skiplist implementation of the skipped sequence list, no mutex needed as the skiplist
@@ -104,13 +104,17 @@ func (s *SkippedSequenceSkiplist) SkippedSequenceCompact(ctx context.Context, ma
 	return numSequencesCompacted
 }
 
-func (s *SkippedSequenceSkiplist) PushSkippedSequenceEntry(entry skiplist.SkippedSequenceEntry) {
-	elem := s.list.Set(entry)
+func (s *SkippedSequenceSkiplist) PushSkippedSequenceEntry(entry skiplist.SkippedSequenceEntry) error {
+	elem, err := s.list.Set(entry)
+	if err != nil {
+		return err
+	}
 	if elem != nil {
 		// update num current skipped sequences count + the cumulative count of skipped sequences
 		numSequencesIncoming := entry.GetNumSequencesInEntry()
 		s.NumCumulativeSkippedSequences += numSequencesIncoming
 	}
+	return nil
 }
 
 // getOldest returns the start sequence of the first element in the skipped sequence list
@@ -136,9 +140,9 @@ func (s *SkippedSequenceSkiplist) getStats() SkippedSequenceStats {
 // sequences are present, we will iterate through skipped list removing the non-duplicate sequences
 func (s *SkippedSequenceSkiplist) processUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) {
 	// batch remove from skipped
-	elem := s.list.Remove(skiplist.SkippedSequenceEntry{Start: fromSequence, End: toSequence})
-	if elem == nil {
-		base.DebugfCtx(ctx, base.KeyCache, "Unused sequence range #%d to #%d not present in skipped list", fromSequence, toSequence)
+	_, err := s.list.Remove(skiplist.SkippedSequenceEntry{Start: fromSequence, End: toSequence})
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyCache, "Unused sequence range #%d to #%d not present in skipped list. Err: %v", fromSequence, toSequence, err)
 		return
 	}
 }

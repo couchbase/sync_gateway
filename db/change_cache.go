@@ -107,7 +107,7 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached(ctx)))
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(skippedSequenceListStats.NumCurrentSkippedSequencesStat)
 	c.db.DbStats.Cache().NumSkippedSeqs.Set(skippedSequenceListStats.NumCumulativeSkippedSequencesStat)
-	c.db.DbStats.Cache().SkippedSequenceNodes.Set(skippedSequenceListStats.ListLengthStat)
+	c.db.DbStats.Cache().SkippedSequenceSkiplistNodes.Set(skippedSequenceListStats.ListLengthStat)
 }
 
 type LogEntry = channels.LogEntry
@@ -777,9 +777,9 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 		changedChannels = changedChannels.Update(c._addToCache(ctx, change))
 		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
 		// in cache
-		ok := c.RemoveSkipped(sequence)
-		if !ok {
-			base.DebugfCtx(ctx, base.KeyCache, "Error removing skipped sequence: #%d from cache", sequence)
+		err := c.RemoveSkipped(sequence)
+		if err != nil {
+			base.DebugfCtx(ctx, base.KeyCache, "Error removing skipped sequence: #%d from cache: %v", sequence, err)
 		}
 	}
 	return changedChannels
@@ -967,9 +967,9 @@ func (h *LogPriorityQueue) Pop() interface{} {
 // ////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	elem := c.skippedSeqs.list.Remove(NewSingleSkippedSequenceEntryAt(x, 0))
-	if elem != nil {
-		return fmt.Errorf("error removing seq")
+	_, err := c.skippedSeqs.list.Remove(NewSingleSkippedSequenceEntryAt(x, 0))
+	if err != nil {
+		return fmt.Errorf("sequence %d not found in the skipped list, err: %v", x, err)
 	}
 	if numSkipped == 0 {
 		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
@@ -986,7 +986,11 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 		base.InfofCtx(ctx, base.KeyCache, "cannot push negative skipped sequence range to skipped list: %d %d", startSeq, endSeq)
 		return
 	}
-	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
+	err := c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyCache, "Error pushing skipped sequence range to skipped list: %v", err)
+		return
+	}
 	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 

@@ -1,6 +1,6 @@
 module github.com/couchbase/sync_gateway
 
-go 1.24
+go 1.24.3
 
 require (
 	dario.cat/mergo v1.0.0
@@ -22,7 +22,6 @@ require (
 	github.com/go-jose/go-jose/v4 v4.0.5
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
-	github.com/gregns1/fast-skiplist v0.0.0-20250529093705-b0a80c6c2489
 	github.com/json-iterator/go v1.1.12
 	github.com/kardianos/service v1.2.2
 	github.com/pkg/errors v0.9.1
@@ -57,6 +56,7 @@ require (
 	github.com/couchbase/tools-common/testing v1.0.0 // indirect
 	github.com/couchbase/tools-common/types v1.0.0 // indirect
 	github.com/couchbase/tools-common/utils v1.0.0 // indirect
+	github.com/couchbasedeps/fast-skiplist v0.0.0-20250606160402-048c980a57ff // indirect
 	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20240607131231-fb385523de28 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
