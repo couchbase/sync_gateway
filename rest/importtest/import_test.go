@@ -2296,7 +2296,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server - needs cbgt and import checkpointing")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster, base.KeyCRUD)
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -2392,11 +2392,11 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	defer rt2.Close()
 
 	for _, v := range vb0DocIDs {
-		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "6"}`)))
+		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "7"}`)))
 		require.NoError(t, err)
 	}
 	for _, v := range vb800DocIDs {
-		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "6"}`)))
+		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "7"}`)))
 		require.NoError(t, err)
 	}
 
@@ -2472,4 +2472,49 @@ func TestImportUpdateExpiry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDoNotWriteBodyBackOnImport(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCRUD, base.KeyImport)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		AutoImport: base.Ptr(true),
+	})
+	defer rt.Close()
+
+	docID := t.Name()
+
+	collection, _ := rt.GetSingleTestDatabaseCollectionWithUser()
+	ds := collection.GetCollectionDatastore()
+
+	preImportDocBytes := rt.GetDatabase().DbStats.Database().DocWritesBytes.Value()
+	preImportDocXattrBytes := rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value()
+
+	body := []byte(`{"test":"doc"}`)
+	_, err := ds.WriteCas(docID, 0, 0, body, 0)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
+
+	// ensure bytes for doc bodies is unchanged
+	newDocBytes := rt.GetDatabase().DbStats.Database().DocWritesBytes.Value()
+	assert.Equal(t, preImportDocBytes, newDocBytes)
+	// assert that doc xattr bytes have been written
+	newXattrBytes := rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value()
+	assert.Greater(t, newXattrBytes, preImportDocXattrBytes)
+
+	err = collection.GetCollectionDatastore().Delete(docID)
+	require.NoError(t, err)
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+
+	newDocBytes = rt.GetDatabase().DbStats.Database().DocWritesBytes.Value()
+	assert.Equal(t, preImportDocBytes, newDocBytes)
+	// assert that doc xattr bytes have been written
+	newXattrBytes = rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value()
+	assert.Greater(t, newXattrBytes, preImportDocXattrBytes)
 }
