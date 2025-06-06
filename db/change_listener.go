@@ -33,21 +33,22 @@ const (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	ctx                    context.Context
-	bucket                 base.Bucket
-	bucketName             string                 // Used for logging
-	tapFeed                base.TapFeed           // Observes changes to bucket
-	tapNotifier            *sync.Cond             // Posts notifications when documents are updated
-	FeedArgs               sgbucket.FeedArguments // The Tap Args (backfill, etc)
-	counter                uint64                 // Event counter; increments on every doc update
-	_terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts              map[string]uint64      // Latest count at which each doc key was updated
-	OnChangeCallback       DocChangedFunc
-	terminator             chan bool          // Signal to cause DCP feed to exit
-	sgCfgPrefix            string             // SG config key prefix
-	started                base.AtomicBool    // whether the feed has been started
-	BroadcastSlowMode      atomic.Bool        // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
-	metaKeys               *base.MetadataKeys // Metadata key formatter
+	ctx                      context.Context
+	bucket                   base.Bucket
+	bucketName               string                 // Used for logging
+	tapFeed                  base.TapFeed           // Observes changes to bucket
+	tapNotifier              *sync.Cond             // Posts notifications when documents are updated
+	FeedArgs                 sgbucket.FeedArguments // The Tap Args (backfill, etc)
+	counter                  uint64                 // Event counter; increments on every doc update
+	_terminateCheckCounter   uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts                map[string]uint64      // Latest count at which each doc key was updated
+	OnChangeCallback         DocChangedFunc
+	terminator               chan bool          // Signal to cause DCP feed to exit
+	broadcastChangesDoneChan chan struct{}      // Channel to signal that broadcast changes goroutine has terminated
+	sgCfgPrefix              string             // SG config key prefix
+	started                  base.AtomicBool    // whether the feed has been started
+	BroadcastSlowMode        atomic.Bool        // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
+	metaKeys                 *base.MetadataKeys // Metadata key formatter
 }
 
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
@@ -63,6 +64,7 @@ func (listener *changeListener) Init(name string, groupID string, metaKeys *base
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	listener.sgCfgPrefix = metaKeys.SGCfgPrefix(groupID)
 	listener.metaKeys = metaKeys
+	listener.broadcastChangesDoneChan = make(chan struct{})
 }
 
 func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent, docType DocumentType) {
@@ -224,6 +226,14 @@ func (listener *changeListener) Stop(ctx context.Context) {
 	case <-time.After(waitTime):
 		base.WarnfCtx(ctx, "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
 	}
+
+	// wait for the broadcast changes goroutine to terminate
+	select {
+	case <-listener.broadcastChangesDoneChan:
+		// Broadcast changes goroutine has terminated
+	case <-time.After(waitTime):
+		base.WarnfCtx(ctx, "Timeout after %v of waiting for broadcast changes goroutine to terminate", waitTime)
+	}
 }
 
 func (listener *changeListener) TapFeed() base.TapFeed {
@@ -250,6 +260,7 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 
 func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 	ticker := time.NewTicker(DefaultBroadcastChangesTime)
+	defer func() { close(listener.broadcastChangesDoneChan) }()
 	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
 	// for a value it already has
 	broadcastSlowMode := false
