@@ -2301,6 +2301,12 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
+	numVBuckets, err := bucket.GetMaxVbno()
+	require.NoError(t, err)
+	if numVBuckets != 1024 {
+		t.Skipf("Test requires 1024 vBuckets, but only had %d, will fix in CBG-4544", numVBuckets)
+	}
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: bucket.NoCloseClone(),
 		PersistentConfig: false,
