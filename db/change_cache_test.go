@@ -1126,7 +1126,8 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(t, collection, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	db.changeCache.skippedSeqs.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(3, time.Now().Unix()-7200))
+	err := db.changeCache.skippedSeqs.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(3, time.Now().Unix()-7200))
+	require.NoError(t, err)
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
 	db.Close(ctx)
@@ -1999,7 +2000,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 		numSeqsInList += elemKey.GetNumSequencesInEntry()
 	}
 	assert.Equal(t, numSeqsInList, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-	assert.Equal(t, int64(testChangeCache.skippedSeqs.list.GetLength()), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+	assert.Equal(t, int64(testChangeCache.skippedSeqs.list.GetLength()), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 	assert.Equal(t, int64(19), dbContext.DbStats.CacheStats.NumSkippedSeqs.Value())
 }
 
@@ -2072,7 +2073,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 		// assert on skipped sequence slice stats
 		testChangeCache.updateStats(ctx)
 		assert.Equal(t, numSeqsInList-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(t, expSliceLen[j], dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(t, expSliceLen[j], dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(t, int64(19), dbContext.DbStats.CacheStats.NumSkippedSeqs.Value())
 		numSeqsInList = dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
 	}
@@ -2132,7 +2133,7 @@ func TestSkippedSequenceCompact(t *testing.T) {
 	// assert that compaction empties the skipped slice and we have correct value for abandoned sequences
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.AbandonedSeqs.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 	}, time.Second*10, time.Millisecond*100)
@@ -2183,7 +2184,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	// assert that skipped list is filled and next seq at cache is updated
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
 	}, time.Second*10, time.Millisecond*100)
@@ -2194,7 +2195,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	// assert on cache stats after removal from, skipped list
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
@@ -2252,7 +2253,7 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 	// assert that whole range is processed onto pending
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(2), testChangeCache.nextSequence)
@@ -2317,7 +2318,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 	// assert on stats after unblocking pending
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2385,7 +2386,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	// - Range 2-25 should've been processed pushing nextSeq up to 26
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(26), testChangeCache.nextSequence)
@@ -2415,7 +2416,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	// assert on cache state after cache is caught up with pending
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(31), testChangeCache.nextSequence)
@@ -2466,7 +2467,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 	// assert single sequence range is pending
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(1), testChangeCache.nextSequence)
@@ -2485,7 +2486,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(3), testChangeCache.nextSequence)
@@ -2498,7 +2499,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(3), testChangeCache.nextSequence)
@@ -2556,7 +2557,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(1), testChangeCache.nextSequence)
 	}, time.Second*10, time.Millisecond*100)
@@ -2568,7 +2569,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2624,7 +2625,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	// assert that the skipped list is filled
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2638,7 +2639,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2704,7 +2705,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(16), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2719,7 +2720,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(9), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2733,7 +2734,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
@@ -2753,7 +2754,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceNodes.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(20), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
