@@ -77,6 +77,9 @@ USAGE = """usage: %prog [options] output_file.zip
 
 mydir = os.path.dirname(sys.argv[0])
 
+# name of the log file that contains the options passed to sgcollect_info
+SGCOLLECT_INFO_OPTIONS_LOG = "sgcollect_info_options.log"
+
 
 def delete_zip(filename):
     """
@@ -882,11 +885,9 @@ def main():
             "Invalid redaction level. Only 'none' and 'partial' are supported."
         )
 
-    should_redact = False
+    should_redact = should_redact_from_options(options)
     redact_zip_file = zip_filename[:-4] + "-redacted" + zip_filename[-4:]
-    if options.redact_level != "none":
-        should_redact = True
-
+    if should_redact:
         # Generate the s3 URL where zip files will be updated
         upload_url = generate_upload_url(parser, options, redact_zip_file)
     else:
@@ -1009,6 +1010,34 @@ def ud(value, should_redact=True):
     if not should_redact:
         return value
     return "<ud>{0}</ud>".format(value)
+
+
+def get_sgcollect_info_options_task(
+    options: optparse.Values, args: List[str]
+) -> AllOsTask:
+    """
+    Create a task that returns all the options used to run sgcollect_info.
+    """
+    should_redact = should_redact_from_options(options)
+    return AllOsTask(
+        "Echo sgcollect_info cmd line args",
+        "echo options: {0} args: {1}".format(
+            {
+                k: ud(v, should_redact)
+                for k, v in list(options.__dict__.items())
+                if k != "sync_gateway_password"
+            },
+            args,
+        ),
+        log_file="sgcollect_info_options.log",
+    )
+
+
+def should_redact_from_options(options: optparse.Values) -> bool:
+    """
+    Returns True if the redaction level is set to 'partial' or 'full'.
+    """
+    return options.redact_level != "none"
 
 
 if __name__ == "__main__":

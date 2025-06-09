@@ -620,11 +620,6 @@ def make_os_tasks(processes):
         SolarisTask("Swap configuration", "swap -l"),
         SolarisTask("Disk activity", "zpool iostat 1 10"),
         SolarisTask("Disk activity", "iostat -E 1 10"),
-        LinuxTask("Process list snapshot", "export TERM=''; top -Hb -n1 || top -H n1"),
-        LinuxTask(
-            "Process list",
-            "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command",
-        ),
         LinuxTask("Raw /proc/vmstat", "cat /proc/vmstat"),
         LinuxTask("Raw /proc/mounts", "cat /proc/mounts"),
         LinuxTask("Raw /proc/partitions", "cat /proc/partitions"),
