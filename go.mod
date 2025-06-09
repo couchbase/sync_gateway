@@ -13,10 +13,10 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.5.4
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20250522135601-8c9a5acda2c2
+	github.com/couchbase/sg-bucket v0.0.0-20250609170220-2b64d25344a2
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
-	github.com/couchbaselabs/rosmar v0.0.0-20250516152659-a54824234e64
+	github.com/couchbaselabs/rosmar v0.0.0-20250609172021-a098ab87afc5
 	github.com/elastic/gosigar v0.14.3
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.0.5
