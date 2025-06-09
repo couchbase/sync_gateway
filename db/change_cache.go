@@ -292,13 +292,18 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue for database %s", base.MD(c.db.Name))
 
-	compactedSequences := c.skippedSeqs.SkippedSequenceCompact(ctx, int64(c.options.CacheSkippedSeqMaxWait.Seconds()))
+	compactedSequences, numSequencesLeftInList := c.skippedSeqs.SkippedSequenceCompact(ctx, int64(c.options.CacheSkippedSeqMaxWait.Seconds()))
 	if compactedSequences == 0 {
 		base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  No sequences to be compacted from skipped sequence list for database %s.", base.MD(c.db.Name))
 		return nil
 	}
 
 	c.db.DbStats.Cache().AbandonedSeqs.Add(compactedSequences)
+
+	// update the notify mode
+	if numSequencesLeftInList == 0 {
+		c.db.mutationListener.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", compactedSequences, base.MD(c.db.Name))
 	return nil
@@ -967,7 +972,7 @@ func (h *LogPriorityQueue) Pop() interface{} {
 // ////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	_, err := c.skippedSeqs.list.Remove(NewSingleSkippedSequenceEntryAt(x, 0))
+	_, numSkipped, err := c.skippedSeqs.list.Remove(NewSingleSkippedSequenceEntryAt(x, 0))
 	if err != nil {
 		return fmt.Errorf("sequence %d not found in the skipped list, err: %v", x, err)
 	}

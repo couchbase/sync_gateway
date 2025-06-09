@@ -71,7 +71,7 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		// wait for value to move from pending to cache and skipped list to fill
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			rt.GetDatabase().UpdateCalculatedStats(ctx)
-			assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+			assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 			assert.True(c, rt.GetDatabase().BroadcastSlowMode.Load())
 		}, time.Second*10, time.Millisecond*100)
 
@@ -86,7 +86,7 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		// assert skipped is cleared and skipped sequence broadcast is not sent
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			rt.GetDatabase().UpdateCalculatedStats(ctx)
-			assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+			assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 			assert.False(c, rt.GetDatabase().BroadcastSlowMode.Load())
 		}, time.Second*10, time.Millisecond*100)
 	})

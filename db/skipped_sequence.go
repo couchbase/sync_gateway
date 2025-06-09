@@ -12,11 +12,6 @@ package db
 
 import (
 	"context"
-	"fmt"
-	"slices"
-	"sort"
-	"strconv"
-	"sync"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -28,16 +23,6 @@ import (
 type SkippedSequenceSkiplist struct {
 	list                          *skiplist.SkipList
 	NumCumulativeSkippedSequences int64
-}
-
-// String will return a string representation of the SkippedSequenceListEntry
-// Formats: Singular: "#<seq>" or ranges: "#<start>-#<end>"
-func (s *SkippedSequenceListEntry) String() string {
-	seqStr := "#" + strconv.FormatUint(s.start, 10)
-	if s.end != 0 && s.end != s.start {
-		seqStr += "-#" + strconv.FormatUint(s.end, 10)
-	}
-	return seqStr
 }
 
 // SkippedSequenceStats will hold all stats associated with the skipped sequence slice, used for getStats()
@@ -99,9 +84,16 @@ func (s *SkippedSequenceSkiplist) Contains(x uint64) bool {
 }
 
 // SkippedSequenceCompact will compact the entries with timestamp old enough.
-func (s *SkippedSequenceSkiplist) SkippedSequenceCompact(ctx context.Context, maxWait int64) (numSequencesCompacted int64) {
-	numSequencesCompacted = s.list.CompactList(time.Now().Unix(), maxWait)
-	return numSequencesCompacted
+func (s *SkippedSequenceSkiplist) SkippedSequenceCompact(ctx context.Context, maxWait int64) (numSequencesCompacted int64, numSeqsLeftInList int64) {
+	var compactedEntries []skiplist.SkippedSequenceEntry
+	timeNow := time.Now().Unix()
+	compactedEntries, numSequencesCompacted, numSeqsLeftInList = s.list.CompactList(timeNow, maxWait)
+	if numSequencesCompacted > 0 {
+		for _, entry := range compactedEntries {
+			base.WarnfCtx(ctx, "Abandoning previously skipped sequence entry: %v after %s", entry.String(), time.Duration(timeNow-entry.Timestamp)*time.Second)
+		}
+	}
+	return numSequencesCompacted, numSeqsLeftInList
 }
 
 func (s *SkippedSequenceSkiplist) PushSkippedSequenceEntry(entry skiplist.SkippedSequenceEntry) error {
@@ -137,12 +129,14 @@ func (s *SkippedSequenceSkiplist) getStats() SkippedSequenceStats {
 }
 
 // processUnusedSequenceRangeAtSkipped will batch remove unused sequence range from skipped sequences, if duplicate
-// sequences are present, we will iterate through skipped list removing the non-duplicate sequences
-func (s *SkippedSequenceSkiplist) processUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) {
+// sequences are present, we will iterate through skipped list removing the non-duplicate sequences. Returns number of
+// sequences left in list
+func (s *SkippedSequenceSkiplist) processUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) int64 {
 	// batch remove from skipped
-	_, err := s.list.Remove(skiplist.SkippedSequenceEntry{Start: fromSequence, End: toSequence})
+	_, numSeqs, err := s.list.Remove(skiplist.SkippedSequenceEntry{Start: fromSequence, End: toSequence})
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyCache, "Unused sequence range #%d to #%d not present in skipped list. Err: %v", fromSequence, toSequence, err)
-		return
+		return numSeqs
 	}
+	return numSeqs
 }

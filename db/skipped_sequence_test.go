@@ -348,7 +348,7 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 				}
 			}
 
-			elem, err := skippedList.list.Remove(testCase.remove)
+			elem, _, err := skippedList.list.Remove(testCase.remove)
 			require.NoError(t, err)
 			require.NotNil(t, elem)
 
@@ -369,7 +369,7 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 			}
 
 			// attempt remove on non existent sequence
-			elem, err = skippedList.list.Remove(testCase.errorRemove)
+			elem, _, err = skippedList.list.Remove(testCase.errorRemove)
 			require.Error(t, err)
 			require.Nil(t, elem)
 		})
@@ -406,7 +406,7 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 	timestampAtSequence := elem.Key().Timestamp
 
 	// remove seq in middle of above range
-	elem, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(61))
+	elem, _, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(61))
 	require.NoError(t, err)
 	require.NotNil(t, elem)
 
@@ -438,11 +438,11 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 	require.NoError(t, err)
 
 	// remove start seq from range 80-32
-	elem, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(80))
+	elem, _, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(80))
 	require.NoError(t, err)
 	require.NotNil(t, elem)
 	// remove last seq from range 85-87
-	elem, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(87))
+	elem, _, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(87))
 	require.NoError(t, err)
 	require.NotNil(t, elem)
 
@@ -473,7 +473,7 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			i := uint64(1)
 			for b.Loop() {
-				_, _ = bm.inputList.list.Remove(NewSingleSkippedSequenceEntryAt(multiplier*i, 0))
+				_, _, _ = bm.inputList.list.Remove(NewSingleSkippedSequenceEntryAt(multiplier*i, 0))
 				i++
 			}
 		})
@@ -484,7 +484,7 @@ func BenchmarkRemoveSeqRangeFromSkippedList(b *testing.B) {
 	skipedList := setupBenchmark(true, true)
 	i := uint64(1)
 	for b.Loop() {
-		_, _ = skipedList.list.Remove(NewSkippedSequenceRangeEntryAt(i*multiplier, (i*multiplier)+1, 0))
+		_, _, _ = skipedList.list.Remove(NewSkippedSequenceRangeEntryAt(i*multiplier, (i*multiplier)+1, 0))
 		i++
 	}
 }
@@ -596,12 +596,14 @@ func TestCompactSkippedList(t *testing.T) {
 		inputList  [][]uint64
 		expected   [][]uint64
 		numRemoved int64
+		numLeft    int64
 		rangeItems bool
 	}{
 		{
 			name:       "single_items",
 			inputList:  [][]uint64{{2}, {6}, {100}, {200}, {500}},
 			expected:   [][]uint64{{600, 600}},
+			numLeft:    1,
 			numRemoved: 5,
 		},
 		{
@@ -609,6 +611,7 @@ func TestCompactSkippedList(t *testing.T) {
 			inputList:  [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}, {55, 60}},
 			expected:   [][]uint64{{600, 605}},
 			numRemoved: 36,
+			numLeft:    6,
 			rangeItems: true,
 		},
 	}
@@ -643,9 +646,10 @@ func TestCompactSkippedList(t *testing.T) {
 			err = skippedList.PushSkippedSequenceEntry(entry)
 			require.NoError(t, err)
 
-			numRemoved := skippedList.SkippedSequenceCompact(base.TestCtx(t), 1)
+			numRemoved, numSeqsLeft := skippedList.SkippedSequenceCompact(base.TestCtx(t), 1)
 
 			require.Equal(t, skippedList.list.GetLength(), 1)
+			assert.Equal(t, testCase.numLeft, numSeqsLeft)
 			assert.Equal(t, testCase.expected[0][0], skippedList.list.Front().Key().Start)
 			assert.Equal(t, testCase.expected[0][1], skippedList.list.Front().Key().End)
 
@@ -833,7 +837,7 @@ func TestRemoveSequenceRange(t *testing.T) {
 				}
 			}
 
-			elem, err := skippedList.list.Remove(NewSkippedSequenceRangeEntry(testCase.rangeToRemove[0], testCase.rangeToRemove[1]))
+			elem, _, err := skippedList.list.Remove(NewSkippedSequenceRangeEntry(testCase.rangeToRemove[0], testCase.rangeToRemove[1]))
 			if testCase.errorCase {
 				require.Error(t, err)
 				require.Nil(t, elem)

@@ -2819,6 +2819,67 @@ func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels b
 	return changes
 }
 
+func TestBroadcastFrequencyAfterSkippedCompact(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	testChangeCache := &changeCache{}
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: 2 * time.Nanosecond,
+		CacheSkippedSeqMaxWait: 1 * time.Second,
+		CachePendingSeqMaxNum:  0,
+	}, dbContext.MetadataKeys); err != nil {
+		log.Printf("Init failed for testChangeCache: %v", err)
+		t.Fail()
+	}
+
+	if err := testChangeCache.Start(0); err != nil {
+		log.Printf("Start error for testChangeCache: %v", err)
+		t.Fail()
+	}
+	defer testChangeCache.Stop(ctx)
+	require.NoError(t, err)
+
+	// push two entries that will be pushed to pending and subsequently skipped will be filled with sequence gaps
+	entry := &LogEntry{
+		Sequence:     14,
+		DocID:        fmt.Sprintf("doc_%d", 50),
+		RevID:        "1-abcdefabcdefabcdef",
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+	}
+	_ = testChangeCache.processEntry(ctx, entry)
+
+	// assert on stats
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		testChangeCache.updateStats(ctx)
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
+		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
+		assert.Equal(c, int64(13), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(c, uint64(15), testChangeCache.nextSequence)
+		assert.True(c, dbContext.mutationListener.BroadcastSlowMode.Load())
+	}, time.Second*10, time.Millisecond*100)
+
+	// wait for skipped sequence compaction to kick in
+	time.Sleep(1 * time.Second)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.False(c, dbContext.mutationListener.BroadcastSlowMode.Load())
+		assert.Equal(c, int64(13), dbContext.DbStats.Cache().AbandonedSeqs.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+}
+
 // TestAddPendingLogs:
 //   - Test age-based eviction of sequences and ranges from pending logs.
 //   - Adds to pending logs directly via heap.Push with backdated TimeReceived,
@@ -3039,7 +3100,7 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 	// wait for seqs to be pushed skipped
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		db.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(1), db.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(1), db.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.True(t, db.BroadcastSlowMode.Load())
 	}, time.Second*10, time.Millisecond*100)
 
