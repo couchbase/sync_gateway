@@ -115,11 +115,13 @@ func (w *DCPWorker) Start(ctx context.Context, wg *sync.WaitGroup) {
 					// to avoid attempting to restart with a new snapshot and old sequence value
 					w.pendingSnapshot[vbID] = e
 				case mutationEvent:
+					WarnfCtx(ctx, "bbrks - DCPWorker.Start.select mutationEvent e.key: %s - value %s", e.key, e.value)
 					if w.mutationCallback != nil {
 						w.mutationCallback(e.asFeedEvent())
 					}
 					w.updateSeq(ctx, e.key, vbID, e.seq)
 				case deletionEvent:
+					WarnfCtx(ctx, "bbrks - DCPWorker.Start.select deletionEvent e.key: %s - value %s", e.key, e.value)
 					if w.mutationCallback != nil && !w.ignoreDeletes {
 						w.mutationCallback(e.asFeedEvent())
 					}

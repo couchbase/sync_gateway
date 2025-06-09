@@ -319,6 +319,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	// HACK: fetchDocBodyByKV can be called to lazily fetch the document body
 	// used to work around some non-xattr/doc body dependencies without enabling doc bodies on the full xattr-only DCP feed
 	fetchDocBodyByKV := func(docID string) []byte {
+		base.WarnfCtx(ctx, "bbrks - fetchDocBodyByKV(%s)", docID)
 		// HACK: Hardcoded metadata store
 		docBody, cas, err := c.db.MetadataStore.GetRaw(docID)
 		if err != nil {
@@ -329,6 +330,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			base.WarnfCtx(ctx, "DocChanged kv fallback: CAS mismatch for doc %q - expected %d, got %d", base.UD(docID), event.Cas, cas)
 			return nil
 		}
+		base.WarnfCtx(ctx, "bbrks - fetchDocBodyByKV(%s) got body: %s", docID, docBody)
 		return docBody
 	}
 
