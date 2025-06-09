@@ -964,15 +964,7 @@ def main():
             "WARNING: unable to find Sync Gateway executable, omitting from result.  Go pprofs will not be accurate."
         )
 
-    # Echo the command line args used to run sgcollect_info
-    cmd_line_args_task = AllOsTask(
-        "Echo sgcollect_info cmd line args",
-        "echo options: {0} args: {1}".format(
-            {k: ud(v, should_redact) for k, v in list(options.__dict__.items())}, args
-        ),
-        log_file="sgcollect_info_options.log",
-    )
-    runner.run(cmd_line_args_task)
+    runner.run(get_sgcollect_info_options_task(options, args))
 
     runner.close_all_files()
 

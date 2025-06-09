@@ -615,7 +615,6 @@ def make_os_tasks(processes):
         WindowsTask("Computer OS", "wmic os"),
         LinuxTask("System Hardware", "lshw -json || lshw"),
         SolarisTask("Process list snapshot", "prstat -a -c -n 100 -t -v -L 1 10"),
-        SolarisTask("Process list", "ps -ef"),
         SolarisTask("Service configuration", "svcs -a"),
         SolarisTask("Swap configuration", "swap -l"),
         SolarisTask("Disk activity", "zpool iostat 1 10"),
@@ -657,7 +656,6 @@ def make_os_tasks(processes):
         LinuxTask("LVM info", "lvdisplay"),
         LinuxTask("LVM info", "vgdisplay"),
         LinuxTask("LVM info", "pvdisplay"),
-        MacOSXTask("Process list snapshot", "top -l 1"),
         MacOSXTask("Disk activity", "iostat 1 10"),
         MacOSXTask(
             "Process list",
