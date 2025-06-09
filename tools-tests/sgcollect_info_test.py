@@ -121,15 +121,19 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
 def test_get_unique_filename(basenames, filename, expected):
     assert sgcollect_info.get_unique_filename(basenames, filename) == expected
 
-@pytest.mark.parametrize("cmdline", [
-    ([]),
-    (["--log-redaction-level", "full"]),
-    (["--log-redaction-level", "none"]),
-    (["--log-redaction-l", "none"]),
-    (["--sync-gateway-password=mypassword"]),
-    (["--sync-gateway-pa=mypassword"]),
-    (["--sync-gateway-password", "mypassword"]),
- ])
+
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        ([]),
+        (["--log-redaction-level", "full"]),
+        (["--log-redaction-level", "none"]),
+        (["--log-redaction-l", "none"]),
+        (["--sync-gateway-password=mypassword"]),
+        (["--sync-gateway-pa=mypassword"]),
+        (["--sync-gateway-password", "mypassword"]),
+    ],
+)
 def test_get_sgcollect_info_options_task(tmp_path, cmdline):
     runner = tasks.TaskRunner(tmp_dir=tmp_path)
     parser = sgcollect_info.create_option_parser()
