@@ -93,7 +93,7 @@ func (h *handler) handleBLIPSync() error {
 		}
 		// ActiveSubprotocol only available after handshake via ServeHTTP(), so have to get go-blip to invoke callback between handshake and serving BLIP messages
 		subprotocol := blipContext.ActiveSubprotocol()
-		h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to WebSocket protocol %s+%s%s", blipContext.ID, blip.WebSocketSubProtocolPrefix, subprotocol, h.formattedEffectiveUserName()))
+		h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to WebSocket protocol %s+%s from %q %s", blipContext.ID, blip.WebSocketSubProtocolPrefix, subprotocol, base.UD(h.rq.UserAgent()), h.formattedEffectiveUserName()))
 		err = bsc.SetActiveCBMobileSubprotocol(subprotocol)
 		if err != nil {
 			base.WarnfCtx(h.ctx(), "Couldn't set active CB Mobile Subprotocol: %v", err)
