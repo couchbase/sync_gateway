@@ -601,6 +601,14 @@ func (h *handler) handlePostDoc() error {
 		return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 	}
 
+	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
+		// if we are in slow broadcast mode reject write with 503 and increment rejected writes stat
+		if h.db.BroadcastSlowMode.Load() {
+			h.db.DbStats.DatabaseStats.NumDocWritesRejected.Add(1)
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database cache is behind and cannot accept writes at this time. Please try again later.")
+		}
+	}
+
 	roundTrip := h.getBoolQuery("roundtrip")
 	body, err := h.readDocument()
 	if err != nil {
@@ -627,6 +635,14 @@ func (h *handler) handlePostDoc() error {
 
 // HTTP handler for a DELETE of a document
 func (h *handler) handleDeleteDoc() error {
+	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
+		// if we are in slow broadcast mode reject write with 503 and increment rejected writes stat
+		if h.db.BroadcastSlowMode.Load() {
+			h.db.DbStats.DatabaseStats.NumDocWritesRejected.Add(1)
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database cache is behind and cannot accept writes at this time. Please try again later.")
+		}
+	}
+
 	docid := h.PathVar("docid")
 	revid := h.getQuery("rev")
 	if revid == "" {

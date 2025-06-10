@@ -2725,8 +2725,23 @@ func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
 	// try to update the doc and expect a 503 Service Unavailable
 	resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docVrs), `{"test": "new value"}`)
 	RequireStatus(t, resp, http.StatusServiceUnavailable)
-
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DatabaseStats.NumDocWritesRejected.Value())
+
+	// post doc endpoint should also reject writes
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/", `{"_id": "foo", "key": "val"}`)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.NumDocWritesRejected.Value())
+
+	// try to delete the doc and expect a 503 Service Unavailable
+	resp = rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docVrs), "")
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.DatabaseStats.NumDocWritesRejected.Value())
+
+	// try bulk docs endpoint
+	input := `{"docs": [{"_id": "bulk1", "new": "doc"}, {"_id": "bulk2","new": "doc"}]}`
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", input)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	assert.Equal(t, int64(4), rt.GetDatabase().DbStats.DatabaseStats.NumDocWritesRejected.Value())
 }
 
 func TestNullDocHandlingForMutable1xBody(t *testing.T) {
