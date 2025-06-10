@@ -7,10 +7,12 @@
 # the file licenses/APL2.txt.
 
 import io
+import pathlib
 import unittest
 
 import pytest
 import sgcollect_info
+import tasks
 
 
 @pytest.mark.parametrize(
@@ -118,3 +120,29 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
 )
 def test_get_unique_filename(basenames, filename, expected):
     assert sgcollect_info.get_unique_filename(basenames, filename) == expected
+
+
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        ([]),
+        (["--log-redaction-level", "full"]),
+        (["--log-redaction-level", "none"]),
+        (["--log-redaction-l", "none"]),
+        (["--sync-gateway-password=mypassword"]),
+        (["--sync-gateway-pa=mypassword"]),
+        (["--sync-gateway-password", "mypassword"]),
+    ],
+)
+def test_get_sgcollect_info_options_task(tmp_path, cmdline):
+    runner = tasks.TaskRunner(tmp_dir=tmp_path)
+    parser = sgcollect_info.create_option_parser()
+    options, args = parser.parse_args(cmdline + ["fakesgcollect.zip"])
+    task = sgcollect_info.get_sgcollect_info_options_task(options, args)
+    runner.run(task)
+
+    output = (
+        pathlib.Path(runner.tmpdir) / sgcollect_info.SGCOLLECT_INFO_OPTIONS_LOG
+    ).read_text()
+    assert "sync_gateway_password" not in output
+    assert f"args: {args}" in output
