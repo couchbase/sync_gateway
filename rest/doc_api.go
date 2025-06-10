@@ -442,6 +442,14 @@ func (h *handler) handlePutDoc() error {
 		return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 	}
 
+	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
+		// if we are in slow broadcast mode reject write with 503 and increment rejected writes stat
+		if h.db.BroadcastSlowMode.Load() {
+			h.db.DbStats.DatabaseStats.NumDocWritesRejected.Add(1)
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database cache is behind and cannot accept writes at this time. Please try again later.")
+		}
+	}
+
 	startTime := time.Now()
 	defer func() {
 		h.db.DbStats.CBLReplicationPush().WriteProcessingTime.Add(time.Since(startTime).Nanoseconds())

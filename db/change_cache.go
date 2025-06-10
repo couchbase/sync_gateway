@@ -629,7 +629,7 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		base.WarnfCtx(ctx, "unused sequence range of #%d to %d contains duplicate sequences, will be ignored", fromSequence, toSequence)
 	}
 	if numSkipped == 0 {
-		c.db.mutationListener.BroadcastSlowMode.CompareAndSwap(true, false)
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
 	}
 	return allChangedChannels
 }
@@ -973,7 +973,7 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 		return err
 	}
 	if numSkipped == 0 {
-		c.db.mutationListener.BroadcastSlowMode.CompareAndSwap(true, false)
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
 	}
 	return nil
 }
@@ -988,7 +988,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 		return
 	}
 	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
-	c.db.mutationListener.BroadcastSlowMode.CompareAndSwap(false, true)
+	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 
 // waitForSequence blocks up to maxWaitTime until the given sequence has been received.
