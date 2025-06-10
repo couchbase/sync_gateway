@@ -307,6 +307,10 @@ const (
 
 	NumReplicationsRejectedLimitDesc = "The total number of times a replication connection is rejected due to it being over the threshold."
 
+	ResyncNumProcessedDesc = "The total number of processed documents for resync on this database."
+
+	ResyncNumChangedDesc = "The total number of changed documents for resync on this database."
+
 	NumPublicRestRequestsDesc = "The total number of requests sent over the public REST api."
 
 	TotalSyncTimeDesc = "The total total sync time is a proxy for websocket connections. Tracking long lived and potentially idle connections. " +
@@ -467,4 +471,8 @@ const (
 	NumDocWritesCollDesc = "The total number of documents written to this collection since Sync Gateway node startup (i.e. receiving from a client)"
 
 	DocWritesBytesCollDesc = "The total number of bytes written to this collection as part of document writes since Sync Gateway node startup."
+
+	ResyncNumProcessedCollDesc = "The total number of processed documents for resync on this collection."
+
+	ResyncNumChangedCollDesc = "The total number of changed documents for resync on this collection."
 )

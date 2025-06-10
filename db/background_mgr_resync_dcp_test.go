@@ -411,7 +411,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 }
 
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
-func setupTestDBForResyncWithDocs(t *testing.T, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
+func setupTestDBForResyncWithDocs(t testing.TB, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)
 	db.Options.QueryPaginationLimit = 100
 	syncFn := `
