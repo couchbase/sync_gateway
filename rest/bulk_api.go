@@ -50,9 +50,9 @@ type allDocsRow struct {
 func (h *handler) handleAllDocs() error {
 
 	var numDocsPreFilter, numDocsPostFilter uint64
-	defer func() {
-		// increment public all docs stats here
-		if h.privs != adminPrivs {
+	if h.privs != adminPrivs {
+		defer func() {
+			// public _all_docs stats
 			h.db.DbStats.DatabaseStats.NumPublicAllDocsRequests.Add(1)
 			if numDocsPreFilter > 0 {
 				h.db.DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Add(int64(numDocsPreFilter))
@@ -60,8 +60,8 @@ func (h *handler) handleAllDocs() error {
 			if numDocsPostFilter > 0 {
 				h.db.DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Add(int64(numDocsPostFilter))
 			}
-		}
-	}()
+		}()
+	}
 
 	if h.privs != adminPrivs && h.db.DatabaseContext.Options.DisablePublicAllDocs {
 		return base.HTTPErrorf(http.StatusForbidden, "public access to _all_docs is disabled for this database")
