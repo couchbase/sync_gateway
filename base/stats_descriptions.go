@@ -328,6 +328,12 @@ const (
 
 	CorruptSequenceCountDesc = "The total number of corrupt sequences detected at the sequence allocator. Documents that have a corrupt " +
 		"sequence that trigger release of sequences above the MaxSequenceToRelease threshold will have their update cancelled."
+
+	NumPublicAllDocsRequestsDesc = "The total number of requests sent over the public REST api for /_all_docs."
+
+	NumDocsPreFilterPublicAllDocsDesc = "The total number of documents returned on all public /_all_docs requests before filtering"
+
+	NumDocsPostFilterPublicAllDocsDesc = "The total number of documents returned on all public /_all_docs requests after filtering"
 )
 
 // Delta Sync stats descriptions
