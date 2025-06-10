@@ -2857,7 +2857,7 @@ func TestPublicAllDocsApiStats(t *testing.T) {
 
 	resp := rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs", "", "user1")
 	RequireStatus(t, resp, http.StatusOK)
-	// two docs in the db but use only has access to one of them, ensure stats are correct in that assessment
+	// two docs in the db but user only has access to one of them, ensure stats are correct in that assessment
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DatabaseStats.NumPublicAllDocsRequests.Value())
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Value())
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Value())
@@ -2867,7 +2867,7 @@ func TestPublicAllDocsApiStats(t *testing.T) {
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_all_docs", body, "user1")
 	RequireStatus(t, resp, http.StatusOK)
 	// docs that don't exist or the user doesn't have access to are returned in result but with errors when a key filter applies, so these
-	// should still count in post filter count as they;re still returned to teh user in some capacity
+	// should still count in post filter count as they're still returned to the user in some capacity
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.NumPublicAllDocsRequests.Value())
 	assert.Equal(t, int64(5), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Value())
 	assert.Equal(t, int64(4), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Value())
