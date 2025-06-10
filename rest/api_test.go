@@ -2677,6 +2677,10 @@ func TestDocChannelSetPruning(t *testing.T) {
 }
 
 func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs to be enabled")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			CacheConfig: &CacheConfig{
@@ -2692,7 +2696,7 @@ func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
 	defer rt.Close()
 
 	docID := t.Name() + "_doc1"
-	ctx := t.Context()
+	ctx := base.TestCtx(t)
 
 	docVrs := rt.PutDoc(docID, `{"test": "value"}`)
 
