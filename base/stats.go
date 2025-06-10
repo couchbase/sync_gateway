@@ -1843,6 +1843,9 @@ func (d *DbStats) initDatabaseStats() error {
 		return err
 	}
 	resUtil.NumDocsPostFilterPublicAllDocs, err = NewIntStat(SubsystemDatabaseKey, "num_docs_post_filter_public_all_docs", StatUnitNoUnits, NumDocsPostFilterPublicAllDocsDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
