@@ -27,32 +27,36 @@ import (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	ctx                   context.Context
-	bucket                base.Bucket
-	bucketName            string                 // Used for logging
-	tapFeed               base.TapFeed           // Observes changes to bucket
-	tapNotifier           *sync.Cond             // Posts notifications when documents are updated
-	FeedArgs              sgbucket.FeedArguments // The Tap Args (backfill, etc)
-	counter               uint64                 // Event counter; increments on every doc update
-	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
-	OnChangeCallback      DocChangedFunc
-	terminator            chan bool          // Signal to cause DCP feed to exit
-	sgCfgPrefix           string             // SG config key prefix
-	started               base.AtomicBool    // whether the feed has been started
-	metaKeys              *base.MetadataKeys // Metadata key formatter
+	ctx                      context.Context
+	dbCtx                    *DatabaseContext
+	bucket                   base.Bucket
+	bucketName               string                 // Used for logging
+	tapFeed                  base.TapFeed           // Observes changes to bucket
+	tapNotifier              *sync.Cond             // Posts notifications when documents are updated
+	FeedArgs                 sgbucket.FeedArguments // The Tap Args (backfill, etc)
+	counter                  uint64                 // Event counter; increments on every doc update
+	terminateCheckCounter   uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts                map[string]uint64      // Latest count at which each doc key was updated
+	OnChangeCallback         DocChangedFunc
+	terminator               chan bool          // Signal to cause DCP feed to exit
+	broadcastChangesDoneChan chan struct{}      // Channel to signal that broadcast changes goroutine has terminated
+	sgCfgPrefix              string             // SG config key prefix
+	started                  base.AtomicBool    // whether the feed has been started
+	metaKeys                 *base.MetadataKeys // Metadata key formatter
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
 
-func (listener *changeListener) Init(name string, groupID string, metaKeys *base.MetadataKeys) {
+func (listener *changeListener) Init(name string, groupID string, db *DatabaseContext) {
 	listener.bucketName = name
 	listener.counter = 1
 	listener.terminateCheckCounter = 0
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
-	listener.sgCfgPrefix = metaKeys.SGCfgPrefix(groupID)
-	listener.metaKeys = metaKeys
+	listener.sgCfgPrefix = db.MetadataKeys.SGCfgPrefix(groupID)
+	listener.metaKeys = db.MetadataKeys
+	listener.broadcastChangesDoneChan = make(chan struct{})
+	listener.dbCtx = db
 }
 
 func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent) {

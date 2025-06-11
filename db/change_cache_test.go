@@ -3127,6 +3127,46 @@ func TestAddPendingLogs(t *testing.T) {
 
 }
 
+func TestChangeInBroadcastForSkipped(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Skipped test as it requires xattrs")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
+
+	opts := DefaultCacheOptions()
+	opts.CachePendingSeqMaxWait = 10 * time.Nanosecond
+	db, ctx := setupTestDBWithCacheOptions(t, opts)
+	defer db.Close(ctx)
+
+	docID := t.Name()
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	_, _, err := collection.Put(ctx, docID, Body{"test": "doc"})
+	require.NoError(t, err)
+
+	// create some skipped sequences
+	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	var retrievedXattr map[string]interface{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
+	retrievedXattr["sequence"] = uint64(20)
+	newXattrVal := map[string][]byte{
+		base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
+	}
+	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, newXattrVal, nil)
+	require.NoError(t, err)
+
+	// wait for seqs to be pushed skipped
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		db.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(1), db.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.True(t, db.BroadcastSlowMode.Load())
+	}, time.Second*10, time.Millisecond*100)
+
+}
+
 type sequenceRange struct {
 	start uint64
 	end   uint64

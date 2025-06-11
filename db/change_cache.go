@@ -636,6 +636,9 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		// in pending.
 		base.WarnfCtx(ctx, "unused sequence range of #%d to %d contains duplicate sequences, will be ignored", fromSequence, toSequence)
 	}
+	if c.skippedSeqs.NumCurrentSkippedSequences == 0 {
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
 	return allChangedChannels
 }
 
@@ -977,6 +980,9 @@ func (h *LogPriorityQueue) Pop() interface{} {
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
 	err := c.skippedSeqs.removeSeq(x)
+	if c.skippedSeqs.NumCurrentSkippedSequences == 0 {
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
 	return err
 }
 
@@ -990,6 +996,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 		return
 	}
 	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
+	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 
 // waitForSequence blocks up to maxWaitTime until the given sequence has been received.

@@ -258,6 +258,9 @@ const (
 
 	NumDocWritesDesc = "The total number of documents written by any means (replication, rest API interaction or imports) since Sync Gateway node startup."
 
+	NumDocWritesRejectedDesc = "NumDocWritesRejected is the total number of document writes that were rejected by Sync Gateway when the unsupported option " +
+		"RejectWritesWithSkippedSequences."
+
 	NumReplicationsActiveDesc = "The total number of active replications."
 
 	NumReplicationsTotalDesc = "The total number of replications created since Sync Gateway node startup."
