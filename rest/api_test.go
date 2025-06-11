@@ -2839,3 +2839,51 @@ func TestBufferFlush(t *testing.T) {
 	// assert that the response is a flushed response
 	assert.True(t, resp.Flushed)
 }
+
+func TestPublicAllDocsApiStats(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
+	defer rt.Close()
+
+	rt.CreateUser("user1", []string{"ABC"})
+
+	rt.PutDoc("doc1", `{"channels": ["ABC"]}`)
+	rt.PutDoc("doc2", `{"channels": ["DEF"]}`)
+
+	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.DatabaseStats.NumPublicAllDocsRequests.Value())
+	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Value())
+	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Value())
+
+	resp := rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs", "", "user1")
+	RequireStatus(t, resp, http.StatusOK)
+	// two docs in the db but user only has access to one of them, ensure stats are correct in that assessment
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DatabaseStats.NumPublicAllDocsRequests.Value())
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Value())
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Value())
+
+	// add a doc ID that doesn't exist into the mix here
+	body := `{"keys": ["doc2", "doc1", "fakeDoc"]}`
+	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_all_docs", body, "user1")
+	RequireStatus(t, resp, http.StatusOK)
+	// docs that don't exist or the user doesn't have access to are returned in result but with errors when a key filter applies, so these
+	// should still count in post filter count as they're still returned to the user in some capacity
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.NumPublicAllDocsRequests.Value())
+	assert.Equal(t, int64(5), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Value())
+	assert.Equal(t, int64(4), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Value())
+
+	// try admin port _all_docs call and assert that stats are unchanged
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs", "")
+	RequireStatus(t, resp, http.StatusOK)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.NumPublicAllDocsRequests.Value())
+	assert.Equal(t, int64(5), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Value())
+	assert.Equal(t, int64(4), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Value())
+
+	// try make error case request and assert that the number of request count increments but other stats remain unchanged
+	body = `{"keys": [1]}`
+	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_all_docs", body, "user1")
+	RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.DatabaseStats.NumPublicAllDocsRequests.Value())
+	assert.Equal(t, int64(5), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Value())
+	assert.Equal(t, int64(4), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Value())
+}

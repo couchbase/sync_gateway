@@ -48,6 +48,21 @@ type allDocsRow struct {
 
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
+
+	var numDocsPreFilter, numDocsPostFilter uint64
+	if h.privs != adminPrivs {
+		defer func() {
+			// public _all_docs stats
+			h.db.DbStats.DatabaseStats.NumPublicAllDocsRequests.Add(1)
+			if numDocsPreFilter > 0 {
+				h.db.DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Add(int64(numDocsPreFilter))
+			}
+			if numDocsPostFilter > 0 {
+				h.db.DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Add(int64(numDocsPostFilter))
+			}
+		}()
+	}
+
 	if h.privs != adminPrivs && h.db.DatabaseContext.Options.DisablePublicAllDocs {
 		return base.HTTPErrorf(http.StatusForbidden, "public access to _all_docs is disabled for this database")
 	}
@@ -184,6 +199,8 @@ func (h *handler) handleAllDocs() error {
 
 	// Subroutine that writes a response entry for a document:
 	writeDoc := func(doc db.IDRevAndSequence, channels []string) (bool, error) {
+		// increment num docs pre-filter, this callback in invoked for each doc returned by query result
+		numDocsPreFilter++
 		row := createRow(doc, channels)
 		if row != nil {
 			if row.Status >= 300 {
@@ -241,6 +258,9 @@ func (h *handler) handleAllDocs() error {
 			return err
 		}
 	}
+	// set total number of docs post filter to number of rows included in response note this may include docs that
+	// have errors associated with them.
+	numDocsPostFilter = uint64(totalRows)
 
 	_, _ = h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
 		totalRows, lastSeq)))

@@ -686,6 +686,12 @@ type DatabaseStats struct {
 	TotalInitFatalErrors *SgwIntStat `json:"total_init_fatal_errors"`
 	// The total number of errors that occurred that prevented the database from being brought online.
 	TotalOnlineFatalErrors *SgwIntStat `json:"total_online_fatal_errors"`
+	// NumPublicAllDocsRequests is the total number of requests to /_all_docs on the public interface.
+	NumPublicAllDocsRequests *SgwIntStat `json:"num_public_all_docs_requests"`
+	// NumDocsPostFilterPublicAllDocs is the total number of documents returned after filtering for /_all_docs on the public interface.
+	NumDocsPostFilterPublicAllDocs *SgwIntStat `json:"num_docs_post_filter_public_all_docs"`
+	// NumDocsPreFilterPublicAllDocs is the total number of documents returned before filtering for /_all_docs on the public interface.
+	NumDocsPreFilterPublicAllDocs *SgwIntStat `json:"num_docs_pre_filter_public_all_docs"`
 }
 
 // This wrapper ensures that an expvar.Map type can be marshalled into JSON. The expvar.Map has no method to go direct to
@@ -1828,6 +1834,18 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.NumPublicAllDocsRequests, err = NewIntStat(SubsystemDatabaseKey, "num_public_all_docs_requests", StatUnitNoUnits, NumPublicAllDocsRequestsDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.NumDocsPreFilterPublicAllDocs, err = NewIntStat(SubsystemDatabaseKey, "num_docs_pre_filter_public_all_docs", StatUnitNoUnits, NumDocsPreFilterPublicAllDocsDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.NumDocsPostFilterPublicAllDocs, err = NewIntStat(SubsystemDatabaseKey, "num_docs_post_filter_public_all_docs", StatUnitNoUnits, NumDocsPostFilterPublicAllDocsDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1881,6 +1899,9 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.PublicRestBytesRead)
 	prometheus.Unregister(d.DatabaseStats.TotalInitFatalErrors)
 	prometheus.Unregister(d.DatabaseStats.TotalOnlineFatalErrors)
+	prometheus.Unregister(d.DatabaseStats.NumPublicAllDocsRequests)
+	prometheus.Unregister(d.DatabaseStats.NumDocsPreFilterPublicAllDocs)
+	prometheus.Unregister(d.DatabaseStats.NumDocsPostFilterPublicAllDocs)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {
