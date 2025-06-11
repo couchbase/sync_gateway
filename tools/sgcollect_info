@@ -37,7 +37,6 @@ from tasks import (
     TaskRunner,
     add_file_task,
     do_upload,
-    dump_utilities,
     flatten,
     generate_upload_url,
     log,
@@ -115,12 +114,6 @@ def create_option_parser():
         help="gather only product related information",
         action="store_true",
         default=False,
-    )
-    parser.add_option(
-        "-d",
-        action="callback",
-        callback=dump_utilities,
-        help="dump a list of commands that sgcollect_info needs",
     )
     parser.add_option(
         "--watch-stdin",
