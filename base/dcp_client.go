@@ -322,7 +322,9 @@ func (dc *DCPClient) getAgentConfig(spec BucketSpec) (*gocbcore.DCPAgentConfig, 
 		return nil, err
 	}
 
-	agentConfig := gocbcore.DCPAgentConfig{}
+	agentConfig := gocbcore.DCPAgentConfig{
+		DefaultRetryStrategy: gocbcore.NewBestEffortRetryStrategy(nil),
+	}
 	DebugfCtx(dc.ctx, KeyAll, "Parsing cluster connection string %q", UD(connStr))
 	beforeFromConnStr := time.Now()
 	connStrError := agentConfig.FromConnStr(connStr)
