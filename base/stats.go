@@ -591,6 +591,11 @@ type CollectionStats struct {
 	NumDocWrites *SgwIntStat `json:"num_doc_writes"`
 	// The total number of bytes written to this collection as part of document writes since Sync Gateway node startup.
 	DocWritesBytes *SgwIntStat `json:"doc_writes_bytes"`
+
+	// The total number of processed documents for resync on this collection.
+	ResyncNumProcessed *SgwIntStat `json:"resync_num_processed"`
+	// The total number of changed documents for resync on this collection.
+	ResyncNumChanged *SgwIntStat `json:"resync_num_changed"`
 }
 
 type DatabaseStats struct {
@@ -676,6 +681,10 @@ type DatabaseStats struct {
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
 	// The total number of times a replication connection is rejected due ot it being over the threshold
 	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
+	// The total number of processed documents for resync on this database.
+	ResyncNumProcessed *SgwIntStat `json:"resync_num_processed"`
+	// The total number of changed documents for resync on this database.
+	ResyncNumChanged *SgwIntStat `json:"resync_num_changed"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -1818,6 +1827,14 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.ResyncNumProcessed, err = NewIntStat(SubsystemDatabaseKey, "resync_num_processed", StatUnitNoUnits, ResyncNumProcessedDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.ResyncNumChanged, err = NewIntStat(SubsystemDatabaseKey, "resync_num_changed", StatUnitNoUnits, ResyncNumChangedDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.NumPublicRestRequests, err = NewIntStat(SubsystemDatabaseKey, "num_public_rest_requests", StatUnitNoUnits, NumPublicRestRequestsDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1894,6 +1911,8 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
+	prometheus.Unregister(d.DatabaseStats.ResyncNumProcessed)
+	prometheus.Unregister(d.DatabaseStats.ResyncNumChanged)
 	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
 	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
 	prometheus.Unregister(d.DatabaseStats.PublicRestBytesRead)
@@ -2052,6 +2071,8 @@ func (d *DbStats) unregisterCollectionStats(scopeAndCollectionName string) {
 
 	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].NumDocWrites)
 	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].DocWritesBytes)
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].ResyncNumProcessed)
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].ResyncNumChanged)
 }
 
 func (d *DbStats) unregisterSecurityStats() {
@@ -2108,6 +2129,14 @@ func NewCollectionStats(dbName, scopeAndCollectionName string) (stats *Collectio
 		return nil, err
 	}
 	stats.DocWritesBytes, err = NewIntStat(SubsystemCollection, "doc_writes_bytes", StatUnitBytes, DocWritesBytesCollDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	stats.ResyncNumProcessed, err = NewIntStat(SubsystemCollection, "resync_num_processed", StatUnitBytes, ResyncNumProcessedCollDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	stats.ResyncNumChanged, err = NewIntStat(SubsystemCollection, "resync_num_changed", StatUnitBytes, ResyncNumChangedCollDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return nil, err
 	}

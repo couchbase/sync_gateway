@@ -214,6 +214,11 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 		defer db.Close(ctx)
 
+		dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+		scopeAndCollectionName := dbc.ScopeAndCollectionName()
+		scopeName := scopeAndCollectionName.ScopeName()
+		collectionName := scopeAndCollectionName.CollectionName()
+
 		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
 
 		require.NotNil(t, resyncMgr)
@@ -239,6 +244,14 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
 		assert.Equal(t, int64(0), stats.DocsChanged)
 
+		assert.Equal(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(0))
+
+		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
+		require.NoError(t, err)
+		assert.Equal(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
+		assert.Equal(t, int64(0), cs.ResyncNumChanged.Value())
+
 		assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 	})
 
@@ -246,6 +259,11 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		docsToCreate := 100
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 		defer db.Close(ctx)
+
+		dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+		scopeAndCollectionName := dbc.ScopeAndCollectionName()
+		scopeName := scopeAndCollectionName.ScopeName()
+		collectionName := scopeAndCollectionName.CollectionName()
 
 		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
 		require.NotNil(t, resyncMgr)
@@ -275,6 +293,14 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		// be greater than DocsChanged
 		assert.LessOrEqual(t, int64(docsToCreate), stats.DocsProcessed)
 		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+
+		assert.Equal(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
+
+		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
+		require.NoError(t, err)
+		assert.Equal(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
+		assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
 		deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
 		assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
@@ -411,7 +437,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 }
 
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
-func setupTestDBForResyncWithDocs(t *testing.T, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
+func setupTestDBForResyncWithDocs(t testing.TB, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)
 	db.Options.QueryPaginationLimit = 100
 	syncFn := `
