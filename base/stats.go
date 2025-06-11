@@ -635,6 +635,8 @@ type DatabaseStats struct {
 	NumDocReadsRest *SgwIntStat `json:"num_doc_reads_rest"`
 	// The total number of documents written by any means (replication, rest API interaction or imports) since Sync Gateway node startup.
 	NumDocWrites *SgwIntStat `json:"num_doc_writes"`
+	// NumDocWritesRejected is the total number of document writes that were rejected by Sync Gateway.
+	NumDocWritesRejected *SgwIntStat `json:"num_doc_writes_rejected"`
 	// The total number of requests sent over the public REST api
 	NumPublicRestRequests *SgwIntStat `json:"num_public_rest_requests"`
 	// The total number of active replications.
@@ -1747,6 +1749,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.NumDocWritesRejected, err = NewIntStat(SubsystemDatabaseKey, "num_doc_writes_rejected", StatUnitNoUnits, NumDocWritesRejectedDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.NumReplicationsActive, err = NewIntStat(SubsystemDatabaseKey, "num_replications_active", StatUnitNoUnits, NumReplicationsActiveDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
@@ -1891,6 +1897,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsBlip)
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsRest)
 	prometheus.Unregister(d.DatabaseStats.NumDocWrites)
+	prometheus.Unregister(d.DatabaseStats.NumDocWritesRejected)
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsActive)
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsTotal)
 	prometheus.Unregister(d.DatabaseStats.NumTombstonesCompacted)

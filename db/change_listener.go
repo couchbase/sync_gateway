@@ -16,7 +16,6 @@ import (
 	"expvar"
 	"math"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -34,6 +33,7 @@ const (
 // changes.
 type changeListener struct {
 	ctx                      context.Context
+	dbCtx                    *DatabaseContext
 	bucket                   base.Bucket
 	bucketName               string                 // Used for logging
 	tapFeed                  base.TapFeed           // Observes changes to bucket
@@ -47,7 +47,6 @@ type changeListener struct {
 	broadcastChangesDoneChan chan struct{}      // Channel to signal that broadcast changes goroutine has terminated
 	sgCfgPrefix              string             // SG config key prefix
 	started                  base.AtomicBool    // whether the feed has been started
-	BroadcastSlowMode        atomic.Bool        // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	metaKeys                 *base.MetadataKeys // Metadata key formatter
 }
 
@@ -56,15 +55,16 @@ var unusedSeqChannelID = channels.NewID(unusedSeqKey, unusedSeqCollectionID)
 
 type DocChangedFunc func(event sgbucket.FeedEvent, docType DocumentType)
 
-func (listener *changeListener) Init(name string, groupID string, metaKeys *base.MetadataKeys) {
+func (listener *changeListener) Init(name string, groupID string, db *DatabaseContext) {
 	listener.bucketName = name
 	listener.counter = 1
 	listener._terminateCheckCounter = 0
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
-	listener.sgCfgPrefix = metaKeys.SGCfgPrefix(groupID)
-	listener.metaKeys = metaKeys
+	listener.sgCfgPrefix = db.MetadataKeys.SGCfgPrefix(groupID)
+	listener.metaKeys = db.MetadataKeys
 	listener.broadcastChangesDoneChan = make(chan struct{})
+	listener.dbCtx = db
 }
 
 func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent, docType DocumentType) {
@@ -282,7 +282,7 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 				listener.tapNotifier.L.Unlock()
 
 				// check if we need to reset ticker value based on skipped sequence presence
-				newBroadcastSlowMode := listener.BroadcastSlowMode.Load()
+				newBroadcastSlowMode := listener.dbCtx.BroadcastSlowMode.Load()
 				if broadcastSlowMode != newBroadcastSlowMode {
 					// broadcast changes interval has changed, reset ticker
 					duration := tickerValForBroadcastSpeed(newBroadcastSlowMode)

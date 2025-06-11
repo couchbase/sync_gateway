@@ -2676,6 +2676,74 @@ func TestDocChannelSetPruning(t *testing.T) {
 	assert.Equal(t, uint64(12), syncData.ChannelSetHistory[0].End)
 }
 
+func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs to be enabled")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			CacheConfig: &CacheConfig{
+				ChannelCacheConfig: &ChannelCacheConfig{
+					MaxWaitPending: base.Ptr(uint32(100)),
+				},
+			},
+			Unsupported: &db.UnsupportedOptions{
+				RejectWritesWithSkippedSequences: true,
+			},
+		}},
+	})
+	defer rt.Close()
+
+	docID := t.Name() + "_doc1"
+	ctx := base.TestCtx(t)
+
+	docVrs := rt.PutDoc(docID, `{"test": "value"}`)
+
+	// alter sync data of this doc to artificially create skipped sequences
+	ds := rt.GetSingleDataStore()
+	xattrs, cas, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	var retrievedXattr map[string]interface{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
+	retrievedXattr["sequence"] = uint64(20)
+	newXattrVal := map[string][]byte{
+		base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
+	}
+
+	_, err = ds.UpdateXattrs(ctx, docID, 0, cas, newXattrVal, nil)
+	require.NoError(t, err)
+
+	// wait for value to move from pending to cache and skipped list to fill
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		rt.GetDatabase().UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.True(c, rt.GetDatabase().BroadcastSlowMode.Load())
+	}, time.Second*10, time.Millisecond*100)
+
+	// try to update the doc and expect a 503 Service Unavailable
+	resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docVrs), `{"test": "new value"}`)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DatabaseStats.NumDocWritesRejected.Value())
+
+	// post doc endpoint should also reject writes
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/", `{"_id": "foo", "key": "val"}`)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.NumDocWritesRejected.Value())
+
+	// try to delete the doc and expect a 503 Service Unavailable
+	resp = rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docVrs), "")
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.DatabaseStats.NumDocWritesRejected.Value())
+
+	// try bulk docs endpoint
+	input := `{"docs": [{"_id": "bulk1", "new": "doc"}, {"_id": "bulk2","new": "doc"}]}`
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", input)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	assert.Equal(t, int64(4), rt.GetDatabase().DbStats.DatabaseStats.NumDocWritesRejected.Value())
+}
+
 func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
