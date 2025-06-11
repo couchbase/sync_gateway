@@ -729,7 +729,7 @@ func TestImportFeedInvalidInlineSyncMetadata(t *testing.T) {
 }
 
 func TestImportFeedInvalidSyncMetadata(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
@@ -745,21 +745,133 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	const (
 		doc1 = "bookstand"
 		doc2 = "chipchop"
+		doc3 = "bookstand2"
+		doc4 = "chipchop2"
 	)
 
 	// this document will be ignored for input with debug logging as follows:
 	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Found _sync xattr ("1"), but could not unmarshal: json: cannot unmarshal number into Go value of type db.SyncData
-	_, err := bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc1, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`1`)}, nil, nil)
+	casOut, err := bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc1, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`1`)}, nil, nil)
 	require.NoError(t, err)
 
-	// fix xattrs, and the document is able to be imported
-	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc2, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{}`)}, nil, nil)
+	// sync data with empty history
+	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc2, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 1)
+
+	// sync data with history that current rev doesn't exist in
+	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc3, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"attachments": {}, "history": {
+	   "revs": ["1-ca9ad22802b66f662ff171f226211d5c"],"parents": [-1],"channels": [null]
+	 },"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 2)
+
+	// update bad doc above so it can be imported
+	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc1, 0, casOut, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"attachments": {}, "history": {
+	   "revs": ["1-cd809becc169215072fd567eebd8b8de"],"parents": [-1],"channels": [null]
+	 },"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	// add a document that is able to be imported
+	_, err = bucket.GetSingleDataStore().Add(doc4, 0, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+	require.Equal(t, int64(2), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+}
+
+func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
+	base.SkipImportTestsIfNotEnabled(t)
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	doc1ID := t.Name() + "_doc1"
+	doc2ID := t.Name() + "_doc2"
+	doc3ID := t.Name() + "_doc3"
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create a doc
+	rev1ID, doc, err := collection.Put(ctx, doc1ID, Body{"some": "data"})
+	require.NoError(t, err)
+
+	// update sync data to be invalid and try update this doc again to trigger on demand import for write
+	xattrUpdate := make(map[string][]byte)
+	xattrUpdate[base.SyncXattrName] = []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)
+	_, err = collection.dataStore.UpdateXattrs(ctx, doc1ID, 0, doc.Cas, xattrUpdate, nil)
+	require.NoError(t, err)
+
+	_, _, err = collection.Put(ctx, doc1ID, Body{"some": "data", "_rev": rev1ID})
+	require.Error(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
 	}, 1)
-	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// on demand import for get case
+	casOut, err := collection.dataStore.WriteWithXattrs(ctx, doc2ID, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)}, nil, nil)
+	require.NoError(t, err)
+	_, err = collection.GetDocument(ctx, doc2ID, DocUnmarshalAll)
+	require.Error(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 2)
+
+	_, err = collection.dataStore.Add(doc3ID, 0, []byte(`{"some": "data", "_sync": {}}`))
+	require.NoError(t, err)
+	_, err = collection.GetDocument(ctx, doc3ID, DocUnmarshalAll)
+	require.Error(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 3)
+
+	// fix the doc so it can be imported
+	_, err = collection.dataStore.WriteWithXattrs(ctx, doc2ID, 0, casOut, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"attachments": {}, "history": {
+	   "revs": ["1-cd809becc169215072fd567eebd8b8de"],"parents": [-1],"channels": [null]
+	 },"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)}, nil, nil)
+	require.NoError(t, err)
+	_, err = collection.GetDocument(ctx, doc2ID, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(3), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
+}
+
+func TestMigrateMetadataInvalidSyncData(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	doc1ID := t.Name() + "_doc1"
+	doc2ID := t.Name() + "_doc2"
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create a docs with invalid sync data
+	_, err := collection.dataStore.Add(doc1ID, 0, []byte(`{"some": "data", "_sync": {}}`))
+	require.NoError(t, err)
+	_, err = collection.dataStore.Add(doc2ID, 0, []byte(`{"some": "data", "_sync": {"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 2)
 }
 
 func TestImportFeedNonJSONNewDoc(t *testing.T) {

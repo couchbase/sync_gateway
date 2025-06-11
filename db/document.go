@@ -502,7 +502,8 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 func (doc *SyncData) HasValidSyncData() bool {
 
 	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0)
-	return valid
+	validHistory := doc != nil && len(doc.History) > 0 && doc.History[doc.CurrentRev] != nil
+	return valid && validHistory
 }
 
 // Converts the string hex encoding that's stored in the sync metadata to a uint64 cas value
