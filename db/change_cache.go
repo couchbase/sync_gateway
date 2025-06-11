@@ -882,6 +882,9 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 	err := c.skippedSeqs.Remove(x)
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(int64(c.skippedSeqs.skippedList.Len()))
 	c.db.DbStats.Cache().DeprecatedSkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len())) //nolint
+	if c.skippedSeqs.skippedList.Len() == 0 {
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
 	return err
 }
 
@@ -890,6 +893,9 @@ func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []ui
 	numRemoved := c.skippedSeqs.RemoveSequences(ctx, sequences)
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(int64(c.skippedSeqs.skippedList.Len()))
 	c.db.DbStats.Cache().DeprecatedSkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len())) //nolint //nolint
+	if c.skippedSeqs.skippedList.Len() == 0 {
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
 	return numRemoved
 }
 
@@ -905,6 +911,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, sequence uint64) {
 	}
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(int64(c.skippedSeqs.skippedList.Len()))
 	c.db.DbStats.Cache().DeprecatedSkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len())) //nolint
+	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 
 func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
