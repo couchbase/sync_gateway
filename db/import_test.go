@@ -861,7 +861,7 @@ func TestMigrateMetadataInvalidSyncData(t *testing.T) {
 	doc1ID := t.Name() + "_doc1"
 	doc2ID := t.Name() + "_doc2"
 
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// create a docs with invalid sync data
 	_, err := collection.dataStore.Add(doc1ID, 0, []byte(`{"some": "data", "_sync": {}}`))
