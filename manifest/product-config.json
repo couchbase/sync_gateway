@@ -714,7 +714,7 @@
             "release_name": "Couchbase Sync Gateway 3.2.6",
             "production": true,
             "interval": 120,
-            "go_version": "1.24.2",
+            "go_version": "1.24.4",
             "trigger_blackduck": true,
             "start_build": 1
         },
