@@ -837,7 +837,8 @@ Replication:
         The same index is used for both `collections_remote` and `collections_local`, and both arrays must be the same length.
       type: array
       items:
-        type: [string, null]
+        type: string
+        nullable: true
       example: ["scope1.collectionA", null, "scope1.collectionF"]
       default: []
     username:
