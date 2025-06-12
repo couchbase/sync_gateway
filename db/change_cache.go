@@ -71,7 +71,7 @@ type changeCache struct {
 	notifyChange       func(context.Context, channels.Set) // Client callback that notifies of channel changes
 	started            base.AtomicBool                     // Set by the Start method
 	stopped            base.AtomicBool                     // Set by the Stop method
-	skippedSeqs        *SkippedSequenceSlice               // Skipped sequences still pending on the DCP caching feed
+	skippedSeqs        *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
 	lock               sync.RWMutex                        // Coordinates access to struct fields
 	options            CacheOptions                        // Cache config
 	terminator         chan bool                           // Signal termination of background goroutines
@@ -107,8 +107,7 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached(ctx)))
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(skippedSequenceListStats.NumCurrentSkippedSequencesStat)
 	c.db.DbStats.Cache().NumSkippedSeqs.Set(skippedSequenceListStats.NumCumulativeSkippedSequencesStat)
-	c.db.DbStats.Cache().SkippedSeqLen.Set(skippedSequenceListStats.ListLengthStat)
-	c.db.DbStats.Cache().SkippedSeqCap.Set(skippedSequenceListStats.ListCapacityStat)
+	c.db.DbStats.Cache().SkippedSequenceSkiplistNodes.Set(skippedSequenceListStats.ListLengthStat)
 }
 
 type LogEntry = channels.LogEntry
@@ -158,7 +157,7 @@ func (c *changeCache) Init(ctx context.Context, dbContext *DatabaseContext, chan
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
-	c.skippedSeqs = NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
+	c.skippedSeqs = NewSkippedSequenceSkiplist()
 	c.lastAddPendingTime = time.Now().UnixNano()
 	c.sgCfgPrefix = dbContext.MetadataKeys.SGCfgPrefix(c.db.Options.GroupID)
 	c.metaKeys = metaKeys
@@ -293,13 +292,18 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue for database %s", base.MD(c.db.Name))
 
-	compactedSequences := c.skippedSeqs.SkippedSequenceCompact(ctx, int64(c.options.CacheSkippedSeqMaxWait.Seconds()))
+	compactedSequences, numSequencesLeftInList := c.skippedSeqs.SkippedSequenceCompact(ctx, int64(c.options.CacheSkippedSeqMaxWait.Seconds()))
 	if compactedSequences == 0 {
 		base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  No sequences to be compacted from skipped sequence list for database %s.", base.MD(c.db.Name))
 		return nil
 	}
 
 	c.db.DbStats.Cache().AbandonedSeqs.Add(compactedSequences)
+
+	// update the notify mode
+	if numSequencesLeftInList == 0 {
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", compactedSequences, base.MD(c.db.Name))
 	return nil
@@ -968,9 +972,9 @@ func (h *LogPriorityQueue) Pop() interface{} {
 // ////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	numSkipped, err := c.skippedSeqs.removeSeq(x)
+	_, numSkipped, err := c.skippedSeqs.list.Remove(NewSingleSkippedSequenceEntryAt(x, 0))
 	if err != nil {
-		return err
+		return fmt.Errorf("sequence %d not found in the skipped list, err: %v", x, err)
 	}
 	if numSkipped == 0 {
 		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
@@ -987,7 +991,11 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 		base.InfofCtx(ctx, base.KeyCache, "cannot push negative skipped sequence range to skipped list: %d %d", startSeq, endSeq)
 		return
 	}
-	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
+	err := c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyCache, "Error pushing skipped sequence range to skipped list: %v", err)
+		return
+	}
 	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 

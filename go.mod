@@ -1,6 +1,6 @@
 module github.com/couchbase/sync_gateway
 
-go 1.23.0
+go 1.24.3
 
 require (
 	dario.cat/mergo v1.0.0
@@ -14,6 +14,7 @@ require (
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20250522135601-8c9a5acda2c2
+	github.com/couchbasedeps/fast-skiplist v0.0.0-20250612112434-65f227bb1892
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78

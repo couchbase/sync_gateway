@@ -303,7 +303,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 	// wait for value to move from pending to cache and skipped list to fill
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		rt.GetDatabase().UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	docVrs := rt.UpdateDoc("doc", vrs, `{"prob": "lol"}`)
@@ -313,7 +313,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 		rt.GetDatabase().UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	doc1Vrs := rt.PutDoc("doc1", `{"prop":true}`)
@@ -381,9 +381,8 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	// assert that nothing has been pushed to skipped
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		rt.GetDatabase().UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqCap.Value())
 		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(c, int64(0), rt.GetDatabase().DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	doc1Vrs := rt.PutDoc("doc1", `{"prop":true}`)
