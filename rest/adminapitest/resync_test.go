@@ -320,6 +320,7 @@ func TestResyncDoesNotWriteDocBody(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	base.SkipImportTestsIfNotEnabled(t) // test requires import
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{

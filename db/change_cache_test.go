@@ -1355,12 +1355,19 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	doc1 := Document{
 		ID: doc1Id,
 	}
+	revInf := RevInfo{
+		ID: "1-abc",
+	}
+	revTree := RevTree{
+		"1-abc": &revInf,
+	}
 	doc1.SyncData = SyncData{
 		UnusedSequences: []uint64{
 			1,
 		},
 		CurrentRev: "1-abc",
 		Sequence:   3,
+		History:    revTree,
 	}
 	var doc1DCPBytes []byte
 	if base.TestUseXattrs() {
@@ -1380,10 +1387,20 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	channelMap := channels.ChannelMap{
 		"ABC": nil,
 	}
+	chanSetMap := base.Set{}
+	chanSetMap["ABC"] = struct{}{}
+	revInf = RevInfo{
+		ID:       "1-cde",
+		Channels: chanSetMap,
+	}
+	revTree = RevTree{
+		"1-cde": &revInf,
+	}
 	doc2.SyncData = SyncData{
 		CurrentRev: "1-cde",
 		Sequence:   2,
 		Channels:   channelMap,
+		History:    revTree,
 	}
 	var doc2DCPBytes []byte
 	var dataType sgbucket.FeedDataType = base.MemcachedDataTypeJSON
