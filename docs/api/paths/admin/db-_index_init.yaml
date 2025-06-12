@@ -12,7 +12,7 @@ post:
   description: |
     This can be used to start index initialization with different parameters from a running database. The typical workflow is:
 
-    1. Start the process of creating new indexes with [POST /{db}/_index_init](#operation/post-db_index_init).
+    1. Start the process of creating new indexes with [POST /{db}/_index_init](#operation/post_db-_index_init).
     2. Wait for index initialization to complete with [GET /{db}/_index_init](#operation/get_db-_index_init).
     3. Update the database configuration to use these new indexes with [POST /{db}/_config](#operation/post_db-_config).
     4. Call [POST /_post_upgrade](#operation/post__post_upgrade) to remove the original indexes.
