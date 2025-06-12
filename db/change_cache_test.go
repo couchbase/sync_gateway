@@ -2867,14 +2867,14 @@ func TestBroadcastFrequencyAfterSkippedCompact(t *testing.T) {
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(13), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(15), testChangeCache.nextSequence)
-		assert.True(c, dbContext.mutationListener.BroadcastSlowMode.Load())
+		assert.True(c, dbContext.BroadcastSlowMode.Load())
 	}, time.Second*10, time.Millisecond*100)
 
 	// wait for skipped sequence compaction to kick in
 	time.Sleep(1 * time.Second)
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.False(c, dbContext.mutationListener.BroadcastSlowMode.Load())
+		assert.False(c, dbContext.BroadcastSlowMode.Load())
 		assert.Equal(c, int64(13), dbContext.DbStats.Cache().AbandonedSeqs.Value())
 	}, time.Second*10, time.Millisecond*100)
 

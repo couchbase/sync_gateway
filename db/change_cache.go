@@ -302,7 +302,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	// update the notify mode
 	if numSequencesLeftInList == 0 {
-		c.db.mutationListener.BroadcastSlowMode.CompareAndSwap(true, false)
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
 	}
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", compactedSequences, base.MD(c.db.Name))
