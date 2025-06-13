@@ -325,6 +325,8 @@ replicationid:
   required: true
   schema:
     type: string
+    minimum: 1
+    maximum: 160
   description: What replication to target based on its replication ID.
 replicator2:
   name: replicator2
