@@ -494,6 +494,9 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, col)
 
+		// required to avoid missing audit fields in PUT
+		ctx := col.AddCollectionContext(ctx)
+
 		_, err = col.UpdateSyncFun(ctx, `function sync(doc){channel("channel.ABC");}`)
 		require.NoError(t, err)
 
