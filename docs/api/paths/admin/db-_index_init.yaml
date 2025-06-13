@@ -58,7 +58,7 @@ post:
     - Database Management
   operationId: post_db-_index_init
 get:
-  summary: Get status of index initialization.
+  summary: Get status of index initialization
   description: |-
     This will retrieve the status of last index initialization operation (whether it is running or not) in the Sync Gateway cluster.
 
