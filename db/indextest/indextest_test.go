@@ -144,7 +144,6 @@ func TestAllPrincipalIDs(t *testing.T) {
 				requireCoveredQuery(t, database, userStatement, !testCase.useLegacySyncDocsIndex)
 			})
 
-			database.Options.QueryPaginationLimit = 100
 			authenticator := database.Authenticator(ctx)
 
 			rolename1 := uuid.NewString()
@@ -208,7 +207,6 @@ func TestGetRoleIDs(t *testing.T) {
 			})
 
 			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
-			database.Options.QueryPaginationLimit = 100
 			authenticator := database.Authenticator(ctx)
 
 			rolename1 := uuid.NewString()

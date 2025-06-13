@@ -2750,7 +2750,6 @@ func TestGetAllUsers(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 	db, ctx := setupTestDB(t)
-	db.Options.QueryPaginationLimit = 100
 	defer db.Close(ctx)
 
 	log.Printf("Creating users...")
@@ -2788,7 +2787,6 @@ func TestGetRoleIDs(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.Options.QueryPaginationLimit = 100
 	authenticator := db.Authenticator(ctx)
 
 	rolename1 := uuid.NewString()
@@ -2833,8 +2831,6 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.Options.QueryPaginationLimit = 100
-
 	auth := db.Authenticator(ctx)
 	roleSequences := [5]uint64{}
 	userSequences := [5]uint64{}
@@ -2874,7 +2870,6 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
-	db.Options.QueryPaginationLimit = 100
 
 	sequenceAllocator, err := newSequenceAllocator(base.DatabaseLogCtx(base.TestCtx(t), db.Name, nil), db.MetadataStore, db.DbStats.DatabaseStats, db.MetadataKeys)
 	assert.NoError(t, err)
@@ -2990,7 +2985,6 @@ func Test_resyncDocument(t *testing.T) {
 			defer db.Close(ctx)
 
 			db.Options.EnableXattr = testCase.useXattr
-			db.Options.QueryPaginationLimit = 100
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 			syncFn := `
@@ -3047,7 +3041,6 @@ func Test_getUpdatedDocument(t *testing.T) {
 		db, ctx := setupTestDB(t)
 		defer db.Close(ctx)
 
-		db.Options.QueryPaginationLimit = 100
 		docID := "testDoc"
 
 		body := `{"val": "nonsyncdoc"}`
@@ -3068,7 +3061,6 @@ func Test_getUpdatedDocument(t *testing.T) {
 	t.Run("Sync Document", func(t *testing.T) {
 		db, ctx := setupTestDB(t)
 		defer db.Close(ctx)
-		db.Options.QueryPaginationLimit = 100
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		syncFn := `
 	function sync(doc, oldDoc){
