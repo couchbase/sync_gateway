@@ -241,15 +241,15 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMgr.Process)
-		assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
+		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate)) // may be processing tombstones from previous tests
 		assert.Equal(t, int64(0), stats.DocsChanged)
 
-		assert.Equal(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+		assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(0))
 
 		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
 		require.NoError(t, err)
-		assert.Equal(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
+		assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
 		assert.Equal(t, int64(0), cs.ResyncNumChanged.Value())
 
 		assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
@@ -291,15 +291,15 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		stats := getResyncStats(resyncMgr.Process)
 		// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
 		// be greater than DocsChanged
-		assert.LessOrEqual(t, int64(docsToCreate), stats.DocsProcessed)
+		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
-		assert.Equal(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+		assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
 
 		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
 		require.NoError(t, err)
-		assert.Equal(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
+		assert.GreaterOrEqual(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
 		assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
 		deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
@@ -358,7 +358,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 
 	// If there are tombstones from a previous test which have been deleted from the bucket, processed docs will
 	// be greater than DocsChanged
-	require.LessOrEqual(t, int64(docsToCreate), stats.DocsProcessed)
+	require.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 	assert.Equal(t, int64(0), stats.DocsChanged)
 
 	assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
