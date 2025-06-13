@@ -49,11 +49,31 @@ func TestResyncDCPInit(t *testing.T) {
 					DocsProcessed: 20,
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
-					VBUUIDs: []uint64{1},
+					VBUUIDs:       []uint64{1},
+					CollectionIDs: []uint32{1},
 				},
 			},
 			forceReset:         false,
 			shouldCreateNewRun: false,
+		},
+		{
+			title: "Restart existing run new Collection",
+			initialClusterState: ResyncManagerStatusDocDCP{
+				ResyncManagerResponseDCP: ResyncManagerResponseDCP{
+					BackgroundManagerStatus: BackgroundManagerStatus{
+						State: BackgroundProcessStateStopped,
+					},
+					ResyncID:      uuid.NewString(),
+					DocsChanged:   10,
+					DocsProcessed: 20,
+				},
+				ResyncManagerMeta: ResyncManagerMeta{
+					VBUUIDs:       []uint64{1},
+					CollectionIDs: []uint32{1, 2},
+				},
+			},
+			forceReset:         false,
+			shouldCreateNewRun: true,
 		},
 		{
 			title: "Reinitialize completed run",
