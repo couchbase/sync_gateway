@@ -217,7 +217,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			if tc.existingCurrentIndex {
 				// Define an existing CBGT index with current naming
 				bucketUUID, _ := bucket.UUID()
-				sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, tc.dbName)
+				sourceParams, err := cbgtFeedParams(ctx, "", nil, tc.dbName)
 				require.NoError(t, err)
 				legacyIndexName := GenerateIndexName(tc.dbName)
 				indexParams := `{"name": "` + tc.dbName + `"}`
@@ -241,7 +241,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			}
 
 			// Create cbgt index via SG handling
-			err = createCBGTIndex(ctx, context, tc.dbName, configGroup, bucket, spec, "", nil, 16)
+			err = createCBGTIndex(ctx, context, tc.dbName, configGroup, bucket, "", nil, 16)
 			require.NoError(t, err)
 
 			// Verify single index exists, and matches expected naming
@@ -290,7 +290,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 
 	// Define a CBGT index with legacy naming within safe limits
 	bucketUUID, _ := bucket.UUID()
-	sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, testDbName)
+	sourceParams, err := cbgtFeedParams(ctx, "", nil, testDbName)
 	require.NoError(t, err)
 	legacyIndexName := GenerateLegacyIndexName(testDbName)
 	indexParams := `{"name": "` + testDbName + `"}`
@@ -313,7 +313,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, spec, "", nil, 16)
+	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -322,7 +322,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
-	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, spec, "", nil, 16)
+	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -368,7 +368,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 
 	// Define a CBGT index with legacy naming not within safe limits
 	bucketUUID, _ := bucket.UUID()
-	sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, unsafeTestDBName)
+	sourceParams, err := cbgtFeedParams(ctx, "", nil, unsafeTestDBName)
 	require.NoError(t, err)
 	legacyIndexName := GenerateLegacyIndexName(unsafeTestDBName)
 	indexParams := `{"name": "` + unsafeTestDBName + `"}`
@@ -391,7 +391,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, spec, "", nil, 16)
+	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, "", nil, 16)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -400,7 +400,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
-	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, spec, "", nil, 16)
+	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, "", nil, 16)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -457,7 +457,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 			// StartManager starts the manager and creates the index
 			log.Printf("Starting manager for %s", managerUUID)
-			startErr := context.StartManager(ctx, testDBName, configGroup, bucket, spec, "", nil, DefaultImportPartitions)
+			startErr := context.StartManager(ctx, testDBName, configGroup, bucket, "", nil, DefaultImportPartitions)
 			assert.NoError(t, startErr)
 			managerWg.Done()
 
