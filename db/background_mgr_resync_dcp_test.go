@@ -181,7 +181,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 				return true
 			}
 			return false
-		}, 200, 100)
+		}, 2000, 10)
 		require.NoError(t, err)
 	}()
 
@@ -190,7 +190,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateStopped
-	}, 200, 100)
+	}, 2000, 10)
 	require.NoError(t, err)
 
 	stats := getResyncStats(resycMgr.Process)
@@ -237,19 +237,19 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			rawStatus, _ := resyncMgr.GetStatus(ctx)
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
-		}, 200, 200)
+		}, 2000, 10)
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMgr.Process)
-		assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
+		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate)) // may be processing tombstones from previous tests
 		assert.Equal(t, int64(0), stats.DocsChanged)
 
-		assert.Equal(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+		assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(0))
 
 		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
 		require.NoError(t, err)
-		assert.Equal(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
+		assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
 		assert.Equal(t, int64(0), cs.ResyncNumChanged.Value())
 
 		assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
@@ -285,21 +285,21 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			rawStatus, _ := resyncMgr.GetStatus(ctx)
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
-		}, 200, 200)
+		}, 2000, 10)
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMgr.Process)
 		// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
 		// be greater than DocsChanged
-		assert.LessOrEqual(t, int64(docsToCreate), stats.DocsProcessed)
+		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
-		assert.Equal(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+		assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
 
 		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
 		require.NoError(t, err)
-		assert.Equal(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
+		assert.GreaterOrEqual(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
 		assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
 		deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
@@ -338,7 +338,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 		err := WaitForConditionWithOptions(t, func() bool {
 			stats := getResyncStats(resycMgr.Process)
 			return stats.DocsProcessed > 100
-		}, 100, 200)
+		}, 100, 10)
 		require.NoError(t, err)
 
 		err = resycMgr.Start(ctx, options)
@@ -351,21 +351,21 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
-	}, 200, 200)
+	}, 2000, 10)
 	require.NoError(t, err)
 
 	stats := getResyncStats(resycMgr.Process)
 
 	// If there are tombstones from a previous test which have been deleted from the bucket, processed docs will
 	// be greater than DocsChanged
-	require.LessOrEqual(t, int64(docsToCreate), stats.DocsProcessed)
+	require.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 	assert.Equal(t, int64(0), stats.DocsChanged)
 
 	assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 	wg.Wait()
 }
 
-func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
+func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -409,7 +409,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateStopped
-	}, 200, 200)
+	}, 2000, 10)
 	require.NoError(t, err)
 
 	stats := getResyncStats(resycMgr.Process)
@@ -425,7 +425,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
-	}, 200, 200)
+	}, 2000, 10)
 	require.NoError(t, err)
 
 	stats = getResyncStats(resycMgr.Process)
