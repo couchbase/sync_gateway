@@ -436,6 +436,126 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	wg.Wait()
 }
 
+// TestResyncManagerDCPResumeStoppedProcessChangeCollections starts a resync with a single collection, stops it, and re-runs with an additional collection.
+// Expects the resync process to reset with a new ID, and new checkpoints, and reprocess the full set of documents across both collections.
+func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+	base.LongRunningTest(t)
+	base.SetUpTestLogging(t, base.LevelDebug)
+	base.TestRequiresCollections(t)
+
+	docsPerCollection := 5000
+	const numCollections = 2
+	totalDocCount := docsPerCollection * numCollections
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close(base.TestCtx(t))
+	dbOptions := DatabaseContextOptions{}
+	dbOptions.Scopes = GetScopesOptions(t, tb, numCollections)
+
+	db, ctx := SetupTestDBForBucketWithOptions(t, tb, dbOptions)
+	defer db.Close(ctx)
+
+	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	require.NotNil(t, resycMgr)
+	db.ResyncManager = resycMgr
+
+	dbCollections := make([]*DatabaseCollectionWithUser, numCollections)
+	for i, scName := range db.DataStoreNames() {
+		col, err := db.GetDatabaseCollectionWithUser(scName.ScopeName(), scName.CollectionName())
+		require.NoError(t, err)
+		require.NotNil(t, col)
+
+		_, err = col.UpdateSyncFun(ctx, `function sync(doc){channel("channel.ABC");}`)
+		require.NoError(t, err)
+
+		// create docs
+		for i := 0; i < docsPerCollection; i++ {
+			_, _, err := col.Put(ctx, fmt.Sprintf("%s_%d", t.Name(), i), Body{"foo": "bar"})
+			require.NoError(t, err)
+		}
+
+		changed, err := col.UpdateSyncFun(ctx, `function sync(doc){channel("channel.DEF");}`)
+		require.NoError(t, err)
+		require.True(t, changed)
+
+		dbCollections[i] = col
+	}
+
+	options := map[string]interface{}{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections": ResyncCollections{
+			dbCollections[0].ScopeName: []string{
+				dbCollections[0].Name,
+			},
+		},
+	}
+
+	err := resycMgr.Start(ctx, options)
+	require.NoError(t, err)
+
+	// Attempt to Stop Process
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			stats := getResyncStats(resycMgr.Process)
+			if stats.DocsProcessed >= 2000 {
+				err = resycMgr.Stop()
+				require.NoError(t, err)
+				break
+			}
+			time.Sleep(1 * time.Microsecond)
+		}
+	}()
+
+	err = WaitForConditionWithOptions(t, func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := resycMgr.GetStatus(ctx)
+		_ = json.Unmarshal(rawStatus, &status)
+		return status.State == BackgroundProcessStateStopped
+	}, 2000, 10)
+	require.NoError(t, err)
+
+	stats := getResyncStats(resycMgr.Process)
+	require.Less(t, stats.DocsProcessed, int64(docsPerCollection), "DocsProcessed is equal to docs created. Consider setting docsPerCollection > %d.", docsPerCollection)
+	assert.Less(t, stats.DocsChanged, int64(docsPerCollection))
+
+	firstDocsChanged := stats.DocsChanged
+
+	require.GreaterOrEqual(t, len(dbCollections), 2)
+	options["collections"] = ResyncCollections{
+		dbCollections[0].ScopeName: []string{
+			dbCollections[0].Name,
+			dbCollections[1].Name,
+		},
+	}
+
+	// Resume process
+	err = resycMgr.Start(ctx, options)
+	require.NoError(t, err)
+
+	err = WaitForConditionWithOptions(t, func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := resycMgr.GetStatus(ctx)
+		_ = json.Unmarshal(rawStatus, &status)
+		t.Logf("Resync status: %s", rawStatus)
+		return status.State == BackgroundProcessStateCompleted
+	}, 2000, 10)
+	require.NoError(t, err)
+
+	stats = getResyncStats(resycMgr.Process)
+	assert.GreaterOrEqual(t, stats.DocsProcessed, int64(totalDocCount))
+	assert.Equal(t, int64(totalDocCount), stats.DocsChanged+firstDocsChanged)
+
+	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(totalDocCount))
+	wg.Wait()
+}
+
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
 func setupTestDBForResyncWithDocs(t testing.TB, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)
