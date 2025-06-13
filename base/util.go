@@ -1727,3 +1727,20 @@ func removeAllWhitespace(s string) string {
 		return r
 	}, s)
 }
+
+// SlicesEqualIgnoreOrder checks if two slices are equal, ignoring order.
+func SlicesEqualIgnoreOrder[T comparable](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aLookup := make(map[T]struct{}, len(a))
+	for _, aItem := range a {
+		aLookup[aItem] = struct{}{}
+	}
+	for _, bItem := range b {
+		if _, ok := aLookup[bItem]; !ok {
+			return false
+		}
+	}
+	return true
+}

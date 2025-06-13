@@ -86,6 +86,8 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 		resetMsg = "failed to unmarshal cluster status"
 	} else if statusDoc.State == BackgroundProcessStateCompleted {
 		resetMsg = "previous run completed"
+	} else if !base.SlicesEqualIgnoreOrder(r.collectionIDs, statusDoc.CollectionIDs) {
+		resetMsg = "collection IDs have changed"
 	} else {
 		// use the resync ID from the status doc to resume
 		r.ResyncID = statusDoc.ResyncID
@@ -357,8 +359,9 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]b
 		CollectionsProcessing:   r.ResyncedCollections,
 	}
 
-	meta := AttachmentManagerMeta{
-		VBUUIDs: r.VBUUIDs,
+	meta := ResyncManagerMeta{
+		VBUUIDs:       r.VBUUIDs,
+		CollectionIDs: r.collectionIDs,
 	}
 
 	statusJSON, err := base.JSONMarshal(response)
@@ -374,7 +377,8 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]b
 }
 
 type ResyncManagerMeta struct {
-	VBUUIDs []uint64 `json:"vbuuids"`
+	VBUUIDs       []uint64 `json:"vbuuids"`
+	CollectionIDs []uint32 `json:"collection_ids,omitempty"`
 }
 
 type ResyncManagerStatusDocDCP struct {
