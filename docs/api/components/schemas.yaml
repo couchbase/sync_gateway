@@ -1737,8 +1737,14 @@ Database:
       type: number
       default: 1
     index:
-      allOf:
-        - $ref: '#/IndexSettings'
+      description: "Global Secondary Index Settings"
+      properties:
+        num_partitions:
+          $ref: '#/NumIndexPartitions'
+        num_replicas:
+          description: This is the number of Global Secondary Indexes (GSI) to use for core indexes.
+          type: number
+          default: 1
     use_views:
       description: Force the use of views instead of GSI.
       type: boolean
@@ -3188,14 +3194,18 @@ DatabaseState:
     Starting: The database is in the process of going online.
     Stopping: The database is no longer accepting connections and is being taken offline or deleted.
     Resyncing: The database is offline and performing a resync operation.
+NumIndexPartitions:
+  description: |-
+    The number of partitions to use for the large indexes created by Sync Gateway. It is not recommended to set this unless you require additional horizontal scalability for individual indexes and have appropriately scaled your Query nodes to handle the increased query parallelism. If set, the recommended number is 8 and does not need to be directly related to the number of your Query nodes. Ensure documentation is read to understand the performance tradeoffs and instructions for migration if you have previously run with only one partition. See [/{db}/_index_init](#operation/post_db-_index_init) for more information.
+
+    If not specified or 1, all indexes will be non partitioned.
+  type: number
+  default: 1
+  title: Number of Index Partitions
 IndexSettings:
   type: object
   description: Settings for Global Secondary Indexes (GSI).
   properties:
-    num_partitions:
-      description: The number of partitions to use for the large indexes created by Sync Gateway. It is not recommended to set this unless you require additional horizontal scalability for individual indexes and have appropriately scaled your Query nodes to handle the increased query parallelism. If set, the recommended number is 8 and does not need to be directly related to the number of your Query nodes. Ensure documentation is read to understand the performance tradeoffs and instructions for migration if you have previously run with only one partition. See [/{db}/_index_init](#operation/post_db-_index_init) for more information.
-      type: number
-      default: 1
     create_separate_principal_indexes:
       description: |-
         Whether to create separate indexes for users and roles instead of a single larger syncDocs index.
@@ -3203,6 +3213,8 @@ IndexSettings:
         The separate principal indexes are smaller and used automatically for new database deployments. To remove the syncDocs index, wait for this to complete, restart all Sync Gateway instances and run  [POST /_post_upgrade](#operation/post__post_upgrade).
       type: boolean
       default: false
+    num_partitions:
+      $ref: '#/NumIndexPartitions'
 IndexInitStatus:
   description: The status of an asynchronous indexes initialization operation.
   type: object
