@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -25,11 +27,6 @@ import (
 )
 
 func TestResyncDCPInit(t *testing.T) {
-
-	defaultCollectionID := uint32(0)
-	if base.UnitTestUrlIsWalrus() {
-		defaultCollectionID = 1 // Rosmar collection IDs start at 1 ...
-	}
 
 	testCases := []struct {
 		title               string
@@ -54,8 +51,7 @@ func TestResyncDCPInit(t *testing.T) {
 					DocsProcessed: 20,
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
-					VBUUIDs:       []uint64{1},
-					CollectionIDs: []uint32{defaultCollectionID},
+					VBUUIDs: []uint64{1},
 				},
 			},
 			forceReset:         false,
@@ -74,7 +70,7 @@ func TestResyncDCPInit(t *testing.T) {
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
 					VBUUIDs:       []uint64{1},
-					CollectionIDs: []uint32{defaultCollectionID, 123},
+					CollectionIDs: []uint32{123},
 				},
 			},
 			forceReset:         false,
@@ -92,8 +88,7 @@ func TestResyncDCPInit(t *testing.T) {
 					DocsProcessed: 20,
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
-					VBUUIDs:       []uint64{1},
-					CollectionIDs: []uint32{defaultCollectionID},
+					VBUUIDs: []uint64{1},
 				},
 			},
 			forceReset:         false,
@@ -111,8 +106,7 @@ func TestResyncDCPInit(t *testing.T) {
 					DocsProcessed: 20,
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
-					VBUUIDs:       []uint64{1},
-					CollectionIDs: []uint32{defaultCollectionID},
+					VBUUIDs: []uint64{1},
 				},
 			},
 			forceReset:         true,
@@ -150,6 +144,11 @@ func TestResyncDCPInit(t *testing.T) {
 			// otherwise clusterData is zero value of ResyncManagerStatusDocDCP
 			// which make `Init` to reinitialize run from existing cluster data
 			if testCase.initialClusterState.ResyncID != "" {
+				// if this is unset from the test case, stamp the collection ID we have - difficult to reliably predict this ahead of time
+				if len(testCase.initialClusterState.CollectionIDs) == 0 {
+					testCase.initialClusterState.CollectionIDs = slices.Collect(maps.Keys(db.CollectionByID))
+				}
+
 				clusterData, err = json.Marshal(testCase.initialClusterState)
 				require.NoError(t, err)
 			}
