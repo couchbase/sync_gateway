@@ -99,3 +99,5 @@ require (
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/couchbase/cbgt v1.3.10-0.20250128173458-04138cb9d33d => github.com/torcolvin/cbgt v0.0.0-20250603004125-c1fb723ace16
