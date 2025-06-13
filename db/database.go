@@ -1051,6 +1051,9 @@ func (db *DatabaseContext) GetUserNames(ctx context.Context) (users []string, er
 	dbUserPrefix := db.MetadataKeys.UserKeyPrefix()
 	startKey := dbUserPrefix
 	limit := db.Options.QueryPaginationLimit
+	if limit == 0 {
+		limit = DefaultQueryPaginationLimit
+	}
 
 	userRe, err := regexp.Compile(`^` + dbUserPrefix + `[^:]*$`)
 	if err != nil {
@@ -1117,6 +1120,9 @@ func (db *DatabaseContext) getAllPrincipalIDsSyncDocs(ctx context.Context) (user
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
+	if limit == 0 {
+		limit = DefaultQueryPaginationLimit
+	}
 
 	dbUserPrefix := db.MetadataKeys.UserKeyPrefix()
 	dbRolePrefix := db.MetadataKeys.RoleKeyPrefix()
@@ -1325,6 +1331,9 @@ func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDele
 	}
 	startKey := dbRoleIDPrefix
 	limit := db.Options.QueryPaginationLimit
+	if limit == 0 {
+		limit = DefaultQueryPaginationLimit
+	}
 
 	roles = []string{}
 

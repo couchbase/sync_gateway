@@ -439,7 +439,6 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
 func setupTestDBForResyncWithDocs(t testing.TB, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)
-	db.Options.QueryPaginationLimit = 100
 	syncFn := `
 function sync(doc, oldDoc){
 	channel("channel.ABC");
@@ -489,8 +488,6 @@ func TestResyncMou(t *testing.T) {
 	if !db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
 		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
 	}
-
-	db.Options.QueryPaginationLimit = 100 // Required for principal ID query to not deadlock
 
 	initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
