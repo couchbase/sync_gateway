@@ -181,7 +181,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 				return true
 			}
 			return false
-		}, 200, 100)
+		}, 2000, 10)
 		require.NoError(t, err)
 	}()
 
@@ -190,7 +190,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateStopped
-	}, 200, 100)
+	}, 2000, 10)
 	require.NoError(t, err)
 
 	stats := getResyncStats(resycMgr.Process)
@@ -237,7 +237,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			rawStatus, _ := resyncMgr.GetStatus(ctx)
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
-		}, 200, 200)
+		}, 2000, 10)
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMgr.Process)
@@ -285,7 +285,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			rawStatus, _ := resyncMgr.GetStatus(ctx)
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
-		}, 200, 200)
+		}, 2000, 10)
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMgr.Process)
@@ -338,7 +338,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 		err := WaitForConditionWithOptions(t, func() bool {
 			stats := getResyncStats(resycMgr.Process)
 			return stats.DocsProcessed > 100
-		}, 100, 200)
+		}, 100, 10)
 		require.NoError(t, err)
 
 		err = resycMgr.Start(ctx, options)
@@ -351,7 +351,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
-	}, 200, 200)
+	}, 2000, 10)
 	require.NoError(t, err)
 
 	stats := getResyncStats(resycMgr.Process)
@@ -365,7 +365,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	wg.Wait()
 }
 
-func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
+func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -409,7 +409,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateStopped
-	}, 200, 200)
+	}, 2000, 10)
 	require.NoError(t, err)
 
 	stats := getResyncStats(resycMgr.Process)
@@ -425,7 +425,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
-	}, 200, 200)
+	}, 2000, 10)
 	require.NoError(t, err)
 
 	stats = getResyncStats(resycMgr.Process)
