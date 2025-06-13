@@ -145,7 +145,7 @@ func (c *DCPCommon) getMetaData(vbucketId uint16) (
 	return value, lastSeq, nil
 }
 
-// rollbackEx is called when a DCP open stream a rollback. The metadata persisted for a given uuid and sequence number and stream reopening is deferred to cbgt via AutomaticReconnectOnRollback feed parameter.
+// rollbackEx is called when a DCP open stream a rollback. The metadata persisted for a given uuid and sequence number and stream reopening is deferred to cbgt via AutoReconnectAfterRollback feed parameter.
 func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64, rollbackMetaData []byte) error {
 	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
