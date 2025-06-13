@@ -26,6 +26,11 @@ import (
 
 func TestResyncDCPInit(t *testing.T) {
 
+	defaultCollectionID := uint32(0)
+	if base.UnitTestUrlIsWalrus() {
+		defaultCollectionID = 1 // Rosmar collection IDs start at 1 ...
+	}
+
 	testCases := []struct {
 		title               string
 		initialClusterState ResyncManagerStatusDocDCP
@@ -50,7 +55,7 @@ func TestResyncDCPInit(t *testing.T) {
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
 					VBUUIDs:       []uint64{1},
-					CollectionIDs: []uint32{1},
+					CollectionIDs: []uint32{defaultCollectionID},
 				},
 			},
 			forceReset:         false,
@@ -69,7 +74,7 @@ func TestResyncDCPInit(t *testing.T) {
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
 					VBUUIDs:       []uint64{1},
-					CollectionIDs: []uint32{1, 2},
+					CollectionIDs: []uint32{defaultCollectionID, 123},
 				},
 			},
 			forceReset:         false,
@@ -87,7 +92,8 @@ func TestResyncDCPInit(t *testing.T) {
 					DocsProcessed: 20,
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
-					VBUUIDs: []uint64{1},
+					VBUUIDs:       []uint64{1},
+					CollectionIDs: []uint32{defaultCollectionID},
 				},
 			},
 			forceReset:         false,
@@ -105,7 +111,8 @@ func TestResyncDCPInit(t *testing.T) {
 					DocsProcessed: 20,
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
-					VBUUIDs: []uint64{1},
+					VBUUIDs:       []uint64{1},
+					CollectionIDs: []uint32{defaultCollectionID},
 				},
 			},
 			forceReset:         true,
