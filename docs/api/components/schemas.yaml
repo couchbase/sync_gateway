@@ -1714,7 +1714,7 @@ Database:
       description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata.
       type: boolean
       default: true
-      deprecated: false
+      deprecated: true
     session_cookie_secure:
       description: |-
         Override the session cookie `secure` flag. If set, the cookie will have the `secure` flag.
