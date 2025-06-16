@@ -1733,14 +1733,15 @@ func SlicesEqualIgnoreOrder[T comparable](a, b []T) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	aLookup := make(map[T]struct{}, len(a))
+	aCount := make(map[T]int, len(a))
 	for _, aItem := range a {
-		aLookup[aItem] = struct{}{}
+		aCount[aItem]++
 	}
 	for _, bItem := range b {
-		if _, ok := aLookup[bItem]; !ok {
+		if count, ok := aCount[bItem]; !ok || count == 0 {
 			return false
 		}
+		aCount[bItem]--
 	}
 	return true
 }

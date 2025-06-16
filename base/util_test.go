@@ -1747,14 +1747,21 @@ func TestSlicesEqualUnordered(t *testing.T) {
 		{"same elements in same order", []any{1, 2, 3}, []any{1, 2, 3}, true},
 		{"same elements in different order", []any{1, 2, 3}, []any{3, 2, 1}, true},
 		{"same elements with duplicates", []any{1, 2, 2}, []any{2, 1, 2}, true},
+		{"multiple duplicates", []any{1, 2, 2, 2, 3}, []any{2, 3, 2, 1, 2}, true},
+		{"all same element", []any{1, 1, 1}, []any{1, 1, 1}, true},
 		{"nil elements", []any{1, nil, 2}, []any{2, nil, 1}, true},
 		{"nil in both slices", []any{1, nil}, []any{nil, 1}, true},
 		{"different types", []any{1, "2"}, []any{"2", 1}, true}, // the two slices themselves must have the same type (which could be any - with mixed values)
 		{"mixed types", []any{1, 2.0, "3"}, []any{"3", 2.0, 1}, true},
 		// mismatched cases
 		{"different elements", []any{1, 2, 3}, []any{4, 5, 6}, false},
-		{"different lengths", []any{1, 2}, []any{1, 2, 3}, false},
+		{"different lengths a<b", []any{1, 2}, []any{1, 2, 3}, false},
+		{"different lengths a>b", []any{1, 2, 3}, []any{1, 2}, false},
 		{"same elements with different duplicates", []any{1, 2, 2}, []any{2, 1, 3}, false},
+		{"different duplicate counts", []any{1, 2, 2, 2}, []any{2, 2, 1}, false},
+		{"extra duplicates", []any{1, 2, 2}, []any{2, 1, 2, 2}, false},
+		{"unique vs duplicate", []any{1, 2, 3}, []any{1, 2, 2}, false},
+		{"duplicate vs unique", []any{1, 2, 2}, []any{1, 2, 3}, false},
 		{"nil in one slice", []any{1, nil}, []any{1, 2}, false},
 	}
 	for _, test := range tests {
