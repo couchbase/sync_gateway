@@ -798,6 +798,7 @@ func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
 	doc1ID := t.Name() + "_doc1"
 	doc2ID := t.Name() + "_doc2"
 	doc3ID := t.Name() + "_doc3"
+	doc4ID := t.Name() + "_doc4"
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -828,14 +829,17 @@ func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
 		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
 	}, 2)
 
+	// empty sync data in xattr, this will allow import processing to run
+	_, err = collection.dataStore.WriteWithXattrs(ctx, doc4ID, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{}`)}, nil, nil)
+	require.NoError(t, err)
+	_, err = collection.GetDocument(ctx, doc4ID, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	// on demand import with empty _sync data in body, this will allow import processing to run
 	_, err = collection.dataStore.Add(doc3ID, 0, []byte(`{"some": "data", "_sync": {}}`))
 	require.NoError(t, err)
 	_, err = collection.GetDocument(ctx, doc3ID, DocUnmarshalAll)
-	require.Error(t, err)
-
-	base.RequireWaitForStat(t, func() int64 {
-		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
-	}, 3)
+	require.NoError(t, err)
 
 	// fix the doc so it can be imported
 	_, err = collection.dataStore.WriteWithXattrs(ctx, doc2ID, 0, casOut, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"attachments": {}, "history": {
@@ -845,8 +849,8 @@ func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
 	_, err = collection.GetDocument(ctx, doc2ID, DocUnmarshalAll)
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(3), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
-	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
+	assert.Equal(t, int64(2), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+	assert.Equal(t, int64(3), db.DbStats.SharedBucketImport().ImportCount.Value())
 }
 
 func TestMigrateMetadataInvalidSyncData(t *testing.T) {

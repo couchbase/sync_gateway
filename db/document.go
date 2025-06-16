@@ -506,6 +506,14 @@ func (doc *SyncData) HasValidSyncData() bool {
 	return valid && validHistory
 }
 
+func (s *SyncData) SyncIsEmpty() bool {
+	if s == nil {
+		return true
+	}
+	isEmpty := s.CurrentRev == "" && len(s.History) == 0 && s.Sequence == 0
+	return isEmpty
+}
+
 // Converts the string hex encoding that's stored in the sync metadata to a uint64 cas value
 func (s *SyncData) GetSyncCas() uint64 {
 

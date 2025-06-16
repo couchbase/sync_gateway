@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -111,13 +110,6 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 //	mode - ImportMode - ImportFromFeed or ImportOnDemand
 func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
-	// if sync gateway panics during import processing we want to be able to recover instead of bringing the node down
-	defer func() {
-		if r := recover(); r != nil {
-			base.WarnfCtx(ctx, "[%s] Unexpected panic importing document %s - skipping import: \n %s", r, base.UD(docid), debug.Stack())
-			db.dbStats().SharedBucketImportStats.ImportErrorCount.Add(1)
-		}
-	}()
 	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
 
@@ -213,7 +205,6 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			}
 			metadataOnlyUpdate = false
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
-			doc = migratedDoc
 			body = migratedDoc.Body(ctx)
 			base.InfofCtx(ctx, base.KeyMigrate, "Falling back to import with cas: %v", doc.Cas)
 		}
