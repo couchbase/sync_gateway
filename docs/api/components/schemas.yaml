@@ -732,9 +732,7 @@ Replication:
       default: false
     enable_delta_sync:
       description: |-
-        If the field is omitted, this will use the delta-sync setting of the database configuration `delta_sync.enabled`.
-
-        If it is set to false, then delta-sync will not be used for this replication.
+        This will turn on delta-sync for the replication. In order to enable delta-sync for a replication, the database level setting `delta_sync.enabled` must also be set to true.
 
         Using delta-sync is an Enterprise Edition only feature.
       type: boolean
