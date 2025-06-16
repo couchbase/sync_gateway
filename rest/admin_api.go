@@ -1673,14 +1673,22 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", multiError)
 	}
 
-	// Populate username and password used by sgcollect_info script for talking to Sync Gateway.
-	params.syncGatewayUsername, params.syncGatewayPassword = h.getBasicAuth()
+	addr, err := h.server.getServerAddr(adminServer)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "Error getting admin server address: %v", err)
+	}
+	if h.server.Config.API.HTTPS.TLSCertPath != "" {
+		addr = "https://" + addr
+	} else {
+		params.adminURL = "http://" + addr
+	}
+	params.adminURL = addr
 
 	zipFilename := sgcollectFilename()
 
 	logFilePath := h.server.Config.Logging.LogFilePath
 
-	if err := sgcollectInstance.Start(logFilePath, h.serialNumber, zipFilename, params); err != nil {
+	if err := sgcollectInstance.Start(logFilePath, h.serialNumber, zipFilename, params, h.server.sgcollectCookies); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 

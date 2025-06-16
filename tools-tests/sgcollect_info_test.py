@@ -40,8 +40,7 @@ def test_make_collect_logs_tasks(config, tmpdir):
         tasks = sgcollect_info.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
-            sg_username="",
-            sg_password="",
+            auth_headers={},
         )
         assert [t.log_file for t in tasks] == [
             log_file.basename,
@@ -63,8 +62,7 @@ def test_make_collect_logs_heap_profile(tmpdir):
         tasks = sgcollect_info.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
-            sg_username="",
-            sg_password="",
+            auth_headers={},
         )
         assert [tasks[0].log_file] == [pprof_file.basename]
         # ensure that this is not redacted task
@@ -97,8 +95,7 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
         tasks = sgcollect_info.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
-            sg_username="",
-            sg_password="",
+            auth_headers={},
         )
         # assert all tasks have unique log_file names
         assert len(set(t.log_file for t in tasks)) == len(tasks)

@@ -28,6 +28,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	adminAPITokenHeader = "SG_BEARER_TOKEN"
+)
+
 var (
 	// ErrSGCollectInfoAlreadyRunning is returned if sgcollect_info is already running.
 	ErrSGCollectInfoAlreadyRunning = errors.New("already running")
@@ -38,10 +42,7 @@ var (
 
 	sgPath, sgCollectPath, sgCollectPathErr = sgCollectPaths()
 	sgcollectInstance                       = sgCollect{
-		status:        base.Ptr(sgStopped),
-		sgPath:        sgPath,
-		sgCollectPath: sgCollectPath,
-		pathError:     sgCollectPathErr,
+		status: base.Ptr(sgStopped),
 	}
 )
 
@@ -53,23 +54,21 @@ const (
 )
 
 type sgCollect struct {
-	cancel        context.CancelFunc
-	status        *uint32
-	sgPath        string
-	sgCollectPath string
-	pathError     error
-	context       context.Context
+	cancel  context.CancelFunc
+	status  *uint32
+	context context.Context
+	stdout  chan string // test seam to capture st stdout/stderr
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilename string, params sgCollectOptions) error {
+func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilename string, params sgCollectOptions, tokenMgr *sgcollectCookieManager) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
 
 	// Return error if there is any failure while obtaining sgCollectPaths.
-	if sg.pathError != nil {
-		return sg.pathError
+	if sgCollectPathErr != nil {
+		return sgCollectPathErr
 	}
 
 	if params.OutputDirectory == "" {
@@ -90,15 +89,28 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 
 	zipPath := filepath.Join(params.OutputDirectory, zipFilename)
 
-	args := params.Args()
+	args := append(sgCollectPath[1:], params.Args()...)
+	if sgPath == "" {
+		return errors.New("Sync Gateway executable path is not set")
+	}
 	args = append(args, "--sync-gateway-executable", sgPath)
 	args = append(args, zipPath)
 
 	ctx := base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("SGCollect-%03d", ctxSerialNumber))
 
 	sg.context, sg.cancel = context.WithCancel(ctx)
-	cmd := exec.CommandContext(sg.context, sgCollectPath, args...)
+	if len(sgCollectPath) < 1 {
+		return errors.New("sgcollect_info binary path is not set")
+	}
+	cmd := exec.CommandContext(sg.context, sgCollectPath[0], args...)
 
+	token, err := tokenMgr.createToken()
+	if err != nil {
+		return fmt.Errorf("failed to get sgcollect_info token: %w", err)
+	}
+	cmd.Env = append(os.Environ(),
+		adminAPITokenHeader+"="+token,
+	)
 	// Send command stderr/stdout to pipes
 	stderrPipeReader, stderrPipeWriter := io.Pipe()
 	cmd.Stderr = stderrPipeWriter
@@ -106,6 +118,7 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 	cmd.Stdout = stdoutpipeWriter
 
 	if err := cmd.Start(); err != nil {
+		tokenMgr.deleteToken(token)
 		return err
 	}
 
@@ -118,6 +131,9 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 		scanner := bufio.NewScanner(stderrPipeReader)
 		for scanner.Scan() {
 			base.InfofCtx(sg.context, base.KeyAll, "sgcollect_info: %v", scanner.Text())
+			if sg.stdout != nil {
+				sg.stdout <- scanner.Text() + "\n"
+			}
 		}
 		if err := scanner.Err(); err != nil {
 			base.ErrorfCtx(sg.context, "sgcollect_info: unexpected error: %v", err)
@@ -129,6 +145,9 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 		scanner := bufio.NewScanner(stdoutPipeReader)
 		for scanner.Scan() {
 			base.InfofCtx(sg.context, base.KeyAll, "sgcollect_info: %v", scanner.Text())
+			if sg.stdout != nil {
+				sg.stdout <- scanner.Text() + "\n"
+			}
 		}
 		if err := scanner.Err(); err != nil {
 			base.ErrorfCtx(sg.context, "sgcollect_info: unexpected error: %v", err)
@@ -136,6 +155,7 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 	}()
 
 	go func() {
+		defer tokenMgr.deleteToken(token)
 		// Blocks until command finishes
 		err := cmd.Wait()
 
@@ -187,9 +207,7 @@ type sgCollectOptions struct {
 	KeepZip         bool   `json:"keep_zip,omitempty"`
 
 	// Unexported - Don't allow these to be set via the JSON body.
-	// We'll set them from the request's basic auth.
-	syncGatewayUsername string
-	syncGatewayPassword string
+	adminURL string
 }
 
 // validateOutputDirectory will check that the given path exists, and is a directory.
@@ -286,31 +304,26 @@ func (c *sgCollectOptions) Args() []string {
 		args = append(args, "--log-redaction-salt", c.RedactSalt)
 	}
 
-	if c.syncGatewayUsername != "" {
-		args = append(args, "--sync-gateway-username", c.syncGatewayUsername)
-	}
-
-	if c.syncGatewayPassword != "" {
-		args = append(args, "--sync-gateway-password", c.syncGatewayPassword)
-	}
-
 	if c.KeepZip {
 		args = append(args, "--keep-zip")
 	}
 
+	if c.adminURL != "" {
+		args = append(args, "--sync-gateway-url", c.adminURL)
+	}
 	return args
 }
 
 // sgCollectPaths attempts to return the absolute paths to Sync Gateway and to sgcollect_info binaries.
-func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
+func sgCollectPaths() (sgBinary string, sgCollectBinary []string, err error) {
 	sgBinary, err = os.Executable()
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 
 	sgBinary, err = filepath.Abs(sgBinary)
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 
 	logCtx := context.TODO() // this is global variable at init, we can't pass it in easily
@@ -324,6 +337,7 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 	}
 
 	for {
+		var sgCollectBinary string
 		if hasBinDir {
 			sgCollectBinary = filepath.Join(filepath.Dir(filepath.Dir(sgBinary)), sgCollectPath)
 		} else {
@@ -341,10 +355,10 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 				continue
 			}
 
-			return "", "", err
+			return sgBinary, nil, err
 		}
 
-		return sgBinary, sgCollectBinary, nil
+		return sgBinary, []string{sgCollectBinary}, nil
 	}
 }
 

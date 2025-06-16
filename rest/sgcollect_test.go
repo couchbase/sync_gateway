@@ -12,10 +12,14 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 
@@ -221,4 +225,120 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			assert.Equal(ts, test.expectedArgs, args)
 		})
 	}
+}
+
+func TestSgCollectableEndpoints(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		AdminInterfaceAuthentication:   true,
+		metricsInterfaceAuthentication: true,
+		adminInterface:                 "127.0.0.1:invalidport",
+	})
+	defer rt.Close()
+	//RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	endpoints := []string{
+		"/_cluster_info",
+		"/_expvar",
+		"/_status",
+		"/_debug/pprof/goroutine",
+		"/_debug/pprof/heap",
+		"/_debug/pprof/profile?seconds=1",
+		"/_debug/pprof/symbol",
+		"/_debug/pprof/block?seconds=1",
+		"/_debug/pprof/threadcreate?seconds=1",
+		"/_debug/pprof/cmdline",
+		"/_debug/pprof/mutex?seconds=1",
+		"/_config",
+		"/_config?include_runtime=true",
+		"/{{.db}}/_config",
+	}
+
+	for _, endpoint := range endpoints {
+		t.Run(endpoint, func(t *testing.T) {
+			RequireStatus(t, rt.SendAdminRequest(http.MethodGet, endpoint, ""), http.StatusUnauthorized)
+
+			// create a token for the admin interface
+			token, err := rt.RestTesterServerContext.sgcollectCookies.createToken()
+			require.NoError(t, err)
+			defer rt.RestTesterServerContext.sgcollectCookies.deleteToken(token)
+			require.True(t, rt.RestTesterServerContext.sgcollectCookies.isValidToken(token))
+
+			RequireStatus(t, rt.SendAdminRequestWithHeaders(http.MethodGet, endpoint, "", map[string]string{"Authorization": fmt.Sprintf("Bearer %s", token)}), http.StatusOK)
+
+			// delete the token and make sure the API is no longer accessible
+			rt.RestTesterServerContext.sgcollectCookies.deleteToken(token)
+			RequireStatus(t, rt.SendAdminRequest(http.MethodGet, endpoint, ""), http.StatusUnauthorized)
+		})
+	}
+}
+
+func TestSGCollectIntegration(t *testing.T) {
+	// set up global to refer to relative sgcollect in the repository
+	oldSGCollectPath := sgCollectPath
+	oldSGCollectPathErr := sgCollectPathErr
+	var stdout struct {
+		s    strings.Builder
+		lock sync.RWMutex
+	}
+	sgcollectInstance.stdout = make(chan string)
+	go func() {
+		for {
+			select {
+			case output := <-sgcollectInstance.stdout:
+				stdout.lock.Lock()
+				stdout.s.WriteString(output)
+				stdout.lock.Unlock()
+			case <-t.Context().Done():
+				return
+			}
+		}
+	}()
+	defer func() {
+		sgCollectPath = oldSGCollectPath
+		sgCollectPathErr = oldSGCollectPathErr
+		sgcollectInstance.stdout = nil
+	}()
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	sgCollectPath = []string{"python", filepath.Join(cwd, "../tools/sgcollect_info")}
+	sgCollectPathErr = nil
+	config := BootstrapStartupConfigForTest(t)
+	sc, closeFn := StartServerWithConfig(t, &config)
+	defer closeFn()
+
+	validAuth := map[string]string{
+		"Authorization": getBasicAuthHeader(base.TestClusterUsername(), base.TestClusterPassword()),
+	}
+	options := sgCollectOptions{
+		OutputDirectory: t.TempDir(),
+	}
+	resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodPost, "/_sgcollect_info", string(base.MustJSONMarshal(t, options)), validAuth)
+	resp.RequireStatus(http.StatusOK)
+
+	var statusResponse struct {
+		Status string
+	}
+
+	defer func() {
+		if statusResponse.Status == "stopped" {
+			return
+		}
+		resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodDelete, "/_sgcollect_info", "", validAuth)
+		resp.AssertStatus(http.StatusOK)
+	}()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodGet, "/_sgcollect_info", "", validAuth)
+		assert.Equal(c, http.StatusOK, resp.response.StatusCode)
+		resp.Unmarshal(&statusResponse)
+		assert.Equal(c, "stopped", statusResponse.Status)
+	}, 7*time.Minute, 2*time.Second, "sgcollect_info did not stop running in time")
+
+	stdout.lock.RLock()
+	output := stdout.s.String()
+	stdout.lock.RUnlock()
+
+	assert.NotContains(t, output, "Exception")
+	assert.NotContains(t, output, "WARNING")
+	assert.NotContains(t, output, "Error")
+	assert.NotContains(t, output, "Errno")
 }

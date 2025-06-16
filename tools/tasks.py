@@ -12,7 +12,6 @@ licenses/APL2.txt.
 
 # -*- python -*-
 import atexit
-import base64
 import gzip
 import hashlib
 import optparse
@@ -28,6 +27,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+from copy import copy
 from typing import Callable, List, Optional, Union
 
 
@@ -449,13 +449,12 @@ class AllOsTask(UnixTask, WindowsTask):
 def make_curl_task(
     name,
     url,
-    user="",
-    password="",
+    auth_headers: dict[str, str],
     content_postprocessors: Optional[List[Callable]] = None,
     timeout=60,
     log_file="python_curl.log",
     **kwargs,
-):
+) -> PythonTask:
     """
     NOTE: this used to use curl but was later reworked to use pure python
     in order to be more cross platform, since Windows doesn't ship with curl
@@ -475,11 +474,8 @@ def make_curl_task(
 
     """
 
-    def python_curl_task():
-        r = urllib.request.Request(url=url)
-        if user and len(user) > 0:
-            base64string = base64.b64encode(bytes("%s:%s" % (user, password), "utf-8"))
-            r.add_header("Authorization", "Basic %s" % base64string.decode("utf-8"))
+    def python_curl_task() -> str:
+        r = urllib.request.Request(url=url, headers=auth_headers, method="GET")
         try:
             response_file_handle = urllib.request.urlopen(r, timeout=timeout)
         except urllib.error.URLError as e:
@@ -838,8 +834,6 @@ def check_ticket(option, opt, value):
 
 
 class CbcollectInfoOptions(optparse.Option):
-    from copy import copy
-
     TYPES = optparse.Option.TYPES + ("ticket",)
     TYPE_CHECKER = copy(optparse.Option.TYPE_CHECKER)
     TYPE_CHECKER["ticket"] = check_ticket
