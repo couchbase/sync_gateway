@@ -16,7 +16,7 @@ pipeline {
     }
 
     tools {
-        go '1.23.3'
+        go '1.24.4'
     }
 
     stages {
@@ -57,9 +57,6 @@ pipeline {
                         sh 'go install github.com/kisielk/errcheck@latest'
                         // goveralls is used to send coverprofiles to coveralls.io
                         sh 'go install github.com/mattn/goveralls@latest'
-                        // Jenkins coverage reporting tools
-                        sh 'go install github.com/axw/gocov/gocov@latest'
-                        sh 'go install github.com/AlekSi/gocov-xml@latest'
                         // Jenkins test reporting tools
                         sh 'go install github.com/tebeka/go2xunit@latest'
                     }
@@ -209,10 +206,6 @@ pipeline {
                                     // strip non-printable characters from the raw verbose test output
                                     sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ce.out.raw > verbose_ce.out'
 
-                                    // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
-                                    sh 'which gocov' // check if gocov is installed
-                                    sh 'gocov convert cover_ce.out | gocov-xml > reports/coverage-ce.xml'
-
                                     // Grab test fail/total counts so we can print them later
                                     sh "grep '\\-\\-\\- PASS: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-pass.count"
                                     sh "grep '\\-\\-\\- FAIL: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-fail.count"
@@ -262,9 +255,6 @@ pipeline {
 
                                     // strip non-printable characters from the raw verbose test output
                                     sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ee.out.raw > verbose_ee.out'
-
-                                    // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
-                                    sh 'gocov convert cover_ee.out | gocov-xml > reports/coverage-ee.xml'
 
                                     // Grab test fail/total counts so we can print them later
                                     sh "grep '\\-\\-\\- PASS: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-pass.count"
@@ -382,12 +372,9 @@ pipeline {
 
     post {
         always {
-            // Publish the cobertura formatted test coverage reports into Jenkins
-            cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
             // record with general Coverage plugin and push coverage back out to GitHub
             discoverGitReferenceBuild() // required before recordCoverage to infer base branch/commit for PR
-            recordCoverage(tools: [[parser: 'COBERTURA', pattern: 'reports/coverage-*.xml']])
-
+            recordCoverage(tools: [[parser: 'GO_COV', pattern: 'cover*out']])
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
         }
