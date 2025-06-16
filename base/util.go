@@ -1727,3 +1727,21 @@ func removeAllWhitespace(s string) string {
 		return r
 	}, s)
 }
+
+// SlicesEqualIgnoreOrder checks if two slices are equal, ignoring order.
+func SlicesEqualIgnoreOrder[T comparable](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aCount := make(map[T]int, len(a))
+	for _, aItem := range a {
+		aCount[aItem]++
+	}
+	for _, bItem := range b {
+		if count, ok := aCount[bItem]; !ok || count == 0 {
+			return false
+		}
+		aCount[bItem]--
+	}
+	return true
+}
