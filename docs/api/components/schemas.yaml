@@ -1240,9 +1240,9 @@ Database:
       minimum: 0
     import_docs:
       description: |-
-        If true, documents will be imported in to Sync Gateway from the bucket when requested. Documents will be ran through the set `import_filter` if any is set.
+        If true, documents will be imported in to Sync Gateway from the bucket in the background. Documents will be ran through the set `import_filter` if any is set.
 
-        The default value depends on the edition of Sync Gateway being used. If the edition is the Community Edition, then this will default to `false` or else in the Enterprise Edition, it will default to `true`.
+        The default value depends on the edition of Sync Gateway being used. If the edition is the Community Edition, then this will default to `false` or else in the Enterprise Edition, it will default to `true`. This value requires `enable_shared_bucket_access=true`.
 
         This can also be set to the string `continuous` which maps to true.
       type: boolean
@@ -1257,6 +1257,8 @@ Database:
         Each partition is processed by an independent function that runs simultaneously to others, so `import_partitions` can be used to tune concurrency based on the number of Sync Gateway nodes, and the number of cores per node.
       type: number
       default: 16
+      minimum: 1
+      maximum: 1024
     import_filter:
       description: |-
         This is the function that all imported documents in the default scope and collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
@@ -1709,6 +1711,7 @@ Database:
       description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata.
       type: boolean
       default: true
+      deprecated: true
     session_cookie_secure:
       description: |-
         Override the session cookie `secure` flag. If set, the cookie will have the `secure` flag.
