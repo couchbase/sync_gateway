@@ -23,18 +23,12 @@ post:
       application/json:
         schema:
           type: object
-          properties:
-            doc_id:
-              description: |-
+          additionalProperties:
+            x-additionalPropertiesName: doc_id
+            description: |-
                 The document ID to purge. The array must only be 1 element which is `*`.
 
                 All revisions will be permanently removed for that document.
-              type: array
-              items:
-                type: string
-                enum:
-                  - '*'
-          additionalProperties:
             type: array
             items:
               type: string
@@ -64,6 +58,9 @@ post:
               purged:
                 type: object
                 additionalProperties:
+                  x-additionalPropertiesName: doc_id
+                  description: |-
+                    The document ID that was purged. The array will only contain `*` to indicate that the document was purged.
                   type: array
                   items:
                     type: string

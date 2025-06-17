@@ -599,233 +599,44 @@ HTTP-Error:
     - error
     - reason
   title: HTTP-Error
+ISGRReplicationState:
+  description: This is the state that the replicator is in or that trying to transition in to.
+  type: string
+  enum:
+    - running
+    - stopped
+    - resetting
+    - error
+    - starting
+    - reconnecting
+  x-enumDescriptions:
+    running: Currently running replication.
+    stopped: Not running replication.
+    resetting: The replication is resetting its state.
+    error: The replication is stopped due to an error.
+    starting: The replication is starting up.
+    reconnecting: The replication is reconnecting to the remote database.
+  title: Replication Status
 Retrieved-replication:
   description: Properties of a replication
-  type: object
-  properties:
-    replication_id:
-      description: |-
-        This is the ID of the replication.
-
-        When creating a new replication using a POST request, this will be set to a random UUID if not explicitly set.
-
-        When the replication ID is specified in the URL, this must be set to the same replication ID if specifying it at all.
-      type: string
-    remote:
-      description: |-
-        This is the endpoint of the database for the remote Sync Gateway that is the subject of this replication's `push`, `pull`, or `pushAndPull` action.
-
-        Typically this would include the URI, port, and database name. For example, `http://localhost:4985/db`.
-
-        How this remote is used depends on the `direction` of the replication:
-        * `pull` - this replicator _pulls_ changes from the `remote`
-        * `push` - this replicator _pushes_ changes to this `remote`
-        * `pushAndPull` - this replicator _pushes_ changes to this `remote`, while also pulling receiving changes
-      type: string
-    username:
-      description: |-
-        **This has been deprecated in favour of `remote_username`.**
-
-        This is the username to use to authenticate with the remote.
-
-        This can only be used for a pull replication.
-      type: string
-      deprecated: true
-    password:
-      description: |-
-        **This has been deprecated in favour of `remote_password`.**
-
-        This is the password to use to authenticate with the remote.
-
-        This password will be redacted in the replication config.
-
-        This can only be used for a pull replication.
-      type: string
-      deprecated: true
-    remote_username:
-      description: |-
-        The username to use to authenticate with the remote.
-
-        This can only be used for a pull replication.
-      type: string
-    remote_password:
-      description: |-
-        The password to use to authenticate with the remote.
-
-        This password will be redacted in the replication config.
-
-        This can only be used for a pull replication.
-      type: string
-    direction:
-      description: |-
-        This specifies which direction the replication will be replicating with the `remote` replicator.
-
-        The directions are:
-        * `pull` - changes are pulled from the remote database
-        * `push` - changes are pushed to the remote database
-        * `pushAndPull` - changes are both push-to and pulled-from the remote database
-
-        Replications created prior to Sync Gateway 2.8 derive their `direction` from the source/target URL of the replication.
-      type: string
-      enum:
-        - push
-        - pull
-        - pushAndPull
-    conflict_resolution_type:
-      description: |-
-        This defines what conflict resolution policy Sync Gateway should use to apply when resolving conflicting revisions.
-
-        Changing this is an Enterprise Edition only feature.
-
-        **Behaviour**
-        * *default* - In priority order, this will cause
-          - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
-          - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
-        * *localWins* - This will result in local revisions always being the winner in any conflict.
-        * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
-        * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an Enterprise Edition only feature.
-
-
-        Note: replications created prior to Sync Gateway 2.8 will default to `default`.
-      type: string
-      default: default
-      enum:
-        - default
-        - remoteWins
-        - localWins
-        - custom
-    custom_conflict_resolver:
-      description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new document's body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an Enterprise Edition only feature.\n"
-      type: string
-      default: none
-    purge_on_removal:
-      description: |-
-        Specifies whether to purge a document if the remote user loses access to all of the channels on the document when attempting to pull it from the remote.
-
-        If false, documents will not be replicated and not be purged when the user loses access.
-      type: boolean
-      default: false
-    enable_delta_sync:
-      description: |-
-        This will turn on delta- sync for the replication. This works in conjunction with the database level setting `delta_sync.enabled`
-
-        If set to true, delta-sync will be used as long as both databases involved in the replication have delta-sync enabled. If a database does not have delta-sync enabled, then the replication will run without delta-sync.
-
-        Replications created prior to Sync Gateway 2.8 must have delta-sync disabled.
-
-        Enabling this is an Enterprise Edition only feature.
-      type: boolean
-      default: false
-    max_backoff_time:
-      description: |-
-        Specifies the maximum time-period (in minutes) that Sync Gateway will attempt to reconnect to a lost or unreachable remote.
-
-        When a disconnection happens, Sync Gateway will do an exponential backoff up to this specified value. When this value is met, it will attempt to reconnect indefinitely every `max_backoff_time` minutes.
-
-        If this is set to 0, Sync Gateway will do the normal exponential backoff after the disconnect happens but then attempting 10 minutes and stop the replication.
-
-        Note: this defaults to 5 minutes for replications created prior to Sync Gateway 2.8.
-      type: integer
-      default: 5
-    initial_state:
-      description: |-
-        This is what state to start the replication in when creating a new replication.
-
-        This allows you to control if the replication starts in a `stopped` start or `running` state.
-
-        Replications prior to Sync Gateway 2.8 will run in the default state `running`.
-      type: string
-      default: running
-      enum:
-        - running
-        - stopped
-    continuous:
-      description: |-
-        If true, changes will be immediately synced when they happen. This is known as a continuous replication.
-
-        If false, all changes will be synced until they have been processed. The replication will then cease and not process any future changes (unless started again by the user). This is known as a one-shot replication.
-      type: boolean
-      default: false
-    filter:
-      description: |-
-        This defines whether to filter documents by their channels or not.
-
-        If set to `sync_gateway/bychannel` then a **pull** replication will be limited to a specific set of channels specified by the `query_params.channels` property.
-
-        This only can be used with pull replications.
-      type: string
-      enum:
-        - sync_gateway/bychannel
-    query_params:
-      description: |-
-        This is a set of key/value pairs used in the query string of the replication.
-
-        If `filters=sync_gateway/bychannel` then this can be used to set the channels to filter by in a pull replication. To do this, set the `channels` key to a string array of the channels to filter by. For example:
-        ```
-        "filter":"sync_gateway/bychannel",
-        "query_params": {
-          "channels":["chanUser1"]
-        },
-        ```
-      type: array
-      items:
-        type: string
-    adhoc:
-      description: |-
-        Set to true to run the replication as an adhoc replication instead of a persistent one.
-
-        This means that the replication will only last the period of the replication until the status is changed to `stopped` and then it will be removed automatically. It will also be removed if Sync Gateway restarts or if removed due to user action.
-      type: boolean
-      default: false
-    batch_size:
-      description: The amount of changes to be sent in one batch of replications. Changing this is an Enterprise Edition only feature.
-      type: integer
-      default: 200
-    run_as:
-      description: This is used if you want to specify a user to run the replication as. This means that the replication will only be able to replicate what the user  access to what the user has access to.
-      type: string
-    collections_enabled:
-      description: |-
-        If true, the replicator will run with collections, and will replicate all collections, unless otherwise limited by `collections_local`.
-
-        If false, the replicator will only replicate the default collection.
-      type: boolean
-      default: false
-    collections_local:
-      description: |-
-        Limits the set of collections replicated to those listed in this array.
-
-        The replication will use all collections defined on the database if this list is empty.
-      type: array
-      items:
-        type: string
-      example: ["scope1.collection1", "scope1.collection3", "scope1.collection6"]
-      default: []
-    collections_remote:
-      description: |-
-        Remaps the local collection name to the one specified in this array when replicating with the remote.
-
-        If only a subset of collections need remapping, elements in this array can be specified as `null` to preserve the local collection name.
-
-        The same index is used for both `collections_remote` and `collections_local`, and both arrays must be the same length.
-      type: array
-      items:
-        type: string
-      example: ["scope1.collectionA", null, "scope1.collectionF"]
-      default: []
-    assigned_node:
-      description: The unique ID of the node assigned to the replication.
-      type: string
-    target_state:
-      description: This is the state that the replicator is in or that trying to transition in to.
-      type: string
-      enum:
-        - running
-        - stopped
-        - resetting
-        - error
-        - starting
-        - reconnecting
+  allOf:
+    - type: object
+      properties:
+        replication_id:
+          description: |-
+            This is the ID of the replication.
+          type: string
+    - $ref: '#/Replication'
+    - type: object
+      properties:
+        assigned_node:
+          description: The unique ID of the node assigned to the replication.
+          type: string
+        target_state:
+          $ref: '#/ISGRReplicationState'
+        cluster_uuid:
+          description: The cluster unique identifier.
+          type: string
   title: Replication
 Replication:
   description: Properties of a replication
@@ -839,82 +650,38 @@ Replication:
 
         When the replication ID is specified in the URL, this must be set to the same replication ID if specifying it at all.
       type: string
+      maximum: 160
     remote:
       description: |-
         This is the endpoint of the database for the remote Sync Gateway that is the subject of this replication's `push`, `pull`, or `pushAndPull` action.
 
-        Typically this would include the URI, port, and database name. For example, `http://localhost:4985/db`.
-
-        How this remote is used depends on the `direction` of the replication:
-        * `pull` - this replicator _pulls_ changes from the `remote`
-        * `push` - this replicator _pushes_ changes to this `remote`
-        * `pushAndPull` - this replicator _pushes_ changes to this `remote`, while also pulling receiving changes
+        Typically this would include the URI, port, and database name. For example, `https://localhost:4985/db`.
       type: string
-    username:
-      description: |-
-        **This has been deprecated in favour of `remote_username`.**
-
-        This is the username to use to authenticate with the remote.
-
-        This can only be used for a pull replication.
-      type: string
-      deprecated: true
-    password:
-      description: |-
-        **This has been deprecated in favour of `remote_password`.**
-
-        This is the password to use to authenticate with the remote.
-
-        This password will be redacted in the replication config.
-
-        This can only be used for a pull replication.
-      type: string
-      deprecated: true
     remote_username:
       description: |-
-        The username to use to authenticate with the remote.
-
-        This can only be used for a pull replication.
+       The username to use to authenticate with the remote.
       type: string
     remote_password:
       description: |-
-        The password to use to authenticate with the remote.
-
-        This password will be redacted in the replication config.
-
-        This can only be used for a pull replication.
+        The password to use to authenticate with the remote. This password will be redacted in the replication config.
       type: string
     direction:
       description: |-
         This specifies which direction the replication will be replicating with the `remote` replicator.
-
-        The directions are:
-        * `pull` - changes are pulled from the remote database
-        * `push` - changes are pushed to the remote database
-        * `pushAndPull` - changes are both push-to and pulled-from the remote database
-
-        Replications created prior to Sync Gateway 2.8 derive their `direction` from the source/target URL of the replication.
       type: string
       enum:
         - push
         - pull
         - pushAndPull
+      x-enumDescriptions:
+        pull: changes are pulled from the remote database
+        push: changes are pushed to the remote database
+        pushAndPull: changes are both push-to and pulled-from the remote database
     conflict_resolution_type:
       description: |-
         This defines what conflict resolution policy Sync Gateway should use to apply when resolving conflicting revisions.
 
         Changing this is an Enterprise Edition only feature.
-
-        **Behaviour**
-        * *default* - In priority order, this will cause
-          - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
-          - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
-        * *localWins* - This will result in local revisions always being the winner in any conflict.
-        * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
-        * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an Enterprise Edition only feature.
-
-
-        Note: replications created prior to Sync Gateway 2.8 will default to `default`.
       type: string
       default: default
       enum:
@@ -922,10 +689,40 @@ Replication:
         - remoteWins
         - localWins
         - custom
+      x-enumDescriptions:
+        default: |-
+          In priority order, this will cause
+            - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
+            - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
+        localWins: This will result in local revisions always being the winner in any conflict.
+        remoteWins: This will result in remote revisions always being the winner in any conflict.
+        custom: This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter.
     custom_conflict_resolver:
-      description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new document's body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an Enterprise Edition only feature.\n"
+      description: |-
+        This specifies the Javascript function to use to resolve conflicts between conflicting revisions.
+
+        This **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.
+
+        The Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:
+          * `LocalDocument` - The local document. This contains the document ID under the `_id` key.
+          * `RemoteDocument` - The remote document
+        The function should return the new document's body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.
+
+        Example:
+
+        ```javascript
+        function(conflict) {
+          console.log("Doc ID: "+conflict.LocalDocument._id);
+          console.log("Full remote doc: "+JSON.stringify(conflict.RemoteDocument));
+          return conflict.RemoteDocument;
+        }
+        ```
+
+        Using complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.
+
+        This is an Enterprise Edition only feature.
       type: string
-      default: none
+      default: ""
     purge_on_removal:
       description: |-
         Specifies whether to purge a document if the remote user loses access to all of the channels on the document when attempting to pull it from the remote.
@@ -935,13 +732,9 @@ Replication:
       default: false
     enable_delta_sync:
       description: |-
-        This will turn on delta- sync for the replication. This works in conjunction with the database level setting `delta_sync.enabled`
+        This will turn on delta-sync for the replication. In order to enable delta-sync for a replication, the database level setting `delta_sync.enabled` must also be set to true.
 
-        If set to true, delta-sync will be used as long as both databases involved in the replication have delta-sync enabled. If a database does not have delta-sync enabled, then the replication will run without delta-sync.
-
-        Replications created prior to Sync Gateway 2.8 must have delta-sync disabled.
-
-        Enabling this is an Enterprise Edition only feature.
+        Using delta-sync is an Enterprise Edition only feature.
       type: boolean
       default: false
     max_backoff_time:
@@ -967,6 +760,9 @@ Replication:
       enum:
         - running
         - stopped
+      x-enumDescriptions:
+        running: The replication will immediately start running.
+        stopped: The replication configuration will be created but the replication will not start running until the user explicitly starts it.
     continuous:
       description: |-
         If true, changes will be immediately synced when they happen. This is known as a continuous replication.
@@ -976,20 +772,21 @@ Replication:
       default: false
     filter:
       description: |-
-        This defines whether to filter documents by their channels or not.
-
-        If set to `sync_gateway/bychannel` then a **pull** replication will be limited to a specific set of channels specified by the `query_params.channels` property.
-
-        This only can be used with pull replications.
+        This defines whether to filter documents.
       type: string
       enum:
         - sync_gateway/bychannel
+        - ""
+      x-enumDescriptions:
+        "": Do not filter any documents.
+        sync_gateway/bychannel: |-
+          If set, a pull replication will be limited to a specific set of channels specified by the `query_param.channels` property.
     query_params:
       description: |-
         This is a set of key/value pairs used in the query string of the replication.
 
         If `filters=sync_gateway/bychannel` then this can be used to set the channels to filter by in a pull replication. To do this, set the `channels` key to a string array of the channels to filter by. For example:
-        ```
+        ```json
         "filter":"sync_gateway/bychannel",
         "query_params": {
           "channels":["chanUser1"]
@@ -1039,8 +836,23 @@ Replication:
       type: array
       items:
         type: string
+        nullable: true
       example: ["scope1.collectionA", null, "scope1.collectionF"]
       default: []
+    username:
+      description: |-
+        **This has been deprecated in favour of `remote_username`.**
+
+        This is the username to use to authenticate with the remote.
+      type: string
+      deprecated: true
+    password:
+      description: |-
+        **This has been deprecated in favour of `remote_password`.**
+
+        This is the password to use to authenticate with the remote. This password will be redacted in the replication config.
+      type: string
+      deprecated: true
   required:
     - direction
   title: User configurable replication properties
@@ -1060,15 +872,7 @@ Replication-status:
     config:
       $ref: '#/Replication'
     status:
-      description: The status of the replication.
-      type: string
-      enum:
-        - stopped
-        - running
-        - reconnecting
-        - resetting
-        - error
-        - starting
+      $ref: '#/ISGRReplicationState'
     error_message:
       description: The error message of the replication if an error has occurred.
       type: string
@@ -1096,10 +900,10 @@ Replication-status:
       type: integer
     docs_checked_push:
       type: integer
-    docs_write_failures:
+    doc_write_failures:
       description: The number of documents that have failed to be wrote (pushed) to the target database. There will be no attempt to try to push these docs again.
       type: integer
-    docs_write_conflicts:
+    doc_write_conflicts:
       description: The number of documents that had a conflict.
       type: integer
     rejected_by_remote:
@@ -1234,15 +1038,15 @@ Database:
       description: |-
         The maximum depth a document's revision tree can grow too.
 
-        The minimum is `20` if conflicts are allowed and 0 if not. It is not recommended to go below `100` when conflicts are allowed.
+        The minimum is `20` if conflicts are allowed and 0 if not. It is not recommended to go below `100` when conflicts are allowed. The default is `100` if conflicts are allowed and `50` if not.
       type: number
-      default: 100 if conflict allowed and 50 if not
+      default: 50
       minimum: 0
     import_docs:
       description: |-
-        If true, documents will be imported in to Sync Gateway from the bucket when requested. Documents will be ran through the set `import_filter` if any is set.
+        If true, documents will be imported in to Sync Gateway from the bucket in the background. Documents will be ran through the set `import_filter` if any is set.
 
-        The default value depends on the edition of Sync Gateway being used. If the edition is the Community Edition, then this will default to `false` or else in the Enterprise Edition, it will default to `true`.
+        The default value depends on the edition of Sync Gateway being used. If the edition is the Community Edition, then this will default to `false` or else in the Enterprise Edition, it will default to `true`. This value requires `enable_shared_bucket_access=true`.
 
         This can also be set to the string `continuous` which maps to true.
       type: boolean
@@ -1257,6 +1061,8 @@ Database:
         Each partition is processed by an independent function that runs simultaneously to others, so `import_partitions` can be used to tune concurrency based on the number of Sync Gateway nodes, and the number of cores per node.
       type: number
       default: 16
+      minimum: 1
+      maximum: 1024
     import_filter:
       description: |-
         This is the function that all imported documents in the default scope and collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
@@ -1281,7 +1087,18 @@ Database:
           description: The maximum amount of time (in milliseconds) to wait when the even queue is full.
           type: string
         document_changed:
-          $ref: '#/Event-config'
+          allOf:
+            - $ref: '#/Event-config'
+            - type: object
+              properties:
+                options:
+                  description: Options for the document changed event.
+                  type: object
+                  properties:
+                    winning_rev_only:
+                      description: If true, only the winning revision of the document will be sent to the webhook.
+                      type: boolean
+                      default: false
         db_state_changed:
           $ref: '#/Event-config'
     feed_type:
@@ -1307,7 +1124,7 @@ Database:
                 The maximum number of revisions that can be stored in the revision cache.
                 Note when running with greater than 1 shard count we add 10% capacity overall to avoid early eviction when some shards fill up before others, so
                 you may find that the capacity stat (revision_cache_num_items) will climb to the defined rev cache size + 10%.
-              type: string
+              type: integer
               default: 5000
             max_memory_count_mb:
               description: |-
@@ -1319,7 +1136,7 @@ Database:
               default: 0
             shard_count:
               description: The number of shards the revision cache should be split into.
-              type: string
+              type: integer
               default: 16
         channel_cache:
           description: The channel cache config settings.
@@ -1698,6 +1515,7 @@ Database:
       description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata.
       type: boolean
       default: true
+      deprecated: true
     session_cookie_secure:
       description: |-
         Override the session cookie `secure` flag. If set, the cookie will have the `secure` flag.
@@ -1792,8 +1610,12 @@ Database:
       type: integer
       default: 5000
     user_xattr_key:
-      description: 'The key to use for the user xattr that will be accessible from the sync function. IF empty, the feature will be disabled.'
+      description: |-
+        The key to use for the user xattr that will be accessible from the sync function. If empty, the feature will be disabled.
+
+        This is an Enterprise Edition feature only.
       type: string
+      maximum: 15
     client_partition_window_secs:
       description: |-
         How long (in seconds) clients can remain offline for without losing replication metadata.
@@ -1814,6 +1636,13 @@ Database:
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean
       default: false
+    changes_request_plus:
+      type: boolean
+      default: false
+      description: |-
+        Sets the default value of `request_plus` for one-shot/non-continuous changes feeds, which when true, ensures all valid documents written prior to the request being issued are included in the response. Setting this option at the database level is required to ensure Couchbase Lite utilizes this changes feed mode.
+
+        This also sets the default value of query param `request_plus` for [GET /{keyspace}/_changes](#operation/get_keyspace-_changes) or `request_plus` for [POST /{keyspace}/_changes](#operation/post_keyspace-_changes).
     cors:
       description: CORS configuration for this database; if present, overrides server's config.
       type: object
@@ -2063,11 +1892,6 @@ Event-config:
     timeout:
       description: The amount of time (in seconds) to attempt connect to the webhook before giving up.
       type: number
-    options:
-      description: The options for the event.
-      type: object
-      additionalProperties:
-        description: The option key and value.
   title: Event-config
 Resync-status:
   description: The status of a resync operation
@@ -2456,7 +2280,6 @@ Startup-config:
       description: Threshold in bytes for automatic collection of heap profiles. If not specified, defaults to 85% of the lesser of cgroup or system memory.
       readOnly: true
       type: integer
-      default: max memory
     heap_profile_disable_collection:
       description: Disables automatic heap profile collection.
       default: false
@@ -2524,7 +2347,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 360
@@ -2564,7 +2387,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 180
@@ -2604,7 +2427,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 6
@@ -2644,7 +2467,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 2
@@ -2684,7 +2507,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 2
@@ -2724,7 +2547,7 @@ Logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files.
               default: 6
@@ -2774,7 +2597,7 @@ Audit-logging-config:
 
             This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
           type: string
-          default: 0
+          default: ""
         max_age:
           description: The maximum number of days to retain old log files.
           default: 6
@@ -2905,7 +2728,7 @@ Console-logging-config:
 
                 This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
               type: string
-              default: 0
+              default: ""
             max_age:
               description: The maximum number of days to retain old log files. By default, there is no rotation, max_age=0.
               default: 0
@@ -2932,6 +2755,23 @@ DeprecatedLogKeyMap:
   additionalProperties:
     description: The log key and whether it is enabled or not.
     type: boolean
+Vendor:
+  description: Product vendor
+  type: object
+  properties:
+    name:
+      description: Product name
+      type: string
+      example: Couchbase Sync Gateway
+    version:
+      description: |-
+        API version.
+        Omitted if `api.hide_product_version=true`
+      type: string
+      example: 3.1
+  required:
+    - name
+  title: Vendor
 Status:
   type: object
   properties:
@@ -2950,6 +2790,9 @@ Status:
           server_uuid:
             description: The server unique identifier.
             type: string
+          require_resync:
+            description: Indicates whether the database requires resync before it can be brought online.
+            type: boolean
           state:
             allOf: # use allOf to prevent DatabaseState from showing as the type in the display
               - $ref: '#/DatabaseState'
@@ -2960,6 +2803,9 @@ Status:
           cluster:
             type: object
             properties:
+              cluster_uuid:
+                description: The cluster unique identifier.
+                type: string
               replication:
                 description: Map of replication configs defined for the cluster.
                 type: object
@@ -2986,6 +2832,9 @@ Status:
 
         Blank if `api.hide_product_version=true` in the startup configuration.
       type: string
+    vendor:
+      allOf:
+        - $ref: '#/Vendor'
   title: Status
 NodeInfo:
   type: object
@@ -2999,21 +2848,8 @@ NodeInfo:
       type: string
       example: Welcome
     vendor:
-      description: Product vendor
-      type: object
-      properties:
-        name:
-          description: Product name
-          type: string
-          example: Couchbase Sync Gateway
-        version:
-          description: |-
-            API version.
-            Omitted if `api.hide_product_version=true`
-          type: string
-          example: 3.1
-      required:
-        - name
+      allOf:
+        - $ref: '#/Vendor'
     version:
       description: |-
         Product version, including the build number and edition (i.e. `EE` or `CE`)
@@ -3041,6 +2877,7 @@ CollectionNames:
   type: array
   items:
     type: string
+    example: ["collection1", "collection2"]
 "All DBs":
   title: Simple
   description: "The names of all databases."
