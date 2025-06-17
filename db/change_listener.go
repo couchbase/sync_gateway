@@ -264,12 +264,12 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 	// for a value it already has
 	broadcastSlowMode := false
 	go func(terminator chan bool) {
+		defer func() {close(listener.broadcastChangesDoneChan)}()
 		var currCount uint64
 		for {
 			select {
 			case <-terminator:
 				ticker.Stop()
-				close(listener.broadcastChangesDoneChan)
 				return
 			case <-ticker.C:
 				// if the counter has changed, notify waiting clients
