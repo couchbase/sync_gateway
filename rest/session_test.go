@@ -447,7 +447,7 @@ func TestSessionAPI(t *testing.T) {
 
 	// Attempt to GET the deleted session and make sure it's not found
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	RequireStatus(t, response, 404)
+	RequireNotFoundError(t, response)
 
 	// 2. DELETE a session with user validation
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user1sessions[1]), "")
@@ -455,11 +455,11 @@ func TestSessionAPI(t *testing.T) {
 
 	// Attempt to GET the deleted session and make sure it's not found
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[1]), "")
-	RequireStatus(t, response, 404)
+	RequireNotFoundError(t, response)
 
 	// 3. DELETE a session not belonging to the user (should fail)
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user2sessions[0]), "")
-	RequireStatus(t, response, 404)
+	RequireNotFoundError(t, response)
 
 	// GET the session and make sure it still exists
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[0]), "")
@@ -468,6 +468,23 @@ func TestSessionAPI(t *testing.T) {
 	// 4. DELETE all sessions for a user
 	response = rt.SendAdminRequest("DELETE", "/db/_user/user2/_session", "")
 	RequireStatus(t, response, 200)
+
+	// Validate that all sessions were deleted
+	for i := range 5 {
+		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[i]), "")
+		RequireNotFoundError(t, response)
+	}
+
+	// 5. DELETE sessions when password is changed
+	// Change password for user3
+	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
+	RequireStatus(t, response, 200)
+
+	// Validate that all sessions were deleted
+	for i := range 5 {
+		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user3sessions[i]), "")
+		RequireNotFoundError(t, response)
+	}
 
 	// DELETE the users
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user1", ""), 200)

@@ -242,14 +242,9 @@ func (h *handler) getUserSession() error {
 
 	h.assertAdminOnly()
 	session, err := h.db.Authenticator(h.ctx()).GetSession(h.PathVar("sessionid"))
-
-	if session == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
+	if err != nil {
 		return err
 	}
-
 	return h.respondWithSessionInfoForSession(session)
 }
 
@@ -292,22 +287,17 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 	// Validate that the session being deleted belongs to the user.  This adds some
 	// overhead - for user-agnostic session deletion should use deleteSession
 	session, getErr := h.db.Authenticator(h.ctx()).GetSession(sessionId)
-	if session == nil {
-		if getErr == nil {
-			getErr = kNotFoundError
-		}
+	if getErr != nil {
 		return getErr
 	}
 
-	if getErr == nil {
-		if session.Username == userName {
-			delErr := h.db.Authenticator(h.ctx()).DeleteSession(h.ctx(), sessionId, userName)
-			if delErr != nil {
-				return delErr
-			}
-		} else {
-			return kNotFoundError
+	if session.Username == userName {
+		delErr := h.db.Authenticator(h.ctx()).DeleteSession(h.ctx(), sessionId, userName)
+		if delErr != nil {
+			return delErr
 		}
+	} else {
+		return kNotFoundError
 	}
 	return nil
 }
