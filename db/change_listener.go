@@ -263,9 +263,9 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
 	// for a value it already has
 	broadcastSlowMode := false
-	go func(terminator chan bool) {
+	go func(terminator chan bool, doneChan chan struct{}) {
 		defer func() {
-			close(listener.broadcastChangesDoneChan)
+			close(doneChan)
 		}()
 		var currCount uint64
 		for {
@@ -294,7 +294,7 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 				}
 			}
 		}
-	}(listener.terminator)
+	}(listener.terminator, listener.broadcastChangesDoneChan)
 }
 
 // tickerValForBroadcastSpeed will return the duration for the ticker to be reset to based on input boolean to indicate
