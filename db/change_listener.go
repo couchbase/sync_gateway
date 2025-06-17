@@ -260,7 +260,6 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 
 func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 	ticker := time.NewTicker(DefaultBroadcastChangesTime)
-	defer func() { close(listener.broadcastChangesDoneChan) }()
 	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
 	// for a value it already has
 	broadcastSlowMode := false
@@ -270,6 +269,7 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 			select {
 			case <-terminator:
 				ticker.Stop()
+				close(listener.broadcastChangesDoneChan)
 				return
 			case <-ticker.C:
 				// if the counter has changed, notify waiting clients
