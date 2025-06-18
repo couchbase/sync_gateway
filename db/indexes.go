@@ -376,61 +376,88 @@ type InitializeIndexOptions struct {
 	LegacySyncDocsIndex        bool                            // if true, create legacy sync docs index (for backwards compatibility)
 }
 
+type sgIndexToBuild struct {
+	fullIndexName string
+	sgIndex       SGIndex
+}
+
+type sgIndexesToBuild []sgIndexToBuild
+
+func (s sgIndexesToBuild) FullIndexNames() []string {
+	names := make([]string, 0, len(s))
+	for _, sgIndex := range s {
+		names = append(names, sgIndex.fullIndexName)
+	}
+	return names
+}
+
 // Initializes Sync Gateway indexes for datastore.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options InitializeIndexOptions) error {
 	if options.NumPartitions < 1 {
 		return fmt.Errorf("Invalid number of partitions specified: %d, needs to be greater than 0", options.NumPartitions)
 	}
-	base.InfofCtx(ctx, base.KeyAll, "Initializing indexes with numReplicas: %d...", options.NumReplicas)
 
-	// Create any indexes that aren't present
-	fullIndexNames := make([]string, 0)
+	requiredIndexes := make(sgIndexesToBuild, 0, len(sgIndexes))
 	for _, sgIndex := range sgIndexes {
-
 		if !sgIndex.shouldCreate(options) {
 			base.DebugfCtx(ctx, base.KeyAll, "Skipping index: %s ...", sgIndex.simpleName)
 			continue
 		}
-
 		fullIndexName := sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions)
+		requiredIndexes = append(requiredIndexes, sgIndexToBuild{fullIndexName: fullIndexName, sgIndex: sgIndex})
+	}
 
-		err := sgIndex.createIfNeeded(ctx, n1QLStore, options)
+	if len(requiredIndexes) == 0 {
+		// not expected to get here - all our collections require at least one index ...
+		base.AssertfCtx(ctx, "No indexes to create - expected at least one index to be created, but none were found")
+		return nil
+	}
+
+	indexesMeta, err := base.GetIndexesMeta(ctx, n1QLStore, requiredIndexes.FullIndexNames())
+	if err != nil {
+		base.WarnfCtx(ctx, "Error getting indexes meta: %v - continuing to create", err)
+	}
+
+	// Happy-path optimization (for each collection):
+	// Drop indexes from the list if they're already online to avoid any per-index init cost.
+	requiredIndexes = slices.DeleteFunc(requiredIndexes, func(idx sgIndexToBuild) bool {
+		meta, exists := indexesMeta[idx.fullIndexName]
+		if exists && meta.State == base.IndexStateOnline {
+			base.DebugfCtx(ctx, base.KeyAll, "Index %s is already online", idx.fullIndexName)
+			// remove from list of indexes to create/wait for
+			return true
+		}
+		return false
+	})
+
+	if len(requiredIndexes) == 0 {
+		// all indexes are already online so we can return early without any per-index queries
+		base.InfofCtx(ctx, base.KeyAll, "Indexes ready - already online when checked")
+		return nil
+	}
+
+	base.InfofCtx(ctx, base.KeyAll, "Initializing %d indexes with numReplicas: %d...", len(requiredIndexes), options.NumReplicas)
+
+	for _, idx := range requiredIndexes {
+		err := idx.sgIndex.createIfNeeded(ctx, n1QLStore, options)
 		if err != nil {
 			if !errors.Is(err, base.ErrIndexBackgroundRetry) {
-				return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
+				return base.RedactErrorf("Unable to install index %s: %v", base.MD(idx.sgIndex.simpleName), err)
 			}
 		}
-
-		fullIndexNames = append(fullIndexNames, fullIndexName)
 	}
+
+	fullIndexNames := requiredIndexes.FullIndexNames()
 	// Issue BUILD INDEX for any deferred indexes.
-	if len(fullIndexNames) > 0 {
-		buildErr := base.BuildDeferredIndexes(ctx, n1QLStore, fullIndexNames)
-		if buildErr != nil {
-			base.InfofCtx(ctx, base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
-			return buildErr
-		}
+	buildErr := base.BuildDeferredIndexes(ctx, n1QLStore, fullIndexNames)
+	if buildErr != nil {
+		base.InfofCtx(ctx, base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
+		return buildErr
 	}
 
-	// Wait for initial readiness queries to complete
-	return waitForIndexes(ctx, n1QLStore, options)
-}
-
-// Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(ctx context.Context, bucket base.N1QLStore, options InitializeIndexOptions) error {
+	// Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
 	base.InfofCtx(ctx, base.KeyAll, "Verifying index availability...")
-	var indexes []string
-
-	for _, sgIndex := range sgIndexes {
-		fullIndexName := sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions)
-		if !sgIndex.shouldCreate(options) {
-			continue
-		}
-		indexes = append(indexes, fullIndexName)
-	}
-
-	err := bucket.WaitForIndexesOnline(ctx, indexes, options.WaitForIndexesOnlineOption)
-	if err != nil {
+	if err := n1QLStore.WaitForIndexesOnline(ctx, fullIndexNames, options.WaitForIndexesOnlineOption); err != nil {
 		return err
 	}
 
