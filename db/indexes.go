@@ -427,7 +427,6 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 			// remove from list of indexes to create/wait for
 			return true
 		}
-		base.DebugfCtx(ctx, base.KeyAll, "Index %s is not online - will issue CREATE INDEX statement and wait for readiness", idx.fullIndexName)
 		return false
 	})
 
