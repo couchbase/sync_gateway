@@ -194,19 +194,13 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
 		if ok || doc.inlineSyncData {
-			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(ctx, newDoc.ID, body, existingDoc, mutationOptions)
+			migratedDoc, migrateErr := db.migrateMetadata(ctx, newDoc.ID, existingDoc, mutationOptions)
 			if migrateErr != nil {
 				return nil, nil, false, updatedExpiry, migrateErr
 			}
 			// Migration successful, doesn't require import - return ErrDocumentMigrated to cancel import processing
-			if !requiresImport {
-				alreadyImportedDoc = migratedDoc
-				return nil, nil, false, updatedExpiry, base.ErrDocumentMigrated
-			}
-			metadataOnlyUpdate = false
-			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
-			body = migratedDoc.Body(ctx)
-			base.InfofCtx(ctx, base.KeyMigrate, "Falling back to import with cas: %v", doc.Cas)
+			alreadyImportedDoc = migratedDoc
+			return nil, nil, false, updatedExpiry, base.ErrDocumentMigrated
 		}
 
 		// Check if the doc has been deleted
@@ -375,19 +369,19 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 // Migrates document metadata from document body to system xattr.  On CAS failure, retrieves current doc body and retries
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
-func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid string, body Body, existingDoc *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions) (docOut *Document, requiresImport bool, err error) {
+func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid string, existingDoc *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions) (docOut *Document, err error) {
 
 	// Unmarshal the existing doc in legacy SG format
 	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
 	if unmarshalErr != nil {
-		return nil, false, unmarshalErr
+		return nil, unmarshalErr
 	}
 	doc.Cas = existingDoc.Cas
 
 	// If no sync metadata is present, return for import handling
 	if !doc.HasValidSyncData() {
-		base.InfofCtx(ctx, base.KeyMigrate, "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", base.UD(docid), doc.Cas)
-		return doc, true, nil
+		base.InfofCtx(ctx, base.KeyMigrate, "During migrate, doc %q doesn't have valid sync data.", base.UD(docid))
+		return doc, fmt.Errorf("not imported, invalid sync data found")
 	}
 
 	// Move any large revision bodies to external storage
@@ -399,7 +393,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	// Persist the document in xattr format
 	value, syncXattrValue, _, marshalErr := doc.MarshalWithXattrs()
 	if marshalErr != nil {
-		return nil, false, marshalErr
+		return nil, marshalErr
 	}
 
 	xattrs := map[string][]byte{
@@ -418,16 +412,16 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.InfofCtx(ctx, base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))
-		return doc, false, nil
+		return doc, nil
 	}
 
 	// If it was a cas mismatch, propagate an error as far up the stack as possible to force a full refresh + retry
 	if base.IsCasMismatch(writeErr) {
-		return nil, false, base.ErrCasFailureShouldRetry
+		return nil, base.ErrCasFailureShouldRetry
 	}
 
 	// On any other error, return it as-is since it shouldn't necessarily retry in this case
-	return nil, false, writeErr
+	return nil, writeErr
 
 }
 

@@ -513,7 +513,7 @@ func (s *SyncData) validateSyncDataForImport(ctx context.Context, db *DatabaseCo
 	if !s.SyncIsEmpty() && !s.HasValidSyncData() {
 		base.WarnfCtx(ctx, "Invalid sync data for doc %s - not importing.", base.UD(docID))
 		db.DbStats.SharedBucketImportStats.ImportErrorCount.Add(1)
-		return base.HTTPErrorf(http.StatusUnprocessableEntity, "Not imported, invalid sync data found")
+		return base.HTTPErrorf(http.StatusNotFound, "Not imported, invalid sync data found")
 	}
 	return nil
 }

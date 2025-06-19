@@ -213,13 +213,7 @@ func TestMigrateMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// Call migrateMeta with stale args that have old stale expiry
-	_, _, err = collection.migrateMetadata(
-		ctx,
-		key,
-		body,
-		existingBucketDoc,
-		&sgbucket.MutateInOptions{PreserveExpiry: false},
-	)
+	_, err = collection.migrateMetadata(ctx, key, existingBucketDoc, &sgbucket.MutateInOptions{PreserveExpiry: false})
 	assert.True(t, err != nil)
 	assert.True(t, err == base.ErrCasFailureShouldRetry)
 
@@ -737,6 +731,8 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
 	// make sure no documents are imported
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
@@ -747,6 +743,7 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 		doc2 = "chipchop"
 		doc3 = "bookstand2"
 		doc4 = "chipchop2"
+		doc5 = "bookstand3"
 	)
 
 	// this document will be ignored for input with debug logging as follows:
@@ -785,7 +782,20 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 2)
-	require.Equal(t, int64(2), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// add new doc and update it via sdk to include _sync in body
+	_, _, err = collection.Put(ctx, doc5, Body{"foo": "bar"})
+	require.NoError(t, err)
+	err = bucket.GetSingleDataStore().SetRaw(doc5, 0, nil, []byte(`{"foo" : "bar", "_sync":"somedata"}`))
+	require.NoError(t, err)
+
+	// this will error when calling importDoc() because the _sync data in body will not unmarshal inside migrateMetadata
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 3)
+
+	require.Equal(t, int64(3), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+	require.Equal(t, int64(2), db.DbStats.SharedBucketImport().ImportCount.Value())
 }
 
 func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
@@ -835,11 +845,15 @@ func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
 	_, err = collection.GetDocument(ctx, doc4ID, DocUnmarshalAll)
 	require.NoError(t, err)
 
-	// on demand import with empty _sync data in body, this will allow import processing to run
+	// on demand import with empty _sync data in body
 	_, err = collection.dataStore.Add(doc3ID, 0, []byte(`{"some": "data", "_sync": {}}`))
 	require.NoError(t, err)
 	_, err = collection.GetDocument(ctx, doc3ID, DocUnmarshalAll)
-	require.NoError(t, err)
+	require.Error(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 3)
 
 	// fix the doc so it can be imported
 	_, err = collection.dataStore.WriteWithXattrs(ctx, doc2ID, 0, casOut, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"attachments": {}, "history": {
@@ -849,8 +863,8 @@ func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
 	_, err = collection.GetDocument(ctx, doc2ID, DocUnmarshalAll)
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(2), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
-	assert.Equal(t, int64(3), db.DbStats.SharedBucketImport().ImportCount.Value())
+	assert.Equal(t, int64(3), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+	assert.Equal(t, int64(2), db.DbStats.SharedBucketImport().ImportCount.Value())
 }
 
 func TestMigrateMetadataInvalidSyncData(t *testing.T) {
