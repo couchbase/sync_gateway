@@ -906,6 +906,12 @@ func Float32Ptr(f float32) *float32 {
 	return &f
 }
 
+// Ptr returns a pointer to the given literal.
+// This is useful for wrapping around function calls that return a value, where you can't just use `&`.
+func Ptr[T any](v T) *T {
+	return &v
+}
+
 // Add auth credentials to the given urls, since CBGT cannot take auth handlers in certain API calls yet
 func ServerUrlsWithAuth(urls []string, spec BucketSpec) (urlsWithAuth []string, err error) {
 	urlsWithAuth = make([]string, len(urls))
