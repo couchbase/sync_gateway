@@ -1,5 +1,36 @@
+[project] # this isn't a real project, but we need this to make the tools work
+name = "sgcollect_info"
+version = "0.0.1"
+requires-python = ">=3.9,<3.10" # miniconda pyinstaller is pinned to python 3.9
+
+[tool.mypy]
+files = ["tools/sgcollect_info", "tools-tests/*.py", "tools/*.py"]
+check_untyped_defs = false # candidate for removal in the future
+disable_error_code = [
+    "type-arg", # candidate for removal in the future
+]
+disallow_incomplete_defs = false # candidate for removal in the future
+disallow_untyped_calls = false # candidate for removal in the future
+disallow_untyped_defs = false # candidate for removal in the future
+strict = true # mypy has stricter warnings
+warn_return_any = false # candidate for removal in the future
+warn_unused_configs = true # validates this file
+warn_unreachable = true # candidate for removal in the future
+
+[tool.pyright]
+extraPaths = ["tools"]
+
 [tool.ruff]
 extend-include = ["tools/sgcollect_info"]
 
 [tool.ruff.lint]
 extend-select = ["I","B006"]  # isort, mutable default argument
+
+# test only dependencies
+[dependency-groups]
+dev = [
+    "mypy>=1.16.1",
+    "pytest>=8.4.0",
+    "pytest-httpserver>=1.1.3",
+    "trustme>=1.2.1",
+]

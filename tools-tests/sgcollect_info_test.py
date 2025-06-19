@@ -11,7 +11,7 @@ import pathlib
 import unittest
 
 import pytest
-import sgcollect_info
+import sgcollect
 import tasks
 
 
@@ -27,7 +27,7 @@ def test_make_collect_logs_tasks(config, tmpdir):
     log_file = tmpdir.join("sg_info.log")
     log_file.write("foo")
     with unittest.mock.patch(
-        "sgcollect_info.urlopen_with_basic_auth",
+        "sgcollect.urlopen_with_basic_auth",
         return_value=io.BytesIO(
             config.format(
                 tmpdir=str(tmpdir).replace("\\", "\\\\"),
@@ -37,7 +37,7 @@ def test_make_collect_logs_tasks(config, tmpdir):
     ):
         rotated_log_file = tmpdir.join("sg_info-01.log.gz")
         rotated_log_file.write("foo")
-        tasks = sgcollect_info.make_collect_logs_tasks(
+        tasks = sgcollect.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
             sg_username="",
@@ -51,7 +51,7 @@ def test_make_collect_logs_tasks(config, tmpdir):
 
 def test_make_collect_logs_heap_profile(tmpdir):
     with unittest.mock.patch(
-        "sgcollect_info.urlopen_with_basic_auth",
+        "sgcollect.urlopen_with_basic_auth",
         return_value=io.BytesIO(
             '{{"logfilepath": "{logpath}"}}'.format(
                 logpath=str(tmpdir).replace("\\", "\\\\")
@@ -60,7 +60,7 @@ def test_make_collect_logs_heap_profile(tmpdir):
     ):
         pprof_file = tmpdir.join("pprof_heap_high_01.pb.gz")
         pprof_file.write("foo")
-        tasks = sgcollect_info.make_collect_logs_tasks(
+        tasks = sgcollect.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
             sg_username="",
@@ -86,7 +86,7 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
         (d / "sg_info-01.log.gz").write_text("foo")
 
     with unittest.mock.patch(
-        "sgcollect_info.urlopen_with_basic_auth",
+        "sgcollect.urlopen_with_basic_auth",
         return_value=io.BytesIO(
             config.format(
                 tmpdir1=str(tmpdir1).replace("\\", "\\\\"),
@@ -94,7 +94,7 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
             ).encode("utf-8")
         ),
     ):
-        tasks = sgcollect_info.make_collect_logs_tasks(
+        tasks = sgcollect.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
             sg_username="",
@@ -119,7 +119,7 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
     ],
 )
 def test_get_unique_filename(basenames, filename, expected):
-    assert sgcollect_info.get_unique_filename(basenames, filename) == expected
+    assert sgcollect.get_unique_filename(basenames, filename) == expected
 
 
 @pytest.mark.parametrize(
@@ -134,15 +134,15 @@ def test_get_unique_filename(basenames, filename, expected):
         (["--sync-gateway-password", "mypassword"]),
     ],
 )
-def test_get_sgcollect_info_options_task(tmp_path, cmdline):
+def test_get_sgcollect_options_task(tmp_path, cmdline):
     runner = tasks.TaskRunner(tmp_dir=tmp_path)
-    parser = sgcollect_info.create_option_parser()
+    parser = sgcollect.create_option_parser()
     options, args = parser.parse_args(cmdline + ["fakesgcollect.zip"])
-    task = sgcollect_info.get_sgcollect_info_options_task(options, args)
+    task = sgcollect.get_sgcollect_info_options_task(options, args)
     runner.run(task)
 
     output = (
-        pathlib.Path(runner.tmpdir) / sgcollect_info.SGCOLLECT_INFO_OPTIONS_LOG
+        pathlib.Path(runner.tmpdir) / sgcollect.SGCOLLECT_INFO_OPTIONS_LOG
     ).read_text()
     assert "sync_gateway_password" not in output
     assert f"args: {args}" in output

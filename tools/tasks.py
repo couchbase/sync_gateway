@@ -28,6 +28,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+from copy import copy
 from typing import Callable, List, Optional, Union
 
 
@@ -194,10 +195,8 @@ class Task(object):
             return 127
         p.stdin.close()
 
-        from threading import Event, Timer
-
         timer = None
-        timer_fired = Event()
+        timer_fired = threading.Event()
 
         if self.timeout is not None and hasattr(p, "kill"):
 
@@ -205,7 +204,7 @@ class Task(object):
                 p.kill()
                 timer_fired.set()
 
-            timer = Timer(self.timeout, on_timeout)
+            timer = threading.Timer(self.timeout, on_timeout)
             timer.start()
 
         try:
@@ -838,8 +837,6 @@ def check_ticket(option, opt, value):
 
 
 class CbcollectInfoOptions(optparse.Option):
-    from copy import copy
-
     TYPES = optparse.Option.TYPES + ("ticket",)
     TYPE_CHECKER = copy(optparse.Option.TYPE_CHECKER)
     TYPE_CHECKER["ticket"] = check_ticket
