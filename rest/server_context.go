@@ -30,6 +30,7 @@ import (
 	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db/functions"
+	"github.com/google/uuid"
 	"github.com/shirou/gopsutil/mem"
 
 	"github.com/couchbase/gocbcore/v10"
@@ -86,6 +87,7 @@ type ServerContext struct {
 	DatabaseInitManager           *DatabaseInitManager       // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
+	sgcollectCookies              *sgcollectCookieManager
 }
 
 type ActiveReplicationsCounter struct {
@@ -163,9 +165,10 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion},
 		hasStarted:          make(chan struct{}),
 		_httpServers:        map[serverType]*serverInfo{},
-	}
-	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
-		dbNames: map[string]*invalidConfigInfo{},
+		invalidDatabaseConfigTracking: invalidDatabaseConfigs{
+			dbNames: map[string]*invalidConfigInfo{},
+		},
+		sgcollectCookies: newSgcollectCookieManager(),
 	}
 
 	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
@@ -2276,4 +2279,32 @@ func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("unable to get cluster UUID from server: %s", output)
 	}
 	return base.ParseClusterUUID(output)
+}
+
+type sgcollectCookieManager struct {
+	tokens map[string]struct{}
+}
+
+func newSgcollectCookieManager() *sgcollectCookieManager {
+	return &sgcollectCookieManager{
+		tokens: make(map[string]struct{}),
+	}
+}
+
+func (m *sgcollectCookieManager) createToken() (string, error) {
+	u, err := uuid.NewUUID()
+	if err != nil {
+		return "", fmt.Errorf("error generating UUID for sgcollect token: %w", err)
+	}
+	m.tokens[u.String()] = struct{}{}
+	return u.String(), nil
+}
+
+func (m *sgcollectCookieManager) deleteToken(token string) {
+	delete(m.tokens, token)
+}
+
+func (m *sgcollectCookieManager) isValidToken(token string) bool {
+	_, exists := m.tokens[token]
+	return exists
 }

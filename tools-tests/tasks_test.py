@@ -84,6 +84,7 @@ def test_make_curl_task(tmpdir, httpserver):
     task = tasks.make_curl_task(
         "curltask",
         httpserver.url_for("/"),
+        auth_headers={},
         content_postprocessors=[
             password_remover.remove_passwords,
             password_remover.tag_userdata_in_server_config,
