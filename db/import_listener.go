@@ -227,7 +227,6 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			}
 		}
 	}
-	return
 }
 
 func (il *importListener) Stop() {
