@@ -12,7 +12,7 @@ import ssl
 import unittest.mock
 
 import pytest
-import sgcollect_info
+import sgcollect
 import tasks
 import trustme
 
@@ -68,7 +68,7 @@ class FakeFailureUrlOpener:
 @pytest.mark.parametrize("args", [[], ["--log-redaction-level", "none"]])
 def test_main_output_exists(args):
     with unittest.mock.patch("sys.argv", ["sg_collect", *args, ZIP_NAME]):
-        sgcollect_info.main()
+        sgcollect.main()
     assert pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
 
@@ -78,7 +78,7 @@ def test_main_output_exists_with_redacted():
     with unittest.mock.patch(
         "sys.argv", ["sg_collect", "--log-redaction-level", "partial", ZIP_NAME]
     ):
-        sgcollect_info.main()
+        sgcollect.main()
     assert pathlib.Path(ZIP_NAME).exists()
     assert pathlib.Path(REDACTED_ZIP_NAME).exists()
 
@@ -100,7 +100,7 @@ def test_main_zip_deleted_on_upload_success(args):
             ],
         ):
             with pytest.raises(SystemExit) as exc:
-                sgcollect_info.main()
+                sgcollect.main()
             assert exc.value.code == 0
     assert not pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
@@ -123,7 +123,7 @@ def test_main_zip_deleted_on_upload_failure(args):
             ],
         ):
             with pytest.raises(SystemExit) as exc:
-                sgcollect_info.main()
+                sgcollect.main()
             assert exc.value.code == 1
     assert not pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
@@ -146,7 +146,7 @@ def test_main_redacted_zip_deleted_on_upload_success():
             ],
         ):
             with pytest.raises(SystemExit) as exc:
-                sgcollect_info.main()
+                sgcollect.main()
             assert exc.value.code == 0
     assert not pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
@@ -169,7 +169,7 @@ def test_main_redacted_zip_deleted_on_upload_failure():
             ],
         ):
             with pytest.raises(SystemExit) as exc:
-                sgcollect_info.main()
+                sgcollect.main()
             assert exc.value.code == 1
     assert not pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
@@ -193,7 +193,7 @@ def test_main_keep_zip_on_upload_success(args):
             ],
         ):
             with pytest.raises(SystemExit) as exc:
-                sgcollect_info.main()
+                sgcollect.main()
             assert exc.value.code == 0
     assert pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
@@ -217,7 +217,7 @@ def test_main_keep_zip_on_upload_failure(args):
             ],
         ):
             with pytest.raises(SystemExit) as exc:
-                sgcollect_info.main()
+                sgcollect.main()
             assert exc.value.code == 1
     assert pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
@@ -241,7 +241,7 @@ def test_main_keep_zip_deleted_on_upload_success():
             ],
         ):
             with pytest.raises(SystemExit) as exc:
-                sgcollect_info.main()
+                sgcollect.main()
             assert exc.value.code == 0
     assert pathlib.Path(ZIP_NAME).exists()
     assert pathlib.Path(REDACTED_ZIP_NAME).exists()
@@ -265,7 +265,7 @@ def test_main_keep_zip_deleted_on_upload_failure():
             ],
         ):
             with pytest.raises(SystemExit) as exc:
-                sgcollect_info.main()
+                sgcollect.main()
             assert exc.value.code == 1
     assert pathlib.Path(ZIP_NAME).exists()
     assert pathlib.Path(REDACTED_ZIP_NAME).exists()
