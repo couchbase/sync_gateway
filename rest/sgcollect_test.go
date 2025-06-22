@@ -12,10 +12,13 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 
@@ -220,5 +223,60 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			args := test.options.Args()
 			assert.Equal(ts, test.expectedArgs, args)
 		})
+	}
+}
+
+func TestSGCollectIntegration(t *testing.T) {
+	base.LongRunningTest(t) // this test is very long, and somewhat fragile, since it involves relying on the sgcollect_info tool to run successfully, which requires system python
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	config := BootstrapStartupConfigForTest(t)
+	sc, closeFn := StartServerWithConfig(t, &config)
+	defer closeFn()
+
+	outputs := map[string]*strings.Builder{
+		"stdout": &strings.Builder{},
+		"stderr": &strings.Builder{},
+	}
+
+	sc.sgcollect.stdout = outputs["stdout"]
+	sc.sgcollect.stderr = outputs["stderr"]
+	sc.sgcollect.sgCollectPath = []string{"python", filepath.Join(cwd, "../tools/sgcollect_info")}
+	sc.sgcollect.sgCollectPathErr = nil
+	validAuth := map[string]string{
+		"Authorization": getBasicAuthHeader(base.TestClusterUsername(), base.TestClusterPassword()),
+	}
+	options := sgCollectOptions{
+		OutputDirectory: t.TempDir(),
+	}
+	resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodPost, "/_sgcollect_info", string(base.MustJSONMarshal(t, options)), validAuth)
+	resp.RequireStatus(http.StatusOK)
+
+	var statusResponse struct {
+		Status string
+	}
+
+	defer func() {
+		if statusResponse.Status == "stopped" {
+			return
+		}
+		resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodDelete, "/_sgcollect_info", "", validAuth)
+		resp.AssertStatus(http.StatusOK)
+	}()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodGet, "/_sgcollect_info", "", validAuth)
+		assert.Equal(c, http.StatusOK, resp.response.StatusCode)
+		resp.Unmarshal(&statusResponse)
+		assert.Equal(c, "stopped", statusResponse.Status)
+	}, 7*time.Minute, 2*time.Second, "sgcollect_info did not stop running in time")
+
+	for name, stream := range outputs {
+		output := stream.String()
+		assert.NotContains(t, output, "Exception", "found in %s", name)
+		assert.NotContains(t, output, "WARNING", "found in %s", name)
+		assert.NotContains(t, output, "Error", "found in %s", name)
+		assert.NotContains(t, output, "Errno", "found in %s", name)
+		assert.NotContains(t, output, "Fail", "found in %s", name)
 	}
 }

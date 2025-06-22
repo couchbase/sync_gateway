@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -35,14 +36,6 @@ var (
 	ErrSGCollectInfoNotRunning = errors.New("not running")
 
 	validateTicketPattern = regexp.MustCompile(`\d{1,7}`)
-
-	sgPath, sgCollectPath, sgCollectPathErr = sgCollectPaths()
-	sgcollectInstance                       = sgCollect{
-		status:        base.Ptr(sgStopped),
-		sgPath:        sgPath,
-		sgCollectPath: sgCollectPath,
-		pathError:     sgCollectPathErr,
-	}
 )
 
 const (
@@ -52,13 +45,25 @@ const (
 	defaultSGUploadHost = "https://uploads.couchbase.com"
 )
 
+// sgCollectOutputStream handles stderr/stdout from a running sgcollect process.
+type sgCollectOutputStream struct {
+	stdoutPipeWriter io.WriteCloser // Pipe writer for stdout
+	stderrPipeWriter io.WriteCloser // Pipe writer for stderr
+	stderrPipeReader io.Reader      // Pipe reader for stderr
+	stdoutPipeReader io.Reader      // Pipe reader for stdout
+	stdoutDoneChan   chan struct{}  // Channel to signal stdout processing completion
+	stderrDoneChan   chan struct{}  // Channel to signal stderr processing completion
+}
+
 type sgCollect struct {
-	cancel        context.CancelFunc
-	status        *uint32
-	sgPath        string
-	sgCollectPath string
-	pathError     error
-	context       context.Context
+	cancel           context.CancelFunc
+	status           *uint32
+	context          context.Context
+	sgPath           string    // Path to the Sync Gateway executable
+	sgCollectPath    []string  // Path to the sgcollect_info executable
+	sgCollectPathErr error     // Error if sgcollect_info path could not be determined
+	stdout           io.Writer // test seam, is nil in production
+	stderr           io.Writer // test seam, is nil in production
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
@@ -68,8 +73,8 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 	}
 
 	// Return error if there is any failure while obtaining sgCollectPaths.
-	if sg.pathError != nil {
-		return sg.pathError
+	if sg.sgCollectPathErr != nil {
+		return sg.sgCollectPathErr
 	}
 
 	if params.OutputDirectory == "" {
@@ -90,54 +95,33 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 
 	zipPath := filepath.Join(params.OutputDirectory, zipFilename)
 
-	args := params.Args()
-	args = append(args, "--sync-gateway-executable", sgPath)
-	args = append(args, zipPath)
+	cmdline := slices.Clone(sg.sgCollectPath)
+	cmdline = append(cmdline, params.Args()...)
+	cmdline = append(cmdline, "--sync-gateway-executable", sg.sgPath)
+	cmdline = append(cmdline, zipPath)
 
-	ctx := base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("SGCollect-%03d", ctxSerialNumber))
+	ctx := base.CorrelationIDLogCtx(sg.context, fmt.Sprintf("SGCollect-%03d", ctxSerialNumber))
 
 	sg.context, sg.cancel = context.WithCancel(ctx)
-	cmd := exec.CommandContext(sg.context, sgCollectPath, args...)
+	cmd := exec.CommandContext(sg.context, cmdline[0], cmdline[1:]...)
 
-	// Send command stderr/stdout to pipes
-	stderrPipeReader, stderrPipeWriter := io.Pipe()
-	cmd.Stderr = stderrPipeWriter
-	stdoutPipeReader, stdoutpipeWriter := io.Pipe()
-	cmd.Stdout = stdoutpipeWriter
+	outStream := newSGCollectOutputStream(sg.context, sg.stdout, sg.stderr)
+	cmd.Stdout = outStream.stdoutPipeWriter
+	cmd.Stderr = outStream.stderrPipeWriter
 
 	if err := cmd.Start(); err != nil {
+		outStream.Close(sg.context)
 		return err
 	}
 
 	atomic.StoreUint32(sg.status, sgRunning)
 	startTime := time.Now()
-	base.InfofCtx(sg.context, base.KeyAdmin, "sgcollect_info started with args: %v", base.UD(args))
-
-	// Stream sgcollect_info stderr to warn logs
-	go func() {
-		scanner := bufio.NewScanner(stderrPipeReader)
-		for scanner.Scan() {
-			base.InfofCtx(sg.context, base.KeyAll, "sgcollect_info: %v", scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			base.ErrorfCtx(sg.context, "sgcollect_info: unexpected error: %v", err)
-		}
-	}()
-
-	// Stream sgcollect_info stdout to debug logs
-	go func() {
-		scanner := bufio.NewScanner(stdoutPipeReader)
-		for scanner.Scan() {
-			base.InfofCtx(sg.context, base.KeyAll, "sgcollect_info: %v", scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			base.ErrorfCtx(sg.context, "sgcollect_info: unexpected error: %v", err)
-		}
-	}()
+	base.InfofCtx(sg.context, base.KeyAdmin, "sgcollect_info started with cmdline: %v", base.UD(cmdline))
 
 	go func() {
 		// Blocks until command finishes
 		err := cmd.Wait()
+		outStream.Close(sg.context)
 
 		atomic.StoreUint32(sg.status, sgStopped)
 		duration := time.Since(startTime)
@@ -190,6 +174,7 @@ type sgCollectOptions struct {
 	// We'll set them from the request's basic auth.
 	syncGatewayUsername string
 	syncGatewayPassword string
+	adminURL            string // URL to the Sync Gateway admin API.
 }
 
 // validateOutputDirectory will check that the given path exists, and is a directory.
@@ -210,6 +195,78 @@ func validateOutputDirectory(dir string) error {
 	}
 
 	return nil
+}
+
+// newSGCollectOutputStream creates an instance to monitor stdout and stderr. Stdout is logged at Debug and Stderr at Info. extraStdout and extraStderr are optional writers used for testing only.
+func newSGCollectOutputStream(ctx context.Context, extraStdout io.Writer, extraStderr io.Writer) *sgCollectOutputStream {
+	stderrPipeReader, stderrPipeWriter := io.Pipe()
+	stdoutPipeReader, stdoutPipeWriter := io.Pipe()
+	o := &sgCollectOutputStream{
+		stdoutPipeWriter: stdoutPipeWriter,
+		stderrPipeWriter: stderrPipeWriter,
+		stderrPipeReader: stderrPipeReader,
+		stdoutPipeReader: stdoutPipeReader,
+		stdoutDoneChan:   make(chan struct{}),
+		stderrDoneChan:   make(chan struct{}),
+	}
+	go func() {
+		defer close(o.stderrDoneChan)
+		scanner := bufio.NewScanner(stderrPipeReader)
+		for scanner.Scan() {
+			text := scanner.Text()
+			base.InfofCtx(ctx, base.KeyAll, "sgcollect_info: %v", text)
+			if extraStderr != nil {
+				_, err := extraStderr.Write([]byte(text + "\n"))
+				if err != nil {
+					base.ErrorfCtx(ctx, "sgcollect_info: failed to write to stderr pipe: %v", err)
+				}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			base.ErrorfCtx(ctx, "sgcollect_info: unexpected error: %v", err)
+		}
+	}()
+
+	// Stream sgcollect_info stdout to debug logs
+	go func() {
+		defer close(o.stdoutDoneChan)
+		scanner := bufio.NewScanner(stdoutPipeReader)
+		for scanner.Scan() {
+			text := scanner.Text()
+			base.InfofCtx(ctx, base.KeyAll, "sgcollect_info: %v", text)
+			if extraStdout != nil {
+				_, err := extraStdout.Write([]byte(text + "\n"))
+				if err != nil {
+					base.ErrorfCtx(ctx, "sgcollect_info: failed to write to stdout pipe: %v", err)
+				}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			base.ErrorfCtx(ctx, "sgcollect_info: unexpected error: %v", err)
+		}
+	}()
+	return o
+}
+
+// Close the output streams, required to close goroutines when sgCollectOutputStream is created.
+func (o *sgCollectOutputStream) Close(ctx context.Context) {
+	err := o.stderrPipeWriter.Close()
+	if err != nil {
+		base.WarnfCtx(ctx, "sgcollect_info: failed to close stderr pipe writer: %v", err)
+	}
+	err = o.stdoutPipeWriter.Close()
+	if err != nil {
+		base.WarnfCtx(ctx, "sgcollect_info: failed to close stdout pipe writer: %v", err)
+	}
+	// Wait for the goroutines to finish processing the output streams, or exit after 5 seconds.
+	select {
+	case <-o.stdoutDoneChan:
+	case <-time.After(5 * time.Second):
+	}
+	select {
+	case <-o.stderrDoneChan:
+	case <-time.After(5 * time.Second):
+	}
 }
 
 // Validate ensures the options are OK to use in sgcollect_info.
@@ -297,23 +354,26 @@ func (c *sgCollectOptions) Args() []string {
 	if c.KeepZip {
 		args = append(args, "--keep-zip")
 	}
-
+	if c.adminURL != "" {
+		args = append(args, "--sync-gateway-url", c.adminURL)
+	}
 	return args
 }
 
-// sgCollectPaths attempts to return the absolute paths to Sync Gateway and to sgcollect_info binaries.
-func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
+// sgCollectPaths attempts to return the absolute paths to Sync Gateway and to sgcollect_info binaries. Returns an error if either cannot be found.
+//
+// The sgcollect_info return value is allowed to be a list of strings for testing, where is it , or an error if not.
+func sgCollectPaths(ctx context.Context) (sgBinary string, sgCollect []string, err error) {
 	sgBinary, err = os.Executable()
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 
 	sgBinary, err = filepath.Abs(sgBinary)
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 
-	logCtx := context.TODO() // this is global variable at init, we can't pass it in easily
 	hasBinDir := true
 	sgCollectPath := filepath.Join("tools", "sgcollect_info")
 
@@ -324,6 +384,7 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 	}
 
 	for {
+		var sgCollectBinary string
 		if hasBinDir {
 			sgCollectBinary = filepath.Join(filepath.Dir(filepath.Dir(sgBinary)), sgCollectPath)
 		} else {
@@ -331,7 +392,7 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 		}
 
 		// Check sgcollect_info exists at the path we guessed.
-		base.DebugfCtx(logCtx, base.KeyAdmin, "Checking sgcollect_info binary exists at: %v", sgCollectBinary)
+		base.DebugfCtx(ctx, base.KeyAdmin, "Checking sgcollect_info binary exists at: %v", sgCollectBinary)
 		_, err = os.Stat(sgCollectBinary)
 		if err != nil {
 
@@ -341,10 +402,10 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 				continue
 			}
 
-			return "", "", err
+			return "", nil, err
 		}
 
-		return sgBinary, sgCollectBinary, nil
+		return sgBinary, []string{sgCollectBinary}, nil
 	}
 }
 
@@ -370,4 +431,14 @@ func sgcollectFilename() string {
 	filename = base.ReplaceAll(filename, "\\/:*?\"<>|", "")
 
 	return filename
+}
+
+// newSGCollect creates a new sgCollect instance.
+func newSGCollect(ctx context.Context) *sgCollect {
+	sgCollectInstance := sgCollect{
+		context: ctx,
+		status:  base.Ptr(sgStopped),
+	}
+	sgCollectInstance.sgPath, sgCollectInstance.sgCollectPath, sgCollectInstance.sgCollectPathErr = sgCollectPaths(ctx)
+	return &sgCollectInstance
 }
