@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -3363,6 +3364,12 @@ func TestUpdateCalculatedStatsPanic(t *testing.T) {
 }
 
 func Test_waitForBackgroundManagersToStop(t *testing.T) {
+	// use testing/synctest to have fake time once go 1.25 is available. In the meantime, windows and -race are
+	// slow enough thatthe time is increased, but this keeps interactive testing fast.
+	waitTime := 50 * time.Millisecond
+	if runtime.GOOS == "windows" || base.IsRaceDetectorEnabled(t) {
+		waitTime = 1 * time.Second
+	}
 	t.Run("single unstoppable process", func(t *testing.T) {
 		bgMngr := &BackgroundManager{
 			name:    "test_unstoppable_runner",
@@ -3375,7 +3382,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 50 * time.Millisecond
+		deadline := waitTime
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopping, bgMngr.GetRunState())
@@ -3393,7 +3400,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 100 * time.Millisecond
+		deadline := waitTime
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
 		assert.Less(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, bgMngr.GetRunState())
@@ -3421,7 +3428,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		require.NoError(t, err)
 
 		startTime := time.Now()
-		deadline := 100 * time.Millisecond
+		deadline := waitTime
 		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{stoppableBgMngr, unstoppableBgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, stoppableBgMngr.GetRunState())
