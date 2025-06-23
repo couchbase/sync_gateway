@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -129,19 +130,27 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 // executed concurrently for multiple events from different vbuckets.  Filters out
 // internal documents based on key, then checks sync metadata to determine whether document needs to be imported.
 // Returns true if the checkpoints should be persisted.
-func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
+func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 
+	shouldPersistCheckpoint := true
 	ctx := il.loggingCtx
+	docID := string(event.Key)
+	defer func() {
+		if r := recover(); r != nil {
+			base.WarnfCtx(ctx, "[%s] Unexpected panic importing document %s - skipping import: \n %s", r, base.UD(docID), debug.Stack())
+			il.importStats.ImportErrorCount.Add(1)
+			shouldPersistCheckpoint = false // Don't persist checkpoint if we panicked
+		}
+	}()
 	// Ignore non-mutation/deletion events
 	if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {
-		return true
+		return shouldPersistCheckpoint
 	}
-	docID := string(event.Key)
 
 	collection, ok := il.collections[event.CollectionID]
 	if !ok {
 		base.WarnfCtx(ctx, "Received import event for unrecognised collection 0x%x", event.CollectionID)
-		return true
+		return shouldPersistCheckpoint
 	}
 	ctx = collection.AddCollectionContext(ctx)
 
@@ -154,18 +163,18 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 	// If this is a delete and there are no xattrs (no existing SG revision), we shouldn't import
 	if event.Opcode == sgbucket.FeedOpDeletion && len(event.Value) == 0 {
 		base.DebugfCtx(ctx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
-		return true
+		return shouldPersistCheckpoint
 	}
 
 	// If this is a binary document we can ignore, but update checkpoint to avoid reprocessing upon restart
 	if event.DataType == base.MemcachedDataTypeRaw {
 		base.DebugfCtx(ctx, base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(docID))
-		return true
+		return shouldPersistCheckpoint
 	}
 
 	il.ImportFeedEvent(ctx, &collection, event)
 	il.importStats.ImportFeedProcessedCount.Add(1)
-	return true
+	return shouldPersistCheckpoint
 }
 
 func (il *importListener) ImportFeedEvent(ctx context.Context, collection *DatabaseCollectionWithUser, event sgbucket.FeedEvent) {
