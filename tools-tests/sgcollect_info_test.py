@@ -7,6 +7,7 @@
 # the file licenses/APL2.txt.
 
 import io
+import os
 import pathlib
 import unittest.mock
 import urllib.error
@@ -171,12 +172,12 @@ def test_get_paths_from_expvars_no_url() -> None:
         (
             b'{"cmdline": ["fake_sync_gateway", "-json", "fake_sync_gateway_config.json"]}',
             "fake_sync_gateway",
-            "{cwd}/fake_sync_gateway_config.json",
+            "{cwd}{pathsep}fake_sync_gateway_config.json",
         ),
         (
             b'{"cmdline": ["fake_sync_gateway", "-json", "{tmpdir}/real_file.json"]}',
             "fake_sync_gateway",
-            "{tmpdir}/real_file.json",
+            "{tmpdir}{pathsep}real_file.json",
         ),
     ],
 )
@@ -199,7 +200,9 @@ def test_get_paths_from_expvars(
     # interpolate cwd for pathlib.Path.resolve
     if expected_config_path is not None:
         expected_config_path = expected_config_path.format(
-            cwd=str(cwd), tmpdir=str(tmpdir)
+            cwd=str(cwd),
+            tmpdir=str(tmpdir),
+            pathsep=os.sep,
         )
     with unittest.mock.patch(
         "sgcollect.urlopen_with_basic_auth", return_value=io.BytesIO(expvar_output)

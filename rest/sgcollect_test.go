@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -241,7 +242,11 @@ func TestSGCollectIntegration(t *testing.T) {
 
 	sc.sgcollect.stdout = outputs["stdout"]
 	sc.sgcollect.stderr = outputs["stderr"]
-	sc.sgcollect.sgCollectPath = []string{"python", filepath.Join(cwd, "../tools/sgcollect_info")}
+	python := "python3"
+	if runtime.GOOS == "windows" {
+		python = "python"
+	}
+	sc.sgcollect.sgCollectPath = []string{python, filepath.Join(cwd, "../tools/sgcollect_info")}
 	sc.sgcollect.sgCollectPathErr = nil
 	validAuth := map[string]string{
 		"Authorization": getBasicAuthHeader(base.TestClusterUsername(), base.TestClusterPassword()),

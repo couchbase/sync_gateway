@@ -70,8 +70,8 @@ def test_main_output_exists(args):
     with pytest.raises(SystemExit, check=lambda e: e.code == 0):
         with unittest.mock.patch("sys.argv", ["sg_collect", *args, ZIP_NAME]):
             sgcollect.main()
-        assert pathlib.Path(ZIP_NAME).exists()
-        assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
+    assert pathlib.Path(ZIP_NAME).exists()
+    assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
 
 
 @pytest.mark.usefixtures("main_norun_redacted_zip")

@@ -1683,7 +1683,7 @@ func (h *handler) handleSGCollect() error {
 	if h.server.Config.API.HTTPS.TLSCertPath != "" {
 		addr = "https://" + addr
 	} else {
-		params.adminURL = "http://" + addr
+		addr = "http://" + addr
 	}
 	params.adminURL = addr
 
