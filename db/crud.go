@@ -75,7 +75,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, nil, importErr
 			}
@@ -164,8 +164,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawDoc, xattrs, cas)
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
@@ -236,10 +235,14 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
+func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, doc *Document, rawDoc []byte, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
 	var importErr error
+
+	if syncDataErr := doc.validateSyncDataForImport(ctx, c.dbCtx, docid); syncDataErr != nil {
+		return nil, syncDataErr
+	}
 
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand)
 
@@ -824,6 +827,9 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
 
+	if syncDataErr := doc.validateSyncDataForImport(ctx, db.dbCtx, docid); syncDataErr != nil {
+		return syncDataErr
+	}
 	// Check whether the doc requiring import is an SDK delete
 	isDelete := false
 	if doc.Body(ctx) == nil {

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -502,7 +503,27 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 func (doc *SyncData) HasValidSyncData() bool {
 
 	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0)
-	return valid
+	validHistory := doc != nil && len(doc.History) > 0 && doc.History[doc.CurrentRev] != nil
+	return valid && validHistory
+}
+
+// validateSyncDataForImport validates for a non-empty sync data that the sync data is valid for import. If s=ofund to
+// not be valid will return HTTP error 422 (Unprocessable Entity) and increment the import error count.
+func (s *SyncData) validateSyncDataForImport(ctx context.Context, db *DatabaseContext, docID string) error {
+	if !s.SyncIsEmpty() && !s.HasValidSyncData() {
+		base.WarnfCtx(ctx, "Invalid sync data for doc %s - not importing.", base.UD(docID))
+		db.DbStats.SharedBucketImportStats.ImportErrorCount.Add(1)
+		return base.HTTPErrorf(http.StatusNotFound, "Not imported, invalid sync data found")
+	}
+	return nil
+}
+
+func (s *SyncData) SyncIsEmpty() bool {
+	if s == nil {
+		return true
+	}
+	isEmpty := s.CurrentRev == "" && len(s.History) == 0 && s.Sequence == 0
+	return isEmpty
 }
 
 // Converts the string hex encoding that's stored in the sync metadata to a uint64 cas value

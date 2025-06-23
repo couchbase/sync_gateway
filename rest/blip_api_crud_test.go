@@ -2999,6 +2999,58 @@ func TestBlipRefreshUser(t *testing.T) {
 	})
 }
 
+func TestImportInvalidSyncGetsNoRev(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Test performs import, not valid for non-xattr mode")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
+	btcRunner := NewBlipTesterClientRunner(t)
+	docID := "doc" + t.Name()
+	docID2 := "doc2" + t.Name()
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			AutoImport: base.Ptr(false),
+			SyncFn:     channels.DocChannelsSyncFunction,
+		})
+		defer rt.Close()
+
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:               "bob",
+			Channels:               []string{"ABC"},
+		})
+		defer btc.Close()
+		version := rt.PutDoc(docID, `{"some":"data", "channels":["ABC"]}`)
+		version2 := rt.PutDoc(docID2, `{"some":"data", "channels":["ABC"]}`)
+		rt.WaitForPendingChanges()
+
+		// get changes resident in channel cache
+		changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=ABC", "{}")
+		require.Len(t, changes.Results, 2)
+
+		rt.GetDatabase().FlushRevisionCacheForTest()
+
+		// alter sync data to be invalid
+		cas, err := collection.GetCollectionDatastore().Get(docID, nil)
+		require.NoError(t, err)
+		_, err = collection.GetCollectionDatastore().WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"attachments": {}, "history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)}, nil, nil)
+		require.NoError(t, err)
+		// add a doc with invalid inline sync data
+		err = collection.GetCollectionDatastore().SetRaw(docID2, 0, nil, []byte(`{"some":"data", "_sync": {}}`))
+		require.NoError(t, err)
+
+		btcRunner.StartOneshotPull(btc.id)
+		msg := btcRunner.WaitForBlipRevMessage(btc.id, docID, version)
+		require.Equal(t, db.MessageNoRev, msg.Profile())
+
+		msg = btcRunner.WaitForBlipRevMessage(btc.id, docID2, version2)
+		require.Equal(t, db.MessageNoRev, msg.Profile())
+	})
+}
+
 // TestOnDemandImportBlipFailure turns off feed-based import to be able to trigger on-demand import
 // during a blip pull replication, by:
 //  1. Write a document that's accessible to the client, and force import of this doc
