@@ -262,10 +262,12 @@ func (o *sgCollectOutputStream) Close(ctx context.Context) {
 	select {
 	case <-o.stdoutDoneChan:
 	case <-time.After(5 * time.Second):
+		base.WarnfCtx(ctx, "sgcollect_info: timed out waiting for stdout processing to finish")
 	}
 	select {
 	case <-o.stderrDoneChan:
 	case <-time.After(5 * time.Second):
+		base.WarnfCtx(ctx, "sgcollect_info: timed out waiting for stderr processing to finish")
 	}
 }
 
