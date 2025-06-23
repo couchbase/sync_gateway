@@ -33,8 +33,8 @@ def test_make_collect_logs_tasks(config, tmpdir):
         "sgcollect.urlopen_with_basic_auth",
         return_value=io.BytesIO(
             config.format(
-                tmpdir=str(tmpdir).replace("\\", "\\\\"),
-                log_file=str(log_file).replace("\\", "\\\\"),
+                tmpdir=normalize_path_for_json(tmpdir),
+                log_file=normalize_path_for_json(log_file),
             ).encode("utf-8")
         ),
     ):
@@ -57,7 +57,7 @@ def test_make_collect_logs_heap_profile(tmpdir):
         "sgcollect.urlopen_with_basic_auth",
         return_value=io.BytesIO(
             '{{"logfilepath": "{logpath}"}}'.format(
-                logpath=str(tmpdir).replace("\\", "\\\\")
+                logpath=normalize_path_for_json(tmpdir),
             ).encode("utf-8")
         ),
     ):
@@ -92,8 +92,8 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
         "sgcollect.urlopen_with_basic_auth",
         return_value=io.BytesIO(
             config.format(
-                tmpdir1=str(tmpdir1).replace("\\", "\\\\"),
-                tmpdir2=str(tmpdir2).replace("\\", "\\\\"),
+                tmpdir1=normalize_path_for_json(tmpdir1),
+                tmpdir2=normalize_path_for_json(tmpdir2),
             ).encode("utf-8")
         ),
     ):
@@ -194,8 +194,12 @@ def test_get_paths_from_expvars(
     subdir.mkdir()
     monkeypatch.chdir(subdir)
     cwd = pathlib.Path.cwd()
-    expvar_output = expvar_output.replace(b"{cwd}", str(cwd).encode("utf-8"))
-    expvar_output = expvar_output.replace(b"{tmpdir}", str(tmpdir).encode("utf-8"))
+    expvar_output = expvar_output.replace(
+        b"{cwd}", normalize_path_for_json(cwd).encode("utf-8")
+    )
+    expvar_output = expvar_output.replace(
+        b"{tmpdir}", normalize_path_for_json(tmpdir).encode("utf-8")
+    )
 
     # interpolate cwd for pathlib.Path.resolve
     if expected_config_path is not None:
@@ -339,3 +343,10 @@ def test_get_sg_url(
         # this URL isn't correct but it is the fallback URL for this function
         assert sgcollect.get_sg_url(options) == "https://127.0.0.1:4985"
         assert mock_urlopen.mock_calls == expected_calls
+
+
+def normalize_path_for_json(p: pathlib.Path) -> str:
+    """
+    Convert a pathlib path to something that is OK for JSON, making all windows paths use forward slashes.
+    """
+    return str(p).replace("\\", "\\\\")
