@@ -29,7 +29,7 @@ get:
       description: Set to false to disable the `Content-Encoding` response header.
       schema:
         type: boolean
-        default: 'true'
+        default: true
     - name: Range
       in: header
       description: RFC-2616 bytes range header.
@@ -41,7 +41,7 @@ get:
       description: Return only the metadata of the attachment in the response body.
       schema:
         type: boolean
-        default: 'false'
+        default: false
   responses:
     '200':
       description: Found attachment successfully.

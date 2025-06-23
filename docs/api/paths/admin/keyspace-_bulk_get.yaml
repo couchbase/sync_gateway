@@ -28,7 +28,7 @@ post:
       description: This is for whether to include attachments in each of the documents returned or not.
       schema:
         type: boolean
-        default: 'false'
+        default: false
     - $ref: ../../components/parameters.yaml#/include-revs
     - name: revs_limit
       in: query
