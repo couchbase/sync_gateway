@@ -86,6 +86,8 @@ type ServerContext struct {
 	DatabaseInitManager           *DatabaseInitManager       // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
+	// handle sgcollect processes for a given Server
+	SGCollect *sgCollect
 }
 
 type ActiveReplicationsCounter struct {
@@ -163,6 +165,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion},
 		hasStarted:          make(chan struct{}),
 		_httpServers:        map[serverType]*serverInfo{},
+		SGCollect:           newSGCollect(ctx),
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
 		dbNames: map[string]*invalidConfigInfo{},

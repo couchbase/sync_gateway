@@ -67,18 +67,20 @@ class FakeFailureUrlOpener:
 @pytest.mark.usefixtures("main_norun")
 @pytest.mark.parametrize("args", [[], ["--log-redaction-level", "none"]])
 def test_main_output_exists(args):
-    with unittest.mock.patch("sys.argv", ["sg_collect", *args, ZIP_NAME]):
-        sgcollect.main()
+    with pytest.raises(SystemExit, check=lambda e: e.code == 0):
+        with unittest.mock.patch("sys.argv", ["sg_collect", *args, ZIP_NAME]):
+            sgcollect.main()
     assert pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
 
 
 @pytest.mark.usefixtures("main_norun_redacted_zip")
 def test_main_output_exists_with_redacted():
-    with unittest.mock.patch(
-        "sys.argv", ["sg_collect", "--log-redaction-level", "partial", ZIP_NAME]
-    ):
-        sgcollect.main()
+    with pytest.raises(SystemExit, check=lambda e: e.code == 0):
+        with unittest.mock.patch(
+            "sys.argv", ["sg_collect", "--log-redaction-level", "partial", ZIP_NAME]
+        ):
+            sgcollect.main()
     assert pathlib.Path(ZIP_NAME).exists()
     assert pathlib.Path(REDACTED_ZIP_NAME).exists()
 

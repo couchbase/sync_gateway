@@ -13,6 +13,7 @@ licenses/APL2.txt.
 # -*- python -*-
 import base64
 import glob
+import http
 import json
 import optparse
 import os
@@ -20,14 +21,12 @@ import pathlib
 import platform
 import re
 import ssl
-import subprocess
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from sys import platform as _platform
-from typing import List, Optional
+from typing import List, NoReturn, Optional
 
 import password_remover
 from tasks import (
@@ -307,7 +306,12 @@ def extract_element_from_logging_config(element, config):
         return
 
 
-def urlopen_with_basic_auth(url, username, password):
+def urlopen_with_basic_auth(
+    url: str, username: Optional[str], password: Optional[str]
+) -> http.client.HTTPResponse:
+    """
+    Open a URL with basic authentication if username and password are provided. Can raise urllib.error.URLError if there is an error.
+    """
     if username and len(username) > 0:
         # Add basic auth header
         request = urllib.request.Request(url)
@@ -513,13 +517,22 @@ def get_db_list(sg_url, sg_username, sg_password):
 #   Server config
 #   Each DB config
 def make_config_tasks(
-    sg_config_path: str,
+    sg_config_path: Optional[str],
     sg_url: str,
     sg_username: Optional[str],
     sg_password: Optional[str],
     should_redact: bool,
 ) -> List[PythonTask]:
-    collect_config_tasks = []
+    """
+    Return a list of tasks suitable for collecting configuration information.
+
+    1. sync gateway configuration file.
+    2. /_config
+    3. /_config?include_runtime=true
+    4. Each /<db>/_config
+    5. /_cluster_info
+    """
+    collect_config_tasks: list[PythonTask] = []
 
     # Here are the "usual suspects" to probe for finding the static config
     sg_config_files = [
@@ -608,31 +621,48 @@ def make_config_tasks(
     return collect_config_tasks
 
 
-def get_config_path_from_cmdline(cmdline_args):
+def get_config_path_from_cmdline(cmdline_args: list[str]) -> Optional[str]:
+    """
+    Parse command line arguments to find the configuration file path and return an absolute path. May return None if the path doesn't exist.
+
+    Example input::
+
+        sync_gateway -json config.json
+
+    """
     for cmdline_arg in cmdline_args:
         # if it has .json in the path, assume it's a config file.
         # ignore any config files that are URL's for now, since
         # they won't be handled correctly.
         if ".json" in cmdline_arg and "http" not in cmdline_arg:
-            return cmdline_arg
+            return str(pathlib.Path(cmdline_arg).resolve())
     return None
 
 
-def get_paths_from_expvars(sg_url, sg_username, sg_password):
+def get_paths_from_expvars(
+    sg_url: str, sg_username: Optional[str], sg_password: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    """
+    Get the Sync Gateway binary and configuration file path from /_expvar endpoint.
+    """
     data = None
     sg_binary_path = None
     sg_config_path = None
 
     # get content and parse into json
-    if sg_url:
-        try:
-            response = urlopen_with_basic_auth(
-                expvar_url(sg_url), sg_username, sg_password
-            )
-            # response = urllib.request.urlopen(expvar_url(sg_url))
-            data = json.load(response)
-        except urllib.error.URLError as e:
-            print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
+    if not sg_url:
+        return None, None
+
+    try:
+        response = urlopen_with_basic_auth(expvar_url(sg_url), sg_username, sg_password)
+    except urllib.error.URLError as e:
+        print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
+        return None, None
+    try:
+        data = json.load(response)
+    except json.JSONDecodeError as e:
+        print(f"WARNING: Unable to deserialize expvar output: {e}")
+        return None, None
 
     if data is not None and "cmdline" in data:
         cmdline_args = data["cmdline"]
@@ -640,35 +670,9 @@ def get_paths_from_expvars(sg_url, sg_username, sg_password):
             return (sg_binary_path, sg_config_path)
         sg_binary_path = cmdline_args[0]
         if len(cmdline_args) > 1:
-            try:
-                sg_config_path = get_absolute_path(
-                    get_config_path_from_cmdline(cmdline_args[1:])
-                )
-            except Exception as e:
-                print(
-                    "Exception trying to get absolute sync gateway path from expvars: {0}".format(
-                        e
-                    )
-                )
-                sg_config_path = get_config_path_from_cmdline(cmdline_args[1:])
+            sg_config_path = get_config_path_from_cmdline(cmdline_args[1:])
 
     return (sg_binary_path, sg_config_path)
-
-
-def get_absolute_path(relative_path):
-    sync_gateway_cwd = ""
-    try:
-        if _platform.startswith("linux"):
-            sync_gateway_pid = subprocess.check_output(
-                ["pgrep", "sync_gateway"]
-            ).split()[0]
-            sync_gateway_cwd = subprocess.check_output(
-                ["readlink", "-e", "/proc/{0}/cwd".format(sync_gateway_pid)]
-            ).strip("\n")
-    except subprocess.CalledProcessError:
-        pass
-
-    return os.path.join(sync_gateway_cwd, relative_path)
 
 
 def make_download_expvars_task(sg_url, sg_username, sg_password):
@@ -774,7 +778,31 @@ def make_sg_tasks(
     return sg_tasks
 
 
-def discover_sg_binary_path(options, sg_url, sg_username, sg_password):
+def discover_sg_binary_path(
+    options: optparse.Values,
+    sg_url: Optional[str],
+) -> str:
+    """
+    Return the path to the sync gateway binary, returns None if the path is not found.
+
+    1. --sync-gateway-executable option, will through an exception if the path does not exist.
+    2. If the expvars endpoint is available, it will try to get the path from there.
+    3. Discover the path from a set of common locations.
+    """
+    if options.sync_gateway_executable:
+        if not os.path.exists(options.sync_gateway_executable):
+            raise Exception(
+                "Path to sync gateway executable passed in does not exist: {0}".format(
+                    options.sync_gateway_executable
+                )
+            )
+        return options.sync_gateway_executable
+    if sg_url:
+        sg_binary_path, _ = get_paths_from_expvars(
+            sg_url, options.sync_gateway_username, options.sync_gateway_password
+        )
+        if sg_binary_path:
+            return sg_binary_path
     sg_bin_dirs = [
         "/opt/couchbase-sync-gateway/bin/sync_gateway",  # Linux + OSX
         R"C:\Program Files (x86)\Couchbase\sync_gateway.exe",  # Windows (Pre-2.0)
@@ -784,26 +812,10 @@ def discover_sg_binary_path(options, sg_url, sg_username, sg_password):
     for sg_binary_path_candidate in sg_bin_dirs:
         if os.path.exists(sg_binary_path_candidate):
             return sg_binary_path_candidate
-
-    sg_binary_path, _ = get_paths_from_expvars(sg_url, sg_username, sg_password)
-
-    if (
-        options.sync_gateway_executable is not None
-        and len(options.sync_gateway_executable) > 0
-    ):
-        if not os.path.exists(options.sync_gateway_executable):
-            raise Exception(
-                "Path to sync gateway executable passed in does not exist: {0}".format(
-                    options.sync_gateway_executable
-                )
-            )
-        return sg_binary_path
-
-    # fallback to whatever was specified in options
-    return options.sync_gateway_executable
+    return ""
 
 
-def main():
+def main() -> NoReturn:
     # ask all tools to use C locale (MB-12050)
     os.environ["LANG"] = "C"
     os.environ["LC_ALL"] = "C"
@@ -826,43 +838,7 @@ def main():
     if options.watch_stdin:
         setup_stdin_watcher()
 
-    sg_url = options.sync_gateway_url
-    sg_username = options.sync_gateway_username
-    sg_password = options.sync_gateway_password
-
-    if not sg_url or "://" not in sg_url:
-        if not sg_url:
-            root_url = "127.0.0.1:4985"
-        else:
-            root_url = sg_url
-        sg_url_http = "http://" + root_url
-        print("Trying Sync Gateway URL: {0}".format(sg_url_http))
-
-        # Set sg_url to sg_url_http at this point
-        # If we're unable to determine which URL to use this is our best
-        # attempt. Avoids having this is 'None' later
-        sg_url = sg_url_http
-
-        try:
-            response = urlopen_with_basic_auth(sg_url_http, sg_username, sg_password)
-            json.load(response)
-        except Exception as e:
-            print("Failed to communicate with: {} {}".format(sg_url_http, e))
-            sg_url_https = "https://" + root_url
-            print("Trying Sync Gateway URL: {0}".format(sg_url_https))
-            try:
-                response = urlopen_with_basic_auth(
-                    sg_url_https, sg_username, sg_password
-                )
-                json.load(response)
-            except Exception as e:
-                print(
-                    "Failed to communicate with Sync Gateway using url {}. "
-                    "Check that Sync Gateway is running and reachable. "
-                    "Will attempt to continue anyway.".format(e)
-                )
-            else:
-                sg_url = sg_url_https
+    sg_url = get_sg_url(options)
 
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
@@ -933,13 +909,13 @@ def main():
         log("Python version: %s" % sys.version)
 
     # Find path to sg binary
-    sg_binary_path = discover_sg_binary_path(options, sg_url, sg_username, sg_password)
+    sg_binary_path = discover_sg_binary_path(options, sg_url)
 
     # Run SG specific tasks
     for task in make_sg_tasks(
         sg_url,
-        sg_username,
-        sg_password,
+        options.sync_gateway_username,
+        options.sync_gateway_password,
         options.sync_gateway_config,
         options.sync_gateway_executable,
         should_redact,
@@ -977,7 +953,7 @@ def main():
     print("Zipfile built: {0}".format(zip_filename))
 
     if not upload_url:
-        return
+        sys.exit(0)
     # Upload the zip to the URL to S3 if required
     try:
         if should_redact:
@@ -1023,3 +999,51 @@ def should_redact_from_options(options: optparse.Values) -> bool:
     Returns True if the redaction level is set to 'partial' or 'full'.
     """
     return options.redact_level != "none"
+
+
+def get_sg_url(options: optparse.Values) -> str:
+    """
+    Gets the Sync Gateway URL for the admin port. Returns the first valid URL it can connect to, or https://127.0.0.1:4985 if it can not find one.
+
+    1. --sync-gateway-url option, if provided.
+        a. If the URL contains "://", it is used as is.
+        b. If the URL does not contain "://", it will try to connect to http:// and https:// versions of the URL.
+    2. http://127.0.0.1:4985
+    3. https://127.0.0.1:4985
+    """
+    possible_urls: List[str] = []
+    if options.sync_gateway_url:
+        if "://" in options.sync_gateway_url:
+            possible_urls.append(options.sync_gateway_url)
+        else:
+            possible_urls.extend(
+                [
+                    "http://" + options.sync_gateway_url,
+                    "https://" + options.sync_gateway_url,
+                ]
+            )
+    possible_urls.extend(["http://127.0.0.1:4985"])
+    for url in possible_urls:
+        if can_connect_to_sg_url(
+            url, options.sync_gateway_username, options.sync_gateway_password
+        ):
+            return url
+    # Default URL if none of the above worked. The more correct way would be to return None if this doesn't work and do
+    # not try to create any tasks that require connecting to admin API, but the subsequent code expects a URL to be
+    # returned.
+    return "https://127.0.0.1:4985"
+
+
+def can_connect_to_sg_url(sg_url: str, sg_username: str, sg_password: str) -> bool:
+    """
+    Return true if can connect to the Sync Gateway URL with the provided username and password.
+    """
+    try:
+        response = urlopen_with_basic_auth(
+            url=sg_url, username=sg_username, password=sg_password
+        )
+        json.load(response)
+    except Exception as e:
+        print(f"Failed to communicate with: {sg_url} {e}")
+        return False
+    return True

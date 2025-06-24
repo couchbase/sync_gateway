@@ -1637,7 +1637,7 @@ func (h *handler) handleSetLogging() error {
 
 func (h *handler) handleSGCollectStatus() error {
 	status := "stopped"
-	if sgcollectInstance.IsRunning() {
+	if h.server.SGCollect.IsRunning() {
 		status = "running"
 	}
 
@@ -1647,7 +1647,7 @@ func (h *handler) handleSGCollectStatus() error {
 }
 
 func (h *handler) handleSGCollectCancel() error {
-	err := sgcollectInstance.Stop()
+	err := h.server.SGCollect.Stop()
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error stopping sgcollect_info: %v", err)
 	}
@@ -1664,7 +1664,7 @@ func (h *handler) handleSGCollect() error {
 		return err
 	}
 
-	var params sgCollectOptions
+	var params SGCollectOptions
 	if err = base.JSONUnmarshal(body, &params); err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to parse request body: %v", err)
 	}
@@ -1676,11 +1676,24 @@ func (h *handler) handleSGCollect() error {
 	// Populate username and password used by sgcollect_info script for talking to Sync Gateway.
 	params.syncGatewayUsername, params.syncGatewayPassword = h.getBasicAuth()
 
-	zipFilename := sgcollectFilename()
+	addr, err := h.server.getServerAddr(adminServer)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "Error getting admin server address: %v", err)
+	}
+	if h.server.Config.API.HTTPS.TLSCertPath != "" {
+		addr = "https://" + addr
+	} else {
+		addr = "http://" + addr
+	}
+	params.adminURL = addr
+
+	zipFilename := SGCollectFilename()
 
 	logFilePath := h.server.Config.Logging.LogFilePath
 
-	if err := sgcollectInstance.Start(logFilePath, h.serialNumber, zipFilename, params); err != nil {
+	ctx := base.CorrelationIDLogCtx(context.WithoutCancel(h.ctx()), fmt.Sprintf("SGCollect-%03d", h.serialNumber))
+
+	if err := h.server.SGCollect.Start(ctx, logFilePath, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 
