@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package rest
+package sgcollecttest
 
 import (
 	"fmt"
@@ -22,13 +22,14 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/rest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSgcollectFilename(t *testing.T) {
-	filename := sgcollectFilename()
+	filename := rest.SGCollectFilename()
 
 	// Check it doesn't have forbidden chars
 	assert.False(t, strings.ContainsAny(filename, "\\/:*?\"<>|"))
@@ -42,31 +43,31 @@ func TestSgcollectFilename(t *testing.T) {
 func TestSgcollectOptionsValidateValid(t *testing.T) {
 	tests := []struct {
 		name    string
-		options *sgCollectOptions
+		options *rest.SGCollectOptions
 	}{
 		{
 			name:    "defaults",
-			options: &sgCollectOptions{},
+			options: &rest.SGCollectOptions{},
 		},
 		{
 			name:    "upload with customer name",
-			options: &sgCollectOptions{Upload: true, Customer: "alice"},
+			options: &rest.SGCollectOptions{Upload: true, Customer: "alice"},
 		},
 		{
 			name:    "custom upload with customer name",
-			options: &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
+			options: &rest.SGCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
 		},
 		{
 			name:    "directory that exists",
-			options: &sgCollectOptions{OutputDirectory: "."},
+			options: &rest.SGCollectOptions{OutputDirectory: "."},
 		},
 		{
 			name:    "valid redact level",
-			options: &sgCollectOptions{RedactLevel: "partial"},
+			options: &rest.SGCollectOptions{RedactLevel: "partial"},
 		},
 		{
 			name:    "valid keep_zip option",
-			options: &sgCollectOptions{KeepZip: true},
+			options: &rest.SGCollectOptions{KeepZip: true},
 		},
 	}
 
@@ -83,52 +84,52 @@ func TestSgcollectOptionsValidateInvalid(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		options     *sgCollectOptions
+		options     *rest.SGCollectOptions
 		errContains string
 	}{
 		{
 			name:        "directory doesn't exist",
-			options:     &sgCollectOptions{OutputDirectory: "/path/to/output/dir"},
+			options:     &rest.SGCollectOptions{OutputDirectory: "/path/to/output/dir"},
 			errContains: "no such file or directory",
 		},
 		{
 			name:        "path not a directory",
-			options:     &sgCollectOptions{OutputDirectory: binaryPath},
+			options:     &rest.SGCollectOptions{OutputDirectory: binaryPath},
 			errContains: "not a directory",
 		},
 		{
 			name:        "invalid redact level",
-			options:     &sgCollectOptions{RedactLevel: "asdf"},
+			options:     &rest.SGCollectOptions{RedactLevel: "asdf"},
 			errContains: "'redact_level' must be",
 		},
 		{
 			name:        "no customer",
-			options:     &sgCollectOptions{Upload: true},
+			options:     &rest.SGCollectOptions{Upload: true},
 			errContains: "'customer' must be set",
 		},
 		{
 			name:        "no customer with ticket",
-			options:     &sgCollectOptions{Upload: true, Ticket: "12345"},
+			options:     &rest.SGCollectOptions{Upload: true, Ticket: "12345"},
 			errContains: "'customer' must be set",
 		},
 		{
 			name:        "customer no upload",
-			options:     &sgCollectOptions{Upload: false, Customer: "alice"},
+			options:     &rest.SGCollectOptions{Upload: false, Customer: "alice"},
 			errContains: "'upload' must be set to true",
 		},
 		{
 			name:        "ticket no upload",
-			options:     &sgCollectOptions{Upload: false, Ticket: "12345"},
+			options:     &rest.SGCollectOptions{Upload: false, Ticket: "12345"},
 			errContains: "'upload' must be set to true",
 		},
 		{
 			name:        "customer upload host no upload",
-			options:     &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
+			options:     &rest.SGCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
 			errContains: "'upload' must be set to true",
 		},
 		{
 			name:        "non-digit ticket number",
-			options:     &sgCollectOptions{Upload: true, Customer: "alice", Ticket: "abc"},
+			options:     &rest.SGCollectOptions{Upload: true, Customer: "alice", Ticket: "abc"},
 			errContains: "'ticket' must be",
 		},
 	}
@@ -157,60 +158,60 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 	assert.NoError(t, err, "unexpected error getting executable path")
 
 	tests := []struct {
-		options      *sgCollectOptions
+		options      *rest.SGCollectOptions
 		expectedArgs []string
 	}{
 		{
-			options:      &sgCollectOptions{},
+			options:      &rest.SGCollectOptions{},
 			expectedArgs: []string{},
 		},
 		{
-			options:      &sgCollectOptions{Upload: true},
-			expectedArgs: []string{"--upload-host", defaultSGUploadHost},
+			options:      &rest.SGCollectOptions{Upload: true},
+			expectedArgs: []string{"--upload-host", rest.DefaultSGCollectUploadHost},
 		},
 		{
-			options:      &sgCollectOptions{Upload: true, Ticket: "123456", KeepZip: true},
-			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--ticket", "123456", "--keep-zip"},
+			options:      &rest.SGCollectOptions{Upload: true, Ticket: "123456", KeepZip: true},
+			expectedArgs: []string{"--upload-host", rest.DefaultSGCollectUploadHost, "--ticket", "123456", "--keep-zip"},
 		},
 		{
-			options:      &sgCollectOptions{Upload: true, RedactLevel: "partial"},
-			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--log-redaction-level", "partial"},
+			options:      &rest.SGCollectOptions{Upload: true, RedactLevel: "partial"},
+			expectedArgs: []string{"--upload-host", rest.DefaultSGCollectUploadHost, "--log-redaction-level", "partial"},
 		},
 		{
-			options:      &sgCollectOptions{Upload: true, RedactLevel: "partial", RedactSalt: "asdf"},
-			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--log-redaction-level", "partial", "--log-redaction-salt", "asdf"},
+			options:      &rest.SGCollectOptions{Upload: true, RedactLevel: "partial", RedactSalt: "asdf"},
+			expectedArgs: []string{"--upload-host", rest.DefaultSGCollectUploadHost, "--log-redaction-level", "partial", "--log-redaction-salt", "asdf"},
 		},
 		{
 			// Check that the default upload host is set
-			options:      &sgCollectOptions{Upload: true, Customer: "alice"},
-			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--customer", "alice"},
+			options:      &rest.SGCollectOptions{Upload: true, Customer: "alice"},
+			expectedArgs: []string{"--upload-host", rest.DefaultSGCollectUploadHost, "--customer", "alice"},
 		},
 		{
-			options:      &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
+			options:      &rest.SGCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
 			expectedArgs: []string{"--upload-host", "example.org/custom-s3-bucket-url", "--customer", "alice"},
 		},
 		{
-			options:      &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "https://example.org/custom-s3-bucket-url", UploadProxy: "http://proxy.example.org:8080"},
+			options:      &rest.SGCollectOptions{Upload: true, Customer: "alice", UploadHost: "https://example.org/custom-s3-bucket-url", UploadProxy: "http://proxy.example.org:8080"},
 			expectedArgs: []string{"--upload-host", "https://example.org/custom-s3-bucket-url", "--upload-proxy", "http://proxy.example.org:8080", "--customer", "alice"},
 		},
 		{
 			// Upload false, so don't pass upload host through. same for keep zip
-			options:      &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url", KeepZip: false},
+			options:      &rest.SGCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url", KeepZip: false},
 			expectedArgs: []string{"--customer", "alice"},
 		},
 		{
 			// Directory exists
-			options:      &sgCollectOptions{OutputDirectory: "."},
+			options:      &rest.SGCollectOptions{OutputDirectory: "."},
 			expectedArgs: []string{},
 		},
 		{
 			// Directory doesn't exist
-			options:      &sgCollectOptions{OutputDirectory: "/path/to/output/dir"},
+			options:      &rest.SGCollectOptions{OutputDirectory: "/path/to/output/dir"},
 			expectedArgs: []string{},
 		},
 		{
 			// Path not a directory
-			options:      &sgCollectOptions{OutputDirectory: binPath},
+			options:      &rest.SGCollectOptions{OutputDirectory: binPath},
 			expectedArgs: []string{},
 		},
 	}
@@ -232,8 +233,8 @@ func TestSGCollectIntegration(t *testing.T) {
 	base.LongRunningTest(t) // this test is very long, and somewhat fragile, since it involves relying on the sgcollect_info tool to run successfully, which requires system python
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
-	config := BootstrapStartupConfigForTest(t)
-	sc, closeFn := StartServerWithConfig(t, &config)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, closeFn := rest.StartServerWithConfig(t, &config)
 	defer closeFn()
 
 	outputs := map[string]*strings.Builder{
@@ -241,21 +242,21 @@ func TestSGCollectIntegration(t *testing.T) {
 		"stderr": &strings.Builder{},
 	}
 
-	sc.sgcollect.stdout = outputs["stdout"]
-	sc.sgcollect.stderr = outputs["stderr"]
+	sc.SGCollect.Stdout = outputs["stdout"]
+	sc.SGCollect.Stderr = outputs["stderr"]
 	python := "python3"
 	if runtime.GOOS == "windows" {
 		python = "python"
 	}
-	sc.sgcollect.sgCollectPath = []string{python, filepath.Join(cwd, "../tools/sgcollect_info")}
-	sc.sgcollect.sgCollectPathErr = nil
+	sc.SGCollect.SGCollectPath = []string{python, filepath.Join(cwd, "../../tools/sgcollect_info")}
+	sc.SGCollect.SGCollectPathErr = nil
 	validAuth := map[string]string{
-		"Authorization": getBasicAuthHeader(base.TestClusterUsername(), base.TestClusterPassword()),
+		"Authorization": rest.GetBasicAuthHeader(t, base.TestClusterUsername(), base.TestClusterPassword()),
 	}
-	options := sgCollectOptions{
+	options := rest.SGCollectOptions{
 		OutputDirectory: t.TempDir(),
 	}
-	resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodPost, "/_sgcollect_info", string(base.MustJSONMarshal(t, options)), validAuth)
+	resp := rest.BootstrapAdminRequestWithHeaders(t, sc, http.MethodPost, "/_sgcollect_info", string(base.MustJSONMarshal(t, options)), validAuth)
 	resp.RequireStatus(http.StatusOK)
 
 	var statusResponse struct {
@@ -266,13 +267,13 @@ func TestSGCollectIntegration(t *testing.T) {
 		if statusResponse.Status == "stopped" {
 			return
 		}
-		resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodDelete, "/_sgcollect_info", "", validAuth)
+		resp := rest.BootstrapAdminRequestWithHeaders(t, sc, http.MethodDelete, "/_sgcollect_info", "", validAuth)
 		resp.AssertStatus(http.StatusOK)
 	}()
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		resp := BootstrapAdminRequestWithHeaders(t, sc, http.MethodGet, "/_sgcollect_info", "", validAuth)
-		assert.Equal(c, http.StatusOK, resp.response.StatusCode)
+		resp := rest.BootstrapAdminRequestWithHeaders(t, sc, http.MethodGet, "/_sgcollect_info", "", validAuth)
+		resp.AssertStatus(http.StatusOK)
 		resp.Unmarshal(&statusResponse)
 		assert.Equal(c, "stopped", statusResponse.Status)
 	}, 7*time.Minute, 2*time.Second, "sgcollect_info did not stop running in time")

@@ -239,7 +239,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			auditableAction: func(t testing.TB) {
 				headers := map[string]string{
 					requestInfoHeaderName: `{"extra":"field"}`,
-					"Authorization":       getBasicAuthHeader(requestUser, RestTesterDefaultUserPassword),
+					"Authorization":       GetBasicAuthHeader(t, requestUser, RestTesterDefaultUserPassword),
 				}
 				RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/db/", "", headers), http.StatusOK)
 			},
@@ -442,7 +442,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			name: "metrics request authenticated",
 			auditableAction: func(t testing.TB) {
 				headers := map[string]string{
-					"Authorization": getBasicAuthHeader(base.TestClusterUsername(), base.TestClusterPassword()),
+					"Authorization": GetBasicAuthHeader(t, base.TestClusterUsername(), base.TestClusterPassword()),
 				}
 				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers), http.StatusOK)
 			},
@@ -473,7 +473,7 @@ func TestAuditLoggingFields(t *testing.T) {
 					t.Skip("Skipping subtest that requires admin auth to be enabled")
 				}
 				headers := map[string]string{
-					"Authorization": getBasicAuthHeader("notauser", base.TestClusterPassword()),
+					"Authorization": GetBasicAuthHeader(t, "notauser", base.TestClusterPassword()),
 				}
 				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers), http.StatusUnauthorized)
 			},
@@ -724,7 +724,7 @@ func TestEffectiveUserID(t *testing.T) {
 	)
 	reqHeaders := map[string]string{
 		"user_header":   fmt.Sprintf(`{"%s": "%s", "%s":"%s"}`, headerDomain, cnfDomain, headerUser, cnfUser),
-		"Authorization": getBasicAuthHeader(realUser, RestTesterDefaultUserPassword),
+		"Authorization": GetBasicAuthHeader(t, realUser, RestTesterDefaultUserPassword),
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{

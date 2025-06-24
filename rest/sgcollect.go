@@ -42,7 +42,7 @@ const (
 	sgStopped uint32 = iota
 	sgRunning
 
-	defaultSGUploadHost = "https://uploads.couchbase.com"
+	DefaultSGCollectUploadHost = "https://uploads.couchbase.com"
 )
 
 // sgCollectOutputStream handles stderr/stdout from a running sgcollect process.
@@ -60,21 +60,21 @@ type sgCollect struct {
 	cancel           context.CancelFunc // Function to cancel a running sgcollect_info process, set when status == sgRunning
 	status           *uint32
 	sgPath           string    // Path to the Sync Gateway executable
-	sgCollectPath    []string  // Path to the sgcollect_info executable
-	sgCollectPathErr error     // Error if sgcollect_info path could not be determined
-	stdout           io.Writer // test seam, is nil in production
-	stderr           io.Writer // test seam, is nil in production
+	SGCollectPath    []string  // Path to the sgcollect_info executable
+	SGCollectPathErr error     // Error if sgcollect_info path could not be determined
+	Stdout           io.Writer // test seam, is nil in production
+	Stderr           io.Writer // test seam, is nil in production
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename string, params sgCollectOptions) error {
+func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename string, params SGCollectOptions) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
 
 	// Return error if there is any failure while obtaining sgCollectPaths.
-	if sg.sgCollectPathErr != nil {
-		return sg.sgCollectPathErr
+	if sg.SGCollectPathErr != nil {
+		return sg.SGCollectPathErr
 	}
 
 	if params.OutputDirectory == "" {
@@ -95,7 +95,7 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 
 	zipPath := filepath.Join(params.OutputDirectory, zipFilename)
 
-	cmdline := slices.Clone(sg.sgCollectPath)
+	cmdline := slices.Clone(sg.SGCollectPath)
 	cmdline = append(cmdline, params.Args()...)
 	cmdline = append(cmdline, "--sync-gateway-executable", sg.sgPath)
 	cmdline = append(cmdline, zipPath)
@@ -103,7 +103,7 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 	ctx, sg.cancel = context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, cmdline[0], cmdline[1:]...)
 
-	outStream := newSGCollectOutputStream(ctx, sg.stdout, sg.stderr)
+	outStream := newSGCollectOutputStream(ctx, sg.Stdout, sg.Stderr)
 	cmd.Stdout = outStream.stdoutPipeWriter
 	cmd.Stderr = outStream.stderrPipeWriter
 
@@ -157,7 +157,7 @@ func (sg *sgCollect) IsRunning() bool {
 	return atomic.LoadUint32(sg.status) == sgRunning
 }
 
-type sgCollectOptions struct {
+type SGCollectOptions struct {
 	RedactLevel     string `json:"redact_level,omitempty"`
 	RedactSalt      string `json:"redact_salt,omitempty"`
 	OutputDirectory string `json:"output_dir,omitempty"`
@@ -270,7 +270,7 @@ func (o *sgCollectOutputStream) Close(ctx context.Context) {
 }
 
 // Validate ensures the options are OK to use in sgcollect_info.
-func (c *sgCollectOptions) Validate() error {
+func (c *SGCollectOptions) Validate() error {
 
 	var errs *base.MultiError
 	if c.OutputDirectory != "" {
@@ -292,7 +292,7 @@ func (c *sgCollectOptions) Validate() error {
 		}
 		// Default uploading to support bucket if upload_host is not specified.
 		if c.UploadHost == "" {
-			c.UploadHost = defaultSGUploadHost
+			c.UploadHost = DefaultSGCollectUploadHost
 		}
 	} else {
 		// These fields suggest the user actually wanted to upload,
@@ -316,7 +316,7 @@ func (c *sgCollectOptions) Validate() error {
 }
 
 // Args returns a set of arguments to pass to sgcollect_info.
-func (c *sgCollectOptions) Args() []string {
+func (c *SGCollectOptions) Args() []string {
 	var args = make([]string, 0)
 
 	if c.Upload {
@@ -409,8 +409,8 @@ func sgCollectPaths(ctx context.Context) (sgBinary string, sgCollect []string, e
 	}
 }
 
-// sgcollectFilename returns a Windows-safe filename for sgcollect_info zip files.
-func sgcollectFilename() string {
+// SGCollectFilename returns a Windows-safe filename for sgcollect_info zip files.
+func SGCollectFilename() string {
 
 	// get timestamp
 	timestamp := time.Now().UTC().Format("2006-01-02t150405")
@@ -438,6 +438,6 @@ func newSGCollect(ctx context.Context) *sgCollect {
 	sgCollectInstance := sgCollect{
 		status: base.Ptr(sgStopped),
 	}
-	sgCollectInstance.sgPath, sgCollectInstance.sgCollectPath, sgCollectInstance.sgCollectPathErr = sgCollectPaths(ctx)
+	sgCollectInstance.sgPath, sgCollectInstance.SGCollectPath, sgCollectInstance.SGCollectPathErr = sgCollectPaths(ctx)
 	return &sgCollectInstance
 }

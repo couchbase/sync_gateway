@@ -87,7 +87,7 @@ type ServerContext struct {
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
 	// handle sgcollect processes for a given Server
-	sgcollect *sgCollect
+	SGCollect *sgCollect
 }
 
 type ActiveReplicationsCounter struct {
@@ -165,7 +165,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion},
 		hasStarted:          make(chan struct{}),
 		_httpServers:        map[serverType]*serverInfo{},
-		sgcollect:           newSGCollect(ctx),
+		SGCollect:           newSGCollect(ctx),
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
 		dbNames: map[string]*invalidConfigInfo{},
