@@ -68,7 +68,7 @@ type sgCollect struct {
 	sgPath           string    // Path to the Sync Gateway executable
 	SGCollectPath    []string  // Path to the sgcollect_info executable
 	SGCollectPathErr error     // Error if sgcollect_info path could not be determined
-	token            string    // Token for sgcollect_info, if required
+	Token            string    // Token for sgcollect_info, if required
 	tokenAge         time.Time // Time when the token was created
 	Stdout           io.Writer // test seam, is nil in production
 	Stderr           io.Writer // test seam, is nil in production
@@ -116,7 +116,7 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 		return fmt.Errorf("failed to get sgcollect_info token: %w", err)
 	}
 	cmd.Env = append(os.Environ(),
-		sgcollectTokenEnvVar+"="+sg.token,
+		sgcollectTokenEnvVar+"="+sg.Token,
 	)
 	outStream := newSGCollectOutputStream(ctx, sg.Stdout, sg.Stderr)
 	cmd.Stdout = outStream.stdoutPipeWriter
@@ -179,14 +179,14 @@ func (sg *sgCollect) createNewToken() error {
 	if err != nil {
 		sg.clearToken()
 	}
-	sg.token = token
+	sg.Token = token
 	sg.tokenAge = time.Now()
 	return err
 }
 
 // clearToken clears the token.
 func (sg *sgCollect) clearToken() {
-	sg.token = ""
+	sg.Token = ""
 	sg.tokenAge = time.Time{}
 }
 
@@ -209,7 +209,7 @@ func (sg *sgCollect) hasValidToken(ctx context.Context, token string) bool {
 		base.DebugfCtx(ctx, base.KeyAdmin, "sgcollect_info token has expired after %.2f secs", time.Since(sg.tokenAge).Seconds())
 		return false
 	}
-	return token == sg.token
+	return token == sg.Token
 }
 
 type SGCollectOptions struct {

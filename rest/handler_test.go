@@ -180,9 +180,11 @@ func TestShouldCheckAdminRBAC(t *testing.T) {
 
 						require.False(t, metricsHandler.shouldCheckAdminRBAC())
 					}
+					invalidAuthHeader := http.Header{}
+					invalidAuthHeader.Add("Authorization", "SGCollect invalid")
 					// with invalid sgcollect token
-					adminHandler = newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{Header: http.Header{"Authorization": []string{"SGCollect invalid"}}}, handlerOptions{sgcollect: sgcollectable})
-					metricsHandler = newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{}, handlerOptions{sgcollect: sgcollectable})
+					adminHandler = newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{Header: invalidAuthHeader}, handlerOptions{sgcollect: sgcollectable})
+					metricsHandler = newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{Header: invalidAuthHeader}, handlerOptions{sgcollect: sgcollectable})
 					if requireInterfaceAuth {
 						if base.IsDevMode() && !sgcollectable {
 							require.PanicsWithValue(t, base.AssertionFailedPrefix+sgcollectTokenInvalidRequest, func() { adminHandler.shouldCheckAdminRBAC() })
@@ -197,8 +199,11 @@ func TestShouldCheckAdminRBAC(t *testing.T) {
 					}
 					// with valid sgcollect token, but sgcollect on the handler is disabled
 					require.NoError(t, sc.SGCollect.createNewToken())
-					adminHandler = newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{Header: http.Header{"Authorization": []string{"SGCollect invalid"}}}, handlerOptions{sgcollect: false})
-					metricsHandler = newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{}, handlerOptions{sgcollect: false})
+
+					validAuthHeader := http.Header{}
+					validAuthHeader.Add("Authorization", fmt.Sprintf("SGCollect %s", sc.SGCollect.Token))
+					adminHandler = newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{Header: validAuthHeader}, handlerOptions{sgcollect: false})
+					metricsHandler = newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{Header: validAuthHeader}, handlerOptions{sgcollect: false})
 					if requireInterfaceAuth {
 						if base.IsDevMode() {
 							require.PanicsWithValue(t, base.AssertionFailedPrefix+sgcollectTokenInvalidRequest, func() { adminHandler.shouldCheckAdminRBAC() })
