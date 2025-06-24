@@ -16,12 +16,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -36,6 +38,8 @@ var (
 	ErrSGCollectInfoNotRunning = errors.New("not running")
 
 	validateTicketPattern = regexp.MustCompile(`\d{1,7}`)
+
+	sgcollectTokenEnvVar = "SGCOLLECT_TOKEN" // Environment variable to set the token for sgcollect_info
 )
 
 const (
@@ -43,6 +47,8 @@ const (
 	sgRunning
 
 	DefaultSGCollectUploadHost = "https://uploads.couchbase.com"
+
+	sgcollectTokenTimeout = 12 * time.Hour
 )
 
 // sgCollectOutputStream handles stderr/stdout from a running sgcollect process.
@@ -62,6 +68,8 @@ type sgCollect struct {
 	sgPath           string    // Path to the Sync Gateway executable
 	SGCollectPath    []string  // Path to the sgcollect_info executable
 	SGCollectPathErr error     // Error if sgcollect_info path could not be determined
+	Token            string    // Token for sgcollect_info, if required
+	tokenAge         time.Time // Time when the token was created
 	Stdout           io.Writer // test seam, is nil in production
 	Stderr           io.Writer // test seam, is nil in production
 }
@@ -103,6 +111,13 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 	ctx, sg.cancel = context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, cmdline[0], cmdline[1:]...)
 
+	err := sg.createNewToken()
+	if err != nil {
+		return fmt.Errorf("failed to get sgcollect_info token: %w", err)
+	}
+	cmd.Env = append(os.Environ(),
+		sgcollectTokenEnvVar+"="+sg.Token,
+	)
 	outStream := newSGCollectOutputStream(ctx, sg.Stdout, sg.Stderr)
 	cmd.Stdout = outStream.stdoutPipeWriter
 	cmd.Stderr = outStream.stderrPipeWriter
@@ -117,6 +132,7 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 	base.InfofCtx(ctx, base.KeyAdmin, "sgcollect_info started with output zip: %v", base.UD(zipPath))
 
 	go func() {
+		defer sg.clearToken()
 		// Blocks until command finishes
 		err := cmd.Wait()
 		outStream.Close(ctx)
@@ -157,6 +173,45 @@ func (sg *sgCollect) IsRunning() bool {
 	return atomic.LoadUint32(sg.status) == sgRunning
 }
 
+// createNewToken creates a token specific to running sgcollect.
+func (sg *sgCollect) createNewToken() error {
+	token, err := base.GenerateRandomSecret()
+	if err != nil {
+		sg.clearToken()
+	}
+	sg.Token = token
+	sg.tokenAge = time.Now()
+	return err
+}
+
+// clearToken clears the token.
+func (sg *sgCollect) clearToken() {
+	sg.Token = ""
+	sg.tokenAge = time.Time{}
+}
+
+// getToken returns an sgcollect specific token from headers, if found. If not found, returns an empty string.
+func (sg *sgCollect) getToken(headers http.Header) string {
+	auth := headers.Get("Authorization")
+	if auth == "" {
+		return ""
+	}
+	authPrefix := "SGCollect "
+	if !strings.HasPrefix(auth, authPrefix) {
+		return ""
+	}
+	return auth[len(authPrefix):]
+}
+
+// hasValidToken checks if the provided headers contain a valid token for sgcollect_info.
+func (sg *sgCollect) hasValidToken(ctx context.Context, token string) bool {
+	if time.Since(sg.tokenAge) > sgcollectTokenTimeout {
+		base.DebugfCtx(ctx, base.KeyAdmin, "sgcollect_info token has expired after %.2f secs", time.Since(sg.tokenAge).Seconds())
+		return false
+	}
+	return token == sg.Token
+}
+
 type SGCollectOptions struct {
 	RedactLevel     string `json:"redact_level,omitempty"`
 	RedactSalt      string `json:"redact_salt,omitempty"`
@@ -168,11 +223,7 @@ type SGCollectOptions struct {
 	Ticket          string `json:"ticket,omitempty"`
 	KeepZip         bool   `json:"keep_zip,omitempty"`
 
-	// Unexported - Don't allow these to be set via the JSON body.
-	// We'll set them from the request's basic auth.
-	syncGatewayUsername string
-	syncGatewayPassword string
-	adminURL            string // URL to the Sync Gateway admin API.
+	adminURL string // URL to the Sync Gateway admin API.
 }
 
 // validateOutputDirectory will check that the given path exists, and is a directory.
@@ -341,14 +392,6 @@ func (c *SGCollectOptions) Args() []string {
 
 	if c.RedactSalt != "" {
 		args = append(args, "--log-redaction-salt", c.RedactSalt)
-	}
-
-	if c.syncGatewayUsername != "" {
-		args = append(args, "--sync-gateway-username", c.syncGatewayUsername)
-	}
-
-	if c.syncGatewayPassword != "" {
-		args = append(args, "--sync-gateway-password", c.syncGatewayPassword)
 	}
 
 	if c.KeepZip {

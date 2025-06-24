@@ -1673,9 +1673,6 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", multiError)
 	}
 
-	// Populate username and password used by sgcollect_info script for talking to Sync Gateway.
-	params.syncGatewayUsername, params.syncGatewayPassword = h.getBasicAuth()
-
 	addr, err := h.server.getServerAddr(adminServer)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error getting admin server address: %v", err)

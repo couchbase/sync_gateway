@@ -36,7 +36,8 @@ import (
 )
 
 const (
-	minCompressibleJSONSize = 1000
+	minCompressibleJSONSize      = 1000
+	sgcollectTokenInvalidRequest = "sgcollect token auth present in non-sgcollect request"
 )
 
 var _ http.Flusher = &CountedResponseWriter{}
@@ -111,6 +112,7 @@ type handler struct {
 	httpLogLevel          *base.LogLevel // if set, always log HTTP information at this level, instead of the default
 	rqCtx                 context.Context
 	serverType            serverType
+	sgcollect             bool // is called by sgcollect
 }
 
 type authScopeFunc func(context.Context, *handler) (string, error)
@@ -183,6 +185,7 @@ type handlerOptions struct {
 	skipLogDuration   bool           // if true, will skip logging HTTP response status/duration
 	authScopeFunc     authScopeFunc  // if set, this callback function will be used to set the auth scope for a given request body
 	httpLogLevel      *base.LogLevel // if set, log HTTP requests to this handler at this level, instead of the usual info level
+	sgcollect         bool           // if true, this handler is being invoked as part of sgcollect
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
@@ -199,6 +202,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType
 		authScopeFunc:     options.authScopeFunc,
 		httpLogLevel:      options.httpLogLevel,
 		serverType:        serverType,
+		sgcollect:         options.sgcollect,
 	}
 
 	// initialize h.rqCtx
@@ -287,6 +291,23 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	}
 
 	return method(h) // Call the actual handler code
+}
+
+// shouldCheckAdminRBAC returns true if the request needs to check the server for permissions to run
+func (h *handler) shouldCheckAdminRBAC() bool {
+	sgcollectToken := h.server.SGCollect.getToken(h.rq.Header)
+	if sgcollectToken != "" && h.sgcollect && h.server.SGCollect.hasValidToken(h.ctx(), sgcollectToken) {
+		return false
+	}
+	if h.privs == adminPrivs && *h.server.Config.API.AdminInterfaceAuthentication {
+		if sgcollectToken != "" && !h.sgcollect {
+			base.AssertfCtx(h.ctx(), sgcollectTokenInvalidRequest)
+		}
+		return true
+	} else if h.privs == metricsPrivs && *h.server.Config.API.MetricsInterfaceAuthentication {
+		return true
+	}
+	return false
 }
 
 // validateAndWriteHeaders sets up handler.db and validates the permission of the user and returns an error if there is not permission.
@@ -380,7 +401,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
 	// user credentials
-	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.Config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.Config.API.MetricsInterfaceAuthentication)
+	shouldCheckAdminAuth := h.shouldCheckAdminRBAC()
 
 	// If admin/metrics endpoint but auth not enabled, set admin_noauth log ctx
 	if !shouldCheckAdminAuth && (h.serverType == adminServer || h.serverType == metricsServer) {

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/gorilla/mux"
 )
 
@@ -40,7 +41,7 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs, serverType server
 	root = NewRouter(sc, serverType)
 
 	// Global operations:
-	root.Handle("/", makeHandler(sc, privs, nil, nil, (*handler).handleRoot)).Methods("GET", "HEAD")
+	root.Handle("/", makeHandlerWithOptions(sc, privs, nil, nil, (*handler).handleRoot, handlerOptions{sgcollect: true})).Methods("GET", "HEAD")
 
 	// Operations on databases:
 	root.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps, PermGetDb}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
@@ -216,7 +217,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_replicationStatus/{replicationID}",
 		makeHandler(sc, adminPrivs, []Permission{PermWriteReplications}, nil, (*handler).putReplicationStatus)).Methods("PUT")
 	dbr.Handle("/_config",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfig)).Methods("GET")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfig, handlerOptions{runOffline: true, sgcollect: true})).Methods("GET")
 	dbr.Handle("/_config",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, (*handler).handlePutDbConfig)).Methods("PUT", "POST")
 
@@ -260,15 +261,15 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleSetLogging)).Methods("PUT", "POST")
 
 	r.Handle("/_config",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetConfig)).Methods("GET")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetConfig, handlerOptions{sgcollect: true})).Methods("GET")
 	r.Handle("/_config",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePutConfig)).Methods("PUT")
 
 	r.Handle("/_cluster_info",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterInfo)).Methods("GET")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterInfo, handlerOptions{sgcollect: true})).Methods("GET")
 
 	r.Handle("/_status",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus)).Methods("GET")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus, handlerOptions{sgcollect: true})).Methods("GET")
 
 	r.Handle("/_sgcollect_info",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleSGCollectStatus)).Methods("GET")
@@ -281,33 +282,36 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r.Handle("/_stats",
 		makeHandler(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleStats)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix,
-		makeSilentHandler(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar)).Methods("GET")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar, handlerOptions{
+			httpLogLevel: base.Ptr(base.LevelDebug), // silent handler
+			sgcollect:    true,
+		})).Methods("GET")
 	r.Handle("/_profile/{profilename}",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleProfiling)).Methods("POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleProfiling, handlerOptions{sgcollect: true})).Methods("POST")
 	r.Handle("/_profile",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleProfiling)).Methods("POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleProfiling, handlerOptions{sgcollect: true})).Methods("POST")
 	r.Handle("/_heap",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleHeapProfiling)).Methods("POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleHeapProfiling, handlerOptions{sgcollect: true})).Methods("POST")
 	r.Handle("/_debug/pprof/goroutine",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofGoroutine)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofGoroutine, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/cmdline",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofCmdline)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofCmdline, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/symbol",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofSymbol)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofSymbol, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/heap",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofHeap)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofHeap, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/profile",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofProfile)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofProfile, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/block",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofBlock)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofBlock, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/threadcreate",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofThreadcreate)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofThreadcreate, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/mutex",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofMutex)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofMutex, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/trace",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofTrace)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofTrace, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/fgprof",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleFgprof)).Methods("GET", "POST")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleFgprof, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 
 	r.Handle("/_post_upgrade",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePostUpgrade)).Methods("POST")
@@ -332,7 +336,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeMetadataDBOfflineHandler(sc, adminPrivs, []Permission{PermDeleteDb}, nil, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",
-		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleAllDbs)).Methods("GET", "HEAD")
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleAllDbs, handlerOptions{sgcollect: true})).Methods("GET", "HEAD")
 
 	return r
 }

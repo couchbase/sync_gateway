@@ -13,10 +13,12 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseHTTPRangeHeader(t *testing.T) {
@@ -149,5 +151,74 @@ func Benchmark_parseKeyspace(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_, _, _, _ = ParseKeyspace("d.s.c")
+	}
+}
+
+func TestShouldCheckAdminRBAC(t *testing.T) {
+	for _, requireInterfaceAuth := range []bool{false, true} {
+		t.Run(fmt.Sprintf("requireInterfaceAuth=%t", requireInterfaceAuth), func(t *testing.T) {
+			config := BootstrapStartupConfigForTest(t)
+			config.API.AdminInterfaceAuthentication = base.Ptr(requireInterfaceAuth)
+			config.API.MetricsInterfaceAuthentication = base.Ptr(requireInterfaceAuth)
+			sc, closeFn := StartServerWithConfig(t, &config)
+			defer closeFn()
+
+			for _, sgcollectable := range []bool{true, false} {
+				t.Run(fmt.Sprintf("sgcollectable=%t", sgcollectable), func(t *testing.T) {
+					// make sure assertion counts are correct
+					require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().AssertionFailCount.Value())
+					defer func() {
+						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().AssertionFailCount.Set(0)
+					}()
+					adminHandler := newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{}, handlerOptions{sgcollect: sgcollectable})
+					metricsHandler := newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{}, handlerOptions{sgcollect: sgcollectable})
+					if requireInterfaceAuth {
+						require.True(t, adminHandler.shouldCheckAdminRBAC())
+						require.True(t, metricsHandler.shouldCheckAdminRBAC())
+					} else {
+						require.False(t, adminHandler.shouldCheckAdminRBAC())
+
+						require.False(t, metricsHandler.shouldCheckAdminRBAC())
+					}
+					invalidAuthHeader := http.Header{}
+					invalidAuthHeader.Add("Authorization", "SGCollect invalid")
+					// with invalid sgcollect token
+					adminHandler = newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{Header: invalidAuthHeader}, handlerOptions{sgcollect: sgcollectable})
+					metricsHandler = newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{Header: invalidAuthHeader}, handlerOptions{sgcollect: sgcollectable})
+					if requireInterfaceAuth {
+						if base.IsDevMode() && !sgcollectable {
+							require.PanicsWithValue(t, base.AssertionFailedPrefix+sgcollectTokenInvalidRequest, func() { adminHandler.shouldCheckAdminRBAC() })
+						} else {
+							require.True(t, adminHandler.shouldCheckAdminRBAC(), "expected invalid token to still require auth")
+						}
+						require.True(t, metricsHandler.shouldCheckAdminRBAC(), "expected invalid token to still require auth")
+					} else {
+						require.False(t, adminHandler.shouldCheckAdminRBAC())
+						require.False(t, metricsHandler.shouldCheckAdminRBAC())
+
+					}
+					// with valid sgcollect token, but sgcollect on the handler is disabled
+					require.NoError(t, sc.SGCollect.createNewToken())
+
+					validAuthHeader := http.Header{}
+					validAuthHeader.Add("Authorization", fmt.Sprintf("SGCollect %s", sc.SGCollect.Token))
+					adminHandler = newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{Header: validAuthHeader}, handlerOptions{sgcollect: false})
+					metricsHandler = newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{Header: validAuthHeader}, handlerOptions{sgcollect: false})
+					if requireInterfaceAuth {
+						if base.IsDevMode() {
+							require.PanicsWithValue(t, base.AssertionFailedPrefix+sgcollectTokenInvalidRequest, func() { adminHandler.shouldCheckAdminRBAC() })
+						} else {
+							require.True(t, adminHandler.shouldCheckAdminRBAC(), "expected invalid token to still require auth")
+						}
+						require.True(t, metricsHandler.shouldCheckAdminRBAC(), "expected invalid token to still require auth")
+					} else {
+						require.False(t, adminHandler.shouldCheckAdminRBAC())
+
+						require.False(t, metricsHandler.shouldCheckAdminRBAC())
+					}
+
+				})
+			}
+		})
 	}
 }
