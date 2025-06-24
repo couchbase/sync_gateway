@@ -12,6 +12,7 @@ licenses/APL2.txt.
 
 # -*- python -*-
 import base64
+import getpass
 import glob
 import json
 import optparse
@@ -40,7 +41,6 @@ from tasks import (
     log,
     make_curl_task,
     make_os_tasks,
-    setup_stdin_watcher,
     urlopen,
 )
 
@@ -78,6 +78,10 @@ mydir = os.path.dirname(sys.argv[0])
 # name of the log file that contains the options passed to sgcollect_info
 SGCOLLECT_INFO_OPTIONS_LOG = "sgcollect_info_options.log"
 
+SG_USERNAME_ENV = "SG_USERNAME"
+SG_PASSWORD_ENV = "SG_PASSWORD"
+SG_PASSWORD_ERROR = f"--sync-gateway-password is no longer functional. --sync-gateway-username will ask for an interactive password or use environment variable {SG_PASSWORD_ENV}=<username>."
+
 
 def delete_zip(filename):
     """
@@ -90,6 +94,16 @@ def delete_zip(filename):
         pass
     except Exception as e:
         print("Zipfile ({0}) deletion failed: {1}".format(filename, e))
+
+
+def sync_gateway_option_callback(
+    option: optparse.Option,
+    opt: str,
+    value: str,
+    parser: optparse.OptionParser,
+) -> None:
+    if value:
+        raise optparse.OptionValueError(SG_PASSWORD_ERROR)
 
 
 def create_option_parser():
@@ -113,13 +127,6 @@ def create_option_parser():
         help="gather only product related information",
         action="store_true",
         default=False,
-    )
-    parser.add_option(
-        "--watch-stdin",
-        dest="watch_stdin",
-        action="store_true",
-        default=False,
-        help=optparse.SUPPRESS_HELP,
     )
     parser.add_option(
         "--log-redaction-level",
@@ -178,12 +185,15 @@ def create_option_parser():
     parser.add_option(
         "--sync-gateway-username",
         dest="sync_gateway_username",
-        help="Sync Gateway Admin API username ",
+        help="Sync Gateway Admin API username. Can be specified with SG_USERNAME env variable.",
     )
     parser.add_option(
         "--sync-gateway-password",
-        dest="sync_gateway_password",
-        help="Sync Gateway Admin API password ",
+        action="callback",
+        callback=sync_gateway_option_callback,
+        dest="do_not_use",
+        type=str,
+        help="Sync Gateway Admin API password. Can be specified with SG_PASSWORD env variable.",
     )
     parser.add_option(
         "--upload-proxy",
@@ -808,12 +818,8 @@ def main() -> NoReturn:
             "incorrect number of arguments. Expecting filename to collect diagnostics into"
         )
 
-    # Setup stdin watcher if this option was passed
-    if options.watch_stdin:
-        setup_stdin_watcher()
-
     auth_headers = get_auth_headers(
-        options.sync_gateway_username, options.sync_gateway_password
+        options.sync_gateway_username,
     )
     sg_url = get_sg_url(options, auth_headers)
 
@@ -1021,7 +1027,7 @@ def can_connect_to_sg_url(sg_url: str, auth_headers: dict[str, str]) -> bool:
     return True
 
 
-def get_auth_headers(username: str, password: str) -> dict[str, str]:
+def get_auth_headers(username: str) -> dict[str, str]:
     """
     Return the headers for authentication.
     """
@@ -1029,9 +1035,24 @@ def get_auth_headers(username: str, password: str) -> dict[str, str]:
     session_token = os.environ.get(session_token_name)
     if session_token:
         return {"Authorization": f"SGCollect {session_token}"}
-    elif username:
-        base64string = base64.b64encode(
-            (f"{username}:{password}").encode("utf-8")
-        ).decode("utf-8")
-        return {"Authorization": f"Basic {base64string}"}
-    return {}
+    if not username:
+        username = os.environ.get(SG_USERNAME_ENV, "")
+    if not username:
+        return {}
+
+    password = os.environ.get(SG_PASSWORD_ENV)
+    if not password:
+        password = getpass.getpass(
+            prompt=f"Sync Gateway Admin API password for user '{username}': "
+        )
+    return {"Authorization": get_basic_authorization_header(username, password)}
+
+
+def get_basic_authorization_header(username: str, password: str) -> str:
+    """
+    Return the value for the Authorization header for basic auth.
+    """
+    base64string = base64.b64encode((f"{username}:{password}").encode("utf-8")).decode(
+        "utf-8"
+    )
+    return f"Basic {base64string}"

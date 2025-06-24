@@ -16,7 +16,6 @@ from typing import Optional
 
 import pytest
 import sgcollect
-import tasks
 
 
 @pytest.mark.parametrize(
@@ -121,32 +120,6 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
 )
 def test_get_unique_filename(basenames, filename, expected):
     assert sgcollect.get_unique_filename(basenames, filename) == expected
-
-
-@pytest.mark.parametrize(
-    "cmdline",
-    [
-        ([]),
-        (["--log-redaction-level", "full"]),
-        (["--log-redaction-level", "none"]),
-        (["--log-redaction-l", "none"]),
-        (["--sync-gateway-password=mypassword"]),
-        (["--sync-gateway-pa=mypassword"]),
-        (["--sync-gateway-password", "mypassword"]),
-    ],
-)
-def test_get_sgcollect_options_task(tmp_path, cmdline):
-    runner = tasks.TaskRunner(tmp_dir=tmp_path)
-    parser = sgcollect.create_option_parser()
-    options, args = parser.parse_args(cmdline + ["fakesgcollect.zip"])
-    task = sgcollect.get_sgcollect_info_options_task(options, args)
-    runner.run(task)
-
-    output = (
-        pathlib.Path(runner.tmpdir) / sgcollect.SGCOLLECT_INFO_OPTIONS_LOG
-    ).read_text()
-    assert "sync_gateway_password" not in output
-    assert f"args: {args}" in output
 
 
 def test_get_paths_from_expvars_no_url() -> None:
@@ -273,7 +246,7 @@ def test_discover_sg_binary_path() -> None:
             ],
         ),
         (
-            ["--sync-gateway-username=myuser", "--sync-gateway-password=mypassword"],
+            ["--sync-gateway-username=myuser"],
             [
                 unittest.mock.call(
                     url="http://127.0.0.1:4985",
@@ -347,3 +320,51 @@ def normalize_path_for_json(p: pathlib.Path) -> str:
     Convert a pathlib path to something that is OK for JSON, making all windows paths use forward slashes.
     """
     return str(p).replace("\\", "\\\\")
+
+
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        (["--sync-gateway-password", "mypassword"]),
+        (["--sync-gateway-password=mypassword"]),
+    ],
+)
+def test_credential_parsing(cmdline: list[str]) -> None:
+    parser = sgcollect.create_option_parser()
+    with unittest.mock.patch.object(parser, "error", autospec=True) as error_mock:
+        parser.parse_args(cmdline)
+        error_mock.assert_called_once_with(sgcollect.SG_PASSWORD_ERROR)
+
+
+def test_get_auth_headers() -> None:
+    assert sgcollect.get_auth_headers(username="") == {}
+    with unittest.mock.patch(
+        "getpass.getpass", return_value="mypassword", autospec=True
+    ):
+        assert sgcollect.get_auth_headers(username="user") == {
+            "Authorization": sgcollect.get_basic_authorization_header(
+                "user", "mypassword"
+            )
+        }
+    with unittest.mock.patch.dict("os.environ", {"SG_PASSWORD": "envpassword"}):
+        assert sgcollect.get_auth_headers(username="user") == {
+            "Authorization": sgcollect.get_basic_authorization_header(
+                "user", "envpassword"
+            )
+        }
+        # Is the right behavior to ignore empty username, in the case that admin auth is disabled?
+        assert sgcollect.get_auth_headers(username="") == {}
+    with unittest.mock.patch.dict("os.environ", {"SG_USERNAME": "envusername"}):
+        with unittest.mock.patch(
+            "getpass.getpass", return_value="stdinpassword", autospec=True
+        ):
+            assert sgcollect.get_auth_headers(username="") == {
+                "Authorization": sgcollect.get_basic_authorization_header(
+                    "envusername", "stdinpassword"
+                )
+            }
+            assert sgcollect.get_auth_headers(username="cmdlineusername") == {
+                "Authorization": sgcollect.get_basic_authorization_header(
+                    "cmdlineusername", "stdinpassword"
+                )
+            }

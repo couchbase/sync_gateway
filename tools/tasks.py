@@ -11,7 +11,6 @@ licenses/APL2.txt.
 """
 
 # -*- python -*-
-import atexit
 import gzip
 import hashlib
 import http
@@ -19,7 +18,6 @@ import optparse
 import os
 import pathlib
 import re
-import shutil
 import sys
 import tempfile
 import threading
@@ -109,39 +107,6 @@ class RegularLogProcessor:
 
 def generate_hash(val: bytes):
     return hashlib.sha1(val)
-
-
-class AltExitC(object):
-    def __init__(self):
-        self.list = []
-        self.lock = threading.Lock()
-        atexit.register(self.at_exit_handler)
-
-    def register(self, f):
-        self.lock.acquire()
-        self.register_and_unlock(f)
-
-    def register_and_unlock(self, f):
-        try:
-            self.list.append(f)
-        finally:
-            self.lock.release()
-
-    def at_exit_handler(self):
-        self.lock.acquire()
-        self.list.reverse()
-        for f in self.list:
-            try:
-                f()
-            except Exception:
-                pass
-
-    def exit(self, status):
-        self.at_exit_handler()
-        os._exit(status)
-
-
-AltExit = AltExitC()
 
 
 def log(message, end="\n"):
@@ -304,17 +269,6 @@ class TaskRunner(object):
         ):
             log("Could not use TMPDIR {0}".format(os.getenv("TMPDIR")))
             log("Using temporary dir {0}".format(os.path.split(self.tmpdir)[0]))
-
-        AltExit.register(self.finalize)
-
-    def finalize(self):
-        try:
-            for fp in self.files.items():
-                fp.close()
-        except Exception:
-            pass
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def collect_file(self, filename):
         """Add a file to the list of files collected. Used to capture the exact
@@ -752,16 +706,6 @@ def iter_flatten(iterable):
 
 def flatten(iterable):
     return [e for e in iter_flatten(iterable)]
-
-
-def setup_stdin_watcher():
-    def _in_thread():
-        sys.stdin.readline()
-        AltExit.exit(2)
-
-    th = threading.Thread(target=_in_thread)
-    th.setDaemon(True)
-    th.start()
 
 
 def do_upload(path, url, proxy):
