@@ -228,6 +228,7 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 }
 
 func TestSGCollectIntegration(t *testing.T) {
+	base.TestRunSGCollectIntegrationTests(t)
 	base.LongRunningTest(t) // this test is very long, and somewhat fragile, since it involves relying on the sgcollect_info tool to run successfully, which requires system python
 	cwd, err := os.Getwd()
 	require.NoError(t, err)

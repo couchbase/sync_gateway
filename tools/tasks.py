@@ -178,7 +178,7 @@ class Task(object):
             p = subprocess.Popen(
                 self.command,
                 bufsize=-1,
-                stdin=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 shell=use_shell,
@@ -193,7 +193,6 @@ class Task(object):
             # to some system limit".
             fp.write(f"Failed to execute {self.command}: {e}".encode("utf-8"))
             return 127
-        p.stdin.close()
 
         timer = None
         timer_fired = threading.Event()

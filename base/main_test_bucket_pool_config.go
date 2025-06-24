@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Bucket names start with a fixed prefix and end with a sequential bucket number and a creation timestamp for uniqueness
@@ -212,4 +214,28 @@ func TestClusterPassword() string {
 		password = envClusterPassword
 	}
 	return password
+}
+
+// TestRunSGCollectIntegrationTests runs the tests only if a specific environment variable is set. These should always run under jenkins/github actions.
+func TestRunSGCollectIntegrationTests(t *testing.T) {
+	env := "SG_TEST_SGCOLLECT_INTEGRATION"
+	val, ok := os.LookupEnv(env)
+	if !ok {
+		ciEnvVars := []string{
+			"CI",          // convention by github actions
+			"JENKINS_URL", // from jenkins
+		}
+		for _, ciEnv := range ciEnvVars {
+			if os.Getenv(ciEnv) != "" {
+				return
+			}
+		}
+		t.Skip("Skipping sgcollect integration tests - set " + env + "=true to run")
+	}
+
+	runTests, err := strconv.ParseBool(val)
+	require.NoError(t, err, "Couldn't parse %s=%s as bool", env, val)
+	if !runTests {
+		t.Skip("Skipping sgcollect integration tests - set " + env + "=true to run")
+	}
 }
