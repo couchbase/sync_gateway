@@ -178,7 +178,7 @@ class Task(object):
             p = subprocess.Popen(
                 self.command,
                 bufsize=-1,
-                stdin=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 shell=use_shell,
