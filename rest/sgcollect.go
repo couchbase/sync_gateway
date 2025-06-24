@@ -114,7 +114,7 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 
 	atomic.StoreUint32(sg.status, sgRunning)
 	startTime := time.Now()
-	base.InfofCtx(ctx, base.KeyAdmin, "sgcollect_info started with cmdline: %v", base.UD(cmdline))
+	base.InfofCtx(ctx, base.KeyAdmin, "sgcollect_info started with output zip: %v", base.UD(zipPath))
 
 	go func() {
 		// Blocks until command finishes
