@@ -295,8 +295,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 // shouldCheckAdminRBAC returns true if the request needs to check the server for permissions to run
 func (h *handler) shouldCheckAdminRBAC() bool {
-	sgcollectToken := h.server.sgcollect.getToken(h.rq.Header)
-	if sgcollectToken != "" && h.sgcollect && h.server.sgcollect.hasValidToken(h.ctx(), sgcollectToken) {
+	sgcollectToken := h.server.SGCollect.getToken(h.rq.Header)
+	if sgcollectToken != "" && h.sgcollect && h.server.SGCollect.hasValidToken(h.ctx(), sgcollectToken) {
 		return false
 	}
 	if h.privs == adminPrivs && *h.server.Config.API.AdminInterfaceAuthentication {

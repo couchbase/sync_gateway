@@ -419,8 +419,16 @@ func IsIndexerRetryIndexError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if strings.Contains(err.Error(), "will retry") || strings.Contains(err.Error(), "will be retried") {
-		return true
+	retryableStrings := []string{
+		"will retry",
+		"will be retried",
+		// [{\"code\":5000,\"message\":\"GSI Drop() - cause: Fail to Drop Index due to internal errors. Cleanup may happen in the background.  Error=DeleteScheduleCreateToken:*:Rev mismatch.\"}]
+		"Drop Index due to internal errors. Cleanup may happen in the background",
+	}
+	for _, s := range retryableStrings {
+		if strings.Contains(err.Error(), s) {
+			return true
+		}
 	}
 	return false
 }

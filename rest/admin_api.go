@@ -1637,7 +1637,7 @@ func (h *handler) handleSetLogging() error {
 
 func (h *handler) handleSGCollectStatus() error {
 	status := "stopped"
-	if h.server.sgcollect.IsRunning() {
+	if h.server.SGCollect.IsRunning() {
 		status = "running"
 	}
 
@@ -1647,7 +1647,7 @@ func (h *handler) handleSGCollectStatus() error {
 }
 
 func (h *handler) handleSGCollectCancel() error {
-	err := h.server.sgcollect.Stop()
+	err := h.server.SGCollect.Stop()
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error stopping sgcollect_info: %v", err)
 	}
@@ -1664,7 +1664,7 @@ func (h *handler) handleSGCollect() error {
 		return err
 	}
 
-	var params sgCollectOptions
+	var params SGCollectOptions
 	if err = base.JSONUnmarshal(body, &params); err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to parse request body: %v", err)
 	}
@@ -1684,13 +1684,13 @@ func (h *handler) handleSGCollect() error {
 	}
 	params.adminURL = addr
 
-	zipFilename := sgcollectFilename()
+	zipFilename := SGCollectFilename()
 
 	logFilePath := h.server.Config.Logging.LogFilePath
 
 	ctx := base.CorrelationIDLogCtx(context.WithoutCancel(h.ctx()), fmt.Sprintf("SGCollect-%03d", h.serialNumber))
 
-	if err := h.server.sgcollect.Start(ctx, logFilePath, zipFilename, params); err != nil {
+	if err := h.server.SGCollect.Start(ctx, logFilePath, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 

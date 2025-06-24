@@ -196,7 +196,7 @@ func TestShouldCheckAdminRBAC(t *testing.T) {
 
 					}
 					// with valid sgcollect token, but sgcollect on the handler is disabled
-					require.NoError(t, sc.sgcollect.createNewToken())
+					require.NoError(t, sc.SGCollect.createNewToken())
 					adminHandler = newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{Header: http.Header{"Authorization": []string{"SGCollect invalid"}}}, handlerOptions{sgcollect: false})
 					metricsHandler = newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{}, handlerOptions{sgcollect: false})
 					if requireInterfaceAuth {

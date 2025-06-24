@@ -714,9 +714,19 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 
 	rev := "1-a"
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
+	chanSetMap := base.Set{}
 
 	for _, channel := range channelArray {
 		chanMap[channel] = nil
+		chanSetMap[channel] = struct{}{}
+	}
+
+	revInf := RevInfo{
+		ID:       rev,
+		Channels: chanSetMap,
+	}
+	revTree := RevTree{
+		rev: &revInf,
 	}
 
 	syncData := &SyncData{
@@ -724,6 +734,7 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 		Sequence:   sequence,
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
+		History:    revTree,
 	}
 	body := fmt.Sprintf(`{"key": "%s"}`, key)
 	if base.TestUseXattrs() {
@@ -735,7 +746,7 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 		_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
 		require.NoError(t, err)
 	} else {
-		_, err := collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+		_, err := collection.dataStore.Add(key, 0, base.MustJSONMarshal(t, Body{base.SyncPropertyName: syncData, "key": key}))
 		require.NoError(t, err)
 	}
 }

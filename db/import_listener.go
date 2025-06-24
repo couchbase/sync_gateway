@@ -189,6 +189,13 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		return
 	}
 
+	// check if sync data is valid
+	if syncData != nil && !syncData.HasValidSyncData() {
+		base.WarnfCtx(ctx, "Invalid sync data for doc %s - not importing.", base.UD(event.Key))
+		il.importStats.ImportErrorCount.Add(1)
+		return
+	}
+
 	var isSGWrite bool
 	var crc32Match bool
 	if syncData == nil && event.Opcode == sgbucket.FeedOpDeletion {
