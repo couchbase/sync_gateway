@@ -354,8 +354,19 @@ func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 		return asyncError
 	default:
 	}
-
-	return nil
+	// DROP INDEX is asynchronous, but generally quick. Wait for all indexes to disappear as part of the test harness.
+	err, _ = RetryLoop(ctx, "Waiting for no indexes on the bucket", func() (shouldRetry bool, err error, _ any) {
+		// Retrieve all indexes on the bucket/collection
+		indexes, err := n1QLStore.GetIndexes()
+		if err != nil {
+			return false, err, nil
+		}
+		if len(indexes) == 0 {
+			return false, nil, nil
+		}
+		return true, nil, nil
+	}, CreateSleeperFunc(500, 100))
+	return err
 }
 
 // Generates a string of size int
