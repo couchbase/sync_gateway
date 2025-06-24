@@ -47,6 +47,8 @@ const (
 	sgRunning
 
 	defaultSGUploadHost = "https://uploads.couchbase.com"
+
+	sgcollectTokenTimeout = 12 * time.Hour
 )
 
 // sgCollectOutputStream handles stderr/stdout from a running sgcollect process.
@@ -188,17 +190,26 @@ func (sg *sgCollect) clearToken() {
 	sg.tokenAge = time.Time{}
 }
 
-// hasValidToken checks if the provided headers contain a valid token for sgcollect_info.
-func (sg *sgCollect) hasValidToken(headers http.Header) bool {
+// getToken returns an sgcollect specific token from headers, if found. If not found, returns an empty string.
+func (sg *sgCollect) getToken(headers http.Header) string {
 	auth := headers.Get("Authorization")
+	if auth == "" {
+		return ""
+	}
 	authPrefix := "SGCollect "
 	if !strings.HasPrefix(auth, authPrefix) {
+		return ""
+	}
+	return auth[len(authPrefix):]
+}
+
+// hasValidToken checks if the provided headers contain a valid token for sgcollect_info.
+func (sg *sgCollect) hasValidToken(ctx context.Context, token string) bool {
+	if time.Since(sg.tokenAge) > sgcollectTokenTimeout {
+		base.DebugfCtx(ctx, base.KeyAdmin, "sgcollect_info token has expired after %d secs", time.Since(sg.tokenAge)*time.Second)
 		return false
 	}
-	if time.Since(sg.tokenAge) > 30*time.Minute {
-		return false
-	}
-	return auth[len(authPrefix):] == sg.token
+	return token == sg.token
 }
 
 type sgCollectOptions struct {

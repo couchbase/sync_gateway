@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	assertionFailedPrefix = "Assertion failed: "
+	AssertionFailedPrefix = "Assertion failed: "
 )
 
 // IsDevMode returns true when compiled with the `cb_sg_devmode` build tag
@@ -26,5 +26,5 @@ func IsDevMode() bool {
 // Note: Callers MUST ensure code is safe to continue executing after the Assert (e.g. by returning an error) and MUST NOT be used like a panic that will halt.
 func AssertfCtx(ctx context.Context, format string, args ...any) {
 	SyncGatewayStats.GlobalStats.ResourceUtilization.AssertionFailCount.Add(1)
-	assertLogFn(ctx, assertionFailedPrefix+format, args...)
+	assertLogFn(ctx, AssertionFailedPrefix+format, args...)
 }

@@ -36,7 +36,8 @@ import (
 )
 
 const (
-	minCompressibleJSONSize = 1000
+	minCompressibleJSONSize      = 1000
+	sgcollectTokenInvalidRequest = "sgcollect token auth present in non-sgcollect request"
 )
 
 var _ http.Flusher = &CountedResponseWriter{}
@@ -294,9 +295,14 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 // shouldCheckAdminRBAC returns true if the request needs to check the server for permissions to run
 func (h *handler) shouldCheckAdminRBAC() bool {
-	if h.sgcollect && h.server.sgcollect.hasValidToken(h.rq.Header) {
+	sgcollectToken := h.server.sgcollect.getToken(h.rq.Header)
+	if sgcollectToken != "" && h.sgcollect && h.server.sgcollect.hasValidToken(h.ctx(), sgcollectToken) {
 		return false
-	} else if h.privs == adminPrivs && *h.server.Config.API.AdminInterfaceAuthentication {
+	}
+	if h.privs == adminPrivs && *h.server.Config.API.AdminInterfaceAuthentication {
+		if sgcollectToken != "" && !h.sgcollect {
+			base.AssertfCtx(h.ctx(), sgcollectTokenInvalidRequest)
+		}
 		return true
 	} else if h.privs == metricsPrivs && *h.server.Config.API.MetricsInterfaceAuthentication {
 		return true
