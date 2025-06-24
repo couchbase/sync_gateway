@@ -232,6 +232,10 @@ func TestSGCollectIntegration(t *testing.T) {
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 	config := BootstrapStartupConfigForTest(t)
+	if !base.UnitTestUrlIsWalrus() {
+		// rosmar is able to use token auth, but it can't call /_sgcollect_info with admin interface auth enabled
+		config.API.AdminInterfaceAuthentication = base.Ptr(true)
+	}
 	sc, closeFn := StartServerWithConfig(t, &config)
 	defer closeFn()
 

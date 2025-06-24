@@ -13,7 +13,6 @@ licenses/APL2.txt.
 # -*- python -*-
 import base64
 import glob
-import http
 import json
 import optparse
 import os
@@ -42,6 +41,7 @@ from tasks import (
     make_curl_task,
     make_os_tasks,
     setup_stdin_watcher,
+    urlopen,
 )
 
 try:
@@ -211,7 +211,9 @@ def expvar_url(sg_url):
     return "{0}/_expvar".format(sg_url)
 
 
-def make_http_client_pprof_tasks(sg_url, sg_username, sg_password):
+def make_http_client_pprof_tasks(
+    sg_url: str, auth_headers: dict[str, str]
+) -> list[PythonTask]:
     """
     These tasks use the python http client to collect the raw pprof data, which can later
     be rendered into something human readable
@@ -231,8 +233,7 @@ def make_http_client_pprof_tasks(sg_url, sg_username, sg_password):
         sg_pprof_url = "{0}/{1}".format(base_pprof_url, profile_type)
         clean_task = make_curl_task(
             name="Collect {0} pprof via http client".format(profile_type),
-            user=sg_username,
-            password=sg_password,
+            auth_headers=auth_headers,
             url=sg_pprof_url,
             log_file="pprof_{0}.pb.gz".format(profile_type),
         )
@@ -306,22 +307,6 @@ def extract_element_from_logging_config(element, config):
         return
 
 
-def urlopen_with_basic_auth(
-    url: str, username: Optional[str], password: Optional[str]
-) -> http.client.HTTPResponse:
-    """
-    Open a URL with basic authentication if username and password are provided. Can raise urllib.error.URLError if there is an error.
-    """
-    if username and len(username) > 0:
-        # Add basic auth header
-        request = urllib.request.Request(url)
-        base64string = base64.b64encode(bytes("%s:%s" % (username, password), "utf-8"))
-        request.add_header("Authorization", "Basic %s" % base64string.decode("utf-8"))
-        return urllib.request.urlopen(request)
-    else:
-        return urllib.request.urlopen(url)
-
-
 def get_unique_filename(filenames: set[str], original_filename: str) -> str:
     """
     Given a set of filenames, return a unique filename that is not in the set.
@@ -337,8 +322,7 @@ def get_unique_filename(filenames: set[str], original_filename: str) -> str:
 def make_collect_logs_tasks(
     sg_url: str,
     sg_config_file_path: Optional[str],
-    sg_username: Optional[str],
-    sg_password: Optional[str],
+    auth_headers: dict[str, str],
 ) -> List[PythonTask]:
     sg_log_files = {
         "sg_error.log": "sg_error.log",
@@ -364,7 +348,7 @@ def make_collect_logs_tasks(
     if sg_url:
         config_url = "{0}/_config?include_runtime=true".format(sg_url)
         try:
-            response = urlopen_with_basic_auth(config_url, sg_username, sg_password)
+            response = urlopen(config_url, auth_headers)
         except urllib.error.URLError:
             print("Failed to load SG config from running SG.")
             config_str = ""
@@ -494,17 +478,17 @@ def make_collect_logs_tasks(
     return sg_tasks
 
 
-def get_db_list(sg_url, sg_username, sg_password):
+def get_db_list(sg_url: str, auth_headers: dict[str, str]) -> list[str]:
     # build url to _all_dbs
     all_dbs_url = "{0}/_all_dbs".format(sg_url)
-    data = []
+    data: list[str] = []
 
     # get content and parse into json
     try:
-        response = urlopen_with_basic_auth(all_dbs_url, sg_username, sg_password)
+        response = urlopen(all_dbs_url, auth_headers)
         data = json.load(response)
     except urllib.error.URLError as e:
-        print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
+        print(f"WARNING: Unable to connect to Sync Gateway: {sg_url} {e}")
 
     # return list of dbs
     return data
@@ -519,8 +503,7 @@ def get_db_list(sg_url, sg_username, sg_password):
 def make_config_tasks(
     sg_config_path: Optional[str],
     sg_url: str,
-    sg_username: Optional[str],
-    sg_password: Optional[str],
+    auth_headers: dict[str, str],
     should_redact: bool,
 ) -> List[PythonTask]:
     """
@@ -572,8 +555,7 @@ def make_config_tasks(
 
     config_task = make_curl_task(
         name="Collect server config",
-        user=sg_username,
-        password=sg_password,
+        auth_headers=auth_headers,
         url=server_config_url,
         log_file="sync_gateway.log",
         content_postprocessors=server_config_postprocessors,
@@ -584,8 +566,7 @@ def make_config_tasks(
     server_runtime_config_url = "{0}/_config?include_runtime=true".format(sg_url)
     runtime_config_task = make_curl_task(
         name="Collect runtime config",
-        user=sg_username,
-        password=sg_password,
+        auth_headers=auth_headers,
         url=server_runtime_config_url,
         log_file="sync_gateway.log",
         content_postprocessors=server_config_postprocessors,
@@ -593,13 +574,12 @@ def make_config_tasks(
     collect_config_tasks.append(runtime_config_task)
 
     # Get persisted dbconfigs
-    dbs = get_db_list(sg_url, sg_username, sg_password)
+    dbs = get_db_list(sg_url, auth_headers)
     for db in dbs:
         db_config_url = "{0}/{1}/_config".format(sg_url, db)
         db_config_task = make_curl_task(
             name="Collect {0} database config".format(db),
-            user=sg_username,
-            password=sg_password,
+            auth_headers=auth_headers,
             url=db_config_url,
             log_file="sync_gateway.log",
             content_postprocessors=db_config_postprocessors,
@@ -610,8 +590,7 @@ def make_config_tasks(
     cluster_info_url = "{0}/_cluster_info".format(sg_url)
     cluster_info_task = make_curl_task(
         name="Collect SG cluster info",
-        user=sg_username,
-        password=sg_password,
+        auth_headers=auth_headers,
         url=cluster_info_url,
         log_file="sync_gateway.log",
         content_postprocessors=server_config_postprocessors,
@@ -640,7 +619,7 @@ def get_config_path_from_cmdline(cmdline_args: list[str]) -> Optional[str]:
 
 
 def get_paths_from_expvars(
-    sg_url: str, sg_username: Optional[str], sg_password: Optional[str]
+    sg_url: str, auth_headers: dict[str, str]
 ) -> tuple[Optional[str], Optional[str]]:
     """
     Get the Sync Gateway binary and configuration file path from /_expvar endpoint.
@@ -654,9 +633,9 @@ def get_paths_from_expvars(
         return None, None
 
     try:
-        response = urlopen_with_basic_auth(expvar_url(sg_url), sg_username, sg_password)
+        response = urlopen(expvar_url(sg_url), auth_headers)
     except urllib.error.URLError as e:
-        print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
+        print(f"WARNING: Unable to connect to Sync Gateway: {sg_url} {e}")
         return None, None
     try:
         data = json.load(response)
@@ -675,11 +654,10 @@ def get_paths_from_expvars(
     return (sg_binary_path, sg_config_path)
 
 
-def make_download_expvars_task(sg_url, sg_username, sg_password):
+def make_download_expvars_task(sg_url: str, auth_headers: dict[str, str]) -> PythonTask:
     task = make_curl_task(
         name="download_sg_expvars",
-        user=sg_username,
-        password=sg_password,
+        auth_headers=auth_headers,
         url=expvar_url(sg_url),
         log_file="expvars.json",
     )
@@ -690,16 +668,17 @@ def make_download_expvars_task(sg_url, sg_username, sg_password):
 
 
 def make_sg_tasks(
+    *,
     sg_url: str,
-    sg_username: Optional[str],
-    sg_password: Optional[str],
+    auth_headers: dict[str, str],
     sync_gateway_config_path_option: Optional[str],
     sync_gateway_executable_path: Optional[str],
     should_redact: bool,
 ) -> List[PythonTask]:
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(
-        sg_url, sg_username, sg_password
+        sg_url,
+        auth_headers=auth_headers,
     )
     print(
         "Discovered from expvars: sg_binary_path={0} sg_config_path={1}".format(
@@ -731,11 +710,10 @@ def make_sg_tasks(
     collect_logs_tasks = make_collect_logs_tasks(
         sg_url,
         sg_config_path,
-        sg_username,
-        sg_password,
+        auth_headers=auth_headers,
     )
 
-    py_expvar_task = make_download_expvars_task(sg_url, sg_username, sg_password)
+    py_expvar_task = make_download_expvars_task(sg_url, auth_headers)
 
     # If the user passed in a valid config path, then use that rather than what's in the expvars
     if (
@@ -745,20 +723,17 @@ def make_sg_tasks(
     ):
         sg_config_path = sync_gateway_config_path_option
 
-    http_client_pprof_tasks = make_http_client_pprof_tasks(
-        sg_url, sg_username, sg_password
-    )
+    http_client_pprof_tasks = make_http_client_pprof_tasks(sg_url, auth_headers)
 
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(
-        sg_config_path, sg_url, sg_username, sg_password, should_redact
+        sg_config_path, sg_url, auth_headers, should_redact
     )
 
     # Curl the /_status
     status_tasks = make_curl_task(
         name="Collect server status",
-        user=sg_username,
-        password=sg_password,
+        auth_headers=auth_headers,
         url="{0}/_status".format(sg_url),
         log_file="sync_gateway.log",
         content_postprocessors=[password_remover.pretty_print_json],
@@ -781,6 +756,7 @@ def make_sg_tasks(
 def discover_sg_binary_path(
     options: optparse.Values,
     sg_url: Optional[str],
+    auth_headers: dict[str, str],
 ) -> str:
     """
     Return the path to the sync gateway binary, returns None if the path is not found.
@@ -798,9 +774,7 @@ def discover_sg_binary_path(
             )
         return options.sync_gateway_executable
     if sg_url:
-        sg_binary_path, _ = get_paths_from_expvars(
-            sg_url, options.sync_gateway_username, options.sync_gateway_password
-        )
+        sg_binary_path, _ = get_paths_from_expvars(sg_url, auth_headers=auth_headers)
         if sg_binary_path:
             return sg_binary_path
     sg_bin_dirs = [
@@ -838,7 +812,10 @@ def main() -> NoReturn:
     if options.watch_stdin:
         setup_stdin_watcher()
 
-    sg_url = get_sg_url(options)
+    auth_headers = get_auth_headers(
+        options.sync_gateway_username, options.sync_gateway_password
+    )
+    sg_url = get_sg_url(options, auth_headers)
 
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
@@ -909,16 +886,15 @@ def main() -> NoReturn:
         log("Python version: %s" % sys.version)
 
     # Find path to sg binary
-    sg_binary_path = discover_sg_binary_path(options, sg_url)
+    sg_binary_path = discover_sg_binary_path(options, sg_url, auth_headers)
 
     # Run SG specific tasks
     for task in make_sg_tasks(
-        sg_url,
-        options.sync_gateway_username,
-        options.sync_gateway_password,
-        options.sync_gateway_config,
-        options.sync_gateway_executable,
-        should_redact,
+        sg_url=sg_url,
+        auth_headers=auth_headers,
+        sync_gateway_config_path_option=options.sync_gateway_config,
+        sync_gateway_executable_path=options.sync_gateway_executable,
+        should_redact=should_redact,
     ):
         runner.run(task)
 
@@ -1001,7 +977,7 @@ def should_redact_from_options(options: optparse.Values) -> bool:
     return options.redact_level != "none"
 
 
-def get_sg_url(options: optparse.Values) -> str:
+def get_sg_url(options: optparse.Values, auth_headers: dict[str, str]) -> str:
     """
     Gets the Sync Gateway URL for the admin port. Returns the first valid URL it can connect to, or https://127.0.0.1:4985 if it can not find one.
 
@@ -1024,9 +1000,7 @@ def get_sg_url(options: optparse.Values) -> str:
             )
     possible_urls.extend(["http://127.0.0.1:4985"])
     for url in possible_urls:
-        if can_connect_to_sg_url(
-            url, options.sync_gateway_username, options.sync_gateway_password
-        ):
+        if can_connect_to_sg_url(url, auth_headers):
             return url
     # Default URL if none of the above worked. The more correct way would be to return None if this doesn't work and do
     # not try to create any tasks that require connecting to admin API, but the subsequent code expects a URL to be
@@ -1034,16 +1008,30 @@ def get_sg_url(options: optparse.Values) -> str:
     return "https://127.0.0.1:4985"
 
 
-def can_connect_to_sg_url(sg_url: str, sg_username: str, sg_password: str) -> bool:
+def can_connect_to_sg_url(sg_url: str, auth_headers: dict[str, str]) -> bool:
     """
     Return true if can connect to the Sync Gateway URL with the provided username and password.
     """
     try:
-        response = urlopen_with_basic_auth(
-            url=sg_url, username=sg_username, password=sg_password
-        )
+        response = urlopen(url=sg_url, auth_headers=auth_headers)
         json.load(response)
     except Exception as e:
         print(f"Failed to communicate with: {sg_url} {e}")
         return False
     return True
+
+
+def get_auth_headers(username: str, password: str) -> dict[str, str]:
+    """
+    Return the headers for authentication.
+    """
+    session_token_name = "SGCOLLECT_TOKEN"
+    session_token = os.environ.get(session_token_name)
+    if session_token:
+        return {"Authorization": f"SGCollect {session_token}"}
+    elif username:
+        base64string = base64.b64encode(
+            (f"{username}:{password}").encode("utf-8")
+        ).decode("utf-8")
+        return {"Authorization": f"Basic {base64string}"}
+    return {}

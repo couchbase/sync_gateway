@@ -16,12 +16,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -36,6 +38,8 @@ var (
 	ErrSGCollectInfoNotRunning = errors.New("not running")
 
 	validateTicketPattern = regexp.MustCompile(`\d{1,7}`)
+
+	sgcollectTokenEnvVar = "SGCOLLECT_TOKEN" // Environment variable to set the token for sgcollect_info
 )
 
 const (
@@ -62,6 +66,8 @@ type sgCollect struct {
 	sgPath           string    // Path to the Sync Gateway executable
 	sgCollectPath    []string  // Path to the sgcollect_info executable
 	sgCollectPathErr error     // Error if sgcollect_info path could not be determined
+	token            string    // Token for sgcollect_info, if required
+	tokenAge         time.Time // Time when the token was created
 	stdout           io.Writer // test seam, is nil in production
 	stderr           io.Writer // test seam, is nil in production
 }
@@ -103,6 +109,13 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 	ctx, sg.cancel = context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, cmdline[0], cmdline[1:]...)
 
+	err := sg.createNewToken()
+	if err != nil {
+		return fmt.Errorf("failed to get sgcollect_info token: %w", err)
+	}
+	cmd.Env = append(os.Environ(),
+		sgcollectTokenEnvVar+"="+sg.token,
+	)
 	outStream := newSGCollectOutputStream(ctx, sg.stdout, sg.stderr)
 	cmd.Stdout = outStream.stdoutPipeWriter
 	cmd.Stderr = outStream.stderrPipeWriter
@@ -117,6 +130,7 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 	base.InfofCtx(ctx, base.KeyAdmin, "sgcollect_info started with cmdline: %v", base.UD(cmdline))
 
 	go func() {
+		defer sg.clearToken()
 		// Blocks until command finishes
 		err := cmd.Wait()
 		outStream.Close(ctx)
@@ -157,6 +171,36 @@ func (sg *sgCollect) IsRunning() bool {
 	return atomic.LoadUint32(sg.status) == sgRunning
 }
 
+// createNewToken creates a token specific to running sgcollect.
+func (sg *sgCollect) createNewToken() error {
+	token, err := base.GenerateRandomSecret()
+	if err != nil {
+		sg.clearToken()
+	}
+	sg.token = token
+	sg.tokenAge = time.Now()
+	return err
+}
+
+// clearToken clears the token.
+func (sg *sgCollect) clearToken() {
+	sg.token = ""
+	sg.tokenAge = time.Time{}
+}
+
+// hasValidToken checks if the provided headers contain a valid token for sgcollect_info.
+func (sg *sgCollect) hasValidToken(headers http.Header) bool {
+	auth := headers.Get("Authorization")
+	authPrefix := "SGCollect "
+	if !strings.HasPrefix(auth, authPrefix) {
+		return false
+	}
+	if time.Since(sg.tokenAge) > 30*time.Minute {
+		return false
+	}
+	return auth[len(authPrefix):] == sg.token
+}
+
 type sgCollectOptions struct {
 	RedactLevel     string `json:"redact_level,omitempty"`
 	RedactSalt      string `json:"redact_salt,omitempty"`
@@ -168,11 +212,7 @@ type sgCollectOptions struct {
 	Ticket          string `json:"ticket,omitempty"`
 	KeepZip         bool   `json:"keep_zip,omitempty"`
 
-	// Unexported - Don't allow these to be set via the JSON body.
-	// We'll set them from the request's basic auth.
-	syncGatewayUsername string
-	syncGatewayPassword string
-	adminURL            string // URL to the Sync Gateway admin API.
+	adminURL string // URL to the Sync Gateway admin API.
 }
 
 // validateOutputDirectory will check that the given path exists, and is a directory.
@@ -341,14 +381,6 @@ func (c *sgCollectOptions) Args() []string {
 
 	if c.RedactSalt != "" {
 		args = append(args, "--log-redaction-salt", c.RedactSalt)
-	}
-
-	if c.syncGatewayUsername != "" {
-		args = append(args, "--sync-gateway-username", c.syncGatewayUsername)
-	}
-
-	if c.syncGatewayPassword != "" {
-		args = append(args, "--sync-gateway-password", c.syncGatewayPassword)
 	}
 
 	if c.KeepZip {

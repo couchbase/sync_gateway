@@ -31,7 +31,7 @@ def test_make_collect_logs_tasks(config, tmpdir):
     log_file = tmpdir.join("sg_info.log")
     log_file.write("foo")
     with unittest.mock.patch(
-        "sgcollect.urlopen_with_basic_auth",
+        "sgcollect.urlopen",
         return_value=io.BytesIO(
             config.format(
                 tmpdir=normalize_path_for_json(tmpdir),
@@ -41,13 +41,12 @@ def test_make_collect_logs_tasks(config, tmpdir):
     ):
         rotated_log_file = tmpdir.join("sg_info-01.log.gz")
         rotated_log_file.write("foo")
-        tasks = sgcollect.make_collect_logs_tasks(
+        collected_tasks = sgcollect.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
-            sg_username="",
-            sg_password="",
+            auth_headers={},
         )
-        assert [t.log_file for t in tasks] == [
+        assert [t.log_file for t in collected_tasks] == [
             log_file.basename,
             rotated_log_file.basename,
         ]
@@ -55,7 +54,7 @@ def test_make_collect_logs_tasks(config, tmpdir):
 
 def test_make_collect_logs_heap_profile(tmpdir):
     with unittest.mock.patch(
-        "sgcollect.urlopen_with_basic_auth",
+        "sgcollect.urlopen",
         return_value=io.BytesIO(
             '{{"logfilepath": "{logpath}"}}'.format(
                 logpath=normalize_path_for_json(tmpdir),
@@ -67,8 +66,7 @@ def test_make_collect_logs_heap_profile(tmpdir):
         tasks = sgcollect.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
-            sg_username="",
-            sg_password="",
+            auth_headers={},
         )
         assert [tasks[0].log_file] == [pprof_file.basename]
         # ensure that this is not redacted task
@@ -90,7 +88,7 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
         (d / "sg_info-01.log.gz").write_text("foo")
 
     with unittest.mock.patch(
-        "sgcollect.urlopen_with_basic_auth",
+        "sgcollect.urlopen",
         return_value=io.BytesIO(
             config.format(
                 tmpdir1=normalize_path_for_json(tmpdir1),
@@ -101,8 +99,7 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
         tasks = sgcollect.make_collect_logs_tasks(
             sg_url="fakeurl",
             sg_config_file_path="",
-            sg_username="",
-            sg_password="",
+            auth_headers={},
         )
         # assert all tasks have unique log_file names
         assert len(set(t.log_file for t in tasks)) == len(tasks)
@@ -154,7 +151,8 @@ def test_get_sgcollect_options_task(tmp_path, cmdline):
 
 def test_get_paths_from_expvars_no_url() -> None:
     assert (None, None) == sgcollect.get_paths_from_expvars(
-        sg_url="", sg_username="", sg_password=""
+        sg_url="",
+        auth_headers={},
     )
 
 
@@ -213,10 +211,11 @@ def test_get_paths_from_expvars(
             pathsep=os.sep,
         )
     with unittest.mock.patch(
-        "sgcollect.urlopen_with_basic_auth", return_value=io.BytesIO(expvar_output)
+        "sgcollect.urlopen", return_value=io.BytesIO(expvar_output)
     ):
         sg_path, config_path = sgcollect.get_paths_from_expvars(
-            sg_url="fakeurl", sg_username="", sg_password=""
+            sg_url="fakeurl",
+            auth_headers={},
         )
     assert sg_path == expected_sg_path
     assert config_path == expected_config_path
@@ -230,6 +229,7 @@ def test_discover_sg_binary_path() -> None:
             sgcollect.discover_sg_binary_path(
                 options,
                 sg_url="",
+                auth_headers={},
             )
             == ""
         )
@@ -238,24 +238,24 @@ def test_discover_sg_binary_path() -> None:
             expected_exception=Exception,
             match="executable passed in does not exist",
         ):
-            sgcollect.discover_sg_binary_path(options, sg_url="")
+            sgcollect.discover_sg_binary_path(options, sg_url="", auth_headers={})
 
     options, _ = parser.parse_args([])
     with unittest.mock.patch("os.path.exists", return_value=True):
         assert (
-            sgcollect.discover_sg_binary_path(options, sg_url="")
+            sgcollect.discover_sg_binary_path(options, sg_url="", auth_headers={})
             == "/opt/couchbase-sync-gateway/bin/sync_gateway"
         )
     options, _ = parser.parse_args([])
     with unittest.mock.patch("os.path.exists", side_effect=[False, True]):
         assert (
-            sgcollect.discover_sg_binary_path(options, sg_url="")
+            sgcollect.discover_sg_binary_path(options, sg_url="", auth_headers={})
             == R"C:\Program Files (x86)\Couchbase\sync_gateway.exe"
         )  # Windows (Pre-2.0)
 
     with unittest.mock.patch("os.path.exists", side_effect=[False, False, True]):
         assert (
-            sgcollect.discover_sg_binary_path(options, sg_url="")
+            sgcollect.discover_sg_binary_path(options, sg_url="", auth_headers={})
             == R"C:\Program Files\Couchbase\Sync Gateway\sync_gateway.exe"  # Windows (Post-2.0)
         )
 
@@ -268,8 +268,7 @@ def test_discover_sg_binary_path() -> None:
             [
                 unittest.mock.call(
                     url="http://127.0.0.1:4985",
-                    username=None,
-                    password=None,
+                    auth_headers={},
                 ),
             ],
         ),
@@ -278,8 +277,7 @@ def test_discover_sg_binary_path() -> None:
             [
                 unittest.mock.call(
                     url="http://127.0.0.1:4985",
-                    username="myuser",
-                    password="mypassword",
+                    auth_headers={},
                 ),
             ],
         ),
@@ -288,18 +286,15 @@ def test_discover_sg_binary_path() -> None:
             [
                 unittest.mock.call(
                     url="http://example.com",
-                    username=None,
-                    password=None,
+                    auth_headers={},
                 ),
                 unittest.mock.call(
                     url="https://example.com",
-                    username=None,
-                    password=None,
+                    auth_headers={},
                 ),
                 unittest.mock.call(
                     url="http://127.0.0.1:4985",
-                    username=None,
-                    password=None,
+                    auth_headers={},
                 ),
             ],
         ),
@@ -308,13 +303,11 @@ def test_discover_sg_binary_path() -> None:
             [
                 unittest.mock.call(
                     url="https://example.com:4985",
-                    username=None,
-                    password=None,
+                    auth_headers={},
                 ),
                 unittest.mock.call(
                     url="http://127.0.0.1:4985",
-                    username=None,
-                    password=None,
+                    auth_headers={},
                 ),
             ],
         ),
@@ -323,13 +316,11 @@ def test_discover_sg_binary_path() -> None:
             [
                 unittest.mock.call(
                     url="http://example.com:4985",
-                    username=None,
-                    password=None,
+                    auth_headers={},
                 ),
                 unittest.mock.call(
                     url="http://127.0.0.1:4985",
-                    username=None,
-                    password=None,
+                    auth_headers={},
                 ),
             ],
         ),
@@ -341,11 +332,13 @@ def test_get_sg_url(
     parser = sgcollect.create_option_parser()
     options, _ = parser.parse_args(cmdline_args)
     with unittest.mock.patch(
-        "sgcollect.urlopen_with_basic_auth",
+        "sgcollect.urlopen",
         side_effect=urllib.error.URLError("mock error connecting"),
     ) as mock_urlopen:
         # this URL isn't correct but it is the fallback URL for this function
-        assert sgcollect.get_sg_url(options) == "https://127.0.0.1:4985"
+        assert (
+            sgcollect.get_sg_url(options, auth_headers={}) == "https://127.0.0.1:4985"
+        )
         assert mock_urlopen.mock_calls == expected_calls
 
 

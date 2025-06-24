@@ -12,9 +12,9 @@ licenses/APL2.txt.
 
 # -*- python -*-
 import atexit
-import base64
 import gzip
 import hashlib
+import http
 import optparse
 import os
 import pathlib
@@ -446,15 +446,14 @@ class AllOsTask(UnixTask, WindowsTask):
 
 
 def make_curl_task(
-    name,
-    url,
-    user="",
-    password="",
+    name: str,
+    url: str,
+    auth_headers: dict[str, str],
     content_postprocessors: Optional[List[Callable]] = None,
     timeout=60,
     log_file="python_curl.log",
     **kwargs,
-):
+) -> PythonTask:
     """
     NOTE: this used to use curl but was later reworked to use pure python
     in order to be more cross platform, since Windows doesn't ship with curl
@@ -474,17 +473,17 @@ def make_curl_task(
 
     """
 
-    def python_curl_task():
-        r = urllib.request.Request(url=url)
-        if user and len(user) > 0:
-            base64string = base64.b64encode(bytes("%s:%s" % (user, password), "utf-8"))
-            r.add_header("Authorization", "Basic %s" % base64string.decode("utf-8"))
+    def python_curl_task() -> Union[bytes, str]:
+        """
+        Return the output from the request after post processing.
+        """
         try:
-            response_file_handle = urllib.request.urlopen(r, timeout=timeout)
+            response_file_handle = urlopen(url, auth_headers)
         except urllib.error.URLError as e:
             print("WARNING: Error connecting to url {0}: {1}".format(url, e))
+            return b""
 
-        response_string = response_file_handle.read()
+        response_string: bytes = response_file_handle.read()
         if content_postprocessors:
             for content_postprocessor in content_postprocessors:
                 response_string = content_postprocessor(response_string)
@@ -860,3 +859,11 @@ def get_open_fn(path: Union[pathlib.Path, str]) -> Callable:
     if path.suffix == ".gz":
         return gzip.open
     return open
+
+
+def urlopen(url: str, auth_headers: dict[str, str]) -> http.client.HTTPResponse:
+    """
+    Open a URL with basic authentication if username and password are provided. Can raise urllib.error.URLError if there is an error.
+    """
+    request = urllib.request.Request(url, headers=auth_headers)
+    return urllib.request.urlopen(request)
