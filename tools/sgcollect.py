@@ -80,7 +80,7 @@ SGCOLLECT_INFO_OPTIONS_LOG = "sgcollect_info_options.log"
 
 SG_USERNAME_ENV = "SG_USERNAME"
 SG_PASSWORD_ENV = "SG_PASSWORD"
-SG_PASSWORD_ERROR = f"--sync-gateway-password is no longer functional. --sync-gateway-username will ask for an interactive password or use environment variable {SG_PASSWORD_ENV}=<username>."
+SG_PASSWORD_ERROR = f"--sync-gateway-password is no longer functional. --sync-gateway-username will ask for an interactive password or use environment variable {SG_PASSWORD_ENV}=<password>."
 
 
 def delete_zip(filename):
