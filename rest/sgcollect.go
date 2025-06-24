@@ -206,7 +206,7 @@ func (sg *sgCollect) getToken(headers http.Header) string {
 // hasValidToken checks if the provided headers contain a valid token for sgcollect_info.
 func (sg *sgCollect) hasValidToken(ctx context.Context, token string) bool {
 	if time.Since(sg.tokenAge) > sgcollectTokenTimeout {
-		base.DebugfCtx(ctx, base.KeyAdmin, "sgcollect_info token has expired after %d secs", time.Since(sg.tokenAge)*time.Second)
+		base.DebugfCtx(ctx, base.KeyAdmin, "sgcollect_info token has expired after %.2f secs", time.Since(sg.tokenAge).Seconds())
 		return false
 	}
 	return token == sg.token
