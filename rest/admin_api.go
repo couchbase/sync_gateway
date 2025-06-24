@@ -1691,7 +1691,9 @@ func (h *handler) handleSGCollect() error {
 
 	logFilePath := h.server.Config.Logging.LogFilePath
 
-	if err := h.server.sgcollect.Start(logFilePath, h.serialNumber, zipFilename, params); err != nil {
+	ctx := base.CorrelationIDLogCtx(context.WithoutCancel(h.ctx()), fmt.Sprintf("SGCollect-%03d", h.serialNumber))
+
+	if err := h.server.sgcollect.Start(ctx, logFilePath, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 

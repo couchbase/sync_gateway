@@ -55,10 +55,10 @@ type sgCollectOutputStream struct {
 	stderrDoneChan   chan struct{}  // Channel to signal stderr processing completion
 }
 
+// sgCollect manages the state of a running sgcollect_info process.
 type sgCollect struct {
-	cancel           context.CancelFunc
+	cancel           context.CancelFunc // Function to cancel a running sgcollect_info process, set when status == sgRunning
 	status           *uint32
-	context          context.Context
 	sgPath           string    // Path to the Sync Gateway executable
 	sgCollectPath    []string  // Path to the sgcollect_info executable
 	sgCollectPathErr error     // Error if sgcollect_info path could not be determined
@@ -67,7 +67,7 @@ type sgCollect struct {
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilename string, params sgCollectOptions) error {
+func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename string, params sgCollectOptions) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
@@ -81,7 +81,7 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 		// If no output directory specified, default to the configured LogFilePath
 		if logFilePath != "" {
 			params.OutputDirectory = logFilePath
-			base.DebugfCtx(sg.context, base.KeyAdmin, "sgcollect_info: no output directory specified, using LogFilePath: %v", params.OutputDirectory)
+			base.DebugfCtx(ctx, base.KeyAdmin, "sgcollect_info: no output directory specified, using LogFilePath: %v", params.OutputDirectory)
 		} else {
 			// If LogFilePath is not set, and DefaultLogFilePath is not set via a service script, error out.
 			return errors.New("no output directory or LogFilePath specified")
@@ -100,43 +100,41 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 	cmdline = append(cmdline, "--sync-gateway-executable", sg.sgPath)
 	cmdline = append(cmdline, zipPath)
 
-	ctx := base.CorrelationIDLogCtx(sg.context, fmt.Sprintf("SGCollect-%03d", ctxSerialNumber))
+	ctx, sg.cancel = context.WithCancel(ctx)
+	cmd := exec.CommandContext(ctx, cmdline[0], cmdline[1:]...)
 
-	sg.context, sg.cancel = context.WithCancel(ctx)
-	cmd := exec.CommandContext(sg.context, cmdline[0], cmdline[1:]...)
-
-	outStream := newSGCollectOutputStream(sg.context, sg.stdout, sg.stderr)
+	outStream := newSGCollectOutputStream(ctx, sg.stdout, sg.stderr)
 	cmd.Stdout = outStream.stdoutPipeWriter
 	cmd.Stderr = outStream.stderrPipeWriter
 
 	if err := cmd.Start(); err != nil {
-		outStream.Close(sg.context)
+		outStream.Close(ctx)
 		return err
 	}
 
 	atomic.StoreUint32(sg.status, sgRunning)
 	startTime := time.Now()
-	base.InfofCtx(sg.context, base.KeyAdmin, "sgcollect_info started with cmdline: %v", base.UD(cmdline))
+	base.InfofCtx(ctx, base.KeyAdmin, "sgcollect_info started with cmdline: %v", base.UD(cmdline))
 
 	go func() {
 		// Blocks until command finishes
 		err := cmd.Wait()
-		outStream.Close(sg.context)
+		outStream.Close(ctx)
 
 		atomic.StoreUint32(sg.status, sgStopped)
 		duration := time.Since(startTime)
 
 		if err != nil {
 			if err.Error() == "signal: killed" {
-				base.InfofCtx(sg.context, base.KeyAdmin, "sgcollect_info cancelled after %v", duration)
+				base.InfofCtx(ctx, base.KeyAdmin, "sgcollect_info cancelled after %v", duration)
 				return
 			}
 
-			base.ErrorfCtx(sg.context, "sgcollect_info failed after %v with reason: %v. Check warning level logs for more information.", duration, err)
+			base.ErrorfCtx(ctx, "sgcollect_info failed after %v with reason: %v. Check warning level logs for more information.", duration, err)
 			return
 		}
 
-		base.InfofCtx(sg.context, base.KeyAdmin, "sgcollect_info finished successfully after %v", duration)
+		base.InfofCtx(ctx, base.KeyAdmin, "sgcollect_info finished successfully after %v", duration)
 	}()
 
 	return nil
@@ -438,8 +436,7 @@ func sgcollectFilename() string {
 // newSGCollect creates a new sgCollect instance.
 func newSGCollect(ctx context.Context) *sgCollect {
 	sgCollectInstance := sgCollect{
-		context: ctx,
-		status:  base.Ptr(sgStopped),
+		status: base.Ptr(sgStopped),
 	}
 	sgCollectInstance.sgPath, sgCollectInstance.sgCollectPath, sgCollectInstance.sgCollectPathErr = sgCollectPaths(ctx)
 	return &sgCollectInstance
