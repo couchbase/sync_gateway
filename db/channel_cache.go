@@ -211,7 +211,7 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) cha
 	// twice)
 	if change.Skipped {
 		c.lateSeqLock.Lock()
-		base.InfofCtx(ctx, base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
+		base.DebugfCtx(ctx, base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
 		defer c.lateSeqLock.Unlock()
 	}
 

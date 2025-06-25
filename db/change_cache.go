@@ -436,16 +436,18 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	c.db.DbStats.Database().DCPReceivedCount.Add(1)
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
-	for _, seq := range syncData.UnusedSequences {
-		base.InfofCtx(ctx, base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
-		change := &LogEntry{
-			Sequence:       seq,
-			TimeReceived:   timeReceived,
-			CollectionID:   event.CollectionID,
-			UnusedSequence: true,
+	if len(syncData.UnusedSequences) > 0 {
+		for _, seq := range syncData.UnusedSequences {
+			change := &LogEntry{
+				Sequence:       seq,
+				TimeReceived:   timeReceived,
+				CollectionID:   event.CollectionID,
+				UnusedSequence: true,
+			}
+			changedChannels := c.processEntry(ctx, change)
+			changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
 		}
-		changedChannels := c.processEntry(ctx, change)
-		changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
+		base.InfofCtx(ctx, base.KeyCache, "Received unused sequences %d in unused_sequences property for (%q / %q)", syncData.UnusedSequences, base.UD(docID), syncData.CurrentRev)
 	}
 
 	// If the recent sequence history includes any sequences earlier than the current sequence, and
@@ -460,6 +462,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 
 	if len(syncData.RecentSequences) > 0 {
 		nextSequence := c.getNextSequence()
+		seqsCached := make([]uint64, 0, len(syncData.RecentSequences))
 
 		for _, seq := range syncData.RecentSequences {
 			// seq < currentSequence means the sequence is not the latest allocated to this document
@@ -469,7 +472,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			// never arrived over the caching feed due to deduplication and was pushed to a skipped sequence list
 			isSkipped := (seq < currentSequence && seq < nextSequence) && c.WasSkipped(seq)
 			if (seq >= nextSequence && seq < currentSequence) || isSkipped {
-				base.InfofCtx(ctx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+				seqsCached = append(seqsCached, seq)
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: timeReceived,
@@ -490,6 +493,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 				changedChannels := c.processEntry(ctx, change)
 				changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
 			}
+		}
+		if len(seqsCached) > 0 {
+			base.InfofCtx(ctx, base.KeyCache, "Received deduplicated seqs %d in recent_sequences property for (%q / %q)", seqsCached, base.UD(docID), syncData.CurrentRev)
 		}
 	}
 
@@ -728,7 +734,6 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	//   - principal mutations that don't increment sequence
 	// We can cancel processing early in these scenarios.
 	// Check if this is a duplicate of an already processed sequence
-	changeIsSkipped := false
 	if sequence < c.nextSequence && !change.Skipped {
 		// check for presence in skippedSeqs, it's possible that change.skipped can be marked false in recent sequence handling
 		// but this change is subsequently pushed to skipped before acquiring cache mutex in this function
@@ -736,7 +741,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 			return nil
 		} else {
-			changeIsSkipped = true
+			change.Skipped = true
 		}
 	}
 
@@ -774,12 +779,11 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
-		if !changeIsSkipped {
+		if !change.Skipped {
 			// Error removing from skipped sequences
-			base.InfofCtx(ctx, base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
+			base.DebugfCtx(ctx, base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 		} else {
-			base.InfofCtx(ctx, base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
-			change.Skipped = true
+			base.DebugfCtx(ctx, base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 		}
 
 		changedChannels = changedChannels.Update(c._addToCache(ctx, change))
