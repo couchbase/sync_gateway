@@ -535,6 +535,11 @@ def make_os_tasks(processes):
         WindowsTask("Computer system", "wmic computersystem"),
         WindowsTask("Computer OS", "wmic os"),
         LinuxTask("System Hardware", "lshw -json || lshw"),
+        LinuxTask("Process list snapshot", "export TERM=''; top -Hb -n1 || top -H n1"),
+        LinuxTask(
+            "Process list",
+            "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command",
+        ),
         LinuxTask("Raw /proc/vmstat", "cat /proc/vmstat"),
         LinuxTask("Raw /proc/mounts", "cat /proc/mounts"),
         LinuxTask("Raw /proc/partitions", "cat /proc/partitions"),
@@ -572,6 +577,7 @@ def make_os_tasks(processes):
         LinuxTask("LVM info", "lvdisplay"),
         LinuxTask("LVM info", "vgdisplay"),
         LinuxTask("LVM info", "pvdisplay"),
+        MacOSXTask("Process list snapshot", "top -l 1"),
         MacOSXTask("Disk activity", "iostat 1 10"),
         MacOSXTask(
             "Process list",
