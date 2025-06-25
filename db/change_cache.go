@@ -728,12 +728,15 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	//   - principal mutations that don't increment sequence
 	// We can cancel processing early in these scenarios.
 	// Check if this is a duplicate of an already processed sequence
+	changeIsSkipped := false
 	if sequence < c.nextSequence && !change.Skipped {
 		// check for presence in skippedSeqs, it's possible that change.skipped can be marked false in recent sequence handling
 		// but this change is subsequently pushed to skipped before acquiring cache mutex in this function
 		if !c.WasSkipped(sequence) {
 			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 			return nil
+		} else {
+			changeIsSkipped = true
 		}
 	}
 
@@ -771,7 +774,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
-		if !c.WasSkipped(sequence) {
+		if !changeIsSkipped {
 			// Error removing from skipped sequences
 			base.InfofCtx(ctx, base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 		} else {
