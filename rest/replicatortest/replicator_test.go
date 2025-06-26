@@ -2254,7 +2254,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	require.NoError(t, ar.Stop())
 
 	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
-	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
+	assert.Equal(t, int64(1), dbstats.ProcessedSequenceLen.Value())
 	assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
 	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
 }
