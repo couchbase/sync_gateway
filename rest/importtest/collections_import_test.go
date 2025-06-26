@@ -357,6 +357,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 
 	defer db.SuspendSequenceBatching()()
 	base.SkipImportTestsIfNotEnabled(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
 
@@ -401,7 +402,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	// Wait for auto-import to work
 	rt.WaitForChanges(docCount, "/{{.keyspace1}}/_changes", "", true)
 	rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
-	require.Equal(t, int64(docCount*2), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, int64(docCount*2))
 
 	oneScopeConfig := rest.GetCollectionsConfig(t, testBucket, 1)
 	oneScopeConfigJSON, err := json.Marshal(oneScopeConfig)
