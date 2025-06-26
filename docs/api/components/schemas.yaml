@@ -967,7 +967,7 @@ Database:
   type: object
   properties:
     server:
-      description: 'This is the Couchbase Server address or addresses that the database connect to. '
+      description: 'This is the Couchbase Server address or addresses that the database connect to. This can only include online data (KV) nodes.'
       type: string
     pool:
       description: This field is unsupported and ignored.
@@ -2042,7 +2042,7 @@ Startup-config:
           type: string
           default: 10s
         server:
-          description: Couchbase Server connection string/URL.
+          description: Couchbase Server connection string/URL. This can only include online data (KV) nodes.
           type: string
         username:
           description: Username for authenticating to server.
