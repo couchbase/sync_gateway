@@ -2198,10 +2198,10 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	// wait for the documents originally written to rt2 to arrive at rt1
 	rt1.WaitForVersion(docID1, doc1Version)
 
-	require.NoError(t, ar.Stop())
 	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
 	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
+	require.NoError(t, ar.Stop())
 
 	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
 	assert.Equal(t, int64(1), dbstats.ProcessedSequenceLen.Value())
@@ -2227,10 +2227,10 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 	rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
 
-	require.NoError(t, ar.Stop())
 	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 2)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
 	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 2)
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
+	require.NoError(t, ar.Stop())
 
 	assert.Equal(t, int64(2), dbstats.ExpectedSequenceLen.Value())
 	assert.Equal(t, int64(2), dbstats.ProcessedSequenceLen.Value())
@@ -2248,10 +2248,10 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 	rt1.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
 
-	require.NoError(t, ar.Stop())
 	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
 	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
+	require.NoError(t, ar.Stop())
 
 	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
 	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
