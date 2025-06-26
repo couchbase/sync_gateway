@@ -18,7 +18,7 @@ import (
 	skiplist "github.com/couchbasedeps/fast-skiplist"
 )
 
-// CBG-4717
+// CBG-4717 - tune down skiplist level - benchmarking has shown this to be optimal for all list sizes
 const skipListLevel = 12
 
 // SkippedSequenceSkiplist is a skiplist implementation of the skipped sequence list, no mutex needed as the skiplist
