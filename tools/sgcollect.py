@@ -12,6 +12,7 @@ licenses/APL2.txt.
 
 # -*- python -*-
 import base64
+import getpass
 import glob
 import json
 import optparse
@@ -19,13 +20,14 @@ import os
 import pathlib
 import platform
 import re
+import shutil
 import ssl
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import List, NoReturn, Optional
+from typing import List, Literal, NoReturn, Optional, Union
 
 import password_remover
 from tasks import (
@@ -40,7 +42,6 @@ from tasks import (
     log,
     make_curl_task,
     make_os_tasks,
-    setup_stdin_watcher,
     urlopen,
 )
 
@@ -69,14 +70,18 @@ else:
 # One common incompatibility is the formatting syntax, as discussed here: http://bit.ly/2rIH8wg
 USAGE = """usage: %prog [options] output_file.zip
 
-- Linux/Windows/OSX:
-    %prog output_file.zip
-    %prog -v output_file.zip"""
+    %prog --sync-gateway-url=https://127.0.0.1:4985 --sync-gateway-username=SYNC_GATEWAY_ADMIN_USERNAME output_file.zip
+    %prog --sync-gateway-url=https://127.0.0.1:4985 --sync-gateway-username=SYNC_GATEWAY_ADMIN_USERNAME -v output_file.zip"""
 
+DESCRIPTION = """Collect information from Sync Gateway for support purposes. To collect usable information, you must provide a username that has access to the Sync Gateway Admin API via --sync-gateway-username or SG_USERNAME environment variable. The Sync Gateway Admin API password will be prompted for if not provided via environment variable SG_PASSWORD."""
 mydir = os.path.dirname(sys.argv[0])
 
 # name of the log file that contains the options passed to sgcollect_info
 SGCOLLECT_INFO_OPTIONS_LOG = "sgcollect_info_options.log"
+
+SG_USERNAME_ENV = "SG_USERNAME"
+SG_PASSWORD_ENV = "SG_PASSWORD"
+SG_PASSWORD_ERROR = f"--sync-gateway-password is no longer functional. --sync-gateway-username will ask for an interactive password or use environment variable {SG_PASSWORD_ENV}=<password>."
 
 
 def delete_zip(filename):
@@ -92,34 +97,57 @@ def delete_zip(filename):
         print("Zipfile ({0}) deletion failed: {1}".format(filename, e))
 
 
+def sync_gateway_option_callback(
+    option: optparse.Option,
+    opt: str,
+    value: str,
+    parser: optparse.OptionParser,
+) -> None:
+    if value:
+        raise optparse.OptionValueError(SG_PASSWORD_ERROR)
+
+
+class HelpFormatter(optparse.IndentedHelpFormatter):
+    """
+    HelpFormatter that does not truncate help to 80 characters, matches argparse implementation.
+    """
+
+    def __init__(
+        self,
+        indent_increment: int = 2,
+        max_help_position: int = 24,
+        width: Optional[int] = None,
+        short_first: Union[bool, Literal[0, 1]] = 1,
+    ):
+        # match width from argparse implementation
+        width = shutil.get_terminal_size().columns - 2
+        super().__init__(indent_increment, max_help_position, width, short_first)
+
+
 def create_option_parser():
-    parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
+    parser = optparse.OptionParser(
+        usage=USAGE,
+        option_class=CbcollectInfoOptions,
+        description=DESCRIPTION,
+        formatter=HelpFormatter(),
+    )
+    parser.add_option(
+        "--sync-gateway-url",
+        dest="sync_gateway_url",
+        help="Sync Gateway admin port URL. By default, will try https://127.0.0.1:4985 and http://127.0.0.1:4984",
+    )
+    parser.add_option(
+        "--sync-gateway-username",
+        dest="sync_gateway_username",
+        help="Sync Gateway Admin API username. This is required to collect logging and configuration information. Can be specified with SG_USERNAME env variable.",
+    )
+
+    # -r is unused, copied from cbcollect_info
     parser.add_option(
         "-r",
         dest="root",
-        help="root directory - defaults to %s" % (mydir + "/.."),
-        default=os.path.abspath(os.path.join(mydir, "..")),
-    )
-    parser.add_option(
-        "-v",
-        dest="verbosity",
-        help="increase verbosity level",
-        action="count",
-        default=0,
-    )
-    parser.add_option(
-        "-p",
-        dest="product_only",
-        help="gather only product related information",
-        action="store_true",
-        default=False,
-    )
-    parser.add_option(
-        "--watch-stdin",
-        dest="watch_stdin",
-        action="store_true",
-        default=False,
         help=optparse.SUPPRESS_HELP,
+        default=os.path.abspath(os.path.join(mydir, "..")),
     )
     parser.add_option(
         "--log-redaction-level",
@@ -131,9 +159,9 @@ def create_option_parser():
         "--log-redaction-salt",
         dest="salt_value",
         default=str(uuid.uuid4()),
-        help="Is used to salt the hashing of tagged data, \
-                            defaults to random uuid. If input by user it should \
-                            be provided along with --log-redaction-level option",
+        help="Is used to salt the hashing of tagged data, "
+        "defaults to random uuid. If input by user it should "
+        "be provided along with --log-redaction-level option",
     )
     parser.add_option(
         "--just-upload-into", dest="just_upload_into", help=optparse.SUPPRESS_HELP
@@ -157,33 +185,26 @@ def create_option_parser():
         help="used in conjunction with '--upload-host' and '--customer',"
         " specifies the support ticket number for the upload."
         " e.g 1234 (must be numeric), contact Couchbase Support to open a new"
-        "ticket if you do not already have one.  For more info, see"
-        "http://www.couchbase.com/wiki/display/couchbase/Working+with+the+Couchbase+Technical+Support+Team",
-    )
-    parser.add_option(
-        "--sync-gateway-url",
-        dest="sync_gateway_url",
-        help="Sync Gateway admin port URL, eg, http://localhost:4985",
+        " ticket if you do not already have one.  For more info, see"
+        " https://www.couchbase.com/wiki/display/couchbase/Working+with+the+Couchbase+Technical+Support+Team",
     )
     parser.add_option(
         "--sync-gateway-config",
         dest="sync_gateway_config",
-        help="path to Sync Gateway config.  By default will try to discover via expvars",
+        help="path to Sync Gateway config. If able to connect to Sync Gateway Admin API, this does not need to be specified.",
     )
     parser.add_option(
         "--sync-gateway-executable",
         dest="sync_gateway_executable",
-        help="path to Sync Gateway executable.  By default will try to discover via expvars",
-    )
-    parser.add_option(
-        "--sync-gateway-username",
-        dest="sync_gateway_username",
-        help="Sync Gateway Admin API username ",
+        help="path to Sync Gateway executable. If able to connect to Sync Gateway Admin API, this does not need to be specified.",
     )
     parser.add_option(
         "--sync-gateway-password",
-        dest="sync_gateway_password",
-        help="Sync Gateway Admin API password ",
+        action="callback",
+        callback=sync_gateway_option_callback,
+        dest="do_not_use",
+        type=str,
+        help=optparse.SUPPRESS_HELP,
     )
     parser.add_option(
         "--upload-proxy",
@@ -204,6 +225,21 @@ def create_option_parser():
         default=False,
         help="keep sgcollect zip files after uploading them. By default they will be deleted to save disk space",
     )
+    parser.add_option(
+        "-p",
+        dest="product_only",
+        help="gather only product related information",
+        action="store_true",
+        default=False,
+    )
+    parser.add_option(
+        "-v",
+        dest="verbosity",
+        help="increase verbosity level",
+        action="count",
+        default=0,
+    )
+
     return parser
 
 
@@ -808,12 +844,8 @@ def main() -> NoReturn:
             "incorrect number of arguments. Expecting filename to collect diagnostics into"
         )
 
-    # Setup stdin watcher if this option was passed
-    if options.watch_stdin:
-        setup_stdin_watcher()
-
     auth_headers = get_auth_headers(
-        options.sync_gateway_username, options.sync_gateway_password
+        options.sync_gateway_username,
     )
     sg_url = get_sg_url(options, auth_headers)
 
@@ -1021,7 +1053,7 @@ def can_connect_to_sg_url(sg_url: str, auth_headers: dict[str, str]) -> bool:
     return True
 
 
-def get_auth_headers(username: str, password: str) -> dict[str, str]:
+def get_auth_headers(username: str) -> dict[str, str]:
     """
     Return the headers for authentication.
     """
@@ -1029,9 +1061,24 @@ def get_auth_headers(username: str, password: str) -> dict[str, str]:
     session_token = os.environ.get(session_token_name)
     if session_token:
         return {"Authorization": f"SGCollect {session_token}"}
-    elif username:
-        base64string = base64.b64encode(
-            (f"{username}:{password}").encode("utf-8")
-        ).decode("utf-8")
-        return {"Authorization": f"Basic {base64string}"}
-    return {}
+    if not username:
+        username = os.environ.get(SG_USERNAME_ENV, "")
+    if not username:
+        return {}
+
+    password = os.environ.get(SG_PASSWORD_ENV)
+    if not password:
+        password = getpass.getpass(
+            prompt=f"Sync Gateway Admin API password for user '{username}': "
+        )
+    return {"Authorization": get_basic_authorization_header(username, password)}
+
+
+def get_basic_authorization_header(username: str, password: str) -> str:
+    """
+    Return the value for the Authorization header for basic auth.
+    """
+    base64string = base64.b64encode((f"{username}:{password}").encode("utf-8")).decode(
+        "utf-8"
+    )
+    return f"Basic {base64string}"
