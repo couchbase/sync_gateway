@@ -18,6 +18,9 @@ import (
 	skiplist "github.com/couchbasedeps/fast-skiplist"
 )
 
+// CBG-4717
+const skipListLevel = 12
+
 // SkippedSequenceSkiplist is a skiplist implementation of the skipped sequence list, no mutex needed as the skiplist
 // has this covered
 type SkippedSequenceSkiplist struct {
@@ -34,7 +37,7 @@ type SkippedSequenceStats struct {
 
 func NewSkippedSequenceSkiplist() *SkippedSequenceSkiplist {
 	return &SkippedSequenceSkiplist{
-		list: skiplist.New(),
+		list: skiplist.NewWithMaxLevel(skipListLevel),
 	}
 }
 
