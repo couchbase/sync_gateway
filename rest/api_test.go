@@ -2680,6 +2680,7 @@ func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
 	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
