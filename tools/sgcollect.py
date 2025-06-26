@@ -27,7 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import List, NoReturn, Optional
+from typing import List, Literal, NoReturn, Optional, Union
 
 import password_remover
 from tasks import (
@@ -118,7 +118,7 @@ class HelpFormatter(optparse.IndentedHelpFormatter):
         indent_increment: int = 2,
         max_help_position: int = 24,
         width: Optional[int] = None,
-        short_first: int = 1,
+        short_first: Union[bool, Literal[0, 1]] = 1,
     ):
         # match width from argparse implementation
         width = shutil.get_terminal_size().columns - 2
@@ -148,6 +148,7 @@ def create_option_parser():
         "-r",
         dest="root",
         help=optparse.SUPPRESS_HELP,
+        default=os.path.abspath(os.path.join(mydir, "..")),
     )
     parser.add_option(
         "--log-redaction-level",
