@@ -40,7 +40,7 @@ post:
               description: User name to generate the session for.
               type: string
             ttl:
-              description: Time until the session expires. Uses default value of 24 hours if left blank.
+              description: Time until the session expires. Uses default value of 24 hours if left blank. This value must be greater or equal to 1.
               type: integer
   responses:
     '200':
