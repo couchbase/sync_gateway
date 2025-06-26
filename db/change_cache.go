@@ -447,7 +447,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			changedChannels := c.processEntry(ctx, change)
 			changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
 		}
-		base.InfofCtx(ctx, base.KeyCache, "Received unused sequences %d in unused_sequences property for (%q / %q)", syncData.UnusedSequences, base.UD(docID), syncData.CurrentRev)
+		base.DebugfCtx(ctx, base.KeyCache, "Received unused sequences in unused_sequences property for (%q / %q): %v", base.UD(docID), syncData.CurrentRev, syncData.UnusedSequences)
 	}
 
 	// If the recent sequence history includes any sequences earlier than the current sequence, and
@@ -495,7 +495,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			}
 		}
 		if len(seqsCached) > 0 {
-			base.InfofCtx(ctx, base.KeyCache, "Received deduplicated seqs %d in recent_sequences property for (%q / %q)", seqsCached, base.UD(docID), syncData.CurrentRev)
+			base.DebugfCtx(ctx, base.KeyCache, "Received deduplicated seqs in recent_sequences property for (%q / %q): %v", base.UD(docID), syncData.CurrentRev, seqsCached)
 		}
 	}
 
