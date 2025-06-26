@@ -331,6 +331,9 @@ func (h *handler) formatSessionResponse(user auth.User) db.Body {
 			name = &userName
 		}
 		allChannels = user.Channels()
+		for _, role := range user.GetRoles() {
+			allChannels.Add(role.Channels())
+		}
 	}
 
 	// Return a JSON struct similar to what CouchDB returns:
