@@ -82,3 +82,4 @@ rules:
   security-defined: off       # TODO: Denote public and authenticated API endpoints with https://redocly.com/docs/cli/rules/security-defined
   custom-rules/typecheck-defaults: error
   custom-rules/check-additional-properties-names: error
+  custom-rules/check-properties-sorted: error
