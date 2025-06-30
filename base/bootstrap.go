@@ -141,19 +141,28 @@ func (c *cachedBucketConnections) _set(bucketName string, bucket *cachedBucket) 
 
 var _ BootstrapConnection = &CouchbaseCluster{}
 
+// CouchbaseClusterSpec defines the credentials to make a connection to a cluster. This is a subset of a bucket specification and is serializable only for test purposes.
+type CouchbaseClusterSpec struct {
+	Server        string `json:"server,omitempty"`        // Couchbase server address (e.g. "couchbases://127.0.0.1")
+	Certpath      string `json:"certpath,omitempty"`      // X.509 cert path
+	Keypath       string `json:"keypath,omitempty"`       // X.509 key path
+	CACertPath    string `json:"cacertpath,omitempty"`    // X.509 CA cert path
+	Username      string `json:"username,omitempty"`      // RBAC username
+	Password      string `json:"password,omitempty"`      // RBAC password
+	TLSSkipVerify bool   `json:"tlsSkipVerify,omitempty"` // Skip TLS verification for the server
+}
+
 // NewCouchbaseCluster creates and opens a Couchbase Server cluster connection.
-func NewCouchbaseCluster(ctx context.Context, server, username, password,
-	x509CertPath, x509KeyPath, caCertPath string,
-	forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
-	tlsSkipVerify *bool, useXattrConfig bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
-	securityConfig, err := GoCBv2SecurityConfig(ctx, tlsSkipVerify, caCertPath)
+func NewCouchbaseCluster(ctx context.Context, spec CouchbaseClusterSpec, forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
+	useXattrConfig bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
+	securityConfig, err := GoCBv2SecurityConfig(ctx, &spec.TLSSkipVerify, spec.CACertPath)
 	if err != nil {
 		return nil, err
 	}
 
 	clusterAuthConfig, err := GoCBv2Authenticator(
-		username, password,
-		x509CertPath, x509KeyPath,
+		spec.Username, spec.Password,
+		spec.Certpath, spec.Keypath,
 	)
 	if err != nil {
 		return nil, err
@@ -180,7 +189,7 @@ func NewCouchbaseCluster(ctx context.Context, server, username, password,
 	}
 
 	cbCluster := &CouchbaseCluster{
-		server:               server,
+		server:               spec.Server,
 		forcePerBucketAuth:   forcePerBucketAuth,
 		perBucketAuth:        perBucketAuth,
 		clusterOptions:       clusterOptions,

@@ -340,6 +340,7 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 }
 
 func TestChangeIndexPartitionsWithViews(t *testing.T) {
+	base.TestRequiresViews(t)
 	// force views - doesn't matter what mode test framework is in since we're not actually using any
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.Ptr(true)}}})
 	defer rt.Close()

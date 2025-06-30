@@ -160,7 +160,10 @@ type NoNameDesignDocument struct {
 }
 
 func (b *GocbV2Bucket) putDDocForTombstones(ctx context.Context, ddoc *gocb.DesignDocument) error {
-	username, password, _ := b.Spec.Auth.GetCredentials()
+	var username, password string
+	if b.Spec.Auth != nil {
+		username, password, _ = b.Spec.Auth.GetCredentials()
+	}
 	agent, err := b.GetGoCBAgent()
 	if err != nil {
 		return fmt.Errorf("Unable to get handle for bucket router: %v", err)

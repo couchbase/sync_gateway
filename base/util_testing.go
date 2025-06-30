@@ -13,7 +13,6 @@ package base
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -767,6 +766,26 @@ func TestRequiresDCPResync(t testing.TB) {
 	}
 }
 
+// TestRequiresViews will skip the current test if connection will not support views.
+func TestRequiresViews(t testing.TB) {
+	if TestHasOnlyX509Auth(t) {
+		t.Skip("Skipping test - views not supported when running x509 auth, due to gocb limitation")
+	}
+
+}
+
+// TestHasOnlyX509Auth means the test harness does not have any basic authentication credentials for Couchbase Server.
+func TestHasOnlyX509Auth(t testing.TB) bool {
+	return GTestBucketPool.clusterSpec.Keypath != ""
+}
+
+// TestRequiresCouchbaseServerBasicAuth is true when the SG_TEST_CLUSTER_SPEC is not set up to use x509 auth.
+func TestRequiresCouchbaseServerBasicAuth(t testing.TB) {
+	if GTestBucketPool.clusterSpec.Keypath != "" {
+		t.Skip("Skipping test - integration tests are set up to use x509 auth to communicate with Couchbase Server")
+	}
+}
+
 // TestRequiresGocbDCPClient will skip the current test if using rosmar.
 func TestRequiresGocbDCPClient(t testing.TB) {
 	if UnitTestUrlIsWalrus() {
@@ -812,18 +831,23 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 		return nil
 	}
 
-	un, pw, _ := bucketSpec.Auth.GetCredentials()
-	var rootCAs *x509.CertPool
-	if tlsConfig := bucketSpec.TLSConfig(ctx); tlsConfig != nil {
-		rootCAs = tlsConfig.RootCAs
+	var un, pw string
+	if bucketSpec.Auth != nil {
+		un, pw, _ = bucketSpec.Auth.GetCredentials()
+	}
+	authenticatorConfig, err := GoCBv2Authenticator(un, pw, bucketSpec.Certpath, bucketSpec.Keypath)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticator config: %w", err)
+	}
+	securityConfig, err := GoCBv2SecurityConfig(ctx, &bucketSpec.TLSSkipVerify, bucketSpec.CACertPath)
+	if err != nil {
+		return fmt.Errorf("failed to create security config: %w", err)
 	}
 	cluster, err := gocb.Connect(bucketSpec.Server, gocb.ClusterOptions{
-		Username: un,
-		Password: pw,
-		SecurityConfig: gocb.SecurityConfig{
-			TLSSkipVerify: bucketSpec.TLSSkipVerify,
-			TLSRootCAs:    rootCAs,
-		},
+		Username:       un,
+		Password:       pw,
+		Authenticator:  authenticatorConfig,
+		SecurityConfig: securityConfig,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect to cluster: %w", err)

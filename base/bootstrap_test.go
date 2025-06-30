@@ -48,15 +48,11 @@ func TestBootstrapRefCounting(t *testing.T) {
 		assert.Equal(c, int32(tbpNumBuckets(ctx)), GTestBucketPool.stats.TotalBucketInitCount.Load())
 	}, 2*time.Minute, 5*time.Millisecond) // Wait for bucket pool to be initialized, since GetConfigBuckets requires equal buckets to tbpNumBuckets
 
-	// Integration tests are configured to run in these parameters, they are used in main_test_bucket_pool.go
-	// Future enhancement would be to allow all integration tests to run with TLS
-	x509CertPath := ""
-	x509KeyPath := ""
-	caCertPath := ""
 	forcePerBucketAuth := false
-	tlsSkipVerify := Ptr(TestTLSSkipVerify())
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
-	cluster, err := NewCouchbaseCluster(ctx, UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, TestUseXattrs(), CachedClusterConnections)
+	clusterSpec, err := GetTestClusterSpec()
+	require.NoError(t, err)
+	cluster, err := NewCouchbaseCluster(ctx, *clusterSpec, forcePerBucketAuth, perBucketCredentialsConfig, TestUseXattrs(), CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()
 	require.NotNil(t, cluster)

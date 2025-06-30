@@ -962,6 +962,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
 
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	ctx := base.TestCtx(t)
 
@@ -3138,6 +3139,7 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 }
 
 func TestTLSWithoutCerts(t *testing.T) {
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -3261,6 +3263,7 @@ func TestRoleUpdatedAtField(t *testing.T) {
 }
 
 func TestServerUUIDRuntimeServerConfig(t *testing.T) {
+	base.TestRequiresCouchbaseServerBasicAuth(t) // this is a bug in ServerContext.getClusterUUID() which needs to use x509 auth
 	testCases := []struct {
 		name             string
 		persistentConfig bool

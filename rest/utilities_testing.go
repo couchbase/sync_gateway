@@ -243,15 +243,19 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	sc := DefaultStartupConfig("")
 
-	username, password, _ := testBucket.BucketSpec.Auth.GetCredentials()
-
 	// Disable config polling to avoid test flakiness and increase control of timing.
 	// Rely on on-demand config fetching for consistency.
 	sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
+	clusterSpec, err := base.GetTestClusterSpec()
+	require.NoError(rt.TB(), err)
+	sc.Bootstrap.Server = clusterSpec.Server
+	sc.Bootstrap.CACertPath = clusterSpec.CACertPath
+	sc.Bootstrap.X509CertPath = clusterSpec.Certpath
+	sc.Bootstrap.X509KeyPath = clusterSpec.Keypath
+	sc.Bootstrap.Username = clusterSpec.Username
+	sc.Bootstrap.Password = clusterSpec.Password
+	sc.Bootstrap.ServerTLSSkipVerify = &clusterSpec.TLSSkipVerify
 
-	sc.Bootstrap.Server = testBucket.BucketSpec.Server
-	sc.Bootstrap.Username = username
-	sc.Bootstrap.Password = password
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
 	sc.API.HideProductVersion = base.Ptr(rt.RestTesterConfig.HideProductInfo)
@@ -260,7 +264,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
-	sc.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
@@ -363,8 +366,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig.Index.NumReplicas = base.Ptr(uint(0))
 
 		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
-		rt.DatabaseConfig.Username = username
-		rt.DatabaseConfig.Password = password
+		rt.DatabaseConfig.Username = clusterSpec.Username
+		rt.DatabaseConfig.Password = clusterSpec.Password
 		rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
 		rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
 		rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath

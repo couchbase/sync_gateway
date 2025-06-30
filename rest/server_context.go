@@ -1897,10 +1897,9 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 	}
 
 	if err := <-agentReadyErr; err != nil {
-		if _, ok := errors.Unwrap(err).(x509.UnknownAuthorityError); ok {
+		if isX509CertificateError(err) {
 			err = fmt.Errorf("%w - Provide a CA cert, or set tls_skip_verify to true in config", err)
 		}
-
 		return nil, err
 	}
 
@@ -2298,4 +2297,20 @@ func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("unable to get cluster UUID from server: %s", output)
 	}
 	return base.ParseClusterUUID(output)
+}
+
+// isX509CertificateError returns true if the error represents a certificate failure
+func isX509CertificateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var certVerificationError *tls.CertificateVerificationError
+	if errors.As(err, &certVerificationError) {
+		return true
+	}
+	var x509UnknownAuthority *x509.UnknownAuthorityError
+	if errors.As(err, &x509UnknownAuthority) {
+		return true
+	}
+	return false
 }

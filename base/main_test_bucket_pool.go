@@ -39,6 +39,7 @@ type TestBucketPool struct {
 
 	// readyBucketPool contains a buffered channel of buckets ready for use
 	readyBucketPool        chan Bucket
+	clusterSpec            CouchbaseClusterSpec
 	cluster                *tbpCluster
 	bucketReadierQueue     chan tbpBucketName
 	bucketReadierWaitGroup *sync.WaitGroup
@@ -104,6 +105,11 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	numBuckets := tbpNumBuckets(ctx)
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
+	clusterSpec, err := GetTestClusterSpec()
+	if err != nil {
+		FatalfCtx(ctx, "couldn't get test cluster spec: %v", err)
+	}
+
 	tbp := TestBucketPool{
 		integrationMode:         !UnitTestUrlIsWalrus() && !TestUseExistingBucket(),
 		readyBucketPool:         make(chan Bucket, numBuckets),
@@ -118,6 +124,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		skipMobileXDCR:          false,
 		numCollectionsPerBucket: numCollectionsPerBucket,
 		verbose:                 *NewAtomicBool(tbpVerbose()),
+		clusterSpec:             *clusterSpec,
 	}
 
 	// We can safely skip setup if using existing buckets or rosmar buckets, since they can be opened on demand.
@@ -250,7 +257,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	openedStart := time.Now()
 	bucketClosed := &AtomicBool{}
 
-	bucketSpec := getTestBucketSpec(tbpBucketName(b.GetName()))
+	bucketSpec := getTestBucketSpec(tbp.clusterSpec, tbpBucketName(b.GetName()))
 	bucketSpec.Server = url
 
 	return b, bucketSpec, func(ctx context.Context) {
@@ -277,10 +284,10 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 	ctx := TestCtx(t)
 
 	// each bucket opens its own cluster connection since Bucket.Close will close the underlying gocb.Cluster
-	bucketCluster, connstr := getGocbClusterForTest(ctx, UnitTestUrl())
+	bucketCluster, connstr := getGocbClusterForTest(ctx, tbp.clusterSpec)
 
 	bucketName := tbpBucketName(TestUseExistingBucketName())
-	bucketSpec := getTestBucketSpec(bucketName)
+	bucketSpec := getTestBucketSpec(tbp.clusterSpec, bucketName)
 	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, connstr, waitForReadyBucketTimeout, false)
 	if err != nil {
 		tbp.Fatalf(ctx, "couldn't get existing collection from cluster: %v", err)
@@ -344,7 +351,7 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
 	bucketClosed := &AtomicBool{}
-	bucketSpec := getTestBucketSpec(tbpBucketName(bucket.GetName()))
+	bucketSpec := getTestBucketSpec(tbp.clusterSpec, tbpBucketName(bucket.GetName()))
 	return bucket, bucketSpec, func(ctx context.Context) {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")

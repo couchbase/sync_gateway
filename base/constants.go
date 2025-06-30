@@ -40,7 +40,7 @@ const (
 
 	DefaultTestBucketname = "test_data_bucket"
 	DefaultTestUsername   = DefaultTestBucketname
-	DefaultTestPassword   = "password"
+	DefaultTestPassword   = "password2"
 
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"

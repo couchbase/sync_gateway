@@ -66,6 +66,9 @@ const (
 
 	// Environment variable to specify the topology tests to run
 	TbpEnvTopologyTests = "SG_TEST_TOPOLOGY_TESTS"
+
+	// Environment variable to define a cluster spec file listing authentication information to connect.
+	tbpEnvClusterSpec = "SG_TEST_CLUSTER_SPEC"
 )
 
 // TestsUseNamedCollections returns true if the tests use named collections.

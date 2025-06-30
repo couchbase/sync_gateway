@@ -422,6 +422,7 @@ func TestPutDBBytesRead(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test only works with CBS because of use fo RBAC roles")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)

@@ -10,6 +10,8 @@
 /pkg
 *.exe
 *.iml
+# sgcollect files
+*.zip
 sg_config.json
 coverage*.out
 coverage*.xml
@@ -20,8 +22,14 @@ sync_gateway
 __pycache__
 tools/cache_perf_tool/cache_perf_tool
 cache_perf_tool
+# stats export tool
 tools/stats-definition-exporter/stats-definition-exporter
 stats-definition-exporter
+metrics_metadata.json
+# x509 testing paths
+integration-test/cluster_config.json
+integration-test/certs
+cert-manager
 
 ### Couchbase Plugin ###
 .cbcache/
