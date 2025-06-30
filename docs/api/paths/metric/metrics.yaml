@@ -18,8 +18,8 @@ get:
   responses:
     '200':
       description: |-
-          Successfully returned statistics.
-          For details, see [Prometheus Metrics](stats-monitoring-prometheus.html).
+        Successfully returned statistics.
+        For details, see [Prometheus Metrics](stats-monitoring-prometheus.html).
   tags:
     - Prometheus
   operationId: get_metrics
