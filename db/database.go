@@ -139,6 +139,7 @@ type DatabaseContext struct {
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
+	SkippedSeqDocID              string
 }
 
 type Scope struct {
@@ -561,6 +562,72 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	if syncFunctionsChanged {
 		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
+	}
+
+	if dbContext.Options.UnsupportedOptions != nil && dbContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
+		// create doc for skipped sequence status on nodes
+		// add this behind reject writes flag
+		for i := 0; i < 4; i++ {
+			docID := fmt.Sprintf("_sync:skipped_sequence_status_%d", i)
+			added, err := metadataStore.Add(docID, 0, []byte(`{"skipped" : false}`))
+			if err != nil {
+				return nil, err
+			}
+			if added {
+				dbContext.SkippedSeqDocID = docID
+				// exit loop if we successfully added the doc
+				break
+			}
+		}
+
+		go func(db *DatabaseContext) {
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			broadcastSlowMode := false
+			for {
+				select {
+				case <-db.CancelContext.Done():
+					return
+				case <-ticker.C:
+					newBroadcastSlowMode := db.BroadcastSlowMode.Load()
+					if broadcastSlowMode != newBroadcastSlowMode {
+						base.InfofCtx(ctx, base.KeyAll, "setting skipped bucket doc to %t", newBroadcastSlowMode)
+						err := db.MetadataStore.SetRaw(db.SkippedSeqDocID, 0, nil, []byte(fmt.Sprintf(`{"skipped": %t}`, newBroadcastSlowMode)))
+						if err != nil {
+							base.WarnfCtx(ctx, "Error updating skipped sequence status: %v", err)
+						}
+						broadcastSlowMode = newBroadcastSlowMode
+					}
+				}
+			}
+		}(dbContext)
+
+		go func(db *DatabaseContext) {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-db.CancelContext.Done():
+					return
+				case <-ticker.C:
+					for i := 0; i < 4; i++ {
+						docID := fmt.Sprintf("_sync:skipped_sequence_status_%d", i)
+						var body map[string]bool
+						_, err := db.MetadataStore.Get(docID, &body)
+						if err == nil {
+							skipped := body["skipped"]
+							currValue := db.BroadcastSlowMode.Load()
+							db.BroadcastSlowMode.CompareAndSwap(currValue, skipped)
+							if skipped {
+								// if one node has skipped sequences, all nodes will reject writes and we will have set boolean above to true
+								// so exit loop early
+								break
+							}
+						}
+					}
+				}
+			}
+		}(dbContext)
 	}
 
 	// Initialize sg-replicate manager
