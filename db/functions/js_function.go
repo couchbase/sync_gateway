@@ -34,7 +34,11 @@ func (fn *jsInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 }
 
 func (fn *jsInvocation) Run(ctx context.Context) (any, error) {
-	return fn.call(ctx, db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), fn.args)
+	userCtx, err := db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection)
+	if err != nil {
+		return nil, err
+	}
+	return fn.call(ctx, userCtx, fn.args)
 }
 
 func (fn *jsInvocation) call(ctx context.Context, jsArgs ...any) (any, error) {

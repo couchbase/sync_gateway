@@ -1231,8 +1231,11 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		return nil, err, nil
 	}
 
-	output, err := db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap,
-		MakeUserCtx(db.user, db.ScopeName, db.Name))
+	userCtx, err := MakeUserCtx(db.user, db.ScopeName, db.Name)
+	if err != nil {
+		return nil, err, nil
+	}
+	output, err := db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, userCtx)
 
 	return output, nil, err
 }
@@ -2500,8 +2503,12 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		var output *channels.ChannelMapperOutput
 
 		startTime := time.Now()
-		output, err = col.ChannelMapper.MapToChannelsAndAccess(ctx, body, oldJson, metaMap,
-			MakeUserCtx(col.user, col.ScopeName, col.Name))
+		var userCtx map[string]any
+		userCtx, err = MakeUserCtx(col.user, col.ScopeName, col.Name)
+		if err != nil {
+			return
+		}
+		output, err = col.ChannelMapper.MapToChannelsAndAccess(ctx, body, oldJson, metaMap, userCtx)
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
 		col.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
@@ -2556,15 +2563,19 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 }
 
 // Creates a userCtx object to be passed to the sync function
-func MakeUserCtx(user auth.User, scopeName string, collectionName string) map[string]interface{} {
+func MakeUserCtx(user auth.User, scopeName string, collectionName string) (map[string]interface{}, error) {
 	if user == nil {
-		return nil
+		return nil, nil
+	}
+	allChannels, err := user.InheritedCollectionChannels(scopeName, collectionName)
+	if err != nil {
+		return nil, err
 	}
 	return map[string]interface{}{
 		"name":     user.Name(),
 		"roles":    user.RoleNames(),
-		"channels": user.InheritedCollectionChannels(scopeName, collectionName).AllKeys(),
-	}
+		"channels": allChannels.AllKeys(),
+	}, nil
 }
 
 // Are the principal and role names in an AccessMap all valid?

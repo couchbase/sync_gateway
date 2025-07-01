@@ -274,7 +274,7 @@ func (revokedChannels RevokedChannels) add(chanName string, triggeredBy uint64) 
 	}
 }
 
-func (user *userImpl) revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
+func (user *userImpl) revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) (RevokedChannels, error) {
 	return user.RevokedCollectionChannels(base.DefaultScope, base.DefaultCollection, since, lowSeq, triggeredBy)
 }
 
@@ -289,7 +289,7 @@ func (user *userImpl) revokedChannels(since uint64, lowSeq uint64, triggeredBy u
 //
 // Get user:
 //   - Revoke users revoked channels
-func (user *userImpl) RevokedCollectionChannels(scope string, collection string, since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
+func (user *userImpl) RevokedCollectionChannels(scope string, collection string, since uint64, lowSeq uint64, triggeredBy uint64) (RevokedChannels, error) {
 	// checkSeq represents the value that we use to 'diff' against ie. What channels did the user have at checkSeq but
 	// no longer has.
 	// In the event we have a lowSeq that will be used.
@@ -310,7 +310,10 @@ func (user *userImpl) RevokedCollectionChannels(scope string, collection string,
 	// If there has been a revocation somewhere after the since value or we're in an interrupted revocation backfill
 	// at the point a revocation occurred we should return this as a channel to revoke.
 
-	accessibleChannels := user.InheritedCollectionChannels(scope, collection)
+	accessibleChannels, err := user.InheritedCollectionChannels(scope, collection)
+	if err != nil {
+		return nil, err
+	}
 	// Get revoked roles
 	rolesToRevoke := map[string]uint64{}
 	roleHistory := user.RoleHistory()
@@ -385,14 +388,18 @@ func (user *userImpl) RevokedCollectionChannels(scope string, collection string,
 
 	// Iterate over current roles and revoke any revoked channels inside role provided that channel isn't accessible
 	// from another grant
-	for _, role := range user.GetRolesIncDeleted() {
+	roles, err := user.GetRolesIncDeleted()
+	if err != nil {
+		return nil, err
+	}
+	for _, role := range roles {
 		revokeChannelHistoryProcessing(role)
 	}
 
 	// Lastly get the revoked channels based off of channel history on the user itself
 	revokeChannelHistoryProcessing(user)
 
-	return combinedRevokedChannels
+	return combinedRevokedChannels, nil
 }
 
 func (user *userImpl) channelGrantedPeriods(chanName string) ([]GrantHistorySequencePair, error) {
@@ -433,7 +440,11 @@ func (user *userImpl) CollectionChannelGrantedPeriods(scope, collection, chanNam
 	}
 
 	// Iterate over current roles
-	for _, currentRole := range user.GetRoles() {
+	roles, err := user.GetRoles()
+	if err != nil {
+		return nil, err
+	}
+	for _, currentRole := range roles {
 
 		// Grab pairs from channel history on current roles
 		roleChannelHistory, ok := currentRole.CollectionChannelHistory(scope, collection)[chanName]
@@ -567,7 +578,7 @@ func (user *userImpl) SetPassword(password string) error {
 
 // ////// CHANNEL ACCESS:
 
-func (user *userImpl) GetRoles() []Role {
+func (user *userImpl) GetRoles() ([]Role, error) {
 	if user.roles == nil {
 		roles := make([]Role, 0, len(user.RoleNames()))
 		deletedRoles := make([]Role, 0)
@@ -575,7 +586,7 @@ func (user *userImpl) GetRoles() []Role {
 			role, err := user.auth.GetRoleIncDeleted(name)
 			// base.InfofCtx(user.auth.LogCtx, base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
 			if err != nil {
-				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
+				return nil, err
 			} else if role != nil {
 				if role.IsDeleted() {
 					deletedRoles = append(deletedRoles, role)
@@ -587,40 +598,67 @@ func (user *userImpl) GetRoles() []Role {
 		user.roles = roles
 		user.deletedRoles = deletedRoles
 	}
-	return user.roles
+	return user.roles, nil
 }
 
-func (user *userImpl) GetRolesIncDeleted() []Role {
+func (user *userImpl) GetRolesIncDeleted() ([]Role, error) {
 	// Use GetRoles to retrieve active roles (will fetch roles if needed)
-	allRoles := user.GetRoles()
+	allRoles, err := user.GetRoles()
+	if err != nil {
+		return nil, err
+	}
 	allRoles = append(allRoles, user.deletedRoles...)
-	return allRoles
+	return allRoles, nil
 }
 
 func (user *userImpl) InitializeRoles() {
-	_ = user.GetRoles()
+	_, _ = user.GetRoles()
 }
 
-func (user *userImpl) canSeeChannel(channel string) bool {
-	if user.roleImpl.canSeeChannel(channel) {
-		return true
+func (user *userImpl) canSeeChannel(channel string) (bool, error) {
+	canSee, err := user.roleImpl.canSeeChannel(channel)
+	if err != nil {
+		return false, nil
 	}
-	for _, role := range user.GetRoles() {
-		if role.canSeeChannel(channel) {
-			return true
+	if canSee {
+
+		return true, nil
+	}
+	roles, err := user.GetRoles()
+	if err != nil {
+		return false, err
+	}
+	for _, role := range roles {
+		canSee, err := role.canSeeChannel(channel)
+		if err != nil {
+			return false, nil
+		}
+		if canSee {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
-func (user *userImpl) canSeeChannelSince(channel string) uint64 {
-	minSeq := user.roleImpl.canSeeChannelSince(channel)
-	for _, role := range user.GetRoles() {
-		if seq := role.canSeeChannelSince(channel); seq > 0 && (seq < minSeq || minSeq == 0) {
+func (user *userImpl) canSeeChannelSince(channel string) (uint64, error) {
+	minSeq, err := user.roleImpl.canSeeChannelSince(channel)
+	if err != nil {
+		return 0, err
+	}
+	roles, err := user.GetRoles()
+	if err != nil {
+		return 0, err
+	}
+	for _, role := range roles {
+		seq, err := role.canSeeChannelSince(channel)
+		if err != nil {
+			return 0, err
+		}
+		if seq > 0 && (seq < minSeq || minSeq == 0) {
 			minSeq = seq
 		}
 	}
-	return minSeq
+	return minSeq, nil
 }
 
 func (user *userImpl) authorizeAllChannels(channels base.Set) error {
@@ -631,9 +669,13 @@ func (user *userImpl) authorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(user, channels)
 }
 
-func (user *userImpl) inheritedChannels() ch.TimedSet {
+func (user *userImpl) inheritedChannels() (ch.TimedSet, error) {
+	roles, err := user.GetRoles()
+	if err != nil {
+		return nil, err
+	}
 	channels := user.Channels().Copy()
-	for _, role := range user.GetRoles() {
+	for _, role := range roles {
 		roleSince := user.RoleNames()[role.Name()]
 		channels.AddAtSequence(role.Channels(), roleSince.Sequence)
 	}
@@ -648,48 +690,64 @@ func (user *userImpl) inheritedChannels() ch.TimedSet {
 		}
 	})
 
-	return channels
+	return channels, nil
 }
 
 // If a channel list contains the all-channel wildcard, replace it with all the user's accessible channels.
-func (user *userImpl) expandWildCardChannel(channels base.Set) base.Set {
+func (user *userImpl) expandWildCardChannel(channels base.Set) (base.Set, error) {
 	return user.expandCollectionWildCardChannel(base.DefaultScope, base.DefaultCollection, channels)
 }
 
-func (user *userImpl) expandCollectionWildCardChannel(scope, collection string, channels base.Set) base.Set {
+func (user *userImpl) expandCollectionWildCardChannel(scope, collection string, channels base.Set) (base.Set, error) {
 	if channels.Contains(ch.AllChannelWildcard) {
-		channels = user.InheritedCollectionChannels(scope, collection).AsSet()
+		expandedChannels, err := user.InheritedCollectionChannels(scope, collection)
+		if err != nil {
+			return nil, err
+		}
+		return expandedChannels.AsSet(), nil
 	}
-	return channels
+	return channels, nil
 }
 
-func (user *userImpl) filterToAvailableChannels(channelNames base.Set) (filtered ch.TimedSet, removed []string) {
+func (user *userImpl) filterToAvailableChannels(channelNames base.Set) (filtered ch.TimedSet, removed []string, err error) {
 	return user.FilterToAvailableCollectionChannels(base.DefaultScope, base.DefaultCollection, channelNames)
 }
 
-func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection string, channelNames base.Set) (filtered ch.TimedSet, removed []string) {
+func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection string, channelNames base.Set) (filtered ch.TimedSet, removed []string, err error) {
 	filtered = ch.TimedSet{}
 	for channelName, _ := range channelNames {
 		if channelName == ch.AllChannelWildcard {
-			return user.InheritedCollectionChannels(scope, collection).Copy(), nil
+			expandedChannels, err := user.InheritedCollectionChannels(scope, collection)
+			if err != nil {
+				return nil, nil, err
+			}
+			return expandedChannels.Copy(), nil, nil
 		}
-		added := filtered.AddChannel(channelName, user.canSeeCollectionChannelSince(scope, collection, channelName))
+		canSee, err := user.canSeeCollectionChannelSince(scope, collection, channelName)
+		if err != nil {
+			return nil, nil, err
+		}
+		added := filtered.AddChannel(channelName, canSee)
 		if !added {
 			removed = append(removed, channelName)
 		}
 	}
-	return filtered, removed
+	return filtered, removed, nil
 }
 
-func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
+func (user *userImpl) GetAddedChannels(channels ch.TimedSet) (base.Set, error) {
 	output := base.Set{}
-	for userChannel := range user.inheritedChannels() {
+	inheritedChannels, err := user.inheritedChannels()
+	if err != nil {
+		return nil, err
+	}
+	for userChannel := range inheritedChannels {
 		_, found := channels[userChannel]
 		if !found {
 			output[userChannel] = struct{}{}
 		}
 	}
-	return output
+	return output, nil
 }
 
 // ////// MARSHALING:

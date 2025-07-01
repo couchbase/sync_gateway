@@ -43,7 +43,10 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 
 	for _, dsName := range h.db.DataStoreNames() {
 		keyspace := dsName.ScopeName() + "." + dsName.CollectionName()
-		currentChannels := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
+		currentChannels, err := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
+		if err != nil {
+			return nil, err
+		}
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
 
 		// If no channels aside from public and no channels in history, don't make a key for this keyspace

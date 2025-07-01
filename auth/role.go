@@ -372,17 +372,17 @@ func (role *roleImpl) UnauthError(message string) error {
 
 // Returns true if the Role is allowed to access the channel.
 // A nil Role means access control is disabled, so the function will return true.
-func (role *roleImpl) canSeeChannel(channel string) bool {
-	return role == nil || role.Channels().Contains(channel) || role.Channels().Contains(ch.UserStarChannel)
+func (role *roleImpl) canSeeChannel(channel string) (bool, error) {
+	return role == nil || role.Channels().Contains(channel) || role.Channels().Contains(ch.UserStarChannel), nil
 }
 
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
-func (role *roleImpl) canSeeChannelSince(channel string) uint64 {
+func (role *roleImpl) canSeeChannelSince(channel string) (uint64, error) {
 	seq := role.Channels()[channel]
 	if seq.Sequence == 0 {
 		seq = role.Channels()[ch.UserStarChannel]
 	}
-	return seq.Sequence
+	return seq.Sequence, nil
 }
 
 func (role *roleImpl) authorizeAllChannels(channels base.Set) error {
@@ -398,7 +398,11 @@ func (role *roleImpl) authorizeAnyChannel(channels base.Set) error {
 func authorizeAllChannels(princ Principal, channels base.Set) error {
 	var forbidden []string
 	for channel := range channels {
-		if !princ.canSeeChannel(channel) {
+		canSee, err := princ.canSeeChannel(channel)
+		if err != nil {
+			return err
+		}
+		if !canSee {
 			if forbidden == nil {
 				forbidden = make([]string, 0, len(channels))
 			}
@@ -416,7 +420,11 @@ func authorizeAllChannels(princ Principal, channels base.Set) error {
 func authorizeAnyChannel(princ Principal, channels base.Set) error {
 	if len(channels) > 0 {
 		for channel := range channels {
-			if princ.canSeeChannel(channel) {
+			canSee, err := princ.canSeeChannel(channel)
+			if err != nil {
+				return err
+			}
+			if canSee {
 				return nil
 			}
 		}
