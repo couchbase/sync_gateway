@@ -57,7 +57,7 @@ func cbgtRootCAsProvider(bucketName, bucketUUID, sourceParams string) func() *x5
 	}
 
 	if feedParams.DbName == "" {
-		AssertfCtx(ctx, "Database name not specified in dcp params %s during cbgtRootCAsProvider. Continuing without TLS authentication.")
+		AssertfCtx(ctx, "Database name not specified in dcp params %s during cbgtRootCAsProvider. Continuing without TLS authentication.", UD(sourceParams))
 		return nil
 	}
 
