@@ -32,8 +32,12 @@ github.com/couchbase/blance v0.1.6 h1:zyNew/SN2AheIoJxQ2LqqA1u3bMp03eGCer6hSDMUD
 github.com/couchbase/blance v0.1.6/go.mod h1:2Sa/nsJSieN/r3T9LsrUYWeQ015qDsuHybhz4F4JcHU=
 github.com/couchbase/cbauth v0.1.12 h1:JOAWjjp2BdubvrrggvN4yQo3oEc2ndXcRN1ONCklUOM=
 github.com/couchbase/cbauth v0.1.12/go.mod h1:W7zkNXa0B2cTDg90YmmuTSbu+PlYOvMqzQvmNlNH/Mg=
+github.com/couchbase/cbauth v0.1.13 h1:1MXacfujb5E4g1MabltOjWUz7Ilewbix2mdSADFa358=
+github.com/couchbase/cbauth v0.1.13/go.mod h1:W7zkNXa0B2cTDg90YmmuTSbu+PlYOvMqzQvmNlNH/Mg=
 github.com/couchbase/cbgt v1.4.2-0.20241112001929-b9fdd9b009b1 h1:w8lHraA/oMGQbc0yhu/rsLQbI1pKL2sIQNHRZBmBpJc=
 github.com/couchbase/cbgt v1.4.2-0.20241112001929-b9fdd9b009b1/go.mod h1:lEYqydKcZbXMd9a4+eEvexODYkQ36ku1KxncsjN+Pqw=
+github.com/couchbase/cbgt v1.4.9 h1:NEWoRodD2oWuLnMdtXLsrRl0RX+nsA4LZ13IHaxzAcU=
+github.com/couchbase/cbgt v1.4.9/go.mod h1:uBM6cfeTmdUXTQ8EwFTc3j7hxtXIduu6NGC+axeSkWk=
 github.com/couchbase/clog v0.1.0 h1:4Kh/YHkhRjMCbdQuvRVsm39XZh4FtL1d8fAwJsHrEPY=
 github.com/couchbase/clog v0.1.0/go.mod h1:7tzUpEOsE+fgU81yfcjy5N1H6XtbVC8SgOz/3mCjmd4=
 github.com/couchbase/go-blip v0.0.0-20241014144256-13a798c348fd h1:ERQXaXuX1eix3NUqrxQ5VY0hqHH90vcfrWdbEWKzlEY=

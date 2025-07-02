@@ -19,7 +19,6 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"maps"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -978,15 +977,4 @@ func numFilesInDir(t *testing.T, dir string, recursive bool) int {
 	})
 	require.NoError(t, err)
 	return numFiles
-}
-
-// ResetCBGTCertPools resets the cert pools used for cbgt in a test.
-func ResetCBGTCertPools(t *testing.T) {
-	// CBG-4394: removing root certs for the bucket should be done, but it is keyed based on the bucket UUID, and multiple dbs can use the same bucket
-	cbgtGlobalsLock.Lock()
-	defer cbgtGlobalsLock.Unlock()
-	oldRootCAs := maps.Clone(cbgtRootCertPools)
-	t.Cleanup(func() {
-		cbgtRootCertPools = oldRootCAs
-	})
 }
