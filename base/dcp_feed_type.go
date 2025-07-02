@@ -57,13 +57,15 @@ func cbgtRootCAsProvider(bucketName, bucketUUID, sourceParams string) func() *x5
 	}
 
 	if feedParams.DbName == "" {
-		AssertfCtx(ctx, "Database name not specified in dcp params %s during cbgtRootCAsProvider. Continuing without TLS authentication.", UD(sourceParams))
+		// consider switching to AssertfCtx one CBG-4730 is fixed
+		InfofCtx(ctx, KeyDCP, "Database name not specified in dcp params %s during cbgtRootCAsProvider. Continuing without TLS authentication.")
 		return nil
 	}
 
 	creds, ok := getCbgtCredentials(feedParams.DbName)
 	if !ok {
-		AssertfCtx(ctx, "No feed credentials stored for db %s from sourceParams during cbgtRootCAsProvider. Continuing without TLS authentication.", MD(feedParams.DbName))
+		// consider switching to AssertfCtx one CBG-4730 is fixed
+		InfofCtx(ctx, KeyDCP, "No feed credentials stored for db %s from sourceParams during cbgtRootCAsProvider. Continuing without TLS authentication.", MD(feedParams.DbName))
 		return nil
 	}
 	if !creds.useTLS {
@@ -240,13 +242,15 @@ func addCbgtAuthToDCPParams(ctx context.Context, dcpParams string) string {
 	}
 
 	if feedParams.DbName == "" {
-		AssertfCtx(ctx, "Database name not specified in dcp params, feed credentials not added")
+		// consider switching to AssertfCtx one CBG-4730 is fixed
+		InfofCtx(ctx, KeyDCP, "Database name not specified in dcp params, feed credentials not added, import feed will not be able to authenticate.")
 		return dcpParams
 	}
 
 	creds, ok := getCbgtCredentials(feedParams.DbName)
 	if !ok {
-		AssertfCtx(ctx, "No feed credentials stored for db from sourceParams: %s", MD(feedParams.DbName))
+		// consider switching to AssertfCtx one CBG-4730 is fixed
+		InfofCtx(ctx, KeyDCP, "No feed credentials stored for db from sourceParams: %s, import feed will not be able to authenticate.", MD(feedParams.DbName))
 		return dcpParams
 	}
 
@@ -261,7 +265,7 @@ func addCbgtAuthToDCPParams(ctx context.Context, dcpParams string) string {
 
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParams)
 	if marshalErr != nil {
-		WarnfCtx(ctx, "Unable to marshal updated cbgt dcp params: %v", marshalErr)
+		WarnfCtx(ctx, "Unable to marshal updated cbgt dcp params: %v. Import feed will not be able to authenticate.", marshalErr)
 		return dcpParams
 	}
 
