@@ -337,22 +337,25 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		sourceUUID:    bucketUUID,
 	}
 
-	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
+	creds := cbgtCreds{
+		clientCertPath: spec.Certpath,
+		clientKeyPath:  spec.Keypath,
+		useTLS:         spec.IsTLS(),
+	}
+	if spec.Auth != nil {
 		username, password, _ := spec.Auth.GetCredentials()
-		addCbgtCredentials(dbName, bucket.GetName(), username, password, spec.Certpath, spec.Keypath)
+		creds.username = username
+		creds.password = password
 	}
 
-	if spec.IsTLS() {
-		if spec.TLSSkipVerify {
-			setCbgtRootCertsForBucket(bucketUUID, nil)
-		} else {
-			certs, err := getRootCAs(ctx, spec.CACertPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load root CAs: %w", err)
-			}
-			setCbgtRootCertsForBucket(bucketUUID, certs)
+	if spec.IsTLS() && !spec.TLSSkipVerify {
+		var err error
+		creds.certPool, err = getRootCAs(ctx, spec.CACertPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load root CAs: %w", err)
 		}
 	}
+	addCbgtCredentials(dbName, bucket.GetName(), creds)
 
 	return cbgtContext, nil
 }
