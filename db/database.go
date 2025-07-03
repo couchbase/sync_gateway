@@ -138,6 +138,7 @@ type DatabaseContext struct {
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
+	RejectBoolean                atomic.Bool
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
 	SkippedSeqDocID              string
 }
@@ -609,6 +610,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			ticker := time.NewTicker(2 * time.Second)
 			defer ticker.Stop()
 			for {
+				oneNodeSkipped := false
 				select {
 				case <-db.CancelContext.Done():
 					return
@@ -619,14 +621,22 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 						_, err := db.MetadataStore.Get(docID, &body)
 						if err == nil {
 							skipped := body["skipped"]
-							currValue := db.BroadcastSlowMode.Load()
-							db.BroadcastSlowMode.CompareAndSwap(currValue, skipped)
+							base.InfofCtx(ctx, base.KeyAll, "retrieved skipped sequence status for %s: %v", docID, body)
 							if skipped {
+								oneNodeSkipped = true
 								// if one node has skipped sequences, all nodes will reject writes and we will have set boolean above to true
 								// so exit loop early
 								break
 							}
 						}
+					}
+					currValue := db.RejectBoolean.Load()
+					if oneNodeSkipped {
+						db.RejectBoolean.CompareAndSwap(currValue, true)
+						base.InfofCtx(ctx, base.KeyAll, "skipped sequence status is true for at least one node, reject value for this node %t", db.RejectBoolean.Load())
+					} else {
+						db.RejectBoolean.CompareAndSwap(currValue, false)
+						base.InfofCtx(ctx, base.KeyAll, "skipped sequence status is false for all nodes, reject value for this node %t", db.RejectBoolean.Load())
 					}
 				}
 			}

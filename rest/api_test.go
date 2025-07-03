@@ -2790,6 +2790,7 @@ func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
 		rt.GetDatabase().UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(18), rt.GetDatabase().DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.True(c, rt.GetDatabase().BroadcastSlowMode.Load())
+		assert.True(c, rt.GetDatabase().RejectBoolean.Load())
 	}, time.Second*10, time.Millisecond*100)
 
 	// try to update the doc and expect a 503 Service Unavailable
