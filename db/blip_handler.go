@@ -967,7 +967,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	if bh.db.DatabaseContext.Options.UnsupportedOptions != nil && bh.db.DatabaseContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
 		// if we are in slow broadcast mode reject write with 503 and increment rejected writes stat
-		if bh.db.BroadcastSlowMode.Load() {
+		if bh.db.RejectBoolean.Load() {
 			bh.db.DbStats.DatabaseStats.NumDocWritesRejected.Add(1)
 			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database cache is behind and cannot accept writes at this time. Please try again later.")
 		}

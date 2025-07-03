@@ -444,7 +444,7 @@ func (h *handler) handlePutDoc() error {
 
 	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
 		// if we are in slow broadcast mode reject write with 503 and increment rejected writes stat
-		if h.db.BroadcastSlowMode.Load() {
+		if h.db.RejectBoolean.Load() {
 			h.db.DbStats.DatabaseStats.NumDocWritesRejected.Add(1)
 			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database cache is behind and cannot accept writes at this time. Please try again later.")
 		}
@@ -603,7 +603,7 @@ func (h *handler) handlePostDoc() error {
 
 	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
 		// if we are in slow broadcast mode reject write with 503 and increment rejected writes stat
-		if h.db.BroadcastSlowMode.Load() {
+		if h.db.RejectBoolean.Load() {
 			h.db.DbStats.DatabaseStats.NumDocWritesRejected.Add(1)
 			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database cache is behind and cannot accept writes at this time. Please try again later.")
 		}
@@ -637,7 +637,7 @@ func (h *handler) handlePostDoc() error {
 func (h *handler) handleDeleteDoc() error {
 	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
 		// if we are in slow broadcast mode reject write with 503 and increment rejected writes stat
-		if h.db.BroadcastSlowMode.Load() {
+		if h.db.RejectBoolean.Load() {
 			h.db.DbStats.DatabaseStats.NumDocWritesRejected.Add(1)
 			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database cache is behind and cannot accept writes at this time. Please try again later.")
 		}
