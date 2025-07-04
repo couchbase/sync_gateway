@@ -2042,7 +2042,76 @@ Startup-config:
           type: string
           default: 10s
         server:
-          description: Couchbase Server connection string/URL.
+          description: |
+            Couchbase Server connection string/URL for bootstrap configuration.
+            
+            The connection string should only reference Couchbase Server Data (KV) nodes. 
+            Using other node types (Query, Index, Analytics, or Search nodes) may cause 
+            connection failures and unreliable operation.
+            
+            **Connection String Format**
+            Sync Gateway supports the ability to specify multiple hosts in the configuration. 
+            Sync Gateway supports both the couchbase:// and http:// schemes for specifying 
+            connection endpoints.
+
+            Sync Gateway also supports SSL in the connection to Couchbase Server; use the 
+            couchbases:// scheme for this. As with the Couchbase Server SDKs, the https:// 
+            scheme is not supported.
+
+            **Examples of valid server values for IPv4:**
+            - `couchbase://host1`
+            - `couchbases://host1`
+            - `couchbase://host1,host2`
+            - `couchbase://host1:11210,host2`
+            - `couchbases://host1:11207,host2`
+            - `http://host1:8091`
+            - `http://host1,host2:8091`
+            - `http://foo:bar@host1:8091`
+
+            **Examples of valid server values for IPv6:**
+            - `http://[2001:db8::8811]:8091` // single node IPv6 - http scheme with default server port
+            - `couchbases://[2001:db8::8811]` // single node SSL IPv6 - default port (omitted)
+            - `couchbase://[2001:db8::8811],[2001:db8::8822]:888` // node1 default port, node2 port 888
+
+            **Port Requirements**
+            When using the couchbase:// or couchbases:// schemes, the port is not required, 
+            but if specified should be the external/internal bucket ports (defaults are 11210 
+            or 11207 respectively). Attempting to use the admin ports (8091/18091) will result 
+            in a startup error.
+
+            **Alternate Addresses**
+            On startup, Sync Gateway will try each hostname that is provided until it is able 
+            to connect successfully.
+
+            By default, if a remote cluster has an external address set, then when SG connects 
+            it will apply a heuristic to determine whether to choose between external or default 
+            (internal) addresses.
+
+            The choice is based on the host names supplied in the connection string:
+            - Sync Gateway uses external networking only when none of the supplied host names match any 
+              of Couchbase Server's internal node addresses, and an external address is defined.
+            - In all other cases Sync Gateway uses the default (internal) networking.
+
+            However, it is possible to override this behavior by adding a network parameter 
+            to the connection string.
+
+            The network parameter can be:
+            - `auto`: this is the default value if no parameter is provided. In this case the 
+              heuristic described above is applied to determine the address used; so effectively 
+              there is no override.
+            - `external`: to always force use of the external address
+            - `default`: to always force use of the internal address
+
+            Example: `"server": "couchbases://my-cbs-server?network=default"`
+
+            Will force the connection to ignore any alternative external addresses configured 
+            on the Couchbase Server node.
+
+            **Lost Connections**
+            If the connection to Couchbase Server is lost during normal operations, Sync Gateway 
+            will automatically re-connect to another node in the cluster. During that re-connection 
+            period, the Sync Gateway will appear offline and documents will not be replicated 
+            to mobile clients.
           type: string
         username:
           description: Username for authenticating to server.
