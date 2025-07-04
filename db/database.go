@@ -137,6 +137,7 @@ type DatabaseContext struct {
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	RejectBoolean                atomic.Bool
+	DatabaseStartupError         *DatabaseError // Error that occurred during database online processes startup
 	SkippedSeqDocID              string
 }
 
@@ -564,12 +565,16 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			docID := fmt.Sprintf("_sync:skipped_sequence_status_%d", i)
 			added, err := metadataStore.Add(docID, 0, []byte(`{"skipped" : false}`))
 			if err != nil {
+				base.WarnfCtx(ctx, "got error adding skipped sequence status doc %s: %v", docID, err)
 				return nil, err
 			}
 			if added {
 				dbContext.SkippedSeqDocID = docID
+				base.InfofCtx(ctx, base.KeyAll, "Added skipped sequence status doc %s", dbContext.SkippedSeqDocID)
 				// exit loop if we successfully added the doc
 				break
+			} else {
+				base.WarnfCtx(ctx, "Skipped sequence status doc %s already exists, not overwriting", docID)
 			}
 		}
 
@@ -584,7 +589,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				case <-ticker.C:
 					newBroadcastSlowMode := db.BroadcastSlowMode.Load()
 					if broadcastSlowMode != newBroadcastSlowMode {
-						base.InfofCtx(ctx, base.KeyAll, "setting skipped bucket doc to %t", newBroadcastSlowMode)
+						base.InfofCtx(ctx, base.KeyAll, "setting skipped bucket doc %s to %t", db.SkippedSeqDocID, newBroadcastSlowMode)
 						err := db.MetadataStore.SetRaw(db.SkippedSeqDocID, 0, nil, []byte(fmt.Sprintf(`{"skipped": %t}`, newBroadcastSlowMode)))
 						if err != nil {
 							base.WarnfCtx(ctx, "Error updating skipped sequence status: %v", err)
@@ -606,10 +611,14 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				case <-ticker.C:
 					for i := 0; i < 4; i++ {
 						docID := fmt.Sprintf("_sync:skipped_sequence_status_%d", i)
-						var body map[string]bool
-						_, err := db.MetadataStore.Get(docID, &body)
+						var body map[string]interface{}
+						val, _, err := db.MetadataStore.GetRaw(docID)
 						if err == nil {
-							skipped := body["skipped"]
+							if err := base.JSONUnmarshal(val, &body); err != nil {
+								base.WarnfCtx(ctx, "skipped sequence status unmarshal error %s: %v", docID, err)
+								continue
+							}
+							skipped := body["skipped"].(bool)
 							base.InfofCtx(ctx, base.KeyAll, "retrieved skipped sequence status for %s: %v", docID, body)
 							if skipped {
 								oneNodeSkipped = true
@@ -617,14 +626,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 								// so exit loop early
 								break
 							}
+						} else {
+							base.WarnfCtx(ctx, "skipped sequence status doc get error for %s: %v", docID, err)
 						}
 					}
-					currValue := db.RejectBoolean.Load()
 					if oneNodeSkipped {
-						db.RejectBoolean.CompareAndSwap(currValue, true)
+						db.RejectBoolean.Store(true)
 						base.InfofCtx(ctx, base.KeyAll, "skipped sequence status is true for at least one node, reject value for this node %t", db.RejectBoolean.Load())
 					} else {
-						db.RejectBoolean.CompareAndSwap(currValue, false)
+						db.RejectBoolean.Store(false)
 						base.InfofCtx(ctx, base.KeyAll, "skipped sequence status is false for all nodes, reject value for this node %t", db.RejectBoolean.Load())
 					}
 				}
