@@ -137,7 +137,6 @@ type DatabaseContext struct {
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	RejectBoolean                atomic.Bool
-	DatabaseStartupError         *DatabaseError // Error that occurred during database online processes startup
 	SkippedSeqDocID              string
 }
 
