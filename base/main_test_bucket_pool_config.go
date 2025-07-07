@@ -55,11 +55,17 @@ const (
 
 	tbpEnvUseDefaultCollection = "SG_TEST_USE_DEFAULT_COLLECTION"
 
+	// tbpEnvAllowIncompatibleServerVersion allows tests to run against a server version that is not presumed compatible with version of Couchbase Server running.
+	tbpEnvAllowIncompatibleServerVersion = "SG_TEST_SKIP_SERVER_VERSION_CHECK"
+
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
 	waitForReadyBucketTimeout = time.Minute
 
 	// Creates buckets with a specific number of number of replicas
 	tbpEnvBucketNumReplicas = "SG_TEST_BUCKET_NUM_REPLICAS"
+
+	// Environment variable to specify the topology tests to run
+	TbpEnvTopologyTests = "SG_TEST_TOPOLOGY_TESTS"
 )
 
 // TestsUseNamedCollections returns true if the tests use named collections.

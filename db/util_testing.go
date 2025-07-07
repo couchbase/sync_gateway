@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -799,4 +800,127 @@ func (db *DatabaseContext) GetMutationListener(t *testing.T) *changeListener {
 func (db *DatabaseContext) InitChannel(ctx context.Context, t *testing.T, chanName string) error {
 	_, err := db.channelCache.getSingleChannelCache(ctx, channels.NewID(chanName, base.DefaultCollectionID))
 	return err
+}
+
+func createTestDocument(docID string, revID string, body Body, deleted bool, expiry uint32) (newDoc *Document) {
+	newDoc = &Document{
+		ID:        docID,
+		Deleted:   deleted,
+		DocExpiry: expiry,
+		RevID:     revID,
+		_body:     body,
+	}
+	return newDoc
+}
+
+// requireCurrentVersion fetches the document by key, and validates that cv matches.
+func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, source string, version uint64) {
+	ctx := base.TestCtx(t)
+	doc, err := c.GetDocument(ctx, key, DocUnmarshalSync)
+	require.NoError(t, err)
+	if doc.HLV == nil {
+		require.Equal(t, "", source)
+		require.Equal(t, "", version)
+		return
+	}
+
+	require.Equal(t, doc.HLV.SourceID, source)
+	require.Equal(t, doc.HLV.Version, version)
+}
+
+// GetDocumentCurrentVersion fetches the document by key and returns the current version
+func (c *DatabaseCollection) GetDocumentCurrentVersion(t testing.TB, key string) (source string, version uint64) {
+	ctx := base.TestCtx(t)
+	doc, err := c.GetDocument(ctx, key, DocUnmarshalSync)
+	require.NoError(t, err)
+	if doc.HLV == nil {
+		return "", 0
+	}
+	return doc.HLV.SourceID, doc.HLV.Version
+}
+
+// UpsertTestDocWithVersion upserts document 'key' with the specified body and version.  Used for testing with
+// version values specified by the test.
+func (c *DatabaseCollectionWithUser) UpsertTestDocWithVersion(ctx context.Context, t testing.TB, key string, body Body, versionString string, mergeVersionsStr string) *Document {
+	currentDoc, currentBucketDoc, _ := c.GetDocumentWithRaw(ctx, key, DocUnmarshalSync)
+	var newDocHLV *HybridLogicalVector
+	var newDoc *Document
+	if currentDoc != nil {
+		newDoc = currentDoc
+		newDocHLV = currentDoc.HLV
+	} else {
+		newDoc = &Document{
+			ID:    key,
+			_body: body,
+		}
+		newDocHLV = NewHybridLogicalVector()
+	}
+
+	version, versionErr := ParseVersion(versionString)
+	require.NoError(t, versionErr)
+	require.NoError(t, newDocHLV.AddVersion(version))
+	if mergeVersionsStr != "" {
+		versions, _, err := parseVectorValues(mergeVersionsStr)
+		require.NoError(t, err, "malformed mergeVersionsStr")
+		for _, version := range versions {
+			newDocHLV.setMergeVersion(version.SourceID, version.Value)
+		}
+	}
+
+	doc, _, _, err := c.PutExistingCurrentVersion(ctx, newDoc, newDocHLV, currentBucketDoc, nil)
+	require.NoError(t, err)
+	return doc
+}
+
+// retrieveDocRevSeNo will take the $document xattr and return the revSeqNo defined in that xattr
+func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
+	require.NotNil(t, docxattr)
+	var retrievedDocumentRevNo string
+	require.NoError(t, base.JSONUnmarshal(docxattr, &retrievedDocumentRevNo))
+
+	revNo, err := strconv.ParseUint(retrievedDocumentRevNo, 10, 64)
+	require.NoError(t, err)
+	return revNo
+}
+
+// MoveAttachmentXattrFromGlobalToSync is a test only function that will move any defined attachment metadata in global xattr to sync data xattr
+func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docID string, cas uint64, value, syncXattr []byte, attachments AttachmentsMeta, macroExpand bool, dataStore base.DataStore) {
+	var docSync SyncData
+	err := base.JSONUnmarshal(syncXattr, &docSync)
+	require.NoError(t, err)
+	docSync.Attachments = attachments
+
+	opts := &sgbucket.MutateInOptions{}
+	// this should be true for cases we want to move the attachment metadata without causing a new import feed event
+	if macroExpand {
+		spec := macroExpandSpec(base.SyncXattrName)
+		opts.MacroExpansion = spec
+	} else {
+		opts = nil
+		docSync.Cas = ""
+	}
+
+	newSync, err := base.JSONMarshal(docSync)
+	require.NoError(t, err)
+
+	_, err = dataStore.WriteWithXattrs(ctx, docID, 0, cas, value, map[string][]byte{base.SyncXattrName: newSync}, []string{base.GlobalXattrName}, opts)
+	require.NoError(t, err)
+}
+
+func RequireBackgroundManagerState(t *testing.T, ctx context.Context, mgr *BackgroundManager, expState BackgroundProcessState) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var status BackgroundManagerStatus
+		rawStatus, err := mgr.GetStatus(ctx)
+		assert.NoError(c, err)
+		assert.NoError(c, base.JSONUnmarshal(rawStatus, &status))
+		assert.Equal(c, expState, status.State)
+	}, time.Second*10, time.Millisecond*100)
+}
+
+// AssertSyncInfoMetaVersion will assert that meta version is equal to current product version
+func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
+	var syncInfo base.SyncInfo
+	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "4.0.0", syncInfo.MetaDataVersion)
 }

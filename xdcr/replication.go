@@ -14,8 +14,12 @@ import (
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/rosmar"
 )
+
+var ErrReplicationNotRunning = fmt.Errorf("Replication is not running")
+var ErrReplicationAlreadyRunning = fmt.Errorf("Replication is already running")
 
 // Manager represents a bucket to bucket replication.
 type Manager interface {
@@ -74,4 +78,17 @@ func NewXDCR(ctx context.Context, fromBucket, toBucket base.Bucket, opts XDCROpt
 		return nil, fmt.Errorf("toBucket must be a *base.GocbV2Bucket since fromBucket was a gocbBucket, got %T", toBucket)
 	}
 	return newCouchbaseServerManager(ctx, gocbFromBucket, gocbToBucket, opts)
+}
+
+// GetSourceID returns the source ID for a bucket.
+func GetSourceID(ctx context.Context, bucket base.Bucket) (string, error) {
+	serverUUID, err := db.GetServerUUID(ctx, bucket)
+	if err != nil {
+		return "", err
+	}
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return "", err
+	}
+	return db.CreateEncodedSourceID(bucketUUID, serverUUID)
 }

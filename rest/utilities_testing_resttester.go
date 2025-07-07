@@ -39,6 +39,11 @@ func (rt *RestTester) Run(name string, test func(*testing.T)) {
 	})
 }
 
+func (rt *RestTester) UpdateTB(t *testing.T) {
+	var tb testing.TB = t
+	rt.testingTB.Store(&tb)
+}
+
 // GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocBody(docID string) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
@@ -58,12 +63,12 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 		RevID *string `json:"_rev"`
 	}
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &r))
-	return DocVersion{RevID: *r.RevID}, body
+	return DocVersion{RevTreeID: *r.RevID}, body
 }
 
 // GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
-	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevID, "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevTreeID, "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
@@ -79,20 +84,20 @@ func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
 
 // PutDoc will upsert the document with a given contents.
 func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
-	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
+	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s?show_cv=true", rt.GetSingleKeyspace(), docID), body)
 	RequireStatus(rt.TB(), rawResponse, 201)
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
 }
 
 // UpdateDocRev updates a document at a specific revision and returns the new version. Deprecated for UpdateDoc.
 func (rt *RestTester) UpdateDocRev(docID, revID string, body string) string {
-	version := rt.UpdateDoc(docID, DocVersion{RevID: revID}, body)
-	return version.RevID
+	version := rt.UpdateDoc(docID, DocVersion{RevTreeID: revID}, body)
+	return version.RevTreeID
 }
 
 // UpdateDoc updates a document at a specific version and returns the new version.
 func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) DocVersion {
-	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevID)
+	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevTreeID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
 	RequireStatus(rt.TB(), rawResponse, http.StatusCreated)
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
@@ -101,12 +106,16 @@ func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) D
 // DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
 func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) DocVersion {
 	resp := rt.SendAdminRequest(http.MethodDelete,
-		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevID), "")
+		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevTreeID), "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 	return DocVersionFromPutResponse(rt.TB(), resp)
 }
 
-// GetDatabaseRoot returns the DatabaseRoot for a given dtabase. This will fail the test harness if the database is not available.
+// DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
+func (rt *RestTester) DeleteDocRev(docID, revID string) {
+	rt.DeleteDoc(docID, DocVersion{RevTreeID: revID})
+}
+
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 	var dbroot DatabaseRoot
 	resp := rt.SendAdminRequest("GET", "/"+dbname+"/", "")
@@ -117,16 +126,23 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
 func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
-	require.NotEqual(rt.TB(), "", version.RevID)
+	if version.RevTreeID == "" {
+		require.NotEqual(rt.TB(), "", version.CV.String(), "Expected CV if RevTreeID in WaitForVersion")
+	}
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
+		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?show_cv=true", "")
 		if !assert.Contains(c, []int{200, 201}, rawResponse.Code, "Unexpected status code for %s", rawResponse.Body.String()) {
 			return
 		}
 		var body db.Body
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		assert.Equal(c, version.RevID, body.ExtractRev(), "Unexpected revision for %s", rawResponse.Body.String())
-	}, time.Second*10, time.Millisecond*10)
+		if version.RevTreeID != "" {
+			assert.Equal(c, version.RevTreeID, body.ExtractRev())
+		}
+		if !version.CV.IsEmpty() {
+			assert.Equal(c, version.CV.String(), body["_cv"].(string))
+		}
+	}, 10*time.Second, 50*time.Millisecond)
 }
 
 // WaitForTombstone waits for a the document version to exist and be tombstoned. If the document is not found, the test will fail.
@@ -138,7 +154,12 @@ func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 			return
 		}
 		assert.NotEqual(c, int64(0), doc.TombstonedAt)
-		assert.Equal(c, deleteVersion.RevID, doc.SyncData.CurrentRev)
+		if deleteVersion.RevTreeID != "" {
+			assert.Equal(c, deleteVersion.RevTreeID, doc.SyncData.CurrentRev)
+		}
+		if !deleteVersion.CV.IsEmpty() {
+			assert.Equal(c, deleteVersion.CV.String(), doc.SyncData.HLV.GetCurrentVersionString())
+		}
 	}, time.Second*10, time.Millisecond*100)
 }
 
@@ -419,4 +440,53 @@ func (rt *RestTester) RequireDbOnline() {
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.Equal(rt.TB(), "Online", body["state"].(string))
+}
+
+// TEMPORARY HELPER METHODS FOR BLIP TEST CLIENT RUNNER
+func (rt *RestTester) PutDocDirectly(docID string, body db.Body) DocVersion {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	rev, doc, err := collection.Put(ctx, docID, body)
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+}
+
+func (rt *RestTester) UpdateDocDirectly(docID string, version DocVersion, body db.Body) DocVersion {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	body[db.BodyId] = docID
+	body[db.BodyRev] = version.RevTreeID
+	rev, doc, err := collection.Put(ctx, docID, body)
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+}
+
+func (rt *RestTester) DeleteDocDirectly(docID string, version DocVersion) DocVersion {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	// TODO: CBG-4426 - DeleteDocDirectly does not support CV
+	rev, doc, err := collection.DeleteDoc(ctx, docID, version.RevTreeID)
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+}
+
+func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollection, docID string, body db.Body) DocVersion {
+	dbUser := &db.DatabaseCollectionWithUser{
+		DatabaseCollection: collection,
+	}
+	ctx := base.UserLogCtx(collection.AddCollectionContext(rt.Context()), "gotest", base.UserDomainBuiltin, nil)
+	rev, doc, err := dbUser.Put(ctx, docID, body)
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+}
+
+// PutDocWithAttachment will upsert the document with a given contents and attachments.
+func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachmentName, attachmentBody string) DocVersion {
+	// create new body with a 1.x style inline attachment body like `{"_attachments": {"camera.txt": {"data": "Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`.
+	require.NotEmpty(rt.TB(), attachmentName)
+	require.NotEmpty(rt.TB(), attachmentBody)
+	var rawBody db.Body
+	require.NoError(rt.TB(), base.JSONUnmarshal([]byte(body), &rawBody))
+	require.NotContains(rt.TB(), rawBody, db.BodyAttachments)
+	rawBody[db.BodyAttachments] = map[string]any{
+		attachmentName: map[string]any{"data": attachmentBody},
+	}
+	return rt.PutDocDirectly(docID, rawBody)
 }

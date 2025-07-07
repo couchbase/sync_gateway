@@ -25,7 +25,6 @@ import (
 	"net/url"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -886,7 +885,7 @@ func (cr ChangesResults) Summary() string {
 
 // RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
-	RequireDocVersionEqual(t, expected, DocVersion{RevID: changeRev["rev"]})
+	RequireDocVersionEqual(t, expected, DocVersion{RevTreeID: changeRev["rev"]})
 }
 
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
@@ -1117,12 +1116,13 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 
 type SimpleSync struct {
 	Channels map[string]interface{}
-	Rev      string
+	Rev      channels.RevAndVersion
 	Sequence uint64
 }
 
 type RawResponse struct {
-	Sync SimpleSync `json:"_sync"`
+	Sync    SimpleSync `json:"_sync"`
+	Deleted bool       `json:"_deleted"`
 }
 
 // GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
@@ -2393,46 +2393,11 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 	return assert.Truef(t, base.IsDocNotFoundError(err), "expected heartbeat doc to expire, but got a different error: %v", err)
 }
 
-// DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
-type DocVersion struct {
-	RevID string
-}
-
-func (v *DocVersion) String() string {
-	return fmt.Sprintf("RevID: %s", v.RevID)
-}
-
-func (v DocVersion) Equal(o DocVersion) bool {
-	if v.RevID != o.RevID {
-		return false
-	}
-	return true
-}
-
-// RevIDGeneration returns the Rev ID generation for the current version
-func (v *DocVersion) RevIDGeneration() int {
-	if v == nil {
-		return 0
-	}
-	gen, err := strconv.ParseInt(strings.Split(v.RevID, "-")[0], 10, 64)
-	if err != nil {
-		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevID, err)
-		return 0
-	}
-	return int(gen)
-}
-
-// RevIDDigest returns the Rev ID digest for the current version
-func (v *DocVersion) RevIDDigest() string {
-	if v == nil {
-		return ""
-	}
-	return strings.Split(v.RevID, "-")[1]
-}
+type DocVersion = db.DocVersion
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.
 func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
-	require.NotEqual(t, "", version.RevID)
+	require.NotEqual(t, "", version.RevTreeID)
 }
 
 // RequireDocVersionEqual calls t.Fail if two document versions are not equal.
@@ -2452,7 +2417,7 @@ func EmptyDocVersion() *DocVersion {
 
 // NewDocVersionFromFakeRev returns a new DocVersion from the given fake rev ID, intended for use when we explicit create conflicts.
 func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
-	return DocVersion{RevID: fakeRev}
+	return DocVersion{RevTreeID: fakeRev}
 }
 
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
@@ -2464,7 +2429,7 @@ func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion 
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return DocVersion{RevID: *r.RevID}
+	return DocVersion{RevTreeID: *r.RevID}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
@@ -2806,6 +2771,22 @@ func RequireGocbDCPResync(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
+}
+
+// SafeDatabaseName returns a database name free of any special characters for use in tests.
+func SafeDatabaseName(t *testing.T, name string) string {
+	dbName := strings.ToLower(name)
+	for _, c := range []string{" ", "<", ">", "/", "="} {
+		dbName = strings.ReplaceAll(dbName, c, "_")
+	}
+	return dbName
+}
+
+func JsonToMap(t *testing.T, jsonStr string) map[string]interface{} {
+	result := make(map[string]interface{})
+	err := json.Unmarshal([]byte(jsonStr), &result)
+	require.NoError(t, err)
+	return result
 }
 
 // reloadDatabaseWithConfigLoadFromBucket forces reload of db as if it was being picked up from the bucket

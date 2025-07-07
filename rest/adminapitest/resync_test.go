@@ -119,7 +119,7 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	doc, _, err := collection.GetDocWithXattr(ctx, "doc0", db.DocUnmarshalSync)
+	doc, _, err := collection.GetDocWithXattrs(ctx, "doc0", db.DocUnmarshalSync)
 	require.NoError(t, err)
 	require.Equal(t, uint64(corruptSequence), doc.Sequence)
 

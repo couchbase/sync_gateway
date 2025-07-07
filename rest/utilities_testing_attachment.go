@@ -12,6 +12,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -84,4 +85,18 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 	require.NoError(t, err)
 
 	return attDocID
+}
+
+func (rt *RestTester) WaitForAttachmentMigrationStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
+	var response db.AttachmentMigrationManagerResponse
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest("GET", "/{{.db}}/_attachment_migration", "")
+		require.Equal(c, http.StatusOK, resp.Code)
+
+		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
+		require.NoError(c, err)
+		assert.Equal(c, state, response.State)
+	}, time.Second*20, time.Millisecond*100)
+
+	return response
 }

@@ -33,6 +33,7 @@ type allDocsResponse struct {
 
 type allDocsRowValue struct {
 	Rev      string              `json:"rev"`
+	CV       string              `json:"cv,omitempty"`
 	Channels []string            `json:"channels,omitempty"`
 	Access   map[string]base.Set `json:"access,omitempty"` // for admins only
 }
@@ -72,6 +73,7 @@ func (h *handler) handleAllDocs() error {
 	includeChannels := h.getBoolQuery("channels")
 	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
+	includeCVs := h.getBoolQuery("show_cv")
 	includeSeqs := h.getBoolQuery("update_seq")
 
 	// Get the doc IDs if this is a POST request:
@@ -167,7 +169,7 @@ func (h *handler) handleAllDocs() error {
 					row.Status = http.StatusForbidden
 					return row
 				}
-				// handle the case where the incoming doc.RevID == ""
+				// handle the case where the incoming doc.RevTreeID == ""
 				// and Get1xRevAndChannels returns the current revision
 				doc.RevID = currentRevID
 			}
@@ -193,6 +195,9 @@ func (h *handler) handleAllDocs() error {
 		}
 		if includeChannels {
 			row.Value.Channels = channels
+		}
+		if includeCVs {
+			row.Value.CV = doc.CV
 		}
 		return row
 	}
@@ -246,7 +251,8 @@ func (h *handler) handleAllDocs() error {
 	if explicitDocIDs != nil {
 		count := uint64(0)
 		for _, docID := range explicitDocIDs {
-			_, _ = writeDoc(db.IDRevAndSequence{DocID: docID, RevID: "", Sequence: 0}, nil)
+			// no revtreeid or cv if explicitDocIDs are specified
+			_, _ = writeDoc(db.IDRevAndSequence{DocID: docID, RevID: "", Sequence: 0, CV: ""}, nil)
 			count++
 			if options.Limit > 0 && count == options.Limit {
 				break
@@ -393,6 +399,7 @@ func (h *handler) handleBulkGet() error {
 
 	includeAttachments := h.getBoolQuery("attachments")
 	showExp := h.getBoolQuery("show_exp")
+	showCV := h.getBoolQuery("show_cv")
 
 	showRevs := h.getBoolQuery("revs")
 	globalRevsLimit := int(h.getIntQuery("revs_limit", math.MaxInt32))
@@ -469,7 +476,12 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, db.Get1xRevBodyOptions{
+					MaxHistory:       docRevsLimit,
+					HistoryFrom:      revsFrom,
+					AttachmentsSince: attsSince,
+					ShowExp:          showExp,
+					ShowCV:           showCV})
 			}
 
 			if err != nil {
@@ -580,7 +592,7 @@ func (h *handler) handleBulkDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
-				_, _, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false)
+				_, _, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false, db.ExistingVersionWithUpdateToHLV)
 			}
 		}
 

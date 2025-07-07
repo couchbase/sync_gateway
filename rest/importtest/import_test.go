@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/clog"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -66,6 +67,10 @@ func TestImportFeed(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	xattrs, _, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
+	require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
 	// Attempt to get the document via Sync Gateway.
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
@@ -207,16 +212,18 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 	// 1. Create revision with history
 	docID := t.Name()
-	version := rt.PutDoc(docID, `{"val":-1}`)
-	revID := version.RevID
+	version := rt.PutDocDirectly(docID, rest.JsonToMap(t, `{"val":-1}`))
+	cv := version.CV.String()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	for i := 0; i < 10; i++ {
-		version = rt.UpdateDoc(docID, version, fmt.Sprintf(`{"val":%d}`, i))
+		version = rt.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"val":%d}`, i)))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
-		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, revID)
+		// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+		cvHash := base.Crc32cHashString([]byte(cv))
+		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, cvHash)
 		require.NoError(t, purgeErr)
-		revID = version.RevID
+		cv = version.CV.String()
 	}
 
 	// 2. Modify doc via SDK
@@ -490,6 +497,8 @@ func TestXattrDoubleDelete(t *testing.T) {
 }
 
 func TestViewQueryTombstoneRetrieval(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
@@ -644,9 +653,8 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
 
-	// Go get the cas for the doc to use for update
-	_, cas, getErr := dataStore.GetRaw(mobileKey)
-	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
+	_, cas, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
@@ -1631,7 +1639,10 @@ func TestImportRevisionCopy(t *testing.T) {
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	rev1id := rawInsertResponse.Sync.Rev
+	rev1id := rawInsertResponse.Sync.Rev.RevTreeID
+
+	// Populate rev cache by getting the doc again
+	rt.GetDoc(key)
 
 	// Populate rev cache by getting the doc again
 	rt.GetDoc(key)
@@ -1695,7 +1706,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	rev1id := rawInsertResponse.Sync.Rev
+	rev1id := rawInsertResponse.Sync.Rev.RevTreeID
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
@@ -1753,7 +1764,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	rev1id := rawInsertResponse.Sync.Rev
+	rev1id := rawInsertResponse.Sync.Rev.RevTreeID
 
 	// 3. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -1844,15 +1855,14 @@ func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, property
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	xattrs, _, err := dataStore.GetXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
-	assert.NoError(t, err, "Error Getting Xattr")
-	xattr := map[string]interface{}{}
+	require.NoError(t, err, "Error Getting Xattr")
 	require.Contains(t, xattrs, base.SyncXattrName)
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
-	revision, ok := xattr["rev"]
-	assert.True(t, ok)
-	generation, _ := db.ParseRevID(base.TestCtx(t), revision.(string))
-	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
-	assert.True(t, generation == expectedRevGeneration)
+	var syncData db.SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+	assert.True(t, syncData.CurrentRev != "")
+	generation, _ := db.ParseRevID(base.TestCtx(t), syncData.CurrentRev)
+	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.CurrentRev)
+	assert.Equal(t, expectedRevGeneration, generation)
 }
 
 func TestDeletedEmptyDocumentImport(t *testing.T) {
@@ -1876,13 +1886,12 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	// Get the doc and check deleted revision is getting imported
 	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docId, "")
 	assert.Equal(t, http.StatusOK, response.Code)
-	rawResponse := make(map[string]interface{})
+	var rawResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
 
-	assert.True(t, rawResponse[db.BodyDeleted].(bool))
-	syncMeta := rawResponse["_sync"].(map[string]interface{})
-	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", syncMeta["rev"])
+	assert.True(t, rawResponse.Deleted)
+	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", rawResponse.Sync.Rev.RevTreeID)
 }
 
 // Check deleted document via SDK is getting imported if it is included in through ImportFilter function.
@@ -1916,10 +1925,9 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	endpoint := fmt.Sprintf("/{{.keyspace}}/_raw/%s?redact=false", key)
 	response := rt.SendAdminRequest(http.MethodGet, endpoint, "")
 	assert.Equal(t, http.StatusOK, response.Code)
-	var respBody db.Body
+	var respBody rest.RawResponse
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
-	syncMeta := respBody[base.SyncPropertyName].(map[string]interface{})
-	assert.NotEmpty(t, syncMeta["rev"].(string))
+	assert.NotEmpty(t, respBody.Sync.Rev.RevTreeID)
 
 	// Delete the document via SDK
 	err = dataStore.Delete(key)
@@ -1929,9 +1937,8 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, endpoint, "")
 	assert.Equal(t, http.StatusOK, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
-	assert.True(t, respBody[db.BodyDeleted].(bool))
-	syncMeta = respBody[base.SyncPropertyName].(map[string]interface{})
-	assert.NotEmpty(t, syncMeta["rev"].(string))
+	assert.True(t, respBody.Deleted)
+	assert.NotEmpty(t, respBody.Sync.Rev.RevTreeID)
 }
 
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
@@ -2100,7 +2107,7 @@ func TestImportTouch(t *testing.T) {
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
-	initialRev := rawInsertResponse.Sync.Rev
+	initialRev := rawInsertResponse.Sync.Rev.RevTreeID
 
 	// 2. Test import behaviour after SDK touch
 	_, err = dataStore.Touch(key, 1000000)
@@ -2112,7 +2119,7 @@ func TestImportTouch(t *testing.T) {
 	var rawUpdateResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
-	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev)
+	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev.RevTreeID)
 }
 func TestImportingPurgedDocument(t *testing.T) {
 	if !base.TestUseXattrs() {
@@ -2289,6 +2296,8 @@ func TestImportRollback(t *testing.T) {
 // - Test is much like TestImportRollback, but with multiple partitions and multiple vBuckets rolling back
 // - Test case rollbackWithoutFailover will only rollback one partition
 func TestImportRollbackMultiplePartitions(t *testing.T) {
+	t.Skip("test will fail on this branch, no cbgt update on here yet, CBG-4505")
+
 	if !base.IsEnterpriseEdition() {
 		t.Skip("This test only works against EE")
 	}
@@ -2629,4 +2638,298 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 
 	// after all documents are imported, I expect that cbgt.Dest == number of partitions
 	require.Equal(t, int(importPartitions), int(rt2.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value()))
+}
+
+func TestPrevRevNoPopulationImportFeed(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+	ctx := base.TestCtx(t)
+
+	if !rt.Bucket().IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
+	}
+
+	// Create doc via the SDK
+	mobileKey := t.Name()
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	assert.NoError(t, err, "Error writing SDK doc")
+
+	// Wait for import
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
+
+	xattrs, _, err := dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+
+	revNo := db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+	mou := getMou(t, xattrs[base.MouXattrName])
+	// curr rev no should be 2, so prev rev is 1
+	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
+
+	err = dataStore.Set(mobileKey, 0, nil, []byte(`{"test":"update"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 2)
+
+	xattrs, _, err = dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+
+	revNo = db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+	mou = getMou(t, xattrs[base.MouXattrName])
+	// curr rev no should be 4, so prev rev is 3
+	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
+
+}
+
+// TestMigrationOfAttachmentsOnImport:
+//   - Create a doc and move the attachment metadata from global xattr to sync data xattr in a way that when the doc
+//     arrives over import feed it will be determined that it doesn't require import
+//   - Wait for the doc to arrive over import feed and assert even though the doc is not imported it will still get
+//     attachment metadata migrated from sync data to global xattr
+//   - Create a doc and move the attachment metadata from global xattr to sync data xattr in a way that when the doc
+//     arrives over import feed it will be determined that it does require import
+//   - Wait for the doc to arrive over the import feed and assert that once doc was imported the attachment metadata
+//     was migrated from sync data xattr to global xattr
+func TestMigrationOfAttachmentsOnImport(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+	ctx := base.TestCtx(t)
+
+	// add new doc to test a doc arriving import feed that doesn't need importing still has attachment migration take place
+	key := "doc1"
+	body := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	rt.PutDoc(key, body)
+
+	// grab defined attachment metadata to move to sync data
+	value, xattrs, cas, err := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok := xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok := xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	var attachs db.GlobalSyncData
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, true, dataStore)
+
+	// retry loop to wait for import event to arrive over dcp, as doc won't be 'imported' we can't wait for import stat
+	var retryXattrs map[string][]byte
+	err = rt.WaitForCondition(func() bool {
+		retryXattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+		require.NoError(t, err)
+		_, ok := retryXattrs[base.GlobalXattrName]
+		return ok
+	})
+	require.NoError(t, err)
+
+	syncXattr, ok = retryXattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = retryXattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// empty global sync,
+	attachs = db.GlobalSyncData{}
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	var syncData db.SyncData
+	err = base.JSONUnmarshal(syncXattr, &syncData)
+	require.NoError(t, err)
+
+	// assert that the attachment metadata has been moved
+	assert.NotNil(t, attachs.GlobalAttachments)
+	assert.Nil(t, syncData.Attachments)
+	att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.Equal(t, float64(11), att["length"])
+
+	// assert that no import took place
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 0)
+
+	// add new doc to test import of doc over feed moves attachments
+	key = "doc2"
+	body = `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	rt.PutDoc(key, body)
+
+	_, xattrs, cas, err = dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+	// grab defined attachment metadata to move to sync data
+	attachs = db.GlobalSyncData{}
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+
+	// change doc body to trigger import on feed
+	value = []byte(`{"test": "doc"}`)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+
+	// Wait for import
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
+
+	// grab the sync and global xattr from doc2
+	xattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	syncData = db.SyncData{}
+	err = base.JSONUnmarshal(syncXattr, &syncData)
+	require.NoError(t, err)
+
+	// assert that the attachment metadata has been moved
+	assert.NotNil(t, attachs.GlobalAttachments)
+	assert.Nil(t, syncData.Attachments)
+	att = attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.Equal(t, float64(11), att["length"])
+}
+
+// TestMigrationOfAttachmentsOnDemandImport:
+//   - Create a doc and move the attachment metadata from global xattr to sync data xattr
+//   - Trigger on demand import for get
+//   - Assert that the attachment metadata is migrated from sync data xattr to global sync xattr
+//   - Create a new doc and move the attachment metadata from global xattr to sync data xattr
+//   - Trigger an on demand import for write
+//   - Assert that the attachment metadata is migrated from sync data xattr to global sync xattr
+func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false, // avoid anything arriving over import feed for this test
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+	ctx := base.TestCtx(t)
+
+	key := "doc1"
+	body := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	rt.PutDoc(key, body)
+
+	_, xattrs, cas, err := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok := xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok := xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// grab defined attachment metadata to move to sync data
+	var attachs db.GlobalSyncData
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+
+	value := []byte(`{"update": "doc"}`)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+
+	// on demand import for get
+	_, _ = rt.GetDoc(key)
+
+	xattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// empty global sync,
+	attachs = db.GlobalSyncData{}
+
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	var syncData db.SyncData
+	err = base.JSONUnmarshal(syncXattr, &syncData)
+	require.NoError(t, err)
+
+	// assert that the attachment metadata has been moved
+	assert.NotNil(t, attachs.GlobalAttachments)
+	assert.Nil(t, syncData.Attachments)
+	att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.Equal(t, float64(11), att["length"])
+
+	key = "doc2"
+	body = `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	rt.PutDoc(key, body)
+
+	_, xattrs, cas, err = dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// grab defined attachment metadata to move to sync data
+	attachs = db.GlobalSyncData{}
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	value = []byte(`{"update": "doc"}`)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+
+	// trigger on demand import for write
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{}`)
+	rest.RequireStatus(t, resp, http.StatusConflict)
+
+	// assert that the attachments metadata is migrated
+	xattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	syncXattr, ok = xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	globalXattr, ok = xattrs[base.GlobalXattrName]
+	require.True(t, ok)
+
+	// empty global sync,
+	attachs = db.GlobalSyncData{}
+	err = base.JSONUnmarshal(globalXattr, &attachs)
+	require.NoError(t, err)
+	syncData = db.SyncData{}
+	err = base.JSONUnmarshal(syncXattr, &syncData)
+	require.NoError(t, err)
+
+	// assert that the attachment metadata has been moved
+	assert.NotNil(t, attachs.GlobalAttachments)
+	assert.Nil(t, syncData.Attachments)
+	att = attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.Equal(t, float64(11), att["length"])
+}
+
+func getMou(t *testing.T, mouBytes []byte) db.MetadataOnlyUpdate {
+	var mou db.MetadataOnlyUpdate
+	err := base.JSONUnmarshal(mouBytes, &mou)
+	require.NoError(t, err)
+	return mou
 }

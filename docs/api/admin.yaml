@@ -129,6 +129,8 @@ paths:
     $ref: './paths/admin/db-_repair.yaml'
   '/{db}/_compact':
     $ref: './paths/admin/db-_compact.yaml'
+  '/{db}/_attachment_migration':
+    $ref: './paths/admin/db-_attachment_migration.yaml'
   '/{keyspace}/':
     $ref: './paths/admin/keyspace-.yaml'
   /_expvar:

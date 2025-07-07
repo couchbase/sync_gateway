@@ -49,6 +49,16 @@ func realDocID(docid string) string {
 	return docid
 }
 
+// getRevSeqNo fetches the revSeqNo for a document, using the virtual xattr if available. Returns the cas from this fetch.
+func (c *DatabaseCollection) getRevSeqNo(ctx context.Context, docID string) (revSeqNo, cas uint64, err error) {
+	xattrs, cas, err := c.dataStore.GetXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
+	if err != nil {
+		return 0, 0, err
+	}
+	revSeqNo, err = unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	return revSeqNo, cas, err
+}
+
 // GetDocument with raw returns the document from the bucket. This may perform an on-demand import.
 func (c *DatabaseCollection) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	doc, _, err = c.GetDocumentWithRaw(ctx, docid, unmarshalLevel)
@@ -62,11 +72,10 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	if c.UseXattrs() {
-		doc, rawBucketDoc, err = c.GetDocWithXattr(ctx, key, unmarshalLevel)
+		doc, rawBucketDoc, err = c.GetDocWithXattrs(ctx, key, unmarshalLevel)
 		if err != nil {
 			return nil, nil, err
 		}
-
 		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
 		if crc32Match {
 			c.dbStats().Database().Crc32MatchCount.Add(1)
@@ -74,14 +83,22 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
-			var importErr error
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
-			if importErr != nil {
-				return nil, nil, importErr
+			// reload to get revseqno for on-demand import
+			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
+			if err != nil {
+				return nil, nil, err
 			}
-			// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
-			if doc == nil {
-				return nil, nil, base.ErrNotFound
+			isSgWrite, _, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
+			if !isSgWrite {
+				var importErr error
+				doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
+				if importErr != nil {
+					return nil, nil, importErr
+				}
+				// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
+				if doc == nil {
+					return nil, nil, base.ErrNotFound
+				}
 			}
 		}
 		if !doc.HasValidSyncData() {
@@ -116,10 +133,16 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 	return doc, rawBucketDoc, nil
 }
 
-func (c *DatabaseCollection) GetDocWithXattr(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+// GetDocWithXattrs retrieves a document from the bucket, including sync gateway metadta xattrs, and the user xattr, if specified.
+func (c *DatabaseCollection) GetDocWithXattrs(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+	return c.getDocWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys(), unmarshalLevel)
+}
+
+// GetDocWithXattrs retrieves a document from the bucket, including sync gateway metadta xattrs, and the user xattr, if specified. Arbitrary xattrs can be passed into this function to allow VirtualXattrRevSeqNo to be returned and set on Document.
+func (c *DatabaseCollection) getDocWithXattrs(ctx context.Context, key string, xattrKeys []string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
+	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -145,7 +168,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 	if c.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
+		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -164,6 +187,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
+
 			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
@@ -191,6 +215,12 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+// unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
+func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.userXattrKey()], xattrs[base.VirtualXattrRevSeqNo], xattrs[base.GlobalXattrName], cas, unmarshalLevel)
+
+}
+
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency
 // reasons. Unlike GetDocSyncData it does not check for on-demand import; this means it does not
 // need to read the doc body from the bucket.
@@ -198,7 +228,7 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 	if db.UseXattrs() {
 		var xattrs map[string][]byte
 		var cas uint64
-		xattrs, cas, err = db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName})
+		xattrs, cas, err = db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName, base.VvXattrName})
 		if err == nil {
 			var doc *Document
 			doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, level)
@@ -233,7 +263,7 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 	return
 }
 
-// OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
+// OnDemandImportForGet. Attempts to import the doc based on the provided id, contents and cas. ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, doc *Document, rawDoc []byte, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
@@ -244,7 +274,14 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 		return nil, syncDataErr
 	}
 
-	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand)
+	importOpts := importDocOptions{
+		isDelete: isDelete,
+		mode:     ImportOnDemand,
+		revSeqNo: doc.RevSeqNo,
+		expiry:   nil,
+	}
+
+	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, importOpts, cas)
 
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as 404 not imported
@@ -278,12 +315,25 @@ func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, r
 		maxHistory = math.MaxInt32
 	}
 
-	return db.Get1xRevBodyWithHistory(ctx, docid, revid, maxHistory, nil, attachmentsSince, false)
+	return db.Get1xRevBodyWithHistory(ctx, docid, revid, Get1xRevBodyOptions{
+		MaxHistory:       maxHistory,
+		HistoryFrom:      nil,
+		AttachmentsSince: attachmentsSince,
+		ShowExp:          false,
+	})
+}
+
+type Get1xRevBodyOptions struct {
+	MaxHistory       int
+	HistoryFrom      []string
+	AttachmentsSince []string
+	ShowExp          bool
+	ShowCV           bool
 }
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
-	rev, err := db.getRev(ctx, docid, revid, maxHistory, historyFrom)
+func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revtreeid string, opts Get1xRevBodyOptions) (Body, error) {
+	rev, err := db.getRev(ctx, docid, revtreeid, opts.MaxHistory, opts.HistoryFrom)
 	if err != nil {
 		return nil, err
 	}
@@ -291,14 +341,14 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
 	// during attachment processing below
 	requestedHistory := rev.History
-	if maxHistory == 0 {
+	if opts.MaxHistory == 0 {
 		requestedHistory = nil
 	}
 	if requestedHistory != nil {
-		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, historyFrom, maxHistory)
+		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, opts.HistoryFrom, opts.MaxHistory)
 	}
 
-	return rev.Mutable1xBody(ctx, db, requestedHistory, attachmentsSince, showExp)
+	return rev.Mutable1xBody(ctx, db, requestedHistory, opts.AttachmentsSince, opts.ShowExp, opts.ShowCV)
 }
 
 // Underlying revision retrieval used by Get1xRevBody, Get1xRevBodyWithHistory, GetRevCopy.
@@ -314,19 +364,34 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.Get(ctx, docid, revid, RevCacheOmitDelta)
+		revision, err = db.revisionCache.GetWithRev(ctx, docid, revid, RevCacheOmitDelta)
 	} else {
 		// No rev ID given, so load active revision
 		revision, err = db.revisionCache.GetActive(ctx, docid)
 	}
-
 	if err != nil {
 		return DocumentRevision{}, err
 	}
 
+	return db.documentRevisionForRequest(ctx, docid, revision, &revid, nil, maxHistory, historyFrom)
+}
+
+// documentRevisionForRequest processes the given DocumentRevision and returns a version of it for a given client request, depending on access, deleted, etc.
+func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Context, docID string, revision DocumentRevision, revID *string, cv *Version, maxHistory int, historyFrom []string) (DocumentRevision, error) {
+	// ensure only one of cv or revID is specified
+	if cv != nil && revID != nil {
+		return DocumentRevision{}, fmt.Errorf("must have one of cv or revID in documentRevisionForRequest (had cv=%v revID=%v)", cv, revID)
+	}
+	var requestedVersion string
+	if revID != nil {
+		requestedVersion = *revID
+	} else if cv != nil {
+		requestedVersion = cv.String()
+	}
+
 	if revision.BodyBytes == nil {
 		if db.ForceAPIForbiddenErrors() {
-			base.InfofCtx(ctx, base.KeyCRUD, "Doc: %s %s is missing", base.UD(docid), base.MD(revid))
+			base.InfofCtx(ctx, base.KeyCRUD, "Doc: %s %s is missing", base.UD(docID), base.MD(requestedVersion))
 			return DocumentRevision{}, ErrForbidden
 		}
 		return DocumentRevision{}, ErrMissing
@@ -345,16 +410,17 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, historyFrom, maxHistory)
 	}
 
-	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
+	isAuthorized, redactedRevision := db.authorizeUserForChannels(docID, revision.RevID, cv, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
-		if revid == "" {
+		// client just wanted active revision, not a specific one
+		if requestedVersion == "" {
 			return DocumentRevision{}, ErrForbidden
 		}
 		if db.ForceAPIForbiddenErrors() {
-			base.InfofCtx(ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", base.UD(docid), base.MD(revid))
+			base.InfofCtx(ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", base.UD(docID), base.MD(requestedVersion))
 			return DocumentRevision{}, ErrForbidden
 		}
-		return redactedRev, nil
+		return redactedRevision, nil
 	}
 
 	// If the revision is a removal cache entry (no body), but the user has access to that removal, then just
@@ -363,22 +429,50 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		return DocumentRevision{}, ErrMissing
 	}
 
-	if revision.Deleted && revid == "" {
+	if revision.Deleted && requestedVersion == "" {
 		return DocumentRevision{}, ErrDeleted
 	}
 
 	return revision, nil
 }
 
-// GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
-// returns nil.
-func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
-
-	if docID == "" || fromRevID == "" || toRevID == "" {
-		return nil, nil, nil
+func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version) (revision DocumentRevision, err error) {
+	if cv != nil {
+		revision, err = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta)
+	} else {
+		revision, err = db.revisionCache.GetActive(ctx, docid)
+	}
+	if err != nil {
+		return DocumentRevision{}, err
 	}
 
-	fromRevision, err := db.revisionCache.Get(ctx, docID, fromRevID, RevCacheIncludeDelta)
+	return db.documentRevisionForRequest(ctx, docid, revision, nil, cv, 0, nil)
+}
+
+// GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
+// returns nil.
+func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRev, toRev string, useCVRevCache bool) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
+
+	if docID == "" || fromRev == "" || toRev == "" {
+		return nil, nil, nil
+	}
+	var fromRevision DocumentRevision
+	var fromRevVrs Version
+	if useCVRevCache {
+		fromRevVrs, err = ParseVersion(fromRev)
+		if err != nil {
+			return nil, nil, err
+		}
+		fromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		fromRevision, err = db.revisionCache.GetWithRev(ctx, docID, fromRev, RevCacheIncludeDelta)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
@@ -399,9 +493,9 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 	// If delta is found, check whether it is a delta for the toRevID we want
 	if fromRevision.Delta != nil {
-		if fromRevision.Delta.ToRevID == toRevID {
+		if fromRevision.Delta.ToCV == toRev || fromRevision.Delta.ToRevID == toRev {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevision.CV, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -416,15 +510,26 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	// Delta is unavailable, but the body is available.
 	if fromRevision.BodyBytes != nil {
 
-		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		toRevision, err := db.revisionCache.Get(ctx, docID, toRevID, RevCacheIncludeDelta)
-		if err != nil {
-			return nil, nil, err
+		var toRevision DocumentRevision
+		if useCVRevCache {
+			cv, err := ParseVersion(toRev)
+			if err != nil {
+				return nil, nil, err
+			}
+			toRevision, err = db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta)
+			if err != nil {
+				return nil, nil, err
+			}
+		} else {
+			toRevision, err = db.revisionCache.GetWithRev(ctx, docID, toRev, RevCacheIncludeDelta)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 
 		deleted := toRevision.Deleted
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, toRevision.Channels, deleted, toRevision.History)
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, toRevision.CV, toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
 			return nil, &redactedBody, nil
 		}
@@ -435,8 +540,12 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted, nil)
-			db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRev, toRevision, deleted, nil)
+			if useCVRevCache {
+				db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
+			} else {
+				db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
+			}
 			return &revCacheDelta, nil, nil
 		}
 
@@ -473,17 +582,21 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if err != nil {
 			return nil, nil, err
 		}
-		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted, toRevAttStorageMeta)
+		revCacheDelta := newRevCacheDelta(deltaBytes, fromRev, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
-		db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+		if useCVRevCache {
+			db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
+		} else {
+			db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
+		}
 		return &revCacheDelta, nil, nil
 	}
 
 	return nil, nil, nil
 }
 
-func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
+func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, cv *Version, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
 
 	if col.user != nil {
 		if err := col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, channels); err != nil {
@@ -495,6 +608,7 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 				RevID:   revID,
 				History: history,
 				Deleted: isDeleted,
+				CV:      cv,
 			}
 			if isDeleted {
 				// Deletions are denoted by the deleted message property during 2.x replication
@@ -793,19 +907,13 @@ func (db *DatabaseCollectionWithUser) getAvailableRevAttachments(ctx context.Con
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
 func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDoc *Document) {
-	newBodyBytes, err := newDoc.BodyBytes(ctx)
-	if err != nil {
-		base.WarnfCtx(ctx, "Error getting body bytes when backing up ancestor revs")
-		return
-	}
 
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
 	ancestorRevId := newDoc.RevID
 	for {
 		if ancestorRevId = doc.History.getParent(ancestorRevId); ancestorRevId == "" {
-			// No ancestors with JSON found.  Check if we need to back up current rev for delta sync, then return
-			db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, "", newBodyBytes, nil, doc.Attachments)
+			// No ancestors with JSON found. Return early
 			return
 		} else if json = doc.getRevisionBodyJSON(ctx, ancestorRevId, db.RevisionBodyLoader); json != nil {
 			break
@@ -813,7 +921,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, ancestorRevId, newBodyBytes, json, doc.Attachments)
+	db.backupRevisionJSON(ctx, doc.ID, doc.HLV.GetCurrentVersionString(), json)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.CurrentRev {
@@ -825,7 +933,15 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 
 // ////// UPDATING DOCUMENTS:
 
+// OnDemandImportForWrite imports a document before a subsequent document is written to Sync Gateway on top of the import document. Returns base.ErrCasFailureShouldRetry in the case that this import nees to be retried. This function is expected to be called within a callback to WriteUpdateWithXattrs.
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
+	revSeqNo, cas, err := db.getRevSeqNo(ctx, docid)
+	if err != nil {
+		return err
+	}
+	if cas != doc.Cas {
+		return base.ErrCasFailureShouldRetry
+	}
 
 	if syncDataErr := doc.validateSyncDataForImport(ctx, db.dbCtx, docid); syncDataErr != nil {
 		return syncDataErr
@@ -840,7 +956,13 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	// Use an admin-scoped database for import
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: db.DatabaseCollection, user: nil}
 
-	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, isDelete, nil, ImportOnDemand) // nolint:staticcheck
+	importOpts := importDocOptions{
+		expiry:   nil,
+		mode:     ImportOnDemand,
+		isDelete: isDelete,
+		revSeqNo: revSeqNo,
+	}
+	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, importOpts) // nolint:staticcheck
 
 	if importErr == base.ErrImportCancelledFilter {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
@@ -851,6 +973,96 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 		doc = importedDoc // nolint:staticcheck
 	}
 	return nil
+}
+
+// updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering. mouMatch represents if the _mou.cas == doc.cas
+func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document, docUpdateEvent DocUpdateType, mouMatch bool) (*Document, error) {
+
+	hasHLV := d.HLV != nil
+	if d.HLV == nil {
+		d.HLV = &HybridLogicalVector{}
+		base.DebugfCtx(ctx, base.KeyVV, "No existing HLV for doc %s", base.UD(d.ID))
+	} else {
+		base.DebugfCtx(ctx, base.KeyVV, "Existing HLV for doc %s before modification %+v", base.UD(d.ID), d.HLV)
+	}
+	switch docUpdateEvent {
+	case ExistingVersion:
+		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
+		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+	case Import:
+		// Do not update HLV if the current document version (cas) is already included in the existing HLV, as either:
+		//    1. _vv.cvCAS == document.cas (current mutation is already present as cv), or
+		//    2. _mou.cas == document.cas (current mutation is already present as cv, and was imported on a different cluster)
+
+		cvCASMatch := hasHLV && d.HLV.CurrentVersionCAS == d.Cas
+		if !hasHLV || (!cvCASMatch && !mouMatch) {
+			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
+			newVVEntry := Version{}
+			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
+			newVVEntry.Value = d.Cas
+			err := d.SyncData.HLV.AddVersion(newVVEntry)
+			if err != nil {
+				return nil, err
+			}
+			d.HLV.CurrentVersionCAS = d.Cas
+			base.DebugfCtx(ctx, base.KeyVV, "Adding new version to HLV due to import for doc %s, updated HLV %+v", base.UD(d.ID), d.HLV)
+		} else {
+			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV due to _mou.cas == doc.cas for doc %s, extant HLV %+v", base.UD(d.ID), d.HLV)
+		}
+	case NewVersion, ExistingVersionWithUpdateToHLV:
+		// add a new entry to the version vector
+		newVVEntry := Version{}
+		newVVEntry.SourceID = db.dbCtx.EncodedSourceID
+		newVVEntry.Value = expandMacroCASValueUint64
+		err := d.SyncData.HLV.AddVersion(newVVEntry)
+		if err != nil {
+			return nil, err
+		}
+		// update the cvCAS on the SGWrite event too
+		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+	}
+	return d, nil
+}
+
+// MigrateAttachmentMetadata will move any attachment metadata defined in sync data to global sync xattr
+func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Context, docID string, cas uint64, syncData *SyncData) error {
+	xattrs, _, err := c.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	if err != nil && !base.IsXattrNotFoundError(err) {
+		return err
+	}
+	var globalData GlobalSyncData
+	if xattrs[base.GlobalXattrName] != nil {
+		// we have a global xattr to preserve
+		err := base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalData)
+		if err != nil {
+			return base.RedactErrorf("Failed to Unmarshal global sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+		}
+		// add the sync data attachment metadata to global xattr
+		for i, v := range syncData.Attachments {
+			globalData.GlobalAttachments[i] = v
+		}
+	} else {
+		globalData.GlobalAttachments = syncData.Attachments
+	}
+	globalXattr, err := base.JSONMarshal(globalData)
+	if err != nil {
+		return base.RedactErrorf("Failed to Marshal global sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+	}
+	syncData.Attachments = nil
+	rawSyncXattr, err := base.JSONMarshal(*syncData)
+	if err != nil {
+		return base.RedactErrorf("Failed to Marshal sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+	}
+
+	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
+	opts := &sgbucket.MutateInOptions{}
+	spec := macroExpandSpec(base.SyncXattrName)
+	opts.MacroExpansion = spec
+	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
+
+	updatedXattr := map[string][]byte{base.SyncXattrName: rawSyncXattr, base.GlobalXattrName: globalXattr}
+	_, err = c.dataStore.UpdateXattrs(ctx, docID, 0, cas, updatedXattr, opts)
+	return err
 }
 
 // Updates or creates a document.
@@ -892,9 +1104,10 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		return "", nil, err
 	}
 
+	docUpdateEvent := NewVersion
 	allowImport := db.UseXattrs()
 	updateRevCache := true
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, docUpdateEvent, nil, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1001,9 +1214,171 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string) (doc *Document, cv *Version, newRevID string, err error) {
+	var matchRev string
+	if existingDoc != nil {
+		doc, unmarshalErr := db.unmarshalDocumentWithXattrs(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs, existingDoc.Cas, DocUnmarshalRev)
+		if unmarshalErr != nil {
+			return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Error unmarshaling existing doc")
+		}
+		matchRev = doc.CurrentRev
+	}
+	generation, _ := ParseRevID(ctx, matchRev)
+	if generation < 0 {
+		return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+	}
+	generation++ //nolint
+
+	docUpdateEvent := ExistingVersion
+	allowImport := db.UseXattrs()
+	updateRevCache := true
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+		// (Be careful: this block can be invoked multiple times if there are races!)
+
+		var isSgWrite bool
+		var crc32Match bool
+
+		// Is this doc an sgWrite?
+		if doc != nil {
+			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
+			if crc32Match {
+				db.dbStats().Database().Crc32MatchCount.Add(1)
+			}
+		}
+
+		// If the existing doc isn't an SG write, import prior to updating
+		if doc != nil && !isSgWrite && db.UseXattrs() {
+			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, newDoc.Deleted)
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+		}
+
+		// set up revTreeID for backward compatibility
+		var previousRevTreeID string
+		var prevGeneration int
+		var newGeneration int
+		if len(revTreeHistory) == 0 {
+			previousRevTreeID = doc.CurrentRev
+			prevGeneration, _ = ParseRevID(ctx, previousRevTreeID)
+			newGeneration = prevGeneration + 1
+		} else {
+			previousRevTreeID = revTreeHistory[0]
+			prevGeneration, _ = ParseRevID(ctx, previousRevTreeID)
+			newGeneration = prevGeneration + 1
+		}
+		revTreeConflictChecked := false
+		var parent string
+		var currentRevIndex int
+
+		// Conflict check here
+		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
+		if doc.HLV == nil {
+			doc.HLV = NewHybridLogicalVector()
+			addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
+			if addNewerVersionsErr != nil {
+				return nil, nil, false, nil, addNewerVersionsErr
+			}
+		} else {
+			if doc.HLV.isDominating(newDocHLV) {
+				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
+				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
+			}
+			if newDocHLV.isDominating(doc.HLV) {
+				// update hlv for all newer incoming source version pairs
+				addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
+				if addNewerVersionsErr != nil {
+					return nil, nil, false, nil, addNewerVersionsErr
+				}
+				// the new document has a dominating hlv, so we can ignore any legacy rev revtree information on the incoming document
+				revTreeConflictChecked = true
+				previousRevTreeID = doc.CurrentRev
+			} else {
+				if len(revTreeHistory) > 0 {
+					// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
+					parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
+					if err != nil {
+						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s, and conflict found in rev tree history", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
+						return nil, nil, false, nil, err
+					}
+					revTreeConflictChecked = true
+					addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
+					if addNewerVersionsErr != nil {
+						return nil, nil, false, nil, addNewerVersionsErr
+					}
+				} else {
+					base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
+					// cancel rest of update, HLV needs to be sent back to client with merge versions populated
+					return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+				}
+			}
+		}
+		// populate merge versions
+		if newDocHLV.MergeVersions != nil {
+			doc.HLV.MergeVersions = newDocHLV.MergeVersions
+		}
+		// rev tree conflict check if we have rev tree history to check against + finds current rev index to allow us
+		// to add any new revision to rev tree below.
+		// Only check for rev tree conflicts if we haven't already checked above
+		if !revTreeConflictChecked && len(revTreeHistory) > 0 {
+			parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+		}
+		// Add all the new revisions to the rev tree:
+		for i := currentRevIndex - 1; i >= 0; i-- {
+			err := doc.History.addRevision(newDoc.ID,
+				RevInfo{
+					ID:      revTreeHistory[i],
+					Parent:  parent,
+					Deleted: i == 0 && newDoc.Deleted})
+
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+			parent = revTreeHistory[i]
+		}
+
+		// Process the attachments, replacing bodies with digests.
+		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, newGeneration, previousRevTreeID, nil)
+		if err != nil {
+			return nil, nil, false, nil, err
+		}
+
+		// generate rev id for new arriving doc
+		strippedBody, _ := stripInternalProperties(newDoc._body)
+		encoding, err := base.JSONMarshalCanonical(strippedBody)
+		if err != nil {
+			return nil, nil, false, nil, err
+		}
+		newRev := CreateRevIDWithBytes(newGeneration, previousRevTreeID, encoding)
+
+		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: previousRevTreeID, Deleted: newDoc.Deleted}); err != nil {
+			base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(newDoc.ID), err)
+			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
+		}
+
+		newDoc.RevID = newRev
+
+		return newDoc, newAttachments, false, nil, nil
+	})
+
+	if doc != nil && doc.HLV != nil {
+		if cv == nil {
+			cv = &Version{}
+		}
+		source, version := doc.HLV.GetCurrentVersion()
+		cv.SourceID = source
+		cv.Value = version
+	}
+
+	return doc, cv, newRevID, err
+}
+
 // Adds an existing revision to a document along with its history (list of rev IDs.)
-func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
-	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc)
+func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
+	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc, docUpdateEvent)
 }
 
 // PutExistingRevWithConflictResolution Adds an existing revision to a document along with its history (list of rev IDs.)
@@ -1011,7 +1386,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc
 //  1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //  2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //  3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(ctx, newRev)
 	if generation < 0 {
@@ -1020,7 +1395,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 
 	allowImport := db.UseXattrs()
 	updateRevCache := true
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1119,7 +1494,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	return doc, newRev, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool, docUpdateEvent DocUpdateType) (doc *Document, newRev string, err error) {
 	err = validateAPIDocUpdate(body)
 	if err != nil {
 		return nil, "", err
@@ -1144,7 +1519,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 	newDoc.UpdateBody(body)
 
-	doc, newRevID, putExistingRevErr := db.PutExistingRev(ctx, newDoc, docHistory, noConflicts, false, nil)
+	doc, newRevID, putExistingRevErr := db.PutExistingRev(ctx, newDoc, docHistory, noConflicts, false, nil, docUpdateEvent)
 
 	if putExistingRevErr != nil {
 		return nil, "", putExistingRevErr
@@ -1235,6 +1610,27 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		MakeUserCtx(db.user, db.ScopeName, db.Name))
 
 	return output, nil, err
+}
+
+// revTreeConflictCheck checks for conflicts in the rev tree history and returns the parent revid, currentRevIndex
+// (index of parent rev), and an error if the document is in conflict
+func (db *DatabaseCollectionWithUser) revTreeConflictCheck(ctx context.Context, revTreeHistory []string, doc *Document, newDocDeleted bool) (string, int, error) {
+	currentRevIndex := len(revTreeHistory)
+	parent := ""
+	if currentRevIndex > 0 {
+		for i, revid := range revTreeHistory {
+			if doc.History.contains(revid) {
+				currentRevIndex = i
+				parent = revid
+				break
+			}
+		}
+		// conflict check on rev tree history
+		if db.IsIllegalConflict(ctx, doc, parent, newDocDeleted, true, revTreeHistory) {
+			return "", 0, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+		}
+	}
+	return parent, currentRevIndex, nil
 }
 
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
@@ -1558,7 +1954,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	// Store the new revision body into the doc:
 	doc.setRevisionBody(ctx, newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
 	doc.SyncData.Attachments = newDoc.DocAttachments
-	doc.metadataOnlyUpdate = newDoc.metadataOnlyUpdate
+	doc.MetadataOnlyUpdate = newDoc.MetadataOnlyUpdate
 
 	if doc.CurrentRev == newRevID {
 		doc.NewestRev = ""
@@ -1569,7 +1965,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		if doc.CurrentRev != prevCurrentRev {
 			doc.promoteNonWinningRevisionBody(ctx, doc.CurrentRev, db.RevisionBodyLoader)
 			// If the update resulted in promoting a previous non-winning revision body to winning, this isn't a metadata only update.
-			doc.metadataOnlyUpdate = nil
+			doc.MetadataOnlyUpdate = nil
 		}
 	}
 }
@@ -1828,13 +2224,41 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	return true
 }
 
-func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry *uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
+func (col *DatabaseCollectionWithUser) documentUpdateFunc(
+	ctx context.Context,
+	docExists bool,
+	doc *Document,
+	allowImport bool,
+	previousDocSequenceIn uint64,
+	unusedSequences []uint64,
+	callback updateAndReturnDocCallback,
+	expiry *uint32,
+	docUpdateEvent DocUpdateType,
+) (
+	retSyncFuncExpiry *uint32,
+	retNewRevID string,
+	retStoredDoc *Document,
+	retOldBodyJSON string,
+	retUnusedSequences []uint64,
+	changedAccessPrincipals []string,
+	changedRoleAccessUsers []string,
+	createNewRevIDSkipped bool,
+	revokedChannelsRequiringExpansion []string,
+	err error) {
 
 	err = validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
 		return
 	}
 
+	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
+	mouMatch := false
+	if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.CAS() == doc.Cas {
+		mouMatch = doc.MetadataOnlyUpdate.CAS() == doc.Cas
+		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): _mou:%+v Metadata-only update match:%t", base.UD(doc.ID), doc.MetadataOnlyUpdate, mouMatch)
+	} else {
+		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou", base.UD(doc.ID))
+	}
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
@@ -1894,6 +2318,14 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		return
 	}
 
+	// The callback has updated the HLV for mutations coming from CBL.  Update the HLV so that the current version is set before
+	// we call updateChannels, which needs to set the current version for removals
+	// update the HLV values
+	doc, err = col.updateHLV(ctx, doc, docUpdateEvent, mouMatch)
+	if err != nil {
+		return
+	}
+
 	if doc.CurrentRev != prevCurrentRev || createNewRevIDSkipped {
 		// Most of the time this update will change the doc's current rev. (The exception is
 		// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
@@ -1905,7 +2337,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 				return
 			}
 		}
-		_, err = doc.updateChannels(ctx, channelSet)
+		_, revokedChannelsRequiringExpansion, err = doc.updateChannels(ctx, channelSet)
 		if err != nil {
 			return
 		}
@@ -1930,7 +2362,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 
 	doc.ClusterUUID = col.serverUUID()
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
+	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -1941,7 +2373,8 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
 //  3. If isImport=true, document body will not be updated - only metadata xattr(s)
-func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, isImport bool, updateRevCache bool, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, docUpdateEvent DocUpdateType, existingDoc *sgbucket.BucketDocument, isImport bool, updateRevCache bool, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -1981,8 +2414,9 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				base.ErrorfCtx(ctx, "Error retrieving previous leaf attachments of doc: %s, Error: %v", base.UD(docid), err)
 			}
 			prevCurrentRev = doc.CurrentRev
+
 			isNewDocCreation = currentValue == nil
-			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, _, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
 			if err != nil {
 				return
 			}
@@ -2017,11 +2451,12 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if expiry != nil {
 			initialExpiry = *expiry
 		}
-		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll); err != nil {
 				return
 			}
+
 			prevCurrentRev = doc.CurrentRev
 
 			// Check whether Sync Data originated in body
@@ -2037,7 +2472,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			isNewDocCreation = currentValue == nil
-			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			var revokedChannelsRequiringExpansion []string
+			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
 			if err != nil {
 				return
 			}
@@ -2053,10 +2489,15 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 
+			// update the mutate in options based on the above logic
+			updatedDoc.Spec = doc.SyncData.HLV.computeMacroExpansions()
+
+			updatedDoc.Spec = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
+
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
-			if doc.metadataOnlyUpdate != nil {
-				if doc.metadataOnlyUpdate.CAS != "" {
-					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
+			if doc.MetadataOnlyUpdate != nil {
+				if doc.MetadataOnlyUpdate.HexCAS != "" {
+					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 				}
 			} else {
 				if currentXattrs[base.MouXattrName] != nil && !isNewDocCreation {
@@ -2066,17 +2507,30 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Return the new raw document value for the bucket to store.
 			doc.SetCrc32cUserXattrHash()
-			var rawSyncXattr, rawMouXattr, rawDocBody []byte
-			rawDocBody, rawSyncXattr, rawMouXattr, err = doc.MarshalWithXattrs()
+
+			var rawSyncXattr, rawMouXattr, rawVvXattr, rawGlobalSync, rawDocBody []byte
+			rawDocBody, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalSync, err = doc.MarshalWithXattrs()
+			if err != nil {
+				return updatedDoc, err
+			}
+
 			// If isImport is true, we don't generally want to update the document body, only the xattrs. One exception
 			// being when a import is resurrecting a document then we need a body to write back
 			if (!isImport && len(rawDocBody) > 0) || (isImport && doc.Deleted) {
 				updatedDoc.Doc = rawDocBody
 				docBytes = len(updatedDoc.Doc)
 			}
-			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawSyncXattr}
+
+			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawSyncXattr, base.VvXattrName: rawVvXattr}
 			if rawMouXattr != nil && db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
+			}
+			if rawGlobalSync != nil {
+				updatedDoc.Xattrs[base.GlobalXattrName] = rawGlobalSync
+			} else {
+				if currentXattrs[base.GlobalXattrName] != nil && !isNewDocCreation {
+					updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.GlobalXattrName)
+				}
 			}
 
 			// Warn when sync data is larger than a configured threshold
@@ -2092,7 +2546,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Prior to saving doc, remove the revision in cache
 			if createNewRevIDSkipped {
-				db.revisionCache.Remove(ctx, doc.ID, doc.CurrentRev)
+				db.revisionCache.RemoveWithRev(ctx, doc.ID, doc.CurrentRev)
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
@@ -2107,9 +2561,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		} else if doc != nil {
 			// Update the in-memory CAS values to match macro-expanded values
 			doc.Cas = casOut
-			if doc.metadataOnlyUpdate != nil && doc.metadataOnlyUpdate.CAS == expandMacroCASValue {
-				doc.metadataOnlyUpdate.CAS = base.CasToString(casOut)
+			if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
+				doc.MetadataOnlyUpdate.HexCAS = base.CasToString(casOut)
 			}
+			// update the doc's HLV defined post macro expansion
+			doc = db.postWriteUpdateHLV(ctx, doc, casOut)
 		}
 	}
 
@@ -2131,6 +2587,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		}
 	}
 
+	// ErrUpdateCancel is returned when the incoming revision is already known
 	if err == base.ErrUpdateCancel {
 		return nil, "", nil
 	} else if err != nil {
@@ -2185,6 +2642,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Attachments: doc.Attachments,
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
+			hlvHistory:  doc.HLV.ToHistoryForHLV(),
+			CV:          &Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version},
 		}
 
 		if updateRevCache {
@@ -2259,6 +2718,37 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	// Mark affected users/roles as needing to recompute their channel access:
 	db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
 	return doc, newRevID, nil
+}
+
+func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, doc *Document, casOut uint64) *Document {
+	if doc.HLV == nil {
+		return doc
+	}
+	if doc.HLV.Version == expandMacroCASValueUint64 {
+		doc.HLV.Version = casOut
+	}
+	if doc.HLV.CurrentVersionCAS == expandMacroCASValueUint64 {
+		doc.HLV.CurrentVersionCAS = casOut
+	}
+	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for delta generation purposes
+	backupRev := db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() != 0
+	if db.UseXattrs() && backupRev {
+		var newBodyWithAtts = doc._rawBody
+		if len(doc.Attachments) > 0 {
+			var err error
+			newBodyWithAtts, err = base.InjectJSONProperties(doc._rawBody, base.KVPair{
+				Key: BodyAttachments,
+				Val: doc.Attachments,
+			})
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), doc.CurrentRev, doc.HLV.GetCurrentVersionString(), err)
+				return doc
+			}
+		}
+		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
+	}
+	return doc
 }
 
 // getAttachmentIDsForLeafRevisions returns a map of attachment docids with values of attachment names.
@@ -2415,10 +2905,10 @@ func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (doci
 }
 
 // Deletes a document, by adding a new revision whose _deleted property is true.
-func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, error) {
+func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, *Document, error) {
 	body := Body{BodyDeleted: true, BodyRev: revid}
-	newRevID, _, err := db.Put(ctx, docid, body)
-	return newRevID, err
+	newRevID, doc, err := db.Put(ctx, docid, body)
+	return newRevID, doc, err
 }
 
 // Purges a document from the bucket (no tombstone)
@@ -2675,7 +3165,7 @@ func (c *DatabaseCollection) checkForUpgrade(ctx context.Context, key string, un
 		return nil, nil
 	}
 
-	doc, rawDocument, err := c.GetDocWithXattr(ctx, key, unmarshalLevel)
+	doc, rawDocument, err := c.GetDocWithXattrs(ctx, key, unmarshalLevel)
 	if err != nil || doc == nil || !doc.HasValidSyncData() {
 		return nil, nil
 	}
@@ -2776,11 +3266,85 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	}
 }
 
-const (
-	xattrMacroCas         = "cas"          // standard _sync property name for CAS
-	xattrMacroValueCrc32c = "value_crc32c" // standard _sync property name for crc32c
+// CheckProposedVersion - given DocID and a version in string form, check whether it can be added without conflict.
+// proposedVersionStr is the string representation of the proposed version's CV.
+// previousRev is the string representation of the CV of the last known parent of the proposed version.
+// proposedHLVString is the string representation of the proposed version's full HLV.
+func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousRev string, proposedHLVString string) (status ProposedRevStatus, currentVersion string) {
 
-	expandMacroCASValue = "expand" // static value that indicates that a CAS macro expansion should be applied to a property
+	proposedVersion, err := ParseVersion(proposedVersionStr)
+	if err != nil {
+		base.WarnfCtx(ctx, "Couldn't parse proposed version for doc %q / %q: %v", base.UD(docid), proposedVersionStr, err)
+		return ProposedRev_Error, ""
+	}
+
+	// previousRev may be revTreeID or version
+	var previousVersion Version
+	previousRevFormat := "version"
+	if !strings.Contains(previousRev, "@") {
+		previousRevFormat = "revTreeID"
+	}
+	if previousRev != "" && previousRevFormat == "version" {
+		var err error
+		previousVersion, err = ParseVersion(previousRev)
+		if err != nil {
+			base.WarnfCtx(ctx, "Couldn't parse previous version for doc %q / %q: %v", base.UD(docid), previousRev, err)
+			return ProposedRev_Error, ""
+		}
+	}
+
+	localDocCV := Version{}
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalNoHistory)
+	if doc.HLV != nil {
+		localDocCV.SourceID, localDocCV.Value = doc.HLV.GetCurrentVersion()
+	}
+	if err != nil {
+		if !base.IsDocNotFoundError(err) && !errors.Is(err, base.ErrXattrNotFound) {
+			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
+			return ProposedRev_Error, ""
+		}
+		// New document not found on server
+		return ProposedRev_OK_IsNew, ""
+	} else if previousRevFormat == "revTreeID" && doc.CurrentRev == previousRev {
+		// Non-conflicting update, client's previous legacy revTreeID is server's currentRev
+		return ProposedRev_OK, ""
+	} else if previousRevFormat == "version" && localDocCV == previousVersion {
+		// Non-conflicting update, client's previous version is server's CV
+		return ProposedRev_OK, ""
+	} else if doc.HLV.DominatesSource(proposedVersion) {
+		// SGW already has this version
+		return ProposedRev_Exists, ""
+	} else if localDocCV.SourceID == proposedVersion.SourceID && localDocCV.Value < proposedVersion.Value {
+		// previousVersion didn't match, but proposed version and server CV have matching source, and proposed version is newer
+		return ProposedRev_OK, ""
+	} else {
+		// Temporary (CBG-4466): check the full HLV that's being sent by CBL with proposeChanges messages.
+		// If the current server cv is dominated by the incoming HLV (i.e. the incoming HLV has an entry for the same source
+		// with a version that's greater than or equal to the server's cv), then we can accept the proposed version.
+		proposedHLV, _, err := ExtractHLVFromBlipMessage(proposedHLVString)
+		if err != nil {
+			base.InfofCtx(ctx, base.KeyCRUD, "CheckProposedVersion for doc %s unable to extract proposedHLV from rev message, will be treated as conflict: %v", base.UD(docid), err)
+		} else if proposedHLV.DominatesSource(localDocCV) {
+			base.DebugfCtx(ctx, base.KeyCRUD, "CheckProposedVersion returning OK for doc %s because incoming HLV dominates cv", base.UD(docid))
+			return ProposedRev_OK, ""
+		}
+
+		// In conflict cases, return the current cv.  This may be a false positive conflict if the client has replicated
+		// the server cv via a different peer and so is not sending previousRev.  The client is responsible for performing this check based on the
+		// returned localDocCV
+		return ProposedRev_Conflict, localDocCV.String()
+	}
+}
+
+const (
+	xattrMacroCas               = "cas"          // SyncData.Cas
+	xattrMacroValueCrc32c       = "value_crc32c" // SyncData.Crc32c
+	xattrMacroCurrentRevVersion = "rev.ver"      // SyncDataJSON.RevAndVersion.CurrentVersion
+	versionVectorVrsMacro       = "ver"          // PersistedHybridLogicalVector.Version
+	versionVectorCVCASMacro     = "cvCas"        // PersistedHybridLogicalVector.CurrentVersionCAS
+
+	expandMacroCASValueUint64 = math.MaxUint64 // static value that indicates that a CAS macro expansion should be applied to a property
+	expandMacroCASValueString = "expand"
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
@@ -2800,6 +3364,23 @@ func xattrCrc32cPath(xattrKey string) string {
 	return xattrKey + "." + xattrMacroValueCrc32c
 }
 
-func xattrMouCasPath() string {
+// XattrMouCasPath returns the xattr path for the CAS value for expansion, _mou.cas
+func XattrMouCasPath() string {
 	return base.MouXattrName + "." + xattrMacroCas
+}
+
+func xattrCurrentRevVersionPath(xattrKey string) string {
+	return xattrKey + "." + xattrMacroCurrentRevVersion
+}
+
+func xattrCurrentVersionPath(xattrKey string) string {
+	return xattrKey + "." + versionVectorVrsMacro
+}
+
+func xattrCurrentVersionCASPath(xattrKey string) string {
+	return xattrKey + "." + versionVectorCVCASMacro
+}
+
+func xattrRevokedChannelVersionPath(xattrKey string, channelName string) string {
+	return xattrKey + ".channels." + channelName + "." + xattrMacroCurrentRevVersion
 }

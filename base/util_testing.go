@@ -192,6 +192,9 @@ func TestUseXattrs() bool {
 	if err != nil {
 		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvSyncGatewayUseXattrs, useXattrs, err))
 	}
+	if !val {
+		panic(fmt.Sprintf("sync gateway %s requires xattrs to be enabled, remove env var %s=%s", ProductVersion, TestEnvSyncGatewayUseXattrs, useXattrs))
+	}
 
 	return val
 }
@@ -774,6 +777,11 @@ func TestRequiresGocbDCPClient(t testing.TB) {
 // RequireDocNotFoundError asserts that the given error represents a document not found error.
 func RequireDocNotFoundError(t testing.TB, e error) {
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
+}
+
+// RequireXattrNotFoundError asserts that the given error represents an xattr not found error.
+func RequireXattrNotFoundError(t testing.TB, e error) {
+	require.True(t, IsXattrNotFoundError(e), fmt.Sprintf("Expected error to be an xattr not found error, but was: %v", e))
 }
 
 func requireCasMismatchError(t testing.TB, err error) {

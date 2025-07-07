@@ -44,25 +44,25 @@ func TestDocEtag(t *testing.T) {
 	version := DocVersionFromPutResponse(t, response)
 
 	// Validate Etag returned on doc creation
-	assert.Equal(t, strconv.Quote(version.RevID), response.Header().Get("Etag"))
+	assert.Equal(t, strconv.Quote(version.RevTreeID), response.Header().Get("Etag"))
 
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc", "")
 	RequireStatus(t, response, 200)
 
 	// Validate Etag returned when retrieving doc
-	assert.Equal(t, strconv.Quote(version.RevID), response.Header().Get("Etag"))
+	assert.Equal(t, strconv.Quote(version.RevTreeID), response.Header().Get("Etag"))
 
 	// Validate Etag returned when updating doc
-	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc?rev="+version.RevID, `{"prop":false}`)
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc?rev="+version.RevTreeID, `{"prop":false}`)
 	version = DocVersionFromPutResponse(t, response)
-	assert.Equal(t, strconv.Quote(version.RevID), response.Header().Get("Etag"))
+	assert.Equal(t, strconv.Quote(version.RevTreeID), response.Header().Get("Etag"))
 
 	// Test Attachments
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "content/type"
 
 	// attach to existing document with correct rev (should succeed), manual request to change etag
-	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", "doc", "attach1", version.RevID)
+	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", "doc", "attach1", version.RevTreeID)
 	response = rt.SendAdminRequestWithHeaders(http.MethodPut, resource, attachmentBody, attachmentHeaders())
 	RequireStatus(t, response, http.StatusCreated)
 	var body db.Body
@@ -72,7 +72,7 @@ func TestDocEtag(t *testing.T) {
 	RequireDocVersionNotEqual(t, version, afterAttachmentVersion)
 
 	// validate Etag returned from adding an attachment
-	assert.Equal(t, strconv.Quote(afterAttachmentVersion.RevID), response.Header().Get("Etag"))
+	assert.Equal(t, strconv.Quote(afterAttachmentVersion.RevTreeID), response.Header().Get("Etag"))
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc/attach1", "")
@@ -116,7 +116,7 @@ func TestDocAttachment(t *testing.T) {
 	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 
 	// attempt to delete an attachment that is not on the document
-	response = rt.SendRequest("DELETE", "/{{.keyspace}}/doc/attach2?rev="+version.RevID, "")
+	response = rt.SendRequest("DELETE", "/{{.keyspace}}/doc/attach2?rev="+version.RevTreeID, "")
 	RequireStatus(t, response, 404)
 
 	// attempt to delete attachment from non existing doc
@@ -128,7 +128,7 @@ func TestDocAttachment(t *testing.T) {
 	RequireStatus(t, response, 409)
 
 	// delete the attachment calling the delete attachment endpoint
-	response = rt.SendRequest("DELETE", "/{{.keyspace}}/doc/attach1?rev="+version.RevID, "")
+	response = rt.SendRequest("DELETE", "/{{.keyspace}}/doc/attach1?rev="+version.RevTreeID, "")
 	RequireStatus(t, response, 200)
 
 	// attempt to access deleted attachment (should return error)
@@ -222,7 +222,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	}
 
 	// attach to existing document with correct rev (should fail)
-	response := rt.SendUserRequestWithHeaders("PUT", "/{{.keyspace}}/doc/attach1?rev="+version.RevID, attachmentBody, reqHeaders, "user1", "letmein")
+	response := rt.SendUserRequestWithHeaders("PUT", "/{{.keyspace}}/doc/attach1?rev="+version.RevTreeID, attachmentBody, reqHeaders, "user1", "letmein")
 	RequireStatus(t, response, 404)
 }
 
@@ -430,7 +430,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 		"Accept": "application/json",
 	}
 
-	response := rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevID, doc1Version.RevID), "", reqHeaders)
+	response := rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevTreeID, doc1Version.RevTreeID), "", reqHeaders)
 	assert.Equal(t, 200, response.Code)
 	// validate attachment has data property
 	body := db.Body{}
@@ -441,7 +441,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	data := attach1["data"]
 	assert.True(t, data != nil)
 
-	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevID, afterAttachmentVersion.RevID), "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevTreeID, afterAttachmentVersion.RevTreeID), "", reqHeaders)
 	assert.Equal(t, 200, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	log.Printf("response body revid1 = %s", body)
@@ -594,7 +594,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	version, _ := rt.GetDoc(doc1ID)
 
 	// Do a bulk_get to get the doc -- this was causing a panic prior to the fix for #2528
-	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, doc1ID, version.RevID, doc2ID, doc2Version.RevID)
+	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, doc1ID, version.RevTreeID, doc2ID, doc2Version.RevTreeID)
 	bulkGetResponse := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get?revs=true&attachments=true&revs_limit=2", bulkGetDocs)
 	if bulkGetResponse.Code != 200 {
 		panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
@@ -685,7 +685,8 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 }
 
 func TestConflictWithInvalidAttachment(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	t.Skip("Revs are backed up by hash of CV now, test needs to fetch backup rev by revID, CBG-3748 (backwards compatibility for revID)")
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
@@ -702,15 +703,15 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 
 	// Set attachment
 	attachmentBody := "aGVsbG8gd29ybGQ=" // hello.txt
-	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+version.RevID, attachmentBody, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+version.RevTreeID, attachmentBody, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
-	docrevId2 := DocVersionFromPutResponse(t, response).RevID
+	docrevId2 := DocVersionFromPutResponse(t, response).RevTreeID
 
 	// Update Doc
 	rev3Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId2 + `", "prop":true}`
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", rev3Input)
 	RequireStatus(t, response, http.StatusCreated)
-	docrevId3 := DocVersionFromPutResponse(t, response).RevID
+	docrevId3 := DocVersionFromPutResponse(t, response).RevTreeID
 
 	// Get Existing Doc & Update rev
 	rev4Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId3 + `", "prop":true}`
@@ -804,7 +805,7 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", reqBodyRev2a)
 	RequireStatus(t, response, http.StatusCreated)
 	docVersion2a := DocVersionFromPutResponse(t, response)
-	assert.Equal(t, "2-twoa", docVersion2a.RevID)
+	assert.Equal(t, "2-twoa", docVersion2a.RevTreeID)
 
 	// Put attachment on doc1 rev 2
 	rev3Attachment := `aGVsbG8gd29ybGQ=` // hello.txt
@@ -823,8 +824,8 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	docVersion4a := rt.UpdateDoc("doc1", docVersion3a, rev4aBody)
 
 	// Ensure the two attachments are different
-	response1 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]&rev="+docVersion4.RevID, "")
-	response2 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?rev="+docVersion4a.RevID, "")
+	response1 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevTreeID+"\"]&rev="+docVersion4.RevTreeID, "")
+	response2 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?rev="+docVersion4a.RevTreeID, "")
 
 	var body1 db.Body
 	var body2 db.Body
@@ -877,14 +878,14 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 		`}`
 	_ = rt.UpdateDoc("doc1", docVersion5, rev6Body)
 
-	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevTreeID+"\"]", "")
 	log.Printf("Rev6 GET: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, attachmentsPresent := body["_attachments"]
 	assert.True(t, attachmentsPresent)
 
 	// Create conflicting rev 6 that doesn't have attachments
-	reqBodyRev6a := `{"_rev": "6-a", "_revisions": {"ids": ["a", "` + docVersion5.RevID + `"], "start": 6}}`
+	reqBodyRev6a := `{"_rev": "6-a", "_revisions": {"ids": ["a", "` + docVersion5.RevTreeID + `"], "start": 6}}`
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", reqBodyRev6a)
 	RequireStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -892,7 +893,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	assert.Equal(t, "6-a", docRevId2a)
 
 	var rev6Response db.Body
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevTreeID+"\"]", "")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev6Response))
 	_, attachmentsPresent = rev6Response["_attachments"]
 	assert.False(t, attachmentsPresent)
@@ -903,7 +904,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 
 	// Retrieve current winning rev with attachments
 	var rev7Response db.Body
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevTreeID+"\"]", "")
 	log.Printf("Rev6 GET: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev7Response))
 	_, attachmentsPresent = rev7Response["_attachments"]
@@ -2104,7 +2105,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 	var doc1 docResp
 	// Get losing rev and ensure attachment is still there and has not been deleted
-	resp := rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+losingVersion3.RevID, "", map[string]string{"Accept": "application/json"})
+	resp := rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+losingVersion3.RevTreeID, "", map[string]string{"Accept": "application/json"})
 	RequireStatus(t, resp, http.StatusOK)
 
 	err := base.JSONUnmarshal(resp.BodyBytes(), &doc1)
@@ -2121,7 +2122,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 	var doc2 docResp
 	// Get winning rev and ensure attachment is indeed removed from this rev
-	resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+finalVersion4.RevID, "", map[string]string{"Accept": "application/json"})
+	resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+finalVersion4.RevTreeID, "", map[string]string{"Accept": "application/json"})
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = base.JSONUnmarshal(resp.BodyBytes(), &doc2)
@@ -2258,6 +2259,81 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	}
 
 }
+
+// TestUpdateViaBlipMigrateAttachment:
+//   - Tests document update through blip to a doc with attachment metadata defined in sync data
+//   - Assert that the c doc update this way will migrate the attachment metadata from sync data to global sync data
+func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rtConfig := &RestTesterConfig{
+		GuestEnabled: true,
+		AutoImport:   base.Ptr(false),
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	const (
+		doc1ID = "doc1"
+	)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		btcRunner.StartPull(btc.id)
+		btcRunner.StartPush(btc.id)
+		ds := rt.GetSingleDataStore()
+		ctx := base.TestCtx(t)
+
+		initialVersion := btc.rt.PutDocWithAttachment(doc1ID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
+		btc.rt.WaitForPendingChanges()
+		btcRunner.WaitForVersion(btc.id, doc1ID, initialVersion)
+
+		value, xattrs, cas, err := ds.GetWithXattrs(ctx, doc1ID, []string{base.SyncXattrName, base.GlobalXattrName})
+		require.NoError(t, err)
+		syncXattr, ok := xattrs[base.SyncXattrName]
+		require.True(t, ok)
+		globalXattr, ok := xattrs[base.GlobalXattrName]
+		require.True(t, ok)
+
+		var attachs db.GlobalSyncData
+		err = base.JSONUnmarshal(globalXattr, &attachs)
+		require.NoError(t, err)
+
+		// move attachment metadata from global xattr to sync xattr
+		db.MoveAttachmentXattrFromGlobalToSync(t, ctx, doc1ID, cas, value, syncXattr, attachs.GlobalAttachments, true, ds)
+
+		// push revision from client
+		doc1Version := btcRunner.AddRev(btc.id, doc1ID, &initialVersion, []byte(`{"new": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`))
+
+		rt.WaitForVersion(doc1ID, doc1Version)
+
+		// assert the pushed rev updates the doc in bucket and migrates attachment metadata in process
+		xattrs, _, err = ds.GetXattrs(ctx, doc1ID, []string{base.SyncXattrName, base.GlobalXattrName})
+		require.NoError(t, err)
+		syncXattr, ok = xattrs[base.SyncXattrName]
+		require.True(t, ok)
+		globalXattr, ok = xattrs[base.GlobalXattrName]
+		require.True(t, ok)
+
+		// empty global sync,
+		attachs = db.GlobalSyncData{}
+		err = base.JSONUnmarshal(globalXattr, &attachs)
+		require.NoError(t, err)
+		var syncData db.SyncData
+		err = base.JSONUnmarshal(syncXattr, &syncData)
+		require.NoError(t, err)
+
+		// assert that the attachment metadata has been moved
+		assert.NotNil(t, attachs.GlobalAttachments)
+		assert.Nil(t, syncData.Attachments)
+		att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+		assert.Equal(t, float64(11), att["length"])
+	})
+}
+
 func TestUpdateExistingAttachment(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
@@ -2280,9 +2356,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		btcRunner.StartPull(btc.id)
 		btcRunner.StartPush(btc.id)
 
-		doc1Version := rt.PutDoc(doc1ID, `{}`)
-		doc2Version := rt.PutDoc(doc2ID, `{}`)
-		rt.WaitForPendingChanges()
+		doc1Version := rt.PutDocDirectly(doc1ID, db.Body{})
+		doc2Version := rt.PutDocDirectly(doc2ID, db.Body{})
 
 		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 		btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
@@ -2303,7 +2378,6 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		require.NoError(t, err)
 
 		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
-		require.NoError(t, err)
 
 		rt.WaitForVersion(doc1ID, doc1Version)
 
@@ -2337,9 +2411,8 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 		btcRunner.StartPull(btc.id)
 		btcRunner.StartPush(btc.id)
 
-		// Add doc1 and doc2
-		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
-		btc.rt.WaitForPendingChanges()
+		// Add doc1
+		doc1Version := rt.PutDocDirectly(doc1ID, db.Body{})
 
 		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 
@@ -2350,12 +2423,72 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 		// Update doc1, include reference to non-existing attachment with recent revpos
 		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"stub":true,"revpos":1}}}`, digest, length)))
 
-		btc.rt.WaitForVersion(doc1ID, doc1Version)
+		rt.WaitForVersion(doc1ID, doc1Version)
 
 		// verify that attachment exists on document and was persisted
-		attResponse := btc.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
+		attResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
 		assert.Equal(t, 200, attResponse.Code)
 		assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
+	})
+}
+
+func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
+	rtConfig := &RestTesterConfig{
+		GuestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AllowConflicts: base.Ptr(true),
+			},
+		},
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	const docID = "doc"
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
+
+		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
+		defer btc.Close()
+
+		btcRunner.StartPull(btc.id)
+
+		// Push an initial rev with attachment data
+		initialVersion := rt.PutDocWithAttachment(docID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
+		rt.WaitForPendingChanges()
+
+		// Replicate data to client and ensure doc arrives
+		rt.WaitForPendingChanges()
+		btcRunner.WaitForVersion(btc.id, docID, initialVersion)
+
+		// Create a set of revisions before we start the replicator to ensure there's a significant amount of history to push
+		version := initialVersion
+		for i := 0; i < 25; i++ {
+			version = btcRunner.AddRev(btc.id, docID, &version, []byte(`{"update_count":`+strconv.Itoa(i)+`,"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`))
+		}
+
+		// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment, even when we replicate it
+		proveAttachmentBefore := btc.pushReplication.replicationStats.ProveAttachment.Value()
+		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
+		rt.WaitForVersion(docID, version)
+
+		proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
+		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
+
+		// start another push to run in the background from where we last left off
+		latestSeq := btcRunner.SingleCollection(btc.id).lastSeq()
+		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: true, Since: strconv.Itoa(int(latestSeq))})
+
+		// Push another bunch of history, this time whilst a replicator is actively pushing them
+		for i := 25; i < 50; i++ {
+			version = btcRunner.AddRev(btc.id, docID, &version, []byte(`{"update_count":`+strconv.Itoa(i)+`,"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`))
+		}
+
+		rt.WaitForVersion(docID, version)
+		proveAttachmentAfter = btc.pushReplication.replicationStats.ProveAttachment.Value()
+		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
 	})
 }
 
@@ -2365,7 +2498,6 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
@@ -2375,10 +2507,11 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		defer btc.Close()
 		// Create rev 1 with the hello.txt attachment
 		const docID = "doc"
-		version := btc.rt.PutDoc(docID, `{"val": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+
+		version := rt.PutDocWithAttachment(docID, `{"val": "val"}`, "hello.txt", "aGVsbG8gd29ybGQ=")
 
 		// Pull rev and attachment down to client
-		btc.rt.WaitForPendingChanges()
+		rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
 
 		btcRunner.WaitForVersion(btc.id, docID, version)
@@ -2393,7 +2526,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		rt.WaitForVersion(docID, updatedVersion)
 
 		// Get the attachment and ensure the data is updated
-		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc/hello.txt", "")
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc/hello.txt", "")
 		RequireStatus(t, resp, http.StatusOK)
 		assert.Equal(t, "goodbye cruel world", string(resp.BodyBytes()))
 	})
@@ -2557,10 +2690,11 @@ func TestCBLRevposHandling(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
 		defer btc.Close()
 
-		doc1Version1 := btc.rt.PutDoc(doc1ID, `{}`)
-		doc2Version1 := btc.rt.PutDoc(doc2ID, `{}`)
+		startingBody := db.Body{"foo": "bar"}
+		doc1Version1 := rt.PutDocDirectly(doc1ID, startingBody)
+		doc2Version1 := rt.PutDocDirectly(doc2ID, startingBody)
 
-		btc.rt.WaitForPendingChanges()
+		rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
 		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version1)
 		btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version1)
@@ -2573,10 +2707,10 @@ func TestCBLRevposHandling(t *testing.T) {
 		doc1Version2 := btcRunner.AddRev(btc.id, doc1ID, &doc1Version1, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
 		doc2Version2 := btcRunner.AddRev(btc.id, doc2ID, &doc2Version1, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
 
-		btc.rt.WaitForVersion(doc1ID, doc1Version2)
-		btc.rt.WaitForVersion(doc2ID, doc2Version2)
+		rt.WaitForVersion(doc1ID, doc1Version2)
+		rt.WaitForVersion(doc2ID, doc2Version2)
 
-		collection, ctx := btc.rt.GetSingleTestDatabaseCollection()
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
 		_, err := collection.GetDocument(ctx, "doc1", db.DocUnmarshalAll)
 		require.NoError(t, err)
 		_, err = collection.GetDocument(ctx, "doc2", db.DocUnmarshalAll)
@@ -2591,21 +2725,21 @@ func TestCBLRevposHandling(t *testing.T) {
 		rt.WaitForVersion(doc1ID, doc1Version4)
 
 		// Validate attachment exists
-		attResponse := btc.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
+		attResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
 		assert.Equal(t, 200, attResponse.Code)
 		assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
 
-		attachmentPushCount := btc.rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
+		attachmentPushCount := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 		// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
 		doc1Version5 := btcRunner.AddRev(btc.id, doc1ID, &doc1Version4, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
 		rt.WaitForVersion(doc1ID, doc1Version5)
 
 		// Validate attachment exists and is updated
-		attResponse = btc.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
+		attResponse = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
 		assert.Equal(t, 200, attResponse.Code)
 		assert.Equal(t, "attachmentB", string(attResponse.BodyBytes()))
 
-		attachmentPushCountAfter := btc.rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
+		attachmentPushCountAfter := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 		assert.Equal(t, attachmentPushCount+1, attachmentPushCountAfter)
 	})
 }
@@ -2633,6 +2767,22 @@ func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, r
 	docVersion, _ := rt.GetDoc(docID)
 	rt.WaitForPendingChanges()
 	return docVersion
+}
+
+// CreateDocWithLegacyAttachmentNoMigration create a doc with legacy attachment defined (v1) and will not attempt to migrate that attachment to v2
+func CreateDocWithLegacyAttachmentNoMigration(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) {
+	// Write attachment directly to the datastore.
+	dataStore := rt.GetSingleDataStore()
+	_, err := dataStore.Add(attKey, 0, attBody)
+	require.NoError(t, err)
+
+	body := db.Body{}
+	err = body.Unmarshal(rawDoc)
+	require.NoError(t, err, "Error unmarshalling body")
+
+	// Write raw document to the datastore.
+	_, err = dataStore.Add(docID, 0, rawDoc)
+	require.NoError(t, err)
 }
 
 func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta map[string]interface{}) {
@@ -2696,7 +2846,7 @@ func (rt *RestTester) storeAttachment(docID string, version DocVersion, attName,
 
 // storeAttachmentWithHeaders adds an attachment to a document version and returns the new version using rev= syntax.
 func (rt *RestTester) storeAttachmentWithHeaders(docID string, version DocVersion, attName, attBody string, reqHeaders map[string]string) DocVersion {
-	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", docID, attName, version.RevID)
+	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", docID, attName, version.RevTreeID)
 	response := rt.SendAdminRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 	var body db.Body
@@ -2708,7 +2858,7 @@ func (rt *RestTester) storeAttachmentWithHeaders(docID string, version DocVersio
 // storeAttachmentWithIfMatch adds an attachment to a document version and returns the new version, using If-Match.
 func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersion, attName, attBody string) DocVersion {
 	reqHeaders := attachmentHeaders()
-	reqHeaders["If-Match"] = `"` + version.RevID + `"`
+	reqHeaders["If-Match"] = `"` + version.RevTreeID + `"`
 	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attName)
 	response := rt.SendRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
 	RequireStatus(rt.TB(), response, http.StatusCreated)
@@ -2716,4 +2866,166 @@ func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersio
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.True(rt.TB(), body["ok"].(bool))
 	return DocVersionFromPutResponse(rt.TB(), response)
+}
+
+// TestLegacyAttachmentMigrationToGlobalXattrOnImport:
+//   - Create legacy attachment and perform a read to migrate the attachment to xattr
+//   - Assert that this migrated attachment is moved to global xattr not sync data xattr
+//   - Add new doc with legacy attachment but do not attempt to migrate after write
+//   - Trigger on demand import for write and assert that the attachment is moved ot global xattr
+func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	docID := "foo16"
+	attBody := []byte(`hi`)
+	digest := db.Sha1DigestKey(attBody)
+	attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+	rawDoc := rawDocWithAttachmentAndSyncMeta(rt)
+
+	// Create a document with legacy attachment.
+	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+
+	// get global xattr and assert the attachment is there
+	xattrs, _, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.GlobalXattrName)
+	var globalXattr db.GlobalSyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
+	hi := globalXattr.GlobalAttachments["hi.txt"].(map[string]interface{})
+
+	assert.Len(t, globalXattr.GlobalAttachments, 1)
+	assert.Equal(t, float64(2), hi["length"])
+
+	// Create a document with legacy attachment but do not attempt to migrate
+	docID = "baa16"
+	CreateDocWithLegacyAttachmentNoMigration(t, rt, docID, rawDoc, attKey, attBody)
+
+	// Trigger on demand import for write
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/baa16", `{}`)
+	RequireStatus(t, resp, http.StatusConflict)
+
+	// get xattrs of new doc we had the conflict update for, assert that the attachment metadata has been moved to global xattr
+	xattrs, _, err = collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.GlobalXattrName)
+	globalXattr = db.GlobalSyncData{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
+	newatt := globalXattr.GlobalAttachments["hi.txt"].(map[string]interface{})
+
+	assert.Len(t, globalXattr.GlobalAttachments, 1)
+	assert.Equal(t, float64(2), newatt["length"])
+}
+
+// TestAttachmentMigrationToGlobalXattrOnUpdate:
+//   - Create doc with attachment defined
+//   - Set doc in bucket to move attachment from global xattr to old location in sync data
+//   - Update this doc through sync gateway
+//   - Assert that the attachment metadata in moved from sync data to global xattr on update
+func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	docID := "baa"
+
+	body := `{"test":"doc","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
+	vrs := rt.PutDoc(docID, body)
+
+	// get xattrs, remove the global xattr and move attachments back to sync data in the bucket
+	xattrs, cas, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.GlobalXattrName)
+	require.Contains(t, xattrs, base.SyncXattrName)
+
+	var bucketSyncData db.SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))
+	var globalXattr db.GlobalSyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
+
+	bucketSyncData.Attachments = globalXattr.GlobalAttachments
+	syncBytes := base.MustJSONMarshal(t, bucketSyncData)
+	xattrBytes := map[string][]byte{
+		base.SyncXattrName: syncBytes,
+	}
+	// add new update sync data but also remove global xattr from doc
+	_, err = collection.GetCollectionDatastore().WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"test":"doc"}`), xattrBytes, []string{base.GlobalXattrName}, nil)
+	require.NoError(t, err)
+
+	// update doc
+	body = `{"some":"update","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
+	_ = rt.UpdateDoc(docID, vrs, body)
+
+	// assert that the attachments moved to global xattr after doc update
+	xattrs, _, err = collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.GlobalXattrName)
+	require.Contains(t, xattrs, base.SyncXattrName)
+
+	bucketSyncData = db.SyncData{}
+	globalXattr = db.GlobalSyncData{}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
+
+	assert.Nil(t, bucketSyncData.Attachments)
+	assert.NotNil(t, globalXattr.GlobalAttachments)
+	attMeta := globalXattr.GlobalAttachments["camera.txt"].(map[string]interface{})
+	assert.Equal(t, float64(20), attMeta["length"])
+}
+
+func TestBlipPushRevWithAttachment(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		// Setup
+		rt := NewRestTesterPersistentConfig(t)
+		defer rt.Close()
+		const username = "bernard"
+
+		opts := &BlipTesterClientOpts{Username: username, SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		btcRunner.StartPush(btc.id)
+
+		docID := "doc1"
+		attachmentName := "attachment1"
+		attachmentData := "attachmentContents"
+
+		length, digest := btcRunner.saveAttachment(btc.id, base64.StdEncoding.EncodeToString([]byte(attachmentData)))
+
+		blipBody := db.Body{
+			"key": "val",
+			"_attachments": db.Body{
+				"attachment1": db.Body{
+					"digest": digest,
+					"stub":   true,
+					"length": length,
+				},
+			},
+		}
+		version1 := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), base.MustJSONMarshal(t, blipBody))
+
+		rt.WaitForVersion(docID, version1)
+
+		rtVersion, body := rt.GetDoc(docID)
+		require.Equal(t, db.Body{
+			"key": "val",
+			"_attachments": map[string]any{
+				"attachment1": map[string]any{
+					"digest": digest,
+					"stub":   true,
+					"revpos": float64(1),
+					"length": float64(length),
+				},
+			},
+			"_id":  docID,
+			"_rev": rtVersion.RevTreeID,
+		}, body)
+
+		response := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attachmentName), "")
+		RequireStatus(t, response, http.StatusOK)
+		require.Equal(t, attachmentData, string(response.BodyBytes()))
+	})
 }

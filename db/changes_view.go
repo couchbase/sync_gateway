@@ -26,7 +26,7 @@ type channelsViewRow struct {
 	ID    string
 	Key   []interface{} // Actually [channelName, sequence]
 	Value struct {
-		Rev   string
+		Rev   channels.RevAndVersion
 		Flags uint8
 	}
 }
@@ -43,13 +43,12 @@ func nextChannelViewEntry(ctx context.Context, results sgbucket.QueryResultItera
 	entry := &LogEntry{
 		Sequence:     uint64(viewRow.Key[1].(float64)),
 		DocID:        viewRow.ID,
-		RevID:        viewRow.Value.Rev,
 		Flags:        viewRow.Value.Flags,
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 		CollectionID: collectionID,
 	}
+	entry.SetRevAndVersion(viewRow.Value.Rev)
 	return entry, true
-
 }
 
 func nextChannelQueryEntry(ctx context.Context, results sgbucket.QueryResultIterator, collectionID uint32) (*LogEntry, bool) {
@@ -62,14 +61,16 @@ func nextChannelQueryEntry(ctx context.Context, results sgbucket.QueryResultIter
 	entry := &LogEntry{
 		Sequence:     queryRow.Sequence,
 		DocID:        queryRow.Id,
-		RevID:        queryRow.Rev,
 		Flags:        queryRow.Flags,
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 		CollectionID: collectionID,
 	}
+	entry.SetRevAndVersion(queryRow.Rev)
 
-	if queryRow.RemovalRev != "" {
-		entry.RevID = queryRow.RemovalRev
+	if queryRow.RemovalRev != nil {
+		entry.RevID = queryRow.RemovalRev.RevTreeID
+		entry.Version = base.HexCasToUint64(queryRow.RemovalRev.CurrentVersion)
+		entry.SourceID = queryRow.RemovalRev.CurrentSource
 		if queryRow.RemovalDel {
 			entry.SetDeleted()
 		}

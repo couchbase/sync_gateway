@@ -2361,9 +2361,8 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			safeDbName := strings.ToLower(strings.ReplaceAll(testCase.Name, " ", "-"))
 			dbConfig := DbConfig{
-				Name: safeDbName,
+				Name: SafeDatabaseName(t, testCase.Name),
 			}
 
 			if testCase.SyncFunction != nil {
@@ -3136,6 +3135,28 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	assert.NotNil(t, dbConfig.CacheConfig)
 	assert.Equal(t, uint32(100), *dbConfig.CacheConfig.RevCacheConfig.MaxItemCount)
 	assert.Equal(t, uint32(0), *dbConfig.CacheConfig.RevCacheConfig.MaxMemoryCountMB)
+}
+
+func TestTLSWithoutCerts(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Bootstrap.Server = strings.ReplaceAll(config.Bootstrap.Server, "couchbase://", "couchbases://")
+			config.Bootstrap.ServerTLSSkipVerify = base.Ptr(true)
+			config.Bootstrap.UseTLSServer = base.Ptr(true)
+		},
+	})
+	defer rt.Close()
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AutoImport = true
+	rt.CreateDatabase("db", dbConfig)
+	// ensure import feed works without TLS
+	err := rt.GetSingleDataStore().Set("doc1", 0, nil, []byte(`{"foo": "bar"}`))
+	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
+	}, time.Second*10, time.Millisecond*100)
+
 }
 
 func TestUserUpdatedAtField(t *testing.T) {

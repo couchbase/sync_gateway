@@ -14,11 +14,13 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"reflect"
 	"testing"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -78,7 +80,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a"}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Flush the cache
@@ -119,7 +121,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a"}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -130,7 +132,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	rev2a_body := unmarshalBody(t, `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 	rev2a_body["key1"] = prop_1000_bytes
 	rev2a_body["version"] = "2a"
-	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	rev2a_body[BodyId] = doc.ID
 	rev2a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-a")
@@ -156,7 +158,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	rev2b_body := unmarshalBody(t, `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 	rev2b_body[BodyId] = doc.ID
 	rev2b_body[BodyRev] = newRev
@@ -200,7 +202,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a"}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -211,7 +213,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev2a_body := Body{}
 	rev2a_body["key1"] = prop_1000_bytes
 	rev2a_body["version"] = "2a"
-	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	rev2a_body[BodyId] = doc.ID
 	rev2a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-a")
@@ -230,7 +232,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev2b_body := Body{}
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	rev2b_body[BodyId] = doc.ID
 	rev2b_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-b")
@@ -273,7 +275,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev3b_body := Body{}
 	rev3b_body["version"] = "3b"
 	rev3b_body[BodyDeleted] = true
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3b_body, []string{"3-b", "2-b"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3b_body, []string{"3-b", "2-b"}, false, ExistingVersionWithUpdateToHLV)
 	rev3b_body[BodyId] = doc.ID
 	rev3b_body[BodyRev] = newRev
 	rev3b_body[BodyDeleted] = true
@@ -310,7 +312,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev2c_body := Body{}
 	rev2c_body["key1"] = prop_1000_bytes
 	rev2c_body["version"] = "2c"
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2c_body, []string{"2-c", "1-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2c_body, []string{"2-c", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	rev2c_body[BodyId] = doc.ID
 	rev2c_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-c")
@@ -332,7 +334,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev3c_body["version"] = "3c"
 	rev3c_body["key1"] = prop_1000_bytes
 	rev3c_body[BodyDeleted] = true
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3c_body, []string{"3-c", "2-c"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3c_body, []string{"3-c", "2-c"}, false, ExistingVersionWithUpdateToHLV)
 	rev3c_body[BodyId] = doc.ID
 	rev3c_body[BodyRev] = newRev
 	rev3c_body[BodyDeleted] = true
@@ -361,7 +363,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev3a_body := Body{}
 	rev3a_body["key1"] = prop_1000_bytes
 	rev3a_body["version"] = "3a"
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2c_body, []string{"3-a", "2-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2c_body, []string{"3-a", "2-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-a")
 
 	revTree, err = getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
@@ -384,7 +386,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Create rev 2-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a"}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -395,7 +397,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rev2a_body := Body{}
 	rev2a_body["key1"] = prop_1000_bytes
 	rev2a_body["version"] = "2a"
-	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	rev2a_body[BodyId] = doc.ID
 	rev2a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-a")
@@ -414,7 +416,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rev2b_body := Body{}
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 	rev2b_body[BodyId] = doc.ID
 	rev2b_body[BodyRev] = newRev
@@ -459,7 +461,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rev3b_body["version"] = "3b"
 	rev3b_body["key1"] = prop_1000_bytes
 	rev3b_body[BodyDeleted] = true
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3b_body, []string{"3-b", "2-b"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3b_body, []string{"3-b", "2-b"}, false, ExistingVersionWithUpdateToHLV)
 	rev3b_body[BodyId] = doc.ID
 	rev3b_body[BodyRev] = newRev
 	rev3b_body[BodyDeleted] = true
@@ -494,17 +496,17 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	activeRevBody := Body{}
 	activeRevBody["version"] = "...a"
 	activeRevBody["key1"] = prop_1000_bytes
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"3-a", "2-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"3-a", "2-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"4-a", "3-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"4-a", "3-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 4-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"5-a", "4-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"5-a", "4-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 5-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"6-a", "5-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"6-a", "5-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 6-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"7-a", "6-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"7-a", "6-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 7-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"8-a", "7-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"8-a", "7-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 8-a")
 
 	// Verify that 3-b is still present at this point
@@ -513,7 +515,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.NoError(t, err, "Rev 3-b should still exist")
 
 	// Add one more rev that triggers pruning since gen(9-3) > revsLimit
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"9-a", "8-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", activeRevBody, []string{"9-a", "8-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 9-a")
 
 	// Verify that 3-b has been pruned
@@ -542,7 +544,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a", "large": prop_1000_bytes}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -551,7 +553,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 2-a
 	log.Printf("Create rev 2-a")
 	rev2a_body := Body{"key1": "value2", "version": "2a", "large": prop_1000_bytes}
-	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 	rev2a_body[BodyId] = doc.ID
 	rev2a_body[BodyRev] = newRev
@@ -571,7 +573,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 3-a
 	log.Printf("Create rev 3-a")
 	rev3a_body := Body{"key1": "value2", "version": "3a", "large": prop_1000_bytes}
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err, "add 3-a")
 	rev3a_body[BodyId] = doc.ID
 	rev3a_body[BodyRev] = newRev
@@ -590,7 +592,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 3-a
 	log.Printf("Create rev 2-b")
 	rev2b_body := Body{"key1": "value2", "version": "2b", "large": prop_1000_bytes}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
@@ -613,7 +615,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 6-a
 	log.Printf("Create rev 6-a")
 	rev6a_body := Body{"key1": "value2", "version": "6a", "large": prop_1000_bytes}
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err, "add 6-a")
 	rev6a_body[BodyId] = doc.ID
 	rev6a_body[BodyRev] = newRev
@@ -638,7 +640,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 6-a
 	log.Printf("Create rev 3-b")
 	rev3b_body := Body{"key1": "value2", "version": "3b", "large": prop_1000_bytes}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err, "add 3-b")
 
 	// Same again and again
@@ -657,12 +659,12 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	log.Printf("Create rev 3-c")
 	rev3c_body := Body{"key1": "value2", "version": "3c", "large": prop_1000_bytes}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err, "add 3-c")
 
 	log.Printf("Create rev 3-d")
 	rev3d_body := Body{"key1": "value2", "version": "3d", "large": prop_1000_bytes}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3d_body, []string{"3-d", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3d_body, []string{"3-d", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err, "add 3-d")
 
 	// Create new winning revision on 'b' branch.  Triggers movement of 6-a to inline storage.  Force cas retry, check document contents
@@ -681,7 +683,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	//     7-b
 	log.Printf("Create rev 7-b")
 	rev7b_body := Body{"key1": "value2", "version": "7b", "large": prop_1000_bytes}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev7b_body, []string{"7-b", "6-b", "5-b", "4-b", "3-b"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev7b_body, []string{"7-b", "6-b", "5-b", "4-b", "3-b"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err, "add 7-b")
 
 }
@@ -705,7 +707,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "v": "1a"}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -714,7 +716,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 2-a
 	log.Printf("Create rev 2-a")
 	rev2a_body := Body{"key1": "value2", "v": "2a"}
-	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	rev2a_body[BodyId] = doc.ID
 	rev2a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-a")
@@ -733,7 +735,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 3-a
 	log.Printf("Create rev 3-a")
 	rev3a_body := Body{"key1": "value2", "v": "3a"}
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	rev3a_body[BodyId] = doc.ID
 	rev3a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 3-a")
@@ -746,7 +748,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 3-a
 	log.Printf("Create rev 2-b")
 	rev2b_body := Body{"key1": "value2", "v": "2b"}
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 	rev2b_body[BodyId] = doc.ID
 	rev2b_body[BodyRev] = newRev
@@ -771,7 +773,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 6-a
 	log.Printf("Create rev 6-a")
 	rev6a_body := Body{"key1": "value2", "v": "6a"}
-	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false)
+	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false, ExistingVersionWithUpdateToHLV)
 	rev6a_body[BodyId] = doc.ID
 	rev6a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 6-a")
@@ -797,7 +799,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 6-a
 	log.Printf("Create rev 3-b")
 	rev3b_body := Body{"key1": "value2", "v": "3b"}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-b")
 
 	// Same again
@@ -817,7 +819,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	log.Printf("Create rev 3-c")
 	rev3c_body := Body{"key1": "value2", "v": "3c"}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-c")
 
 }
@@ -834,7 +836,7 @@ func TestLargeSequence(t *testing.T) {
 
 	// Write a doc via SG
 	body := Body{"key1": "largeSeqTest"}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "largeSeqDoc", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "largeSeqDoc", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add largeSeqDoc")
 
 	syncData, err := collection.GetDocSyncData(ctx, "largeSeqDoc")
@@ -909,7 +911,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	// 6-a
 	log.Printf("Attempt to create rev 3-c")
 	rev3c_body := Body{"key1": "value2", "v": "3c"}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-c")
 }
 
@@ -921,16 +923,16 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	largeDoc := make([]byte, 1000000)
 	longBody := Body{"val": string(largeDoc), "rev": "1-a"}
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc2", longBody, []string{"1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc2", longBody, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	var shortWithAttachmentsDataBody Body
 	shortWithAttachmentsData := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}, "rev":"1-a"}`
 	_ = base.JSONUnmarshal([]byte(shortWithAttachmentsData), &shortWithAttachmentsDataBody)
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
@@ -949,9 +951,9 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	})
 
 	updateBody := Body{"rev": "2-a"}
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", updateBody, []string{"2-a", "1-a"}, false)
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc2", updateBody, []string{"2-a", "1-a"}, false)
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", updateBody, []string{"2-a", "1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", updateBody, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc2", updateBody, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", updateBody, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
@@ -978,16 +980,16 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	largeDoc := make([]byte, 1000000)
 	longBody := Body{"val": string(largeDoc), "rev": "1-a"}
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc2", longBody, []string{"1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc2", longBody, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	var shortWithAttachmentsDataBody Body
 	shortWithAttachmentsData := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}, "rev":"1-a"}`
 	_ = base.JSONUnmarshal([]byte(shortWithAttachmentsData), &shortWithAttachmentsDataBody)
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
@@ -1006,9 +1008,9 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 	})
 
 	updateBody := Body{"rev": "2-a"}
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", updateBody, []string{"2-a", "1-a"}, false)
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc2", updateBody, []string{"2-a", "1-a"}, false)
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", updateBody, []string{"2-a", "1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", updateBody, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc2", updateBody, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", updateBody, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
@@ -1036,7 +1038,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"foo": "bar"}
-	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	getDelta := func(newDoc *Document) {
 		deltaSrcRev, _ := collection.GetRev(ctx, "doc1", "1-a", false, nil)
@@ -1079,24 +1081,25 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 }
 
 func TestGetAvailableRevAttachments(t *testing.T) {
+	t.Skip("Revs are backed up by hash of CV now, test needs to fetch backup rev by revID, CBG-3748 (backwards compatibility for revID)")
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create the very first revision of the document with attachment; let's call this as rev 1-a
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	_, rev, err := collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"1-a"}, false)
+	_, rev, err := collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't create document")
 	ancestor := rev // Ancestor revision
 
 	// Create the second revision of the document with attachment reference;
 	payload = `{"sku":"6213101","_attachments":{"camera.txt":{"stub":true,"revpos":1}}}`
-	_, rev, err = collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"2-a", "1-a"}, false)
+	_, rev, err = collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	parent := rev // Immediate ancestor or parent revision
 	assert.NoError(t, err, "Couldn't create document")
 
 	payload = `{"sku":"6213102","_attachments":{"camera.txt":{"stub":true,"revpos":1}}}`
-	doc, _, err := collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"3-a", "2-a"}, false)
+	doc, _, err := collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"3-a", "2-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't create document")
 
 	// Get available attachments by immediate ancestor revision or parent revision
@@ -1123,11 +1126,11 @@ func TestGet1xRevAndChannels(t *testing.T) {
 
 	docId := "dd6d2dcc679d12b9430a9787bab45b33"
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	doc1, rev1, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"1-a"}, false)
+	doc1, rev1, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't create document")
 
 	payload = `{"sku":"6213101","_attachments":{"lens.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	doc2, rev2, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"2-a", "1-a"}, false)
+	doc2, rev2, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't create document")
 
 	// Get the 1x revision from document with list revision enabled
@@ -1155,7 +1158,7 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.Equal(t, []interface{}{"a"}, revisions[RevisionsIds])
 
 	// Delete the document, creating tombstone revision rev3
-	rev3, err := collection.DeleteDoc(ctx, docId, rev2)
+	rev3, _, err := collection.DeleteDoc(ctx, docId, rev2)
 	require.NoError(t, err)
 	bodyBytes, removed, err = collection.get1xRevFromDoc(ctx, doc2, rev3, true)
 	assert.False(t, removed)
@@ -1186,7 +1189,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	// Create the first revision of the document
 	docId := "356779a9a1696714480f57fa3fb66d4c"
 	payload := `{"city":"Los Angeles"}`
-	doc, rev1, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"1-a"}, false)
+	doc, rev1, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't create document")
 	assert.NotEmpty(t, doc, "Document shouldn't be empty")
 	assert.Equal(t, "1-a", rev1, "Provided input revision ID should be returned")
@@ -1209,7 +1212,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 
 	// Create the second revision of the document
 	payload = `{"city":"Hollywood"}`
-	doc, rev2, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"2-a", "1-a"}, false)
+	doc, rev2, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't create document")
 	assert.NotEmpty(t, doc, "Document shouldn't be empty")
 	assert.Equal(t, "2-a", rev2, "Provided input revision ID should be returned")
@@ -1709,4 +1712,382 @@ func TestPutResurrection(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, startWarnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value())
+}
+
+// TestPutExistingCurrentVersion:
+//   - Put a document in a db
+//   - Assert on the update to HLV after that PUT
+//   - Construct a HLV to represent the doc created locally being updated on a client
+//   - Call PutExistingCurrentVersion simulating doc update arriving over replicator
+//   - Assert that the doc's HLV in the bucket has been updated correctly with the CV, PV and cvCAS
+func TestPutExistingCurrentVersion(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	bucketUUID := db.EncodedSourceID
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create a new doc
+	key := "doc1"
+	body := Body{"key1": "value1"}
+
+	rev, _, err := collection.Put(ctx, key, body)
+	require.NoError(t, err)
+
+	// assert on HLV on that above PUT
+	syncData, err := collection.GetDocSyncData(ctx, "doc1")
+	assert.NoError(t, err)
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+
+	// store the cas version allocated to the above doc creation for creation of incoming HLV later in test
+	originalDocVersion := syncData.HLV.Version
+
+	// PUT an update to the above doc
+	body = Body{"key1": "value11"}
+	body[BodyRev] = rev
+	_, _, err = collection.Put(ctx, key, body)
+	require.NoError(t, err)
+
+	// grab the new version for the above update to assert against later in test
+	syncData, err = collection.GetDocSyncData(ctx, "doc1")
+	assert.NoError(t, err)
+	docUpdateVersion := syncData.HLV.Version
+	docUpdateVersionInt := docUpdateVersion
+
+	// construct a mock doc update coming over a replicator
+	body = Body{"key1": "value2"}
+	newDoc := createTestDocument(key, "", body, false, 0)
+
+	// Simulate a conflicting doc update happening from a client that
+	// has only replicated the initial version of the document
+	pv := make(HLVVersions)
+	pv[syncData.HLV.SourceID] = originalDocVersion
+
+	// create a version larger than the allocated version above
+	incomingVersion := docUpdateVersionInt + 10
+	incomingHLV := &HybridLogicalVector{
+		SourceID:         "test",
+		Version:          incomingVersion,
+		PreviousVersions: pv,
+	}
+
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil)
+	assertHTTPError(t, err, 409)
+	require.Nil(t, doc)
+	require.Nil(t, cv)
+
+	// Update the client's HLV to include the latest SGW version.
+	incomingHLV.PreviousVersions[syncData.HLV.SourceID] = docUpdateVersion
+	// TODO: because currentRev isn't being updated, storeOldBodyInRevTreeAndUpdateCurrent isn't
+	//  updating the document body.   Need to review whether it makes sense to keep using
+	// storeOldBodyInRevTreeAndUpdateCurrent, or if this needs a larger overhaul to support VV
+	doc, cv, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "test", cv.SourceID)
+	assert.Equal(t, incomingVersion, cv.Value)
+	assert.Equal(t, []byte(`{"key1":"value2"}`), doc._rawBody)
+
+	// assert on the sync data from the above update to the doc
+	// CV should be equal to CV of update on client but the cvCAS should be updated with the new update and
+	// PV should contain the old CV pair
+	syncData, err = collection.GetDocSyncData(ctx, "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, "test", syncData.HLV.SourceID)
+	assert.Equal(t, incomingVersion, syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	// update the pv map so we can assert we have correct pv map in HLV
+	pv[bucketUUID] = docUpdateVersion
+	assert.True(t, reflect.DeepEqual(syncData.HLV.PreviousVersions, pv))
+	assert.Equal(t, "3-60b024c44c283b369116c2c2570e8088", syncData.CurrentRev)
+
+	// Attempt to push the same client update, validate server rejects as an already known version and cancels the update.
+	// This case doesn't return error, verify that SyncData hasn't been changed.
+	_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil)
+	require.NoError(t, err)
+	syncData2, err := collection.GetDocSyncData(ctx, "doc1")
+	require.NoError(t, err)
+	require.Equal(t, syncData.TimeSaved, syncData2.TimeSaved)
+	require.Equal(t, syncData.CurrentRev, syncData2.CurrentRev)
+
+}
+
+// TestPutExistingCurrentVersionWithConflict:
+//   - Put a document in a db
+//   - Assert on the update to HLV after that PUT
+//   - Construct a HLV to represent the doc created locally being updated on a client
+//   - Call PutExistingCurrentVersion simulating doc update arriving over replicator
+//   - Assert conflict between the local HLV for the doc and the incoming mutation is correctly identified
+//   - Assert that the doc's HLV in the bucket hasn't been updated
+func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	bucketUUID := db.EncodedSourceID
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create a new doc
+	key := "doc1"
+	body := Body{"key1": "value1"}
+
+	_, _, err := collection.Put(ctx, key, body)
+	require.NoError(t, err)
+
+	// assert on the HLV values after the above creation of the doc
+	syncData, err := collection.GetDocSyncData(ctx, "doc1")
+	assert.NoError(t, err)
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+
+	// create a new doc update to simulate a doc update arriving over replicator from, client
+	body = Body{"key1": "value2"}
+	newDoc := createTestDocument(key, "", body, false, 0)
+	incomingHLV := &HybridLogicalVector{
+		SourceID: "test",
+		Version:  1234,
+	}
+
+	// assert that a conflict is correctly identified and the doc and cv are nil
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil)
+	assertHTTPError(t, err, 409)
+	require.Nil(t, doc)
+	require.Nil(t, cv)
+
+	// assert persisted doc hlv hasn't been updated
+	syncData, err = collection.GetDocSyncData(ctx, "doc1")
+	assert.NoError(t, err)
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+}
+
+// TestPutExistingCurrentVersionWithNoExistingDoc:
+//   - Purpose of this test is to test PutExistingRevWithBody code pathway where an
+//     existing doc is not provided from the bucket into the function simulating a new, not seen
+//     before doc entering this code path
+func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	bucketUUID := db.BucketUUID
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// construct a mock doc update coming over a replicator
+	body := Body{"key1": "value2"}
+	newDoc := createTestDocument("doc2", "", body, false, 0)
+
+	// construct a HLV that simulates a doc update happening on a client
+	// this means moving the current source version pair to PV and adding new sourceID and version pair to CV
+	pv := make(HLVVersions)
+	pv[bucketUUID] = uint64(2)
+	// create a version larger than the allocated version above
+	incomingVersion := uint64(2 + 10)
+	incomingHLV := &HybridLogicalVector{
+		SourceID:         "test",
+		Version:          incomingVersion,
+		PreviousVersions: pv,
+	}
+	// call PutExistingCurrentVersion with empty existing doc
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, &sgbucket.BucketDocument{}, nil)
+	require.NoError(t, err)
+	assert.NotNil(t, doc)
+	// assert on returned CV value
+	assert.Equal(t, "test", cv.SourceID)
+	assert.Equal(t, incomingVersion, cv.Value)
+	assert.Equal(t, []byte(`{"key1":"value2"}`), doc._rawBody)
+
+	// assert on the sync data from the above update to the doc
+	// CV should be equal to CV of update on client but the cvCAS should be updated with the new update and
+	// PV should contain the old CV pair
+	syncData, err := collection.GetDocSyncData(ctx, "doc2")
+	assert.NoError(t, err)
+	assert.Equal(t, "test", syncData.HLV.SourceID)
+	assert.Equal(t, incomingVersion, syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	// update the pv map so we can assert we have correct pv map in HLV
+	assert.True(t, reflect.DeepEqual(syncData.HLV.PreviousVersions, pv))
+	assert.Equal(t, "1-3a208ea66e84121b528f05b5457d1134", syncData.CurrentRev)
+}
+
+// TestGetCVWithDocResidentInCache:
+//   - Two test cases, one with doc a user will have access to, one without
+//   - Purpose is to have a doc that is resident in rev cache and use the GetCV function to retrieve these docs
+//   - Assert that the doc the user has access to is corrected fetched
+//   - Assert the doc the user doesn't have access to is fetched but correctly redacted
+func TestGetCVWithDocResidentInCache(t *testing.T) {
+	const docID = "doc1"
+
+	testCases := []struct {
+		name        string
+		docChannels []string
+		access      bool
+	}{
+		{
+			name:        "getCVWithUserAccess",
+			docChannels: []string{"A"},
+			access:      true,
+		},
+		{
+			name:        "getCVWithoutUserAccess",
+			docChannels: []string{"B"},
+			access:      false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+			// Create a user with access to channel A
+			authenticator := db.Authenticator(base.TestCtx(t))
+			user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(user))
+			collection.user, err = authenticator.GetUser("alice")
+			require.NoError(t, err)
+
+			// create doc with the channels for the test case
+			docBody := Body{"channels": testCase.docChannels}
+			rev, doc, err := collection.Put(ctx, docID, docBody)
+			require.NoError(t, err)
+
+			vrs := doc.HLV.Version
+			src := doc.HLV.SourceID
+			sv := &Version{Value: vrs, SourceID: src}
+			revision, err := collection.GetCV(ctx, docID, sv)
+			require.NoError(t, err)
+			if testCase.access {
+				assert.Equal(t, rev, revision.RevID)
+				assert.Equal(t, sv, revision.CV)
+				assert.Equal(t, docID, revision.DocID)
+				assert.Equal(t, []byte(`{"channels":["A"]}`), revision.BodyBytes)
+			} else {
+				assert.Equal(t, rev, revision.RevID)
+				assert.Equal(t, sv, revision.CV)
+				assert.Equal(t, docID, revision.DocID)
+				assert.Equal(t, []byte(RemovedRedactedDocument), revision.BodyBytes)
+			}
+		})
+	}
+}
+
+// TestGetByCVForDocNotResidentInCache:
+//   - Setup db with rev cache size of 1
+//   - Put two docs forcing eviction of the first doc
+//   - Use GetCV function to fetch the first doc, forcing the rev cache to load the doc from bucket
+//   - Assert the doc revision fetched is correct to the first doc we created
+func TestGetByCVForDocNotResidentInCache(t *testing.T) {
+	t.Skip("")
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 1,
+		},
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// Create a user with access to channel A
+	authenticator := db.Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+	collection.user, err = authenticator.GetUser("alice")
+	require.NoError(t, err)
+
+	const (
+		doc1ID = "doc1"
+		doc2ID = "doc2"
+	)
+
+	revBody := Body{"channels": []string{"A"}}
+	rev, doc, err := collection.Put(ctx, doc1ID, revBody)
+	require.NoError(t, err)
+
+	// put another doc that should evict first doc from cache
+	_, _, err = collection.Put(ctx, doc2ID, revBody)
+	require.NoError(t, err)
+
+	// get by CV should force a load from bucket and have a cache miss
+	vrs := doc.HLV.Version
+	src := doc.HLV.SourceID
+	sv := &Version{Value: vrs, SourceID: src}
+	revision, err := collection.GetCV(ctx, doc1ID, sv)
+	require.NoError(t, err)
+
+	// assert the fetched doc is the first doc we added and assert that we did in fact get cache miss
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, rev, revision.RevID)
+	assert.Equal(t, sv, revision.CV)
+	assert.Equal(t, doc1ID, revision.DocID)
+	assert.Equal(t, []byte(`{"channels":["A"]}`), revision.BodyBytes)
+}
+
+// TestGetCVActivePathway:
+//   - Two test cases, one with doc a user will have access to, one without
+//   - Purpose is top specify nil CV to the GetCV function to force the GetActive code pathway
+//   - Assert doc that is created is fetched correctly when user has access to doc
+//   - Assert that correct error is returned when user has no access to the doc
+func TestGetCVActivePathway(t *testing.T) {
+	const docID = "doc1"
+
+	testCases := []struct {
+		name        string
+		docChannels []string
+		access      bool
+	}{
+		{
+			name:        "activeFetchWithUserAccess",
+			docChannels: []string{"A"},
+			access:      true,
+		},
+		{
+			name:        "activeFetchWithoutUserAccess",
+			docChannels: []string{"B"},
+			access:      false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+			// Create a user with access to channel A
+			authenticator := db.Authenticator(base.TestCtx(t))
+			user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(user))
+			collection.user, err = authenticator.GetUser("alice")
+			require.NoError(t, err)
+
+			// test get active path by specifying nil cv
+			revBody := Body{"channels": testCase.docChannels}
+			rev, doc, err := collection.Put(ctx, docID, revBody)
+			require.NoError(t, err)
+			revision, err := collection.GetCV(ctx, docID, nil)
+
+			if testCase.access == true {
+				require.NoError(t, err)
+				vrs := doc.HLV.Version
+				src := doc.HLV.SourceID
+				sv := &Version{Value: vrs, SourceID: src}
+				assert.Equal(t, rev, revision.RevID)
+				assert.Equal(t, sv, revision.CV)
+				assert.Equal(t, docID, revision.DocID)
+				assert.Equal(t, []byte(`{"channels":["A"]}`), revision.BodyBytes)
+			} else {
+				require.Error(t, err)
+				assert.ErrorContains(t, err, ErrForbidden.Error())
+				assert.Equal(t, DocumentRevision{}, revision)
+			}
+		})
+	}
 }

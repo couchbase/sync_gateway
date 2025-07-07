@@ -30,9 +30,8 @@ func NewBypassRevisionCache(backingStores map[uint32]RevisionCacheBackingStore, 
 	}
 }
 
-// Get fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
-
+// GetWithRev fetches the revision for the given docID and revID immediately from the bucket.
+func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
 	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
@@ -41,9 +40,41 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, col
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
+	var hlv *HybridLogicalVector
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
+	}
+	if hlv != nil {
+		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
+		docRev.hlvHistory = hlv.ToHistoryForHLV()
+	}
+
+	rc.bypassStat.Add(1)
+
+	return docRev, nil
+}
+
+// GetWithCV fetches the Current Version for the given docID and CV immediately from the bucket.
+func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
+
+	docRev = DocumentRevision{
+		CV: cv,
+	}
+
+	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
+	if err != nil {
+		return DocumentRevision{}, err
+	}
+
+	var hlv *HybridLogicalVector
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, hlv, err = revCacheLoaderForDocumentCV(ctx, rc.backingStores[collectionID], doc, *cv)
+	if err != nil {
+		return DocumentRevision{}, err
+	}
+	if hlv != nil {
+		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
+		docRev.hlvHistory = hlv.ToHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -63,9 +94,14 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.CurrentRev)
+	var hlv *HybridLogicalVector
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
+	}
+	if hlv != nil {
+		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
+		docRev.hlvHistory = hlv.ToHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -88,11 +124,20 @@ func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevisi
 	// no-op
 }
 
-func (rc *BypassRevisionCache) Remove(ctx context.Context, docID, revID string, collectionID uint32) {
-	// nop
+func (rc *BypassRevisionCache) RemoveWithRev(ctx context.Context, docID, revID string, collectionID uint32) {
+	// no-op
+}
+
+func (rc *BypassRevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32) {
+	// no-op
 }
 
 // UpdateDelta is a no-op for a BypassRevisionCache
 func (rc *BypassRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
+	// no-op
+}
+
+// UpdateDeltaCV is a no-op for a BypassRevisionCache
+func (rc *BypassRevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
 	// no-op
 }

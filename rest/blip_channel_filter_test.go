@@ -59,7 +59,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
 	],
 	"last_seq": "3"
-}`, version1.RevID, version1.RevID)
+}`, version1.RevTreeID, version1.RevTreeID)
 				require.JSONEq(t, expectedChanges1, string(response.BodyBytes()))
 
 				client.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: "A"})
@@ -83,7 +83,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 		{"seq":5, "id": "%s", "doc": {"_id": "%s", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
 	],
 	"last_seq": "5"
-}`, docID, docID, version2.RevID, version2.RevID, markerDocID, markerDocID, markerDocVersion.RevID, markerDocVersion.RevID)
+}`, docID, docID, version2.RevTreeID, version2.RevTreeID, markerDocID, markerDocID, markerDocVersion.RevTreeID, markerDocVersion.RevTreeID)
 				require.JSONEq(t, aliceExpectedChanges2, string(response.BodyBytes()))
 
 				client.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: "A"})
@@ -93,8 +93,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 					require.Equal(t, `{"channels":["B"]}`, string(data))
 				} else {
 					client.WaitForVersion(markerDocID, markerDocVersion)
-					doc, ok := client.GetDoc(docID)
-					require.True(t, ok)
+					doc, _, _ := client.GetDoc(docID)
 					require.Equal(t, `{"channels":["A"]}`, string(doc))
 				}
 
@@ -109,7 +108,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 		{"seq":5, "id": "%s", "doc": {"_id": "%s", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
 	],
 	"last_seq": "5"
-}`, version2.RevID, version2.RevID, markerDocID, markerDocID, markerDocVersion.RevID, markerDocVersion.RevID)
+}`, version2.RevTreeID, version2.RevTreeID, markerDocID, markerDocID, markerDocVersion.RevTreeID, markerDocVersion.RevTreeID)
 				require.JSONEq(t, bobExpectedChanges2, string(response.BodyBytes()))
 			})
 		}
