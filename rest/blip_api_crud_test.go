@@ -2221,7 +2221,7 @@ func TestBlipClientSendDelete(t *testing.T) {
 		btcRunner.StartPush(client.id)
 
 		// add doc and wait for arrival at rest tester
-		docID := t.Name() + "_doc1"
+		const docID = "doc1"
 		docVersion := btcRunner.AddRev(client.id, docID, EmptyDocVersion(), []byte(`{"key": "val"}`))
 		rt.WaitForVersion(docID, docVersion)
 
