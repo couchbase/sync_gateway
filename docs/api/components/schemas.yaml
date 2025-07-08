@@ -2046,61 +2046,38 @@ Startup-config:
             Couchbase Server connection string/URL for bootstrap configuration.
 
             The connection string should only reference Couchbase Server Data (KV) nodes.
-            Using other node types (Query, Index, Analytics, or Search nodes) may cause
-            connection failures and unreliable operation.
+            Using other node types (Query, Index, Analytics, or Search nodes) is not supported. 
 
             **Connection String Format**
-            Sync Gateway supports the ability to specify multiple hosts in the configuration.
-            Sync Gateway supports both the couchbase:// and http:// schemes for specifying
-            connection endpoints.
+            Sync Gateway supports the ability to resolve DNS SRV records for alternate hostnames, or specifying multiple hostnames explicitly. See the [Couchbase Go SDK documentation on DNS SRV records](https://docs.couchbase.com/go-sdk/current/howtos/managing-connections.html#using-dns-srv-records) for more details.
+            Sync Gateway supports both the couchbases:// for TLS and couchbase:// schemes for insecure connection.
+            The supported schemes match that of the Couchbase Server SDKs.
 
-            Sync Gateway also supports SSL in the connection to Couchbase Server; use the
-            couchbases:// scheme for this. As with the Couchbase Server SDKs, the https://
-            scheme is not supported.
+            **Examples of valid server values:**
+            - `couchbases://nodeA.example.com`
+            - `couchbase://nodeA.example.com`
+            - `couchbases://nodeA.example.com,nodeB.example.com`
+            - `couchbase://nodeA.example.com,nodeB.example.com`
+            - `couchbases://nodeA.example.com:1234,nodeB.example.com:1234`
+            - `couchbase://nodeA.example.com:1234,nodeB.example.com:1234`
+            - `couchbases://127.0.0.1`
+            - `couchbase://127.0.0.1`
 
-            **Examples of valid server values for IPv4:**
-            - `couchbase://host1`
-            - `couchbases://host1`
-            - `couchbase://host1,host2`
-            - `couchbase://host1:11210,host2`
-            - `couchbases://host1:11207,host2`
-            - `http://host1:8091`
-            - `http://host1,host2:8091`
-            - `http://foo:bar@host1:8091`
-
-            **Examples of valid server values for IPv6:**
-            - `http://[2001:db8::8811]:8091` // single node IPv6 - http scheme with default server port
-            - `couchbases://[2001:db8::8811]` // single node SSL IPv6 - default port (omitted)
-            - `couchbase://[2001:db8::8811],[2001:db8::8822]:888` // node1 default port, node2 port 888
-
-            **Port Requirements**
-            When using the couchbase:// or couchbases:// schemes, the port is not required,
-            but if specified should be the external/internal bucket ports (defaults are 11210
-            or 11207 respectively). Attempting to use the admin ports (8091/18091) will result
-            in a startup error.
-
-            **Alternate Addresses**
-            On startup, Sync Gateway will try each hostname that is provided until it is able
+            On startup, Sync Gateway will try all hostnames until it is able
             to connect successfully.
 
-            By default, if a remote cluster has an external address set, then when SG connects
-            it will apply a heuristic to determine whether to choose between external or default
-            (internal) addresses.
+            **Port Information**
+            When using the couchbase:// or couchbases:// schemes, the port is not required as Sync Gateway will use the default Couchbase Server client-to-node ports (11210 for couchbase:// and 11207 for couchbases://). See the [Couchbase Server ports documentation](https://docs.couchbase.com/server/current/install/install-ports.html#ports-listed-by-communication-path) for more details.
 
-            The choice is based on the host names supplied in the connection string:
-            - Sync Gateway uses external networking only when none of the supplied host names match any
-              of Couchbase Server's internal node addresses, and an external address is defined.
-            - In all other cases Sync Gateway uses the default (internal) networking.
-
-            However, it is possible to override this behavior by adding a network parameter
-            to the connection string.
+            **Alternate Addresses**
+            
+            If your Couchbase Server cluster is running in a containerized, port mapped, or otherwise NATd environment like Docker or Kubernetes, Sync Gateway might need more information to connect to the cluster. In many cases the client is able to automatically select the correct set of addresses.
+            
+            If the detection heuristic fails in your environment, it is possible to override this behavior by adding a network parameter to the connection string.
 
             The network parameter can be:
-            - `auto`: this is the default value if no parameter is provided. In this case the
-              heuristic described above is applied to determine the address used; so effectively
-              there is no override.
-            - `external`: to always force use of the external address
-            - `default`: to always force use of the internal address
+            - `external`: Force the use alternate addresses of Couchbase Server. Used when Sync Gateway should not share network used by Couchbase Server internally.
+            - `default`: Do not allow use of alternate addresses of Couchbase Server. Used when Sync Gateway and Couchbase Server are on the same network.
 
             Example: `"server": "couchbases://my-cbs-server?network=default"`
 
@@ -2109,9 +2086,7 @@ Startup-config:
 
             **Lost Connections**
             If the connection to Couchbase Server is lost during normal operations, Sync Gateway
-            will automatically re-connect to another node in the cluster. During that re-connection
-            period, the Sync Gateway will appear offline and documents will not be replicated
-            to mobile clients.
+            will automatically re-connect to another node in the cluster.
           type: string
         username:
           description: Username for authenticating to server.
