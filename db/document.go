@@ -563,6 +563,18 @@ func (doc *SyncData) HasValidSyncData() bool {
 	return valid && validHistory
 }
 
+func (doc *SyncData) HasValidSyncDataForImport() bool {
+	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0)
+	validHistory := doc != nil && len(doc.History) > 0 && doc.History[doc.CurrentRev] != nil
+	syncValid := valid && validHistory
+	if !syncValid && doc != nil && doc.HLV != nil {
+		// If HLV is present, we can consider the sync data valid for import given we can have doc with _vv
+		// but no sync data over the import feed
+		return true
+	}
+	return syncValid
+}
+
 func (doc *SyncData) HasValidHLV() bool {
 	return doc.HLV != nil && doc.HLV.SourceID != "" && doc.HLV.Version != 0
 }

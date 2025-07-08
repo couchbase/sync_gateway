@@ -171,7 +171,7 @@ func cbgtFeedParams(ctx context.Context, scope string, collections []string, dbN
 	feedParams := &SGFeedSourceParams{
 		DbName: dbName,
 		DCPFeedParams: cbgt.DCPFeedParams{
-			//AutoReconnectAfterRollback: true, // This should be here I think
+			AutoReconnectAfterRollback: true, // This should be here I think
 			IncludeXAttrs:              true,
 		},
 	}

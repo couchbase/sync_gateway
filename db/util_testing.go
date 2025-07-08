@@ -215,7 +215,7 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 		key := string(event.Key)
 
 		// always delete with xattrs, since sometimes even SG_TEST_USE_XATTRS=false write xattrs to test for migration
-		purgeErr := dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+		purgeErr := dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName, base.VvXattrName})
 		if base.IsDocNotFoundError(purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := dataStore.Add(key, 0, purgeBody)

@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/clog"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -2296,7 +2296,6 @@ func TestImportRollback(t *testing.T) {
 // - Test is much like TestImportRollback, but with multiple partitions and multiple vBuckets rolling back
 // - Test case rollbackWithoutFailover will only rollback one partition
 func TestImportRollbackMultiplePartitions(t *testing.T) {
-	t.Skip("test will fail on this branch, no cbgt update on here yet, CBG-4505")
 
 	if !base.IsEnterpriseEdition() {
 		t.Skip("This test only works against EE")

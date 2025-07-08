@@ -190,7 +190,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 	}
 
 	// check if sync data is valid
-	if syncData != nil && !syncData.HasValidSyncData() && !syncData.HasValidHLV() {
+	if syncData != nil && !syncData.HasValidSyncDataForImport() {
 		base.WarnfCtx(ctx, "Invalid sync data for doc %s - not importing.", base.UD(event.Key))
 		il.importStats.ImportErrorCount.Add(1)
 		return
