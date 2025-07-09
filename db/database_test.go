@@ -3647,8 +3647,8 @@ func Test_resyncDocument(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-			db.Options.EnableXattr = true
-			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	db.Options.EnableXattr = true
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	syncFn := `
 	function sync(doc, oldDoc){

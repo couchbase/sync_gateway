@@ -115,7 +115,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		unclosedBuckets:         make(map[string]map[string]struct{}),
 		useExistingBucket:       TestUseExistingBucket(),
 		useDefaultScope:         options.UseDefaultScope,
-		skipMobileXDCR:         false,
+		skipMobileXDCR:          false,
 		numCollectionsPerBucket: numCollectionsPerBucket,
 		verbose:                 *NewAtomicBool(tbpVerbose()),
 	}

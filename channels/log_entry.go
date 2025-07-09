@@ -36,10 +36,10 @@ type LogEntry struct {
 	Channels       ChannelMap    // Channels this entry is in or was removed from
 	DocID          string        // Document ID
 	RevID          string        // Revision ID
-	SourceID     string     // SourceID allocated to the doc's Current Version on the HLV
+	SourceID       string        // SourceID allocated to the doc's Current Version on the HLV
 	Sequence       uint64        // Sequence number
 	EndSequence    uint64        // End sequence on range of sequences that have been released by the sequence allocator (0 if entry is single sequence)
-	Version      uint64     // Version allocated to the doc's Current Version on the HLV
+	Version        uint64        // Version allocated to the doc's Current Version on the HLV
 	TimeReceived   FeedTimestamp // Time received from tap feed
 	CollectionID   uint32        // Collection ID
 	Flags          uint8         // Deleted/Removed/Hidden flags

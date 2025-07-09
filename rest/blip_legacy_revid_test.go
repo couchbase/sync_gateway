@@ -33,8 +33,8 @@ func TestLegacyProposeChanges(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -69,8 +69,8 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -250,8 +250,8 @@ func TestProcessLegacyRev(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -311,8 +311,8 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -465,8 +465,8 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -538,8 +538,8 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -638,8 +638,8 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -744,8 +744,8 @@ func TestCBLHasPreUpgradeMutationThatHasNotBeenReplicated(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -781,8 +781,8 @@ func TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -820,8 +820,8 @@ func TestPushOfPostUpgradeMutationThatHasCommonAncestorToSGWVersion(t *testing.T
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -859,8 +859,8 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPreUpgradeSGWMutation(t *
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -902,8 +902,8 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPostUpgradeSGWMutation(t 
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -942,8 +942,8 @@ func TestConflictBetweenPostUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testi
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -989,8 +989,8 @@ func TestLegacyRevNotInConflict(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
-		GuestEnabled:    true,
-		blipProtocols:   []string{db.CBMobileReplicationV4.SubprotocolString()},
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
 	require.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
