@@ -190,7 +190,7 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 
 // Rollback is required by cbgt.Dest interface but will not work when called by Sync Gateway as we need additional information to perform a rollback. Due to the design of cbgt.Dest this will not be called without a programming error.
 func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
-	err := errors.New("DCPDest.Rollback called but only RollbackEx should be called, this function is required to be implmented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback and this DCP stream will not longer be running.")
+	err := errors.New("DCPDest.Rollback called but only RollbackEx should be called, this function is required to be implemented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback and this DCP stream will not longer be running.")
 	WarnfCtx(d.loggingCtx, "%s", err)
 	return err
 }
