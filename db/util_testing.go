@@ -14,7 +14,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -175,28 +177,34 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 	return isChanged
 }
 
-// purgeWithDCPFeed purges all documents seen on a DCP feed with system xattrs, including tombstones which aren't found when emptying the primary index.
-func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) (numCompacted int, err error) {
+// purgeWithDCPFeed purges all documents seen on a DCP feed with system xattrs, including tombstones.
+func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBucketPool) error {
 	purgeTimeout := 60 * time.Second
 	purgeBody := Body{"_purged": true}
 	var processedDocCount atomic.Int64
 	var purgedDocCount atomic.Int64
 
 	var purgeErrors *base.MultiError
-	collection, err := base.AsCollection(dataStore)
-	if err != nil {
-		return 0, fmt.Errorf("dataStore was not a gocb collection: %w", err)
-	}
 
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
+	collections := make(map[uint32]sgbucket.DataStore)
+	if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		dataStores, err := bucket.ListDataStores()
+		if err != nil {
+			return err
+		}
+		for _, dataStoreName := range dataStores {
+			collection, err := bucket.NamedDataStore(dataStoreName)
+			if err != nil {
+				return err
+			}
+			collections[collection.GetCollectionID()] = collection
+		}
 	}
 
 	dcpClientOpts := base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,
-		CollectionIDs:     collectionIDs,
+		CollectionIDs:     slices.Collect(maps.Keys(collections)),
 		MetadataStoreType: base.DCPMetadataStoreInMemory,
 	}
 
@@ -212,45 +220,70 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 			return false
 		}
 
-		key := string(event.Key)
+		docID := string(event.Key)
 
-		xattrKeys, err := sgbucket.DecodeXattrNames(event.Value, true)
-		if err != nil {
-			tbp.Logf(ctx, "Error decoding xattr names for key %s: %v", key, err)
-			purgeErrors = purgeErrors.Append(err)
-			return false
+		var xattrs []string
+		if event.DataType&base.MemcachedDataTypeXattr != 0 {
+			var err error
+			systemOnly := false
+			xattrs, err = sgbucket.DecodeXattrNames(event.Value, systemOnly)
+			if err != nil {
+				purgeErrors = purgeErrors.Append(fmt.Errorf("Could not decode xattrs from doc %s: %w", docID, err))
+				return false
+			}
+		}
+		dataStore, ok := collections[event.CollectionID]
+		if !ok {
+			purgeErrors = purgeErrors.Append(fmt.Errorf("Could not find collection ID %d for %#+v doc over DCP", event.CollectionID, event))
+		}
+		// If Couchbase Server < 7.6, we need to delete xattrs one at a time, since it doesn't support subdoc multi-xattr operations.
+		if len(xattrs) >= 1 && !bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+			for _, xattr := range xattrs {
+				err := dataStore.DeleteSubDocPaths(ctx, docID, xattr)
+				if err != nil {
+					purgeErrors = purgeErrors.Append(fmt.Errorf("error purging xattr %s from docID %s: %w", xattr, docID, err))
+					tbp.Logf(ctx, "%s", err)
+					return false
+				}
+			}
+			xattrs = nil // reset xattrs to nil so we don't try to delete the doc with xattrs
+
 		}
 
-		// always delete with xattrs, since sometimes even SG_TEST_USE_XATTRS=false write xattrs to test for migration
-		purgeErr := dataStore.DeleteWithXattrs(ctx, key, xattrKeys)
-		if base.IsDocNotFoundError(purgeErr) {
-			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := dataStore.Add(key, 0, purgeBody)
+		purgeErr := dataStore.DeleteWithXattrs(ctx, docID, xattrs)
+		if base.IsDocNotFoundError(purgeErr) { // doc is a tombstone
+			// If key no longer exists, need to add and and remove to remove a Sync Gateway tombstone.
+			_, addErr := dataStore.Add(docID, 0, purgeBody)
 			if addErr != nil {
 				purgeErrors = purgeErrors.Append(addErr)
-				tbp.Logf(ctx, "Error adding key %s to force deletion. %v", key, addErr)
+				tbp.Logf(ctx, "Error adding docID %s to force deletion. %v", docID, addErr)
 				return false
 			}
 
-			if delErr := dataStore.Delete(key); delErr != nil {
+			if delErr := dataStore.Delete(docID); delErr != nil {
 				purgeErrors = purgeErrors.Append(delErr)
-				tbp.Logf(ctx, "Error deleting key %s.  %v", key, delErr)
+				tbp.Logf(ctx, "Error deleting docID %s.  %v", docID, delErr)
 			}
 			purgedDocCount.Add(1)
 		} else if purgeErr != nil {
-			purgeErrors = purgeErrors.Append(purgeErr)
-			tbp.Logf(ctx, "Error removing key %s (purge). %v", key, purgeErr)
+			err := fmt.Errorf("error purging docID %s, xattrs=%s: %w", docID, xattrs, purgeErr)
+			purgeErrors = purgeErrors.Append(err)
+			tbp.Logf(ctx, "%s", err)
 		}
 		return false
 	}
-	feedID := "purgeFeed-" + collection.CollectionName()
-	dcpClient, err := base.NewDCPClient(ctx, feedID, purgeCallback, dcpClientOpts, collection.Bucket)
+	feedID := "purgeFeed-" + bucket.GetName()
+	gocbBucket, err := base.AsGocbV2Bucket(bucket)
 	if err != nil {
-		return 0, err
+		return err
+	}
+	dcpClient, err := base.NewDCPClient(ctx, feedID, purgeCallback, dcpClientOpts, gocbBucket)
+	if err != nil {
+		return err
 	}
 	doneChan, err := dcpClient.Start()
 	if err != nil {
-		return 0, fmt.Errorf("error starting purge DCP feed: %w", err)
+		return fmt.Errorf("error starting purge DCP feed: %w", err)
 	}
 	// wait for feed to complete
 	timeout := time.After(purgeTimeout)
@@ -260,7 +293,7 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 			tbp.Logf(ctx, "purgeDCPFeed finished with error: %v", err)
 		}
 	case <-timeout:
-		return 0, fmt.Errorf("timeout waiting for purge DCP feed to complete")
+		return fmt.Errorf("timeout waiting for purge DCP feed to complete")
 	}
 	closeErr := dcpClient.Close()
 	if closeErr != nil {
@@ -269,7 +302,7 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 
 	tbp.Logf(ctx, "Finished purge DCP feed ... Total docs purged: %d", purgedDocCount.Load())
 	tbp.Logf(ctx, "Finished purge DCP feed ... Total docs processed: %d", processedDocCount.Load())
-	return int(purgedDocCount.Load()), purgeErrors.ErrorOrNil()
+	return purgeErrors.ErrorOrNil()
 }
 
 // viewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
@@ -284,37 +317,15 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 	}
 
 	tbp.Logf(ctx, "emptying bucket via DCP purge")
-	dataStores, err := b.ListDataStores()
-	if err != nil {
-		return err
-	}
-	for _, dataStoreName := range dataStores {
-		dataStore, err := b.NamedDataStore(dataStoreName)
-		if err != nil {
-			return err
-		}
-		if _, err := purgeWithDCPFeed(ctx, dataStore, tbp); err != nil {
-			return err
-		}
-	}
-	if len(dataStores) == 1 {
-		dataStoreName := dataStores[0]
-		if base.IsDefaultCollection(dataStoreName.ScopeName(), dataStoreName.CollectionName()) {
-			dataStore, err := b.NamedDataStore(dataStoreName)
-			if err != nil {
-				return err
-			}
-			tbp.Logf(ctx, "readying views for bucket")
-			if err := viewBucketReadier(ctx, dataStore, tbp); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return purgeWithDCPFeed(ctx, b, tbp)
 }
 
 // deleteDocsAndIndexesBucketReadier purges the datastore using DCP and drops any indexes on the bucket
 var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
+	err := purgeWithDCPFeed(ctx, b, tbp)
+	if err != nil {
+		return err
+	}
 	dataStores, err := b.ListDataStores()
 	if err != nil {
 		return err
@@ -322,9 +333,6 @@ var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx conte
 	for _, dataStoreName := range dataStores {
 		dataStore, err := b.NamedDataStore(dataStoreName)
 		if err != nil {
-			return err
-		}
-		if _, err := purgeWithDCPFeed(ctx, dataStore, tbp); err != nil {
 			return err
 		}
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
