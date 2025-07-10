@@ -16,7 +16,7 @@ on:
     paths:
       - 'service/**'
       - 'integration-test/**'
-      - 'github/workflows/service.yml'
+      - '.github/workflows/service.yml'
     branches:
       - 'main'
       - 'release/*'

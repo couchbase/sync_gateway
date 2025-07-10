@@ -16,9 +16,9 @@ on:
     # Only run when we change an API spec
     paths:
       - 'docs/api/**'
-      - .redocly.yaml
-      - .yamllint.yml
-      - github/workflows/openapi-pr.yml
+      - '.redocly.yaml'
+      - '.yamllint.yml'
+      - '.github/workflows/openapi-pr.yml'
     branches:
       - 'master'
       - 'main'
