@@ -7,6 +7,8 @@
 # licenses/APL2.txt.
 
 name: service
+permissions:
+  contents: read
 
 on:
   push:
@@ -14,6 +16,7 @@ on:
     paths:
       - 'service/**'
       - 'integration-test/**'
+      - '.github/workflows/service.yml'
     branches:
       - 'main'
       - 'release/*'
