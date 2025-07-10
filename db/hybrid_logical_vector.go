@@ -9,79 +9,276 @@
 package db
 
 import (
+	"crypto/md5"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"maps"
+	"sort"
+	"strconv"
+	"strings"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
-type HybridLogicalVector struct {
-	CurrentVersionCAS uint64            // current version cas (or cvCAS) stores the current CAS at the time of replication
-	SourceID          string            // source bucket uuid of where this entry originated from
-	Version           uint64            // current cas of the current version on the version vector
-	MergeVersions     map[string]uint64 // map of merge versions for fast efficient lookup
-	PreviousVersions  map[string]uint64 // map of previous versions for fast efficient lookup
+type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
+
+// Version is representative of a single entry in a HybridLogicalVector.
+type Version struct {
+	// SourceID is an ID representing the source of the value (e.g. Couchbase Lite ID)
+	SourceID string `json:"source_id"`
+	// Value is a Hybrid Logical Clock value (In Couchbase Server, CAS is a HLC)
+	Value uint64 `json:"version"`
 }
 
-// CurrentVersionVector is a structure used to add a new sourceID:CAS entry to a HLV
-type CurrentVersionVector struct {
-	VersionCAS uint64
-	SourceID   string
+// VersionsDeltas will be sorted by version, first entry will be fill version then after that will be calculated deltas
+type VersionsDeltas []Version
+
+func (vde VersionsDeltas) Len() int { return len(vde) }
+
+func (vde VersionsDeltas) Swap(i, j int) {
+	vde[i], vde[j] = vde[j], vde[i]
 }
 
-type PersistedHybridLogicalVector struct {
-	CurrentVersionCAS string            `json:"cvCas,omitempty"`
-	SourceID          string            `json:"src,omitempty"`
-	Version           string            `json:"vrs,omitempty"`
-	MergeVersions     map[string]string `json:"mv,omitempty"`
-	PreviousVersions  map[string]string `json:"pv,omitempty"`
+func (vde VersionsDeltas) Less(i, j int) bool {
+	if vde[i].Value == vde[j].Value {
+		return false
+	}
+	return vde[i].Value < vde[j].Value
 }
 
-type PersistedVersionVector struct {
-	PersistedHybridLogicalVector `json:"_vv"`
+// VersionDeltas calculate the deltas of input map
+func VersionDeltas(versions map[string]uint64) VersionsDeltas {
+	if versions == nil {
+		return nil
+	}
+
+	vdm := make(VersionsDeltas, 0, len(versions))
+	for src, vrs := range versions {
+		vdm = append(vdm, CreateVersion(src, vrs))
+	}
+
+	// return early for single entry
+	if len(vdm) == 1 {
+		return vdm
+	}
+
+	// sort the list
+	sort.Sort(vdm)
+
+	// traverse in reverse order and calculate delta between versions, leaving the first element as is
+	for i := len(vdm) - 1; i >= 1; i-- {
+		vdm[i].Value = vdm[i].Value - vdm[i-1].Value
+	}
+	return vdm
 }
 
-// NewHybridLogicalVector returns a HybridLogicalVector struct with maps initialised in the struct
-func NewHybridLogicalVector() HybridLogicalVector {
-	return HybridLogicalVector{
-		PreviousVersions: make(map[string]uint64),
-		MergeVersions:    make(map[string]uint64),
+// VersionsToDeltas will calculate deltas from the input map (pv or mv). Then will return the deltas in persisted format
+func VersionsToDeltas(m map[string]uint64) []string {
+	if len(m) == 0 {
+		return nil
+	}
+
+	var vrsList []string
+	deltas := VersionDeltas(m)
+	for _, delta := range deltas {
+		listItem := delta.StringForVersionDelta()
+		vrsList = append(vrsList, listItem)
+	}
+
+	return vrsList
+}
+
+// PersistedDeltasToMap converts the list of deltas in pv or mv from the bucket back from deltas into full versions in map format
+func PersistedDeltasToMap(vvList []string) (map[string]uint64, error) {
+	vv := make(map[string]uint64)
+	if len(vvList) == 0 {
+		return vv, nil
+	}
+
+	var lastEntryVersion uint64
+	for _, v := range vvList {
+		timestampString, sourceBase64, found := strings.Cut(v, "@")
+		if !found {
+			return nil, fmt.Errorf("Malformed version string %s, delimiter not found", v)
+		}
+		ver, err := base.HexCasToUint64ForDelta([]byte(timestampString))
+		if err != nil {
+			return nil, err
+		}
+		lastEntryVersion = ver + lastEntryVersion
+		vv[sourceBase64] = lastEntryVersion
+	}
+	return vv, nil
+}
+
+// CreateVersion creates an encoded sourceID and version pair
+func CreateVersion(source string, version uint64) Version {
+	return Version{
+		SourceID: source,
+		Value:    version,
 	}
 }
 
-// GetCurrentVersion return the current version vector from the HLV in memory
+// ParseVersion will parse source version pair from string format
+func ParseVersion(versionString string) (version Version, err error) {
+	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
+	if !found {
+		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
+	}
+	version.SourceID = sourceBase64
+	// remove any leading whitespace, this should be addressed in CBG-3662
+	if len(timestampString) > 0 && timestampString[0] == ' ' {
+		timestampString = timestampString[1:]
+	}
+	vrs, err := strconv.ParseUint(timestampString, 16, 64)
+	if err != nil {
+		return version, err
+	}
+	version.Value = vrs
+	return version, nil
+}
+
+// String returns a version/sourceID pair in CBL string format. This does not match the format serialized on CBS, which will be in 0x0 format.
+func (v Version) String() string {
+	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
+}
+
+// IsEmpty returns true if the version is empty/zero value.
+func (v Version) IsEmpty() bool {
+	return v.SourceID == "" && v.Value == 0
+}
+
+// StringForVersionDelta will take a version struct and convert the value to delta format
+// (encoding it to LE hex, stripping any 0's off the end and stripping leading 0x)
+func (v Version) StringForVersionDelta() string {
+	encodedVal := base.Uint64ToLittleEndianHexAndStripZeros(v.Value)
+	return encodedVal + "@" + v.SourceID
+}
+
+// ExtractCurrentVersionFromHLV will take the current version form the HLV struct and return it in the Version struct
+func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
+	src, vrs := hlv.GetCurrentVersion()
+	currVersion := CreateVersion(src, vrs)
+	return &currVersion
+}
+
+// HybridLogicalVector is the in memory format for the hLv.
+type HybridLogicalVector struct {
+	CurrentVersionCAS uint64      // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
+	SourceID          string      // source bucket uuid in (base64 encoded format) of where this entry originated from
+	Version           uint64      // current cas in little endian hex format of the current version on the version vector
+	MergeVersions     HLVVersions // map of merge versions for fast efficient lookup
+	PreviousVersions  HLVVersions // map of previous versions for fast efficient lookup
+}
+
+// NewHybridLogicalVector returns an initialised HybridLogicalVector.
+func NewHybridLogicalVector() *HybridLogicalVector {
+	return &HybridLogicalVector{
+		PreviousVersions: make(HLVVersions),
+		MergeVersions:    make(HLVVersions),
+	}
+}
+
+func (hlv *HybridLogicalVector) Equals(other *HybridLogicalVector) bool {
+	if hlv.SourceID != other.SourceID {
+		return false
+	}
+	if hlv.Version != other.Version {
+		return false
+	}
+
+	if !maps.Equal(hlv.PreviousVersions, other.PreviousVersions) {
+		return false
+	}
+
+	if !maps.Equal(hlv.MergeVersions, other.MergeVersions) {
+		return false
+	}
+
+	return true
+}
+
+// GetCurrentVersion returns the current version from the HLV in memory.
 func (hlv *HybridLogicalVector) GetCurrentVersion() (string, uint64) {
 	return hlv.SourceID, hlv.Version
 }
 
-// IsInConflict tests to see if in memory HLV is conflicting with another HLV
-func (hlv *HybridLogicalVector) IsInConflict(otherVector HybridLogicalVector) bool {
-	// test if either HLV(A) or HLV(B) are dominating over each other. If so they are not in conflict
-	if hlv.isDominating(otherVector) || otherVector.isDominating(*hlv) {
-		return false
+// GetCurrentVersion returns the current version in transport format
+func (hlv *HybridLogicalVector) GetCurrentVersionString() string {
+	if hlv == nil || hlv.SourceID == "" {
+		return ""
 	}
-	// if the version vectors aren't dominating over one another then conflict is present
-	return true
+	version := Version{
+		SourceID: hlv.SourceID,
+		Value:    hlv.Version,
+	}
+	return version.String()
 }
 
-// AddVersion adds a version vector to the in memory representation of a HLV and moves current version vector to
-// previous versions on the HLV if needed
-func (hlv *HybridLogicalVector) AddVersion(newVersion CurrentVersionVector) error {
-	if newVersion.VersionCAS < hlv.Version {
-		return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value")
+// IsVersionKnown checks to see whether the HLV already contains a Version for the provided
+// source with a matching or newer value
+func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
+	existingValueForSource, found := hlv.GetValue(version.SourceID)
+	if !found {
+		return false
 	}
-	// if new entry has the same source we simple just update the version
-	if newVersion.SourceID == hlv.SourceID {
-		hlv.Version = newVersion.VersionCAS
+	return existingValueForSource >= version.Value
+
+}
+
+// AddVersion adds newVersion as the current version to the in memory representation of the HLV.
+func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
+
+	// check if this is the first time we're adding a source - version pair
+	if hlv.SourceID == "" {
+		hlv.Version = newVersion.Value
+		hlv.SourceID = newVersion.SourceID
 		return nil
 	}
-	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
+
+	// If the new version is older than an existing version for the same source, return error
+	existingValueForSource, found := hlv.GetValue(newVersion.SourceID)
+	if found && existingValueForSource > newVersion.Value {
+		return fmt.Errorf("attempting to add new version vector entry with a value that is less than the existing value for the same source. New version: %v, Existing HLV: %v", newVersion, hlv)
+	}
+
+	// Move existing mv to pv before adding the new version
+	hlv.InvalidateMV()
+
+	// If the new version has the same source as existing cv, we just update the cv value
+	if newVersion.SourceID == hlv.SourceID {
+		hlv.Version = newVersion.Value
+		return nil
+	}
+
+	// If we get here this is a new version from a different sourceID.  Need to move existing cv to pv and update cv
+	if hlv.PreviousVersions == nil {
+		hlv.PreviousVersions = make(HLVVersions)
+	}
+
 	hlv.PreviousVersions[hlv.SourceID] = hlv.Version
-	hlv.Version = newVersion.VersionCAS
+
+	// If new version source already existed in PV, need to remove it
+	delete(hlv.PreviousVersions, newVersion.SourceID)
+	hlv.Version = newVersion.Value
 	hlv.SourceID = newVersion.SourceID
 	return nil
 }
 
-// Remove removes a vector from previous versions section of in memory HLV
+// InvalidateMV will move all merge versions to PV, except merge version entries that share a source with cv
+func (hlv *HybridLogicalVector) InvalidateMV() {
+	for source, value := range hlv.MergeVersions {
+		if source == hlv.SourceID {
+			continue
+		}
+		hlv.setPreviousVersion(source, value)
+	}
+	hlv.MergeVersions = nil
+}
+
+// Remove removes a source from previous versions of the HLV.
 func (hlv *HybridLogicalVector) Remove(source string) error {
 	// if entry is not found in previous versions we return error
 	if hlv.PreviousVersions[source] == 0 {
@@ -91,168 +288,395 @@ func (hlv *HybridLogicalVector) Remove(source string) error {
 	return nil
 }
 
-// isDominating tests if in memory HLV is dominating over another
-func (hlv *HybridLogicalVector) isDominating(otherVector HybridLogicalVector) bool {
-	// Dominating Criteria:
-	// HLV A dominates HLV B if source(A) == source(B) and version(A) > version(B)
-	// If there is an entry in pv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
-	// if there is an entry in mv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
-
-	// Grab the latest CAS version for HLV(A)'s sourceID in HLV(B), if HLV(A) version CAS is > HLV(B)'s then it is dominating
-	// If 0 CAS is returned then the sourceID does not exist on HLV(B)
-	if latestCAS := otherVector.GetVersion(hlv.SourceID); latestCAS != 0 && hlv.Version > latestCAS {
-		return true
-	}
-	// HLV A is not dominating over HLV B
-	return false
+// isDominating tests if in memory HLV is dominating over another.
+// If HLV A dominates CV of HLV B, it can be assumed to dominate the entire HLV, since
+// CV dominates PV for a given HLV.  Given this, it's sufficient to check whether HLV A
+// has a version for HLV B's current source that's greater than or equal to HLV B's current version.
+func (hlv *HybridLogicalVector) isDominating(otherVector *HybridLogicalVector) bool {
+	return hlv.DominatesSource(Version{otherVector.SourceID, otherVector.Version})
 }
 
-// isEqual tests if in memory HLV is equal to another
-func (hlv *HybridLogicalVector) isEqual(otherVector HybridLogicalVector) bool {
-	// if in HLV(A) sourceID the same as HLV(B) sourceID and HLV(A) CAS is equal to HLV(B) CAS then the two HLV's are equal
-	if hlv.SourceID == otherVector.SourceID && hlv.Version == otherVector.Version {
-		return true
+// GetVersion returns the latest decoded CAS value in the HLV for a given sourceID
+func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
+	if sourceID == "" {
+		return 0, false
 	}
-	// if the HLV(A) merge versions isn't empty and HLV(B) merge versions isn't empty AND if
-	// merge versions between the two HLV's are the same, they are equal
-	if len(hlv.MergeVersions) != 0 && len(otherVector.MergeVersions) != 0 {
-		if hlv.equalMergeVectors(otherVector) {
-			return true
-		}
-	}
-	if len(hlv.PreviousVersions) != 0 && len(otherVector.PreviousVersions) != 0 {
-		if hlv.equalPreviousVectors(otherVector) {
-			return true
-		}
-	}
-	// they aren't equal
-	return false
-}
-
-// equalMergeVectors tests if two merge vectors between HLV's are equal or not
-func (hlv *HybridLogicalVector) equalMergeVectors(otherVector HybridLogicalVector) bool {
-	if len(hlv.MergeVersions) != len(otherVector.MergeVersions) {
-		return false
-	}
-	for k, v := range hlv.MergeVersions {
-		if v != otherVector.MergeVersions[k] {
-			return false
-		}
-	}
-	return true
-}
-
-// equalPreviousVectors tests if two previous versions vectors between two HLV's are equal or not
-func (hlv *HybridLogicalVector) equalPreviousVectors(otherVector HybridLogicalVector) bool {
-	if len(hlv.PreviousVersions) != len(otherVector.PreviousVersions) {
-		return false
-	}
-	for k, v := range hlv.PreviousVersions {
-		if v != otherVector.PreviousVersions[k] {
-			return false
-		}
-	}
-	return true
-}
-
-// GetVersion returns the latest CAS value in the HLV for a given sourceID, if the sourceID is not present in the HLV it will return 0 CAS value
-func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
 	var latestVersion uint64
 	if sourceID == hlv.SourceID {
 		latestVersion = hlv.Version
 	}
-	if pvEntry := hlv.PreviousVersions[sourceID]; pvEntry > latestVersion {
-		latestVersion = pvEntry
+	if pvEntry, ok := hlv.PreviousVersions[sourceID]; ok {
+		entry := pvEntry
+		if entry > latestVersion {
+			latestVersion = entry
+		}
 	}
-	if mvEntry := hlv.MergeVersions[sourceID]; mvEntry > latestVersion {
-		latestVersion = mvEntry
+	if mvEntry, ok := hlv.MergeVersions[sourceID]; ok {
+		entry := mvEntry
+		if entry > latestVersion {
+			latestVersion = entry
+		}
 	}
-	return latestVersion
+	// if we have 0 cas value, there is no entry for this source ID in the HLV
+	if latestVersion == 0 {
+		return latestVersion, false
+	}
+	return latestVersion, true
 }
 
-func (hlv *HybridLogicalVector) MarshalJSON() ([]byte, error) {
+// AddNewerVersions will take a hlv and add any newer source/version pairs found across CV and PV found in the other HLV taken as parameter
+// when both HLV
+func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVector) error {
 
-	persistedHLV, err := hlv.convertHLVToPersistedFormat()
-	if err != nil {
-		return nil, err
-	}
-
-	return base.JSONMarshal(*persistedHLV)
-}
-
-func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
-	persistedJSON := PersistedVersionVector{}
-	err := base.JSONUnmarshal(inputjson, &persistedJSON)
+	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
+	// version than local HLVs CV pair
+	otherVectorCV := Version{SourceID: otherVector.SourceID, Value: otherVector.Version}
+	err := hlv.AddVersion(otherVectorCV)
 	if err != nil {
 		return err
 	}
-	// convert the data to in memory format
-	hlv.convertPersistedHLVToInMemoryHLV(persistedJSON)
+
+	// Copy incoming merge versions (previously existing merge versions will have been moved to pv by AddVersion)
+	for i, v := range otherVector.MergeVersions {
+		hlv.setMergeVersion(i, v)
+	}
+
+	if len(otherVector.PreviousVersions) != 0 {
+		// Iterate through incoming vector previous versions, update with the version from other vector
+		// for source if the local version for that source is lower
+		for i, v := range otherVector.PreviousVersions {
+			if hlv.PreviousVersions[i] == 0 {
+				hlv.setPreviousVersion(i, v)
+			} else {
+				// if we get here then there is entry for this source in PV so we must check if its newer or not
+				otherHLVPVValue := v
+				localHLVPVValue := hlv.PreviousVersions[i]
+				if localHLVPVValue < otherHLVPVValue {
+					hlv.setPreviousVersion(i, v)
+				}
+			}
+		}
+	}
+	// ensure no duplicates of cv, mv in pv
+	delete(hlv.PreviousVersions, hlv.SourceID)
+
+	for source := range hlv.MergeVersions {
+		delete(hlv.PreviousVersions, source)
+	}
+
 	return nil
 }
 
-func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedVersionVector, error) {
-	persistedHLV := PersistedVersionVector{}
-	var cvCasByteArray []byte
+// computeMacroExpansions returns the mutate in spec needed for the document update based off the outcome in updateHLV
+func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansionSpec {
+	var outputSpec []sgbucket.MacroExpansionSpec
+	if hlv.Version == expandMacroCASValueUint64 {
+		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.VvXattrName), sgbucket.MacroCas)
+		outputSpec = append(outputSpec, spec)
+		// If version is being expanded, we need to also specify the macro expansion for the expanded rev property
+		currentRevSpec := sgbucket.NewMacroExpansionSpec(xattrCurrentRevVersionPath(base.SyncXattrName), sgbucket.MacroCas)
+		outputSpec = append(outputSpec, currentRevSpec)
+	}
+	if hlv.CurrentVersionCAS == expandMacroCASValueUint64 {
+		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas)
+		outputSpec = append(outputSpec, spec)
+	}
+	return outputSpec
+}
+
+// setPreviousVersion will take a source/version pair and add it to the HLV previous versions map
+func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64) {
+	if hlv.PreviousVersions == nil {
+		hlv.PreviousVersions = make(HLVVersions)
+	}
+	hlv.PreviousVersions[source] = version
+}
+
+// setMergeVersion will take a source/version pair and add it to the HLV merge versions map
+func (hlv *HybridLogicalVector) setMergeVersion(source string, version uint64) {
+	if hlv.MergeVersions == nil {
+		hlv.MergeVersions = make(HLVVersions)
+	}
+	hlv.MergeVersions[source] = version
+}
+
+func (hlv *HybridLogicalVector) IsVersionKnown(otherVersion Version) bool {
+	value, found := hlv.GetValue(otherVersion.SourceID)
+	if !found {
+		return false
+	}
+	return value >= otherVersion.Value
+}
+
+// toHistoryForHLV formats blip History property for V4 replication and above
+func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
+	// take pv and mv from hlv if defined and add to history
+	var s strings.Builder
+	// Merge versions must be defined first if they exist
+	if hlv.MergeVersions != nil {
+		// We need to keep track of where we are in the map, so we don't add a trailing ',' to end of string
+		itemNo := 1
+		for key, value := range hlv.MergeVersions {
+			vrs := Version{SourceID: key, Value: value}
+			s.WriteString(vrs.String())
+			if itemNo < len(hlv.MergeVersions) {
+				s.WriteString(",")
+			}
+			itemNo++
+		}
+		if itemNo > 1 {
+			s.WriteString(";")
+		}
+	}
+	if hlv.PreviousVersions != nil {
+		// We need to keep track of where we are in the map, so we don't add a trailing ',' to end of string
+		itemNo := 1
+		for key, value := range hlv.PreviousVersions {
+			vrs := Version{SourceID: key, Value: value}
+			s.WriteString(vrs.String())
+			if itemNo < len(hlv.PreviousVersions) {
+				s.WriteString(",")
+			}
+			itemNo++
+		}
+	}
+	return s.String()
+}
+
+// appendRevocationMacroExpansions adds macro expansions for the channel map.  Not strictly an HLV operation
+// but putting the function here as it's required when the HLV's current version is being macro expanded
+func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, channelNames []string) (updatedSpec []sgbucket.MacroExpansionSpec) {
+	for _, channelName := range channelNames {
+		spec := sgbucket.NewMacroExpansionSpec(xattrRevokedChannelVersionPath(base.SyncXattrName, channelName), sgbucket.MacroCas)
+		currentSpec = append(currentSpec, spec)
+	}
+	return currentSpec
+
+}
+
+// ExtractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
+// blip string may be the following formats
+//  1. cv only:    		cv
+//  2. cv and pv:  		cv;pv
+//  3. cv, pv, and mv: 	cv;mv;pv
+//
+// Function will return list of revIDs if legacy rev ID was found in the HLV history section (PV)
+// TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
+func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, []string, error) {
+	hlv := &HybridLogicalVector{}
+
+	vectorFields := strings.Split(versionVectorStr, ";")
+	vectorLength := len(vectorFields)
+	if vectorLength == 1 && vectorFields[0] == "" {
+		return nil, nil, fmt.Errorf("invalid empty hlv in changes message received: %q", versionVectorStr)
+	}
+	if vectorLength > 2 {
+		return nil, nil, fmt.Errorf("invalid hlv in changes message received, more than one semi-colon: %q", versionVectorStr)
+	}
+
+	cvmvList, legacyRevs, err := parseVectorValues(vectorFields[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	if legacyRevs != nil {
+		return nil, nil, fmt.Errorf("invalid hlv in changes message received, legacys revID found in cv: %q", vectorFields[0])
+	}
+	for i, v := range cvmvList {
+		switch i {
+		case 0:
+			err := hlv.AddVersion(v)
+			if err != nil {
+				return nil, nil, err
+			}
+			continue
+		case 1:
+			hlv.MergeVersions = make(HLVVersions)
+		}
+		if _, ok := hlv.MergeVersions[v.SourceID]; ok {
+			return nil, nil, fmt.Errorf("SourceID %q found multiple times in mv for %q", v.SourceID, versionVectorStr)
+		}
+		if v.SourceID == hlv.SourceID && v.Value == hlv.Version {
+			return nil, nil, fmt.Errorf("cv exists in mv for %q", versionVectorStr)
+		}
+		hlv.MergeVersions[v.SourceID] = v.Value
+	}
+	// no pv
+	if vectorLength == 1 {
+		return hlv, nil, nil
+	} else if vectorFields[1] == "" { // trailing semi-colon
+		return hlv, nil, nil
+	}
+	pvList, legacyRevs, err := parseVectorValues(vectorFields[1])
+	if err != nil {
+		return nil, nil, err
+	}
+	for i, v := range pvList {
+		if i == 0 {
+			hlv.PreviousVersions = make(HLVVersions)
+		}
+		if _, ok := hlv.PreviousVersions[v.SourceID]; ok {
+			return nil, nil, fmt.Errorf("SourceID %q found multiple times in pv for %q", v.SourceID, versionVectorStr)
+		}
+		if _, ok := hlv.MergeVersions[v.SourceID]; ok {
+			return nil, nil, fmt.Errorf("SourceID %q found in pv and mv for %q", v.SourceID, versionVectorStr)
+		}
+		hlv.PreviousVersions[v.SourceID] = v.Value
+	}
+	return hlv, legacyRevs, nil
+}
+
+// ExtractCVFromProposeChangesRev strips any trailing HLV content from proposeChanges rev property(CBG-4460)
+func ExtractCVFromProposeChangesRev(rev string) string {
+	pvDelimiter := strings.Index(rev, ";")
+	if pvDelimiter > 0 {
+		rev = rev[:pvDelimiter]
+	}
+	mvDelimiter := strings.Index(rev, ",")
+	if mvDelimiter > 0 {
+		rev = rev[:mvDelimiter]
+	}
+
+	return strings.TrimSpace(rev)
+}
+
+// parseVectorValues takes an HLV section (cv, pv or mv) in string form and splits into
+// source and version pairs. Also returns legacyRev list if legacy revID's are found in the input string.
+func parseVectorValues(vectorStr string) (versions []Version, legacyRevList []string, err error) {
+	versionsStr := strings.Split(vectorStr, ",")
+	versions = make([]Version, 0, len(versionsStr))
+
+	for _, v := range versionsStr {
+		// remove any leading whitespace form the string value
+		// TODO: Can avoid by restricting spec
+		if len(v) > 0 && v[0] == ' ' {
+			v = v[1:]
+		}
+		version, err := ParseVersion(v)
+		if err != nil {
+			// If v is a legacy rev ID, ignore when constructing the HLV.
+			if isLegacyRev(v) {
+				legacyRevList = append(legacyRevList, v)
+				continue
+			}
+			return nil, nil, err
+		}
+		versions = append(versions, version)
+	}
+
+	return versions, legacyRevList, nil
+}
+
+// isLegacyRev returns true if the given string is a revID, false otherwise. Has the same functionality as ParseRevID
+// but doesn't warn for malformed revIDs
+func isLegacyRev(rev string) bool {
+	if rev == "" {
+		return false
+	}
+
+	idx := strings.Index(rev, "-")
+	if idx == -1 {
+		return false
+	}
+
+	gen, err := strconv.Atoi(rev[:idx])
+	if err != nil {
+		return false
+	} else if gen < 1 {
+		return false
+	}
+	return true
+}
+
+// Helper functions for version source and value encoding
+func EncodeSource(source string) string {
+	return base64.StdEncoding.EncodeToString([]byte(source))
+}
+
+// EncodeValueStr converts a simplified number ("1") to a hex-encoded string
+func EncodeValueStr(value string) (string, error) {
+	return base.StringDecimalToLittleEndianHex(strings.TrimSpace(value))
+}
+
+// CreateEncodedSourceID will hash the bucket UUID and cluster UUID using md5 hash function then will base64 encode it
+// This function is in sync with xdcr implementation of UUIDstoDocumentSource https://github.com/couchbase/goxdcr/blob/dfba7a5b4251d93db46e2b0b4b55ea014218931b/hlv/hlv.go#L51
+func CreateEncodedSourceID(bucketUUID, clusterUUID string) (string, error) {
+	md5Hash := md5.Sum([]byte(bucketUUID + clusterUUID))
+	hexStr := hex.EncodeToString(md5Hash[:])
+	source, err := base.HexToBase64(hexStr)
+	if err != nil {
+		return "", err
+	}
+	return string(source), nil
+}
+
+func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
+	type BucketVector struct {
+		CurrentVersionCAS string    `json:"cvCas,omitempty"`
+		SourceID          string    `json:"src"`
+		Version           string    `json:"ver"`
+		PV                *[]string `json:"pv,omitempty"`
+		MV                *[]string `json:"mv,omitempty"`
+	}
+	var cvCas string
+	var vrsCas string
+
+	var bucketHLV = BucketVector{}
 	if hlv.CurrentVersionCAS != 0 {
-		cvCasByteArray = base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
+		cvCas = base.CasToString(hlv.CurrentVersionCAS)
+		bucketHLV.CurrentVersionCAS = cvCas
 	}
-	vrsCasByteArray := base.Uint64CASToLittleEndianHex(hlv.Version)
+	vrsCas = base.CasToString(hlv.Version)
+	bucketHLV.Version = vrsCas
+	bucketHLV.SourceID = hlv.SourceID
 
-	pvPersistedFormat, err := convertMapToPersistedFormat(hlv.PreviousVersions)
+	pvPersistedFormat := VersionsToDeltas(hlv.PreviousVersions)
+	if len(pvPersistedFormat) > 0 {
+		bucketHLV.PV = &pvPersistedFormat
+	}
+	mvPersistedFormat := VersionsToDeltas(hlv.MergeVersions)
+	if len(mvPersistedFormat) > 0 {
+		bucketHLV.MV = &mvPersistedFormat
+	}
+
+	return base.JSONMarshal(&bucketHLV)
+}
+
+func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
+	type BucketVector struct {
+		CurrentVersionCAS string    `json:"cvCas,omitempty"`
+		SourceID          string    `json:"src"`
+		Version           string    `json:"ver"`
+		PV                *[]string `json:"pv,omitempty"`
+		MV                *[]string `json:"mv,omitempty"`
+	}
+	var bucketDeltas BucketVector
+	err := base.JSONUnmarshal(inputjson, &bucketDeltas)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	mvPersistedFormat, err := convertMapToPersistedFormat(hlv.MergeVersions)
-	if err != nil {
-		return nil, err
+	if bucketDeltas.CurrentVersionCAS != "" {
+		hlv.CurrentVersionCAS = base.HexCasToUint64(bucketDeltas.CurrentVersionCAS)
 	}
 
-	persistedHLV.CurrentVersionCAS = string(cvCasByteArray)
-	persistedHLV.SourceID = hlv.SourceID
-	persistedHLV.Version = string(vrsCasByteArray)
-	persistedHLV.PreviousVersions = pvPersistedFormat
-	persistedHLV.MergeVersions = mvPersistedFormat
-	return &persistedHLV, nil
+	hlv.SourceID = bucketDeltas.SourceID
+	hlv.Version = base.HexCasToUint64(bucketDeltas.Version)
+	if bucketDeltas.PV != nil {
+		prevVersion, err := PersistedDeltasToMap(*bucketDeltas.PV)
+		if err != nil {
+			return err
+		}
+		hlv.PreviousVersions = prevVersion
+	}
+	if bucketDeltas.MV != nil {
+		mergeVersion, err := PersistedDeltasToMap(*bucketDeltas.MV)
+		if err != nil {
+			return err
+		}
+		hlv.MergeVersions = mergeVersion
+	}
+	return nil
 }
 
-func (hlv *HybridLogicalVector) convertPersistedHLVToInMemoryHLV(persistedJSON PersistedVersionVector) {
-	hlv.CurrentVersionCAS = base.HexCasToUint64(persistedJSON.CurrentVersionCAS)
-	hlv.SourceID = persistedJSON.SourceID
-	// convert the hex cas to uint64 cas
-	hlv.Version = base.HexCasToUint64(persistedJSON.Version)
-	// convert the maps form persisted format to the in memory format
-	hlv.PreviousVersions = convertMapToInMemoryFormat(persistedJSON.PreviousVersions)
-	hlv.MergeVersions = convertMapToInMemoryFormat(persistedJSON.MergeVersions)
-}
-
-// convertMapToPersistedFormat will convert in memory map of previous versions or merge versions into the persisted format map
-func convertMapToPersistedFormat(memoryMap map[string]uint64) (map[string]string, error) {
-	if memoryMap == nil {
-		return nil, nil
-	}
-	returnedMap := make(map[string]string)
-	var persistedCAS string
-	for source, cas := range memoryMap {
-		casByteArray := base.Uint64CASToLittleEndianHex(cas)
-		persistedCAS = string(casByteArray)
-		// remove the leading '0x' from the CAS value
-		persistedCAS = persistedCAS[2:]
-		returnedMap[source] = persistedCAS
-	}
-	return returnedMap, nil
-}
-
-// convertMapToInMemoryFormat will convert the persisted format map to an in memory format of that map.
-// Used for previous versions and merge versions maps on HLV
-func convertMapToInMemoryFormat(persistedMap map[string]string) map[string]uint64 {
-	if persistedMap == nil {
-		return nil
-	}
-	returnedMap := make(map[string]uint64)
-	// convert each CAS entry from little endian hex to Uint64
-	for key, value := range persistedMap {
-		returnedMap[key] = base.HexCasToUint64(value)
-	}
-	return returnedMap
+func (hlv *HybridLogicalVector) GoString() string {
+	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%+v, MergeVersions:%+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
 }

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -377,20 +378,22 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
 type SyncInfo struct {
-	MetadataID string `json:"metadataID"`
+	MetadataID      string `json:"metadataID,omitempty"`
+	MetaDataVersion string `json:"metadata_version,omitempty"`
 }
 
 // initSyncInfo attempts to initialize syncInfo for a datastore
 //  1. If syncInfo doesn't exist, it is created for the specified metadataID
 //  2. If syncInfo exists with a matching metadataID, returns requiresResync=false
 //  3. If syncInfo exists with a non-matching metadataID, returns requiresResync=true
-func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err error) {
+//     If syncInfo exists and has metaDataVersion greater than or equal to 4.0, return requiresAttachmentMigration=false, else requiresAttachmentMigration=true to bring migrate metadata attachments.
+func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (requiresResync bool, requiresAttachmentMigration bool, err error) {
 
 	var syncInfo SyncInfo
 	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
 	if IsDocNotFoundError(fetchErr) {
 		if metadataID == "" {
-			return false, nil
+			return false, true, nil
 		}
 		newSyncInfo := &SyncInfo{MetadataID: metadataID}
 		_, addErr := ds.Add(SGSyncInfo, 0, newSyncInfo)
@@ -398,37 +401,110 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err err
 			// attempt new fetch
 			_, fetchErr = ds.Get(SGSyncInfo, &syncInfo)
 			if fetchErr != nil {
-				return true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", fetchErr)
+				return true, true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", fetchErr)
 			}
 		} else if addErr != nil {
-			return true, fmt.Errorf("Error adding syncInfo: %v", addErr)
+			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
 		}
 		// successfully added
-		return false, nil
+		requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
+		if err != nil {
+			return syncInfo.MetadataID != metadataID, true, err
+		}
+		return false, requiresAttachmentMigration, nil
 	} else if fetchErr != nil {
-		return true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
+		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
+	}
+	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
+	requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
+	if err != nil {
+		return syncInfo.MetadataID != metadataID, true, err
 	}
 
-	return syncInfo.MetadataID != metadataID, nil
+	return syncInfo.MetadataID != metadataID, requiresAttachmentMigration, nil
 }
 
-// SetSyncInfo sets syncInfo in a DataStore to the specified metadataID
-func SetSyncInfo(ds DataStore, metadataID string) error {
+// SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present
+func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 
 	// If the metadataID isn't defined, don't persist SyncInfo.  Defensive handling for legacy use cases.
 	if metadataID == "" {
 		return nil
 	}
-	syncInfo := &SyncInfo{
-		MetadataID: metadataID,
-	}
-	return ds.Set(SGSyncInfo, 0, nil, syncInfo)
+	_, err := ds.Update(SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		var syncInfo SyncInfo
+		if current != nil {
+			parseErr := JSONUnmarshal(current, &syncInfo)
+			if parseErr != nil {
+				return nil, nil, false, parseErr
+			}
+		}
+		// if we have a metadataID to set, set it preserving the metadata version if present
+		syncInfo.MetadataID = metadataID
+		bytes, err := JSONMarshal(&syncInfo)
+		return bytes, nil, false, err
+	})
+	return err
 }
 
-// SerializeIfLonger returns name as a sha1 string if the length of the name is greater or equal to the length specificed. Otherwise, returns the original string.
+// SetSyncInfoMetaVersion sets sync info in DataStore to specified metadata version, preserving metadataID if present
+func SetSyncInfoMetaVersion(ds DataStore, metaVersion string) error {
+	if metaVersion == "" {
+		return nil
+	}
+	_, err := ds.Update(SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		var syncInfo SyncInfo
+		if current != nil {
+			parseErr := JSONUnmarshal(current, &syncInfo)
+			if parseErr != nil {
+				return nil, nil, false, parseErr
+			}
+		}
+		// if we have a meta version to set, set it preserving the metadata ID if present
+		syncInfo.MetaDataVersion = metaVersion
+		bytes, err := JSONMarshal(&syncInfo)
+		return bytes, nil, false, err
+	})
+	return err
+}
+
+// SerializeIfLonger returns name as a sha1 string if the length of the name is greater or equal to the length specified. Otherwise, returns the original string.
 func SerializeIfLonger(name string, length int) string {
 	if len(name) < length {
 		return name
 	}
 	return Sha1HashString(name, "")
+}
+
+// CompareMetadataVersion Will build comparable build version for comparison with meta version defined in syncInfo, then
+// will return true if we require attachment migration, false if not.
+func CompareMetadataVersion(ctx context.Context, metaVersion string) (bool, error) {
+	if metaVersion == "" {
+		// no meta version passed in, thus attachment migration should take place
+		return true, nil
+	}
+	syncInfoVersion, err := NewComparableBuildVersionFromString(metaVersion)
+	if err != nil {
+		return true, err
+	}
+	return CheckRequireAttachmentMigration(ctx, syncInfoVersion)
+}
+
+// CheckRequireAttachmentMigration will return true if current metaVersion < 4.0.0, else false
+func CheckRequireAttachmentMigration(ctx context.Context, version *ComparableBuildVersion) (bool, error) {
+	if version == nil {
+		AssertfCtx(ctx, "failed to build comparable build version for syncInfo metaVersion")
+		return true, fmt.Errorf("corrupt syncInfo metaVersion value")
+	}
+	minVerStr := "4.0.0" // minimum meta version that needs to be defined for metadata migration. Any version less than this will require attachment migration
+	minVersion, err := NewComparableBuildVersionFromString(minVerStr)
+	if err != nil {
+		AssertfCtx(ctx, "failed to build comparable build version for minimum version for attachment migration")
+		return true, err
+	}
+
+	if minVersion.AtLeastMinorDowngrade(version) {
+		return true, nil
+	}
+	return false, nil
 }

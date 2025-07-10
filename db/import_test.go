@@ -61,23 +61,27 @@ func TestFeedImport(t *testing.T) {
 
 	// fetch the xattrs directly doc to confirm import (to avoid triggering on-demand import)
 	var syncData SyncData
-	xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
+	xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
 	syncXattr, ok := xattrs[base.SyncXattrName]
 	require.True(t, ok)
 	require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
 	require.NotZero(t, syncData.Sequence, "Sequence should not be zero for imported doc")
+	revSeqNo := RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+	require.NotZero(t, revSeqNo, "RevSeqNo should not be zero for imported doc")
 
-	// verify mou
-	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName})
+	// verify mou and rev seqno
+	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
 	if db.UseMou() {
 		var mou *MetadataOnlyUpdate
 		require.NoError(t, err)
 		mouXattr, mouOk := xattrs[base.MouXattrName]
 		require.True(t, mouOk)
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-		require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
-		require.Equal(t, base.CasToString(importCas), mou.CAS)
+		require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+		require.Equal(t, base.CasToString(importCas), mou.HexCAS)
+		// curr revSeqNo should be 2, so prev revSeqNo is 1
+		require.Equal(t, revSeqNo-1, mou.PreviousRevSeqNo)
 	} else {
 		// Expect not found fetching mou xattr
 		require.Error(t, err)
@@ -105,51 +109,86 @@ func TestOnDemandImportMou(t *testing.T) {
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		writeCas, err := collection.dataStore.WriteCas(getKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
+		startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, getKey)
+		require.NoError(t, err)
 
 		// fetch the document to trigger on-demand import
 		doc, err := collection.GetDocument(ctx, getKey, DocUnmarshalAll)
 		require.NoError(t, err)
 
 		if db.UseMou() {
-			require.NotNil(t, doc.metadataOnlyUpdate)
-			require.Equal(t, base.CasToString(writeCas), doc.metadataOnlyUpdate.PreviousCAS)
-			require.Equal(t, base.CasToString(doc.Cas), doc.metadataOnlyUpdate.CAS)
+			require.NotNil(t, doc.MetadataOnlyUpdate)
+			require.Equal(t, base.CasToString(writeCas), doc.MetadataOnlyUpdate.PreviousHexCAS)
+			require.Equal(t, base.CasToString(doc.Cas), doc.MetadataOnlyUpdate.HexCAS)
+			require.Equal(t, startingRevSeqNo, doc.MetadataOnlyUpdate.PreviousRevSeqNo)
 		} else {
-			require.Nil(t, doc.metadataOnlyUpdate)
+			require.Nil(t, doc.MetadataOnlyUpdate)
 		}
 	})
 
 	// On-demand write
 	// Create via the SDK
 	t.Run("on-demand write", func(t *testing.T) {
-		writeKey := baseKey + "write"
-		bodyBytes := []byte(`{"foo":"bar"}`)
-		body := Body{}
-		err := body.Unmarshal(bodyBytes)
-		assert.NoError(t, err, "Error unmarshalling body")
-		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		writeCas, err := collection.dataStore.WriteCas(writeKey, 0, 0, bodyBytes, 0)
-		require.NoError(t, err)
+		for _, funcName := range []string{"Put", "PutExistingRev", "PutExistingCurrentVersion"} {
+			t.Run(funcName, func(t *testing.T) {
+				writeKey := baseKey + "_" + funcName
+				bodyBytes := []byte(`{"foo":"bar"}`)
+				body := Body{}
+				err := body.Unmarshal(bodyBytes)
+				assert.NoError(t, err, "Error unmarshalling body")
+				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+				writeCas, err := collection.dataStore.WriteCas(writeKey, 0, 0, bodyBytes, 0)
+				require.NoError(t, err)
 
-		// Update the document to trigger on-demand import.  Write will be a conflict, but import should be performed
-		_, doc, err := collection.Put(ctx, writeKey, Body{"foo": "baz"})
-		require.Nil(t, doc)
-		assertHTTPError(t, err, 409)
+				newDoc := &Document{
+					ID: writeKey,
+				}
+				newDoc.UpdateBodyBytes([]byte(`{"foo": "baz"}`))
+				startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, writeKey)
+				require.NoError(t, err)
 
-		// fetch the mou xattr directly doc to confirm import (to avoid triggering on-demand get import)
-		// verify mou
-		xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName})
-		if db.UseMou() {
-			require.NoError(t, err)
-			mouXattr, mouOk := xattrs[base.MouXattrName]
-			var mou *MetadataOnlyUpdate
-			require.True(t, mouOk)
-			require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-			require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
-			require.Equal(t, base.CasToString(importCas), mou.CAS)
-		} else {
-			// expect not found fetching mou xattr
-			require.Error(t, err)
+				_, rawBucketDoc, err := collection.GetDocumentWithRaw(ctx, writeKey, DocUnmarshalSync)
+				require.NoError(t, err)
+
+				switch funcName {
+				case "Put":
+					// Update the document to trigger on-demand import.  Write will be a conflict, but import should be performed
+					_, doc, err := collection.Put(ctx, writeKey, Body{"foo": "baz"})
+					require.Nil(t, doc)
+					assertHTTPError(t, err, 409)
+				case "PutExistingRev":
+					fakeRevID := "1-abc"
+					docHistory := []string{fakeRevID}
+					noConflicts := true
+					forceAllowConflictingTombstone := false
+					_, _, err := collection.PutExistingRev(ctx, newDoc, docHistory, noConflicts, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
+					assertHTTPError(t, err, 409)
+				case "PutExistingCurrentVersion":
+					hlv := NewHybridLogicalVector()
+					var legacyRevList []string
+					_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, hlv, rawBucketDoc, legacyRevList)
+					assertHTTPError(t, err, 409)
+				default:
+					require.FailNow(t, fmt.Sprintf("unexpected funcName: %s", funcName))
+				}
+
+				// fetch the mou xattr directly doc to confirm import (to avoid triggering on-demand get import)
+				// verify mou
+				xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName})
+				if db.UseMou() {
+					require.NoError(t, err)
+					mouXattr, mouOk := xattrs[base.MouXattrName]
+					var mou *MetadataOnlyUpdate
+					require.True(t, mouOk)
+					require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+					require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+					require.Equal(t, base.CasToString(importCas), mou.HexCAS)
+					require.Equal(t, startingRevSeqNo, mou.PreviousRevSeqNo)
+				} else {
+					// expect not found fetching mou xattr
+					require.Error(t, err)
+				}
+			})
 		}
 	})
 
@@ -191,7 +230,7 @@ func TestMigrateMetadata(t *testing.T) {
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Get the existing bucket doc
-	_, existingBucketDoc, err := collection.GetDocWithXattr(ctx, key, DocUnmarshalAll)
+	_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
 	require.NoError(t, err)
 	// Set the expiry value to a stale value (it's about to be stale, since below it will get updated to a later value)
 	existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
@@ -216,6 +255,64 @@ func TestMigrateMetadata(t *testing.T) {
 	_, err = collection.migrateMetadata(ctx, key, existingBucketDoc, &sgbucket.MutateInOptions{PreserveExpiry: false})
 	assert.True(t, err != nil)
 	assert.True(t, err == base.ErrCasFailureShouldRetry)
+
+}
+
+// Tests metadata migration where a document with inline sync data has been replicated by XDCR, so also has an
+// existing HLV.  Migration should preserve the existing HLV while moving doc._sync to sync xattr
+func TestMigrateMetadataWithHLV(t *testing.T) {
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	key := "TestMigrateMetadata"
+	bodyBytes := rawDocWithSyncMeta()
+	body := Body{}
+	err := body.Unmarshal(bodyBytes)
+	assert.NoError(t, err, "Error unmarshalling body")
+
+	hlv := &HybridLogicalVector{}
+	require.NoError(t, hlv.AddVersion(CreateVersion("source123", 100)))
+	hlv.CurrentVersionCAS = 100
+	hlvBytes := base.MustJSONMarshal(t, hlv)
+	xattrBytes := map[string][]byte{
+		base.VvXattrName: hlvBytes,
+	}
+
+	// Create via the SDK with inline sync metadata and an existing _vv xattr
+	_, err = collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrBytes, nil, nil)
+	require.NoError(t, err)
+
+	// Get the existing bucket doc
+	_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	// Migrate metadata
+	_, err = collection.migrateMetadata(ctx, key, existingBucketDoc, &sgbucket.MutateInOptions{PreserveExpiry: false})
+	require.NoError(t, err)
+
+	// Fetch the existing doc, ensure _vv is preserved
+	var migratedHLV *HybridLogicalVector
+	_, migratedBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
+	require.NoError(t, err)
+	migratedHLVBytes, ok := migratedBucketDoc.Xattrs[base.VvXattrName]
+	require.True(t, ok)
+	require.NoError(t, base.JSONUnmarshal(migratedHLVBytes, &migratedHLV))
+	require.Equal(t, hlv.Version, migratedHLV.Version)
+	require.Equal(t, hlv.SourceID, migratedHLV.SourceID)
+	require.Equal(t, hlv.CurrentVersionCAS, migratedHLV.CurrentVersionCAS)
+
+	migratedSyncXattrBytes, ok := migratedBucketDoc.Xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	require.NotZero(t, len(migratedSyncXattrBytes))
 
 }
 
@@ -278,7 +375,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err := collection.GetDocWithXattr(ctx, key, DocUnmarshalAll)
+			_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
 			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
 
 			body = Body{}
@@ -306,7 +403,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
-			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, existingBucketDoc, ImportOnDemand)
+			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, 0, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
@@ -446,7 +543,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err = collection.GetDocWithXattr(ctx, testcase.docname, DocUnmarshalAll)
+			_, existingBucketDoc, err = collection.GetDocWithXattrs(ctx, testcase.docname, DocUnmarshalAll)
 			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
 
 			importD := `{"new":"Val"}`
@@ -456,7 +553,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 			runOnce = true
 			// Trigger import
-			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
+			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, 0, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, err)
 
 			// Check document has the rev and new body
@@ -527,7 +624,7 @@ func TestImportNullDoc(t *testing.T) {
 	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
 	// Import a null document
-	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, 1, existingDoc, ImportOnDemand)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -545,21 +642,26 @@ func TestImportNullDocRaw(t *testing.T) {
 	xattrs := map[string][]byte{
 		base.SyncXattrName: []byte("{}"),
 	}
-	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, ImportFromFeed)
+	importOpts := importDocOptions{
+		isDelete: false,
+		expiry:   &exp,
+		revSeqNo: 1,
+		mode:     ImportFromFeed,
+	}
+	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, importOpts, 1)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	_, xattrs, _, err := dataStore.GetWithXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
-	assert.NoError(t, err, "Error Getting Xattr")
+	require.NoError(t, err, "Error Getting Xattr")
 	require.Contains(t, xattrs, base.SyncXattrName)
-	var xattr map[string]any
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
-	revision, ok := xattr["rev"]
-	assert.True(t, ok)
-	generation, _ := ParseRevID(base.TestCtx(t), revision.(string))
-	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
+	var syncData SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+	require.True(t, syncData.CurrentRev != "")
+	generation, _ := ParseRevID(base.TestCtx(t), syncData.CurrentRev)
+	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.CurrentRev)
 	assert.True(t, generation == expectedRevGeneration)
 }
 
@@ -639,6 +741,12 @@ func TestImportStampClusterUUID(t *testing.T) {
 	_, cas, err := collection.dataStore.GetRaw(key)
 	require.NoError(t, err)
 
+	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	docXattr, ok := xattrs[base.VirtualXattrRevSeqNo]
+	require.True(t, ok)
+	revSeqNo := RetrieveDocRevSeqNo(t, docXattr)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
 
 	body := Body{}
@@ -646,13 +754,13 @@ func TestImportStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	existingDoc := &sgbucket.BucketDocument{Body: bodyBytes, Cas: cas}
 
-	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, revSeqNo, existingDoc, ImportOnDemand)
 	require.NoError(t, err)
 	if assert.NotNil(t, importedDoc) {
 		require.Len(t, importedDoc.ClusterUUID, 32)
 	}
 
-	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
+	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	require.Contains(t, xattrs, base.SyncXattrName)
 	var xattr map[string]any
@@ -1013,8 +1121,8 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 	previousRev := syncData.CurrentRev
 
 	// verify mou contents
-	require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
-	require.Equal(t, base.CasToString(importCas), mou.CAS)
+	require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+	require.Equal(t, base.CasToString(importCas), mou.HexCAS)
 
 	// 3. Update the previous SDK write via SGW, ensure mou isn't updated again
 	updatedBody := Body{"_rev": previousRev, "foo": "baz"}
@@ -1112,12 +1220,12 @@ func TestImportConflictWithTombstone(t *testing.T) {
 
 	// Create rev 2 through SGW
 	body["foo"] = "abc"
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-abc", rev1ID}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-abc", rev1ID}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
 	// Create conflicting rev 2 through SGW
 	body["foo"] = "def"
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-def", rev1ID}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-def", rev1ID}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
 	docRev, err := collection.GetRev(ctx, docID, "", false, nil)

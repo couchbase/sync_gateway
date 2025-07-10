@@ -649,21 +649,21 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	// Write existing docs to server directly (not via blip)
 	rt := bt.restTester
 	resp := rt.PutDoc("conflictingInsert", `{"version":1}`)
-	conflictingInsertRev := resp.RevID
+	conflictingInsertRev := resp.RevTreeID
 
 	resp = rt.PutDoc("matchingInsert", `{"version":1}`)
-	matchingInsertRev := resp.RevID
+	matchingInsertRev := resp.RevTreeID
 
 	resp = rt.PutDoc("conflictingUpdate", `{"version":1}`)
-	conflictingUpdateRev1 := resp.RevID
-	conflictingUpdateRev2 := rt.UpdateDocRev("conflictingUpdate", resp.RevID, `{"version":2}`)
+	conflictingUpdateRev1 := resp.RevTreeID
+	conflictingUpdateRev2 := rt.UpdateDocRev("conflictingUpdate", resp.RevTreeID, `{"version":2}`)
 
 	resp = rt.PutDoc("matchingUpdate", `{"version":1}`)
-	matchingUpdateRev1 := resp.RevID
-	matchingUpdateRev2 := rt.UpdateDocRev("matchingUpdate", resp.RevID, `{"version":2}`)
+	matchingUpdateRev1 := resp.RevTreeID
+	matchingUpdateRev2 := rt.UpdateDocRev("matchingUpdate", resp.RevTreeID, `{"version":2}`)
 
 	resp = rt.PutDoc("newUpdate", `{"version":1}`)
-	newUpdateRev1 := resp.RevID
+	newUpdateRev1 := resp.RevTreeID
 
 	type proposeChangesCase struct {
 		key           string
@@ -1715,6 +1715,120 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 }
 
+// TestPutRevV4:
+//   - Create blip tester to run with V4 protocol
+//   - Use send rev with CV defined in rev field and history field with PV/MV defined
+//   - Retrieve the doc from bucket and assert that the HLV is set to what has been sent over the blip tester
+func TestPutRevV4(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+
+	// Create blip tester with v4 protocol
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		allowConflicts:     false,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		blipProtocols:      []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	require.NoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+	collection, ctx := bt.restTester.GetSingleTestDatabaseCollection()
+
+	docID := t.Name()
+
+	// 1. Send rev with history
+	history := "1@b, 2@a"
+	sent, _, resp, err := bt.SendRev(docID, "3@c", []byte(`{"key": "val"}`), blip.Properties{"history": history})
+	assert.True(t, sent)
+	require.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	// Validate against the bucket doc's HLV
+	doc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+	require.NoError(t, err)
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "c",
+		Version:           3,
+		PreviousVersions:  db.HLVVersions{"a": 2, "b": 1},
+	}, *doc.HLV)
+
+	// 2. Update the document with a non-conflicting revision, where only cv is updated
+	sent, _, resp, err = bt.SendRev(docID, "4@c", []byte(`{"key": "val"}`), blip.Properties{"history": history})
+	assert.True(t, sent)
+	require.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	// Validate against the bucket doc's HLV
+	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+	require.NoError(t, err)
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "c",
+		Version:           4,
+		PreviousVersions:  db.HLVVersions{"a": 2, "b": 1},
+	}, *doc.HLV)
+
+	// 3. Update the document again with a non-conflicting revision from a different source (previous cv moved to pv)
+	updatedHistory := "1@b, 2@a, 4@c"
+	sent, _, resp, err = bt.SendRev(docID, "1@d", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
+	assert.True(t, sent)
+	require.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	// Validate against the bucket doc's HLV
+	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+	require.NoError(t, err)
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "d",
+		Version:           1,
+		PreviousVersions:  db.HLVVersions{"c": 4, "a": 2, "b": 1},
+	}, *doc.HLV)
+
+	// 4. Update the document again with a non-conflicting revision from a different source, and additional sources in history (previous cv moved to pv, and pv expanded)
+	updatedHistory = "1@b, 2@a, 4@c, 1@d, 1@e"
+	sent, _, resp, err = bt.SendRev(docID, "1@e", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
+	assert.True(t, sent)
+	require.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	// Validate against the bucket doc's HLV
+	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+	require.NoError(t, err)
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "e",
+		Version:           1,
+		PreviousVersions:  db.HLVVersions{"d": 1, "c": 4, "a": 2, "b": 1},
+	}, *doc.HLV)
+
+	// 5. Attempt to update the document again with a conflicting revision from a different source (previous cv not in pv), expect conflict
+	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("1@pqr"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
+	assert.True(t, sent)
+	require.Error(t, err)
+	assert.Equal(t, "409", resp.Properties["Error-Code"])
+
+	// 6. Test sending rev with merge versions included in history (note new key)
+	newDocID := t.Name() + "_2"
+	mvHistory := "3@d, 3@e; 1@b, 2@a"
+	sent, _, resp, err = bt.SendRev(newDocID, "3@c", []byte(`{"key": "val"}`), blip.Properties{"history": mvHistory})
+	assert.True(t, sent)
+	require.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	// assert on bucket doc
+	doc, _, err = collection.GetDocWithXattrs(ctx, newDocID, db.DocUnmarshalNoHistory)
+	require.NoError(t, err)
+
+	require.Equal(t, db.HybridLogicalVector{
+		CurrentVersionCAS: doc.Cas,
+		SourceID:          "c",
+		Version:           3,
+		MergeVersions:     db.HLVVersions{"d": 3, "e": 3},
+		PreviousVersions:  db.HLVVersions{"a": 2, "b": 1},
+	}, *doc.HLV)
+}
+
 // Repro attempt for SG #3281
 //
 // - Set up a user w/ access to channel A
@@ -1728,7 +1842,7 @@ func TestPutRevConflictsMode(t *testing.T) {
 // Actual:
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 func TestGetRemovedDoc(t *testing.T) {
-
+	t.Skip("Revs are backed up by hash of CV now, test needs to fetch backup rev by revID, CBG-3748 (backwards compatibility for revID)")
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
@@ -1901,6 +2015,8 @@ func TestSendReplacementRevision(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // requires cv in PUT rest response
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
@@ -1911,17 +2027,19 @@ func TestSendReplacementRevision(t *testing.T) {
 				defer rt.Close()
 
 				docID := test.name
-				version1 := rt.PutDoc(docID, fmt.Sprintf(`{"foo":"bar","channels":["%s"]}`, rev1Channel))
+				version1 := rt.PutDocDirectly(docID, JsonToMap(t, fmt.Sprintf(`{"foo":"bar","channels":["%s"]}`, rev1Channel)))
 				updatedVersion := make(chan DocVersion)
 				collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
-					if changeEntryDocID == docID && changeEntryRevID == version1.RevID {
+					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevID)
+						// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+						cvHash := base.Crc32cHashString([]byte(version1.CV.String()))
+						err := collection.PurgeOldRevisionJSON(ctx, docID, cvHash)
 						require.NoError(t, err)
 						rt.GetDatabase().FlushRevisionCacheForTest()
 					}
@@ -1952,8 +2070,8 @@ func TestSendReplacementRevision(t *testing.T) {
 					msg2, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageRev, msg2.Profile())
-					assert.Equal(t, version2.RevID, msg2.Properties[db.RevMessageRev])
-					assert.Equal(t, version1.RevID, msg2.Properties[db.RevMessageReplacedRev])
+					assert.Equal(t, version2.RevTreeID, msg2.Properties[db.RevMessageRev])
+					assert.Equal(t, version1.RevTreeID, msg2.Properties[db.RevMessageReplacedRev])
 
 					// the blip test framework records a message entry for the originally requested rev as well, but it should point to the message sent for rev 2
 					// this is an artifact of the test framework to make assertions for tests not explicitly testing replacement revs easier
@@ -2012,19 +2130,76 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 
 		const docID = "doc1"
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version1 := rt.PutDocDirectly(docID, db.Body{"hello": "world!"})
 
 		data := btcRunner.WaitForVersion(client.id, docID, version1)
-		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+		assert.Equal(t, `{"hello":"world!"}`, string(data))
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-		version2 := rt.UpdateDoc(docID, version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+		version2 := rt.UpdateDocDirectly(docID, version1, db.Body{"hello": "alice"})
 
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
-		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
+		assert.Equal(t, `{"hello":"alice"}`, string(data))
 
 		msg := client.pullReplication.WaitForMessage(5)
-		assert.Equal(t, version1.RevID, msg.Properties[db.RevMessageHistory]) // CBG-3268 update to use version
+		client.AssertOnBlipHistory(t, msg, version1)
+	})
+}
+
+// TestPullReplicationUpdateOnOtherHLVAwarePeer:
+//   - Main purpose is to test if history is correctly populated on HLV aware replication
+//   - Making use of HLV agent to mock a doc from a HLV aware peer coming over replicator
+//   - Update this same doc through sync gateway then assert that the history is populated with the old current version
+func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rtConfig := RestTesterConfig{
+		GuestEnabled: true,
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4 replication only test
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPull(client.id)
+
+		const docID = "doc1"
+		otherSource := "otherSource"
+		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
+		existingHLVKey := "doc1"
+		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+
+		// force import of this write
+		_, _ = rt.GetDoc(docID)
+		bucketDoc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+
+		// create doc version of the above doc write
+		version1 := DocVersion{
+			RevTreeID: bucketDoc.CurrentRev,
+			CV: db.Version{
+				SourceID: hlvHelper.Source,
+				Value:    cas,
+			},
+		}
+
+		_ = btcRunner.WaitForVersion(client.id, docID, version1)
+
+		// update the above doc
+		version2 := rt.UpdateDocDirectly(docID, version1, db.Body{"hello": "world!"})
+
+		data := btcRunner.WaitForVersion(client.id, docID, version2)
+		assert.Equal(t, `{"hello":"world!"}`, string(data))
+
+		// assert that history in blip properties is correct
+		msg := client.pullReplication.WaitForMessage(5)
+		client.AssertOnBlipHistory(t, msg, version1)
 	})
 }
 
@@ -2051,7 +2226,7 @@ func TestBlipClientSendDelete(t *testing.T) {
 		rt.WaitForVersion(docID, docVersion)
 
 		// delete doc and wait for deletion at rest tester
-		deleteVersion := btcRunner.DeleteRev(client.id, docID, &docVersion)
+		deleteVersion := btcRunner.DeleteDoc(client.id, docID, &docVersion)
 		rt.WaitForTombstone(docID, deleteVersion)
 	})
 }
@@ -2072,7 +2247,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		version := rt.PutDoc(docID, `{"test":true}`)
+		version := rt.PutDocDirectly(docID, db.Body{"test": true})
 
 		// start an initial pull
 		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0", ActiveOnly: true})
@@ -2080,7 +2255,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 		assert.Equal(t, `{"test":true}`, string(rev))
 
 		// delete the doc and make sure the client still gets the tombstone replicated
-		deletedVersion := rt.DeleteDoc(docID, version)
+		deletedVersion := rt.DeleteDocDirectly(docID, version)
 
 		rev = btcRunner.WaitForVersion(btc.id, docID, deletedVersion)
 		assert.Equal(t, `{}`, string(rev))
@@ -2163,7 +2338,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		defer btc.Close()
 
 		const docID = "doc"
-		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
+		version := rt.PutDocDirectly(docID, db.Body{"channels": []string{"A", "B"}})
 
 		changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
@@ -2172,7 +2347,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
+		version = rt.UpdateDocDirectly(docID, version, db.Body{"channels": []string{"B"}})
 
 		changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
@@ -2181,9 +2356,9 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": []}`)
+		version = rt.UpdateDocDirectly(docID, version, db.Body{"channels": []string{}})
 		const docMarker = "docmarker"
-		docMarkerVersion := rt.PutDoc(docMarker, `{"channels": ["!"]}`)
+		docMarkerVersion := rt.PutDocDirectly(docMarker, db.Body{"channels": []string{"!"}})
 
 		changes = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
@@ -2248,7 +2423,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		const (
 			docID = "doc"
 		)
-		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
+		version := rt.PutDocDirectly(docID, db.Body{"channels": []string{"A", "B"}})
 
 		changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
@@ -2257,8 +2432,9 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
+		version = rt.UpdateDocDirectly(docID, version, db.Body{"channels": []string{"C"}})
 		rt.WaitForPendingChanges()
+
 		// At this point changes should send revocation, as document isn't in any of the user's channels
 		changes = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
@@ -2269,7 +2445,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
 		markerID := "docmarker"
-		markerVersion := rt.PutDoc(markerID, `{"channels": ["A"]}`)
+		markerVersion := rt.PutDocDirectly(markerID, db.Body{"channels": []string{"A"}})
 		rt.WaitForPendingChanges()
 
 		// Revocation should not be sent over blip, as document is now in user's channels - only marker document should be received
@@ -2612,6 +2788,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	assert.NoError(t, ar.Start(activeCtx))
 	defer func() { require.NoError(t, ar.Stop()) }()
 
+	activeRT.WaitForPendingChanges()
 	activeRT.WaitForVersion(docID, version)
 
 	base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)
@@ -2724,7 +2901,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 					recievedNoRevs <- msg
 				}
 
-				version := rt.PutDoc(docName, `{"foo":"bar"}`)
+				version := rt.PutDocDirectly(docName, db.Body{"foo": "bar"})
 
 				// Make the LeakyBucket return an error
 				leakyDataStore.SetGetRawCallback(func(key string) error {
@@ -2784,7 +2961,7 @@ func TestUnsubChanges(t *testing.T) {
 		// Sub changes
 		btcRunner.StartPull(btc.id)
 
-		doc1Version := rt.PutDoc(doc1ID, `{"key":"val1"}`)
+		doc1Version := rt.PutDocDirectly(doc1ID, db.Body{"key": "val1"})
 		_ = btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 
 		activeReplStat := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplActiveContinuous
@@ -2795,7 +2972,7 @@ func TestUnsubChanges(t *testing.T) {
 		base.RequireWaitForStat(t, activeReplStat.Value, 0)
 
 		// Confirm no more changes are being sent
-		doc2Version := rt.PutDoc(doc2ID, `{"key":"val1"}`)
+		doc2Version := rt.PutDocDirectly(doc2ID, db.Body{"key": "val1"})
 		err := rt.WaitForConditionWithOptions(func() bool {
 			_, found := btcRunner.GetVersion(btc.id, "doc2", doc2Version)
 			return found
@@ -2968,7 +3145,7 @@ func TestBlipRefreshUser(t *testing.T) {
 		// add chan1 explicitly
 		rt.CreateUser(username, []string{"chan1"})
 
-		version := rt.PutDoc(docID, `{"channels":["chan1"]}`)
+		version := rt.PutDocDirectly(docID, db.Body{"channels": []string{"chan1"}})
 
 		// Start a regular one-shot pull
 		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0"})
@@ -2988,7 +3165,6 @@ func TestBlipRefreshUser(t *testing.T) {
 		unsubChangesRequest := blip.NewRequest()
 		unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
 		btc.addCollectionProperty(unsubChangesRequest)
-
 		btc.pullReplication.sendMsg(unsubChangesRequest)
 
 		testResponse := unsubChangesRequest.Response()
@@ -3023,8 +3199,8 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 			Channels:               []string{"ABC"},
 		})
 		defer btc.Close()
-		version := rt.PutDoc(docID, `{"some":"data", "channels":["ABC"]}`)
-		version2 := rt.PutDoc(docID2, `{"some":"data", "channels":["ABC"]}`)
+		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"some":"data", "channels":["ABC"]}`))
+		version2 := rt.PutDocDirectly(docID2, JsonToMap(t, `{"some":"data", "channels":["ABC"]}`))
 		rt.WaitForPendingChanges()
 
 		// get changes resident in channel cache
@@ -3065,6 +3241,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		syncFn := `function(doc) {
 						if (doc.invalid) {
@@ -3206,13 +3383,117 @@ func TestBlipDatabaseClose(t *testing.T) {
 	})
 }
 
+func TestPutRevBlip(t *testing.T) {
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{GuestEnabled: true, blipProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()}})
+	require.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	_, _, _, err = bt.SendRev(
+		"foo",
+		"2@stZPWD8vS/O3nsx9yb2Brw",
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+	require.NoError(t, err)
+
+	_, _, _, err = bt.SendRev(
+		"foo",
+		"fa1@stZPWD8vS/O3nsx9yb2Brw",
+		[]byte(`{"key": "val2"}`),
+		blip.Properties{},
+	)
+	require.NoError(t, err)
+}
+
+func TestBlipMergeVersions(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // requires hlv
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTesterPersistentConfig(t)
+		defer rt.Close()
+		username := "alice"
+		rt.CreateUser(username, []string{"*"})
+		opts := &BlipTesterClientOpts{
+			Username:               username,
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		docID := t.Name()
+		revRequest := blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "3@CBL1"
+		revRequest.Properties[db.RevMessageHistory] = "2@DEF,2@GHI;"
+		revRequest.SetBody([]byte(`{"key": "val"}`))
+		btc.addCollectionProperty(revRequest)
+		btc.pushReplication.sendMsg(revRequest)
+
+		resp := revRequest.Response()
+		respBody, err := resp.Body()
+		require.NoError(t, err)
+		require.Empty(t, string(respBody))
+
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		doc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
+		require.Equal(t, db.HybridLogicalVector{
+			CurrentVersionCAS: doc.Cas,
+			Version:           3,
+			SourceID:          "CBL1",
+			MergeVersions: db.HLVVersions{
+				"DEF": 2,
+				"GHI": 2,
+			}}, *doc.HLV)
+
+		btcRunner.StartPull(btc.id)
+		btcRunner.WaitForDoc(btc.id, docID)
+
+		// CBL -> SG: subChanges
+		// SG -> CBL: changes
+		// CBL -> SG: rev
+		messages := btc.pullReplication.GetMessages()
+		require.Len(t, messages, 3)
+		revMsg, ok := btc.pullReplication.GetMessage(3)
+		require.True(t, ok)
+		require.Equal(t, db.MessageRev, revMsg.Profile())
+		require.Equal(t, "3@CBL1", revMsg.Properties[db.RevMessageRev])
+		// mv is not ordered so either string is valid
+		require.Contains(t, []string{"2@DEF,2@GHI;", "2@GHI,2@DEF;"}, revMsg.Properties[db.RevMessageHistory])
+
+		revRequest = blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "4@CBL1"
+		revRequest.SetBody([]byte(`{"key": "val2"}`))
+		btc.addCollectionProperty(revRequest)
+		btc.pushReplication.sendMsg(revRequest)
+
+		resp = revRequest.Response()
+		respBody, err = resp.Body()
+		require.NoError(t, err)
+		require.Empty(t, string(respBody))
+		doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
+		require.Equal(t, db.HybridLogicalVector{
+			CurrentVersionCAS: doc.Cas,
+			Version:           4,
+			SourceID:          "CBL1",
+			PreviousVersions: db.HLVVersions{
+				"DEF": 2,
+				"GHI": 2,
+			}}, *doc.HLV)
+	})
+}
+
 // Starts a continuous pull replication then updates the db to trigger a close.
 func TestChangesFeedExitDisconnect(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 	btcRunner := NewBlipTesterClientRunner(t)
-	var shouldChannelQueryError atomic.Bool
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		var shouldChannelQueryError atomic.Bool
 		rt := NewRestTester(t, &RestTesterConfig{
 			LeakyBucketConfig: &base.LeakyBucketConfig{
 				QueryCallback: func(ddoc, viewname string, params map[string]any) error {
@@ -3252,6 +3533,9 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 	for _, allowConflicts := range []bool{true, false} {
 		t.Run(fmt.Sprintf("allowConflicts=%t", allowConflicts), func(t *testing.T) {
 			btcRunner := NewBlipTesterClientRunner(t)
+
+			btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4735 skipped pending work in this ticket
+
 			btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 				rt := NewRestTester(t, &RestTesterConfig{
 					PersistentConfig: true,
@@ -3260,6 +3544,7 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 
 				dbConfig := rt.NewDbConfig()
 				dbConfig.AllowConflicts = base.Ptr(allowConflicts)
+				dbConfig.AutoImport = base.Ptr(false)
 				RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 				startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
 				docID := "doc1"

@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/exp/maps"
 )
 
 const (
@@ -47,6 +48,15 @@ const (
 	DBCompactNotRunning uint32 = iota
 	DBCompactRunning
 )
+
+const (
+	Import DocUpdateType = iota
+	NewVersion
+	ExistingVersion
+	ExistingVersionWithUpdateToHLV
+)
+
+type DocUpdateType uint32
 
 const (
 	DefaultRevsLimitNoConflicts = 50
@@ -87,34 +97,38 @@ const BGTCompletionMaxWait = 30 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name                         string             // Database name
-	UUID                         string             // UUID for this database instance. Used by cbgt and sgr
-	MetadataStore                base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
-	Bucket                       base.Bucket        // Storage
-	BucketSpec                   base.BucketSpec    // The BucketSpec
-	BucketLock                   sync.RWMutex       // Control Access to the underlying bucket object
-	mutationListener             changeListener     // Caching feed listener
-	ImportListener               *importListener    // Import feed listener
-	sequences                    *sequenceAllocator // Source of new sequence numbers
-	StartTime                    time.Time          // Timestamp when context was instantiated
-	RevsLimit                    uint32             // Max depth a document's revision tree can grow to
-	autoImport                   bool               // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache                RevisionCache      // Cache of recently-accessed doc revisions
-	channelCache                 ChannelCache
-	changeCache                  changeCache            // Cache of recently-access channels
-	EventMgr                     *EventManager          // Manages notification events
-	AllowEmptyPassword           bool                   // Allow empty passwords?  Defaults to false
-	Options                      DatabaseContextOptions // Database Context Options
-	AccessLock                   sync.RWMutex           // Allows DB offline to block until synchronous calls have completed
-	State                        uint32                 // The runtime state of the DB from a service perspective
-	ResyncManager                *BackgroundManager
-	TombstoneCompactionManager   *BackgroundManager
-	AttachmentCompactionManager  *BackgroundManager
-	AsyncIndexInitManager        *BackgroundManager
-	ExitChanges                  chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
-	OIDCProviders                auth.OIDCProviderMap // OIDC clients
-	LocalJWTProviders            auth.LocalJWTProviderMap
-	ServerUUID                   string                         // UUID of the server, if available
+	Name                        string             // Database name
+	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
+	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
+	Bucket                      base.Bucket        // Storage
+	BucketSpec                  base.BucketSpec    // The BucketSpec
+	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
+	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
+	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
+	mutationListener            changeListener     // Caching feed listener
+	ImportListener              *importListener    // Import feed listener
+	sequences                   *sequenceAllocator // Source of new sequence numbers
+	StartTime                   time.Time          // Timestamp when context was instantiated
+	RevsLimit                   uint32             // Max depth a document's revision tree can grow to
+	autoImport                  bool               // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache               RevisionCache      // Cache of recently-accessed doc revisions
+	channelCache                ChannelCache
+	changeCache                 changeCache            // Cache of recently-access channels
+	EventMgr                    *EventManager          // Manages notification events
+	AllowEmptyPassword          bool                   // Allow empty passwords?  Defaults to false
+	Options                     DatabaseContextOptions // Database Context Options
+	AccessLock                  sync.RWMutex           // Allows DB offline to block until synchronous calls have completed
+	State                       uint32                 // The runtime state of the DB from a service perspective
+	ResyncManager               *BackgroundManager
+	TombstoneCompactionManager  *BackgroundManager
+	AttachmentCompactionManager *BackgroundManager
+	AttachmentMigrationManager  *BackgroundManager
+	AsyncIndexInitManager       *BackgroundManager
+	ExitChanges                 chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders               auth.OIDCProviderMap // OIDC clients
+	LocalJWTProviders           auth.LocalJWTProviderMap
+	ServerUUID                  string // UUID of the server, if available
+
 	DbStats                      *base.DbStats                  // stats that correspond to this database context
 	CompactState                 uint32                         // Status of database compaction
 	terminator                   chan bool                      // Signal termination of background goroutines
@@ -134,6 +148,7 @@ type DatabaseContext struct {
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
+	RequireAttachmentMigration   base.ScopeAndCollectionNames   // Collections that require the attachment migration background task to run against
 	CORS                         *auth.CORSConfig               // CORS configuration
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
@@ -345,8 +360,8 @@ func ConnectToBucket(ctx context.Context, spec base.BucketSpec, failFast bool) (
 	return ibucket.(base.Bucket), nil
 }
 
-// Returns Couchbase Server Cluster UUID on a timeout. If running against walrus, do return an empty string.
-func getServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
+// GetServerUUID returns Couchbase Server Cluster UUID on a timeout. If running against rosmar, do return an empty string.
+func GetServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
 	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
 	if err != nil {
 		return "", nil
@@ -385,7 +400,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	serverUUID, err := getServerUUID(ctx, bucket)
+	serverUUID, err := GetServerUUID(ctx, bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -403,6 +418,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		metadataStore = bucket.DefaultDataStore()
 	}
 
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return nil, err
+	}
+	sourceID, err := CreateEncodedSourceID(bucketUUID, serverUUID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
@@ -411,6 +435,8 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UUID:                cbgt.NewUUID(),
 		MetadataStore:       metadataStore,
 		Bucket:              bucket,
+		BucketUUID:          bucketUUID,
+		EncodedSourceID:     sourceID,
 		StartTime:           time.Now(),
 		autoImport:          autoImport,
 		Options:             options,
@@ -647,6 +673,7 @@ func (dbCtx *DatabaseContext) stopBackgroundManagers() (stopped []*BackgroundMan
 		dbCtx.AttachmentCompactionManager,
 		dbCtx.TombstoneCompactionManager,
 		dbCtx.AsyncIndexInitManager,
+		dbCtx.AttachmentMigrationManager,
 	} {
 		if manager != nil && !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop() == nil {
 			stopped = append(stopped, manager)
@@ -937,6 +964,7 @@ type IDRevAndSequence struct {
 	DocID    string
 	RevID    string
 	Sequence uint64
+	CV       string
 }
 
 // The ForEachDocID options for limiting query results
@@ -972,13 +1000,15 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 		var found bool
 		var docid, revid string
 		var seq uint64
+		var cv string
 		var channels []string
 		if c.useViews() {
 			var viewRow AllDocsViewQueryRow
 			found = results.Next(ctx, &viewRow)
 			if found {
 				docid = viewRow.Key
-				revid = viewRow.Value.RevID
+				revid = viewRow.Value.RevID.RevTreeID
+				cv = viewRow.Value.RevID.CV()
 				seq = viewRow.Value.Sequence
 				channels = viewRow.Value.Channels
 			}
@@ -986,7 +1016,8 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 			found = results.Next(ctx, &queryRow)
 			if found {
 				docid = queryRow.Id
-				revid = queryRow.RevID
+				revid = queryRow.RevID.RevTreeID
+				cv = queryRow.RevID.CV()
 				seq = queryRow.Sequence
 				channels = make([]string, 0)
 				// Query returns all channels, but we only want to return active channels
@@ -1001,7 +1032,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 			break
 		}
 
-		if ok, err := callback(IDRevAndSequence{docid, revid, seq}, channels); ok {
+		if ok, err := callback(IDRevAndSequence{DocID: docid, RevID: revid, Sequence: seq, CV: cv}, channels); ok {
 			count++
 		} else if err != nil {
 			return err
@@ -1698,7 +1729,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 				forceUpdate = true
 			}
 
-			changedChannels, err := doc.updateChannels(ctx, channels)
+			changedChannels, _, err := doc.updateChannels(ctx, channels)
 			changed = len(doc.Access.updateAccess(ctx, doc, access)) +
 				len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
 				len(changedChannels)
@@ -1744,32 +1775,35 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			}
 			doc.SetCrc32cUserXattrHash()
 
-			// Update metadataOnlyUpdate based on previous Cas, metadataOnlyUpdate
+			// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
 			if db.useMou() {
-				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+				doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 			}
 
-			_, rawXattr, rawMouXattr, err := updatedDoc.MarshalWithXattrs()
+			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
-					base.SyncXattrName: rawXattr,
+					base.SyncXattrName: rawSyncXattr,
+					base.VvXattrName:   rawVvXattr,
 				},
 				Expiry: updatedExpiry,
 			}
 			if db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
-				if doc.metadataOnlyUpdate.CAS == expandMacroCASValue {
-					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
+				if doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
+					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 				}
 			}
-
+			if rawGlobalXattr != nil {
+				updatedDoc.Xattrs[base.GlobalXattrName] = rawGlobalXattr
+			}
 			return updatedDoc, err
 		}
 		opts := &sgbucket.MutateInOptions{
 			MacroExpansion: macroExpandSpec(base.SyncXattrName),
 		}
-		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
+		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
 	} else {
 		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
@@ -2350,6 +2384,16 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 	db.backgroundTasks = append(db.backgroundTasks, bgtSyncTime)
 
+	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
+	// if we have collections requiring migration, run the job
+	if len(db.RequireAttachmentMigration) > 0 && !db.BucketSpec.IsWalrusBucket() {
+		err := db.AttachmentMigrationManager.Start(ctx, nil)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
+		}
+		base.DebugfCtx(ctx, base.KeyAll, "Migrating attachment metadata automatically to Sync Gateway 4.0+ for collections %v", db.RequireAttachmentMigration)
+	}
+
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
 		return err
 	}
@@ -2440,4 +2484,27 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 		}
 	}
 	return names
+}
+
+// GetCollectionIDs will return all collection IDs for all collections configured on the database
+func (db *DatabaseContext) GetCollectionIDs() []uint32 {
+	return maps.Keys(db.CollectionByID)
+}
+
+// PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
+func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, taskID string) error {
+
+	bucket, err := base.AsGocbV2Bucket(database.Bucket)
+	if err != nil {
+		return err
+	}
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	datastore := database.MetadataStore
+	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, checkpointPrefix)
+	metadata.Purge(ctx, base.DefaultNumWorkers)
+	return nil
 }

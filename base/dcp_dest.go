@@ -89,7 +89,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 	if !dcpKeyFilter(key, d.metaKeys) {
 		return nil
 	}
-	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpMutation)
+	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpMutation)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -113,7 +113,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpMutation)
+		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, dcpExtras.RevNo, sgbucket.FeedOpMutation)
 
 	}
 
@@ -128,7 +128,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 		return nil
 	}
 
-	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpDeletion)
+	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpDeletion)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -151,7 +151,7 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpDeletion)
+		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, dcpExtras.RevNo, sgbucket.FeedOpDeletion)
 
 	}
 	d.dataUpdate(seq, event)
@@ -190,7 +190,7 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 
 // Rollback is required by cbgt.Dest interface but will not work when called by Sync Gateway as we need additional information to perform a rollback. Due to the design of cbgt.Dest this will not be called without a programming error.
 func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
-	err := errors.New("DCPDest.Rollback called but only RollbackEx should be called, this function is required to be implmented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback and this DCP stream will not longer be running.")
+	err := errors.New("DCPDest.Rollback called but only RollbackEx should be called, this function is required to be implemented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback and this DCP stream will not longer be running.")
 	WarnfCtx(d.loggingCtx, "%s", err)
 	return err
 }
@@ -244,8 +244,8 @@ func collectionIDFromExtras(extras []byte) uint32 {
 	return binary.LittleEndian.Uint32(extras[4:])
 }
 
-func makeFeedEventForDest(key []byte, val []byte, cas uint64, vbNo uint16, collectionID uint32, expiry uint32, dataType uint8, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
-	return makeFeedEvent(key, val, dataType, cas, expiry, vbNo, collectionID, opcode)
+func makeFeedEventForDest(key []byte, val []byte, cas uint64, vbNo uint16, collectionID uint32, expiry uint32, dataType uint8, revNo uint64, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
+	return makeFeedEvent(key, val, dataType, cas, expiry, vbNo, collectionID, revNo, opcode)
 }
 
 // DCPLoggingDest wraps DCPDest to provide per-callback logging

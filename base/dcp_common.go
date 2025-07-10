@@ -266,9 +266,10 @@ func dcpKeyFilter(key []byte, metaKeys *MetadataKeys) bool {
 
 // Makes a feedEvent that can be passed to a FeedEventCallbackFunc implementation
 // The byte slices must be copied to ensure that memory associated with the memd mutationEvent and Packet are independent and can be released or reused by gocbcore as needed.
-func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry uint32, vbNo uint16, collectionID uint32, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
+func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry uint32, vbNo uint16, collectionID uint32, revNo uint64, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
 
 	event := sgbucket.FeedEvent{
+		RevNo:        revNo,
 		Opcode:       opcode,
 		Key:          EfficientBytesClone(key),
 		Value:        EfficientBytesClone(value),

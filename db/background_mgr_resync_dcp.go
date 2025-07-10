@@ -246,7 +246,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 				if !ok {
 					base.WarnfCtx(ctx, "[%s] Completed resync, but unable to update syncInfo for collection %v (not found)", resyncLoggingID, collectionID)
 				}
-				if err := base.SetSyncInfo(dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
+				if err := base.SetSyncInfoMetadataID(dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
 					base.WarnfCtx(ctx, "[%s] Completed resync, but unable to update syncInfo for collection %v: %v", resyncLoggingID, collectionID, err)
 				}
 				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}

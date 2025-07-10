@@ -14,7 +14,10 @@ package channels
 
 import (
 	"fmt"
+	"strconv"
 	"time"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // Bits in LogEntry.Flags
@@ -33,8 +36,10 @@ type LogEntry struct {
 	Channels       ChannelMap    // Channels this entry is in or was removed from
 	DocID          string        // Document ID
 	RevID          string        // Revision ID
+	SourceID       string        // SourceID allocated to the doc's Current Version on the HLV
 	Sequence       uint64        // Sequence number
 	EndSequence    uint64        // End sequence on range of sequences that have been released by the sequence allocator (0 if entry is single sequence)
+	Version        uint64        // Version allocated to the doc's Current Version on the HLV
 	TimeReceived   FeedTimestamp // Time received from tap feed
 	CollectionID   uint32        // Collection ID
 	Flags          uint8         // Deleted/Removed/Hidden flags
@@ -45,11 +50,13 @@ type LogEntry struct {
 
 func (l LogEntry) String() string {
 	return fmt.Sprintf(
-		"seq: %d docid: %s revid: %s collectionID: %d",
+		"seq: %d docid: %s revid: %s collectionID: %d source: %s version: %d",
 		l.Sequence,
 		l.DocID,
 		l.RevID,
 		l.CollectionID,
+		l.SourceID,
+		l.Version,
 	)
 }
 
@@ -83,20 +90,28 @@ func (l *LogEntry) IsUnusedRange() bool {
 	return l.UnusedSequence && l.EndSequence > 0
 }
 
-type ChannelMap map[string]*ChannelRemoval
-type ChannelRemoval struct {
-	Seq     uint64 `json:"seq,omitempty"`
-	RevID   string `json:"rev"`
-	Deleted bool   `json:"del,omitempty"`
+func (entry *LogEntry) SetRevAndVersion(rv RevAndVersion) {
+	entry.RevID = rv.RevTreeID
+	if rv.CurrentSource != "" {
+		entry.SourceID = rv.CurrentSource
+		entry.Version = base.HexCasToUint64(rv.CurrentVersion)
+	}
 }
 
-func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) (ChannelMap, string) {
+type ChannelMap map[string]*ChannelRemoval
+type ChannelRemoval struct {
+	Seq     uint64        `json:"seq,omitempty"`
+	Rev     RevAndVersion `json:"rev"`
+	Deleted bool          `json:"del,omitempty"`
+}
+
+func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) (ChannelMap, RevAndVersion) {
 	var channelsRemoved = make(ChannelMap)
-	var revIdRemoved string
+	var revIdRemoved RevAndVersion
 	for channel, removal := range channelMap {
 		if removal != nil && removal.Seq == seq {
 			channelsRemoved[channel] = removal
-			revIdRemoved = removal.RevID // Will be the same RevID for each removal
+			revIdRemoved = removal.Rev // Will be the same Rev for each removal
 		}
 	}
 	return channelsRemoved, revIdRemoved
@@ -110,6 +125,51 @@ func (channelMap ChannelMap) KeySet() []string {
 		i++
 	}
 	return result
+}
+
+// RevAndVersion is used to store both revTreeID and currentVersion in a single property, for backwards compatibility
+// with existing indexes using rev.  When only RevTreeID is specified, is marshalled/unmarshalled as a string.  Otherwise
+// marshalled normally.
+type RevAndVersion struct {
+	RevTreeID      string `json:"rev,omitempty"`
+	CurrentSource  string `json:"src,omitempty"`
+	CurrentVersion string `json:"ver,omitempty"` // Version needs to be hex string here to support macro expansion when writing to _sync.rev
+}
+
+// RevAndVersionJSON aliases RevAndVersion to support conditional unmarshalling from either string (revTreeID) or
+// map (RevAndVersion) representations
+type RevAndVersionJSON RevAndVersion
+
+// Marshals RevAndVersion as simple string when only RevTreeID is specified - otherwise performs standard
+// marshalling
+func (rv RevAndVersion) MarshalJSON() (data []byte, err error) {
+
+	if rv.CurrentSource == "" {
+		return base.JSONMarshal(rv.RevTreeID)
+	}
+	return base.JSONMarshal(RevAndVersionJSON(rv))
+}
+
+// Unmarshals either from string (legacy, revID only) or standard RevAndVersion unmarshalling.
+func (rv *RevAndVersion) UnmarshalJSON(data []byte) error {
+
+	if len(data) == 0 {
+		return nil
+	}
+	switch data[0] {
+	case '"':
+		return base.JSONUnmarshal(data, &rv.RevTreeID)
+	case '{':
+		return base.JSONUnmarshal(data, (*RevAndVersionJSON)(rv))
+	default:
+		return fmt.Errorf("unrecognized JSON format for RevAndVersion: %s", data)
+	}
+}
+
+// CV returns ver@src in big endian format 1@cbl for CBL format.
+func (rv RevAndVersion) CV() string {
+	// this should match db.Version.String()
+	return strconv.FormatUint(base.HexCasToUint64(rv.CurrentVersion), 16) + "@" + rv.CurrentSource
 }
 
 // FeedTimestamp is a timestamp struct used by DCP. This avoids a conversion from time.Time, while reducing the size from 24 bytes to 8 bytes while having type safety. The time is always assumed to be in local time.

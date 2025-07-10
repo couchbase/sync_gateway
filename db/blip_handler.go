@@ -509,12 +509,19 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 				}
-				for _, item := range change.Changes {
-					changeRow := bh.buildChangesRow(change, item["rev"])
-					pendingChanges = append(pendingChanges, changeRow)
-					if err := sendPendingChangesAt(opts.batchSize); err != nil {
-						return err
+				// if V3 and below populate change row with rev id
+				if bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+					for _, item := range change.Changes {
+						changeRow := bh.buildChangesRow(change, item["rev"])
+						pendingChanges = append(pendingChanges, changeRow)
 					}
+				} else {
+					changeRow := bh.buildChangesRow(change, change.CurrentVersion.String())
+					pendingChanges = append(pendingChanges, changeRow)
+				}
+
+				if err := sendPendingChangesAt(opts.batchSize); err != nil {
+					return err
 				}
 			}
 		}
@@ -766,7 +773,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	if bh.sgCanUseDeltas {
+	// Disable delta sync for protocol versions < 4, CBG-3748 (backwards compatibility for revID delta sync)
+	if bh.sgCanUseDeltas && bh.useHLV() {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 		bh.replicationStats.HandleChangesDeltaRequestedCount.Add(int64(nRequested))
@@ -815,15 +823,30 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	defer func() {
 		bh.replicationStats.HandleChangesTime.Add(time.Since(startTime).Nanoseconds())
 	}()
+	changesContainLegacyRevs := false // keep track if proposed changes have legacy revs for delta sync purposes
+	versionVectorProtocol := bh.useHLV()
 
 	for i, change := range changeList {
 		docID := change[0].(string)
-		revID := change[1].(string)
+		rev := change[1].(string) // rev can represent a RevTree ID or HLV current version
 		parentRevID := ""
 		if len(change) > 2 {
 			parentRevID = change[2].(string)
 		}
-		status, currentRev := bh.collection.CheckProposedRev(bh.loggingCtx, docID, revID, parentRevID)
+		var status ProposedRevStatus
+		var currentRev string
+
+		changeIsVector := false
+		if versionVectorProtocol {
+			changeIsVector = strings.Contains(rev, "@")
+		}
+		if versionVectorProtocol && changeIsVector {
+			proposedVersionStr := ExtractCVFromProposeChangesRev(rev)
+			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, proposedVersionStr, parentRevID, rev)
+		} else {
+			changesContainLegacyRevs = true
+			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, rev, parentRevID)
+		}
 		if status == ProposedRev_OK_IsNew {
 			// Remember that the doc doesn't exist locally, in order to optimize the upcoming Put:
 			bh.collectionCtx.notePendingInsertion(docID)
@@ -853,7 +876,8 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	if bh.sgCanUseDeltas {
+	// Disable delta sync for protocol versions < 4 or changes batches that have legacy revs in them, CBG-3748 (backwards compatibility for revID delta sync)
+	if bh.sgCanUseDeltas && bh.useHLV() && !changesContainLegacyRevs {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 	}
@@ -867,35 +891,40 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
-	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID)
+	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID, bsc.useHLV())
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(ctx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	} else if err == base.ErrDeltaSourceIsTombstone {
 		base.TracefCtx(ctx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	} else if err != nil {
 		base.DebugfCtx(ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	}
 
 	if redactedRev != nil {
-		history := toHistory(redactedRev.History, knownRevs, maxHistory)
+		var history []string
+		if !bsc.useHLV() {
+			history = toHistory(redactedRev.History, knownRevs, maxHistory)
+		} else {
+			history = append(history, redactedRev.hlvHistory)
+		}
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "")
 		return bsc.sendRevisionWithProperties(ctx, sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 
 	if revDelta == nil {
 		base.DebugfCtx(ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	}
 
 	resendFullRevisionFunc := func() error {
 		base.InfofCtx(ctx, base.KeySync, "Resending revision as full body. Peer couldn't process delta %s from %s to %s for key %s", base.UD(revDelta.DeltaBytes), deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
 	}
 
 	base.TracefCtx(ctx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
@@ -973,6 +1002,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
+	if bh.useHLV() && bh.conflictResolver != nil {
+		return base.HTTPErrorf(http.StatusNotImplemented, "conflict resolver handling (ISGR) not yet implemented for v4 protocol")
+	}
+
 	// throttle concurrent revs
 	if cap(bh.inFlightRevsThrottle) > 0 {
 		select {
@@ -991,13 +1024,13 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
 	docID, found := revMessage.ID()
-	revID, rfound := revMessage.Rev()
+	rev, rfound := revMessage.Rev()
 	if !found || !rfound {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or rev")
 	}
 
 	if bh.readOnly {
-		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, revID:%s", docID, revID)
+		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, rev:%s", docID, rev)
 	}
 
 	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
@@ -1017,7 +1050,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), rev)
 			if err := bh.collection.Purge(bh.loggingCtx, docID, true); err != nil {
 				return err
 			}
@@ -1029,7 +1062,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				if err != nil {
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
 				} else {
-					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: rev})
 				}
 			}
 			return nil
@@ -1037,9 +1070,39 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	}
 
 	newDoc := &Document{
-		ID:    docID,
-		RevID: revID,
+		ID: docID,
 	}
+
+	var history []string
+	historyStr := rq.Properties[RevMessageHistory]
+	var incomingHLV *HybridLogicalVector
+	// Build history/HLV
+	var legacyRevList []string
+	changeIsVector := strings.Contains(rev, "@")
+	if !bh.useHLV() || !changeIsVector {
+		newDoc.RevID = rev
+		history = []string{rev}
+		if historyStr != "" {
+			history = append(history, strings.Split(historyStr, ",")...)
+		}
+	} else {
+		versionVectorStr := rev
+		if historyStr != "" {
+			// this means that there is a mv
+			if strings.Contains(historyStr, ";") {
+				versionVectorStr += "," + historyStr
+			} else {
+				versionVectorStr += ";" + historyStr
+			}
+		}
+		incomingHLV, legacyRevList, err = ExtractHLVFromBlipMessage(versionVectorStr)
+		if err != nil {
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v.  HLV:%v Error: %v", base.UD(docID), versionVectorStr, err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
+		}
+		newDoc.HLV = incomingHLV
+	}
+
 	newDoc.UpdateBodyBytes(bodyBytes)
 
 	injectedAttachmentsForDelta := false
@@ -1058,7 +1121,16 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
-		deltaSrcRev, err := bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
+		var deltaSrcRev DocumentRevision
+		if bh.useHLV() {
+			deltaSrcVersion, parseErr := ParseVersion(deltaSrcRevID)
+			if parseErr != nil {
+				return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to parse version for delta source for doc %s, error: %v", base.UD(docID), err)
+			}
+			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &deltaSrcVersion)
+		} else {
+			deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
+		}
 		if err != nil {
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
@@ -1087,7 +1159,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
-			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, rev, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
 		}
 
@@ -1125,34 +1197,38 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
-	history := []string{revID}
-	if historyStr := rq.Properties[RevMessageHistory]; historyStr != "" {
-		history = append(history, strings.Split(historyStr, ",")...)
-	}
-
 	var rawBucketDoc *sgbucket.BucketDocument
 
-	// Pull out attachments
+	// Attachment processing
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
+
 		body := newDoc.Body(bh.loggingCtx)
 		// The bytes.Contains([]byte(BodyAttachments)) check will pass even if _attachments is not a toplevel key but rather a nested key or subkey. That check is an optimization to avoid having to unmarshal the document if there are no attachments. Therefore, check again that the unmarshalled body contains BodyAttachments.
 		if body[BodyAttachments] != nil {
 
 			var currentBucketDoc *Document
 
-			// Look at attachments with revpos > the last common ancestor's
-			if len(history) > 0 {
-				currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
-				// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
-				// as we will already have any attachments on the common ancestor so don't need to ask for them.
-				// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
-				if err == nil {
-					rawBucketDoc = rawDoc
-					currentBucketDoc = currentDoc
+			minRevpos := 0
+			if historyStr != "" {
+				// fetch current bucket doc.  Treats error as not found
+				currentBucketDoc, rawBucketDoc, _ = bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+
+				// For revtree clients, can use revPos as an optimization.  HLV always compares incoming
+				// attachments with current attachments on the document
+				if !bh.useHLV() {
+					// Look at attachments with revpos > the last common ancestor's
+					// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
+					// as we will already have any attachments on the common ancestor so don't need to ask for them.
+					// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
+					if currentBucketDoc != nil {
+						commonAncestor := currentBucketDoc.History.findAncestorFromSet(currentBucketDoc.CurrentRev, history)
+						minRevpos, _ = ParseRevID(bh.loggingCtx, commonAncestor)
+						minRevpos++
+					} else {
+						minRevpos, _ = ParseRevID(bh.loggingCtx, history[len(history)-1])
+					}
 				}
 			}
-			// updatedRevPos is the revpos of the new revision, to be added to attachment metadata if needed for CBL<4.0 compatibility. revpos is no longer used by Sync Gateway.
-			updatedRevPos, _ := ParseRevID(bh.loggingCtx, revID)
 
 			// currentDigests is a map from attachment name to the current bucket doc digest,
 			// for any attachments on the incoming document that are also on the current bucket doc
@@ -1168,24 +1244,26 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 					if !ok {
 						// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 						// update to ensure it's fetched and uploaded
-						bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
+						if minRevpos > 0 {
+							bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
+						}
 						continue
 					}
 
 					currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
 					if !ok {
-						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid, is not a json object")
 					}
 
 					currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
 					if !ok {
-						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid, does not contain digest")
 					}
 					currentDigests[name] = currentAttachmentDigest
 
 					incomingAttachmentMeta, ok := value.(map[string]interface{})
 					if !ok {
-						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment, expecting json object")
 					}
 
 					// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
@@ -1196,22 +1274,30 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 					incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
 					if !ok {
-						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment, does not have digest field")
 					}
+					// For revtree clients, can use revPos as an optimization.  HLV always compares incoming
+					// attachments with current attachments on the document
+					if !bh.useHLV() {
+						incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
+						if !ok {
+							return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment, does not have revpos field")
+						}
 
-					// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
-					// digest is different we need to override the revpos and set it to the current revision to ensure
-					// the attachment is requested and stored. revpos provided for SG/CBL<4.0 compatibility but is no longer used by Sync Gateway.
-					if currentAttachmentDigest != incomingAttachmentDigest {
-						bodyAtts[name].(map[string]interface{})["revpos"] = updatedRevPos
+						// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
+						// digest is different we need to override the revpos and set it to the current revision to ensure
+						// the attachment is requested and stored
+						if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
+							bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
+						}
 					}
 				}
 
 				body[BodyAttachments] = bodyAtts
 			}
 
-			if err := bh.downloadOrVerifyAttachments(rq.Sender, body, docID, currentDigests); err != nil {
-				base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
+			if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
+				base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), rev, err)
 				return err
 			}
 
@@ -1223,7 +1309,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	}
 
 	if rawBucketDoc == nil && bh.collectionCtx.checkPendingInsertion(docID) {
-		// At the time we handled the `propseChanges` request, there was no doc with this docID
+		// At the time we handled the `proposeChanges` request, there was no doc with this docID
 		// in the bucket. As an optimization, tell PutExistingRev to assume the doc still doesn't
 		// exist and bypass getting it from the bucket during the save. If we're wrong, the save
 		// will fail with a CAS mismatch and the retry will fetch the existing doc.
@@ -1236,10 +1322,12 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
-	if bh.conflictResolver != nil {
-		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
+	if bh.useHLV() && changeIsVector {
+		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList)
+	} else if bh.conflictResolver != nil {
+		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	} else {
-		_, _, err = bh.collection.PutExistingRev(bh.loggingCtx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc)
+		_, _, err = bh.collection.PutExistingRev(bh.loggingCtx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	}
 	if err != nil {
 		return err
@@ -1251,7 +1339,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if err != nil {
 			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
 		} else {
-			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: rev})
 		}
 	}
 
@@ -1478,33 +1566,32 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, docID string, currentDigests map[string]string) error {
-	return bh.collection.ForEachStubAttachment(body, docID, currentDigests,
-		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
-			// Request attachment if we don't have it
-			if knownData == nil {
-				return bh.sendGetAttachment(sender, docID, name, digest, meta)
-			}
+func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
+	return bh.collection.ForEachStubAttachment(body, minRevpos, docID, currentDigests, func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+		// Request attachment if we don't have it
+		if knownData == nil {
+			return bh.sendGetAttachment(sender, docID, name, digest, meta)
+		}
 
-			// Ask client to prove they have the attachment without sending it
-			proveAttErr := bh.sendProveAttachment(sender, docID, name, digest, knownData)
-			if proveAttErr == nil {
+		// Ask client to prove they have the attachment without sending it
+		proveAttErr := bh.sendProveAttachment(sender, docID, name, digest, knownData)
+		if proveAttErr == nil {
+			return nil, nil
+		}
+
+		// Peer doesn't support proveAttachment or does not have attachment. Fall back to using getAttachment as proof.
+		if proveAttErr == errNoBlipHandler || proveAttErr == ErrAttachmentNotFound {
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer sent prove attachment error %v, falling back to getAttachment for proof in doc %s (digest %s)", proveAttErr, base.UD(docID), digest)
+			_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
+			if getAttErr == nil {
+				// Peer proved they have matching attachment. Keep existing attachment
 				return nil, nil
 			}
+			return nil, getAttErr
+		}
 
-			// Peer doesn't support proveAttachment or does not have attachment. Fall back to using getAttachment as proof.
-			if proveAttErr == errNoBlipHandler || proveAttErr == ErrAttachmentNotFound {
-				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer sent prove attachment error %v, falling back to getAttachment for proof in doc %s (digest %s)", proveAttErr, base.UD(docID), digest)
-				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
-				if getAttErr == nil {
-					// Peer proved they have matching attachment. Keep existing attachment
-					return nil, nil
-				}
-				return nil, getAttErr
-			}
-
-			return nil, proveAttErr
-		})
+		return nil, proveAttErr
+	})
 }
 
 func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {

@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -965,6 +966,59 @@ func HexCasToUint64(cas string) uint64 {
 	return binary.LittleEndian.Uint64(casBytes[0:8])
 }
 
+// HexCasToUint64ForDelta will convert hex cas to uint64 accounting for any stripped zeros in delta calculation
+func HexCasToUint64ForDelta(casByte []byte) (uint64, error) {
+	var decoded []byte
+
+	// as we strip any zeros off the end of the hex value for deltas, the input delta could be odd length
+	if len(casByte)%2 != 0 {
+		casByte = append(casByte, '0')
+	}
+
+	// create byte array for decoding into
+	decodedLen := hex.DecodedLen(len(casByte))
+	// binary.LittleEndian.Uint64 expects length 8 byte array, if larger we should error, if smaller
+	// (because of stripped 0's then we should make it length 8).
+	if decodedLen > 8 {
+		return 0, fmt.Errorf("corrupt hex value, decoded length larger than expected")
+	}
+	if decodedLen < 8 {
+		// can be less than 8 given we have stripped the 0's for some values, in this case we need to ensure large eniough
+		decoded = make([]byte, 8)
+	} else {
+		decoded = make([]byte, decodedLen)
+	}
+
+	if _, err := hex.Decode(decoded, casByte); err != nil {
+		return 0, err
+	}
+	res := binary.LittleEndian.Uint64(decoded)
+	return res, nil
+}
+
+// Uint64ToLittleEndianHexAndStripZeros will convert a uint64 type to little endian hex, stripping any zeros off the end
+// + stripping 0x from start
+func Uint64ToLittleEndianHexAndStripZeros(cas uint64) string {
+	hexCas := Uint64CASToLittleEndianHex(cas)
+
+	i := len(hexCas) - 1
+	for i > 2 && hexCas[i] == '0' {
+		i--
+	}
+	// strip 0x from start
+	return string(hexCas[2 : i+1])
+}
+
+func HexToBase64(s string) ([]byte, error) {
+	decoded := make([]byte, hex.DecodedLen(len(s)))
+	if _, err := hex.Decode(decoded, []byte(s)); err != nil {
+		return nil, err
+	}
+	encoded := make([]byte, base64.RawStdEncoding.EncodedLen(len(decoded)))
+	base64.RawStdEncoding.Encode(encoded, decoded)
+	return encoded, nil
+}
+
 func CasToString(cas uint64) string {
 	return string(Uint64CASToLittleEndianHex(cas))
 }
@@ -977,6 +1031,17 @@ func Uint64CASToLittleEndianHex(cas uint64) []byte {
 	encodedArray[0] = '0'
 	encodedArray[1] = 'x'
 	return encodedArray
+}
+
+// Converts a string decimal representation ("100") to little endian hex string ("0x64")
+func StringDecimalToLittleEndianHex(value string) (string, error) {
+	intValue, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return "", err
+	}
+	hexValue := Uint64CASToLittleEndianHex(intValue)
+	return string(hexValue), nil
+
 }
 
 func Crc32cHash(input []byte) uint32 {

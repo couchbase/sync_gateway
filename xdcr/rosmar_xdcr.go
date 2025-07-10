@@ -14,91 +14,158 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
+
+	"golang.org/x/exp/maps"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/rosmar"
 )
+
+// replicatedDocLocation represents whether a document is from the source or target bucket.
+type replicatedDocLocation uint8
+
+const (
+	sourceDoc replicatedDocLocation = iota
+	targetDoc
+)
+
+func (r replicatedDocLocation) String() string {
+	switch r {
+	case sourceDoc:
+		return "source"
+	case targetDoc:
+		return "target"
+	default:
+		return "unknown"
+	}
+}
 
 // rosmarManager implements a XDCR bucket to bucket replication within rosmar.
 type rosmarManager struct {
 	filterFunc          xdcrFilterFunc
 	terminator          chan bool
+	doneChan            chan struct{}
+	collectionsLock     sync.RWMutex
+	fromBucketKeyspaces map[uint32]string
 	toBucketCollections map[uint32]*rosmar.Collection
 	fromBucket          *rosmar.Bucket
+	fromBucketSourceID  string
 	toBucket            *rosmar.Bucket
 	replicationID       string
-	docsFiltered        atomic.Uint64
+	mobileDocsFiltered  atomic.Uint64
 	docsWritten         atomic.Uint64
 	errorCount          atomic.Uint64
 	targetNewerDocs     atomic.Uint64
 }
 
 // newRosmarManager creates an instance of XDCR backed by rosmar. This is not started until Start is called.
-func newRosmarManager(_ context.Context, fromBucket, toBucket *rosmar.Bucket, opts XDCROptions) (Manager, error) {
+func newRosmarManager(ctx context.Context, fromBucket, toBucket *rosmar.Bucket, opts XDCROptions) (Manager, error) {
 	if opts.Mobile != MobileOn {
 		return nil, errors.New("Only sgbucket.XDCRMobileOn is supported in rosmar")
 	}
+	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	if err != nil {
+		return nil, fmt.Errorf("Could not get source ID for %s: %w", fromBucket.GetName(), err)
+	}
 	return &rosmarManager{
 		fromBucket:          fromBucket,
+		fromBucketSourceID:  fromBucketSourceID,
 		toBucket:            toBucket,
 		replicationID:       fmt.Sprintf("%s-%s", fromBucket.GetName(), toBucket.GetName()),
 		toBucketCollections: make(map[uint32]*rosmar.Collection),
-		terminator:          make(chan bool),
+		fromBucketKeyspaces: make(map[uint32]string),
 		filterFunc:          mobileXDCRFilter,
 	}, nil
 
 }
 
-// processEvent processes a DCP event coming from a toBucket and replicates it to the target datastore.
+// processEvent processes a DCP event coming from a source bucket and replicates it to the target datastore.
 func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEvent) bool {
 	docID := string(event.Key)
-	base.TracefCtx(ctx, base.KeyWalrus, "Got event %s, opcode: %s", docID, event.Opcode)
+	base.TracefCtx(ctx, base.KeyVV, "Got event %s, opcode: %s", docID, event.Opcode)
+	r.collectionsLock.RLock()
+	defer r.collectionsLock.RUnlock()
 	col, ok := r.toBucketCollections[event.CollectionID]
 	if !ok {
 		base.ErrorfCtx(ctx, "This violates the assumption that all collections are mapped to a target collection. This should not happen. Found event=%+v", event)
 		r.errorCount.Add(1)
 		return false
 	}
+	ctx = base.CorrelationIDLogCtx(context.Background(), fmt.Sprintf("%s->%s\n\t", r.fromBucketKeyspaces[event.CollectionID], col.GetName())) // use context.Background() to drop test information since context is too long
 
 	switch event.Opcode {
 	case sgbucket.FeedOpDeletion, sgbucket.FeedOpMutation:
 		// Filter out events if we have a non XDCR filter
 		if r.filterFunc != nil && !r.filterFunc(&event) {
-			base.TracefCtx(ctx, base.KeyWalrus, "Filtering doc %s", docID)
-			r.docsFiltered.Add(1)
+			base.TracefCtx(ctx, base.KeyVV, "Filtering doc %s", docID)
+			r.mobileDocsFiltered.Add(1)
 			return true
 		}
 
-		toCas, err := col.Get(docID, nil)
+		// Have to use GetWithXattrs to get a cas value back if there are no xattrs (GetWithXattrs will not return a cas if there are no xattrs)
+		_, targetXattrs, actualTargetCas, err := col.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName})
 		if err != nil && !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "Skipping replicating doc %s, could not perform a kv op get doc in toBucket: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false
+		} else if base.IsDocNotFoundError(err) {
+			// Log if the target document exists as tombstone but doesn't have xattrs we care about
+			if actualTargetCas != 0 {
+				base.DebugfCtx(ctx, base.KeyVV, "Target document exists as a tombstone, but does not have _vv, _mou, _sync")
+			}
 		}
 
-		/* full LWW conflict resolution is not implemented in rosmar yet
+		sourceHLV, sourceMou, nonMobileXattrs, body, err := processDCPEvent(&event)
+		if err != nil {
+			base.WarnfCtx(ctx, "Replicating doc %s, could not get body, hlv, and mou: %s", event.Key, err)
+			r.errorCount.Add(1)
+			return false
+		}
 
-		CBS algorithm is:
+		actualSourceCas := event.Cas
+		conflictResolutionSourceCas := getConflictResolutionCas(ctx, docID, sourceDoc, actualSourceCas, sourceHLV, sourceMou)
 
-		if (command.CAS > document.CAS)
-		  command succeeds
-		else if (command.CAS == document.CAS)
-		  // Check the RevSeqno
-		  if (command.RevSeqno > document.RevSeqno)
-		    command succeeds
-		  else if (command.RevSeqno == document.RevSeqno)
-		    // Check the expiry time
-		    if (command.Expiry > document.Expiry)
-		      command succeeds
-		    else if (command.Expiry == document.Expiry)
-		      // Finally check flags
-		      if (command.Flags < document.Flags)
-		        command succeeds
+		targetHLV, targetMou, err := getHLVAndMou(targetXattrs)
+		if err != nil {
+			base.WarnfCtx(ctx, "Replicating doc %s, could not get target hlv and mou: %s", event.Key, err)
+			r.errorCount.Add(1)
+			return false
+		}
+		conflictResolutionTargetCas := getConflictResolutionCas(ctx, docID, targetDoc, actualTargetCas, targetHLV, targetMou)
 
+		/*  full LWW conflict resolution is implemented in rosmar. There is no need to implement this since CAS will always be unique due to rosmar limitations.
 
-		command fails
+		CBS algorithm is, return true when a document should be copied:
+
+		if source.CAS > target.CAS {
+			return true
+		} else if source.CAS < target.CAS {
+			return false
+		}
+		// Check the RevSeqno
+		if source.RevSeqno > target.RevSeqno {
+			return true
+		} else if source.RevSeqno < target.RevSeqno {
+			return false
+		}
+		// Check the expiry time
+		if source.Expiry > target.Expiry {
+			return true
+		} else if source.Expiry < target.Expiry {
+			return false
+		}
+		// Check flags
+		if source.Flags > target.Flags {
+			return true
+		} else if source.Flags < target.Flags {
+			return false
+		}
+		// Check xattrs
+		return source_has_xattrs && !target_has_xattrs
 
 		In the current state of rosmar:
 
@@ -106,16 +173,36 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		2. RevSeqno is not implemented
 		3. Expiry is implemented and could be compared except all CAS values are unique.
 		4. Flags are not implemented
+		5. Presence of xattrs on the source and not the target. (CBG-4334 is not implemented.)
 
 		*/
 
-		if event.Cas <= toCas {
+		if conflictResolutionSourceCas <= conflictResolutionTargetCas {
+			base.InfofCtx(ctx, base.KeyVV, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, conflictResolutionSourceCas, conflictResolutionTargetCas)
 			r.targetNewerDocs.Add(1)
-			base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, cas %d <= %d", docID, event.Cas, toCas)
 			return true
+		} /* else if sourceCas == targetCas {
+			// CBG-4334, check datatype for targetXattrs to see if there are any xattrs present
+			hasSourceXattrs := event.DataType&sgbucket.FeedDataTypeXattr != 0
+			hasTargetXattrs := len(targetXattrs) > 0
+			if !(hasSourceXattrs && !hasTargetXattrs) {
+				base.InfofCtx(ctx, base.KeyVV, "skipping %q skipping replication since sourceCas (%d) < targetCas (%d)", docID, sourceCas, targetCas)
+				return true
+			}
 		}
-
-		err = opWithMeta(ctx, col, toCas, event)
+		*/
+		newXattrs := nonMobileXattrs
+		if targetSyncXattr, ok := targetXattrs[base.SyncXattrName]; ok {
+			newXattrs[base.SyncXattrName] = targetSyncXattr
+		}
+		err = updateHLV(newXattrs, sourceHLV, sourceMou, r.fromBucketSourceID, actualSourceCas)
+		if err != nil {
+			base.WarnfCtx(ctx, "Replicating doc %s, could not update hlv: %s", event.Key, err)
+			r.errorCount.Add(1)
+			return false
+		}
+		base.InfofCtx(ctx, base.KeyVV, "Replicating doc %q, with cas (%d), body %s, xattrsKeys: %+v", event.Key, actualSourceCas, string(body), maps.Keys(newXattrs))
+		err = opWithMeta(ctx, col, actualTargetCas, newXattrs, body, &event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Replicating doc %s, could not write doc: %s", event.Key, err)
 			r.errorCount.Add(1)
@@ -131,6 +218,13 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 // Start starts the replication for all existing replications. Errors if there aren't corresponding named collections on each bucket.
 func (r *rosmarManager) Start(ctx context.Context) error {
+	if r.terminator != nil {
+		return ErrReplicationAlreadyRunning
+	}
+	r.collectionsLock.Lock()
+	defer r.collectionsLock.Unlock()
+	r.terminator = make(chan bool)
+	r.doneChan = make(chan struct{})
 	// set up replication to target all existing collections, and map to other collections
 	scopes := make(map[string][]string)
 	fromDataStores, err := r.fromBucket.ListDataStores()
@@ -160,6 +254,7 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 				return fmt.Errorf("DataStore %s is not of rosmar.Collection: %T", toDataStore, toDataStore)
 			}
 			r.toBucketCollections[collectionID] = col
+			r.fromBucketKeyspaces[collectionID] = fromDataStore.GetName()
 			scopes[fromName.ScopeName()] = append(scopes[fromName.ScopeName()], fromName.CollectionName())
 			break
 		}
@@ -167,8 +262,8 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 
 	args := sgbucket.FeedArguments{
 		ID:         "xdcr-" + r.replicationID,
-		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: r.terminator,
+		DoneChan:   r.doneChan,
 		Scopes:     scopes,
 	}
 
@@ -181,47 +276,41 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 
 // Stop terminates the replication.
 func (r *rosmarManager) Stop(_ context.Context) error {
+	if r.terminator == nil {
+		return ErrReplicationNotRunning
+	}
 	close(r.terminator)
+	<-r.doneChan
+	r.doneChan = nil
 	r.terminator = nil
 	return nil
 }
 
-// opWithMeta writes a document to the target datastore given a type of Deletion or Mutation event with a specific cas.
-func opWithMeta(ctx context.Context, collection *rosmar.Collection, originalCas uint64, event sgbucket.FeedEvent) error {
-	var xattrs []byte
-	var body []byte
-	if event.DataType&sgbucket.FeedDataTypeXattr != 0 {
-		var err error
-		var dcpXattrs map[string][]byte
-		body, dcpXattrs, err = sgbucket.DecodeValueWithAllXattrs(event.Value)
-		if err != nil {
-			return err
-		}
-		xattrs, err = xattrToBytes(dcpXattrs)
-		if err != nil {
-			return err
-		}
-	} else {
-		body = event.Value
+// opWithMeta writes a document to the target datastore given a type of Deletion or Mutation event with a specific cas, xattrs, and body.
+func opWithMeta(ctx context.Context, collection *rosmar.Collection, originalCas uint64, xattrs map[string][]byte, body []byte, event *sgbucket.FeedEvent) error {
+	xattrBytes, err := xattrToBytes(xattrs)
+	if err != nil {
+		return err
 	}
 
 	if event.Opcode == sgbucket.FeedOpDeletion {
-		return collection.DeleteWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrs)
+		return collection.DeleteWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes)
 	}
 
-	return collection.SetWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrs, body, event.DataType)
+	return collection.SetWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrBytes, body, event.DataType)
 
 }
 
 // Stats returns the stats of the XDCR replication.
 func (r *rosmarManager) Stats(context.Context) (*Stats, error) {
-
-	return &Stats{
-		DocsWritten:     r.docsWritten.Load(),
-		DocsFiltered:    r.docsFiltered.Load(),
-		ErrorCount:      r.errorCount.Load(),
-		TargetNewerDocs: r.targetNewerDocs.Load(),
-	}, nil
+	stats := &Stats{
+		DocsWritten:        r.docsWritten.Load(),
+		MobileDocsFiltered: r.mobileDocsFiltered.Load(),
+		ErrorCount:         r.errorCount.Load(),
+		TargetNewerDocs:    r.targetNewerDocs.Load(),
+	}
+	stats.DocsProcessed = stats.DocsWritten + stats.MobileDocsFiltered + stats.TargetNewerDocs
+	return stats, nil
 }
 
 // xattrToBytes converts a map of xattrs of marshalled json.
@@ -239,4 +328,109 @@ type xdcrFilterFunc func(event *sgbucket.FeedEvent) bool
 // mobileXDCRFilter is the implicit key filtering function that Couchbase Server -mobile XDCR works on.
 func mobileXDCRFilter(event *sgbucket.FeedEvent) bool {
 	return !(strings.HasPrefix(string(event.Key), base.SyncDocPrefix) && !strings.HasPrefix(string(event.Key), base.Att2Prefix))
+}
+
+// processDCPEvent gets the body, non mobile, xattrs, vv, and mou from the event.
+func processDCPEvent(event *sgbucket.FeedEvent) (*db.HybridLogicalVector, *db.MetadataOnlyUpdate, map[string][]byte, []byte, error) {
+	if event.DataType&sgbucket.FeedDataTypeXattr == 0 {
+		xattrs := make(map[string][]byte)
+		return nil, nil, xattrs, event.Value, nil
+	}
+	body, xattrs, err := sgbucket.DecodeValueWithAllXattrs(event.Value)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if xattrs == nil {
+		xattrs = make(map[string][]byte)
+	}
+	hlv, mou, err := getHLVAndMou(xattrs)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	for _, xattrName := range []string{base.VvXattrName, base.MouXattrName, base.SyncXattrName} {
+		delete(xattrs, xattrName)
+	}
+	return hlv, mou, xattrs, body, nil
+}
+
+// getHLVAndMou gets the hlv and mou from the xattrs.
+func getHLVAndMou(xattrs map[string][]byte) (*db.HybridLogicalVector, *db.MetadataOnlyUpdate, error) {
+	var hlv *db.HybridLogicalVector
+	if bytes, ok := xattrs[base.VvXattrName]; ok {
+		err := json.Unmarshal(bytes, &hlv)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Could not unmarshal the vv xattr %s: %w", string(bytes), err)
+		}
+	}
+	var mou *db.MetadataOnlyUpdate
+	if bytes, ok := xattrs[base.MouXattrName]; ok {
+		err := json.Unmarshal(bytes, &mou)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Could not unmarshal the mou xattr %s: %w", string(bytes), err)
+		}
+	}
+	return hlv, mou, nil
+}
+
+// updateHLV will update the xattrs on the target document considering the source's HLV, _mou, sourceID and cas.
+func updateHLV(xattrs map[string][]byte, sourceHLV *db.HybridLogicalVector, sourceMou *db.MetadataOnlyUpdate, sourceID string, sourceCas uint64) error {
+
+	targetHLV := db.NewHybridLogicalVector()
+	if sourceHLV != nil {
+		targetHLV = sourceHLV
+	}
+
+	// If source vv.cvCas == cas, the _vv.cv, _vv.cvCAS from the source already includes the latest mutation and we can use it directly.
+	// Otherwise we need to add the current mutation (sourceID, sourceCas) to the HLV before writing to the target
+	sourcecvCASMatch := sourceHLV != nil && sourceHLV.CurrentVersionCAS == sourceCas
+	sourceWasImport := sourceMou != nil && sourceMou.CAS() == sourceCas
+	if !(sourceWasImport || sourcecvCASMatch) {
+		err := targetHLV.AddVersion(db.Version{
+			SourceID: sourceID,
+			Value:    sourceCas,
+		})
+		if err != nil {
+			return err
+		}
+		targetHLV.CurrentVersionCAS = sourceCas
+	}
+	var err error
+	xattrs[base.VvXattrName], err = json.Marshal(targetHLV)
+	if err != nil {
+		return err
+	}
+	if sourceMou != nil {
+		// removing _mou.cas and _mou.pRev matches cbs xdcr behavior.
+		// CBS xdcr maybe should clear _mou.pCas as well, but it is not a problem since all checks for _mou.cas should check current cas for _mou being up to date.
+		if sourceMou.CAS() != sourceCas {
+			sourceMou.HexCAS = ""
+			sourceMou.PreviousRevSeqNo = 0
+		}
+		var err error
+		xattrs[base.MouXattrName], err = json.Marshal(sourceMou)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// getConflictResolutionCas returns cas for conflict resolution.
+// If _mou.cas == actualCas, assume _vv is up to date and use _vv.cvCAS
+// Otherwise, return actualCas
+func getConflictResolutionCas(ctx context.Context, docID string, location replicatedDocLocation, actualCas uint64, hlv *db.HybridLogicalVector, mou *db.MetadataOnlyUpdate) uint64 {
+	if mou == nil {
+		return actualCas
+	}
+	// _mou.CAS is out of date, ignoring
+	if mou.CAS() != actualCas {
+		return actualCas
+	}
+	if hlv == nil {
+		base.InfofCtx(ctx, base.KeyVV, "XDCR doc:%s %s _mou.cas=cas (%d), but there is no HLV, using 0 for conflict resolution to match behavior of Couchbase Server", docID, location, actualCas)
+		return 0
+	}
+	// _mou.CAS matches the CAS value, use the _vv.cvCAS for conflict resolution
+	base.InfofCtx(ctx, base.KeyVV, "XDCR doc:%s %s _mou.cas=cas (%d), using _vv.cvCAS (%d) for conflict resolution", docID, location, actualCas, hlv.CurrentVersionCAS)
+	return hlv.CurrentVersionCAS
 }

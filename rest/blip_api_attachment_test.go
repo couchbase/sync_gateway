@@ -45,8 +45,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	// given this test is for v2 protocol, skip version vector test
-	btcRunner.SkipVersionVectorInitialization = true
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Doesn't require HLV - attachment v2 protocol test
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -117,6 +116,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Doesn't require HLV - attachment v2 protocol test
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -187,7 +187,7 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 	)
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipVersionVectorInitialization = true // v2 protocol test
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Doesn't require HLV - attachment v2 protocol test
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
@@ -245,7 +245,7 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 	)
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipVersionVectorInitialization = true // v2 protocol test
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Doesn't require HLV - attachment v2 protocol test
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
@@ -277,19 +277,19 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 }
 
 func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	t.Skip("CBG-4428: Is this scenario still valid for version vectors?")
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		docID := t.Name()
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, SourceID: "abc"}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
@@ -301,8 +301,11 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		// Wait for the documents to be replicated at SG
 		rt.WaitForVersion(docID, docVersion)
 
-		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, "")
-		assert.Equal(t, http.StatusOK, resp.Code)
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
+
+		attachmentRevPos, _ := db.ParseRevID(ctx, doc.CurrentRev)
 
 		// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
 		// sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2
@@ -312,26 +315,22 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		// Wait for the document to be replicated at SG
 		rt.WaitForVersion(docID, docVersion)
 
-		resp = btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, "")
-		assert.Equal(t, http.StatusOK, resp.Code)
+		doc, err = collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
 
-		var respBody db.Body
-		assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
-
-		assert.Equal(t, docID, respBody[db.BodyId])
-		assert.Equal(t, "4-abc", respBody[db.BodyRev])
-		greetings := respBody["greetings"].([]interface{})
+		body := doc.Body(ctx)
+		greetings := body["greetings"].([]interface{})
 		assert.Len(t, greetings, 1)
 		assert.Equal(t, map[string]interface{}{"hi": "dave"}, greetings[0])
 
-		attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
-		require.True(t, ok)
-		assert.Len(t, attachments, 1)
-		hello, ok := attachments["hello.txt"].(map[string]interface{})
+		assert.Len(t, doc.Attachments, 1)
+		hello, ok := doc.Attachments["hello.txt"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 		assert.Equal(t, float64(11), hello["length"])
-		assert.Equal(t, float64(2), hello["revpos"])
+
+		// revpos should mach the generation of the original revision
+		assert.Equal(t, float64(attachmentRevPos), hello["revpos"])
 		assert.True(t, hello["stub"].(bool))
 
 		// Check the number of sendProveAttachment/sendGetAttachment calls.
@@ -345,14 +344,15 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // There is no such thing as branching ancestors in version vectors
 
+	const docID = "doc1"
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, SourceID: "abc"}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 		btcRunner.StartPull(btc.id)
@@ -373,31 +373,28 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 
 		bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		version4 := btcRunner.AddRev(btc.id, docID, latestVersion, []byte(bodyText))
-		require.Equal(t, "4-abc", version4.RevID)
+		require.Equal(t, "4-abc", version4.RevTreeID)
 
 		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
 		// Wait for the document to be replicated at SG
 		rt.WaitForVersion(docID, version4)
 
-		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+version4.RevID, "")
+		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+version4.RevTreeID, "")
 		assert.Equal(t, http.StatusOK, resp.Code)
 
-		var respBody db.Body
-		assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
-
-		assert.Equal(t, docID, respBody[db.BodyId])
-		assert.Equal(t, "4-abc", respBody[db.BodyRev])
-		greetings := respBody["greetings"].([]interface{})
+		body := rt.GetDocBody(docID)
+		greetings := body["greetings"].([]interface{})
 		assert.Len(t, greetings, 1)
 		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
 
-		attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
+		attachments, ok := body[db.BodyAttachments].(map[string]any)
 		require.True(t, ok)
 		assert.Len(t, attachments, 1)
-		hello, ok := attachments["hello.txt"].(map[string]interface{})
+		hello, ok := attachments["hello.txt"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 		assert.Equal(t, float64(11), hello["length"])
+
 		assert.Equal(t, float64(4), hello["revpos"])
 		assert.True(t, hello["stub"].(bool))
 
@@ -510,6 +507,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
+
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -520,6 +518,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
+		docID := "doc"
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client1.Close()
@@ -536,7 +535,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 		rt.WaitForVersion("doc", version)
 
 		// Confirm attachment is in the bucket
-		attachmentAKey := db.MakeAttachmentKey(2, "doc", digest)
+		attachmentAKey := db.MakeAttachmentKey(2, docID, digest)
 		bucketAttachmentA, _, err := client1.rt.GetSingleDataStore().GetRaw(attachmentAKey)
 		require.NoError(t, err)
 		require.EqualValues(t, bucketAttachmentA, attachmentA)
@@ -551,7 +550,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, bucketAttachmentA, attachmentA)
 
-		resp := client1.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc/attach", "")
+		resp := client1.rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/attach", "")
 		RequireStatus(t, resp, http.StatusOK)
 		assert.Equal(t, attachmentA, resp.BodyBytes())
 	})
@@ -564,6 +563,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires legacy attachment upgrade to HLV (CBG-3806)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -606,11 +606,13 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 // TestBlipLegacyAttachDocUpdate ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires legacy attachment upgrade to HLV (CBG-3806)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -619,8 +621,6 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client1.Close()
-
-		btcRunner.StartPush(client1.id)
 
 		// Create document in the bucket with a legacy attachment.  Properties here align with rawDocWithAttachmentAndSyncMeta
 		docID := "doc"
@@ -638,6 +638,15 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, bucketAttachmentA, attBody)
 
+		v1Key := db.MakeAttachmentKey(1, "doc", digest)
+		v1Body, _, err := dataStore.GetRaw(v1Key)
+		require.NoError(t, err)
+		require.EqualValues(t, attBody, v1Body)
+
+		v2Key := db.MakeAttachmentKey(2, "doc", digest)
+		_, _, err = dataStore.GetRaw(v2Key)
+		require.Error(t, err)
+
 		btcRunner.StartOneshotPull(client1.id)
 		btcRunner.WaitForVersion(client1.id, docID, version1)
 
@@ -652,12 +661,12 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		assert.Equal(t, attBody, resp.BodyBytes())
 
 		// Validate that the attachment hasn't been migrated to V2
-		v1Key := db.MakeAttachmentKey(1, "doc", digest)
-		v1Body, _, err := dataStore.GetRaw(v1Key)
+		v1Key = db.MakeAttachmentKey(1, "doc", digest)
+		v1Body, _, err = dataStore.GetRaw(v1Key)
 		require.NoError(t, err)
 		require.EqualValues(t, attBody, v1Body)
 
-		v2Key := db.MakeAttachmentKey(2, "doc", digest)
+		v2Key = db.MakeAttachmentKey(2, "doc", digest)
 		_, _, err = dataStore.GetRaw(v2Key)
 		require.Error(t, err)
 		// Confirm correct type of error for both integration test and Walrus

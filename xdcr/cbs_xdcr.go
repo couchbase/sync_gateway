@@ -10,29 +10,39 @@ package xdcr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os/exec"
+	"regexp"
+	"runtime"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	dto "github.com/prometheus/client_model/go"
 )
 
 const (
-	cbsRemoteClustersEndpoint = "/pools/default/remoteClusters"
-	xdcrClusterName           = "sync_gateway_xdcr"
-	totalDocsFilteredStat     = "xdcr_docs_filtered_total"
-	totalDocsWrittenStat      = "xdcr_docs_written_total"
+	cbsRemoteClustersEndpoint           = "/pools/default/remoteClusters"
+	xdcrClusterName                     = "sync_gateway_xdcr" // this is a hardcoded name for the local XDCR cluster
+	totalMobileDocsFiltered             = "xdcr_mobile_docs_filtered_total"
+	totalDocsWrittenStat                = "xdcr_docs_written_total"
+	totalDocsConflictResolutionRejected = "xdcr_docs_failed_cr_source_total"
 )
+
+var errNoXDCRMetrics = errors.New("No metric found")
 
 // couchbaseServerManager implements a XDCR setup cluster on Couchbase Server.
 type couchbaseServerManager struct {
-	fromBucket    *base.GocbV2Bucket
-	toBucket      *base.GocbV2Bucket
-	replicationID string
-	filter        string
-	mobileSetting MobileSetting
+	fromBucket        *base.GocbV2Bucket
+	toBucket          *base.GocbV2Bucket
+	replicationID     string
+	filter            string
+	startingTimestamp string
+	mobileSetting     MobileSetting
 }
 
 // isClusterPresent returns true if the XDCR cluster is present, false if it is not present, and an error if it could not be determined.
@@ -62,22 +72,7 @@ func isClusterPresent(ctx context.Context, bucket *base.GocbV2Bucket) (bool, err
 	return false, nil
 }
 
-// deleteCluster deletes an XDCR cluster. The cluster must be present in order to delete it.
-func deleteCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
-	method := http.MethodDelete
-	url := "/pools/default/remoteClusters/" + xdcrClusterName
-	output, statusCode, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
-	if err != nil {
-		return err
-	}
-
-	if statusCode != http.StatusOK {
-		return fmt.Errorf("Could not delete xdcr cluster: %s. %s %s -> (%d) %s", xdcrClusterName, http.MethodDelete, method, statusCode, output)
-	}
-	return nil
-}
-
-// createCluster deletes an XDCR cluster. The cluster must be present in order to delete it.
+// createCluster creates an XDCR cluster.
 func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 	serverURL, err := url.Parse(base.UnitTestUrl())
 	if err != nil {
@@ -105,20 +100,24 @@ func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 
 // newCouchbaseServerManager creates an instance of XDCR backed by Couchbase Server. This is not started until Start is called.
 func newCouchbaseServerManager(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, opts XDCROptions) (*couchbaseServerManager, error) {
+	nodes, err := kvNodes(ctx, fromBucket)
+	if err != nil {
+		return nil, err
+	}
+	if len(nodes) != 1 {
+		return nil, fmt.Errorf("To run xdcr tests, exactly one kv node is needed to grep the goxdcr.log file. To extend this to multiple nodes (found %s), all nodes would need to be grepped", nodes)
+	}
+	// there needs to be a global cluster present, this is a hostname + username + password. There can be only one per hostname, so create it lazily.
 	isPresent, err := isClusterPresent(ctx, fromBucket)
 	if err != nil {
 		return nil, err
 
 	}
-	if isPresent {
-		err := deleteCluster(ctx, fromBucket)
+	if !isPresent {
+		err := createCluster(ctx, fromBucket)
 		if err != nil {
 			return nil, err
 		}
-	}
-	err = createCluster(ctx, fromBucket)
-	if err != nil {
-		return nil, err
 	}
 	return &couchbaseServerManager{
 		fromBucket:    fromBucket,
@@ -128,11 +127,50 @@ func newCouchbaseServerManager(ctx context.Context, fromBucket *base.GocbV2Bucke
 	}, nil
 }
 
+// kvNodes returns the hostnames of KV nodes in the cluster.
+func kvNodes(ctx context.Context, bucket *base.GocbV2Bucket) ([]string, error) {
+	url := "/pools/default/"
+	method := http.MethodGet
+	output, statusCode, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		return nil, err
+	}
+	if statusCode != http.StatusOK {
+		return nil, fmt.Errorf("Could not get the number bucket metadata: %s. %s %s -> (%d) %s", xdcrClusterName, method, url, statusCode, output)
+	}
+	type nodesOutput struct {
+		Nodes []struct {
+			Hostname string   `json:"hostname"`
+			Services []string `json:"services"`
+		} `json:"nodes"`
+	}
+	nodes := nodesOutput{}
+	err = base.JSONUnmarshal(output, &nodes)
+	if err != nil {
+		return nil, err
+	}
+	var hostnames []string
+	for _, node := range nodes.Nodes {
+		if slices.Contains(node.Services, "kv") {
+			hostnames = append(hostnames, node.Hostname)
+		}
+	}
+	return hostnames, nil
+}
+
 // Start starts the XDCR replication.
 func (x *couchbaseServerManager) Start(ctx context.Context) error {
+	if x.replicationID != "" {
+		return ErrReplicationAlreadyRunning
+	}
+	var err error
+	x.startingTimestamp, err = x.lastTimestampOfLogFile()
+	if err != nil {
+		return err
+	}
 	method := http.MethodPost
 	body := url.Values{}
-	body.Add("name", xdcrClusterName)
+	body.Add("name", fmt.Sprintf("%s_%s", x.fromBucket.GetName(), x.toBucket.GetName()))
 	body.Add("fromBucket", x.fromBucket.GetName())
 	body.Add("toBucket", x.toBucket.GetName())
 	body.Add("toCluster", xdcrClusterName)
@@ -149,7 +187,7 @@ func (x *couchbaseServerManager) Start(ctx context.Context) error {
 		return err
 	}
 	if statusCode != http.StatusOK {
-		return fmt.Errorf("Could not create xdcr cluster: %s. %s %s -> (%d) %s", xdcrClusterName, method, url, statusCode, output)
+		return fmt.Errorf("Could not create xdcr replication: %s. %s %s -> (%d) %s", xdcrClusterName, method, url, statusCode, output)
 	}
 	type replicationOutput struct {
 		ID string `json:"id"`
@@ -168,17 +206,26 @@ func (x *couchbaseServerManager) Start(ctx context.Context) error {
 
 // Stop starts the XDCR replication and deletes the replication from Couchbase Server.
 func (x *couchbaseServerManager) Stop(ctx context.Context) error {
+	// replication is not started
+	if x.replicationID == "" {
+		return ErrReplicationNotRunning
+	}
 	method := http.MethodDelete
 	url := "/controller/cancelXDCR/" + url.PathEscape(x.replicationID)
 	output, statusCode, err := x.fromBucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("Could not %s to %s: %w", method, url, err)
 	}
 	if statusCode != http.StatusOK {
 		return fmt.Errorf("Could not cancel XDCR replication: %s. %s %s -> (%d) %s", x.replicationID, method, url, statusCode, output)
 	}
+	err = x.waitForStoppedInLogFile(ctx)
+	if err != nil {
+		return err
+	}
 	x.replicationID = ""
-	return nil
+	x.startingTimestamp = ""
+	return err
 }
 
 // Stats returns the stats of the XDCR replication.
@@ -188,15 +235,27 @@ func (x *couchbaseServerManager) Stats(ctx context.Context) (*Stats, error) {
 		return nil, err
 	}
 	stats := &Stats{}
-	stats.DocsFiltered, err = x.getValue(mf[totalDocsFilteredStat])
-	if err != nil {
-		return stats, err
+
+	statMap := map[string]*uint64{
+		totalMobileDocsFiltered:             &stats.MobileDocsFiltered,
+		totalDocsWrittenStat:                &stats.DocsWritten,
+		totalDocsConflictResolutionRejected: &stats.TargetNewerDocs,
 	}
-	stats.DocsWritten, err = x.getValue(mf[totalDocsWrittenStat])
-	if err != nil {
-		return stats, err
+	var errs *base.MultiError
+	for metricName, stat := range statMap {
+		metricFamily, ok := mf[metricName]
+		if !ok {
+			errs = errs.Append(fmt.Errorf("Could not find %s metric: %+v", metricName, mf))
+			continue
+		}
+		var err error
+		*stat, err = x.getValue(metricFamily)
+		if err != nil {
+			errs = errs.Append(err)
+		}
 	}
-	return stats, nil
+	stats.DocsProcessed = stats.DocsWritten + stats.MobileDocsFiltered + stats.TargetNewerDocs
+	return stats, errs.ErrorOrNil()
 }
 
 func (x *couchbaseServerManager) getValue(metrics *dto.MetricFamily) (uint64, error) {
@@ -222,7 +281,83 @@ outer:
 			return 0, fmt.Errorf("Do not have a relevant type for %v", metrics.Type)
 		}
 	}
-	return 0, fmt.Errorf("Could not find relevant value for metrics %v", metrics)
+	return 0, errNoXDCRMetrics
+}
+
+// lineCountOfLogFile returns the number of lines in the goxdcr.log file. This is used to determine the offset when re-reading the log file.
+func (x *couchbaseServerManager) lastTimestampOfLogFile() (string, error) {
+	logFile := x.xdcrLogFilePath()
+	// most, but not all lines start with a timestamp, so we need to find the last line that does 2000-01-01T01:01:01.000Z
+	cmdLine := fmt.Sprintf(`tail -n100 "%s"`, logFile)
+	output, err := x.runCommandOnCBS(cmdLine)
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	slices.Reverse(lines)
+	for _, line := range lines {
+		re := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`)
+		if re.MatchString(line) {
+			timestamp := strings.Split(line, " ")[0]
+			return timestamp, nil
+		}
+	}
+	return "", fmt.Errorf("Could not find a timestamp in the last 100 lines of %s: %s", logFile, output)
+}
+
+// xdcrLogFilePath returns the path of the goxdcr.log file.
+func (x *couchbaseServerManager) xdcrLogFilePath() string {
+	usingDocker, _ := base.TestUseCouchbaseServerDockerName()
+	if runtime.GOOS == "darwin" && !usingDocker {
+		return "$HOME/Library/Application Support/Couchbase/var/lib/couchbase/logs/goxdcr.log"
+	}
+	return "/opt/couchbase/var/lib/couchbase/logs/goxdcr.log"
+}
+
+// runCommandOnCBS executes a command against in the same machine of couchbase server. This is aware of CBS running locally or locally within docker.
+func (x *couchbaseServerManager) runCommandOnCBS(cmdLine string) (string, error) {
+	usingDocker, dockerName := base.TestUseCouchbaseServerDockerName()
+	var fullCmdLine []string
+	if usingDocker {
+		fullCmdLine = append(fullCmdLine, []string{"docker", "exec", "-t", dockerName}...)
+	}
+	fullCmdLine = append(fullCmdLine, []string{"bash", "-c", cmdLine}...)
+	cmd := exec.Command(fullCmdLine[0], fullCmdLine[1:]...) // nolint: gosec
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		suffix := ""
+		if !usingDocker {
+			suffix = fmt.Sprintf(". If you are running in docker, you may need to set the environment variable %s=<name of the container>", base.TestEnvCouchbaseServerDockerName)
+		}
+		return string(output), fmt.Errorf("Failed to run %s (%w) Output: %s%s", cmd, err, output, suffix)
+	}
+	return string(output), nil
+}
+
+// waitForStoppedInLogFile waits for the replication to stop by checking the log file.
+func (x *couchbaseServerManager) waitForStoppedInLogFile(ctx context.Context) error {
+	// magic string to indicate that the replication has stopped
+	grepStr := fmt.Sprintf("%s status is finished shutting down", x.replicationID)
+	logFile := x.xdcrLogFilePath()
+	// look for log files that are goxcdr.log[.[0-9]][.gz], the message may be in a rotated log
+	cmdLine := fmt.Sprintf(`zgrep --no-filename "%s" "%s"*`, grepStr, logFile)
+	err, _ := base.RetryLoop(ctx, "ReadLogFileUntilStopped", func() (shouldRetry bool, err error, value any) {
+		output, err := x.runCommandOnCBS(cmdLine)
+		if err != nil {
+			return true, err, nil
+		}
+		for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+			timestamp := strings.Split(line, " ")[0]
+			if timestamp > x.startingTimestamp {
+				return false, nil, nil
+			}
+		}
+		return true, fmt.Errorf("Could not find line newer than %s in %s", x.startingTimestamp, output), nil
+	}, base.CreateSleeperFunc(int((5*time.Minute).Milliseconds()), int((1*time.Second).Milliseconds())))
+	if err != nil {
+		return fmt.Errorf("Could not find %s in %s. %w", grepStr, logFile, err)
+	}
+	return nil
 }
 
 var _ Manager = &couchbaseServerManager{}

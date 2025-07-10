@@ -682,10 +682,10 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(4)
 
 	// Mark the first four PBS docs as removals
-	_ = rt.PutDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.RevID))
-	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.RevID))
-	_ = rt.PutDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.RevID))
-	_ = rt.PutDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.RevID))
+	_ = rt.PutDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.RevTreeID))
+	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.RevTreeID))
+	_ = rt.PutDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.RevTreeID))
+	_ = rt.PutDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.RevTreeID))
 
 	cacheWaiter.AddAndWait(4)
 
@@ -731,9 +731,9 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	}
 }`})
 	defer rt.Close()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	// Create user with access to channel NBC:
-	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "NBC"))
 	assert.NoError(t, err)
@@ -756,7 +756,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	cacheWaiter.AddAndWait(4)
 
 	// remove channels/tombstone a couple of docs to ensure they're not backfilled after a dynamic grant
-	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.RevID))
+	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.RevTreeID))
 	rt.DeleteDoc(pbs2ID, pbs2Version)
 	cacheWaiter.AddAndWait(2)
 
@@ -769,9 +769,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	}
 	changes := rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes", "bernard", false)
 	for index, result := range changes.Results {
-		var expectedChange db.ChangeEntry
-		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, expectedChange, result)
+		assertChangeEntryMatches(t, expectedResults[index], result)
 	}
 
 	// create doc that dynamically grants both users access to PBS and HBO
@@ -788,13 +786,15 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	changes = rt.WaitForChanges(3,
 		fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "bernard", false)
 	for index, result := range changes.Results {
-		var expectedChange db.ChangeEntry
-		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, expectedChange, result)
+		assertChangeEntryMatches(t, expectedResults[index], result)
 	}
 
 	// Write another doc
 	_ = rt.PutDoc("mix-1", `{"channel":["ABC", "PBS", "HBO"]}`)
+
+	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, "mix-1", db.DocUnmarshalSync)
+	require.NoError(t, err)
+	mixSource, mixVersion := fetchedDoc.HLV.GetCurrentVersion()
 
 	cacheWaiter.AddAndWait(1)
 
@@ -803,26 +803,44 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	expectedResults = []string{
 		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-c5098bb14d12d647c901850ff6a6292a"}]}`,
-		`{"seq":9,"id":"mix-1","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
+		fmt.Sprintf(`{"seq":9,"id":"mix-1","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}], "current_version":{"source_id": "%s", "version": "%d"}}`, mixSource, mixVersion),
 	}
 
 	rt.Run("grant via existing channel", func(t *testing.T) {
 		changes = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "alice", false)
 		for index, result := range changes.Results {
-			var expectedChange db.ChangeEntry
-			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-			assert.Equal(t, expectedChange, result)
+			assertChangeEntryMatches(t, expectedResults[index], result)
 		}
 	})
 
 	rt.Run("grant via new channel", func(t *testing.T) {
 		changes = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "bernard", false)
 		for index, result := range changes.Results {
-			var expectedChange db.ChangeEntry
-			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-			assert.Equal(t, expectedChange, result)
+			assertChangeEntryMatches(t, expectedResults[index], result)
 		}
 	})
+}
+
+// TODO: enhance to compare source/version when expectedChanges are updated to include
+func assertChangeEntryMatches(t *testing.T, expectedChangeEntryString string, result db.ChangeEntry) {
+	var expectedChange db.ChangeEntry
+	require.NoError(t, base.JSONUnmarshal([]byte(expectedChangeEntryString), &expectedChange))
+	assert.Equal(t, expectedChange.Seq, result.Seq)
+	assert.Equal(t, expectedChange.ID, result.ID)
+	assert.Equal(t, expectedChange.Changes, result.Changes)
+	assert.Equal(t, expectedChange.Deleted, result.Deleted)
+	assert.Equal(t, expectedChange.Removed, result.Removed)
+
+	if expectedChange.Doc != nil {
+		// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
+		var expectedBody db.Body
+		var resultBody db.Body
+		assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
+		assert.NoError(t, resultBody.Unmarshal(result.Doc))
+		db.AssertEqualBodies(t, expectedBody, resultBody)
+	} else {
+		assert.Equal(t, expectedChange.Doc, result.Doc)
+	}
 }
 
 // Ensures that changes feed goroutines blocked on a ChangeWaiter are closed when the changes feed is terminated.
@@ -1733,7 +1751,6 @@ func updateTestDoc(rt *rest.RestTester, docid string, revid string, body string)
 
 // Validate retrieval of various document body types using include_docs.
 func TestChangesIncludeDocs(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1744,7 +1761,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	testDB := rt.GetDatabase()
 	testDB.RevsLimit = 3
 	defer rt.Close()
-	collection, _ := rt.GetSingleTestDatabaseCollection()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("user1", []string{"alpha", "beta"})
 
@@ -1786,9 +1803,15 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err, "Error updating doc")
 	// Generate more revs than revs_limit (3)
 	revid = prunedRevId
+	var cvs []string
 	for i := 0; i < 5; i++ {
-		revid, err = updateTestDoc(rt, "doc_pruned", revid, `{"type": "pruned", "channels":["gamma"]}`)
-		assert.NoError(t, err, "Error updating doc")
+		body := db.Body{
+			"type":     "pruned",
+			"channels": []string{"gamma"},
+		}
+		docVersion := rt.UpdateDocDirectly("doc_pruned", db.DocVersion{RevTreeID: revid}, body)
+		revid = docVersion.RevTreeID
+		cvs = append(cvs, docVersion.CV.String())
 	}
 
 	// Doc w/ attachment
@@ -1845,49 +1868,25 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[9] = `{"seq":26,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
 
 	for index, result := range changes.Results {
-		var expectedChange db.ChangeEntry
-		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-
-		assert.Equal(t, expectedChange.ID, result.ID)
-		assert.Equal(t, expectedChange.Seq, result.Seq)
-		assert.Equal(t, expectedChange.Deleted, result.Deleted)
-		assert.Equal(t, expectedChange.Changes, result.Changes)
-		assert.Equal(t, expectedChange.Err, result.Err)
-		assert.Equal(t, expectedChange.Removed, result.Removed)
-
-		if expectedChange.Doc != nil {
-			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
-			var expectedBody db.Body
-			var resultBody db.Body
-			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
-			assert.NoError(t, resultBody.Unmarshal(result.Doc))
-			db.AssertEqualBodies(t, expectedBody, resultBody)
-		} else {
-			assert.Equal(t, expectedChange.Doc, result.Doc)
-		}
+		assertChangeEntryMatches(t, expectedResults[index], result)
 	}
 
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
 	rt.GetDatabase().FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
-	data := collection.GetCollectionDatastore()
-	assert.NoError(t, data.Delete(base.RevPrefix+"doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
-
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	cvHash := base.Crc32cHashString([]byte(cvs[0]))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc_pruned", cvHash)
+	require.NoError(t, err)
 	postFlushChanges := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "user1")
 
 	assert.Equal(t, len(expectedResults), len(postFlushChanges.Results))
 
 	for index, result := range postFlushChanges.Results {
+
+		assertChangeEntryMatches(t, expectedResults[index], result)
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-
-		assert.Equal(t, expectedChange.ID, result.ID)
-		assert.Equal(t, expectedChange.Seq, result.Seq)
-		assert.Equal(t, expectedChange.Deleted, result.Deleted)
-		assert.Equal(t, expectedChange.Changes, result.Changes)
-		assert.Equal(t, expectedChange.Err, result.Err)
-		assert.Equal(t, expectedChange.Removed, result.Removed)
-
 		if expectedChange.Doc != nil {
 			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
 			var expectedBody db.Body
@@ -1926,26 +1925,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.Equal(t, len(expectedResults), len(combinedChanges.Results))
 
 	for index, result := range combinedChanges.Results {
-		var expectedChange db.ChangeEntry
-		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-
-		assert.Equal(t, expectedChange.ID, result.ID)
-		assert.Equal(t, expectedChange.Seq, result.Seq)
-		assert.Equal(t, expectedChange.Deleted, result.Deleted)
-		assert.Equal(t, expectedChange.Changes, result.Changes)
-		assert.Equal(t, expectedChange.Err, result.Err)
-		assert.Equal(t, expectedChange.Removed, result.Removed)
-
-		if expectedChange.Doc != nil {
-			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
-			var expectedBody db.Body
-			var resultBody db.Body
-			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
-			assert.NoError(t, resultBody.Unmarshal(result.Doc))
-			db.AssertEqualBodies(t, expectedBody, resultBody)
-		} else {
-			assert.Equal(t, expectedChange.Doc, result.Doc)
-		}
+		assertChangeEntryMatches(t, expectedResults[index], result)
 	}
 }
 

@@ -87,7 +87,7 @@ type BackgroundManagerStatus struct {
 }
 
 // BackgroundManagerProcessI is an interface satisfied by any of the background processes
-// Examples of this: ReSync, Compaction
+// Examples of this: ReSync, Compaction, Attachment Migration
 type BackgroundManagerProcessI interface {
 	Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error
 	Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error

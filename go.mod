@@ -6,18 +6,18 @@ require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.2
 	github.com/coreos/go-oidc/v3 v3.13.0
-	github.com/couchbase/cbgt v1.3.10-0.20250613155824-1f75a127519e
+	github.com/couchbase/cbgt v1.4.10-0.20250613153003-c142c64552b2
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20250325132327-d73efab2df06
-	github.com/couchbase/gocb/v2 v2.9.4
-	github.com/couchbase/gocbcore/v10 v10.5.4
+	github.com/couchbase/gocb/v2 v2.10.0
+	github.com/couchbase/gocbcore/v10 v10.7.0
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20250522135601-8c9a5acda2c2
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250612112434-65f227bb1892
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
-	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78
+	github.com/couchbaselabs/rosmar v0.0.0-20250226134616-3b9ac157a3cd
 	github.com/elastic/gosigar v0.14.3
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.0.5
@@ -43,20 +43,18 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go v1.44.299 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coder/websocket v1.8.12 // indirect
-	github.com/couchbase/blance v0.1.5 // indirect
-	github.com/couchbase/cbauth v0.1.11 // indirect
+	github.com/couchbase/blance v0.1.6 // indirect
+	github.com/couchbase/cbauth v0.1.13 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/gocbcoreps v0.1.3 // indirect
 	github.com/couchbase/goprotostellar v1.0.2 // indirect
-	github.com/couchbase/tools-common/cloud v1.0.0 // indirect
-	github.com/couchbase/tools-common/fs v1.0.0 // indirect
-	github.com/couchbase/tools-common/testing v1.0.0 // indirect
-	github.com/couchbase/tools-common/types v1.0.0 // indirect
-	github.com/couchbase/tools-common/utils v1.0.0 // indirect
+	github.com/couchbase/tools-common/cloud/v5 v5.0.3 // indirect
+	github.com/couchbase/tools-common/fs v1.0.2 // indirect
+	github.com/couchbase/tools-common/testing v1.0.1 // indirect
+	github.com/couchbase/tools-common/types v1.1.4 // indirect
 	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20240607131231-fb385523de28 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
@@ -64,10 +62,11 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/pprof v0.0.0-20240227163752-401108e1b7e7 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/mattn/go-sqlite3 v1.14.24 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -92,7 +91,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
-	golang.org/x/time v0.3.0 // indirect
+	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/grpc v1.63.2 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect

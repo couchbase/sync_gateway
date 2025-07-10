@@ -11,11 +11,23 @@ package base
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
 )
+
+// firstServerVersionToSupportMobileXDCR this is the first server version to support Mobile XDCR feature
+var firstServerVersionToSupportMobileXDCR *ComparableBuildVersion
+
+func init() {
+	var err error
+	firstServerVersionToSupportMobileXDCR, err = NewComparableBuildVersionFromString("7.6.4@5074")
+	if err != nil {
+		log.Fatalf("Couldn't parse firstServerVersionToSupportMobileXDCR: %v", err)
+	}
+}
 
 type clusterLogFunc func(ctx context.Context, format string, args ...interface{})
 
@@ -196,4 +208,37 @@ func (c *tbpCluster) supportsMobileRBAC() (bool, error) {
 		return false, err
 	}
 	return major >= 7 && minor >= 1, nil
+}
+
+// mobileXDCRCompatible checks if a cluster is mobile XDCR compatible, a cluster must be enterprise edition AND > 7.6.1
+func (c *tbpCluster) mobileXDCRCompatible(ctx context.Context) (bool, error) {
+	enterprise, err := c.isServerEnterprise()
+	if err != nil {
+		return false, err
+	}
+	if !enterprise {
+		return false, nil
+	}
+
+	// string is x.y.z-aaaa-enterprise or x.y.z-aaaa-community
+	// convert to a comparable string that Sync Gateway understands x.y.z@aaaa
+	components := strings.Split(c.version, "-")
+	vrs := components[0]
+	if len(components) > 1 {
+		vrs += "@" + components[1]
+	}
+
+	// convert the above string into a comparable string
+	version, err := NewComparableBuildVersionFromString(vrs)
+	if err != nil {
+		return false, err
+	}
+
+	if !version.Less(firstServerVersionToSupportMobileXDCR) {
+		c.supportsHLV = true
+		return true, nil
+	}
+	c.logger(ctx, "cluster does not support mobile XDCR")
+
+	return false, nil
 }
