@@ -20,7 +20,7 @@ require (
 	github.com/couchbaselabs/rosmar v0.0.0-20250226134616-3b9ac157a3cd
 	github.com/elastic/gosigar v0.14.3
 	github.com/felixge/fgprof v0.9.5
-	github.com/go-jose/go-jose/v4 v4.0.5
+	github.com/go-jose/go-jose/v4 v4.1.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/json-iterator/go v1.1.12
