@@ -300,12 +300,13 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 	var resyncStatus db.ResyncManagerResponseDCP
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-		err := json.Unmarshal(response.BodyBytes(), &resyncStatus)
-		assert.NoError(c, err)
+		RequireStatus(rt.TB(), response, http.StatusOK)
+		require.NoError(rt.TB(), json.Unmarshal(response.BodyBytes(), &resyncStatus))
 
 		assert.Equal(c, status, resyncStatus.State)
 		if slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateCompleted, db.BackgroundProcessStateStopped}, status) {
-			_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB()), nil)
+			var output any
+			_, err := rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB()), output)
 			assert.True(c, base.IsDocNotFoundError(err), "expected heartbeat doc to be deleted, got: %v", err)
 		}
 	}, time.Second*10, time.Millisecond*10)

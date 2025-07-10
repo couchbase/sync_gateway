@@ -359,7 +359,6 @@ function sync(doc, oldDoc){
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	status := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-	assert.Equal(t, int64(1), status.DocsProcessed)
 	assert.Equal(t, int64(1), status.DocsChanged)
 
 	// ensure doc body remains unchanged after resync

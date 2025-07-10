@@ -322,6 +322,10 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 			return true
 		}
 
+		// deletion events are not relevant
+		if event.Opcode != sgbucket.FeedOpMutation {
+			return true
+		}
 		// If the data contains an xattr then the attachment likely has a compaction ID, need to check this value
 		if event.DataType&base.MemcachedDataTypeXattr != 0 {
 
@@ -357,7 +361,10 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 			base.TracefCtx(ctx, base.KeyAll, "[%s] Purging attachment %s", compactionLoggingID, base.UD(docID))
 			_, err := dataStore.Remove(docID, event.Cas)
 			if err != nil {
-				base.WarnfCtx(ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(docID), err)
+				if !base.IsDocNotFoundError(err) {
+					// attachment was removed separately, we don't need to worry about it
+					base.WarnfCtx(ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(docID), err)
+				}
 				return true
 			}
 			base.DebugfCtx(ctx, base.KeyAll, "[%s] Purged attachment %s", compactionLoggingID, base.UD(docID))

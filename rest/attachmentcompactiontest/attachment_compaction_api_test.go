@@ -241,7 +241,19 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.True(t, status.DryRun)
-	assert.Equal(t, int64(5), status.PurgedAttachments)
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
+		// test.
+		// 1. attachment mutation
+		// 2. attachment deletion
+		//
+		// In a non dry run test, these will not be counted since removing the attachment will not fail. Relax
+		// the assertion to greater than the number of documents.
+		assert.GreaterOrEqual(t, status.PurgedAttachments, int64(5))
+
+	} else {
+		assert.Equal(t, int64(5), status.PurgedAttachments)
+	}
 
 	for _, docID := range attachmentKeys {
 		_, _, err := dataStore.GetRaw(docID)
