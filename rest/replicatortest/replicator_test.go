@@ -1068,7 +1068,6 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 
 	// Get replication status for non-local replication
 	remoteStatus := activeRT2.GetReplicationStatus(replicationID)
-	fmt.Println("HONK remoteStatus=", remoteStatus)
 	assert.Equal(t, int64(docCount), remoteStatus.DocsRead)
 
 }

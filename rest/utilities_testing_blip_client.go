@@ -1176,7 +1176,6 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 	go func() {
 		defer func() {
 			btcc.pushRunning.Set(false)
-			fmt.Printf("HONK push replication finished")
 		}()
 		defer btcc.goroutineWg.Done()
 		// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
@@ -1383,19 +1382,15 @@ func (btcc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpt
 
 func (btcc *BlipTesterCollectionClient) StopPush() {
 	require.True(btcc.TB(), btcc.pushRunning.IsTrue(), "can't stop push replication - not running")
-	fmt.Printf("HONK starting push replication shutdown\n")
 	btcc.pushCtxCancel()
 
-	fmt.Printf("HONK Broadcast\n")
 	// Wake up any waiting push loops to check for cancellation
 	btcc._seqCond.Broadcast()
-	fmt.Printf("HONK done Broadcast\n")
 
 	// wait for push replication to stop running
 	assert.EventuallyWithT(btcc.TB(), func(c *assert.CollectT) {
 		assert.False(c, btcc.pushRunning.IsTrue(), "push replication still running %t", btcc.pushRunning.IsTrue())
 	}, 20*time.Second, 1*time.Millisecond)
-	fmt.Printf("HONK done wait\n")
 
 }
 
