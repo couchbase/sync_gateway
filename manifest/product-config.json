@@ -2,7 +2,6 @@
     "product": "sync_gateway",
     "manifests": {
         "manifest/default.xml": {
-            "do-build": false,
             "release": "4.0.0",
             "release_name": "Couchbase Sync Gateway",
             "production": true,
