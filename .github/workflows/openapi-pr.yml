@@ -7,12 +7,18 @@
 # licenses/APL2.txt.
 
 name: openapi-pr
+permissions:
+  contents: read
+  pull-requests: write
 
 on:
   pull_request:
     # Only run when we change an API spec
     paths:
       - 'docs/api/**'
+      - .redocly.yaml
+      - .yamllint.yml
+      - github/workflows/openapi-pr.yml
     branches:
       - 'master'
       - 'main'

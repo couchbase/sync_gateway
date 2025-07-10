@@ -7,12 +7,17 @@
 # licenses/APL2.txt.
 
 name: openapi
+permissions:
+  contents: read
 
 on:
   push:
     # Only run when we change an API spec
     paths:
       - 'docs/api/**'
+      - .redocly.yaml
+      - .yamllint.yml
+      - github/workflows/openapi.yml
     branches:
       - 'master'
       - 'main'
