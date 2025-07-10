@@ -126,6 +126,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		verbose:                 *NewAtomicBool(tbpVerbose()),
 		clusterSpec:             *clusterSpec,
 	}
+	tbp.Logf(ctx, "Using ClusterSpec %#+v\n", clusterSpec)
 
 	// We can safely skip setup if using existing buckets or rosmar buckets, since they can be opened on demand.
 	if !tbp.integrationMode {

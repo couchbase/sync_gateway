@@ -16,11 +16,9 @@ set -x # Output all executed shell commands
 if [ "${1:-}" == "-m" ]; then
     echo "Running in automated master integration mode"
     # Set automated setting parameters
-    SG_COMMIT="master"
     TARGET_PACKAGE="..."
     TARGET_TEST="ALL"
     RUN_WALRUS="true"
-    USE_GO_MODULES="true"
     DETECT_RACES="false"
     SG_EDITION="EE"
     XATTRS="true"
@@ -127,7 +125,7 @@ else
     ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
 fi
 
-if [ -n "${SG_TEST_X509:-}" ]; then
+if [ "${SG_TEST_X509:-}" != "true" ]; then
     go run ./tools/cert-manager -output-dir ./integration-test/certs -couchbase-server-mgmt-url http://127.0.0.1:8091 -couchbase-server-username Administrator -couchbase-server-password password -docker-name couchbase -dns-names localhost -couchbase-server-connection-string=couchbases://localhost
     SG_TEST_CLUSTER_SPEC=${PWD}/integration-test/certs/couchbase_cluster_spec.json
     export SG_TEST_CLUSTER_SPEC
@@ -151,7 +149,7 @@ else
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_devmode"
 fi
 
-case uname in
+case $(uname) in
     Darwin)
         STDBUF=/opt/homebrew/opt/coreutils/libexec/gnubin/stdbuf
         ;;
