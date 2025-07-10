@@ -140,7 +140,6 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	}
 	tbp.skipMobileXDCR = !useMobileXDCR
 
-	// at least anemone release
 	if os.Getenv(tbpEnvAllowIncompatibleServerVersion) == "" && !ProductVersion.Less(&ComparableBuildVersion{major: 4}) {
 		overrideMsg := "Set " + tbpEnvAllowIncompatibleServerVersion + "=true to override this check."
 		// this check also covers BucketStoreFeatureMultiXattrSubdocOperations, which is Couchbase Server 7.6
