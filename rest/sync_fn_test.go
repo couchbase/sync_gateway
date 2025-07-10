@@ -601,7 +601,18 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	assert.Equal(t, int64(12), resyncStatus.DocsChanged)
-	assert.Equal(t, int64(12), resyncStatus.DocsProcessed)
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
+		// test.
+		// 1. doc1 mutation
+		// 2. doc1 deletion
+		//
+		// In a test, these will not be resynced but docsProcessed is incremented. Relax
+		// the assertion to greater than the number of documents.
+		assert.GreaterOrEqual(t, resyncStatus.DocsProcessed, int64(12))
+	} else {
+		assert.Equal(t, int64(12), resyncStatus.DocsProcessed)
+	}
 
 	rt.TakeDbOnline()
 
