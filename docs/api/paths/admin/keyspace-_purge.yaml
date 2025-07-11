@@ -26,9 +26,9 @@ post:
           additionalProperties:
             x-additionalPropertiesName: doc_id
             description: |-
-                The document ID to purge. The array must only be 1 element which is `*`.
+              The document ID to purge. The array must only be 1 element which is `*`.
 
-                All revisions will be permanently removed for that document.
+              All revisions will be permanently removed for that document.
             type: array
             items:
               type: string

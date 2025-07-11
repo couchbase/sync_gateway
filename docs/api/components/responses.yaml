@@ -197,8 +197,8 @@ user_access_span_response:
 expvar_reponses:
   '200':
     description: |-
-        Successfully returned statistics.
-        For details, see [JSON Metrics](stats-monitoring-json.html).
+      Successfully returned statistics.
+      For details, see [JSON Metrics](stats-monitoring-json.html).
     content:
       application/json:
         schema:

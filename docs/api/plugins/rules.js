@@ -10,12 +10,13 @@
 
 const TypeCheckDefaults = require("./rules/typecheck-defaults.js");
 const CheckAdditionalPropertiesNames = require("./rules/check-additional-properties-names.js");
-
+const CheckPropertiesSorted = require("./rules/check-properties-sorted.js");
 module.exports = {
   rules: {
     oas3: {
       "typecheck-defaults": TypeCheckDefaults,
       "check-additional-properties-names": CheckAdditionalPropertiesNames,
+      "check-properties-sorted": CheckPropertiesSorted,
     },
   },
   id: "custom-rules",
