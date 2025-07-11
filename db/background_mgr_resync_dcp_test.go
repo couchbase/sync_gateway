@@ -675,15 +675,15 @@ function sync(doc, oldDoc){
 	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
-	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
-	require.Equal(t, base.CasToString(cas), mou.CAS)
+	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousHexCAS)
+	require.Equal(t, base.CasToString(cas), mou.HexCAS)
 
 	syncData, mou, cas = getSyncAndMou(t, collection, "sdkWrite")
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
-	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
-	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
-	require.Equal(t, base.CasToString(cas), mou.CAS)
+	require.Equal(t, initialSDKMou.PreviousHexCAS, mou.PreviousHexCAS)
+	require.NotEqual(t, initialSDKMou.HexCAS, mou.HexCAS)
+	require.Equal(t, base.CasToString(cas), mou.HexCAS)
 
 	// Run resync a second time with a new sync function.  mou.cas should be updated, mou.pCas should not change.
 	syncFn = `
@@ -696,15 +696,15 @@ function sync(doc, oldDoc){
 	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
-	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
-	require.Equal(t, base.CasToString(cas), mou.CAS)
+	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousHexCAS)
+	require.Equal(t, base.CasToString(cas), mou.HexCAS)
 
 	syncData, mou, cas = getSyncAndMou(t, collection, "sdkWrite")
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
-	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
-	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
-	require.Equal(t, base.CasToString(cas), mou.CAS)
+	require.Equal(t, initialSDKMou.PreviousHexCAS, mou.PreviousHexCAS)
+	require.NotEqual(t, initialSDKMou.HexCAS, mou.HexCAS)
+	require.Equal(t, base.CasToString(cas), mou.HexCAS)
 }
 
 func runResync(t *testing.T, ctx context.Context, db *Database, collection *DatabaseCollectionWithUser, syncFn string) (stats ResyncManagerResponseDCP) {

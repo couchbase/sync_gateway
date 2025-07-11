@@ -482,9 +482,11 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 
 				// if the doc was removed from one or more channels at this sequence
 				// Set the removed flag and removed channel set on the LogEntry
-				if channelRemovals, atRevId := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
+				if channelRemovals, atRev := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
 					change.DocID = docID
-					change.RevID = atRevId
+					change.RevID = atRev.RevTreeID
+					change.SourceID = atRev.CurrentSource
+					change.Version = base.HexCasToUint64(atRev.CurrentVersion)
 					change.Channels = channelRemovals
 				} else {
 					change.UnusedSequence = true // treat as unused sequence when sequence is not channel removal
@@ -501,8 +503,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 
 	// Now add the entry for the new doc revision:
 	if len(rawUserXattr) > 0 {
-		collection.revisionCache.Remove(ctx, docID, syncData.CurrentRev)
+		collection.revisionCache.RemoveWithRev(ctx, docID, syncData.CurrentRev)
 	}
+
 	change := &LogEntry{
 		Sequence:     syncData.Sequence,
 		DocID:        docID,
@@ -511,6 +514,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		TimeReceived: timeReceived,
 		Channels:     syncData.Channels,
 		CollectionID: event.CollectionID,
+	}
+	if syncData.HLV != nil {
+		change.SourceID = syncData.HLV.SourceID
+		change.Version = syncData.HLV.Version
 	}
 
 	millisecondLatency := int(feedLatency / time.Millisecond)

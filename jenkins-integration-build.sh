@@ -25,7 +25,7 @@ if [ "${1:-}" == "-m" ]; then
     RUN_COUNT="1"
     # CBS server settings
     COUCHBASE_SERVER_PROTOCOL="couchbase"
-    COUCHBASE_SERVER_VERSION="enterprise-7.2.2"
+    COUCHBASE_SERVER_VERSION="enterprise-7.6.6"
     SG_TEST_BUCKET_POOL_SIZE="3"
     SG_TEST_BUCKET_POOL_DEBUG="true"
     GSI="true"
@@ -123,6 +123,7 @@ if [ "${MULTI_NODE:-}" == "true" ]; then
 else
     # single node
     ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
+    export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME="couchbase"
 fi
 
 # Set up test environment variables for CBS runs

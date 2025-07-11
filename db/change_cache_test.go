@@ -74,6 +74,24 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string, col
 	return entry
 }
 
+func testLogEntryWithCV(seq uint64, docid string, revid string, channelNames []string, collectionID uint32, sourceID string, version uint64) *LogEntry {
+	entry := &LogEntry{
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+		CollectionID: collectionID,
+		SourceID:     sourceID,
+		Version:      version,
+	}
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+	entry.Channels = channelMap
+	return entry
+}
+
 func TestLateSequenceHandling(t *testing.T) {
 
 	context, ctx := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
@@ -1372,7 +1390,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	var doc1DCPBytes []byte
 	if base.TestUseXattrs() {
-		body, syncXattr, _, err := doc1.MarshalWithXattrs()
+		body, syncXattr, _, _, _, err := doc1.MarshalWithXattrs()
 		require.NoError(t, err)
 		doc1DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
 	} else {
@@ -1407,7 +1425,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	var dataType sgbucket.FeedDataType = base.MemcachedDataTypeJSON
 	if base.TestUseXattrs() {
 		dataType |= base.MemcachedDataTypeXattr
-		body, syncXattr, _, err := doc2.MarshalWithXattrs()
+		body, syncXattr, _, _, _, err := doc2.MarshalWithXattrs()
 		require.NoError(t, err)
 		doc2DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
 	} else {

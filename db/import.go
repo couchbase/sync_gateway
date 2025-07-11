@@ -31,11 +31,18 @@ const (
 	ImportOnDemand                    // On-demand import. Reattempt import on cas write failure of the imported doc until either the import succeeds, or existing doc is an SG write.
 )
 
+type importDocOptions struct {
+	expiry   *uint32
+	isDelete bool
+	revSeqNo uint64
+	mode     ImportMode
+}
+
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrs map[string][]byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrs map[string][]byte, importOpts importDocOptions, cas uint64) (docOut *Document, err error) {
 
 	var body Body
-	if isDelete {
+	if importOpts.isDelete {
 		body = Body{}
 	} else {
 		err := body.Unmarshal(value)
@@ -58,11 +65,11 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 		Cas:    cas,
 	}
 
-	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, body, importOpts.expiry, importOpts.isDelete, importOpts.revSeqNo, existingBucketDoc, importOpts.mode)
 }
 
 // Import a document, given the existing state of the doc in *document format.
-func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid string, existingDoc *Document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid string, existingDoc *Document, importOpts importDocOptions) (docOut *Document, err error) {
 
 	if existingDoc == nil {
 		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
@@ -86,11 +93,11 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	} else {
 		if existingDoc.Deleted {
 			existingBucketDoc.Xattrs[base.SyncXattrName], err = base.JSONMarshal(existingDoc.SyncData)
-			if err == nil && existingDoc.metadataOnlyUpdate != nil && db.useMou() {
-				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.metadataOnlyUpdate)
+			if err == nil && existingDoc.MetadataOnlyUpdate != nil && db.useMou() {
+				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.MetadataOnlyUpdate)
 			}
 		} else {
-			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.MouXattrName], err = existingDoc.MarshalWithXattrs()
+			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.VvXattrName], existingBucketDoc.Xattrs[base.MouXattrName], existingBucketDoc.Xattrs[base.GlobalXattrName], err = existingDoc.MarshalWithXattrs()
 		}
 	}
 
@@ -98,7 +105,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		return nil, err
 	}
 
-	return db.importDoc(ctx, docid, existingDoc.Body(ctx), expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, existingDoc.Body(ctx), importOpts.expiry, importOpts.isDelete, importOpts.revSeqNo, existingBucketDoc, importOpts.mode)
 }
 
 // Import document
@@ -108,7 +115,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 //	isDelete - whether the document to be imported is a delete
 //	existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
 //	mode - ImportMode - ImportFromFeed or ImportOnDemand
-func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, revNo uint64, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
@@ -146,9 +153,10 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		existingDoc.Expiry = *expiry
 	}
 
+	docUpdateEvent := Import
 	// do not update rev cache for any imports (CBG-4494 and CBG-4550)
 	const updateRevCache = false
-	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, true, updateRevCache, func(doc *Document) (resultDocument *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, docUpdateEvent, existingDoc, true, updateRevCache, func(doc *Document) (resultDocument *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
@@ -324,7 +332,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
 		if metadataOnlyUpdate && db.useMou() {
-			newDoc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+			newDoc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo, doc.MetadataOnlyUpdate)
 		}
 
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil
@@ -391,14 +399,21 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Persist the document in xattr format
-	value, syncXattrValue, _, marshalErr := doc.MarshalWithXattrs()
+	value, syncXattr, vvXattr, _, globalXattr, marshalErr := doc.MarshalWithXattrs()
 	if marshalErr != nil {
 		return nil, marshalErr
 	}
 
 	xattrs := map[string][]byte{
-		base.SyncXattrName: syncXattrValue,
+		base.SyncXattrName: syncXattr,
 	}
+	if vvXattr != nil {
+		xattrs[base.VvXattrName] = vvXattr
+	}
+	if globalXattr != nil {
+		xattrs[base.GlobalXattrName] = globalXattr
+	}
+
 	var casOut uint64
 	var writeErr error
 	var xattrsToDelete []string

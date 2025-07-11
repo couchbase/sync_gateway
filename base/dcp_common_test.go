@@ -93,7 +93,7 @@ func TestFeedEventByteSliceCopy(t *testing.T) {
 	)
 	keySlice := []byte(keyData)
 	valueSlice := []byte(valueData)
-	e := makeFeedEvent(keySlice, valueSlice, 0, 0, 0, 0, 0, sgbucket.FeedOpMutation)
+	e := makeFeedEvent(keySlice, valueSlice, 0, 0, 0, 0, 0, 0, sgbucket.FeedOpMutation)
 	require.Equal(t, keyData, string(e.Key))
 	require.Equal(t, valueData, string(e.Value))
 	require.Equal(t, keyData, string(keySlice))

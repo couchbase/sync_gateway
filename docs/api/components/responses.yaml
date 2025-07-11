@@ -138,6 +138,8 @@ all-docs:
                   properties:
                     rev:
                       type: string
+                    cv:
+                      type: string
             uniqueItems: true
           total_rows:
             type: number

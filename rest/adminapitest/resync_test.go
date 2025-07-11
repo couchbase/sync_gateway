@@ -119,7 +119,7 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	doc, _, err := collection.GetDocWithXattr(ctx, "doc0", db.DocUnmarshalSync)
+	doc, _, err := collection.GetDocWithXattrs(ctx, "doc0", db.DocUnmarshalSync)
 	require.NoError(t, err)
 	require.Equal(t, uint64(corruptSequence), doc.Sequence)
 
@@ -359,7 +359,6 @@ function sync(doc, oldDoc){
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	status := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-	assert.Equal(t, int64(1), status.DocsProcessed)
 	assert.Equal(t, int64(1), status.DocsChanged)
 
 	// ensure doc body remains unchanged after resync

@@ -287,7 +287,7 @@ func TestDatabase(t *testing.T) {
 	body["key2"] = int64(4444)
 	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
 		"1-cb0c9a22be0e5a1b01084ec019defa81"}
-	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", body, history, false)
+	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", body, history, false, ExistingVersionWithUpdateToHLV)
 	body[BodyId] = doc.ID
 	body[BodyRev] = newRev
 	assert.NoError(t, err, "PutExistingRev failed")
@@ -300,6 +300,427 @@ func TestDatabase(t *testing.T) {
 
 }
 
+// TestCheckProposedVersion ensures that a given CV will return the appropriate status based on the information present in the HLV.
+func TestCheckProposedVersion(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create a doc
+	body := Body{"key1": "value1", "key2": 1234}
+	_, doc, err := collection.Put(ctx, "doc1", body)
+	require.NoError(t, err)
+	cvSource, cvValue := doc.HLV.GetCurrentVersion()
+	currentVersion := Version{cvSource, cvValue}
+
+	testCases := []struct {
+		name            string
+		newVersion      Version
+		previousVersion *Version
+		expectedStatus  ProposedRevStatus
+		expectedRev     string
+	}{
+		{
+			// proposed version matches the current server version
+			//  Already known
+			name:            "version exists",
+			newVersion:      currentVersion,
+			previousVersion: nil,
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is newer than server cv (same source), and previousVersion matches server cv
+			//  Not a conflict
+			name:            "new version,same source,prev matches",
+			newVersion:      Version{cvSource, incrementCas(cvValue, 100)},
+			previousVersion: &currentVersion,
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is newer than server cv (same source), and previousVersion is not specified.
+			//  Not a conflict, even without previousVersion, because of source match
+			name:            "new version,same source,prev not specified",
+			newVersion:      Version{cvSource, incrementCas(cvValue, 100)},
+			previousVersion: nil,
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is from a source not present in server HLV, and previousVersion matches server cv
+			//  Not a conflict, due to previousVersion match
+			name:            "new version,new source,prev matches",
+			newVersion:      Version{"other", incrementCas(cvValue, 100)},
+			previousVersion: &currentVersion,
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is newer than server cv (same source), but previousVersion does not match server cv.
+			//  Not a conflict, regardless of previousVersion mismatch, because of source match between proposed
+			//  version and cv
+			name:            "new version,prev mismatch,new matches cv",
+			newVersion:      Version{cvSource, incrementCas(cvValue, 100)},
+			previousVersion: &Version{"other", incrementCas(cvValue, 50)},
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is already known, source matches cv
+			name:           "proposed version already known, no prev version",
+			newVersion:     Version{cvSource, incrementCas(cvValue, -100)},
+			expectedStatus: ProposedRev_Exists,
+			expectedRev:    "",
+		},
+		{
+			// conflict - previous version is older than CV
+			name:            "conflict,same source,server updated",
+			newVersion:      Version{"other", incrementCas(cvValue, -100)},
+			previousVersion: &Version{cvSource, incrementCas(cvValue, -50)},
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     Version{cvSource, cvValue}.String(),
+		},
+		{
+			// conflict - previous version is older than CV
+			name:            "conflict,new source,server updated",
+			newVersion:      Version{"other", incrementCas(cvValue, 100)},
+			previousVersion: &Version{"other", incrementCas(cvValue, -50)},
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     Version{cvSource, cvValue}.String(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			previousVersionStr := ""
+			if tc.previousVersion != nil {
+				previousVersionStr = tc.previousVersion.String()
+			}
+			status, rev := collection.CheckProposedVersion(ctx, "doc1", tc.newVersion.String(), previousVersionStr, previousVersionStr)
+			assert.Equal(t, tc.expectedStatus, status)
+			assert.Equal(t, tc.expectedRev, rev)
+		})
+	}
+
+	t.Run("invalid hlv", func(t *testing.T) {
+		hlvString := ""
+		status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString, "", "")
+		assert.Equal(t, ProposedRev_Error, status)
+	})
+
+	// New doc cases - standard insert
+	t.Run("new doc", func(t *testing.T) {
+		newVersion := Version{"other", 100}.String()
+		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, "", "")
+		assert.Equal(t, ProposedRev_OK_IsNew, status)
+	})
+
+	// New doc cases - insert with prev version (previous version purged from SGW)
+	t.Run("new doc with prev version", func(t *testing.T) {
+		newVersion := Version{"other", 100}.String()
+		prevVersion := Version{"another other", 50}.String()
+		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, prevVersion, prevVersion)
+		assert.Equal(t, ProposedRev_OK_IsNew, status)
+	})
+
+}
+
+func TestUpsertTestDocVersion(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create singleVersionDoc with cv:1000@abc
+	body := Body{"key1": "value1", "key2": 1234}
+	singleVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "singleVersionDoc", body, "1000@abc", "")
+	log.Printf("created singleVersionDoc doc successfully with HLV: %#v", singleVersionDoc.HLV)
+
+	// Attempt to upsert the same version, nil doc indicates no update
+	singleVersionDoc = collection.UpsertTestDocWithVersion(ctx, t, "singleVersionDoc", body, "1000@abc", "")
+	require.Nil(t, singleVersionDoc)
+}
+
+// TestCheckProposedVersionWithHLVRev tests CheckProposedVersion when the full HLV is provided in the rev element of the proposeChanges message
+func TestCheckProposedVersionWithHLVRev(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create singleVersionDoc with cv:1000@abc
+	body := Body{"key1": "value1", "key2": 1234}
+	singleVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "singleVersionDoc", body, "1000@abc", "")
+	require.NotNil(t, singleVersionDoc)
+	log.Printf("created singleVersionDoc doc successfully with HLV: %#v", singleVersionDoc.HLV)
+
+	// create multiVersionDoc with cv:1000@abc, pv:900@def
+	collection.UpsertTestDocWithVersion(ctx, t, "multiVersionDoc", body, "900@def", "")
+	multiVersionDoc := collection.UpsertTestDocWithVersion(ctx, t, "multiVersionDoc", body, "1000@abc", "")
+	require.NotNil(t, multiVersionDoc)
+	log.Printf("created multiVersionDoc doc successfully with HLV: %#v", multiVersionDoc.HLV)
+
+	// create multiVersionDoc with cv:1000@abc, mv:900@abc, 900@def, pv:900@ghi
+	collection.UpsertTestDocWithVersion(ctx, t, "mergeVersionDoc", body, "900@ghi", "")
+	docWithMV := collection.UpsertTestDocWithVersion(ctx, t, "mergeVersionDoc", body, "1000@abc", "900@abc, 900@def")
+	require.NotNil(t, docWithMV)
+	log.Printf("created mergeVersionDoc doc successfully with HLV: %#v", docWithMV.HLV)
+
+	testCases := []struct {
+		name            string // test name
+		key             string
+		proposedVersion string            // proposed version in CBL string format
+		previousRev     string            // previous revisions in CBL string format
+		proposedHLV     string            // proposed HLV in CBL string format
+		expectedStatus  ProposedRevStatus // Expected status from CheckProposedVersion call
+		expectedRev     string            // Expected rev from CheckProposedVersion call (for conflict cases)
+	}{
+		/*
+			Tests for existing doc with cv only (1000@abc)
+		*/
+		{
+			// already known, matches version
+			name:            "exists same version",
+			key:             "singleVersionDoc",
+			proposedVersion: "1000@abc",
+			previousRev:     "",
+			proposedHLV:     "1000@abc",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// already known, older version
+			name:            "exists older version",
+			key:             "singleVersionDoc",
+			proposedVersion: "900@abc",
+			previousRev:     "",
+			proposedHLV:     "1000@abc",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// conflict, HLV has same source but is older than current
+			name:            "conflict HLV older",
+			key:             "singleVersionDoc",
+			proposedVersion: "1100@def",
+			previousRev:     "900@abc",
+			proposedHLV:     "1100@def;900@abc",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// conflict with cv only
+			name:            "conflict cv only",
+			key:             "singleVersionDoc",
+			proposedVersion: "1000@def",
+			previousRev:     "",
+			proposedHLV:     "1000@def",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// conflict, HLV has previous versions but not cv.source
+			name:            "conflict HLV no source",
+			key:             "singleVersionDoc",
+			proposedVersion: "1100@def",
+			previousRev:     "1000@ghi",
+			proposedHLV:     "1100@def;1000@ghi,900@jkl",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// ok, new version for same source
+			name:            "ok, cv only, same source",
+			key:             "singleVersionDoc",
+			proposedVersion: "1100@abc",
+			previousRev:     "",
+			proposedHLV:     "1100@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// ok, new version for new source, current cv dominated by pv
+			name:            "ok, new source",
+			key:             "singleVersionDoc",
+			proposedVersion: "1100@def",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1100@def;1000@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// ok, previous rev not known but current cv dominated by pv
+			name:            "ok, new source and unknown previous rev",
+			key:             "singleVersionDoc",
+			proposedVersion: "1200@def",
+			previousRev:     "1100@ghi",
+			proposedHLV:     "1200@def;1100@ghi,1000@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		/*
+			Tests for existing doc with cv:1000@abc, pv:900@def
+		*/
+		{
+			// ok, proposed HLV doesn't include server PV
+			name:            "ok, new source dominates cv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1100@abc",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1100@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// ok, newer version for pv source, cv in HLV
+			name:            "ok pv source",
+			key:             "multiVersionDoc",
+			proposedVersion: "1000@def",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1000@def;1000@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// exists matches cv - previous in pv
+			name:            "exists matches cv previous pv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1000@abc",
+			previousRev:     "900@def",
+			proposedHLV:     "1000@abc;900@def",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// exists matches cv - previous same source
+			name:            "exists matches cv same source",
+			key:             "multiVersionDoc",
+			proposedVersion: "1000@abc",
+			previousRev:     "900@abc",
+			proposedHLV:     "1000@abc;900@def",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// exists matches cv - previous same source
+			name:            "exists pv dominates incoming",
+			key:             "multiVersionDoc",
+			proposedVersion: "900@def",
+			previousRev:     "800@abc",
+			proposedHLV:     "900@def;800@abc",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// exists matches cv - previous same source
+			name:            "exists pv dominates incoming",
+			key:             "multiVersionDoc",
+			proposedVersion: "900@def",
+			previousRev:     "800@def",
+			proposedHLV:     "900@def",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// conflict with pv ignored because cv dominates
+			name:            "ok pv conflict",
+			key:             "multiVersionDoc",
+			proposedVersion: "1100@abc",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1100@abc;800@def",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// conflict current cv not in incoming HLV history
+			name:            "conflict pv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1100@ghi",
+			previousRev:     "900@abc",
+			proposedHLV:     "1100@ghi;900@abc,800@def",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// conflict, proposed HLV doesn't include server cv
+			name:            "conflict with cv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1100@def",
+			previousRev:     "900@def",
+			proposedHLV:     "1100@def",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		{
+			// conflict, proposed HLV doesn't include server cv
+			name:            "conflict with cv and pv",
+			key:             "multiVersionDoc",
+			proposedVersion: "1000@def",
+			previousRev:     "900@abc",
+			proposedHLV:     "1000@def;900@abc",
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     "1000@abc",
+		},
+		/*
+			Tests for existing doc with cv:1000@abc, mv:900@abc, 900@def; pv:900@ghi
+		*/
+		{
+			// exists, mv is newer than proposed version for source
+			name:            "exists based on mv",
+			key:             "mergeVersionDoc",
+			proposedVersion: "800@def",
+			previousRev:     "700@def",
+			proposedHLV:     "800@def;700@abc",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// exists, pv is newer than proposed version for source
+			name:            "exists based on pv",
+			key:             "mergeVersionDoc",
+			proposedVersion: "800@ghi",
+			previousRev:     "700@def",
+			proposedHLV:     "800@ghi;700@def",
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// ok, proposed HLV doesn't include server PV
+			name:            "ok, new source dominates cv",
+			key:             "mergeVersionDoc",
+			proposedVersion: "1100@abc",
+			previousRev:     "1000@abc",
+			proposedHLV:     "1100@abc",
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.key+"-"+tc.name, func(t *testing.T) {
+			// Test with previous rev present
+			status, rev := collection.CheckProposedVersion(ctx, tc.key, tc.proposedVersion, tc.previousRev, tc.proposedHLV)
+			assert.Equal(t, tc.expectedStatus, status, "expected status mismatch when previous rev present")
+			assert.Equal(t, tc.expectedRev, rev, "expected rev mismatch when previous rev omitted")
+
+			// Test with previous rev omitted
+			status, rev = collection.CheckProposedVersion(ctx, tc.key, tc.proposedVersion, "", tc.proposedHLV)
+			assert.Equal(t, tc.expectedStatus, status, "expected status mismatch when previous rev omitted")
+			assert.Equal(t, tc.expectedRev, rev, "expected rev mismatch when previous rev omitted")
+		})
+	}
+}
+
+func incrementCas(cas uint64, delta int) (casOut uint64) {
+	cas = cas + uint64(delta)
+	return cas
+}
+
 func TestGetDeleted(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
@@ -310,7 +731,7 @@ func TestGetDeleted(t *testing.T) {
 	rev1id, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Put")
 
-	rev2id, err := collection.DeleteDoc(ctx, "doc1", rev1id)
+	rev2id, _, err := collection.DeleteDoc(ctx, "doc1", rev1id)
 	assert.NoError(t, err, "DeleteDoc")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
@@ -353,7 +774,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -361,7 +782,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -399,7 +820,9 @@ func TestGetRemovedAsUser(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	cv := docRev2.HLV.GetCurrentVersionString()
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cv)))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
@@ -425,7 +848,9 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.Equal(t, expectedResult, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	cv = docRev1.HLV.GetCurrentVersionString()
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cv)))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
@@ -464,7 +889,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev1ID,
 	}
-	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
+	rev2ID, docRev2, err := collection.Put(ctx, "doc1", rev2Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the third revision of doc1 on channel ABC.
@@ -516,7 +941,8 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 	// Flush the revision cache and purge the old revision backup.
 	db.FlushRevisionCacheForTest()
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	require.NoError(t, err, "Error purging old revision JSON")
 
 	// Try with a user who has access to this revision.
@@ -543,135 +969,212 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 // Test delta sync behavior when the fromRevision is a channel removal.
 func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-
-	// Create the first revision of doc1.
-	rev1Body := Body{
-		"k1":       "v1",
-		"channels": []string{"ABC", "NBC"},
+	testCases := []struct {
+		name          string
+		versionVector bool
+	}{
+		// Revs are backed up by hash of CV now, now way to fetch backup revs by revID till CBG-3748 (backwards compatibility for revID)
+		//{
+		//	name:          "revTree test",
+		//	versionVector: false,
+		//},
+		{
+			name:          "versionVector test",
+			versionVector: true,
+		},
 	}
-	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
-	require.NoError(t, err, "Error creating doc")
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
-	rev2Body := Body{
-		"k2":       "v2",
-		"channels": []string{"ABC"},
-		BodyRev:    rev1ID,
+			// Create the first revision of doc1.
+			rev1Body := Body{
+				"k1":       "v1",
+				"channels": []string{"ABC", "NBC"},
+			}
+			rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+			require.NoError(t, err, "Error creating doc")
+
+			// Create the second revision of doc1 on channel ABC as removal from channel NBC.
+			rev2Body := Body{
+				"k2":       "v2",
+				"channels": []string{"ABC"},
+				BodyRev:    rev1ID,
+			}
+			rev2ID, docRev2, err := collection.Put(ctx, "doc1", rev2Body)
+			require.NoError(t, err, "Error creating doc")
+
+			// Create the third revision of doc1 on channel ABC.
+			rev3Body := Body{
+				"k3":       "v3",
+				"channels": []string{"ABC"},
+				BodyRev:    rev2ID,
+			}
+			rev3ID, docRev3, err := collection.Put(ctx, "doc1", rev3Body)
+			require.NoError(t, err, "Error creating doc")
+			require.NotEmpty(t, rev3ID, "Error creating doc")
+
+			// Flush the revision cache and purge the old revision backup.
+			db.FlushRevisionCacheForTest()
+			if testCase.versionVector {
+				cvStr := docRev2.HLV.GetCurrentVersionString()
+				err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cvStr)))
+				require.NoError(t, err, "Error purging old revision JSON")
+			} else {
+				err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
+				require.NoError(t, err, "Error purging old revision JSON")
+			}
+
+			// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
+			// as a user who doesn't have access to the removed revision via any other channel.
+			authenticator := db.Authenticator(ctx)
+			user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
+			require.NoError(t, err, "Error creating user")
+
+			collection.user = user
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+
+			if testCase.versionVector {
+				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
+				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			} else {
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID, false)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			}
+
+			// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
+			// as a user who has access to the removed revision via another channel.
+			user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
+			require.NoError(t, err, "Error creating user")
+
+			collection.user = user
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+
+			if testCase.versionVector {
+				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
+				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			} else {
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID, false)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			}
+		})
 	}
-	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
-	require.NoError(t, err, "Error creating doc")
-
-	// Create the third revision of doc1 on channel ABC.
-	rev3Body := Body{
-		"k3":       "v3",
-		"channels": []string{"ABC"},
-		BodyRev:    rev2ID,
-	}
-	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
-	require.NoError(t, err, "Error creating doc")
-	require.NotEmpty(t, rev3ID, "Error creating doc")
-
-	// Flush the revision cache and purge the old revision backup.
-	db.FlushRevisionCacheForTest()
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
-	require.NoError(t, err, "Error purging old revision JSON")
-
-	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
-	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
-	require.NoError(t, err, "Error creating user")
-
-	collection.user = user
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
-
-	delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
-	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
-	assert.Nil(t, delta)
-	assert.Nil(t, redactedRev)
-
-	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
-	// as a user who has access to the removed revision via another channel.
-	user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
-	require.NoError(t, err, "Error creating user")
-
-	collection.user = user
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
-
-	delta, redactedRev, err = collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
-	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
-	assert.Nil(t, delta)
-	assert.Nil(t, redactedRev)
 }
 
 // Test delta sync behavior when the toRevision is a channel removal.
 func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
-
-	// Create the first revision of doc1.
-	rev1Body := Body{
-		"k1":       "v1",
-		"channels": []string{"ABC", "NBC"},
+	t.Skip("Pending work for channel removal at rev cache CBG-3814")
+	testCases := []struct {
+		name          string
+		versionVector bool
+	}{
+		{
+			name:          "revTree test",
+			versionVector: false,
+		},
+		{
+			name:          "versionVector test",
+			versionVector: true,
+		},
 	}
-	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
-	require.NoError(t, err, "Error creating doc")
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
-	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
-	rev2Body := Body{
-		"k2":       "v2",
-		"channels": []string{"ABC"},
-		BodyRev:    rev1ID,
+			// Create the first revision of doc1.
+			rev1Body := Body{
+				"k1":       "v1",
+				"channels": []string{"ABC", "NBC"},
+			}
+			rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+			require.NoError(t, err, "Error creating doc")
+
+			// Create the second revision of doc1 on channel ABC as removal from channel NBC.
+			rev2Body := Body{
+				"k2":       "v2",
+				"channels": []string{"ABC"},
+				BodyRev:    rev1ID,
+			}
+			rev2ID, docRev2, err := collection.Put(ctx, "doc1", rev2Body)
+			require.NoError(t, err, "Error creating doc")
+
+			// Create the third revision of doc1 on channel ABC.
+			rev3Body := Body{
+				"k3":       "v3",
+				"channels": []string{"ABC"},
+				BodyRev:    rev2ID,
+			}
+			rev3ID, docRev3, err := collection.Put(ctx, "doc1", rev3Body)
+			require.NoError(t, err, "Error creating doc")
+			require.NotEmpty(t, rev3ID, "Error creating doc")
+
+			// Flush the revision cache and purge the old revision backup.
+			db.FlushRevisionCacheForTest()
+			err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
+			require.NoError(t, err, "Error purging old revision JSON")
+
+			// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
+			// as a user who doesn't have access to the removed revision via any other channel.
+			authenticator := db.Authenticator(ctx)
+			user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
+			require.NoError(t, err, "Error creating user")
+
+			collection.user = user
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+
+			if testCase.versionVector {
+				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
+				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				require.NoError(t, err)
+				assert.Nil(t, delta)
+				assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
+			} else {
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID, false)
+				require.NoError(t, err)
+				assert.Nil(t, delta)
+				assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
+			}
+
+			// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
+			// as a user who has access to the removed revision via another channel.
+			user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
+			require.NoError(t, err, "Error creating user")
+
+			collection.user = user
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+			if testCase.versionVector {
+				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
+				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			} else {
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID, false)
+				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				assert.Nil(t, delta)
+				assert.Nil(t, redactedRev)
+			}
+		})
 	}
-	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
-	require.NoError(t, err, "Error creating doc")
-
-	// Create the third revision of doc1 on channel ABC.
-	rev3Body := Body{
-		"k3":       "v3",
-		"channels": []string{"ABC"},
-		BodyRev:    rev2ID,
-	}
-	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
-	require.NoError(t, err, "Error creating doc")
-	require.NotEmpty(t, rev3ID, "Error creating doc")
-
-	// Flush the revision cache and purge the old revision backup.
-	db.FlushRevisionCacheForTest()
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
-	require.NoError(t, err, "Error purging old revision JSON")
-
-	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
-	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
-	require.NoError(t, err, "Error creating user")
-
-	collection.user = user
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
-
-	delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
-	require.NoError(t, err)
-	assert.Nil(t, delta)
-	assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
-
-	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
-	// as a user who has access to the removed revision via another channel.
-	user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
-	require.NoError(t, err, "Error creating user")
-
-	collection.user = user
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
-
-	delta, redactedRev, err = collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
-	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
-	assert.Nil(t, delta)
-	assert.Nil(t, redactedRev)
 }
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
@@ -686,7 +1189,7 @@ func TestGetRemoved(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -694,7 +1197,7 @@ func TestGetRemoved(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -732,7 +1235,8 @@ func TestGetRemoved(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
@@ -741,7 +1245,8 @@ func TestGetRemoved(t *testing.T) {
 	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
@@ -760,7 +1265,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -768,7 +1273,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyDeleted: true,
 		BodyRev:     rev1id,
 	}
-	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -806,7 +1311,8 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStats)
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
@@ -815,7 +1321,8 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
@@ -888,7 +1395,7 @@ func TestAllDocsOnly(t *testing.T) {
 	}
 
 	// Now delete one document and try again:
-	_, err = collection.DeleteDoc(ctx, ids[23].DocID, ids[23].RevID)
+	_, _, err = collection.DeleteDoc(ctx, ids[23].DocID, ids[23].RevID)
 	assert.NoError(t, err, "Couldn't delete doc 23")
 
 	alldocs, err = allDocIDs(ctx, collection.DatabaseCollection)
@@ -1097,18 +1604,18 @@ func TestRepeatedConflict(t *testing.T) {
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
 	body["n"] = 2
 	body["channels"] = []string{"all", "2b"}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
 
 	body["n"] = 3
 	body["channels"] = []string{"all", "2a"}
-	_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
+	_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	// Get the _rev that was set in the body by PutExistingRevWithBody() and make assertions on it
@@ -1117,7 +1624,7 @@ func TestRepeatedConflict(t *testing.T) {
 
 	// Remove the _rev key from the body, and call PutExistingRevWithBody() again, which should re-add it
 	delete(body, BodyRev)
-	_, newRev, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
+	_, newRev, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err)
 
 	// The _rev should pass the same assertions as before, since PutExistingRevWithBody() should re-add it
@@ -1131,6 +1638,7 @@ func TestConflicts(t *testing.T) {
 	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	bucketUUID := db.EncodedSourceID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -1145,7 +1653,7 @@ func TestConflicts(t *testing.T) {
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Wait for rev to be cached
@@ -1158,11 +1666,11 @@ func TestConflicts(t *testing.T) {
 	// Create two conflicting changes:
 	body["n"] = 2
 	body["channels"] = []string{"all", "2b"}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
 	body["n"] = 3
 	body["channels"] = []string{"all", "2a"}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	cacheWaiter.Add(2)
@@ -1202,19 +1710,23 @@ func TestConflicts(t *testing.T) {
 		Conflicts:  true,
 		ChangesCtx: base.TestCtx(t),
 	}
+
 	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
+	source, version := collection.GetDocumentCurrentVersion(t, "doc")
+
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
-		Seq:          SequenceID{Seq: 3},
-		ID:           "doc",
-		Changes:      []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
-		branched:     true,
-		collectionID: collectionID,
+		Seq:            SequenceID{Seq: 3},
+		ID:             "doc",
+		Changes:        []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
+		branched:       true,
+		collectionID:   collectionID,
+		CurrentVersion: &Version{SourceID: source, Value: version},
 	}, changes[0],
 	)
 
 	// Delete 2-b; verify this makes 2-a current:
-	rev3, err := collection.DeleteDoc(ctx, "doc", "2-b")
+	rev3, _, err := collection.DeleteDoc(ctx, "doc", "2-b")
 	assert.NoError(t, err, "delete 2-b")
 
 	rawBody, _, _ = collection.dataStore.GetRaw("doc")
@@ -1239,11 +1751,12 @@ func TestConflicts(t *testing.T) {
 	changes = getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
-		Seq:          SequenceID{Seq: 4},
-		ID:           "doc",
-		Changes:      []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
-		branched:     true,
-		collectionID: collectionID,
+		Seq:            SequenceID{Seq: 4},
+		ID:             "doc",
+		Changes:        []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
+		branched:       true,
+		collectionID:   collectionID,
+		CurrentVersion: &Version{SourceID: bucketUUID, Value: doc.Cas},
 	}, changes[0])
 
 }
@@ -1288,55 +1801,55 @@ func TestNoConflictsMode(t *testing.T) {
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 	body["n"] = 2
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	// Try to create a conflict branching from rev 1:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Try to create a conflict with no common ancestor:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-c", "1-c"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-c", "1-c"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Try to create a conflict with a longer history:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-d", "3-d", "2-d", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-d", "3-d", "2-d", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Try to create a conflict with no history:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-e"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-e"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Create a non-conflict with a longer history, ending in a deletion:
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 4-a")
 	delete(body, BodyDeleted)
 
 	// Try to resurrect the document with a conflicting branch
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-f", "3-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-f", "3-a"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Resurrect the tombstoned document with a disconnected branch):
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-f"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-f"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-f")
 
 	// Tombstone the resurrected branch
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-f", "1-f"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-f", "1-f"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-f")
 	delete(body, BodyDeleted)
 
 	// Resurrect the tombstoned document with a valid history (descendents of leaf)
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"5-f", "4-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"5-f", "4-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 5-f")
 	delete(body, BodyDeleted)
 
 	// Create a new document with a longer history:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "COD", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "COD", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add COD")
 	delete(body, BodyDeleted)
 
@@ -1364,34 +1877,34 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
 	body := Body{"n": 1}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
 	body["n"] = 2
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
 	body["n"] = 3
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
 	db.Options.AllowConflicts = base.Ptr(false)
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.True(t, err != nil, "expected error tombstoning non-leaf")
 
 	// Tombstone the non-winning branch of a conflicted document
@@ -1441,27 +1954,27 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
 	body := Body{"n": 1}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
 	body["n"] = 2
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
 	body["n"] = 3
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
@@ -1470,12 +1983,12 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.True(t, err != nil, "expected error tombstoning non-leaf")
 
 	// Tombstone the non-winning branch of a conflicted document
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-a (tombstone)")
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1483,7 +1996,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 
 	// Tombstone the winning branch of a conflicted document
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"3-b", "2-b"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"3-b", "2-b"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-b (tombstone)")
 	doc, err = collection.GetDocument(ctx, "doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1492,7 +2005,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	body[BodyDeleted] = true
 	db.RevsLimit = uint32(1)
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"3-a", "2-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"3-a", "2-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-a (tombstone)")
 	doc, err = collection.GetDocument(ctx, "doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1528,7 +2041,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	body["channels"] = "clibup"
 	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
 		rev1id}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, history, false)
+	newDoc, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, history, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "PutExistingRev failed")
 
 	// Check that the doc has the correct channel (test for issue #300)
@@ -1536,7 +2049,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, channels.ChannelMap{
 		"clibup": nil,
-		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
+		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: base.CasToString(newDoc.HLV.Version)}},
 	}, doc.Channels)
 
 	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
@@ -2044,6 +2557,164 @@ func TestChannelView(t *testing.T) {
 		log.Printf("View Query returned entry (%d): %v", i, entry)
 	}
 	assert.Len(t, entries, 1)
+	require.Equal(t, "doc1", entries[0].DocID)
+	collection.RequireCurrentVersion(t, "doc1", entries[0].SourceID, entries[0].Version)
+}
+
+func TestChannelQuery(t *testing.T) {
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
+		channel(doc.channels);
+	}`)
+	require.NoError(t, err)
+
+	// Create doc
+	body := Body{"key1": "value1", "key2": 1234, "channels": "ABC"}
+	rev1ID, _, err := collection.Put(ctx, "doc1", body)
+	require.NoError(t, err, "Couldn't create doc1")
+
+	// Create a doc to test removal handling.  Needs three revisions so that the removal rev (2) isn't
+	// the current revision
+	removedDocID := "removed_doc"
+	removedDocRev1, rev1, err := collection.Put(ctx, removedDocID, body)
+	require.NoError(t, err, "Couldn't create removed_doc")
+
+	updatedChannelBody := Body{"_rev": removedDocRev1, "key1": "value1", "key2": 1234, "channels": "DEF"}
+	removalRev, rev2, err := collection.Put(ctx, removedDocID, updatedChannelBody)
+	require.NoError(t, err, "Couldn't update removed_doc")
+
+	updatedChannelBody = Body{"_rev": removalRev, "key1": "value1", "key2": 2345, "channels": "DEF"}
+	_, rev3, err := collection.Put(ctx, removedDocID, updatedChannelBody)
+	require.NoError(t, err, "Couldn't update removed_doc")
+
+	log.Printf("versions: [%v %v %v]", rev1.HLV.Version, rev2.HLV.Version, rev3.HLV.Version)
+
+	// TODO: check the case where the channel is removed with a putExistingRev mutation
+
+	var entries LogEntries
+
+	// Test query retrieval via star channel and named channel (queries use different indexes)
+	testCases := []struct {
+		testName    string
+		channelName string
+		expectedRev channels.RevAndVersion
+	}{
+		{
+			testName:    "star channel",
+			channelName: "*",
+			expectedRev: rev3.GetRevAndVersion(),
+		},
+		{
+			testName:    "named channel",
+			channelName: "ABC",
+			expectedRev: rev2.GetRevAndVersion(),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.testName, func(t *testing.T) {
+			entries, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
+			require.NoError(t, err)
+
+			for i, entry := range entries {
+				log.Printf("Channel Query returned entry (%d): %v", i, entry)
+			}
+			require.Len(t, entries, 2)
+			require.Equal(t, "doc1", entries[0].DocID)
+			require.Equal(t, rev1ID, entries[0].RevID)
+			collection.RequireCurrentVersion(t, "doc1", entries[0].SourceID, entries[0].Version)
+
+			removedDocEntry := entries[1]
+			require.Equal(t, removedDocID, removedDocEntry.DocID)
+
+			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
+			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
+			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
+			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
+		})
+	}
+
+}
+
+// TestChannelQueryRevocation ensures that the correct rev (revTreeID and cv) is returned by the channel query.
+func TestChannelQueryRevocation(t *testing.T) {
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
+		channel(doc.channels);
+	}`)
+	require.NoError(t, err)
+
+	// Create doc with three channels (ABC, DEF, GHI)
+	docID := "removalTestDoc"
+	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"ABC", "DEF", "GHI"}}
+	rev1ID, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err, "Couldn't create document")
+
+	// Update the doc with a simple PUT to remove channel ABC
+	updatedChannelBody := Body{"_rev": rev1ID, "key1": "value1", "key2": 1234, "channels": []string{"DEF", "GHI"}}
+	_, rev2, err := collection.Put(ctx, docID, updatedChannelBody)
+	require.NoError(t, err, "Couldn't update document via Put")
+
+	// Update the doc with PutExistingCurrentVersion to remove channel DEF
+	/* TODO: requires fix to HLV conflict detection
+	updatedChannelBody = Body{"_rev": rev2ID, "key1": "value1", "key2": 2345, "channels": "GHI"}
+	existingDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	cblVersion := Version{SourceID: "CBLSource", Value: existingDoc.HLV.Version + 10}
+	hlvErr := existingDoc.HLV.AddVersion(cblVersion)
+	require.NoError(t, hlvErr)
+	existingDoc.UpdateBody(updatedChannelBody)
+	rev3, _, _, err := collection.PutExistingCurrentVersion(ctx, existingDoc, *existingDoc.HLV, nil)
+	require.NoError(t, err, "Couldn't update document via PutExistingCurrentVersion")
+
+	*/
+
+	var entries LogEntries
+
+	// Test query retrieval via star channel and named channel (queries use different indexes)
+	testCases := []struct {
+		testName    string
+		channelName string
+		expectedRev channels.RevAndVersion
+	}{
+		{
+			testName:    "removal by SGW write",
+			channelName: "ABC",
+			expectedRev: rev2.GetRevAndVersion(),
+		},
+		/*
+			{
+				testName:    "removal by CBL write",
+				channelName: "DEF",
+				expectedRev: rev3.GetRevAndVersion(),
+			},
+		*/
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.testName, func(t *testing.T) {
+			entries, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
+			require.NoError(t, err)
+
+			for i, entry := range entries {
+				log.Printf("Channel Query returned entry (%d): %v", i, entry)
+			}
+			require.Len(t, entries, 1)
+			removedDocEntry := entries[0]
+			require.Equal(t, docID, removedDocEntry.DocID)
+
+			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
+			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
+			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
+			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
+		})
+	}
 
 }
 
@@ -2371,7 +3042,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 				enableCallback = false
 				body := Body{"name": "Emily", "age": 20}
 				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 				assert.NoError(t, err, "Adding revision 3-b")
 			}
 		},
@@ -2382,29 +3053,29 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 1-a")
 
 	body = Body{"name": "Harry", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-a")
 
 	body = Body{"name": "Amelia", "age": 20}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 3-a")
 
 	body = Body{"name": "Charlie", "age": 10}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 4-a")
 
 	body = Body{"name": "Noah", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-b")
 
 	enableCallback = true
 
 	body = Body{"name": "Emily", "age": 20}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 3-b")
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
@@ -2427,7 +3098,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 				enableCallback = false
 				body := Body{"name": "Charlie", "age": 10, BodyDeleted: true}
 				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 				assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
 			}
 		},
@@ -2437,19 +3108,19 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 1-a")
 
 	body = Body{"name": "Harry", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-a")
 
 	body = Body{"name": "Amelia", "age": 20}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 3-a")
 
 	body = Body{"name": "Noah", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-b")
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
@@ -2459,7 +3130,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 	enableCallback = true
 
 	body = Body{"name": "Charlie", "age": 10, BodyDeleted: true}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
 
 	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
@@ -2483,7 +3154,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 				enableCallback = false
 				body := Body{"name": "Joshua", "age": 11}
 				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b1", "2-b", "1-a"}, false)
+				_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b1", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 				assert.NoError(t, err, "Couldn't add revision 3-b1")
 			}
 		},
@@ -2494,29 +3165,29 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 1-a")
 
 	body = Body{"name": "Harry", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-a")
 
 	body = Body{"name": "Amelia", "age": 20}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 3-a")
 
 	body = Body{"name": "Charlie", "age": 10}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 4-a")
 
 	body = Body{"name": "Noah", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-b")
 
 	enableCallback = true
 
 	body = Body{"name": "Liam", "age": 12}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b2", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b2", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't add revision 3-b2")
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
@@ -2550,7 +3221,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 			enableCallback = false
 			// Write a doc
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-abc", revid}, true)
+			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-abc", revid}, true, ExistingVersionWithUpdateToHLV)
 			assert.NoError(t, err)
 		}
 	}
@@ -2567,7 +3238,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	enableCallback = true
-	doc, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-abc", "2-abc", revid}, true)
+	doc, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-abc", "2-abc", revid}, true, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err)
 
 	assert.True(t, sort.IsSorted(base.SortedUint64Slice(doc.SyncData.RecentSequences)))
@@ -2662,7 +3333,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var doc Body
-	var xattr Body
+	var xattr SyncData
 
 	var xattrs map[string][]byte
 	// Ensure document has been added
@@ -2676,8 +3347,8 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
 
 	assert.Nil(t, doc)
-	assert.Equal(t, "1-2cac91faf7b3f5e5fd56ff377bdb5466", xattr["rev"])
-	assert.Equal(t, float64(2), xattr["sequence"])
+	assert.Equal(t, "1-2cac91faf7b3f5e5fd56ff377bdb5466", xattr.CurrentRev)
+	assert.Equal(t, uint64(2), xattr.Sequence)
 }
 
 func TestTombstoneCompactionStopWithManager(t *testing.T) {
@@ -2698,7 +3369,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		docID := fmt.Sprintf("doc%d", i)
 		rev, _, err := collection.Put(ctx, docID, Body{})
 		assert.NoError(t, err)
-		_, err = collection.DeleteDoc(ctx, docID, rev)
+		_, _, err = collection.DeleteDoc(ctx, docID, rev)
 		assert.NoError(t, err)
 	}
 
@@ -2970,71 +3641,61 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 }
 
 func Test_resyncDocument(t *testing.T) {
-	testCases := []struct {
-		useXattr bool
-	}{
-		{useXattr: true},
-		{useXattr: false},
+	if !base.TestUseXattrs() {
+		t.Skip("Walrus doesn't support xattr")
 	}
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
-	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("Test_resyncDocument with useXattr: %t", testCase.useXattr), func(t *testing.T) {
-			if !base.TestUseXattrs() && testCase.useXattr {
-				t.Skip("Don't run xattr tests on non xattr tests")
-			}
-			db, ctx := setupTestDB(t)
-			defer db.Close(ctx)
+	db.Options.EnableXattr = true
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-			db.Options.EnableXattr = testCase.useXattr
-			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-
-			syncFn := `
+	syncFn := `
 	function sync(doc, oldDoc){
 		channel("channel." + "ABC");
 	}
 `
-			_, err := collection.UpdateSyncFun(ctx, syncFn)
-			require.NoError(t, err)
+	_, err := collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
-			docID := uuid.NewString()
+	docID := uuid.NewString()
 
-			updateBody := make(map[string]interface{})
-			updateBody["val"] = "value"
-			_, doc, err := collection.Put(ctx, docID, updateBody)
-			require.NoError(t, err)
-			assert.NotNil(t, doc)
+	updateBody := make(map[string]interface{})
+	updateBody["val"] = "value"
+	_, doc, err := collection.Put(ctx, docID, updateBody)
+	require.NoError(t, err)
+	assert.NotNil(t, doc)
 
-			syncFn = `
+	syncFn = `
 		function sync(doc, oldDoc){
 			channel("channel." + "ABC12332423234");
 		}
 	`
-			_, err = collection.UpdateSyncFun(ctx, syncFn)
-			require.NoError(t, err)
+	_, err = collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
-			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
-			require.NoError(t, err)
-			err = collection.WaitForPendingChanges(ctx)
-			require.NoError(t, err)
+	_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+	require.NoError(t, err)
+	err = collection.WaitForPendingChanges(ctx)
+	require.NoError(t, err)
 
-			syncData, err := collection.GetDocSyncData(ctx, docID)
-			assert.NoError(t, err)
+	syncData, err := collection.GetDocSyncData(ctx, docID)
+	assert.NoError(t, err)
 
-			assert.Len(t, syncData.ChannelSet, 2)
-			assert.Len(t, syncData.Channels, 2)
-			found := false
+	assert.Len(t, syncData.ChannelSet, 2)
+	assert.Len(t, syncData.Channels, 2)
+	found := false
 
-			for _, chSet := range syncData.ChannelSet {
-				if chSet.Name == "channel.ABC12332423234" {
-					found = true
-					break
-				}
-			}
-
-			assert.True(t, found)
-			assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
-		})
+	for _, chSet := range syncData.ChannelSet {
+		if chSet.Name == "channel.ABC12332423234" {
+			found = true
+			break
+		}
 	}
+
+	assert.True(t, found)
+	assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
+
 }
 
 func Test_getUpdatedDocument(t *testing.T) {
@@ -3119,7 +3780,7 @@ func TestImportCompactPanic(t *testing.T) {
 	// Create a document, then delete it, to create a tombstone
 	rev, doc, err := collection.Put(ctx, "test", Body{})
 	require.NoError(t, err)
-	_, err = collection.DeleteDoc(ctx, doc.ID, rev)
+	_, _, err = collection.DeleteDoc(ctx, doc.ID, rev)
 	require.NoError(t, err)
 	require.NoError(t, collection.WaitForPendingChanges(ctx))
 
@@ -3510,7 +4171,7 @@ func TestInject1xBodyProperties(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"key":"value", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-	_, rev2ID, err := collection.PutExistingRevWithBody(ctx, "doc", rev2Body, []string{"2-abc", rev1ID}, true)
+	_, rev2ID, err := collection.PutExistingRevWithBody(ctx, "doc", rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
 	docRev, err := collection.GetRev(ctx, "doc", rev2ID, true, nil)
@@ -3564,4 +4225,207 @@ func TestDatabaseCloseIdempotent(t *testing.T) {
 	db.BucketLock.Lock()
 	defer db.BucketLock.Unlock()
 	db._stopOnlineProcesses(ctx)
+}
+
+// TestSettingSyncInfo:
+//   - Purpose of the test is to call both SetSyncInfoMetaVersion + SetSyncInfoMetadataID in different orders
+//     asserting that the operations preserve the metadataID/metaVersion
+//   - Permutations include doc being created if it doesn't exist, one element being updated and preserving the other
+//     elements if it exists and
+func TestSettingSyncInfo(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	ds := collection.GetCollectionDatastore()
+
+	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "1"))
+	require.NoError(t, base.SetSyncInfoMetadataID(ds, "someID"))
+
+	// assert that after above operations meta version is preserved after setting of metadataID
+	var syncInfo base.SyncInfo
+	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "1", syncInfo.MetaDataVersion)
+	assert.Equal(t, "someID", syncInfo.MetadataID)
+
+	// remove sync info to test another permutation
+	require.NoError(t, ds.Delete(base.SGSyncInfo))
+
+	require.NoError(t, base.SetSyncInfoMetadataID(ds, "someID"))
+	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "1"))
+
+	// assert that after above operations metadataID is preserved after setting of metaVersion
+	syncInfo = base.SyncInfo{}
+	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "1", syncInfo.MetaDataVersion)
+	assert.Equal(t, "someID", syncInfo.MetadataID)
+
+	// test updating each element in sync info now both elements are defined
+	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "4"))
+	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "4", syncInfo.MetaDataVersion)
+	assert.Equal(t, "someID", syncInfo.MetadataID)
+
+	require.NoError(t, base.SetSyncInfoMetadataID(ds, "test"))
+	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "4", syncInfo.MetaDataVersion)
+	assert.Equal(t, "test", syncInfo.MetadataID)
+}
+
+// TestRequireMigration:
+//   - Purpose is to test code pathways inside the InitSyncInfo function will return requires attachment migration
+//     as expected.
+func TestRequireMigration(t *testing.T) {
+	type testCase struct {
+		name             string
+		initialMetaID    string
+		newMetadataID    string
+		metaVersion      string
+		requireMigration bool
+	}
+	testCases := []testCase{
+		{
+			name:             "sync info in bucket with metadataID set",
+			initialMetaID:    "someID",
+			requireMigration: true,
+		},
+		{
+			name:             "sync info in bucket with metadataID set, set newMetadataID",
+			initialMetaID:    "someID",
+			newMetadataID:    "testID",
+			requireMigration: true,
+		},
+		{
+			name:             "correct metaversion already defined, no metadata ID to set",
+			metaVersion:      "4.0.0",
+			requireMigration: false,
+		},
+		{
+			name:             "correct metaversion already defined, metadata ID to set",
+			metaVersion:      "4.0.0",
+			newMetadataID:    "someID",
+			requireMigration: false,
+		},
+		{
+			name:             "old metaversion defined, metadata ID to set",
+			metaVersion:      "3.0.0",
+			newMetadataID:    "someID",
+			requireMigration: true,
+		},
+		{
+			name:             "old metaversion defined, no metadata ID to set",
+			metaVersion:      "3.0.0",
+			requireMigration: true,
+		},
+	}
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+	ds := tb.GetSingleDataStore()
+	for _, testcase := range testCases {
+		t.Run(testcase.name, func(t *testing.T) {
+			if testcase.initialMetaID != "" {
+				require.NoError(t, base.SetSyncInfoMetadataID(ds, testcase.initialMetaID))
+			}
+			if testcase.metaVersion != "" {
+				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
+			}
+
+			_, requireMigration, err := base.InitSyncInfo(ctx, ds, testcase.newMetadataID)
+			require.NoError(t, err)
+			if testcase.requireMigration {
+				assert.True(t, requireMigration)
+			} else {
+				assert.False(t, requireMigration)
+			}
+
+			// cleanup bucket
+			require.NoError(t, ds.Delete(base.SGSyncInfo))
+		})
+	}
+}
+
+// TestInitSyncInfoRequireMigrationEmptyBucket:
+//   - Empty bucket call InitSyncInfo with metadata ID defined, assert require migration is returned
+//   - Cleanup bucket
+//   - Call InitSyncInfo with metadata ID not defined, assert require migration is not returned
+func TestInitSyncInfoRequireMigrationEmptyBucket(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+	ds := tb.GetSingleDataStore()
+
+	// test no sync info in bucket and set metadataID, returns requireMigration
+	_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
+	require.NoError(t, err)
+	assert.True(t, requireMigration)
+
+	// delete the doc, test no sync info in bucket returns requireMigration
+	require.NoError(t, ds.Delete(base.SGSyncInfo))
+	_, requireMigration, err = base.InitSyncInfo(ctx, ds, "")
+	require.NoError(t, err)
+	assert.True(t, requireMigration)
+}
+
+// TestInitSyncInfoMetaVersionComparison:
+//   - Test requireMigration is true for metaVersion == 4.0.0 and > 4.0.0
+//   - Test requireMigration is true for non-existent metaVersion
+func TestInitSyncInfoMetaVersionComparison(t *testing.T) {
+	type testCase struct {
+		name        string
+		metadataID  string
+		metaVersion string
+	}
+	testCases := []testCase{
+		{
+			name:       "requireMigration for sync info with no meta version defined",
+			metadataID: "someID",
+		},
+		{
+			name:        "test requireMigration for metaVersion == 4.0.0",
+			metadataID:  "someID",
+			metaVersion: "4.0.0",
+		},
+		{
+			name:        "test we return true for metaVersion minor version > 4.0.0",
+			metadataID:  "someID",
+			metaVersion: "4.1.0",
+		},
+		{
+			name:        "test we return true for metaVersion patch version > 4.0.0",
+			metadataID:  "someID",
+			metaVersion: "4.0.1",
+		},
+		{
+			name:        "test we return true for metaVersion major version > 4.0.0",
+			metadataID:  "someID",
+			metaVersion: "5.0.0",
+		},
+	}
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+	ds := tb.GetSingleDataStore()
+	for _, testcase := range testCases {
+		t.Run(testcase.name, func(t *testing.T) {
+			// set sync info with no metaversion
+			require.NoError(t, base.SetSyncInfoMetadataID(ds, testcase.metadataID))
+
+			if testcase.metaVersion == "" {
+				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
+				require.NoError(t, err)
+				assert.True(t, requireMigration)
+			} else {
+				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
+				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
+				require.NoError(t, err)
+				assert.False(t, requireMigration)
+			}
+			// cleanup bucket
+			require.NoError(t, ds.Delete(base.SGSyncInfo))
+		})
+	}
 }

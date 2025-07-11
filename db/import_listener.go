@@ -190,7 +190,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 	}
 
 	// check if sync data is valid
-	if syncData != nil && !syncData.HasValidSyncData() {
+	if syncData != nil && !syncData.HasValidSyncDataForImport() {
 		base.WarnfCtx(ctx, "Invalid sync data for doc %s - not importing.", base.UD(event.Key))
 		il.importStats.ImportErrorCount.Add(1)
 		return
@@ -207,13 +207,13 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		}
 	}
 
+	docID := string(event.Key)
 	// If syncData is nil, or if this was not an SG write, attempt to import
 	if syncData == nil || !isSGWrite {
 		isDelete := event.Opcode == sgbucket.FeedOpDeletion
 		if isDelete {
 			rawBody = nil
 		}
-		docID := string(event.Key)
 
 		// last attempt to exit processing if the importListener has been closed before attempting to write to the bucket
 		select {
@@ -222,8 +222,14 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			return
 		default:
 		}
+		importOpts := importDocOptions{
+			isDelete: isDelete,
+			mode:     ImportFromFeed,
+			expiry:   &event.Expiry,
+			revSeqNo: event.RevNo,
+		}
 
-		_, err := collection.ImportDocRaw(ctx, docID, rawBody, rawXattrs, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
+		_, err := collection.ImportDocRaw(ctx, docID, rawBody, rawXattrs, importOpts, event.Cas)
 		if err != nil {
 			if err == base.ErrImportCasFailure {
 				base.DebugfCtx(ctx, base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))
@@ -232,6 +238,13 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			} else {
 				base.DebugfCtx(ctx, base.KeyImport, "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
 			}
+		}
+	} else if syncData != nil && syncData.Attachments != nil {
+		base.DebugfCtx(ctx, base.KeyImport, "Attachment metadata found in sync data for doc with id %s, migrating attachment metadata", base.UD(docID))
+		// we have attachments to migrate
+		err := collection.MigrateAttachmentMetadata(ctx, docID, event.Cas, syncData)
+		if err != nil {
+			base.WarnfCtx(ctx, "error migrating attachment metadata from sync data to global sync for doc %s. Error: %v", base.UD(docID), err)
 		}
 	}
 }

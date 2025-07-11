@@ -369,11 +369,11 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// User has no permissions to access rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+version.RevID, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+version.RevTreeID, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusOK)
 
 			// Guest has no permissions to access rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+version.RevID, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+version.RevTreeID, "", nil, "", "")
 			assertRespStatus(resp, http.StatusOK)
 
 			// Attachments should be forbidden as well
@@ -381,7 +381,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// Attachment revs should be forbidden as well
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+version.RevID, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+version.RevTreeID, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusNotFound)
 
 			// Attachments should be forbidden for guests as well
@@ -389,7 +389,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// Attachment revs should be forbidden for guests as well
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+version.RevID, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+version.RevTreeID, "", nil, "", "")
 			assertRespStatus(resp, http.StatusNotFound)
 
 			// Document does not exist should cause 403
@@ -406,7 +406,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusConflict)
 
 			// PUT with rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevID, `{}`, nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevTreeID, `{}`, nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// PUT with incorrect rev
@@ -418,7 +418,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusConflict)
 
 			// PUT with rev as Guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevID, `{}`, nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevTreeID, `{}`, nil, "", "")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// PUT with incorrect rev as Guest
@@ -450,7 +450,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assert.NotContains(t, user.GetChannels(s, c).ToArray(), "chan2")
 
 			// Successful PUT which will grant access grants
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevID, `{"channels": "chan"}`, nil, "Perms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevTreeID, `{"channels": "chan"}`, nil, "Perms", "password")
 			AssertStatus(t, resp, http.StatusCreated)
 
 			// Make sure channel access grant was successful
@@ -467,7 +467,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document rev with no permissions
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+version.RevID, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+version.RevTreeID, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document with wrong rev
@@ -483,7 +483,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document rev with no write perms as guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+version.RevID, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+version.RevTreeID, "", nil, "", "")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document with wrong rev as guest
@@ -1083,7 +1083,7 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	RequireStatus(t, response, 200)
 
 	// Revoke access to chan2 (dynamic)
-	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant1?rev="+grant1Version.RevID, `{"type":"setaccess", "owner":"none", "channel":"chan2"}`, "user1")
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant1?rev="+grant1Version.RevTreeID, `{"type":"setaccess", "owner":"none", "channel":"chan2"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user cannot access doc in revoked channel, but can successfully access remaining documents
@@ -1137,4 +1137,44 @@ func TestPublicChannel(t *testing.T) {
 	RequireStatus(t, response, 200)
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/privateDoc", "", "user1")
 	RequireStatus(t, response, 403)
+}
+
+func TestAllDocsCV(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	const docID = "foo"
+	docVersion := rt.PutDocDirectly(docID, db.Body{"foo": "bar"})
+
+	testCases := []struct {
+		name   string
+		url    string
+		output string
+	}{
+		{
+			name: "no query string",
+			url:  "/{{.keyspace}}/_all_docs",
+			output: fmt.Sprintf(`{
+				"total_rows": 1,
+				"update_seq": 1,
+				"rows": [{"key": "%s", "id": "%s", "value": {"rev": "%s"}}]
+			}`, docID, docID, docVersion.RevTreeID),
+		},
+		{
+			name: "cvs=true",
+			url:  "/{{.keyspace}}/_all_docs?show_cv=true",
+			output: fmt.Sprintf(`{
+				"total_rows": 1,
+				"update_seq": 1,
+				"rows": [{"key": "%s", "id": "%s", "value": {"rev": "%s", "cv": "%s"}}]
+			}`, docID, docID, docVersion.RevTreeID, docVersion.CV.String()),
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := rt.SendAdminRequest(http.MethodGet, testCase.url, "")
+			RequireStatus(t, response, http.StatusOK)
+			require.JSONEq(t, testCase.output, response.Body.String())
+		})
+	}
 }

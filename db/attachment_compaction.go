@@ -193,9 +193,9 @@ type AttachmentsMetaMap struct {
 	Attachments map[string]AttachmentsMeta `json:"_attachments"`
 }
 
-// AttachmentCompactionData struct to unmarshal a document sync data into in order to process attachments during mark
+// AttachmentCompactionSyncData struct to unmarshal a document sync data into in order to process attachments during mark
 // phase. Contains only what is necessary
-type AttachmentCompactionData struct {
+type AttachmentCompactionSyncData struct {
 	Attachments map[string]AttachmentsMeta `json:"attachments"`
 	Flags       uint8                      `json:"flags"`
 	History     struct {
@@ -204,29 +204,42 @@ type AttachmentCompactionData struct {
 	} `json:"history"`
 }
 
-// getAttachmentSyncData takes the data type and data from the DCP feed and will return a AttachmentCompactionData
+// AttachmentCompactionGlobalSyncData is to unmarshal a documents global xattr in order to process attachments during mark phase.
+type AttachmentCompactionGlobalSyncData struct {
+	Attachments map[string]AttachmentsMeta `json:"attachments_meta"`
+}
+
+// getAttachmentSyncData takes the data type and data from the DCP feed and will return a AttachmentCompactionSyncData
 // struct containing data needed to process attachments on a document.
-func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionData, error) {
-	var attachmentData *AttachmentCompactionData
+func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionSyncData, error) {
+	var attachmentSyncData *AttachmentCompactionSyncData
+	var attachmentGlobalSyncData AttachmentCompactionGlobalSyncData
 	var documentBody []byte
 
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		body, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{base.SyncXattrName}, data)
+		body, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{base.SyncXattrName, base.GlobalXattrName}, data)
 		if err != nil {
 			if errors.Is(err, sgbucket.ErrXattrInvalidLen) {
 				return nil, nil
 			}
 			return nil, fmt.Errorf("Could not parse DCP attachment sync data: %w", err)
 		}
-		err = base.JSONUnmarshal(xattrs[base.SyncXattrName], &attachmentData)
+		err = base.JSONUnmarshal(xattrs[base.SyncXattrName], &attachmentSyncData)
 		if err != nil {
 			return nil, err
+		}
+		if xattrs[base.GlobalXattrName] != nil && attachmentSyncData.Attachments == nil {
+			err = base.JSONUnmarshal(xattrs[base.GlobalXattrName], &attachmentGlobalSyncData)
+			if err != nil {
+				return nil, err
+			}
+			attachmentSyncData.Attachments = attachmentGlobalSyncData.Attachments
 		}
 		documentBody = body
 
 	} else {
 		type AttachmentDataSync struct {
-			AttachmentData AttachmentCompactionData `json:"_sync"`
+			AttachmentData AttachmentCompactionSyncData `json:"_sync"`
 		}
 		var attachmentDataSync AttachmentDataSync
 		err := base.JSONUnmarshal(data, &attachmentDataSync)
@@ -235,21 +248,21 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 		}
 
 		documentBody = data
-		attachmentData = &attachmentDataSync.AttachmentData
+		attachmentSyncData = &attachmentDataSync.AttachmentData
 	}
 
 	// If we've not yet found any attachments have a last effort attempt to grab it from the body for pre-2.5 documents
-	if len(attachmentData.Attachments) == 0 {
+	if len(attachmentSyncData.Attachments) == 0 {
 		attachmentMetaMap, err := checkForInlineAttachments(documentBody)
 		if err != nil {
 			return nil, err
 		}
 		if attachmentMetaMap != nil {
-			attachmentData.Attachments = attachmentMetaMap.Attachments
+			attachmentSyncData.Attachments = attachmentMetaMap.Attachments
 		}
 	}
 
-	return attachmentData, nil
+	return attachmentSyncData, nil
 }
 
 // checkForInlineAttachments will scan a body for "_attachments" for pre-2.5 attachments and will return any attachments
@@ -309,6 +322,10 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 			return true
 		}
 
+		// deletion events are not relevant
+		if event.Opcode != sgbucket.FeedOpMutation {
+			return true
+		}
 		// If the data contains an xattr then the attachment likely has a compaction ID, need to check this value
 		if event.DataType&base.MemcachedDataTypeXattr != 0 {
 
@@ -344,7 +361,10 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 			base.TracefCtx(ctx, base.KeyAll, "[%s] Purging attachment %s", compactionLoggingID, base.UD(docID))
 			_, err := dataStore.Remove(docID, event.Cas)
 			if err != nil {
-				base.WarnfCtx(ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(docID), err)
+				if !base.IsDocNotFoundError(err) {
+					// attachment was removed separately, we don't need to worry about it
+					base.WarnfCtx(ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(docID), err)
+				}
 				return true
 			}
 			base.DebugfCtx(ctx, base.KeyAll, "[%s] Purged attachment %s", compactionLoggingID, base.UD(docID))

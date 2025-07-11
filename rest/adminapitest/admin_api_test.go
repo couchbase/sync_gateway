@@ -729,8 +729,18 @@ func TestResyncUsingDCPStream(t *testing.T) {
 			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 			assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
-
-			assert.Equal(t, testCase.docsCreated, int(resyncManagerStatus.DocsProcessed))
+			if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+				// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
+				// test.
+				// 1. doc1 mutation
+				// 2. doc1 deletion
+				//
+				// In a test, these will not be resynced but docsProcessed is incremented. Relax
+				// the assertion to greater than the number of documents.
+				assert.GreaterOrEqual(t, int(resyncManagerStatus.DocsProcessed), testCase.docsCreated)
+			} else {
+				assert.Equal(t, testCase.docsCreated, int(resyncManagerStatus.DocsProcessed))
+			}
 			assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
 		})
 	}
@@ -784,8 +794,19 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 	assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
 
 	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-	assert.Equal(t, int64(numDocs), resyncManagerStatus.DocsProcessed)
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
+		// test.
+		// 1. doc1 mutation
+		// 2. doc1 deletion
+		//
+		// In a test, these will not be resynced but docsProcessed is incremented. Relax
+		// the assertion to greater than the number of documents.
+		assert.GreaterOrEqual(t, int(resyncManagerStatus.DocsProcessed), numDocs)
+	} else {
 
+		assert.Equal(t, int64(numDocs), resyncManagerStatus.DocsProcessed)
+	}
 }
 
 func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
@@ -804,12 +825,14 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 
 	rt := rest.NewRestTesterMultipleCollections(t,
 		&rest.RestTesterConfig{
-			SyncFn: syncFn,
+			SyncFn:           syncFn,
+			PersistentConfig: true,
 		},
 		numCollections,
 	)
 	defer rt.Close()
 
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 	// put a docs in both collections
 	for i := 1; i <= 10; i++ {
 		resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace1}}/1000%d", i), `{"type":"test_doc"}`)
@@ -821,6 +844,8 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 
 	rt.TakeDbOffline()
 
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/_config/sync", `function(doc){channel("A")}`), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/_config/sync", `function(doc){channel("A")}`), http.StatusOK)
 	dataStore1, err := rt.TestBucket.GetNamedDataStore(0)
 	require.NoError(t, err)
 	// Run resync for single collection // Request body {"scopes": "scopeName": ["collection1Name", "collection2Name"]}}
@@ -833,16 +858,17 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-	assert.LessOrEqual(t, 10, int(resyncManagerStatus.DocsProcessed))
+	assert.Equal(t, 10, int(resyncManagerStatus.DocsChanged))
+
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/_config/sync", `function(doc){channel("B")}`), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/_config/sync", `function(doc){channel("B")}`), http.StatusOK)
 
 	// Run resync for all collections
 	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-	assert.LessOrEqual(t, 20, int(resyncManagerStatus.DocsProcessed))
+	assert.Equal(t, 20, int(resyncManagerStatus.DocsChanged))
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
@@ -1230,6 +1256,7 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 //   - persist that db config to another bucket
 //   - assert that is picked up as an invalid db config
 func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
 
 	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
@@ -1819,7 +1846,7 @@ func TestRawTombstone(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+version.RevID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+version.RevTreeID+`"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
 
@@ -1829,7 +1856,7 @@ func TestRawTombstone(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+deletedVersion.RevID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+deletedVersion.RevTreeID+`"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
 }
@@ -1971,7 +1998,7 @@ func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
 	reqBodyWithBackticks := `{
         "server": "walrus:",
         "bucket": "backticks",
-		"enable_shared_bucket_access":false,
+		"enable_shared_bucket_access":true,
 		"scopes": {
 			"scope1": {
 			  "collections" : {
@@ -3565,9 +3592,9 @@ func TestPutIDRevMatchBody(t *testing.T) {
 			docRev := test.rev
 			docBody := test.docBody
 			if test.docID == "" {
-				docID = "doc"                                                 // Used for the rev tests to branch off of
-				docBody = strings.ReplaceAll(docBody, "[REV]", version.RevID) // FIX for HLV?
-				docRev = strings.ReplaceAll(docRev, "[REV]", version.RevID)
+				docID = "doc"                                                     // Used for the rev tests to branch off of
+				docBody = strings.ReplaceAll(docBody, "[REV]", version.RevTreeID) // FIX for HLV?
+				docRev = strings.ReplaceAll(docRev, "[REV]", version.RevTreeID)
 			}
 
 			resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docRev), docBody)
@@ -3742,12 +3769,14 @@ func TestDeleteDatabaseCBGTTeardown(t *testing.T) {
 
 func TestDatabaseCreationErrorCode(t *testing.T) {
 	for _, persistentConfig := range []bool{true, false} {
-		rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: persistentConfig})
-		defer rt.Close()
+		t.Run(fmt.Sprintf("persistent_config=%t", persistentConfig), func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: persistentConfig})
+			defer rt.Close()
 
-		rt.CreateDatabase("db", rt.NewDbConfig())
-		resp := rt.SendAdminRequest(http.MethodPut, "/db/", `{"bucket": "irrelevant"}`)
-		rest.RequireStatus(t, resp, http.StatusPreconditionFailed)
+			rt.CreateDatabase("db", rt.NewDbConfig())
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/", `{"bucket": "irrelevant"}`)
+			rest.RequireStatus(t, resp, http.StatusPreconditionFailed)
+		})
 	}
 }
 

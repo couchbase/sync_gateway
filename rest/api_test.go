@@ -221,9 +221,9 @@ func TestDocLifecycle(t *testing.T) {
 	defer rt.Close()
 
 	version := rt.CreateTestDoc("doc")
-	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
+	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevTreeID)
 
-	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+version.RevID, "")
+	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+version.RevTreeID, "")
 	RequireStatus(t, response, 200)
 }
 
@@ -1650,10 +1650,9 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	xattrs, _, err := rt.GetSingleDataStore().GetXattrs(rt.Context(), "-21SK00U-ujxUO9fU2HezxL", []string{base.SyncXattrName})
 	require.NoError(t, err)
 	require.Contains(t, xattrs, base.SyncXattrName)
-	var retrievedXattr map[string]any
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
-	assert.NoError(t, err, "Unexpected Error")
-	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
+	var retrievedSyncData db.SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedSyncData))
+	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedSyncData.CurrentRev)
 
 }
 
@@ -2751,7 +2750,7 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 
 	documentRev := db.DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
 
-	body, err := documentRev.Mutable1xBody(ctx, collection, nil, nil, false)
+	body, err := documentRev.Mutable1xBody(ctx, collection, nil, nil, false, false)
 	require.Error(t, err)
 	require.Nil(t, body)
 	assert.Contains(t, err.Error(), "null doc body for doc")
@@ -2760,6 +2759,221 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, bodyBytes)
 	assert.Contains(t, err.Error(), "b is not a JSON object")
+}
+
+// TestDatabaseXattrConfigHandlingForDBConfigUpdate:
+//   - Create database with xattrs enabled
+//   - Test updating the config to disable the use of xattrs in this database through replacing + upserting the config
+//   - Assert error code is returned and response contains error string
+func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
+	base.LongRunningTest(t)
+	const (
+		dbName  = "db1"
+		errResp = "sync gateway requires enable_shared_bucket_access=true"
+	)
+
+	testCases := []struct {
+		name         string
+		upsertConfig bool
+	}{
+		{
+			name:         "POST update",
+			upsertConfig: true,
+		},
+		{
+			name:         "PUT update",
+			upsertConfig: false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig: true,
+			})
+			defer rt.Close()
+
+			dbConfig := rt.NewDbConfig()
+
+			resp := rt.CreateDatabase(dbName, dbConfig)
+			RequireStatus(t, resp, http.StatusCreated)
+			rt.WaitForDBOnline()
+
+			dbConfig.EnableXattrs = base.Ptr(false)
+
+			if testCase.upsertConfig {
+				resp = rt.UpsertDbConfig(dbName, dbConfig)
+				RequireStatus(t, resp, http.StatusInternalServerError)
+				assert.Contains(t, resp.Body.String(), errResp)
+			} else {
+				resp = rt.ReplaceDbConfig(dbName, dbConfig)
+				RequireStatus(t, resp, http.StatusInternalServerError)
+				assert.Contains(t, resp.Body.String(), errResp)
+			}
+		})
+	}
+}
+
+// TestCreateDBWithXattrsDisbaled:
+//   - Test that you cannot create a database with xattrs disabled
+//   - Assert error code is returned and response contains error string
+func TestCreateDBWithXattrsDisbaled(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+	const (
+		dbName  = "db1"
+		errResp = "sync gateway requires enable_shared_bucket_access=true"
+	)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.EnableXattrs = base.Ptr(false)
+
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), errResp)
+}
+
+// TestPvDeltaReadAndWrite:
+//   - Write a doc from another hlv aware peer to the bucket
+//   - Force import of this doc, then update this doc via rest tester source
+//   - Assert that the document hlv is as expected
+//   - Update the doc from a new hlv aware peer and force the import of this new write
+//   - Assert that the new hlv is as expected, testing that the hlv went through transformation to the persisted delta
+//     version and back to the in memory version as expected
+func TestPvDeltaReadAndWrite(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	testSource := rt.GetDatabase().EncodedSourceID
+
+	const docID = "doc1"
+	otherSource := "otherSource"
+	hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
+	existingHLVKey := docID
+	cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+	casV1 := cas
+	encodedSourceV1 := db.EncodeSource(otherSource)
+
+	// force import of this write
+	version1, _ := rt.GetDoc(docID)
+
+	// update the above doc, this should push CV to PV and adds a new CV
+	version2 := rt.UpdateDocDirectly(docID, version1, db.Body{"new": "update!"})
+	newDoc, _, err := collection.GetDocWithXattrs(ctx, existingHLVKey, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	casV2 := newDoc.Cas
+	encodedSourceV2 := testSource
+
+	// assert that we have a prev CV drop to pv and a new CV pair, assert pv values are as expected after delta conversions
+	assert.Equal(t, testSource, newDoc.HLV.SourceID)
+	assert.Equal(t, version2.CV.Value, newDoc.HLV.Version)
+	assert.Len(t, newDoc.HLV.PreviousVersions, 1)
+	assert.Equal(t, casV1, newDoc.HLV.PreviousVersions[encodedSourceV1])
+
+	otherSource = "diffSource"
+	hlvHelper = db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
+	cas = hlvHelper.UpdateWithHLV(ctx, existingHLVKey, newDoc.Cas, newDoc.HLV)
+	encodedSourceV3 := db.EncodeSource(otherSource)
+	casV3 := cas
+
+	// import and get raw doc
+	_, _ = rt.GetDoc(docID)
+	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+
+	// assert that we have two entries in previous versions, and they are correctly converted from deltas back to full value
+	assert.Equal(t, encodedSourceV3, bucketDoc.HLV.SourceID)
+	assert.Equal(t, casV3, bucketDoc.HLV.Version)
+	assert.Len(t, bucketDoc.HLV.PreviousVersions, 2)
+	assert.Equal(t, casV1, bucketDoc.HLV.PreviousVersions[encodedSourceV1])
+	assert.Equal(t, casV2, bucketDoc.HLV.PreviousVersions[encodedSourceV2])
+}
+
+// TestPutDocUpdateVersionVector:
+//   - Put a doc and assert that the versions and the source for the hlv is correctly updated
+//   - Update that doc and assert HLV has also been updated
+//   - Delete the doc and assert that the HLV has been updated in deletion event
+func TestPutDocUpdateVersionVector(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	bucketUUID := rt.GetDatabase().EncodedSourceID
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"key": "value"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	collection, _ := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+
+	// Put a new revision of this doc and assert that the version vector SourceID and Version is updated
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, `{"key1": "value1"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+
+	// Delete doc and assert that the version vector SourceID and Version is updated
+	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+}
+
+// TestHLVOnPutWithImportRejection:
+//   - Put a doc successfully and assert the HLV is updated correctly
+//   - Put a doc that will be rejected by the custom import filter
+//   - Assert that the HLV values on the sync data are still correctly updated/preserved
+func TestHLVOnPutWithImportRejection(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
+	importFilter := `function (doc) { return doc.type == "mobile"}`
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport:   false,
+			ImportFilter: &importFilter,
+		}},
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	bucketUUID := rt.GetDatabase().EncodedSourceID
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"type": "mobile"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	collection, _ := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+
+	// Put a doc that will be rejected by the import filter on the attempt to perform on demand import for write
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type": "not-mobile"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// assert that the hlv is correctly updated and in tact after the import was cancelled on the doc
+	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc2")
+	assert.NoError(t, err)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {

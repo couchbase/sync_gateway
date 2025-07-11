@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +51,7 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		btcRunner.StartPull(client.id)
 
 		// create doc1 on SG and wait to replicate to client
-		versionDoc1 := rt.PutDoc(docID, `{"test": "value"}`)
+		versionDoc1 := rt.PutDocDirectly(docID, JsonToMap(t, `{"test": "value"}`))
 		btcRunner.WaitForVersion(client.id, docID, versionDoc1)
 
 		// alter sync data of this doc to artificially create skipped sequences
@@ -76,11 +77,11 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		}, time.Second*10, time.Millisecond*100)
 
 		// assert new change added still replicates to client
-		versionDoc2 := rt.PutDoc(docID2, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		versionDoc2 := rt.PutDocDirectly(docID2, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
 		btcRunner.WaitForVersion(client.id, docID2, versionDoc2)
 
 		// update doc1 that will trigger unused seq release to clear skipped and assert that update is received
-		versionDoc1 = rt.UpdateDoc(docID, versionDoc1, `{"test": "new value"}`)
+		versionDoc1 = rt.UpdateDocDirectly(docID, versionDoc1, JsonToMap(t, `{"test": "new value"}`))
 		btcRunner.WaitForVersion(client.id, docID, versionDoc1)
 
 		// assert skipped is cleared and skipped sequence broadcast is not sent
@@ -94,6 +95,8 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 
 // TestBlipClientPushAndPullReplication sets up a bidi replication for a BlipTesterClient, writes documents on SG and the client and ensures they replicate.
 func TestBlipClientPushAndPullReplication(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},
 		GuestEnabled:   true,
@@ -114,7 +117,8 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		btcRunner.StartPush(client.id)
 
 		// create doc1 on SG
-		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		docBody := db.Body{"greetings": []map[string]interface{}{{"hello": "world!"}, {"hi": "alice"}}}
+		version := rt.PutDocDirectly(docID, docBody)
 
 		// wait for doc on client
 		data := btcRunner.WaitForVersion(client.id, docID, version)
@@ -126,7 +130,7 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		// wait for update to arrive on SG
 		rt.WaitForVersion(docID, newRev)
 
-		body := rt.GetDocVersion("doc1", newRev)
+		body := rt.GetDocBody(docID)
 		require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
 	})
 }

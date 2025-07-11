@@ -29,16 +29,16 @@ var cbgtCredentials map[string]cbgtCreds
 // contexts we only have access to the bucket name.
 var cbgtBucketToDBName map[string]string
 
-// cbgtRootCertPools is a map of bucket UUIDs to cert pools for its CA certs. The documentation comment of
-// cbgtRootCAsProvider describes the behaviour of different values.
-var cbgtRootCertPools map[string]*x509.CertPool
 var cbgtGlobalsLock sync.Mutex
 
+// cbgtCredentials are bucket specific credentials for connecting to Couchbase Server
 type cbgtCreds struct {
-	username       string
-	password       string
-	clientCertPath string
-	clientKeyPath  string
+	username       string         // Couchbase Server username, if using basic authentication
+	password       string         // Couchbase Server username, if using basic authentication
+	clientCertPath string         // Couchbase Server client certificate(public key), if using x509 authentication. If specified, username and password will be ignored.
+	clientKeyPath  string         // Couchbase Server client certificate(private key), if using x509 authentication. If specified, username and password will be ignored.
+	certPool       *x509.CertPool // If using TLS, the root certificates for verifying Couchbase Server. If TLSSkipVerify is set, this value should be nil.
+	useTLS         bool           // If using couchbases:// this should be true.
 }
 
 // This used to be called SOURCE_GOCOUCHBASE_DCP_SG (with the same string value).
@@ -48,18 +48,32 @@ const SOURCE_DCP_SG = "couchbase-dcp-sg"
 // for the given bucket. Edge cases:
 // * If it returns a function that returns nil, TLS is used but certificate validation is disabled.
 // * If it returns a nil function, TLS is disabled altogether.
-func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
-	cbgtGlobalsLock.Lock()
-	pool, ok := cbgtRootCertPools[bucketUUID]
-	cbgtGlobalsLock.Unlock()
-	if ok {
-		return func() *x509.CertPool {
-			return pool
-		}
-	}
+func cbgtRootCAsProvider(bucketName, bucketUUID, sourceParams string) func() *x509.CertPool {
 	ctx := BucketNameCtx(context.Background(), bucketName) // this function is global, so reconstruct context
-	TracefCtx(ctx, KeyDCP, "Bucket %v not found in root cert pools, not using TLS.", MD(bucketName))
-	return nil
+	feedParams, err := getSGFeedSourceParams(sourceParams)
+	if err != nil {
+		AssertfCtx(ctx, "Unable to unmarshal params provided by cbgt inside cbgtRootCAsProvider: %v: %s. Continuing without TLS authentication.", err, UD(sourceParams))
+		return nil
+	}
+
+	if feedParams.DbName == "" {
+		// consider switching to AssertfCtx one CBG-4730 is fixed
+		InfofCtx(ctx, KeyDCP, "Database name not specified in dcp params %s during cbgtRootCAsProvider. Continuing without TLS authentication.")
+		return nil
+	}
+
+	creds, ok := getCbgtCredentials(feedParams.DbName)
+	if !ok {
+		// consider switching to AssertfCtx one CBG-4730 is fixed
+		InfofCtx(ctx, KeyDCP, "No feed credentials stored for db %s from sourceParams during cbgtRootCAsProvider. Continuing without TLS authentication.", MD(feedParams.DbName))
+		return nil
+	}
+	if !creds.useTLS {
+		return nil
+	}
+	return func() *x509.CertPool {
+		return creds.certPool
+	}
 }
 
 // cbgt's default GetPoolsDefaultForBucket only works with cbauth
@@ -118,7 +132,6 @@ func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, e
 // the credential information to the DCP parameters before calling the underlying method.
 func init() {
 	cbgtCredentials = make(map[string]cbgtCreds)
-	cbgtRootCertPools = make(map[string]*x509.CertPool)
 	cbgtBucketToDBName = make(map[string]string)
 	// NB: we use the same feed type *name* as Lithium nodes, but run it using gocbcore rather than cbdatasource. If only
 	// streaming the default collection, there is no functional difference.
@@ -139,8 +152,10 @@ func init() {
 	cbgt.GetPoolsDefaultForBucket = cbgtGetPoolsDefaultForBucket
 }
 
+// SGFeedSourceParams is a wrapper for cbgt's parameters.
 type SGFeedSourceParams struct {
 	cbgt.DCPFeedParams
+
 	// Used to pass the SG database name to SGFeed* shims
 	DbName string `json:"sg_dbname,omitempty"`
 }
@@ -210,62 +225,58 @@ func SGGocbSourceUUIDLookup(sourceName, sourceParams, serverIn string,
 	return cbgt.CBSourceUUIDLookUp(sourceName, sourceParams, serverIn, options)
 }
 
+// getSGFeedSourceParams unmarshals the feed parameters from cbgt DCP feed sourceParams. Returns an error if the parameters can not be unmarshalled.
+func getSGFeedSourceParams(params string) (SGFeedSourceParams, error) {
+	var sgSourceParams SGFeedSourceParams
+	err := JSONUnmarshal([]byte(params), &sgSourceParams)
+	return sgSourceParams, err
+}
+
 // addCbgtAuthToDCPParams gets the dbName from the incoming dcpParams, and checks for credentials
 // stored in databaseCredentials.  If found, adds those to the params as authUser/authPassword.
 // If dbname is present,
 func addCbgtAuthToDCPParams(ctx context.Context, dcpParams string) string {
-
-	var sgSourceParams SGFeedSourceParams
-
-	unmarshalErr := JSONUnmarshal([]byte(dcpParams), &sgSourceParams)
-	if unmarshalErr != nil {
-		WarnfCtx(ctx, "Unable to unmarshal params provided by cbgt as sgSourceParams: %v", unmarshalErr)
+	feedParams, err := getSGFeedSourceParams(dcpParams)
+	if err != nil {
+		AssertfCtx(ctx, "Unable to unmarshal params provided by cbgt as sgSourceParams: %v: %s", err, UD(dcpParams))
 		return dcpParams
 	}
 
-	if sgSourceParams.DbName == "" {
-		InfofCtx(ctx, KeyImport, "Database name not specified in dcp params, feed credentials not added")
+	if feedParams.DbName == "" {
+		// consider switching to AssertfCtx one CBG-4730 is fixed
+		InfofCtx(ctx, KeyDCP, "Database name not specified in dcp params, feed credentials not added, import feed will not be able to authenticate.")
 		return dcpParams
 	}
 
-	creds, ok := getCbgtCredentials(sgSourceParams.DbName)
+	creds, ok := getCbgtCredentials(feedParams.DbName)
 	if !ok {
-		InfofCtx(ctx, KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
+		// consider switching to AssertfCtx one CBG-4730 is fixed
+		InfofCtx(ctx, KeyDCP, "No feed credentials stored for db from sourceParams: %s, import feed will not be able to authenticate.", MD(feedParams.DbName))
 		return dcpParams
-	}
-
-	var feedParamsWithAuth cbgt.DCPFeedParams
-	unmarshalDCPErr := JSONUnmarshal([]byte(dcpParams), &feedParamsWithAuth)
-	if unmarshalDCPErr != nil {
-		WarnfCtx(ctx, "Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
 	}
 
 	// Add creds to params
 	if creds.clientCertPath != "" && creds.clientKeyPath != "" {
-		feedParamsWithAuth.ClientCertPath = creds.clientCertPath
-		feedParamsWithAuth.ClientKeyPath = creds.clientKeyPath
+		feedParams.ClientCertPath = creds.clientCertPath
+		feedParams.ClientKeyPath = creds.clientKeyPath
 	} else {
-		feedParamsWithAuth.AuthUser = creds.username
-		feedParamsWithAuth.AuthPassword = creds.password
+		feedParams.AuthUser = creds.username
+		feedParams.AuthPassword = creds.password
 	}
 
-	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParamsWithAuth)
+	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParams)
 	if marshalErr != nil {
-		WarnfCtx(ctx, "Unable to marshal updated cbgt dcp params: %v", marshalErr)
+		WarnfCtx(ctx, "Unable to marshal updated cbgt dcp params: %v. Import feed will not be able to authenticate.", marshalErr)
 		return dcpParams
 	}
 
 	return string(marshalledParamsWithAuth)
 }
 
-func addCbgtCredentials(dbName, bucketName, username, password, clientCertPath, clientKeyPath string) {
+// addCbgtCredentials registers a particular bucket and database name for cbgt's global lookup callbacks.
+func addCbgtCredentials(dbName, bucketName string, creds cbgtCreds) {
 	cbgtGlobalsLock.Lock()
-	cbgtCredentials[dbName] = cbgtCreds{
-		username:       username,
-		password:       password,
-		clientCertPath: clientCertPath,
-		clientKeyPath:  clientKeyPath,
-	}
+	cbgtCredentials[dbName] = creds
 	cbgtBucketToDBName[bucketName] = dbName
 	cbgtGlobalsLock.Unlock()
 }
@@ -286,11 +297,4 @@ func getCbgtCredentials(dbName string) (cbgtCreds, bool) {
 	creds, found := cbgtCredentials[dbName]
 	cbgtGlobalsLock.Unlock() // cbgtCreds is not a pointer type, safe to unlock
 	return creds, found
-}
-
-// See the comment of cbgtRootCAsProvider for usage details.
-func setCbgtRootCertsForBucket(bucketUUID string, pool *x509.CertPool) {
-	cbgtGlobalsLock.Lock()
-	defer cbgtGlobalsLock.Unlock()
-	cbgtRootCertPools[bucketUUID] = pool
 }

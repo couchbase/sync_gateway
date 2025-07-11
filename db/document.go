@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -35,11 +36,11 @@ const DocumentHistoryMaxEntriesPerChannel = 5
 type DocumentUnmarshalLevel uint8
 
 const (
-	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals sync metadata and body
-	DocUnmarshalSync                                     // Unmarshals all sync metadata
-	DocUnmarshalNoHistory                                // Unmarshals sync metadata excluding history
-	DocUnmarshalHistory                                  // Unmarshals history + rev + CAS only
-	DocUnmarshalRev                                      // Unmarshals rev + CAS only
+	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals metadata and body
+	DocUnmarshalSync                                     // Unmarshals metadata
+	DocUnmarshalNoHistory                                // Unmarshals metadata excluding revtree history
+	DocUnmarshalHistory                                  // Unmarshals revtree history + rev + CAS only
+	DocUnmarshalRev                                      // Unmarshals revTreeID + CAS only (no HLV)
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
@@ -63,30 +64,47 @@ type ChannelSetEntry struct {
 	Compacted bool   `json:"compacted,omitempty"`
 }
 
+// MetadataOnlyUpdate represents a cas value of a document modification if it only updated xattrs and not the document body. The previous cas and revSeqNo are stored as the version of the document before any metadata was modified. This is serialized as _mou.
 type MetadataOnlyUpdate struct {
-	CAS         string `json:"cas,omitempty"`
-	PreviousCAS string `json:"pCas,omitempty"`
+	HexCAS           string `json:"cas,omitempty"`  // 0x0 hex value from Couchbase Server
+	PreviousHexCAS   string `json:"pCas,omitempty"` // 0x0 hex value from Couchbase Server
+	PreviousRevSeqNo uint64 `json:"pRev,omitempty"`
+}
+
+func (m *MetadataOnlyUpdate) String() string {
+	return fmt.Sprintf("{CAS:%d PreviousCAS:%d PreviousRevSeqNo:%d}", m.CAS(), m.PreviousCAS(), m.PreviousRevSeqNo)
+}
+
+// CAS returns the CAS value as a uint64
+func (m *MetadataOnlyUpdate) CAS() uint64 {
+	return base.HexCasToUint64(m.HexCAS)
+}
+
+// PreviousCAS returns the previous CAS value as a uint64
+func (m *MetadataOnlyUpdate) PreviousCAS() uint64 {
+	return base.HexCasToUint64(m.PreviousHexCAS)
 }
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	CurrentRev        string              `json:"rev"`
-	NewestRev         string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags             uint8               `json:"flags,omitempty"`
-	Sequence          uint64              `json:"sequence,omitempty"`
-	UnusedSequences   []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences   []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	Channels          channels.ChannelMap `json:"channels,omitempty"`
-	Access            UserAccessMap       `json:"access,omitempty"`
-	RoleAccess        UserAccessMap       `json:"role_access,omitempty"`
-	Expiry            *time.Time          `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas               string              `json:"cas"`                               // String representation of a cas value, populated via macro expansion
-	Crc32c            string              `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
-	Crc32cUserXattr   string              `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
-	TombstonedAt      int64               `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
-	Attachments       AttachmentsMeta     `json:"attachments,omitempty"`
-	ChannelSet        []ChannelSetEntry   `json:"channel_set"`
-	ChannelSetHistory []ChannelSetEntry   `json:"channel_set_history"`
+	CurrentRev        string               `json:"-"`                 // CurrentRev.  Persisted as RevAndVersion in SyncDataJSON
+	NewestRev         string               `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags             uint8                `json:"flags,omitempty"`
+	Sequence          uint64               `json:"sequence,omitempty"`
+	UnusedSequences   []uint64             `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences   []uint64             `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	Channels          channels.ChannelMap  `json:"channels,omitempty"`
+	Access            UserAccessMap        `json:"access,omitempty"`
+	RoleAccess        UserAccessMap        `json:"role_access,omitempty"`
+	Expiry            *time.Time           `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas               string               `json:"cas"`                               // String representation of a cas value, populated via macro expansion
+	Crc32c            string               `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr   string               `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
+	TombstonedAt      int64                `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
+	Attachments       AttachmentsMeta      `json:"attachments,omitempty"`
+	ChannelSet        []ChannelSetEntry    `json:"channel_set"`
+	ChannelSetHistory []ChannelSetEntry    `json:"channel_set_history"`
+	HLV               *HybridLogicalVector `json:"-"` // Marshalled/Unmarshalled separately from SyncData for storage in _vv, see MarshalWithXattrs/UnmarshalWithXattrs
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -100,6 +118,17 @@ type SyncData struct {
 
 	addedRevisionBodies     []string          // revIDs of non-winning revision bodies that have been added (and so require persistence)
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
+}
+
+// determine set of current channels based on removal entries.
+func (sd *SyncData) getCurrentChannels() base.Set {
+	ch := base.SetOf()
+	for channelName, channelRemoval := range sd.Channels {
+		if channelRemoval == nil || channelRemoval.Seq == 0 {
+			ch.Add(channelName)
+		}
+	}
+	return ch
 }
 
 func (sd *SyncData) HashRedact(salt string) SyncData {
@@ -175,18 +204,24 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 // Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type Document struct {
 	SyncData                               // Sync metadata
+	GlobalSyncData                         // Global sync metadata, this will hold non cluster specific sync metadata to be copied by XDCR
 	_body              Body                // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
 	_rawBody           []byte              // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
 	ID                 string              `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas                uint64              // Document cas
 	rawUserXattr       []byte              // Raw user xattr as retrieved from the bucket
-	metadataOnlyUpdate *MetadataOnlyUpdate // Contents of _mou xattr, marshalled/unmarshalled with document from xattrs
+	MetadataOnlyUpdate *MetadataOnlyUpdate // Contents of _mou xattr, marshalled/unmarshalled with document from xattrs
 
 	Deleted        bool
 	DocExpiry      uint32
 	RevID          string
 	DocAttachments AttachmentsMeta
 	inlineSyncData bool
+	RevSeqNo       uint64 // Server rev seq no for a document
+}
+
+type GlobalSyncData struct {
+	GlobalAttachments AttachmentsMeta `json:"attachments_meta,omitempty"`
 }
 
 type historyOnlySyncData struct {
@@ -196,7 +231,7 @@ type historyOnlySyncData struct {
 
 type revOnlySyncData struct {
 	casOnlySyncData
-	CurrentRev string `json:"rev"`
+	CurrentRev channels.RevAndVersion `json:"rev"`
 }
 
 type casOnlySyncData struct {
@@ -389,27 +424,26 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	return doc, nil
 }
 
-// unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
-func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.MouXattrName], xattrs[db.userXattrKey()], cas, unmarshalLevel)
-
-}
-
-func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, syncXattrData, mouXattrData, userXattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-
-	if syncXattrData == nil || len(syncXattrData) == 0 {
+func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data, syncXattrData, hlvXattrData, mouXattrData, userXattrData, revSeqNo []byte, globalSyncData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+	if len(syncXattrData) == 0 && len(hlvXattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
+		if doc != nil {
+			doc.RevSeqNo, err = unmarshalRevSeqNo(revSeqNo)
+			if err != nil {
+				return nil, pkgerrors.WithStack(base.RedactErrorf("Failed convert rev seq number during UnmarshalWithXattrs() doc with id: %s. Error: %v", base.UD(doc.ID), err))
+			}
+		}
 	} else {
 		doc = NewDocument(docid)
-		err = doc.UnmarshalWithXattr(ctx, data, syncXattrData, unmarshalLevel)
+		err = doc.UnmarshalWithXattrs(ctx, data, syncXattrData, hlvXattrData, revSeqNo, globalSyncData, unmarshalLevel)
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	if len(mouXattrData) > 0 {
-		if err := base.JSONUnmarshal(mouXattrData, &doc.metadataOnlyUpdate); err != nil {
+		if err := base.JSONUnmarshal(mouXattrData, &doc.MetadataOnlyUpdate); err != nil {
 			base.WarnfCtx(ctx, "Failed to unmarshal mouXattr for key %v, mou will be ignored. Err: %v mou:%s", base.UD(docid), err, mouXattrData)
 		}
 	}
@@ -444,14 +478,14 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
 func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawXattrs map[string][]byte, err error) {
-
 	var body []byte
-	var xattrValues map[string][]byte
 
 	// If xattr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
 	// Note that there could be a non-sync xattr present
+	var xattrValues map[string][]byte
+	var hlv *HybridLogicalVector
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		xattrKeys := []string{base.SyncXattrName, base.MouXattrName}
+		xattrKeys := []string{base.SyncXattrName, base.MouXattrName, base.VvXattrName, base.GlobalXattrName}
 		if userXattrKey != "" {
 			xattrKeys = append(xattrKeys, userXattrKey)
 		}
@@ -460,19 +494,32 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			return nil, nil, nil, err
 		}
 
-		rawSyncXattr, _ := xattrValues[base.SyncXattrName]
 		// If the sync xattr is present, use that to build SyncData
-		if len(rawSyncXattr) > 0 {
+		syncXattr, ok := xattrValues[base.SyncXattrName]
+
+		if vvXattr, ok := xattrValues[base.VvXattrName]; ok {
+			err = base.JSONUnmarshal(vvXattr, &hlv)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("error unmarshalling HLV: %w", err)
+			}
+		}
+
+		if ok && len(syncXattr) > 0 {
 			result = &SyncData{}
 			if needHistory {
 				result.History = make(RevTree)
 			}
-			err = base.JSONUnmarshal(rawSyncXattr, result)
+			err = base.JSONUnmarshal(syncXattr, result)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", syncXattr, err)
+				return nil, nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
+			}
+
+			if hlv != nil {
+				result.HLV = hlv
 			}
 			return result, body, xattrValues, nil
 		}
+
 	} else {
 		// Xattr flag not set - data is just the document body
 		body = data
@@ -481,6 +528,15 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
 	if len(body) != 0 {
 		result, err = UnmarshalDocumentSyncData(body, needHistory)
+	}
+
+	// If no sync data was found but HLV was present, initialize empty sync data
+	if result == nil && hlv != nil {
+		result = &SyncData{}
+	}
+	// If HLV was found, add to sync data
+	if hlv != nil {
+		result.HLV = hlv
 	}
 	return result, body, xattrValues, err
 }
@@ -497,7 +553,7 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 	if err != nil {
 		return nil, err
 	}
-	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], cas, DocUnmarshalAll)
+	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], nil, cas, DocUnmarshalAll)
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
@@ -505,6 +561,22 @@ func (doc *SyncData) HasValidSyncData() bool {
 	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0)
 	validHistory := doc != nil && len(doc.History) > 0 && doc.History[doc.CurrentRev] != nil
 	return valid && validHistory
+}
+
+func (doc *SyncData) HasValidSyncDataForImport() bool {
+	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0)
+	validHistory := doc != nil && len(doc.History) > 0 && doc.History[doc.CurrentRev] != nil
+	syncValid := valid && validHistory
+	if !syncValid && doc != nil && doc.HLV != nil {
+		// If HLV is present, we can consider the sync data valid for import given we can have doc with _vv
+		// but no sync data over the import feed
+		return true
+	}
+	return syncValid
+}
+
+func (doc *SyncData) HasValidHLV() bool {
+	return doc.HLV != nil && doc.HLV.SourceID != "" && doc.HLV.Version != 0
 }
 
 // validateSyncDataForImport validates for a non-empty sync data that the sync data is valid for import. If s=ofund to
@@ -901,7 +973,7 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
-func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, err error) {
+func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, revokedChannelsRequiringExpansion []string, err error) {
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
@@ -910,14 +982,19 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 	} else {
 		// Mark every no-longer-current channel as unsubscribed:
 		curSequence := doc.Sequence
+		curRevAndVersion := doc.GetRevAndVersion()
 		for channel, removal := range oldChannels {
 			if removal == nil && !newChannels.Contains(channel) {
 				oldChannels[channel] = &channels.ChannelRemoval{
 					Seq:     curSequence,
-					RevID:   doc.CurrentRev,
+					Rev:     curRevAndVersion,
 					Deleted: doc.hasFlag(channels.Deleted)}
 				doc.updateChannelHistory(channel, curSequence, false)
 				changed = append(changed, channel)
+				// If the current version requires macro expansion, new removal in channel map will also require macro expansion
+				if doc.HLV != nil && doc.HLV.Version == expandMacroCASValueUint64 {
+					revokedChannelsRequiringExpansion = append(revokedChannelsRequiringExpansion, channel)
+				}
 			}
 		}
 	}
@@ -946,7 +1023,7 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 
 	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
 	for channel, removal := range doc.Channels {
-		if removal != nil && removal.RevID == revID {
+		if removal != nil && removal.Rev.RevTreeID == revID {
 			removedChannels[channel] = struct{}{}
 			if removal.Deleted == true {
 				isDelete = true
@@ -1070,11 +1147,12 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 	return data, err
 }
 
-// UnmarshalWithXattr unmarshals the provided raw document and xattr bytes.  The provided DocumentUnmarshalLevel
+// UnmarshalWithXattrs unmarshals the provided raw document and xattr bytes when present.  The provided DocumentUnmarshalLevel
 // (unmarshalLevel) specifies how much of the provided document/xattr needs to be initially unmarshalled.  If
 // unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
 // lazy unmarshalling as needed.
-func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
+// Must handle cases where document body and hlvXattrData are present without syncXattrData for all DocumentUnmarshalLevel
+func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrData, hlvXattrData, revSeqNo []byte, globalSyncData []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
 		base.WarnfCtx(ctx, "Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
@@ -1082,65 +1160,113 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 
 	switch unmarshalLevel {
 	case DocUnmarshalAll, DocUnmarshalSync:
-		// Unmarshal full document and/or sync metadata
+		// Unmarshal full document and/or sync metadata. Documents written by XDCR may have HLV but no sync data
 		doc.SyncData = SyncData{History: make(RevTree)}
-		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
+		if syncXattrData != nil {
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &doc.SyncData)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+		}
+		if hlvXattrData != nil {
+			// parse the raw bytes of the hlv and convert deltas back to full values in memory
+			err := base.JSONUnmarshal(hlvXattrData, &doc.HLV)
+			if err != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
+			}
+		}
+		if revSeqNo != nil {
+			var err error
+			doc.RevSeqNo, err = unmarshalRevSeqNo(revSeqNo)
+			if err != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal RevSeqNo during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
+			}
+		}
+		if len(globalSyncData) > 0 {
+			if err := base.JSONUnmarshal(globalSyncData, &doc.GlobalSyncData); err != nil {
+				base.WarnfCtx(ctx, "Failed to unmarshal globalSync xattr for key %v, globalSync will be ignored. Err: %v globalSync:%s", base.UD(doc.ID), err, globalSyncData)
+			}
+			doc.SyncData.Attachments = doc.GlobalSyncData.GlobalAttachments
 		}
 		doc._rawBody = data
 		// Unmarshal body if requested and present
 		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
 			return doc._body.Unmarshal(data)
 		}
-
 	case DocUnmarshalNoHistory:
 		// Unmarshal sync metadata only, excluding history
 		doc.SyncData = SyncData{}
-		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
+		if syncXattrData != nil {
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &doc.SyncData)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+		}
+		if hlvXattrData != nil {
+			// parse the raw bytes of the hlv and convert deltas back to full values in memory
+			err := base.JSONUnmarshal(hlvXattrData, &doc.HLV)
+			if err != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), err))
+			}
+		}
+		if len(globalSyncData) > 0 {
+			if err := base.JSONUnmarshal(globalSyncData, &doc.GlobalSyncData); err != nil {
+				base.WarnfCtx(ctx, "Failed to unmarshal globalSync xattr for key %v, globalSync will be ignored. Err: %v globalSync:%s", base.UD(doc.ID), err, globalSyncData)
+			}
+			doc.SyncData.Attachments = doc.GlobalSyncData.GlobalAttachments
 		}
 		doc._rawBody = data
 	case DocUnmarshalHistory:
-		historyOnlyMeta := historyOnlySyncData{History: make(RevTree)}
-		unmarshalErr := base.JSONUnmarshal(xdata, &historyOnlyMeta)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
-		}
-		doc.SyncData = SyncData{
-			CurrentRev: historyOnlyMeta.CurrentRev,
-			History:    historyOnlyMeta.History,
-			Cas:        historyOnlyMeta.Cas,
+		if syncXattrData != nil {
+			historyOnlyMeta := historyOnlySyncData{History: make(RevTree)}
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &historyOnlyMeta)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+			doc.SyncData = SyncData{
+				CurrentRev: historyOnlyMeta.CurrentRev.RevTreeID,
+				History:    historyOnlyMeta.History,
+				Cas:        historyOnlyMeta.Cas,
+			}
+		} else {
+			doc.SyncData = SyncData{}
 		}
 		doc._rawBody = data
 	case DocUnmarshalRev:
 		// Unmarshal only rev and cas from sync metadata
-		var revOnlyMeta revOnlySyncData
-		unmarshalErr := base.JSONUnmarshal(xdata, &revOnlyMeta)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
-		}
-		doc.SyncData = SyncData{
-			CurrentRev: revOnlyMeta.CurrentRev,
-			Cas:        revOnlyMeta.Cas,
+		if syncXattrData != nil {
+			var revOnlyMeta revOnlySyncData
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &revOnlyMeta)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+			doc.SyncData = SyncData{
+				CurrentRev: revOnlyMeta.CurrentRev.RevTreeID,
+				Cas:        revOnlyMeta.Cas,
+			}
+		} else {
+			doc.SyncData = SyncData{}
 		}
 		doc._rawBody = data
 	case DocUnmarshalCAS:
 		// Unmarshal only cas from sync metadata
-		var casOnlyMeta casOnlySyncData
-		unmarshalErr := base.JSONUnmarshal(xdata, &casOnlyMeta)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalCAS).  Error: %v", base.UD(doc.ID), unmarshalErr))
-		}
-		doc.SyncData = SyncData{
-			Cas: casOnlyMeta.Cas,
+		if syncXattrData != nil {
+			var casOnlyMeta casOnlySyncData
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &casOnlyMeta)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalCAS).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+			doc.SyncData = SyncData{
+				Cas: casOnlyMeta.Cas,
+			}
+		} else {
+			doc.SyncData = SyncData{}
 		}
 		doc._rawBody = data
 	}
 
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
-	if len(data) == 0 && len(xdata) > 0 {
+	if len(data) == 0 && len(syncXattrData) > 0 {
 		doc._body = Body{}
 		doc._rawBody = []byte(base.EmptyDocument)
 		doc.Deleted = true
@@ -1148,7 +1274,8 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 	return nil
 }
 
-func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr []byte, mouXattr []byte, err error) {
+// MarshalWithXattrs marshals the Document into body, and sync, vv and mou xattrs for persistence.
+func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, globalXattr []byte, err error) {
 	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
 	if doc._rawBody != nil {
 		if !doc.IsDeleted() {
@@ -1165,40 +1292,141 @@ func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr []byte, mouXatt
 			if !deleted {
 				data, err = base.JSONMarshal(body)
 				if err != nil {
-					return nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
+					return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
 				}
 			}
 		}
 	}
+	if doc.SyncData.HLV != nil {
+		vvXattr, err = base.JSONMarshal(doc.SyncData.HLV)
+		if err != nil {
+			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
+		}
+	}
+	// assign any attachments we have stored in document sync data to global sync data
+	// then nil the sync data attachments to prevent marshalling of it
+	doc.GlobalSyncData.GlobalAttachments = doc.Attachments
+	doc.Attachments = nil
 
 	syncXattr, err = base.JSONMarshal(doc.SyncData)
 	if err != nil {
-		return nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
+		return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
-	if doc.metadataOnlyUpdate != nil {
-		mouXattr, err = base.JSONMarshal(doc.metadataOnlyUpdate)
+	if doc.MetadataOnlyUpdate != nil {
+		mouXattr, err = base.JSONMarshal(doc.MetadataOnlyUpdate)
 		if err != nil {
-			return nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc MouData with id: %s.  Error: %v", base.UD(doc.ID), err))
+			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc MouData with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
 	}
+	// marshal global xattrs if there are attachments defined
+	if len(doc.GlobalSyncData.GlobalAttachments) > 0 {
+		globalXattr, err = base.JSONMarshal(doc.GlobalSyncData)
+		if err != nil {
+			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc GlobalXattr with id: %s.  Error: %v", base.UD(doc.ID), err))
+		}
+		// restore attachment meta to sync data post global xattr construction
+		doc.Attachments = make(AttachmentsMeta)
+		doc.Attachments = doc.GlobalSyncData.GlobalAttachments
+	}
 
-	return data, syncXattr, mouXattr, nil
+	return data, syncXattr, vvXattr, mouXattr, globalXattr, nil
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate
-func computeMetadataOnlyUpdate(currentCas uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
+func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
 	var prevCas string
 	currentCasString := base.CasToString(currentCas)
-	if currentMou != nil && currentCasString == currentMou.CAS {
-		prevCas = currentMou.PreviousCAS
+	if currentMou != nil && currentCasString == currentMou.HexCAS {
+		prevCas = currentMou.PreviousHexCAS
 	} else {
 		prevCas = currentCasString
 	}
 
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
-		CAS:         expandMacroCASValue, // when non-empty, this is replaced with cas macro expansion
-		PreviousCAS: prevCas,
+		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
+		PreviousHexCAS:   prevCas,
+		PreviousRevSeqNo: revNo,
 	}
 	return metadataOnlyUpdate
+}
+
+// HasCurrentVersion Compares the specified CV with the fetched documents CV, returns error on mismatch between the two
+func (d *Document) HasCurrentVersion(ctx context.Context, cv Version) error {
+	if d.HLV == nil {
+		return base.RedactErrorf("no HLV present in fetched doc %s", base.UD(d.ID))
+	}
+
+	// fetch the current version for the loaded doc and compare against the CV specified in the IDandCV key
+	fetchedDocSource, fetchedDocVersion := d.HLV.GetCurrentVersion()
+	if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.Value {
+		base.DebugfCtx(ctx, base.KeyCRUD, "mismatch between specified current version and fetched document current version for doc %s", base.UD(d.ID))
+		// return not found as specified cv does not match fetched doc cv
+		return base.ErrNotFound
+	}
+	return nil
+}
+
+// SyncDataAlias is an alias for SyncData that doesn't define custom MarshalJSON/UnmarshalJSON
+type SyncDataAlias SyncData
+
+// SyncDataJSON is the persisted form of SyncData, with RevAndVersion populated at marshal time
+type SyncDataJSON struct {
+	*SyncDataAlias
+	RevAndVersion channels.RevAndVersion `json:"rev"`
+}
+
+// MarshalJSON populates RevAndVersion using CurrentRev and the HLV (current) source and version.
+// Marshals using SyncDataAlias to avoid recursion, and SyncDataJSON to add the combined RevAndVersion.
+func (s SyncData) MarshalJSON() (data []byte, err error) {
+
+	var sdj SyncDataJSON
+	var sd SyncDataAlias
+	sd = (SyncDataAlias)(s)
+	sdj.SyncDataAlias = &sd
+	sdj.RevAndVersion = s.GetRevAndVersion()
+	return base.JSONMarshal(sdj)
+}
+
+// UnmarshalJSON unmarshals using SyncDataJSON, then sets currentRev on SyncData based on the value in RevAndVersion.
+// The HLV's current version stored in RevAndVersion is ignored at unmarshal time - the value in the HLV is the source
+// of truth.
+func (s *SyncData) UnmarshalJSON(data []byte) error {
+
+	var sdj *SyncDataJSON
+	err := base.JSONUnmarshal(data, &sdj)
+	if err != nil {
+		return err
+	}
+	if sdj.SyncDataAlias != nil {
+		*s = SyncData(*sdj.SyncDataAlias)
+		s.CurrentRev = sdj.RevAndVersion.RevTreeID
+	}
+	return nil
+}
+
+func (s *SyncData) GetRevAndVersion() (rav channels.RevAndVersion) {
+	rav.RevTreeID = s.CurrentRev
+	if s.HLV != nil {
+		rav.CurrentSource = s.HLV.SourceID
+		rav.CurrentVersion = string(base.Uint64CASToLittleEndianHex(s.HLV.Version))
+	}
+	return rav
+}
+
+// unmarshalRevSeqNo unmarshals the rev seq number from the provided bytes, expects a string representation of the uint64.
+func unmarshalRevSeqNo(revSeqNoBytes []byte) (uint64, error) {
+	if len(revSeqNoBytes) == 0 {
+		return 0, nil
+	}
+	var revSeqNoString string
+	err := base.JSONUnmarshal(revSeqNoBytes, &revSeqNoString)
+	if err != nil {
+		return 0, fmt.Errorf("Failed to unmarshal rev seq number %s", revSeqNoBytes)
+	}
+	revSeqNo, err := strconv.ParseUint(revSeqNoString, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("Failed convert rev seq number %s", revSeqNoBytes)
+	}
+	return revSeqNo, nil
 }

@@ -253,7 +253,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	sync["recent_sequences"] = []uint64{1, 2, 3}
 
 	cm := make(channels.ChannelMap)
-	cm["A"] = &channels.ChannelRemoval{Seq: 2, RevID: "2-e99405a23fa102238fa8c3fd499b15bc"}
+	cm["A"] = &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "2-e99405a23fa102238fa8c3fd499b15bc"}}
 	sync["channels"] = cm
 
 	history := sync["history"].(map[string]interface{})
@@ -283,6 +283,39 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		collectionID: collectionID}, changes[0])
 
 	printChanges(changes)
+}
+
+func TestCVPopulationOnChangeEntry(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collectionID := collection.GetCollectionID()
+	bucketUUID := db.EncodedSourceID
+
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	authenticator := db.Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
+	collection.user, _ = authenticator.GetUser("alice")
+
+	// Make channel active
+	_, err = db.channelCache.GetChanges(ctx, channels.NewID("A", collectionID), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	_, doc, err := collection.Put(ctx, "doc1", Body{"channels": []string{"A"}})
+	require.NoError(t, err)
+
+	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+
+	changes := getChanges(t, collection, base.SetOf("A"), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	assert.Equal(t, doc.ID, changes[0].ID)
+	assert.Equal(t, bucketUUID, changes[0].CurrentVersion.SourceID)
+	assert.Equal(t, doc.Cas, changes[0].CurrentVersion.Value)
 }
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
@@ -385,7 +418,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	// Tombstone 5 documents
 	for i := 2; i <= 6; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, err = collection.DeleteDoc(ctx, key, revId)
+		_, _, err = collection.DeleteDoc(ctx, key, revId)
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
@@ -468,14 +501,14 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 		// Create child rev 1
 		docBody["child"] = "A"
-		_, _, err = collection.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-A", revId}, false)
+		_, _, err = collection.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-A", revId}, false, ExistingVersionWithUpdateToHLV)
 		if err != nil {
 			b.Fatalf("Error creating child1 rev: %v", err)
 		}
 
 		// Create child rev 2
 		docBody["child"] = "B"
-		_, _, err = collection.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-B", revId}, false)
+		_, _, err = collection.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-B", revId}, false, ExistingVersionWithUpdateToHLV)
 		if err != nil {
 			b.Fatalf("Error creating child2 rev: %v", err)
 		}
@@ -533,5 +566,45 @@ func TestChangesOptionsStringer(t *testing.T) {
 		expectedFields = append(expectedFields, field.Name)
 	}
 	require.ElementsMatch(t, expectedFields, stringerFields)
+}
 
+// TestCurrentVersionPopulationOnChannelCache:
+//   - Make channel active on cache
+//   - Add a doc that is assigned this channel
+//   - Get the sync data of that doc to assert against the HLV defined on it
+//   - Wait for the channel cache to be populated with this doc write
+//   - Assert the CV in the entry fetched from channel cache matches the sync data CV and the bucket UUID on the database context
+func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyDCP, base.KeyCache, base.KeyHTTP)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collectionID := collection.GetCollectionID()
+	bucketUUID := db.EncodedSourceID
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// Make channel active
+	_, err := db.channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	// Put a doc that gets assigned a CV to populate the channel cache with
+	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err)
+	err = collection.WaitForPendingChanges(base.TestCtx(t))
+	require.NoError(t, err)
+
+	syncData, err := collection.GetDocSyncData(ctx, "doc1")
+	require.NoError(t, err)
+
+	// get entry of above doc from channel cache
+	entries, err := db.channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+	require.NotNil(t, entries)
+
+	// assert that the source and version has been populated with the channel cache entry for the doc
+	assert.Equal(t, "doc1", entries[0].DocID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), entries[0].Version)
+	assert.Equal(t, bucketUUID, entries[0].SourceID)
+	assert.Equal(t, syncData.HLV.SourceID, entries[0].SourceID)
+	assert.Equal(t, syncData.HLV.Version, entries[0].Version)
 }

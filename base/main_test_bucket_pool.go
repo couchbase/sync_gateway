@@ -115,7 +115,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		unclosedBuckets:         make(map[string]map[string]struct{}),
 		useExistingBucket:       TestUseExistingBucket(),
 		useDefaultScope:         options.UseDefaultScope,
-		skipMobileXDCR:          !UnitTestUrlIsWalrus(), // do not set up enableCrossClusterVersioning until Sync Gateway 4.x
+		skipMobileXDCR:          false,
 		numCollectionsPerBucket: numCollectionsPerBucket,
 		verbose:                 *NewAtomicBool(tbpVerbose()),
 	}
@@ -133,6 +133,22 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		tbp.Fatalf(ctx, "%s", err)
 	}
 	tbp.skipCollections = !useCollections
+
+	useMobileXDCR, err := tbp.cluster.mobileXDCRCompatible(ctx)
+	if err != nil {
+		tbp.Fatalf(ctx, "%s", err)
+	}
+	tbp.skipMobileXDCR = !useMobileXDCR
+
+	if os.Getenv(tbpEnvAllowIncompatibleServerVersion) == "" && !ProductVersion.Less(&ComparableBuildVersion{major: 4}) {
+		overrideMsg := "Set " + tbpEnvAllowIncompatibleServerVersion + "=true to override this check."
+		// this check also covers BucketStoreFeatureMultiXattrSubdocOperations, which is Couchbase Server 7.6
+		if tbp.skipMobileXDCR {
+			tbp.Fatalf(ctx, "Sync Gateway %v requires mobile XDCR support, but Couchbase Server %v does not support it. Couchbase Server %s is required. %s", ProductVersion, tbp.cluster.version, firstServerVersionToSupportMobileXDCR, overrideMsg)
+		}
+	}
+
+	tbp.verbose.Set(tbpVerbose())
 
 	// Start up an async readier worker to process dirty buckets
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)

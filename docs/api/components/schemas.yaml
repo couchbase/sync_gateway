@@ -1951,6 +1951,44 @@ Resync-status:
     - docs_changed
     - docs_processed
   title: Resync-status
+Attachment-Migration-status:
+  description: The status of a attachment migration operation
+  type: object
+  properties:
+    status:
+      description: The status of the current attachment migration operation.
+      type: string
+      enum:
+        - running
+        - completed
+        - stopping
+        - stopped
+        - error
+    start_time:
+      description: The ISO-8601 date and time the attachment migration operation was started.
+      type: string
+    last_error:
+      description: The last error that occurred in the attachment migration operation (if any).
+      type: string
+    migration_id:
+      description: The UUID given to the attachment migration operation.
+      type: string
+    docs_changed:
+      description: The amount of documents that have had attachment metadata migrated as a result of attachment migration operation.
+      type: integer
+    docs_processed:
+      description: The amount of docs that have been processed through the attachment migration operation.
+      type: integer
+    docs_failed:
+      description: The amount of docs that have failed to be processed through the attachment migration operation.
+      type: integer
+  required:
+    - status
+    - start_time
+    - last_error
+    - docs_changed
+    - docs_processed
+  title: Attachment-Migration-status
 Compact-status:
   description: The status returned from a compaction.
   type: object
@@ -2175,7 +2213,39 @@ Startup-config:
           description: Password for authenticating to server
           type: string
         server:
-          description: Couchbase Server connection string/URL.
+          description: |
+            Couchbase Server connection string/URL for bootstrap configuration.
+            The connection string should only reference Couchbase Server Data (KV) nodes.
+            Using other node types (Query, Index, Analytics, or Search nodes) is not supported.
+            **Connection String Format**
+            Sync Gateway supports the ability to resolve DNS SRV records for alternate hostnames, or specifying multiple hostnames explicitly. See the [Couchbase Go SDK documentation on DNS SRV records](https://docs.couchbase.com/go-sdk/current/howtos/managing-connections.html#using-dns-srv-records) for more details.
+            Sync Gateway supports both the couchbases:// for TLS and couchbase:// schemes for insecure connection.
+            The supported schemes match that of the Couchbase Server SDKs.
+            **Examples of valid server values:**
+            - `couchbases://nodeA.example.com`
+            - `couchbase://nodeA.example.com`
+            - `couchbases://nodeA.example.com,nodeB.example.com`
+            - `couchbase://nodeA.example.com,nodeB.example.com`
+            - `couchbases://nodeA.example.com:1234,nodeB.example.com:1234`
+            - `couchbase://nodeA.example.com:1234,nodeB.example.com:1234`
+            - `couchbases://127.0.0.1`
+            - `couchbase://127.0.0.1`
+            On startup, Sync Gateway will try all hostnames until it is able
+            to connect successfully.
+            **Port Information**
+            When using the couchbase:// or couchbases:// schemes, the port is not required as Sync Gateway will use the default Couchbase Server client-to-node ports (11210 for couchbase:// and 11207 for couchbases://). See the [Couchbase Server ports documentation](https://docs.couchbase.com/server/current/install/install-ports.html#ports-listed-by-communication-path) for more details.
+            **Alternate Addresses**
+            If your Couchbase Server cluster is running in a containerized, port mapped, or otherwise NATd environment like Docker or Kubernetes, Sync Gateway might need more information to connect to the cluster. In many cases the client is able to automatically select the correct set of addresses.
+            If the detection heuristic fails in your environment, it is possible to override this behavior by adding a network parameter to the connection string.
+            The network parameter can be:
+            - `external`: Force the use alternate addresses of Couchbase Server. Used when Sync Gateway should not share network used by Couchbase Server internally.
+            - `default`: Do not allow use of alternate addresses of Couchbase Server. Used when Sync Gateway and Couchbase Server are on the same network.
+            Example: `"server": "couchbases://my-cbs-server?network=default"`
+            Will force the connection to ignore any alternative external addresses configured
+            on the Couchbase Server node.
+            **Lost Connections**
+            If the connection to Couchbase Server is lost during normal operations, Sync Gateway
+            will automatically re-connect to another node in the cluster.
           type: string
         server_tls_skip_verify:
           description: Allow empty server CA Cert Path without attempting to use system root pool
