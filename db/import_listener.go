@@ -131,17 +131,18 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 // internal documents based on key, then checks sync metadata to determine whether document needs to be imported.
 // Returns true if the checkpoints should be persisted.
 func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
-
-	shouldPersistCheckpoint := true
 	ctx := il.loggingCtx
 	docID := string(event.Key)
 	defer func() {
 		if r := recover(); r != nil {
 			base.WarnfCtx(ctx, "[%s] Unexpected panic importing document %s - skipping import: \n %s", r, base.UD(docID), debug.Stack())
-			il.importStats.ImportErrorCount.Add(1)
-			shouldPersistCheckpoint = false // Don't persist checkpoint if we panicked
+			if il.importStats != nil {
+				il.importStats.ImportErrorCount.Add(1)
+			}
+			// if this is in a recover block, the unnamed return value is false, and the checkpoint will not be persisted
 		}
 	}()
+	shouldPersistCheckpoint := true
 	// Ignore non-mutation/deletion events
 	if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {
 		return shouldPersistCheckpoint
