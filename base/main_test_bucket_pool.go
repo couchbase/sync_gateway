@@ -37,6 +37,9 @@ type TestBucketPool struct {
 	// integrationMode should be true if using Couchbase Server. If this is false, Walrus buckets are returned instead of pooled buckets.
 	integrationMode bool
 
+	// numBuckets is the number of buckets to create in the pool.
+	numBuckets int
+
 	// readyBucketPool contains a buffered channel of buckets ready for use
 	readyBucketPool        chan Bucket
 	cluster                *tbpCluster
@@ -66,17 +69,17 @@ type TestBucketPool struct {
 	numCollectionsPerBucket int
 	useExistingBucket       bool
 
-	// skipMobileXDCR may be true for older versions of Couchbase Server that don't support mobile XDCR enhancements
-	skipMobileXDCR bool
-
 	// when useDefaultScope is set, named collections are created in the default scope
 	useDefaultScope bool
+
+	// clusterSpec defines how to connect to the couchbase server cluster
+	clusterSpec CouchbaseClusterSpec
 }
 
 type TestBucketPoolOptions struct {
 	MemWatermarkThresholdMB uint64
 	UseDefaultScope         bool
-	RequireXDCR             bool // Test buckets will be performing XDCR, requires Server > 7 for integration test robustness
+	RequireXDCR             bool // Test buckets will be performing XDCR, needs to be Enterprise Edition of Couchbase Server
 	ParallelBucketInit      bool
 	NumCollectionsPerBucket int      // setting this value in main_test.go will override the default
 	TeardownFuncs           []func() // functions to be run after Main is completed but before standard teardown functions run
@@ -101,11 +104,15 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		FatalfCtx(ctx, "couldn't set max file descriptors: %v", err)
 	}
 
-	numBuckets := tbpNumBuckets(ctx)
+	numBuckets, err := tbpNumBuckets()
+	if err != nil {
+		FatalfCtx(ctx, "Couldn't get number of buckets: %v", err)
+	}
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
 	tbp := TestBucketPool{
 		integrationMode:         !UnitTestUrlIsWalrus() && !TestUseExistingBucket(),
+		numBuckets:              numBuckets,
 		readyBucketPool:         make(chan Bucket, numBuckets),
 		bucketReadierQueue:      make(chan tbpBucketName, numBuckets),
 		bucketReadierWaitGroup:  &sync.WaitGroup{},
@@ -115,9 +122,14 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		unclosedBuckets:         make(map[string]map[string]struct{}),
 		useExistingBucket:       TestUseExistingBucket(),
 		useDefaultScope:         options.UseDefaultScope,
-		skipMobileXDCR:          false,
 		numCollectionsPerBucket: numCollectionsPerBucket,
 		verbose:                 *NewAtomicBool(tbpVerbose()),
+		clusterSpec: CouchbaseClusterSpec{
+			Server:        UnitTestUrl(),
+			Username:      TestClusterUsername(),
+			Password:      TestClusterPassword(),
+			TLSSkipVerify: TestTLSSkipVerify(),
+		},
 	}
 
 	// We can safely skip setup if using existing buckets or rosmar buckets, since they can be opened on demand.
@@ -126,29 +138,21 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		return &tbp
 	}
 
-	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), &tbp)
-
-	useCollections, err := tbp.canUseNamedCollections(ctx)
+	tbp.cluster, err = newTestCluster(ctx, tbp.clusterSpec)
 	if err != nil {
-		tbp.Fatalf(ctx, "%s", err)
+		tbp.Fatalf(ctx, "Couldn't create test cluster: %v", err)
 	}
-	tbp.skipCollections = !useCollections
 
-	useMobileXDCR, err := tbp.cluster.mobileXDCRCompatible(ctx)
+	tbp.skipCollections = !tbp.canUseNamedCollections()
+
+	expectedCouchbaseServerVersion, err := NewComparableBuildVersionFromString("7.6.5")
 	if err != nil {
-		tbp.Fatalf(ctx, "%s", err)
+		tbp.Fatalf(ctx, "Couldn't create expected Couchbase Server version: %v", err)
 	}
-	tbp.skipMobileXDCR = !useMobileXDCR
-
-	if os.Getenv(tbpEnvAllowIncompatibleServerVersion) == "" && !ProductVersion.Less(&ComparableBuildVersion{major: 4}) {
+	if os.Getenv(tbpEnvAllowIncompatibleServerVersion) == "" && tbp.cluster.version.Less(expectedCouchbaseServerVersion) {
 		overrideMsg := "Set " + tbpEnvAllowIncompatibleServerVersion + "=true to override this check."
-		// this check also covers BucketStoreFeatureMultiXattrSubdocOperations, which is Couchbase Server 7.6
-		if tbp.skipMobileXDCR {
-			tbp.Fatalf(ctx, "Sync Gateway %v requires mobile XDCR support, but Couchbase Server %v does not support it. Couchbase Server %s is required. %s", ProductVersion, tbp.cluster.version, firstServerVersionToSupportMobileXDCR, overrideMsg)
-		}
+		tbp.Fatalf(ctx, "Sync Gateway requires mobile XDCR support, but Couchbase Server %v does not support it. Couchbase Server %s is required. %s", tbp.cluster.version, expectedCouchbaseServerVersion, overrideMsg)
 	}
-
-	tbp.verbose.Set(tbpVerbose())
 
 	// Start up an async readier worker to process dirty buckets
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
@@ -250,7 +254,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	openedStart := time.Now()
 	bucketClosed := &AtomicBool{}
 
-	bucketSpec := getTestBucketSpec(tbpBucketName(b.GetName()))
+	bucketSpec := getTestBucketSpec(tbp.clusterSpec, tbpBucketName(b.GetName()))
 	bucketSpec.Server = url
 
 	return b, bucketSpec, func(ctx context.Context) {
@@ -277,15 +281,13 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 	ctx := TestCtx(t)
 
 	// each bucket opens its own cluster connection since Bucket.Close will close the underlying gocb.Cluster
-	bucketCluster, connstr := getGocbClusterForTest(ctx, UnitTestUrl())
+	bucketCluster, connstr, err := getGocbClusterForTest(ctx, tbp.clusterSpec)
+	require.NoError(t, err, "couldn't get gocb cluster for test")
 
 	bucketName := tbpBucketName(TestUseExistingBucketName())
-	bucketSpec := getTestBucketSpec(bucketName)
+	bucketSpec := getTestBucketSpec(tbp.clusterSpec, bucketName)
 	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, connstr, waitForReadyBucketTimeout, false)
-	if err != nil {
-		tbp.Fatalf(ctx, "couldn't get existing collection from cluster: %v", err)
-	}
-	DebugfCtx(ctx, KeySGTest, "opened bucket %s", bucketName)
+	require.NoError(t, err, "couldn't get bucket from cluster")
 
 	return bucketFromSpec, bucketSpec, func(ctx context.Context) {
 		tbp.Logf(ctx, "Teardown called - Closing connection to existing bucket")
@@ -344,7 +346,7 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
 	bucketClosed := &AtomicBool{}
-	bucketSpec := getTestBucketSpec(tbpBucketName(bucket.GetName()))
+	bucketSpec := getTestBucketSpec(tbp.clusterSpec, tbpBucketName(bucket.GetName()))
 	return bucket, bucketSpec, func(ctx context.Context) {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
@@ -388,7 +390,7 @@ func (tbp *TestBucketPool) Close(ctx context.Context) {
 	}
 
 	if tbp.cluster != nil {
-		if err := tbp.cluster.close(ctx); err != nil {
+		if err := tbp.cluster.close(); err != nil {
 			tbp.Logf(ctx, "Couldn't close cluster connection: %v", err)
 		}
 	}
@@ -529,7 +531,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 			ctx := BucketNameCtx(ctx, bucketName)
 
 			tbp.Logf(ctx, "Creating new test bucket")
-			err := tbp.cluster.insertBucket(ctx, bucketName, bucketQuotaMB)
+			err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB)
 			if ctx.Err() != nil {
 				return
 			} else if err != nil {
@@ -544,10 +546,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 			tbp.createCollections(ctx, bucket)
 
 			tbp.emptyPreparedStatements(ctx, bucket)
-
-			if tbp.skipMobileXDCR {
-				tbp.Logf(ctx, "Not setting crossClusterVersioningEnabled")
-			} else {
+			if tbp.cluster.ee {
 				tbp.setXDCRBucketSetting(ctx, bucket)
 			}
 
@@ -697,8 +696,8 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	// must be the last teardown function added to the list to correctly detect leaked goroutines
 	teardownFuncs = append(teardownFuncs, SetUpTestGoroutineDump(m))
 
-	if options.RequireXDCR && GTestBucketPool.cluster != nil && GTestBucketPool.cluster.majorVersion < 7 {
-		SkipTestMain(m, "Test requires XDCR, but the cluster version is less than 7. Skipping test.")
+	if options.RequireXDCR && GTestBucketPool.cluster != nil && !GTestBucketPool.cluster.ee {
+		SkipTestMain(m, "Test requires XDCR, but Couchbase Server is not Enterprise edition")
 	}
 
 	// Run the test suite

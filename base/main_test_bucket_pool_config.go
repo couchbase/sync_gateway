@@ -10,7 +10,7 @@ package base
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
@@ -29,10 +29,10 @@ const (
 
 const (
 	envTestClusterUsername     = "SG_TEST_USERNAME"
-	DefaultTestClusterUsername = DefaultCouchbaseAdministrator
+	defaultTestClusterUsername = "Administrator"
 
 	envTestClusterPassword     = "SG_TEST_PASSWORD"
-	DefaultTestClusterPassword = DefaultCouchbasePassword
+	defaultTestClusterPassword = "password"
 
 	// Creates and prepares this many buckets in the backing store to be pooled for testing.
 	tbpDefaultBucketPoolSize = 3
@@ -70,106 +70,76 @@ const (
 
 // TestsUseNamedCollections returns true if the tests use named collections.
 func TestsUseNamedCollections() bool {
-	ctx := context.Background()
-	ok, err := GTestBucketPool.canUseNamedCollections(ctx)
-	return err == nil && ok
+	return GTestBucketPool.canUseNamedCollections()
 }
 
 // TestsUseServerCE returns true if the tests are targeting a CE server.
 func TestsUseServerCE() bool {
-	isEE, err := GTestBucketPool.cluster.isServerEnterprise()
-	return err == nil && !isEE
+	return !GTestBucketPool.cluster.isServerEnterprise()
 }
 
+// TestsRequireMobileRBAC skips the test if the server does not support Sync Gateway RBAC roles. These are supported by Couchbase Server Enterprise Edition only.
 func TestsRequireMobileRBAC(t *testing.T) {
 	if !TestCanUseMobileRBAC(t) {
-		t.Skip("Mobile RBAC roles for Sync Gateway are only fully supported in CBS 7.1 or greater")
+		t.Skip("Mobile RBAC roles for Sync Gateway are only fully supported by Couchbase Server Enterprise")
 	}
 }
 
 // TestCanUseMobileRBAC returns true if the server has Sync Gateway RBAC roles.
 func TestCanUseMobileRBAC(_ *testing.T) bool {
+	// rosmar does not have a cluster
 	if GTestBucketPool.cluster == nil {
 		return false
 	}
-	ok, err := GTestBucketPool.cluster.supportsMobileRBAC()
-	return err == nil && ok
+	return GTestBucketPool.cluster.supportsMobileRBAC()
 }
 
 // canUseNamedCollections returns true if the cluster supports named collections, and they are also requested
-func (tbp *TestBucketPool) canUseNamedCollections(ctx context.Context) (bool, error) {
-	// walrus supports collections, but we need to query the server's version for capability check
-	clusterSupport := true
-	if tbp.cluster != nil {
-		var err error
-		clusterSupport, err = tbp.cluster.supportsCollections()
-		if err != nil {
-			return false, err
-		}
-	}
-
+func (tbp *TestBucketPool) canUseNamedCollections() bool {
 	// Walrus views work with collections - Server views do not - we need GSI when running with CB Server...
-	queryStoreSupportsCollections := true
 	if !UnitTestUrlIsWalrus() && TestsDisableGSI() {
-		queryStoreSupportsCollections = false
+		return false
 	}
 
 	// if we've not explicitly set a use default collection flag - determine support based on other flags
 	useDefaultCollection, isSet := os.LookupEnv(tbpEnvUseDefaultCollection)
 	if !isSet {
-		if !queryStoreSupportsCollections {
-			tbp.Logf(ctx, "GSI disabled - not using named collections")
-			return false, nil
-		}
-		tbp.Logf(ctx, "Will use named collections if cluster supports them: %v", clusterSupport)
-		// use collections if running GSI and server >= 7
-		return clusterSupport, nil
+		return true
 	}
 
 	requestDefaultCollection, _ := strconv.ParseBool(useDefaultCollection)
 	requestNamedCollection := !requestDefaultCollection
-	if requestNamedCollection {
-		if !clusterSupport {
-			return false, errors.New("Unable to use named collections - Cluster does not support collections")
-		}
-		if !queryStoreSupportsCollections {
-			return false, errors.New("Unable to use named collections - GSI disabled")
-		}
-
-	}
-
-	return requestNamedCollection, nil
-
+	return requestNamedCollection
 }
 
 // tbpNumBuckets returns the configured number of buckets to use in the pool.
-func tbpNumBuckets(ctx context.Context) int {
+func tbpNumBuckets() (int, error) {
 	if TestUseExistingBucket() {
 		// SG_TEST_USE_EXISTING_BUCKET only allows for one bucket name
-		return 1
+		return 1, nil
 	}
 	numBuckets := tbpDefaultBucketPoolSize
 	if envPoolSize := os.Getenv(tbpEnvBucketPoolSize); envPoolSize != "" {
 		var err error
 		numBuckets, err = strconv.Atoi(envPoolSize)
 		if err != nil {
-			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
+			return 0, fmt.Errorf("couldn't parse %s: %w", tbpEnvBucketPoolSize, err)
 		}
 	}
-	return numBuckets
+	return numBuckets, nil
 }
 
-// tbpNumReplicasreturns the number of replicas to use in each bucket.
-func tbpNumReplicas(ctx context.Context) uint32 {
+// tbpNumReplicas returns the number of replicas to use in each bucket.
+func tbpNumReplicas() (int, error) {
 	numReplicas := os.Getenv(tbpEnvBucketNumReplicas)
 	if numReplicas == "" {
-		return 0
+		return 0, nil
 	}
 	replicas, err := strconv.Atoi(numReplicas)
 	if err != nil {
-		FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
+		return 0, fmt.Errorf("couldn't parse %s: %w", tbpEnvBucketPoolSize, err)
 	}
-	return uint32(replicas)
+	return replicas, nil
 }
 
 // tbpNumCollectionsPerBucket returns the configured number of collections prepared in a bucket.
@@ -206,7 +176,7 @@ func tbpVerbose() bool {
 
 // TestClusterUsername returns the configured cluster username.
 func TestClusterUsername() string {
-	username := DefaultTestClusterUsername
+	username := defaultTestClusterUsername
 	if envClusterUsername := os.Getenv(envTestClusterUsername); envClusterUsername != "" {
 		username = envClusterUsername
 	}
@@ -215,7 +185,7 @@ func TestClusterUsername() string {
 
 // TestClusterPassword returns the configured cluster password.
 func TestClusterPassword() string {
-	password := DefaultTestClusterPassword
+	password := defaultTestClusterPassword
 	if envClusterPassword := os.Getenv(envTestClusterPassword); envClusterPassword != "" {
 		password = envClusterPassword
 	}

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // Fatalf logs and exits.
@@ -37,22 +38,24 @@ func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...inte
 }
 
 // getTestBucketSpec returns a new BucketSpec for the given test bucket name.
-func getTestBucketSpec(testBucketName tbpBucketName) BucketSpec {
+func getTestBucketSpec(clusterSpec CouchbaseClusterSpec, testBucketName tbpBucketName) BucketSpec {
 	return BucketSpec{
-		Server: UnitTestUrl(),
+		Server: clusterSpec.Server,
 		Auth: TestAuthenticator{
-			Username: TestClusterUsername(),
+			Username: clusterSpec.Username,
 			Password: TestClusterPassword(),
 		},
 		UseXattrs:     TestUseXattrs(),
 		BucketName:    string(testBucketName),
-		TLSSkipVerify: TestTLSSkipVerify(),
+		TLSSkipVerify: clusterSpec.TLSSkipVerify,
+		// use longer timeout than DefaultBucketOpTimeout to avoid timeouts in test harness from using buckets after flush, which takes some time to reinitialize
+		BucketOpTimeout: Ptr(time.Duration(30) * time.Second),
 	}
 }
 
 // RequireNumTestBuckets skips the given test if there are not enough test buckets available to use.
 func RequireNumTestBuckets(t testing.TB, numRequired int) {
-	usable := GTestBucketPool.NumUsableBuckets()
+	usable := GTestBucketPool.numBuckets
 	if usable < numRequired {
 		t.Skipf("Only had %d usable test buckets available (test requires %d)", usable, numRequired)
 	}
@@ -74,7 +77,7 @@ func (tbp *TestBucketPool) NumUsableBuckets() int {
 		// so report back 10 to match a fully available CBS bucket pool.
 		return 10
 	}
-	return tbpNumBuckets(context.Background()) - int(atomic.LoadUint32(&tbp.preservedBucketCount))
+	return tbp.numBuckets - int(atomic.LoadUint32(&tbp.preservedBucketCount))
 }
 
 func (tbp *TestBucketPool) NumCollectionsPerBucket() int {

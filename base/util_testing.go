@@ -243,10 +243,11 @@ func TestX509LocalServer() (bool, string) {
 
 // TestSupportsMobileXDCR returns true to mobile XDCR bucket setting has been set to true for test bucket, false otherwise
 func TestSupportsMobileXDCR() bool {
-	if GTestBucketPool.skipMobileXDCR {
-		return false
+	// rosmar always supports mobile XDCR
+	if !GTestBucketPool.integrationMode {
+		return true
 	}
-	return true
+	return GTestBucketPool.cluster.isServerEnterprise()
 }
 
 // Should tests try to drop GSI indexes before flushing buckets?
@@ -753,9 +754,7 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
 func TestRequiresCollections(t testing.TB) {
-	if ok, err := GTestBucketPool.canUseNamedCollections(TestCtx(t)); err != nil {
-		t.Skipf("Skipping test - collections not supported: %v", err)
-	} else if !ok {
+	if !GTestBucketPool.canUseNamedCollections() {
 		t.Skipf("Skipping test - collections not enabled")
 	}
 }
@@ -998,4 +997,9 @@ func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataSto
 				Collection: scopeAndCollection[1]})
 	}
 	return nonDefaultDataStoreNames
+}
+
+// TestClusterSpec returns the cluster spec for the test bucket pool.
+func TestClusterSpec(t *testing.T) CouchbaseClusterSpec {
+	return GTestBucketPool.clusterSpec
 }

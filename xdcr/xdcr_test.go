@@ -9,7 +9,6 @@
 package xdcr
 
 import (
-	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -36,13 +35,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	toBucket := base.GetTestBucket(t)
 	defer toBucket.Close(ctx)
 
-	opts := XDCROptions{}
-	if base.TestSupportsMobileXDCR() {
-		opts.Mobile = MobileOn
-	} else {
-		opts.Mobile = MobileOff
-		opts.FilterExpression = fmt.Sprintf("NOT REGEXP_CONTAINS(META().id, \"^%s\") OR REGEXP_CONTAINS(META().id, \"^%s\")", base.SyncDocPrefix, base.Att2Prefix)
-	}
+	opts := XDCROptions{Mobile: MobileOn}
 	xdcr, err := NewXDCR(ctx, fromBucket, toBucket, opts)
 	require.NoError(t, err)
 	require.NoError(t, xdcr.Start(ctx))

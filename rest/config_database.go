@@ -156,7 +156,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		StartOffline:          base.Ptr(false),
 		OIDCConfig:            nil,
 		OldRevExpirySeconds:   base.Ptr(base.DefaultOldRevExpirySeconds),
-		ViewQueryTimeoutSecs:  base.Ptr(base.DefaultViewTimeoutSecs),
+		ViewQueryTimeoutSecs:  base.Ptr(uint32(base.DefaultViewTimeout.Seconds())),
 		LocalDocExpirySecs:    base.Ptr(base.DefaultLocalDocExpirySecs),
 		EnableXattrs:          base.Ptr(base.DefaultUseXattrs),
 		SecureCookieOverride:  base.Ptr(sc.API.HTTPS.TLSCertPath != ""),
