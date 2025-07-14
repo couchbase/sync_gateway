@@ -90,7 +90,7 @@ function CheckPropertiesSorted() {
         for (let i = 0; i < keys.length; i++) {
           if (keys[i] !== sortedKeys[i]) {
             ctx.report({
-              message: `Schema properties are not sorted alphabetically. Non-depreacted properties are sorted, followed by non deprecated properties. \nExisting:\n${keys.join(", ")}\nShould be:\n${sortedKeys.join(", ")}\nDeprecatedKeys:\n}`,
+              message: `Schema properties are not sorted alphabetically. Non-deprecated properties are sorted first, followed by deprecated properties. \nExisting:\n${keys.join(", ")}\nShould be:\n${sortedKeys.join(", ")}\nDeprecatedKeys:\n${deprecatedKeys.join(", ")}`,
             });
             break; // Only report once per schema
           }
