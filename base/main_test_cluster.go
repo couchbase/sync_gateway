@@ -103,7 +103,6 @@ func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec
 // isServerEnterprise returns true if the connected returns true if the connected couchbase server
 // instance is Enterprise edition And false for Community edition
 func (c *tbpCluster) isServerEnterprise() bool {
-	fmt.Printf("Checking if Couchbase Server %s is Enterprise Edition... %t\n", c.version.String(), c.ee)
 	return c.ee
 }
 
