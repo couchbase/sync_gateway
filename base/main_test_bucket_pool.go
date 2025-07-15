@@ -64,7 +64,9 @@ type TestBucketPool struct {
 	skipCollections bool
 	// numCollectionsPerBucket is the number of collections to create in each bucket
 	numCollectionsPerBucket int
-	useExistingBucket       bool
+	// numBuckets is the number of buckets managed by the pool
+	numBuckets        int
+	useExistingBucket bool
 
 	// skipMobileXDCR may be true for older versions of Couchbase Server that don't support mobile XDCR enhancements
 	skipMobileXDCR bool
@@ -79,6 +81,7 @@ type TestBucketPoolOptions struct {
 	RequireXDCR             bool // Test buckets will be performing XDCR, requires Server > 7 for integration test robustness
 	ParallelBucketInit      bool
 	NumCollectionsPerBucket int      // setting this value in main_test.go will override the default
+	DefaultNumBuckets       int      // setting this value will indicate the default value for the number of buckets to create in the pool, SG_TEST_NUM_BUCKETS
 	TeardownFuncs           []func() // functions to be run after Main is completed but before standard teardown functions run
 }
 
@@ -101,7 +104,21 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		FatalfCtx(ctx, "couldn't set max file descriptors: %v", err)
 	}
 
-	numBuckets := tbpNumBuckets(ctx)
+	numBuckets := tbpDefaultBucketPoolSize
+	if options.DefaultNumBuckets > 0 {
+		numBuckets = options.DefaultNumBuckets
+	}
+	if TestUseExistingBucket() {
+		// SG_TEST_USE_EXISTING_BUCKET only allows for one bucket name
+		numBuckets = 1
+	}
+	if envPoolSize := os.Getenv(tbpEnvBucketPoolSize); envPoolSize != "" {
+		var err error
+		numBuckets, err = strconv.Atoi(envPoolSize)
+		if err != nil {
+			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
+		}
+	}
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
 	tbp := TestBucketPool{
@@ -118,6 +135,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		skipMobileXDCR:          false,
 		numCollectionsPerBucket: numCollectionsPerBucket,
 		verbose:                 *NewAtomicBool(tbpVerbose()),
+		numBuckets:              numBuckets,
 	}
 
 	// We can safely skip setup if using existing buckets or rosmar buckets, since they can be opened on demand.

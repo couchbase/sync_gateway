@@ -142,23 +142,6 @@ func (tbp *TestBucketPool) canUseNamedCollections(ctx context.Context) (bool, er
 
 }
 
-// tbpNumBuckets returns the configured number of buckets to use in the pool.
-func tbpNumBuckets(ctx context.Context) int {
-	if TestUseExistingBucket() {
-		// SG_TEST_USE_EXISTING_BUCKET only allows for one bucket name
-		return 1
-	}
-	numBuckets := tbpDefaultBucketPoolSize
-	if envPoolSize := os.Getenv(tbpEnvBucketPoolSize); envPoolSize != "" {
-		var err error
-		numBuckets, err = strconv.Atoi(envPoolSize)
-		if err != nil {
-			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
-		}
-	}
-	return numBuckets
-}
-
 // tbpNumReplicasreturns the number of replicas to use in each bucket.
 func tbpNumReplicas(ctx context.Context) uint32 {
 	numReplicas := os.Getenv(tbpEnvBucketNumReplicas)

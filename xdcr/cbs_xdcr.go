@@ -164,7 +164,7 @@ func (x *couchbaseServerManager) Start(ctx context.Context) error {
 		return ErrReplicationAlreadyRunning
 	}
 	var err error
-	x.startingTimestamp, err = x.lastTimestampOfLogFile()
+	x.startingTimestamp, err = x.lastTimestampOfLogFile(ctx)
 	if err != nil {
 		return err
 	}
@@ -285,24 +285,30 @@ outer:
 }
 
 // lineCountOfLogFile returns the number of lines in the goxdcr.log file. This is used to determine the offset when re-reading the log file.
-func (x *couchbaseServerManager) lastTimestampOfLogFile() (string, error) {
+func (x *couchbaseServerManager) lastTimestampOfLogFile(ctx context.Context) (string, error) {
 	logFile := x.xdcrLogFilePath()
 	// most, but not all lines start with a timestamp, so we need to find the last line that does 2000-01-01T01:01:01.000Z
 	cmdLine := fmt.Sprintf(`tail -n100 "%s"`, logFile)
-	output, err := x.runCommandOnCBS(cmdLine)
-	if err != nil {
-		return "", err
-	}
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	slices.Reverse(lines)
-	for _, line := range lines {
-		re := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`)
-		if re.MatchString(line) {
-			timestamp := strings.Split(line, " ")[0]
-			return timestamp, nil
+	// If the log file is actively being rotated, we need to sleep to wait for the log file.
+	err, timestamp := base.RetryLoop(ctx, "ReadLogFileUntilStopped", func() (shouldRetry bool, err error, timestamp string) {
+		// If the log file is being rotated, the goxdcr.log file may not be present, and this command will fail.
+		output, err := x.runCommandOnCBS(cmdLine)
+		if err != nil {
+			return true, fmt.Errorf("Could not read the last 100 lines of %s: %w", logFile, err), ""
 		}
-	}
-	return "", fmt.Errorf("Could not find a timestamp in the last 100 lines of %s: %s", logFile, output)
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		slices.Reverse(lines)
+		for _, line := range lines {
+			re := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`)
+			if re.MatchString(line) {
+				timestamp := strings.Split(line, " ")[0]
+				return false, nil, timestamp
+			}
+		}
+		// If the log file just got rotated, it might not have a timestamp yet.
+		return true, fmt.Errorf("Could not find a timestamp in the last 100 lines of %s: %s", logFile, output), ""
+	}, base.CreateLinearSleeperFunc(5*time.Second, 100*time.Millisecond))
+	return timestamp, err
 }
 
 // xdcrLogFilePath returns the path of the goxdcr.log file.
@@ -353,7 +359,7 @@ func (x *couchbaseServerManager) waitForStoppedInLogFile(ctx context.Context) er
 			}
 		}
 		return true, fmt.Errorf("Could not find line newer than %s in %s", x.startingTimestamp, output), nil
-	}, base.CreateSleeperFunc(int((5*time.Minute).Milliseconds()), int((1*time.Second).Milliseconds())))
+	}, base.CreateLinearSleeperFunc(5*time.Minute, 1*time.Second))
 	if err != nil {
 		return fmt.Errorf("Could not find %s in %s. %w", grepStr, logFile, err)
 	}
