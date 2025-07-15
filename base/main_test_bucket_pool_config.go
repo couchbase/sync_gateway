@@ -35,7 +35,7 @@ const (
 	DefaultTestClusterPassword = DefaultCouchbasePassword
 
 	// Creates and prepares this many buckets in the backing store to be pooled for testing.
-	tbpDefaultBucketPoolSize = 3
+	tbpDefaultBucketPoolSize = 4
 	tbpEnvBucketPoolSize     = "SG_TEST_BUCKET_POOL_SIZE"
 
 	// Creates and prepares this many collections in each bucket in the backing store.

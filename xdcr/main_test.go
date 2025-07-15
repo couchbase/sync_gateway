@@ -19,11 +19,6 @@ import (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
-	tbpOptions := base.TestBucketPoolOptions{
-		MemWatermarkThresholdMB: 2048,
-		RequireXDCR:             true,
-		DefaultNumBuckets:       4, // use 4 buckets for testing since each test will use 2 buckets for XDCR
-		NumCollectionsPerBucket: 1, // use either default collection or a single named collection
-	}
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048, RequireXDCR: true}
 	base.TestBucketPoolNoIndexes(ctx, m, tbpOptions)
 }

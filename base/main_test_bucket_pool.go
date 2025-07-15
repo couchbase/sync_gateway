@@ -81,7 +81,6 @@ type TestBucketPoolOptions struct {
 	RequireXDCR             bool // Test buckets will be performing XDCR, requires Server > 7 for integration test robustness
 	ParallelBucketInit      bool
 	NumCollectionsPerBucket int      // setting this value in main_test.go will override the default
-	DefaultNumBuckets       int      // setting this value will indicate the default value for the number of buckets to create in the pool, SG_TEST_NUM_BUCKETS
 	TeardownFuncs           []func() // functions to be run after Main is completed but before standard teardown functions run
 }
 
@@ -105,9 +104,6 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	}
 
 	numBuckets := tbpDefaultBucketPoolSize
-	if options.DefaultNumBuckets > 0 {
-		numBuckets = options.DefaultNumBuckets
-	}
 	if TestUseExistingBucket() {
 		// SG_TEST_USE_EXISTING_BUCKET only allows for one bucket name
 		numBuckets = 1
