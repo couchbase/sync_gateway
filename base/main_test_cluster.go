@@ -214,7 +214,7 @@ func (c *tbpCluster) insertBucket(name string, quotaMB int) error {
 	if c.isServerEnterprise() {
 		// default is MWW which is "seqno" str
 		// LWW is only supported on Enterprise Edition
-		body.Set("conflictResolutionType", "lww")
+		// body.Set("conflictResolutionType", "lww")
 	}
 	body.Set("flushEnabled", "1")
 	body.Set("name", name)
