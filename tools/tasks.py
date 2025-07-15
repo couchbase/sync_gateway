@@ -535,11 +535,6 @@ def make_os_tasks(processes):
         WindowsTask("Computer system", "wmic computersystem"),
         WindowsTask("Computer OS", "wmic os"),
         LinuxTask("System Hardware", "lshw -json || lshw"),
-        LinuxTask("Process list snapshot", "export TERM=''; top -Hb -n1 || top -H n1"),
-        LinuxTask(
-            "Process list",
-            "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command",
-        ),
         LinuxTask("Raw /proc/vmstat", "cat /proc/vmstat"),
         LinuxTask("Raw /proc/mounts", "cat /proc/mounts"),
         LinuxTask("Raw /proc/partitions", "cat /proc/partitions"),
@@ -577,20 +572,12 @@ def make_os_tasks(processes):
         LinuxTask("LVM info", "lvdisplay"),
         LinuxTask("LVM info", "vgdisplay"),
         LinuxTask("LVM info", "pvdisplay"),
-        MacOSXTask("Process list snapshot", "top -l 1"),
         MacOSXTask("Disk activity", "iostat 1 10"),
-        MacOSXTask(
-            "Process list",
-            "ps -Aww -o user,pid,lwp,ppid,nlwp,pcpu,pri,nice,vsize,rss,tty,"
-            "stat,wchan:12,start,bsdtime,command",
-        ),
         WindowsTask("Installed software", "wmic product get name, version"),
         WindowsTask(
             "Service list",
             'wmic service where state="running" GET caption, name, state',
         ),
-        WindowsTask("Process list", "wmic process"),
-        WindowsTask("Process usage", "tasklist /V /fo list"),
         WindowsTask("Swap settings", "wmic pagefile"),
         WindowsTask("Disk partition", "wmic partition"),
         WindowsTask("Disk volumes", "wmic volume"),
@@ -658,12 +645,6 @@ def make_os_tasks(processes):
             "Relevant proc data",
             "echo %(programs)s | "
             "xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; cat /proc/$1/smaps; cat /proc/$1/numa_maps; cat /proc/$1/task/*/sched; echo' --"
-            % locals(),
-        ),
-        LinuxTask(
-            "Processes' environment",
-            "echo %(programs)s | "
-            r"xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; ( cat /proc/$1/environ | tr \\0 \\n ); echo' --"
             % locals(),
         ),
         LinuxTask("NUMA data", "numactl --hardware"),
