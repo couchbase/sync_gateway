@@ -211,11 +211,11 @@ func (c *tbpCluster) insertBucket(name string, quotaMB int) error {
 	}
 	body := url.Values{}
 	body.Set("bucketType", "couchbase")
-	if c.isServerEnterprise() {
-		// default is MWW which is "seqno" str
-		// LWW is only supported on Enterprise Edition
-		// body.Set("conflictResolutionType", "lww")
-	}
+	// if c.isServerEnterprise() {
+	// default is MWW which is "seqno" str
+	// LWW is only supported on Enterprise Edition
+	// body.Set("conflictResolutionType", "lww")
+	// }
 	body.Set("flushEnabled", "1")
 	body.Set("name", name)
 	body.Set("numReplicas", strconv.Itoa(numReplicas))
