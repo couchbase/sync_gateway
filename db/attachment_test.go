@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -110,6 +111,7 @@ func TestAttachments(t *testing.T) {
 	log.Printf("Retrieve doc...")
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
+	require.Contains(t, gotbody, BodyAttachments)
 	atts := gotbody[BodyAttachments].(AttachmentsMeta)
 
 	hello := atts["hello.txt"].(map[string]interface{})
@@ -807,7 +809,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
 		docSyncData, err := collection.GetDocSyncData(ctx, docKey)
 		assert.NoError(t, err)
-		assert.Empty(t, docSyncData.Attachments)
+		assert.Empty(t, docSyncData.AttachmentsSyncDataSerialized)
 
 		return db, ctx
 	}
@@ -839,7 +841,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
 		syncData, err := collection.GetDocSyncData(ctx, docKey)
 		assert.NoError(t, err)
-		assert.Empty(t, syncData.Attachments)
+		assert.Empty(t, syncData.AttachmentsSyncDataSerialized)
 	})
 
 	// Reading a non-active revision shouldn't perform an upgrade, but should transform the metadata in memory for the returned rev.
@@ -869,7 +871,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
 		syncData, err := collection.GetDocSyncData(ctx, docKey)
 		assert.NoError(t, err)
-		assert.Empty(t, syncData.Attachments)
+		assert.Empty(t, syncData.AttachmentsSyncDataSerialized)
 	})
 
 	// Writing a new rev should migrate the metadata and write that upgrade back to the bucket.
@@ -911,9 +913,11 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		syncData, err := collection.GetDocSyncData(ctx, docKey)
-		assert.NoError(t, err)
-		assert.Len(t, syncData.Attachments, 1)
+		xattrs, _, err := collection.dataStore.GetXattrs(ctx, docKey, []string{base.GlobalXattrName})
+		require.NoError(t, err)
+		var globalSync GlobalSyncData
+		require.NoError(t, json.Unmarshal(xattrs[base.GlobalXattrName], &globalSync))
+		require.Len(t, globalSync.Attachments, 1)
 	})
 
 	// Adding a new attachment should migrate existing attachments, without losing any.
@@ -931,7 +935,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
 		syncData, err := collection.GetDocSyncData(ctx, docKey)
 		assert.NoError(t, err)
-		assert.Empty(t, syncData.Attachments)
+		assert.Empty(t, syncData.AttachmentsSyncDataSerialized)
 
 		byeTxtData, err := base64.StdEncoding.DecodeString("Z29vZGJ5ZSBjcnVlbCB3b3JsZA==")
 		require.NoError(t, err)
@@ -971,15 +975,17 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		syncData, err = collection.GetDocSyncData(ctx, docKey)
-		assert.NoError(t, err)
-		assert.Len(t, syncData.Attachments, 2)
+		xattrs, _, err := collection.dataStore.GetXattrs(ctx, docKey, []string{base.GlobalXattrName})
+		require.NoError(t, err)
+		var globalSync GlobalSyncData
+		require.NoError(t, json.Unmarshal(xattrs[base.GlobalXattrName], &globalSync))
+		require.Len(t, globalSync.Attachments, 2)
 	})
 }
 
 // TestMigrateBodyAttachmentsMerge will set up a document with attachments in both pre-2.5 and post-2.5 metadata, making sure that both attachments are preserved.
 func TestMigrateBodyAttachmentsMerge(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 
 	const docKey = "TestAttachmentMigrate"
 
@@ -1076,6 +1082,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
   }
 }`
 
+	fmt.Printf("HONK -----------\n")
 	if base.TestUseXattrs() {
 		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
 		assert.NoError(t, err)
@@ -1089,22 +1096,21 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 
 	// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
 	docSyncData, err := collection.GetDocSyncData(ctx, docKey)
-	assert.NoError(t, err)
-	assert.Len(t, docSyncData.Attachments, 1)
-	_, ok = docSyncData.Attachments["hello.txt"]
+	require.NoError(t, err)
+	assert.Len(t, docSyncData.AttachmentsSyncDataSerialized, 1)
+	require.NotContains(t, docSyncData.AttachmentsSyncDataSerialized, "hello.txt")
+	_, ok = docSyncData.AttachmentsSyncDataSerialized["hello.txt"]
 	assert.False(t, ok)
-	_, ok = docSyncData.Attachments["bye.txt"]
+	_, ok = docSyncData.AttachmentsSyncDataSerialized["bye.txt"]
 	assert.True(t, ok)
 
 	rev, err := collection.GetRev(ctx, docKey, "3-a", true, nil)
 	require.NoError(t, err)
 
 	// read-only in-memory transformation should've been applied here, both attachments should be present in rev.Attachments
-	assert.Len(t, rev.Attachments, 2)
-	_, ok = rev.Attachments["hello.txt"]
-	assert.True(t, ok)
-	_, ok = rev.Attachments["bye.txt"]
-	assert.True(t, ok)
+	require.Len(t, rev.Attachments, 2)
+	require.Contains(t, rev.Attachments, "hello.txt")
+	require.Contains(t, rev.Attachments, "bye.txt")
 
 	// _attachments shouldn't be present in the body at this point.
 	// It will be stamped in for 1.x clients that require it further up the stack.
@@ -1116,15 +1122,14 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
 	docSyncData, err = collection.GetDocSyncData(ctx, docKey)
 	assert.NoError(t, err)
-	_, ok = docSyncData.Attachments["hello.txt"]
+	_, ok = docSyncData.AttachmentsSyncDataSerialized["hello.txt"]
 	assert.False(t, ok)
-	_, ok = docSyncData.Attachments["bye.txt"]
+	_, ok = docSyncData.AttachmentsSyncDataSerialized["bye.txt"]
 	assert.True(t, ok)
 }
 
 // TestMigrateBodyAttachmentsMergeConflicting will set up a document with the same attachment name in both pre-2.5 and post-2.5 metadata, making sure that the metadata with the most recent revpos is chosen.
 func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
-
 	const docKey = "TestAttachmentMigrate"
 
 	db, ctx := setupTestDB(t)

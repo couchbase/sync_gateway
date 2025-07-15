@@ -635,6 +635,7 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	// assert on attachments
 	atts := doc.Attachments
 	assert.Len(t, atts, 2)
+	require.Contains(t, atts, "hello.txt")
 	hello := atts["hello.txt"].(map[string]interface{})
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 	assert.Equal(t, float64(11), hello["length"])

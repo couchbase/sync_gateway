@@ -325,10 +325,11 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		// attachments through anything but SG. When importing a "delete" mutation, existing attachments are removed
 		// to ensure obsolete attachments are removed from the bucket.
 		if isDelete {
-			doc.SyncData.Attachments = nil
+			doc.Attachments = nil
 		} else {
-			newDoc.DocAttachments = doc.SyncData.Attachments
+			newDoc.Attachments = doc.Attachments
 		}
+		doc.SyncData.AttachmentsSyncDataSerialized = nil
 
 		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
 		if metadataOnlyUpdate && db.useMou() {

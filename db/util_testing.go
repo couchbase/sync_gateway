@@ -895,7 +895,7 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docI
 	var docSync SyncData
 	err := base.JSONUnmarshal(syncXattr, &docSync)
 	require.NoError(t, err)
-	docSync.Attachments = attachments
+	docSync.AttachmentsSyncDataSerialized = attachments
 
 	opts := &sgbucket.MutateInOptions{}
 	// this should be true for cases we want to move the attachment metadata without causing a new import feed event
@@ -924,10 +924,23 @@ func RequireBackgroundManagerState(t *testing.T, ctx context.Context, mgr *Backg
 	}, time.Second*10, time.Millisecond*100)
 }
 
-// AssertSyncInfoMetaVersion will assert that meta version is equal to current product version
+// AssertSyncInfoMetaVersion will assert that meta version is jjequal to current product version
 func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
 	var syncInfo base.SyncInfo
 	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	assert.Equal(t, "4.0.0", syncInfo.MetaDataVersion)
+}
+
+func GetRawGlobalSyncData(t *testing.T, dataStore base.DataStore, docID string) GlobalSyncData {
+	var syncData GlobalSyncData
+
+	xattrs, _, err := dataStore.GetXattrs(t.Context(), docID, []string{base.GlobalXattrName})
+	require.NoError(t, err)
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &syncData))
+	return syncData
+}
+
+func GetRawSyncData(t *testing.T, dataStore, docID string) SyncData {
+
 }

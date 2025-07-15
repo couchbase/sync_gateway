@@ -1301,7 +1301,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				return err
 			}
 
-			newDoc.DocAttachments = GetBodyAttachments(body)
+			newDoc.Attachments = GetBodyAttachments(body)
 			delete(body, BodyAttachments)
 			newDoc.UpdateBody(body)
 		}

@@ -2733,7 +2733,7 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 	err = base.JSONUnmarshal(globalXattr, &attachs)
 	require.NoError(t, err)
 
-	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, true, dataStore)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.Attachments, true, dataStore)
 
 	// retry loop to wait for import event to arrive over dcp, as doc won't be 'imported' we can't wait for import stat
 	var retryXattrs map[string][]byte
@@ -2759,9 +2759,9 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that the attachment metadata has been moved
-	assert.NotNil(t, attachs.GlobalAttachments)
-	assert.Nil(t, syncData.Attachments)
-	att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.NotNil(t, attachs.Attachments)
+	assert.Nil(t, syncData.AttachmentsSyncDataSerialized)
+	att := attachs.Attachments["hello.txt"].(map[string]interface{})
 	assert.Equal(t, float64(11), att["length"])
 
 	// assert that no import took place
@@ -2788,7 +2788,7 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 
 	// change doc body to trigger import on feed
 	value = []byte(`{"test": "doc"}`)
-	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.Attachments, false, dataStore)
 
 	// Wait for import
 	base.RequireWaitForStat(t, func() int64 {
@@ -2810,9 +2810,9 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that the attachment metadata has been moved
-	assert.NotNil(t, attachs.GlobalAttachments)
-	assert.Nil(t, syncData.Attachments)
-	att = attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.NotNil(t, attachs.Attachments)
+	assert.Nil(t, syncData.AttachmentsSyncDataSerialized)
+	att = attachs.Attachments["hello.txt"].(map[string]interface{})
 	assert.Equal(t, float64(11), att["length"])
 }
 
@@ -2853,7 +2853,7 @@ func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
 	require.NoError(t, err)
 
 	value := []byte(`{"update": "doc"}`)
-	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.Attachments, false, dataStore)
 
 	// on demand import for get
 	_, _ = rt.GetDoc(key)
@@ -2876,9 +2876,9 @@ func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that the attachment metadata has been moved
-	assert.NotNil(t, attachs.GlobalAttachments)
-	assert.Nil(t, syncData.Attachments)
-	att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.NotNil(t, attachs.Attachments)
+	assert.Nil(t, syncData.AttachmentsSyncDataSerialized)
+	att := attachs.Attachments["hello.txt"].(map[string]interface{})
 	assert.Equal(t, float64(11), att["length"])
 
 	key = "doc2"
@@ -2897,7 +2897,7 @@ func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
 	err = base.JSONUnmarshal(globalXattr, &attachs)
 	require.NoError(t, err)
 	value = []byte(`{"update": "doc"}`)
-	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, false, dataStore)
+	db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.Attachments, false, dataStore)
 
 	// trigger on demand import for write
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{}`)
@@ -2920,9 +2920,9 @@ func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that the attachment metadata has been moved
-	assert.NotNil(t, attachs.GlobalAttachments)
-	assert.Nil(t, syncData.Attachments)
-	att = attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
+	assert.NotNil(t, attachs.Attachments)
+	assert.Nil(t, syncData.AttachmentsSyncDataSerialized)
+	att = attachs.Attachments["hello.txt"].(map[string]interface{})
 	assert.Equal(t, float64(11), att["length"])
 }
 

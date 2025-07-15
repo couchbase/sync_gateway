@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -308,6 +309,7 @@ func (rev *DocumentRevision) Mutable1xBody(ctx context.Context, db *DatabaseColl
 		b[BodyDeleted] = true
 	}
 
+	fmt.Printf("HONK rev %#+v\n", rev.Attachments)
 	// Add attachment data if requested:
 	if attachmentsSince != nil {
 		if len(rev.Attachments) > 0 {
@@ -448,6 +450,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 // revCacheLoaderForDocumentCV used either during cache miss (from revCacheLoaderForCv), or used directly when getting current active CV from cache
 // nolint:staticcheck
 func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv Version) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, hlv *HybridLogicalVector, err error) {
+	fmt.Printf("HONK DOC=%#+v\n", doc)
 	if bodyBytes, attachments, err = backingStore.getCurrentVersion(ctx, doc, cv); err != nil {
 		// TODO: CBG-3814 - pending support of channel removal for CV
 		base.ErrorfCtx(ctx, "pending CBG-3814 support of channel removal for CV: %v", err)

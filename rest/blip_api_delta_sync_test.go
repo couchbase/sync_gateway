@@ -62,13 +62,12 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 		rt.WaitForVersion(docID, version)
 
-		collection, ctx := rt.GetSingleTestDatabaseCollection()
-		syncData, err := collection.GetDocSyncData(ctx, docID)
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+		doc, err := collection.GetCV(ctx, docID, &version.CV)
 		require.NoError(t, err)
 
-		assert.Len(t, syncData.Attachments, 1)
-		_, found := syncData.Attachments["myAttachment"]
-		assert.True(t, found)
+		assert.Len(t, doc.Attachments, 1)
+		require.Contains(t, doc.Attachments, "myAttachment")
 
 		// Turn deltas on
 		btc.ClientDeltas = true
@@ -84,12 +83,11 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 		rt.WaitForVersion(docID, version)
 
-		syncData, err = collection.GetDocSyncData(ctx, docID)
+		doc, err = collection.GetCV(ctx, docID, &version.CV)
 		require.NoError(t, err)
 
-		assert.Len(t, syncData.Attachments, 1)
-		_, found = syncData.Attachments["myAttachment"]
-		assert.True(t, found)
+		assert.Len(t, doc.Attachments, 1)
+		require.Contains(t, doc.Attachments, "myAttachment")
 	})
 }
 
@@ -123,7 +121,7 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 		btcRunner.StartPush(btc.id)
 
@@ -176,11 +174,11 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 			rt.WaitForVersion(tc.docID, version)
 
 			if tc.hasAttachment {
-				syncData, err := collection.GetDocSyncData(ctx, tc.docID)
+				doc, err := collection.GetCV(ctx, tc.docID, &version.CV)
 				require.NoError(t, err)
-				assert.Len(t, syncData.Attachments, 1)
-				_, found := syncData.Attachments["myAttachment"]
-				assert.True(t, found)
+
+				assert.Len(t, doc.Attachments, 1)
+				require.Contains(t, doc.Attachments, "myAttachment")
 			}
 		}
 	})

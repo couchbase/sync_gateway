@@ -36,7 +36,7 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
-		assert.NotNil(t, doc.SyncData.Attachments)
+		assert.NotNil(t, doc.SyncData.AttachmentsSyncDataSerialized)
 	}
 
 	// Move some subset of the documents attachment metadata from global sync to sync data
@@ -53,7 +53,7 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 		err = base.JSONUnmarshal(globalXattr, &attachs)
 		require.NoError(t, err)
 
-		MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, true, collection.dataStore)
+		MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.Attachments, true, collection.dataStore)
 	}
 
 	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
@@ -103,7 +103,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
-		require.NotNil(t, doc.SyncData.Attachments)
+		require.NotNil(t, doc.SyncData.AttachmentsSyncDataSerialized)
 	}
 	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
 	require.NotNil(t, attachMigrationMgr)
@@ -214,11 +214,11 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	// define some attachment meta on sync data
-	syncData.Attachments = AttachmentsMeta{}
+	syncData.AttachmentsSyncDataSerialized = AttachmentsMeta{}
 	att := map[string]interface{}{
 		"stub": true,
 	}
-	syncData.Attachments["someAtt.txt"] = att
+	syncData.AttachmentsSyncDataSerialized["someAtt.txt"] = att
 
 	updateXattrs := map[string][]byte{
 		base.SyncXattrName: base.MustJSONMarshal(t, syncData),
@@ -253,8 +253,8 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	syncData = SyncData{}
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
-	require.NotNil(t, globalSync.GlobalAttachments)
-	assert.NotNil(t, globalSync.GlobalAttachments["someAtt.txt"])
-	assert.NotNil(t, globalSync.GlobalAttachments["myatt"])
-	assert.Nil(t, syncData.Attachments)
+	require.NotNil(t, globalSync.Attachments)
+	assert.NotNil(t, globalSync.Attachments["someAtt.txt"])
+	assert.NotNil(t, globalSync.Attachments["myatt"])
+	assert.Nil(t, syncData.AttachmentsSyncDataSerialized)
 }

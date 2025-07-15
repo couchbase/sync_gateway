@@ -233,7 +233,7 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
-		assert.NotNil(t, doc.SyncData.Attachments)
+		assert.NotNil(t, doc.SyncData.AttachmentsSyncDataSerialized)
 	}
 
 	// Move some subset of the documents attachment metadata from global sync to sync data
@@ -250,6 +250,6 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 		err = base.JSONUnmarshal(globalXattr, &attachs)
 		require.NoError(t, err)
 
-		db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, true, collection.GetCollectionDatastore())
+		db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.Attachments, true, collection.GetCollectionDatastore())
 	}
 }

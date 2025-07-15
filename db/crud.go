@@ -683,6 +683,7 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 		}
 	}
 
+	fmt.Printf("HONK doc.Attachments=%#+v\n", attachments)
 	// optimistically grab the doc body and to store as a pre-unmarshalled version, as well as anticipating no inline attachments.
 	if doc.CurrentRev == revid {
 		attachments = doc.Attachments
@@ -1038,17 +1039,17 @@ func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Conte
 			return base.RedactErrorf("Failed to Unmarshal global sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
 		}
 		// add the sync data attachment metadata to global xattr
-		for i, v := range syncData.Attachments {
-			globalData.GlobalAttachments[i] = v
+		for i, v := range syncData.AttachmentsSyncDataSerialized {
+			globalData.Attachments[i] = v
 		}
 	} else {
-		globalData.GlobalAttachments = syncData.Attachments
+		globalData.Attachments = syncData.AttachmentsSyncDataSerialized
 	}
 	globalXattr, err := base.JSONMarshal(globalData)
 	if err != nil {
 		return base.RedactErrorf("Failed to Marshal global sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
 	}
-	syncData.Attachments = nil
+	syncData.AttachmentsSyncDataSerialized = nil
 	rawSyncXattr, err := base.JSONMarshal(*syncData)
 	if err != nil {
 		return base.RedactErrorf("Failed to Marshal sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
@@ -1094,9 +1095,10 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	// Pull out attachments
-	newDoc.DocAttachments = GetBodyAttachments(body)
+	newDoc.Attachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
 
+	fmt.Printf("newDoc.Attachments=%#+v\n", newDoc.Attachments)
 	delete(body, BodyRevisions)
 
 	err = validateAPIDocUpdate(body)
@@ -1191,13 +1193,15 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 			return nil, nil, false, nil, conflictErr
 		}
 
+		fmt.Printf("HONK newDoc.Attachments %#+v\n", newDoc.Attachments)
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
 		// be done before calling CreateRevID (the ID is based on the digest of the body.)
-		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, generation, matchRev, nil)
+		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.Attachments, generation, matchRev, nil)
 		if err != nil {
 			return nil, nil, false, nil, err
 		}
 
+		fmt.Printf("HONK newAttachments %#+v\n", newAttachments)
 		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
@@ -1341,7 +1345,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		}
 
 		// Process the attachments, replacing bodies with digests.
-		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, newGeneration, previousRevTreeID, nil)
+		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.Attachments, newGeneration, previousRevTreeID, nil)
 		if err != nil {
 			return nil, nil, false, nil, err
 		}
@@ -1481,7 +1485,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
-		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
+		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.Attachments, generation, parentRevID, docHistory)
 		if err != nil {
 			return nil, nil, false, nil, err
 		}
@@ -1514,7 +1518,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 	delete(body, BodyId)
 	delete(body, BodyRevisions)
 
-	newDoc.DocAttachments = GetBodyAttachments(body)
+	newDoc.Attachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
 
 	newDoc.UpdateBody(body)
@@ -1568,7 +1572,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		ID: docID,
 	}
 	// Pull out attachments
-	newDoc.DocAttachments = GetBodyAttachments(body)
+	newDoc.Attachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
 
 	delete(body, BodyRevisions)
@@ -1645,11 +1649,11 @@ func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, local
 	// Local doc (localDoc) is persisted in the bucket unlike the incoming remote doc (remoteDoc).
 	// Internal properties of the localDoc can be accessed from syc metadata.
 	localRevID := localDoc.SyncData.CurrentRev
-	localAttachments := localDoc.SyncData.Attachments
+	localAttachments := localDoc.Attachments
 	localExpiry := localDoc.SyncData.Expiry
 
 	remoteRevID := remoteDoc.RevID
-	remoteAttachments := remoteDoc.DocAttachments
+	remoteAttachments := remoteDoc.Attachments
 
 	// TODO: Make doc expiry (_exp) available over replication.
 	// remoteExpiry := remoteDoc.Expiry
@@ -1769,11 +1773,11 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 	// Note: not setting expiry, as syncData.expiry is reference only and isn't guaranteed to match the bucket doc expiry
 	remoteDoc.RemoveBody()
 	remoteDoc.Deleted = localDoc.IsDeleted()
-	remoteDoc.DocAttachments = localDoc.SyncData.Attachments.ShallowCopy()
+	remoteDoc.Attachments = localDoc.Attachments.ShallowCopy()
 
 	// If the local doc had attachments, any with revpos more recent than the common ancestor will need
 	// to have their revpos updated when we rewrite the rev as a child of the remote branch.
-	if remoteDoc.DocAttachments != nil {
+	if remoteDoc.Attachments != nil {
 		// Identify generation of common ancestor and new rev
 		commonAncestorRevID := localDoc.SyncData.History.findAncestorFromSet(localDoc.CurrentRev, docHistory)
 		commonAncestorGen := 0
@@ -1784,7 +1788,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 
 		// If attachment revpos is older than common ancestor, or common ancestor doesn't exist, set attachment's
 		// revpos to the generation of newRevID (i.e. treat as previously unknown to this revtree branch)
-		for _, value := range remoteDoc.DocAttachments {
+		for _, value := range remoteDoc.Attachments {
 			attachmentMeta, ok := value.(map[string]interface{})
 			if !ok {
 				base.WarnfCtx(ctx, "Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.CurrentRev, value)
@@ -1821,7 +1825,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 	if ok {
 		attsMap, ok := bodyAtts.(map[string]interface{})
 		if ok {
-			remoteDoc.DocAttachments = attsMap
+			remoteDoc.Attachments = attsMap
 			delete(mergedBody, BodyAttachments)
 		}
 	}
@@ -1914,10 +1918,10 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 
 		// Stamp _attachments into the old body we're about to backup
 		// We need to do a revpos check here because doc actually contains the new attachments
-		if len(doc.SyncData.Attachments) > 0 {
+		if len(doc.Attachments) > 0 {
 			prevCurrentRevGen, _ := ParseRevID(ctx, prevCurrentRev)
 			bodyAtts := make(AttachmentsMeta)
-			for attName, attMeta := range doc.SyncData.Attachments {
+			for attName, attMeta := range doc.Attachments {
 				if attMetaMap, ok := attMeta.(map[string]interface{}); ok {
 					var attRevposInt int
 					if attRevpos, ok := attMetaMap["revpos"].(int); ok {
@@ -1953,7 +1957,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	}
 	// Store the new revision body into the doc:
 	doc.setRevisionBody(ctx, newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
-	doc.SyncData.Attachments = newDoc.DocAttachments
+	doc.Attachments = newDoc.Attachments
 	doc.MetadataOnlyUpdate = newDoc.MetadataOnlyUpdate
 
 	if doc.CurrentRev == newRevID {
@@ -2694,7 +2698,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 					obsoleteAttachments = append(obsoleteAttachments, previousAttachmentID)
 					if !isImport {
 						for _, previousAttachmentName := range previousAttachmentName {
-							_, exists := doc.SyncData.Attachments[previousAttachmentName]
+							_, exists := doc.Attachments[previousAttachmentName]
 							if !exists {
 								base.Audit(ctx, base.AuditIDAttachmentDelete, base.AuditFields{
 									base.AuditFieldDocID:        doc.ID,

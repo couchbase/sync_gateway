@@ -2822,8 +2822,8 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			assert.Nil(t, doc.Body(ctx)[db.BodyAttachments], "_attachments property should not be in resolved doc body")
 
-			assert.Len(t, doc.SyncData.Attachments, test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc")
-			for attName, att := range doc.SyncData.Attachments {
+			assert.Len(t, doc.Attachments, test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc")
+			for attName, att := range doc.Attachments {
 				attMap := att.(map[string]interface{})
 				assert.Equal(t, true, attMap["stub"].(bool), "attachment %q should be a stub", attName)
 				assert.NotEmpty(t, attMap["digest"].(string), "attachment %q should have digest", attName)
