@@ -46,7 +46,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	ctx := TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, int32(GTestBucketPool.numBuckets), GTestBucketPool.stats.TotalBucketInitCount.Load())
-	}, 2*time.Minute, 5*time.Millisecond) // Wait for bucket pool to be initialized, since GetConfigBuckets requires equal buckets to tbpNumBuckets
+	}, 2*time.Minute, 5*time.Millisecond) // Wait for bucket pool to be initialized, since GetConfigBuckets requires equal buckets to TestBucketPool.numBuckets
 
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
 	forcePerBucketAuth := false

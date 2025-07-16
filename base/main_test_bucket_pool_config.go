@@ -35,7 +35,7 @@ const (
 	defaultTestClusterPassword = "password"
 
 	// Creates and prepares this many buckets in the backing store to be pooled for testing.
-	tbpDefaultBucketPoolSize = 3
+	tbpDefaultBucketPoolSize = 4
 	tbpEnvBucketPoolSize     = "SG_TEST_BUCKET_POOL_SIZE"
 
 	// Creates and prepares this many collections in each bucket in the backing store.
@@ -110,23 +110,6 @@ func (tbp *TestBucketPool) canUseNamedCollections() bool {
 	requestDefaultCollection, _ := strconv.ParseBool(useDefaultCollection)
 	requestNamedCollection := !requestDefaultCollection
 	return requestNamedCollection
-}
-
-// tbpNumBuckets returns the configured number of buckets to use in the pool.
-func tbpNumBuckets() (int, error) {
-	if TestUseExistingBucket() {
-		// SG_TEST_USE_EXISTING_BUCKET only allows for one bucket name
-		return 1, nil
-	}
-	numBuckets := tbpDefaultBucketPoolSize
-	if envPoolSize := os.Getenv(tbpEnvBucketPoolSize); envPoolSize != "" {
-		var err error
-		numBuckets, err = strconv.Atoi(envPoolSize)
-		if err != nil {
-			return 0, fmt.Errorf("couldn't parse %s: %w", tbpEnvBucketPoolSize, err)
-		}
-	}
-	return numBuckets, nil
 }
 
 // tbpNumReplicas returns the number of replicas to use in each bucket.

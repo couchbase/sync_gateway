@@ -15,3 +15,7 @@ rules:
   line-length: disable
   comments: disable
   truthy: disable
+  indentation:
+    #check-multi-line-strings: true # check multi-line strings for indentation, doesn't work for markdown within yaml
+    spaces: 2
+    indent-sequences: true # default: true

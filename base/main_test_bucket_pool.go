@@ -37,9 +37,6 @@ type TestBucketPool struct {
 	// integrationMode should be true if using Couchbase Server. If this is false, Walrus buckets are returned instead of pooled buckets.
 	integrationMode bool
 
-	// numBuckets is the number of buckets to create in the pool.
-	numBuckets int
-
 	// readyBucketPool contains a buffered channel of buckets ready for use
 	readyBucketPool        chan Bucket
 	cluster                *tbpCluster
@@ -67,7 +64,9 @@ type TestBucketPool struct {
 	skipCollections bool
 	// numCollectionsPerBucket is the number of collections to create in each bucket
 	numCollectionsPerBucket int
-	useExistingBucket       bool
+	// numBuckets is the number of buckets managed by the pool
+	numBuckets        int
+	useExistingBucket bool
 
 	// when useDefaultScope is set, named collections are created in the default scope
 	useDefaultScope bool
@@ -104,9 +103,17 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		FatalfCtx(ctx, "couldn't set max file descriptors: %v", err)
 	}
 
-	numBuckets, err := tbpNumBuckets()
-	if err != nil {
-		FatalfCtx(ctx, "Couldn't get number of buckets: %v", err)
+	numBuckets := tbpDefaultBucketPoolSize
+	if TestUseExistingBucket() {
+		// SG_TEST_USE_EXISTING_BUCKET only allows for one bucket name
+		numBuckets = 1
+	}
+	if envPoolSize := os.Getenv(tbpEnvBucketPoolSize); envPoolSize != "" {
+		var err error
+		numBuckets, err = strconv.Atoi(envPoolSize)
+		if err != nil {
+			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
+		}
 	}
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
