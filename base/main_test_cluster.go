@@ -244,10 +244,10 @@ func (c *tbpCluster) removeBucket(name string) error {
 		nil,
 	)
 	if err != nil {
-		return fmt.Errorf("couldn't get Couchbase Server version: %w", err)
+		return fmt.Errorf("couldn't remove bucket: %w", err)
 	}
 	if status != http.StatusOK {
-		return fmt.Errorf("couldn't get Couchbase Server version (error code %d): %s", status, output)
+		return fmt.Errorf("couldn't remove bucket (error code %d): %s", status, output)
 	}
 	return nil
 }
