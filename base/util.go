@@ -570,9 +570,8 @@ func CreateDoublingSleeperDurationFunc(initialTimeToSleepMs int, maxWait time.Du
 	return sleeper
 }
 
-// Create a sleeper function that sleeps up to maxNumAttempts, sleeping timeToSleepMs each attempt
+// CreateSleeperFunc creates a linear sleeper function that sleeps up to maxNumAttempts, sleeping timeToSleepMs each attempt. Consider using typed version of this function CreateLinearSleeperFunc instead.
 func CreateSleeperFunc(maxNumAttempts, timeToSleepMs int) RetrySleeper {
-
 	sleeper := func(numAttempts int) (bool, int) {
 		if numAttempts > maxNumAttempts {
 			return false, -1
@@ -581,6 +580,11 @@ func CreateSleeperFunc(maxNumAttempts, timeToSleepMs int) RetrySleeper {
 	}
 	return sleeper
 
+}
+
+// CreateLinearSleeperFunc creates a linear sleeper function that sleeps up to maxNumAttempts, sleeping timeToSleep each attempt.
+func CreateLinearSleeperFunc(totalTime, timeToSleep time.Duration) RetrySleeper {
+	return CreateSleeperFunc(int(totalTime.Seconds()/timeToSleep.Seconds()), int(timeToSleep.Milliseconds()))
 }
 
 // Create a RetrySleeper that will double the retry time on every iteration, with each sleep not exceeding maxSleepPerRetryMs.

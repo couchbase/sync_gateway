@@ -74,7 +74,7 @@ func (tbp *TestBucketPool) NumUsableBuckets() int {
 		// so report back 10 to match a fully available CBS bucket pool.
 		return 10
 	}
-	return tbpNumBuckets(context.Background()) - int(atomic.LoadUint32(&tbp.preservedBucketCount))
+	return tbp.numBuckets - int(atomic.LoadUint32(&tbp.preservedBucketCount))
 }
 
 func (tbp *TestBucketPool) NumCollectionsPerBucket() int {
