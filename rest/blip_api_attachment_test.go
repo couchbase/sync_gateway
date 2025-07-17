@@ -494,14 +494,16 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 	// attachment assertions
 	attachments, err := retrievedDoc.GetAttachments()
-	assert.True(t, err == nil)
-	assert.Len(t, attachments, 1)
-	retrievedAttachment := attachments[input.attachmentName]
-	require.NotNil(t, retrievedAttachment)
-	assert.Equal(t, input.attachmentBody, string(retrievedAttachment.Data))
-	assert.Equal(t, len(attachmentBody), retrievedAttachment.Length)
-	assert.Equal(t, retrievedAttachment.Digest, input.attachmentDigest)
-
+	require.NoError(t, err)
+	require.Equal(t, db.AttachmentMap{
+		input.attachmentName: {
+			ContentType: base.ContentTypeJSON,
+			Digest:      input.attachmentDigest,
+			Length:      len(attachmentBody),
+			Revpos:      1,
+			Stub:        true,
+		},
+	}, attachments)
 }
 
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments

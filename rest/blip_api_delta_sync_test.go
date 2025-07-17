@@ -12,6 +12,7 @@ package rest
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -62,13 +63,9 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 		rt.WaitForVersion(docID, version)
 
-		collection, ctx := rt.GetSingleTestDatabaseCollection()
-		syncData, err := collection.GetDocSyncData(ctx, docID)
-		require.NoError(t, err)
-
-		assert.Len(t, syncData.Attachments, 1)
-		_, found := syncData.Attachments["myAttachment"]
-		assert.True(t, found)
+		syncData := db.GetRawSyncXattr(t, rt.GetSingleDataStore(), docID)
+		require.Empty(t, syncData.Attachments)
+		base.RequireKeysEqual(t, []string{"myAttachment"}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), docID))
 
 		// Turn deltas on
 		btc.ClientDeltas = true
@@ -84,12 +81,9 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 		rt.WaitForVersion(docID, version)
 
-		syncData, err = collection.GetDocSyncData(ctx, docID)
-		require.NoError(t, err)
-
-		assert.Len(t, syncData.Attachments, 1)
-		_, found = syncData.Attachments["myAttachment"]
-		assert.True(t, found)
+		syncData = db.GetRawSyncXattr(t, rt.GetSingleDataStore(), docID)
+		require.Empty(t, syncData.Attachments)
+		base.RequireKeysEqual(t, []string{"myAttachment"}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), docID))
 	})
 }
 
@@ -122,8 +116,6 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, ClientDeltas: true}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
-
-		collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 		btcRunner.StartPush(btc.id)
 
@@ -176,11 +168,9 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 			rt.WaitForVersion(tc.docID, version)
 
 			if tc.hasAttachment {
-				syncData, err := collection.GetDocSyncData(ctx, tc.docID)
-				require.NoError(t, err)
-				assert.Len(t, syncData.Attachments, 1)
-				_, found := syncData.Attachments["myAttachment"]
-				assert.True(t, found)
+				syncData := db.GetRawSyncXattr(t, rt.GetSingleDataStore(), tc.docID)
+				require.Empty(t, syncData.Attachments)
+				base.RequireKeysEqual(t, []string{"myAttachment"}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), tc.docID))
 			}
 		}
 	})
@@ -241,22 +231,20 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		assert.Len(t, greetings, 1)
 		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
 
-		attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
-		require.True(t, ok)
-		assert.Len(t, attachments, 2)
-		hello, ok := attachments["hello.txt"].(map[string]interface{})
-		require.True(t, ok)
-		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, float64(11), hello["length"])
-		assert.Equal(t, float64(1), hello["revpos"])
-		assert.Equal(t, true, hello["stub"])
-
-		world, ok := attachments["world.txt"].(map[string]interface{})
-		require.True(t, ok)
-		assert.Equal(t, "sha1-qiF39gVoGPFzpRQkNYcY9u3wx9Y=", world["digest"])
-		assert.Equal(t, float64(11), world["length"])
-		assert.Equal(t, float64(2), world["revpos"])
-		assert.Equal(t, true, world["stub"])
+		require.Equal(t, db.AttachmentMap{
+			"hello.txt": {
+				Revpos: 1,
+				Length: 11,
+				Stub:   true,
+				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			},
+			"world.txt": {
+				Revpos: 2,
+				Length: 11,
+				Stub:   true,
+				Digest: "sha1-qiF39gVoGPFzpRQkNYcY9u3wx9Y=",
+			},
+		}, db.GetAttachmentsFrom1xBody(t, respBody))
 	})
 }
 
@@ -298,17 +286,14 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		version2 := rt.UpdateDocDirectly(doc1ID, version, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`))
 
 		data = btcRunner.WaitForVersion(client.id, doc1ID, version2)
-		var dataMap map[string]interface{}
-		assert.NoError(t, base.JSONUnmarshal(data, &dataMap))
-		atts, ok := dataMap[db.BodyAttachments].(map[string]interface{})
-		require.True(t, ok)
-		assert.Len(t, atts, 1)
-		hello, ok := atts["hello.txt"].(map[string]interface{})
-		require.True(t, ok)
-		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, float64(11), hello["length"])
-		assert.Equal(t, float64(2), hello["revpos"])
-		assert.Equal(t, true, hello["stub"])
+		require.Equal(t, db.AttachmentMap{
+			"hello.txt": {
+				Revpos: 2,
+				Length: 11,
+				Stub:   true,
+				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			},
+		}, db.GetAttachmentsFromInlineBody(t, data))
 
 		// message #3 is the getAttachment message that is sent in-between rev processing
 		msg := client.pullReplication.WaitForMessage(3)
@@ -332,28 +317,28 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 			// Check the request body was NOT the delta
 			msgBody, err := msg.Body()
 			assert.NoError(t, err)
-			assert.NotEqual(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
-			assert.Contains(t, string(msgBody), `"stub":true`)
-			assert.Contains(t, string(msgBody), `"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="`)
-			assert.Contains(t, string(msgBody), `"revpos":2`)
-			assert.Contains(t, string(msgBody), `"length":11`)
-			assert.Contains(t, string(msgBody), `"greetings":[{"hello":"world!"},{"hi":"alice"}]`)
+			fmt.Printf("msgBody: %s\n", string(msgBody))
+			assert.JSONEq(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}, "greetings": [{"hello": "world!"}, {"hi": "alice"}]}`, string(msgBody))
 		}
 
 		respBody := rt.GetDocVersion(doc1ID, version2)
 		assert.Equal(t, doc1ID, respBody[db.BodyId])
-		greetings := respBody["greetings"].([]interface{})
-		assert.Len(t, greetings, 2)
-		assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
-		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[1])
-		atts = respBody[db.BodyAttachments].(map[string]interface{})
-		assert.Len(t, atts, 1)
-		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, float64(11), hello["length"])
-		assert.Equal(t, float64(2), hello["revpos"])
-		assert.Equal(t, true, hello["stub"])
-
-		// assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
+		require.Equal(t, db.Body{
+			"_id":  doc1ID,
+			"_rev": "2-10000d5ec533b29b117e60274b1e3653",
+			"greetings": []any{
+				map[string]any{"hello": "world!"},
+				map[string]any{"hi": "alice"},
+			},
+			"_attachments": map[string]any{
+				"hello.txt": map[string]any{
+					"revpos": float64(2),
+					"length": float64(11),
+					"stub":   true,
+					"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				},
+			},
+		}, respBody)
 	})
 }
 

@@ -939,3 +939,41 @@ func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
 	require.NoError(t, err)
 	assert.Equal(t, "4.0.0", syncInfo.MetaDataVersion)
 }
+
+// GetRawSyncXattr retrieves the _sync xattr from the bucket without going through typical CRUD processing.
+func GetRawSyncXattr(t *testing.T, collection base.DataStore, docID string) SyncData {
+	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.SyncXattrName})
+	require.NoError(t, err, "Could not find _sync xattr for %s", docID)
+	require.Contains(t, xattrs, base.SyncXattrName, "Could not find _sync xattr for %s", docID)
+	var syncData SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+	return syncData
+}
+
+// GetRawGlobalSyncAttachments retrieves the attachments from the _globalSync.attachments xattr for a given document ID.
+func GetRawGlobalSyncAttachments(t *testing.T, collection base.DataStore, docID string) AttachmentMap {
+	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.GlobalXattrName})
+	require.NoError(t, err, "Could not find _globalSync xattr for %s", docID)
+	require.Contains(t, xattrs, base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
+	var globalSyncData struct {
+		Attachments AttachmentMap `json:"attachments_meta"`
+	}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalSyncData))
+	return globalSyncData.Attachments
+}
+
+// GetAttachmentsFromInlineBody returns the attachment data when it is part of a json body. This could be from:
+// - GET /ks/{docID}
+// blip message with _attachments field.
+func GetAttachmentsFromInlineBody(t *testing.T, responseBody []byte) AttachmentMap {
+	var body struct {
+		Attachments AttachmentMap `json:"_attachments"`
+	}
+	require.NoError(t, base.JSONUnmarshal(responseBody, &body))
+	return body.Attachments
+}
+
+// GetAttachmentsFrom1xBody returns the attachment data when it returned from Get1xBody functions, where the data is already db.Body.
+func GetAttachmentsFrom1xBody(t *testing.T, body Body) AttachmentMap {
+	return GetAttachmentsFromInlineBody(t, base.MustJSONMarshal(t, body))
+}

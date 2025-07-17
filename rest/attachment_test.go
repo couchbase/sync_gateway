@@ -77,7 +77,7 @@ func TestDocEtag(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc/attach1", "")
 	RequireStatus(t, response, 200)
-	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.Equal(t, attachmentBody, response.Body.String())
 	assert.Equal(t, "", response.Header().Get("Content-Disposition"))
 	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 
@@ -100,7 +100,7 @@ func TestDocAttachment(t *testing.T) {
 	// retrieve attachment
 	response := rt.SendRequest("GET", "/{{.keyspace}}/doc/attach1", "")
 	RequireStatus(t, response, 200)
-	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.Equal(t, attachmentBody, response.Body.String())
 	assert.Equal(t, "bytes", response.Header().Get("Accept-Ranges"))
 	assert.Equal(t, "", response.Header().Get("Content-Disposition"))
 	assert.Equal(t, "30", response.Header().Get("Content-Length"))
@@ -109,7 +109,7 @@ func TestDocAttachment(t *testing.T) {
 	// retrieve subrange
 	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc/attach1", "", map[string]string{"Range": "bytes=5-6"})
 	RequireStatus(t, response, 206)
-	assert.Equal(t, "is", string(response.Body.Bytes()))
+	assert.Equal(t, "is", response.Body.String())
 	assert.Equal(t, "bytes", response.Header().Get("Accept-Ranges"))
 	assert.Equal(t, "2", response.Header().Get("Content-Length"))
 	assert.Equal(t, "bytes 5-6/30", response.Header().Get("Content-Range"))
@@ -148,7 +148,7 @@ func TestDocAttachmentMetaOption(t *testing.T) {
 	// Validate attachment response.
 	assertAttachmentResponse := func(response *TestResponse) {
 		RequireStatus(t, response, http.StatusOK)
-		assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+		assert.Equal(t, attachmentBody, response.Body.String())
 		assert.Equal(t, "bytes", response.Header().Get("Accept-Ranges"))
 		assert.Empty(t, response.Header().Get("Content-Disposition"))
 		assert.Equal(t, "30", response.Header().Get("Content-Length"))
@@ -166,41 +166,23 @@ func TestDocAttachmentMetaOption(t *testing.T) {
 	response = rt.SendRequest(http.MethodGet, "/{{.keyspace}}/doc/attach1?meta=true", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	responseBody := make(map[string]interface{})
-	err := base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
-	require.NoError(t, err)
-
-	contentType, contentTypeOK := responseBody["content_type"].(string)
-	require.True(t, contentTypeOK)
-	assert.Equal(t, attachmentContentType, contentType)
-
-	digest, digestOK := responseBody["digest"].(string)
-	require.True(t, digestOK)
-	assert.Equal(t, "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=", digest)
-
-	key, keyOK := responseBody["key"].(string)
-	require.True(t, keyOK)
-	assert.Equal(t, "_sync:att2:E51US4IbE+vqFPGw/hhXciLkFcKWbjo1EcQZYFUjIgI=:sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=", key)
-
-	length, lengthOK := responseBody["length"].(float64)
-	require.True(t, lengthOK)
-	assert.Equal(t, float64(30), length)
-
-	revpos, revposOK := responseBody["revpos"].(float64)
-	require.True(t, revposOK)
-	assert.Equal(t, float64(2), revpos)
-
-	ver, versionOK := responseBody["ver"].(float64)
-	require.True(t, versionOK)
-	assert.Equal(t, float64(2), ver)
-
-	stub, stubOK := responseBody["stub"].(bool)
-	require.True(t, stubOK)
-	require.True(t, stub)
+	attachment := getAttachmentMetaFromREST(t, response.BodyBytes())
+	require.Equal(t, attachmentMetaResponse{
+		Key: "_sync:att2:E51US4IbE+vqFPGw/hhXciLkFcKWbjo1EcQZYFUjIgI=:sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
+		DocAttachment: db.DocAttachment{
+			ContentType: attachmentContentType,
+			Digest:      "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
+			Length:      30,
+			Revpos:      2,
+			Version:     2,
+			Stub:        true,
+		},
+	}, attachment)
 
 	// Retrieve attachment by explicitly disabling meta option.
 	response = rt.SendRequest(http.MethodGet, "/{{.keyspace}}/doc/attach1?meta=false", "")
 	assertAttachmentResponse(response)
+	require.Equal(t, attachmentBody, response.BodyString())
 }
 
 // Add an attachment to a document that has been removed from the users channels
@@ -236,7 +218,7 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	// assertResponse asserts that the specified attachment exists in the response body.
 	assertResponse := func(response *TestResponse, attachmentBody string) {
 		RequireStatus(t, response, http.StatusOK)
-		require.Equal(t, attachmentBody, string(response.Body.Bytes()))
+		require.Equal(t, attachmentBody, response.Body.String())
 		require.Empty(t, response.Header().Get("Content-Disposition"))
 		require.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 	}
@@ -311,7 +293,7 @@ func TestManualAttachment(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc1/attach1", "")
 	RequireStatus(t, response, 200)
-	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.Equal(t, attachmentBody, response.Body.String())
 	assert.True(t, response.Header().Get("Content-Disposition") == "")
 	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
@@ -319,7 +301,7 @@ func TestManualAttachment(t *testing.T) {
 	// Content-disposition: attachment
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attach1", "")
 	RequireStatus(t, response, 200)
-	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.Equal(t, attachmentBody, response.Body.String())
 	assert.True(t, response.Header().Get("Content-Disposition") == `attachment`)
 	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
@@ -336,8 +318,8 @@ func TestManualAttachment(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc1/attach1", "")
 	RequireStatus(t, response, 200)
-	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	assert.Equal(t, attachmentBody, response.Body.String())
+	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 
 	// add another attachment to the document
 	// also no explicit Content-Type header on this one
@@ -349,25 +331,34 @@ func TestManualAttachment(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc1/attach2", "")
 	RequireStatus(t, response, 200)
-	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
-	assert.True(t, response.Header().Get("Content-Type") == "application/octet-stream")
+	assert.Equal(t, attachmentBody, response.Body.String())
+	assert.Equal(t, base.ContentTypeOctetStream, response.Header().Get("Content-Type"))
 
+	var body struct {
+		Attachments map[string]db.DocAttachment `json:"_attachments"`
+		Prop        bool                        `json:"prop"`
+	}
 	// now check the attachments index on the document
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, response, 200)
-	body := db.Body{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	bodyAttachments, ok := body["_attachments"].(map[string]interface{})
-	if !ok {
-		t.Errorf("Attachments must be map")
-	} else {
-		assert.Len(t, bodyAttachments, 2)
-	}
-	// make sure original document property has remained
-	prop, ok := body["prop"]
-	if !ok || !prop.(bool) {
-		t.Errorf("property prop is now missing or modified")
-	}
+	require.Equal(t, map[string]db.DocAttachment{
+		"attach1": {
+			ContentType: attachmentContentType,
+			Digest:      "sha1-Uo+ueIQe6t37FB7qIcrvoyU9YH0=",
+			Length:      21,
+			Revpos:      4,
+			Stub:        true,
+		},
+		"attach2": {
+			ContentType: base.ContentTypeOctetStream,
+			Digest:      "sha1-wwSQnNy0nSmwZi0/XSR07hrg7n0=",
+			Length:      16,
+			Revpos:      5,
+			Stub:        true,
+		},
+	}, body.Attachments)
+	require.True(t, body.Prop)
 }
 
 // PUT attachment on non-existent docid should create empty doc
@@ -401,7 +392,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/notexistyet/attach1", "")
 	RequireStatus(t, response, 200)
-	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.Equal(t, attachmentBody, response.Body.String())
 	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// now check the document
@@ -410,7 +401,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	// body should only have 3 top-level entries _id, _rev, _attachments
-	assert.True(t, len(body) == 3)
+	base.RequireKeysEqual(t, []string{"_id", "_rev", "_attachments"}, body)
 }
 
 // Test for regression of issue #447
@@ -431,25 +422,27 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	}
 
 	response := rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevTreeID, doc1Version.RevTreeID), "", reqHeaders)
-	assert.Equal(t, 200, response.Code)
-	// validate attachment has data property
-	body := db.Body{}
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	log.Printf("response body revid1 = %s", body)
-	attachments := body["_attachments"].(map[string]interface{})
-	attach1 := attachments["attach1"].(map[string]interface{})
-	data := attach1["data"]
-	assert.True(t, data != nil)
-
+	require.Equal(t, db.AttachmentMap{
+		"attach1": {
+			Length:      30,
+			Revpos:      2,
+			ContentType: "content/type",
+			Digest:      "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
+			Data:        []byte(attachmentBody), // has body
+			Stub:        false,
+		},
+	}, db.GetAttachmentsFromInlineBody(t, response.BodyBytes()))
 	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevTreeID, afterAttachmentVersion.RevTreeID), "", reqHeaders)
-	assert.Equal(t, 200, response.Code)
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	log.Printf("response body revid1 = %s", body)
-	attachments = body["_attachments"].(map[string]interface{})
-	attach1 = attachments["attach1"].(map[string]interface{})
-	data = attach1["data"]
-	assert.True(t, data == nil)
-
+	RequireStatus(t, response, http.StatusOK)
+	require.Equal(t, db.AttachmentMap{
+		"attach1": {
+			Length:      30,
+			Revpos:      2,
+			ContentType: "content/type",
+			Digest:      "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
+			Stub:        true,
+		},
+	}, db.GetAttachmentsFromInlineBody(t, response.BodyBytes()))
 }
 
 func TestAddingAttachment(t *testing.T) {
@@ -1064,7 +1057,7 @@ func TestAttachmentContentType(t *testing.T) {
 
 	// Ran against allow insecure
 	rt.GetDatabase().ServeInsecureAttachmentTypes = true
-	for index, _ := range tests {
+	for index := range tests {
 		response := rt.SendRequest("GET", fmt.Sprintf("/{{.keyspace}}/doc_allow_insecure_%d/login.aspx", index), "")
 		contentDisposition := response.Header().Get("Content-Disposition")
 
@@ -1080,18 +1073,14 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		resource := fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attName)
 		response := rt.SendRequest(http.MethodGet, resource, "")
 		RequireStatus(t, response, http.StatusOK)
-		return string(response.Body.Bytes())
+		return response.Body.String()
 	}
 
-	retrieveAttachmentKey := func(t *testing.T, docID, attName string) (key string) {
+	retrieveAttachmentKey := func(t *testing.T, docID, attName string) string {
 		resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?meta=true", docID, attName)
 		response := rt.SendRequest(http.MethodGet, resource, "")
-		var meta map[string]interface{}
-		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &meta))
 		RequireStatus(t, response, http.StatusOK)
-		key, found := meta["key"].(string)
-		require.True(t, found)
-		return key
+		return getAttachmentMetaFromREST(t, response.BodyBytes()).Key
 	}
 
 	requireAttachmentNotFound := func(t *testing.T, docID, attName string) {
@@ -1100,11 +1089,10 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		RequireStatus(t, response, http.StatusNotFound)
 	}
 
-	retrieveAttachmentMeta := func(t *testing.T, docID string) (attMeta map[string]interface{}) {
-		body := rt.GetDocBody(docID)
-		attachments, ok := body["_attachments"].(map[string]interface{})
-		require.True(t, ok)
-		return attachments
+	retrieveAttachmentMeta := func(t *testing.T, docID string) db.AttachmentMap {
+		response := rt.SendRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", docID), "")
+		RequireStatus(t, response, http.StatusOK)
+		return db.GetAttachmentsFromInlineBody(t, response.BodyBytes())
 	}
 
 	dataStore := rt.GetSingleDataStore()
@@ -1130,19 +1118,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=",
+				Length:      38,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(t, docID, attName)
-		require.NotEmpty(t, attKey)
 
 		// Remove attachment from the bucket via document update.
 		_ = rt.UpdateDoc(docID, version, `{"prop":true}`)
@@ -1171,19 +1158,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-Av0dem1kCRIddzAlnK4A2Mgn6Uo=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-Av0dem1kCRIddzAlnK4A2Mgn6Uo=",
+				Length:      38,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(t, docID, attName)
-		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document.
 		rt.DeleteDoc(docID, version)
@@ -1212,19 +1198,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-8i/O8CzFsxHmwT4SLoVI6PIKRDo=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-8i/O8CzFsxHmwT4SLoVI6PIKRDo=",
+				Length:      38,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(t, docID, attName)
-		require.NotEmpty(t, attKey)
 
 		// Purge the entire document.
 		rt.PurgeDoc(docID)
@@ -1249,15 +1234,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the doc and check the attachment meta.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-0naD6SgfLVDr+zakP8RkNlBYORw=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-0naD6SgfLVDr+zakP8RkNlBYORw=",
+				Length:      38,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
 		attKeyOld := retrieveAttachmentKey(t, docID, attName)
@@ -1273,15 +1258,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments = retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok = attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-dDdppdY7RC4gq550G7eGJgQmk6g=", meta["digest"].(string))
-		assert.Equal(t, float64(46), meta["length"].(float64))
-		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-dDdppdY7RC4gq550G7eGJgQmk6g=",
+				Length:      46,
+				Revpos:      3,
+			},
+		}, attachments)
 
 		// Check whether the old attachment blob is removed from the underlying storage.
 		rt.RequireDocNotFound(attKeyOld)
@@ -1310,19 +1295,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			att1Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att1Key := retrieveAttachmentKey(t, docID, att1Name)
-		require.NotEmpty(t, att1Key)
 
 		// Add another attachment to the same document.
 		att2Name := "bob.txt"
@@ -1335,29 +1319,26 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments = retrieveAttachmentMeta(t, docID)
+		require.Equal(t, db.AttachmentMap{
+			att1Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+			att2Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=",
+				Length:      38,
+				Revpos:      3,
+			},
+		}, attachments)
 		require.Len(t, attachments, 2)
-
-		meta, ok = attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
-
-		meta, ok = attachments[att2Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att2Key := retrieveAttachmentKey(t, docID, att2Name)
-		require.NotEmpty(t, att2Key)
 		require.NotEqual(t, att1Key, att2Key)
 
 		// Remove both attachments from the bucket via document update.
@@ -1389,19 +1370,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			att1Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att1Key := retrieveAttachmentKey(t, docID, att1Name)
-		require.NotEmpty(t, att1Key)
 
 		// Add another attachment to the same document.
 		att2Name := "bob.txt"
@@ -1414,29 +1394,25 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments = retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 2)
-
-		meta, ok = attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
-
-		meta, ok = attachments[att2Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			att1Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+			att2Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=",
+				Length:      38,
+				Revpos:      3,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att2Key := retrieveAttachmentKey(t, docID, att2Name)
-		require.NotEmpty(t, att2Key)
 		require.NotEqual(t, att1Key, att2Key)
 
 		// Delete/tombstone the document.
@@ -1468,19 +1444,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			att1Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att1Key := retrieveAttachmentKey(t, docID, att1Name)
-		require.NotEmpty(t, att1Key)
 
 		// Add another attachment to the same document.
 		att2Name := "bob.txt"
@@ -1493,29 +1468,25 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments = retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 2)
-
-		meta, ok = attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
-
-		meta, ok = attachments[att2Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			att1Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+			att2Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=",
+				Length:      38,
+				Revpos:      3,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att2Key := retrieveAttachmentKey(t, docID, att2Name)
-		require.NotEmpty(t, att2Key)
 		require.NotEqual(t, att1Key, att2Key)
 
 		// Purge the entire document.
@@ -1543,18 +1514,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "",
+				Digest:      "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=",
+				Length:      38,
+				Revpos:      1,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(t, docID, attName)
-		require.NotEmpty(t, attKey)
 
 		// Remove attachment from the bucket via document update.
 		_ = rt.UpdateDoc(docID, version, `{"prop":true}`)
@@ -1582,18 +1553,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "",
+				Digest:      "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=",
+				Length:      38,
+				Revpos:      1,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(t, docID, attName)
-		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document.
 		rt.DeleteDoc(docID, version)
@@ -1621,14 +1592,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "",
+				Digest:      "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=",
+				Length:      38,
+				Revpos:      1,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(t, docID, attName)
@@ -1657,14 +1629,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the doc and check the attachment meta.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "",
+				Digest:      "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=",
+				Length:      38,
+				Revpos:      1,
+			},
+		}, attachments)
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
 		attKeyOld := retrieveAttachmentKey(t, docID, attName)
@@ -1680,14 +1653,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments = retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok = attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "sha1-dDdppdY7RC4gq550G7eGJgQmk6g=", meta["digest"].(string))
-		assert.Equal(t, float64(46), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-dDdppdY7RC4gq550G7eGJgQmk6g=",
+				Length:      46,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Check whether the old attachment blob is removed from the underlying storage.
 		rt.RequireDocNotFound(attKeyOld)
@@ -1720,14 +1694,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "",
+				Digest:      "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=",
+				Length:      38,
+				Revpos:      1,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(t, docID, attName)
@@ -1765,14 +1740,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "",
+				Digest:      "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=",
+				Length:      38,
+				Revpos:      1,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(t, docID, attName)
@@ -1792,16 +1768,16 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Get the document and check doc body and attachment metadata.
 		updatedBody := rt.GetDocBody(docID)
 		require.False(t, updatedBody["prop"].(bool))
-		attachments, ok = updatedBody["_attachments"].(map[string]interface{})
-		require.True(t, ok)
-		require.Len(t, attachments, 1)
-		meta, ok = attachments[attName].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		attachments = retrieveAttachmentMeta(t, docID)
+		require.Equal(t, db.AttachmentMap{
+			attName: {
+				Stub:        true,
+				ContentType: "",
+				Digest:      "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=",
+				Length:      38,
+				Revpos:      1,
+			},
+		}, attachments)
 	})
 
 	rt.Run("doc with multiple attachments and removal of a single one upon document update", func(t *testing.T) {
@@ -1820,19 +1796,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments := retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok := attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			att1Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att1Key := retrieveAttachmentKey(t, docID, att1Name)
-		require.NotEmpty(t, att1Key)
 
 		// Add another attachment to the same document.
 		att2Name := "bob.txt"
@@ -1845,29 +1820,25 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments = retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 2)
-
-		meta, ok = attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
-
-		meta, ok = attachments[att2Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
-		assert.Equal(t, float64(38), meta["length"].(float64))
-		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			att1Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+			att2Name: {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=",
+				Length:      38,
+				Revpos:      3,
+			},
+		}, attachments)
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att2Key := retrieveAttachmentKey(t, docID, att2Name)
-		require.NotEmpty(t, att2Key)
 		require.NotEqual(t, att1Key, att2Key)
 
 		// Remove one of the attachment from the bucket via document update.
@@ -1875,18 +1846,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Get the document and check the attachment metadata.
 		attachments = retrieveAttachmentMeta(t, docID)
-		require.Len(t, attachments, 1)
-		meta, ok = attachments[att2Name].(map[string]interface{})
-		require.False(t, ok)
-		require.Nil(t, meta)
-		meta, ok = attachments[att1Name].(map[string]interface{})
-		require.True(t, ok)
-		assert.True(t, meta["stub"].(bool))
-		assert.Equal(t, "content/type", meta["content_type"].(string))
-		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
-		assert.Equal(t, float64(40), meta["length"].(float64))
-		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
+		require.Equal(t, db.AttachmentMap{
+			"alice.txt": {
+				Stub:        true,
+				ContentType: "content/type",
+				Digest:      "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=",
+				Length:      40,
+				Revpos:      2,
+			},
+		}, attachments)
 
 		// Check whether removed attachment is also removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, att2Name)
@@ -2100,7 +2068,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	finalVersion4 := rt.UpdateDoc(docID, *winningVersion3, `{"update": 2}`)
 
 	type docResp struct {
-		Attachments db.AttachmentsMeta `json:"_attachments"`
+		Attachments db.AttachmentMap `json:"_attachments"`
 	}
 
 	var doc1 docResp
@@ -2111,14 +2079,14 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	err := base.JSONUnmarshal(resp.BodyBytes(), &doc1)
 	assert.NoError(t, err)
 	require.Contains(t, doc1.Attachments, "hello.txt")
-	attachmentData, ok := doc1.Attachments["hello.txt"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
-	assert.Equal(t, "aGVsbG8gd29ybGQ=", attachmentData["data"])
+	require.Equal(t, db.DocAttachment{
+		Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+		Length: 11,
+		Revpos: 2,
+		Data:   []byte("hello world"),
+	}, doc1.Attachments["hello.txt"])
 
-	attachmentKey := db.MakeAttachmentKey(2, "doc", attachmentData["digest"].(string))
+	attachmentKey := db.MakeAttachmentKey(2, "doc", doc1.Attachments["hello.txt"].Digest)
 
 	var doc2 docResp
 	// Get winning rev and ensure attachment is indeed removed from this rev
@@ -3028,4 +2996,17 @@ func TestBlipPushRevWithAttachment(t *testing.T) {
 		RequireStatus(t, response, http.StatusOK)
 		require.Equal(t, attachmentData, string(response.BodyBytes()))
 	})
+}
+
+// attachmentMetaResponse is the response body for GET /ks/doc/att?meta=true
+type attachmentMetaResponse struct {
+	Key string `json:"key"`
+	db.DocAttachment
+}
+
+// getAttachmentMetaFromREST unmarhsals the response body from GET /ks/doc/att?meta=true
+func getAttachmentMetaFromREST(t *testing.T, responseBody []byte) attachmentMetaResponse {
+	var resp attachmentMetaResponse
+	require.NoError(t, base.JSONUnmarshal(responseBody, &resp))
+	return resp
 }

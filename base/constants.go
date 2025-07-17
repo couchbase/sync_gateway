@@ -203,6 +203,8 @@ const (
 	ContentTypeJSON = "application/json"
 	// ContentTypeFormEncoded is the content type for form-encoded requests.
 	ContentTypeFormEncoded = "application/x-www-form-urlencoded"
+	// ContentTypeOctetStream is for binary data
+	ContentTypeOctetStream = "application/octet-stream"
 )
 
 // UnitTestUrl returns the configured test URL.
