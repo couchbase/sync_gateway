@@ -284,6 +284,7 @@ func (c *tbpCluster) supportsMobileRBAC() bool {
 	return c.isServerEnterprise()
 }
 
+// getTestClusterSpec returns the connection parameters to connect to a Couchbase Server during an integration test.
 func getTestClusterSpec() (*CouchbaseClusterSpec, error) {
 	clusterSpecPath := os.Getenv("SG_TEST_CLUSTER_SPEC")
 	var spec CouchbaseClusterSpec

@@ -39,7 +39,6 @@ type TestBucketPool struct {
 
 	// readyBucketPool contains a buffered channel of buckets ready for use
 	readyBucketPool        chan Bucket
-	clusterSpec            CouchbaseClusterSpec
 	cluster                *tbpCluster
 	bucketReadierQueue     chan tbpBucketName
 	bucketReadierWaitGroup *sync.WaitGroup
@@ -71,6 +70,9 @@ type TestBucketPool struct {
 
 	// when useDefaultScope is set, named collections are created in the default scope
 	useDefaultScope bool
+
+	// clusterSpec defines how to connect to the couchbase server cluster
+	clusterSpec CouchbaseClusterSpec
 }
 
 type TestBucketPoolOptions struct {

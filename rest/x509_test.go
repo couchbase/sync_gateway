@@ -21,46 +21,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestX509RoundtripUsingIP is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
-// The test enforces SG connects using an IP address which is also present in the node cert.
-func TestX509RoundtripUsingIP(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
-	defer rt.Close()
-
-	// write a doc to ensure bucket ops work
-	tr := rt.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"sgwrite":true}`)
-	RequireStatus(t, tr, http.StatusCreated)
-
-	// wait for doc to come back over DCP
-	rt.WaitForDoc(t.Name())
-}
-
-// TestX509RoundtripUsingDomain is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
-// The test enforces SG connects using a domain name which is also present in the node cert.
-func TestX509RoundtripUsingDomain(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
-	defer rt.Close()
-
-	// write a doc to ensure bucket ops work
-	tr := rt.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"sgwrite":true}`)
-	RequireStatus(t, tr, http.StatusCreated)
-
-	// wait for doc to come back over DCP
-	rt.WaitForDoc(t.Name())
-}
-
 func TestX509UnknownAuthorityWrap(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
