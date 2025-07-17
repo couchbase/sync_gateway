@@ -1452,9 +1452,9 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.ServerTLSSkipVerify = base.Ptr(clusterSpec.TLSSkipVerify)
 		config.Bootstrap.Username = clusterSpec.Username
 		config.Bootstrap.Password = clusterSpec.Password
-		config.Bootstrap.CACertPath = clusterSpec.CACertPath
-		config.Bootstrap.X509CertPath = clusterSpec.Certpath
-		config.Bootstrap.X509KeyPath = clusterSpec.Keypath
+		config.Bootstrap.CACertPath = clusterSpec.CACertpath
+		config.Bootstrap.X509CertPath = clusterSpec.X509Certpath
+		config.Bootstrap.X509KeyPath = clusterSpec.X509Keypath
 		ctx := base.TestCtx(t)
 		sc, err := SetupServerContext(ctx, &config, false)
 		require.NoError(t, err)

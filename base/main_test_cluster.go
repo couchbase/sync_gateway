@@ -12,89 +12,75 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10"
 )
-
-// firstServerVersionToSupportMobileXDCR this is the first server version to support Mobile XDCR feature
-var firstServerVersionToSupportMobileXDCR *ComparableBuildVersion
-
-func init() {
-	var err error
-	firstServerVersionToSupportMobileXDCR, err = NewComparableBuildVersionFromString("7.6.4@5074")
-	if err != nil {
-		log.Fatalf("Couldn't parse firstServerVersionToSupportMobileXDCR: %v", err)
-	}
-}
-
-type clusterLogFunc func(ctx context.Context, format string, args ...interface{})
 
 // tbpCluster represents a gocb v2 cluster
 type tbpCluster struct {
-	logger       clusterLogFunc
-	server       string // server address to connect to cluster
-	connstr      string // connection string used to connect to the cluster
-	supportsHLV  bool   // Flag to indicate cluster supports Mobile XDCR
-	majorVersion int
-	minorVersion int
-	version      string
-	// cluster can be used to perform cluster-level operations (but not bucket-level operations)
-	cluster     *gocb.Cluster
-	clusterSpec CouchbaseClusterSpec // cluster spec used to connect to the cluster
+	// version is the Couchbase Server version
+	version ComparableBuildVersion
+	// ee is true if the Couchbase Server is Enterprise Edition
+	ee bool
+	// clusterSpec is the authentication and connection information for the cluster.
+	clusterSpec CouchbaseClusterSpec
+	// agent is a gocbcore agent for the cluster.
+	agent *gocbcore.Agent
 }
 
 // newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.
-func newTestCluster(ctx context.Context, server string, tbp *TestBucketPool) *tbpCluster {
-	tbpCluster := &tbpCluster{
-		logger:      tbp.Logf,
-		server:      server,
-		clusterSpec: tbp.clusterSpec,
-	}
-	tbpCluster.cluster, tbpCluster.connstr = getGocbClusterForTest(ctx, tbp.clusterSpec)
-	metadata, err := tbpCluster.cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
+func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbpCluster, error) {
+	agent, err := NewClusterAgent(ctx, clusterSpec)
 	if err != nil {
-		tbp.Fatalf(ctx, "Couldn't get cluster metadata: %v", err)
+		return nil, fmt.Errorf("couldn't create cluster agent: %w", err)
 	}
-	tbpCluster.version = metadata[0].Version
-	tbpCluster.majorVersion, tbpCluster.minorVersion, err = getClusterVersion(tbpCluster.cluster)
+	version, ee, err := getCouchbaseServerVersion(agent, clusterSpec)
 	if err != nil {
-		tbp.Fatalf(ctx, "Couldn't get cluster version: %v", err)
+		err := fmt.Errorf("couldn't get cluster version: %w", err)
+		closeErr := agent.Close()
+		if closeErr != nil {
+			err = fmt.Errorf("%w; couldn't close agent: %v", err, closeErr)
+		}
+		return nil, err
 	}
-	return tbpCluster
+	return &tbpCluster{
+		clusterSpec: clusterSpec,
+		agent:       agent,
+		version:     *version,
+		ee:          ee,
+	}, nil
 }
 
 // getGocbClusterForTest makes cluster connection. Callers must close. Returns the cluster and the connection string used to connect.
-func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*gocb.Cluster, string) {
-	spec := BucketSpec{
-		Server:        clusterSpec.Server,
-		TLSSkipVerify: clusterSpec.TLSSkipVerify,
-		// use longer timeout than DefaultBucketOpTimeout to avoid timeouts in test harness from using buckets after flush, which takes some time to reinitialize
-		BucketOpTimeout: Ptr(time.Duration(30) * time.Second),
-		CACertPath:      clusterSpec.CACertPath,
-		Certpath:        clusterSpec.Certpath,
-		Keypath:         clusterSpec.Keypath,
-	}
-	connStr, err := spec.GetGoCBConnString()
+func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*gocb.Cluster, string, error) {
+	connSpec, err := getGoCBConnSpec(clusterSpec.Server, &GoCBConnStringParams{
+		KvPoolSize: DefaultGocbKvPoolSize,
+	})
 	if err != nil {
-		FatalfCtx(ctx, "error getting connection string: %v", err)
+		return nil, "", fmt.Errorf("couldn't parse connection string %q: %w", clusterSpec.Server, err)
 	}
 
-	securityConfig, err := GoCBv2SecurityConfig(ctx, &spec.TLSSkipVerify, spec.CACertPath)
+	securityConfig, err := GoCBv2SecurityConfig(ctx, &clusterSpec.TLSSkipVerify, clusterSpec.CACertpath)
 	if err != nil {
-		FatalfCtx(ctx, "Couldn't initialize cluster security config: %v", err)
+		return nil, "", fmt.Errorf("couldn't initialize cluster security config: %w", err)
 	}
 
-	authenticatorConfig, authErr := GoCBv2Authenticator(clusterSpec.Username, clusterSpec.Password, spec.Certpath, spec.Keypath)
+	authenticatorConfig, authErr := GoCBv2Authenticator(clusterSpec.Username, clusterSpec.Password, clusterSpec.X509Certpath, clusterSpec.X509Keypath)
 	if authErr != nil {
-		FatalfCtx(ctx, "Couldn't initialize cluster authenticator config: %v", authErr)
+		return nil, "", fmt.Errorf("couldn't initialize cluster authenticator config: %w", authErr)
 	}
 
-	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, Ptr(spec.GetViewQueryTimeout()))
+	// use longer timeout than DefaultBucketOpTimeout to avoid timeouts in test harness from using buckets after flush, which takes some time to reinitialize
+	bucketOpTimeout := 30 * time.Second
+	timeoutsConfig := GoCBv2TimeoutsConfig(&bucketOpTimeout, Ptr(DefaultViewTimeout))
 
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticatorConfig,
@@ -102,68 +88,178 @@ func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec
 		TimeoutsConfig: timeoutsConfig,
 	}
 
+	connStr := connSpec.String()
 	cluster, err := gocb.Connect(connStr, clusterOptions)
 	if err != nil {
-		FatalfCtx(ctx, "Couldn't connect to %q: %v", clusterSpec.Server, err)
+		return nil, "", fmt.Errorf("couldn't connect to cluster %q: %w", connStr, err)
 	}
 	const clusterReadyTimeout = 90 * time.Second
 	err = cluster.WaitUntilReady(clusterReadyTimeout, nil)
 	if err != nil {
 		FatalfCtx(ctx, "Cluster not ready after %ds: %v", int(clusterReadyTimeout.Seconds()), err)
 	}
-	return cluster, connStr
+	return cluster, connStr, nil
 }
 
 // isServerEnterprise returns true if the connected returns true if the connected couchbase server
 // instance is Enterprise edition And false for Community edition
-func (c *tbpCluster) isServerEnterprise() (bool, error) {
-	if strings.Contains(c.version, "enterprise") {
-		return true, nil
-	}
-	return false, nil
+func (c *tbpCluster) isServerEnterprise() bool {
+	return c.ee
 }
 
+// getBucketNames returns the names of all buckets
 func (c *tbpCluster) getBucketNames() ([]string, error) {
-
-	bucketSettings, err := c.cluster.Buckets().GetAllBuckets(nil)
+	output, status, err := c.MgmtRequest(
+		http.MethodGet,
+		"/pools/default/buckets",
+		ContentTypeJSON,
+		nil,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+		return nil, fmt.Errorf("couldn't get buckets: %w", err)
 	}
-
-	var names []string
-	for name := range bucketSettings {
-		names = append(names, name)
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("couldn't get buckets (error code %d) %s", status, output)
 	}
-
+	type bucket struct {
+		Name string `json:"name"`
+	}
+	var buckets []bucket
+	if err := json.Unmarshal(output, &buckets); err != nil {
+		return nil, fmt.Errorf("couldn't unmarshal buckets from %s: %w", output, err)
+	}
+	names := make([]string, 0, len(buckets))
+	for _, b := range buckets {
+		names = append(names, b.Name)
+	}
 	return names, nil
 }
 
-func (c *tbpCluster) insertBucket(ctx context.Context, name string, quotaMB int) error {
-
-	settings := gocb.CreateBucketSettings{
-		BucketSettings: gocb.BucketSettings{
-			Name:         name,
-			RAMQuotaMB:   uint64(quotaMB),
-			BucketType:   gocb.CouchbaseBucketType,
-			FlushEnabled: true,
-			NumReplicas:  tbpNumReplicas(ctx),
-		},
+// MgmtRequest sends a management request to the cluster and returns the response body, status code, and error.
+func (c *tbpCluster) MgmtRequest(method, path string, contentType string, body io.Reader) ([]byte, int, error) {
+	mgmtEps := c.agent.MgmtEps()
+	if len(mgmtEps) == 0 {
+		return nil, 0, fmt.Errorf("no management endpoints available for cluster %q", c.clusterSpec.Server)
 	}
-
-	options := &gocb.CreateBucketOptions{
-		Timeout: 10 * time.Second,
-	}
-	return c.cluster.Buckets().CreateBucket(settings, options)
+	return MgmtRequest(
+		c.agent.HTTPClient(),
+		mgmtEps[0],
+		method,
+		path,
+		contentType,
+		c.clusterSpec.Username,
+		c.clusterSpec.Password,
+		body,
+	)
 }
 
+// getCouchbaseServerVersion retrieves the Couchbase Server version via a gocbcore.Agent
+func getCouchbaseServerVersion(agent *gocbcore.Agent, clusterSpec CouchbaseClusterSpec) (version *ComparableBuildVersion, ee bool, err error) {
+	mgmtEps := agent.MgmtEps()
+	if len(mgmtEps) == 0 {
+		return nil, false, fmt.Errorf("no management endpoints available")
+	}
+	output, status, err := MgmtRequest(
+		agent.HTTPClient(),
+		mgmtEps[0],
+		http.MethodGet,
+		"/pools/default",
+		"application/x-www-form-urlencoded",
+		clusterSpec.Username,
+		clusterSpec.Password,
+		nil,
+	)
+	if err != nil {
+		return nil, false, fmt.Errorf("couldn't get Couchbase Server version: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("couldn't get Couchbase Server version (error code %d): %s", status, output)
+	}
+	type nodeMetadata struct {
+		ClusterCompatibility int    `json:"clusterCompatibility"`
+		Version              string `json:"version"`
+	}
+	clusterCfg := struct {
+		Nodes []nodeMetadata `json:"nodes"`
+	}{}
+	if err := json.Unmarshal(output, &clusterCfg); err != nil {
+		return nil, false, fmt.Errorf("couldn't unmarshal cluster metadata: %w", err)
+	}
+	if len(clusterCfg.Nodes) == 0 {
+		return nil, false, fmt.Errorf("no nodes found in cluster metadata")
+	}
+	// string is x.y.z-aaaa-enterprise or x.y.z-aaaa-community
+	// convert to a comparable string that Sync Gateway understands x.y.z@aaaa
+	components := strings.Split(clusterCfg.Nodes[0].Version, "-")
+	vrs := components[0]
+	if len(components) > 1 {
+		vrs += "@" + components[1]
+	}
+
+	version, err = NewComparableBuildVersionFromString(vrs)
+	if err != nil {
+		return nil, false, fmt.Errorf("couldn't parse Couchbase Server version %q: %w", vrs, err)
+	}
+	// convert the above string into a comparable string
+	return version, strings.Contains(clusterCfg.Nodes[0].Version, "enterprise"), nil
+}
+
+// insertBucket creates a bucket into Couchbase Server. This operation is asynchronous, so will continue after this function is called.
+func (c *tbpCluster) insertBucket(name string, quotaMB int) error {
+	numReplicas, err := tbpNumReplicas()
+	if err != nil {
+		return err
+	}
+	body := url.Values{}
+	body.Set("bucketType", "couchbase")
+	// if c.isServerEnterprise() {
+	// default is MWW which is "seqno" str
+	// LWW is only supported on Enterprise Edition
+	// body.Set("conflictResolutionType", "lww")
+	// }
+	body.Set("flushEnabled", "1")
+	body.Set("name", name)
+	body.Set("numReplicas", strconv.Itoa(numReplicas))
+	body.Set("ramQuotaMB", fmt.Sprintf("%d", quotaMB))
+	output, status, err := c.MgmtRequest(
+		http.MethodPost,
+		"/pools/default/buckets",
+		ContentTypeFormEncoded,
+		strings.NewReader(body.Encode()),
+	)
+	if err != nil {
+		return fmt.Errorf("couldn't create bucket %q: %w", name, err)
+	}
+	if status != http.StatusAccepted {
+		return fmt.Errorf("couldn't create bucket %q: (error code %d) %s", name, status, output)
+	}
+	return nil
+}
+
+// removeBucket deletes a bucket from Couchbase Server. This operation is asynchronous, so will continue after this function is called.
 func (c *tbpCluster) removeBucket(name string) error {
-	return c.cluster.Buckets().DropBucket(name, nil)
+	output, status, err := c.MgmtRequest(
+		http.MethodDelete,
+		"/pools/default/buckets/"+name,
+		ContentTypeJSON,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("couldn't remove bucket: %w", err)
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("couldn't remove bucket (error code %d): %s", status, output)
+	}
+	return nil
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
 func (c *tbpCluster) openTestBucket(ctx context.Context, testBucketName tbpBucketName, waitUntilReady time.Duration) (Bucket, error) {
 
-	bucketCluster, connstr := getGocbClusterForTest(ctx, c.clusterSpec)
+	bucketCluster, connstr, err := getGocbClusterForTest(ctx, c.clusterSpec)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get gocb cluster for test: %w", err)
+	}
 
 	bucketSpec := getTestBucketSpec(c.clusterSpec, testBucketName)
 
@@ -173,81 +269,19 @@ func (c *tbpCluster) openTestBucket(ctx context.Context, testBucketName tbpBucke
 	}
 
 	// add whether bucket is mobile XDCR ready to bucket object
-	if c.supportsHLV {
-		bucketFromSpec.supportsHLV = true
-	}
+	bucketFromSpec.supportsHLV = true
 
 	return bucketFromSpec, nil
 }
 
-func (c *tbpCluster) close(ctx context.Context) error {
-	// no close operations needed
-	if c.cluster != nil {
-		if err := c.cluster.Close(nil); err != nil {
-			c.logger(ctx, "Couldn't close cluster connection: %v", err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *tbpCluster) supportsCollections() (bool, error) {
-	major, _, err := getClusterVersion(c.cluster)
-	if err != nil {
-		return false, err
-	}
-	return major >= 7, nil
+// close shuts down the running gocbcore agent for the cluster.
+func (c *tbpCluster) close() error {
+	return c.agent.Close()
 }
 
 // supportsMobileRBAC is true if running couchbase server with all Sync Gateway roles
-func (c *tbpCluster) supportsMobileRBAC() (bool, error) {
-	isEE, err := c.isServerEnterprise()
-	if err != nil {
-		return false, err
-	}
-	// mobile RBAC is only supported on EE
-	if !isEE {
-		return false, nil
-	}
-	// mobile RBAC is only supported on 7.1+
-	major, minor, err := getClusterVersion(c.cluster)
-	if err != nil {
-		return false, err
-	}
-	return major >= 7 && minor >= 1, nil
-}
-
-// mobileXDCRCompatible checks if a cluster is mobile XDCR compatible, a cluster must be enterprise edition AND > 7.6.1
-func (c *tbpCluster) mobileXDCRCompatible(ctx context.Context) (bool, error) {
-	enterprise, err := c.isServerEnterprise()
-	if err != nil {
-		return false, err
-	}
-	if !enterprise {
-		return false, nil
-	}
-
-	// string is x.y.z-aaaa-enterprise or x.y.z-aaaa-community
-	// convert to a comparable string that Sync Gateway understands x.y.z@aaaa
-	components := strings.Split(c.version, "-")
-	vrs := components[0]
-	if len(components) > 1 {
-		vrs += "@" + components[1]
-	}
-
-	// convert the above string into a comparable string
-	version, err := NewComparableBuildVersionFromString(vrs)
-	if err != nil {
-		return false, err
-	}
-
-	if !version.Less(firstServerVersionToSupportMobileXDCR) {
-		c.supportsHLV = true
-		return true, nil
-	}
-	c.logger(ctx, "cluster does not support mobile XDCR")
-
-	return false, nil
+func (c *tbpCluster) supportsMobileRBAC() bool {
+	return c.isServerEnterprise()
 }
 
 func getTestClusterSpec() (*CouchbaseClusterSpec, error) {

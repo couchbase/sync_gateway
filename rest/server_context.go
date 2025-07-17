@@ -1837,84 +1837,21 @@ func (sc *ServerContext) updateCalculatedStats(ctx context.Context) {
 
 }
 
-func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, tlsSkipVerify *bool) (*gocbcore.Agent, error) {
-	authenticator, err := base.GoCBCoreAuthConfig(clusterUser, clusterPass, certPath, keyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(ctx, tlsSkipVerify, caCertPath)
-	if err != nil {
-		return nil, err
-	}
-
-	config := gocbcore.AgentConfig{
-		SecurityConfig: gocbcore.SecurityConfig{
-			TLSRootCAProvider: tlsRootCAProvider,
-			Auth:              authenticator,
-		},
-	}
-
-	base.DebugfCtx(ctx, base.KeyAll, "Parsing cluster connection string %q", base.UD(clusterAddress))
-	beforeFromConnStr := time.Now()
-	err = config.FromConnStr(clusterAddress)
-	if err != nil {
-		return nil, err
-	}
-	if d := time.Since(beforeFromConnStr); d > base.FromConnStrWarningThreshold {
-		base.WarnfCtx(ctx, "Parsed cluster connection string %q in: %v", base.UD(clusterAddress), d)
-	} else {
-		base.DebugfCtx(ctx, base.KeyAll, "Parsed cluster connection string %q in: %v", base.UD(clusterAddress), d)
-	}
-
-	agent, err := gocbcore.CreateAgent(&config)
-	if err != nil {
-		return nil, err
-	}
-
-	shouldCloseAgent := true
-	defer func() {
-		if shouldCloseAgent {
-			if err := agent.Close(); err != nil {
-				base.WarnfCtx(ctx, "unable to close gocb agent: %v", err)
-			}
-		}
-	}()
-
-	agentReadyErr := make(chan error)
-	_, err = agent.WaitUntilReady(
-		time.Now().Add(5*time.Second),
-		gocbcore.WaitUntilReadyOptions{
-			ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService},
-		},
-		func(result *gocbcore.WaitUntilReadyResult, err error) {
-			agentReadyErr <- err
-		},
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if err := <-agentReadyErr; err != nil {
-		if isX509CertificateError(err) {
-			err = fmt.Errorf("%w - Provide a CA cert, or set tls_skip_verify to true in config", err)
-		}
-		return nil, err
-	}
-
-	shouldCloseAgent = false
-	return agent, nil
-}
-
 // initializeGoCBAgent Obtains a gocb agent from the current server connection. Requires the agent to be closed after use.
 // Uses retry loop
 func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Agent, error) {
-	err, a := base.RetryLoop(ctx, "Initialize Cluster Agent", func() (shouldRetry bool, err error, value interface{}) {
-		agent, err := initClusterAgent(
+	err, agent := base.RetryLoop(ctx, "Initialize Cluster Agent", func() (shouldRetry bool, err error, agent *gocbcore.Agent) {
+		agent, err = base.NewClusterAgent(
 			ctx,
-			sc.Config.Bootstrap.Server, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password,
-			sc.Config.Bootstrap.X509CertPath, sc.Config.Bootstrap.X509KeyPath, sc.Config.Bootstrap.CACertPath, sc.Config.Bootstrap.ServerTLSSkipVerify)
+			base.CouchbaseClusterSpec{
+				Server:        sc.Config.Bootstrap.Server,
+				Username:      sc.Config.Bootstrap.Username,
+				Password:      sc.Config.Bootstrap.Password,
+				X509Certpath:  sc.Config.Bootstrap.X509CertPath,
+				X509Keypath:   sc.Config.Bootstrap.X509KeyPath,
+				CACertpath:    sc.Config.Bootstrap.CACertPath,
+				TLSSkipVerify: base.ValDefault(sc.Config.Bootstrap.ServerTLSSkipVerify, false),
+			})
 		if err != nil {
 			// since we're starting up - let's be verbose (on console) about these retries happening ... otherwise it looks like nothing is happening ...
 			base.ConsolefCtx(ctx, base.LevelInfo, base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
@@ -1930,7 +1867,6 @@ func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Age
 	}
 
 	base.InfofCtx(ctx, base.KeyConfig, "Successfully initialized cluster agent")
-	agent := a.(*gocbcore.Agent)
 	return agent, nil
 }
 
@@ -1962,8 +1898,6 @@ func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context) (*http.
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}
-	maxIdleConns, _ := strconv.Atoi(base.DefaultHttpMaxIdleConns)
-	idleConnTimeoutMs, _ := strconv.Atoi(base.DefaultHttpIdleConnTimeoutMilliseconds)
 
 	// gocbcore: We set ForceAttemptHTTP2, which will update the base-config to support HTTP2
 	// automatically, so that all configs from it will look for that.
@@ -1989,9 +1923,9 @@ func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context) (*http.
 			tlsConn := tls.Client(tcpConn, tlsConfig)
 			return tlsConn, nil
 		},
-		MaxIdleConns:        maxIdleConns,
+		MaxIdleConns:        base.DefaultHttpMaxIdleConns,
 		MaxIdleConnsPerHost: base.DefaultHttpMaxIdleConnsPerHost,
-		IdleConnTimeout:     time.Duration(idleConnTimeoutMs) * time.Millisecond,
+		IdleConnTimeout:     base.DefaultHttpIdleConnTimeout,
 	}
 
 	httpCli := &http.Client{

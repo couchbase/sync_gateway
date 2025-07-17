@@ -68,22 +68,10 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	tb.BucketSpec.CACertPath = ""
-
-	sc := DefaultStartupConfig("")
-
-	sc.Bootstrap.Server = tb.BucketSpec.Server
-	if tb.BucketSpec.Auth != nil {
-		username, password, _ := tb.BucketSpec.Auth.GetCredentials()
-		sc.Bootstrap.Username = username
-		sc.Bootstrap.Password = password
-	}
-
-	_, err := initClusterAgent(base.TestCtx(t), sc.Bootstrap.Server, sc.Bootstrap.Username, sc.Bootstrap.Password,
-		sc.Bootstrap.X509CertPath, sc.Bootstrap.X509KeyPath, sc.Bootstrap.CACertPath, sc.Bootstrap.ServerTLSSkipVerify)
-	assert.Error(t, err)
-
-	assert.Contains(t, err.Error(), "Provide a CA cert, or set tls_skip_verify to true in config")
+	clusterSpec := base.TestClusterSpec(t)
+	clusterSpec.CACertpath = "" // remove certificate
+	_, err := base.NewClusterAgent(base.TestCtx(t), clusterSpec)
+	assert.ErrorContains(t, err, "Provide a CA cert, or set tls_skip_verify to true in config")
 }
 
 func TestAttachmentCompactionRun(t *testing.T) {

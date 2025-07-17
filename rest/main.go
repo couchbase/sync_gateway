@@ -440,18 +440,20 @@ func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnec
 	if err != nil {
 		return nil, err
 	}
-	clusterSpec := base.CouchbaseClusterSpec{
-		Server:     connStr,
-		Username:   opts.username,
-		Password:   opts.password,
-		Certpath:   opts.x509CertPath,
-		Keypath:    opts.x509KeyPath,
-		CACertPath: opts.caCertPath,
-	}
-	if opts.tlsSkipVerify != nil {
-		clusterSpec.TLSSkipVerify = *opts.tlsSkipVerify
-	}
-	cluster, err := base.NewCouchbaseCluster(ctx, clusterSpec, opts.isServerless, opts.bucketCredentials, opts.useXattrConfig, opts.bucketConnectionMode)
+	cluster, err := base.NewCouchbaseCluster(ctx,
+		base.CouchbaseClusterSpec{
+			Server:        connStr,
+			Username:      opts.username,
+			Password:      opts.password,
+			X509Certpath:  opts.x509CertPath,
+			X509Keypath:   opts.x509KeyPath,
+			CACertpath:    opts.caCertPath,
+			TLSSkipVerify: base.ValDefault(opts.tlsSkipVerify, false),
+		},
+		opts.isServerless,
+		opts.bucketCredentials,
+		opts.useXattrConfig,
+		opts.bucketConnectionMode)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
 		return nil, err

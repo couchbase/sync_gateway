@@ -313,9 +313,9 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       clusterSpec.Server,
-			X509CertPath: clusterSpec.Certpath,
-			X509KeyPath:  clusterSpec.Keypath,
-			CACertPath:   clusterSpec.CACertPath,
+			X509CertPath: clusterSpec.X509Certpath,
+			X509KeyPath:  clusterSpec.X509Keypath,
+			CACertPath:   clusterSpec.CACertpath,
 		},
 	}, false)
 	defer svrctx.Close(ctx)

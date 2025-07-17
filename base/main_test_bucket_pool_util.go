@@ -40,12 +40,13 @@ func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...inte
 func getTestBucketSpec(clusterSpec CouchbaseClusterSpec, testBucketName tbpBucketName) BucketSpec {
 	spec := BucketSpec{
 		Server:        clusterSpec.Server,
-		TLSSkipVerify: clusterSpec.TLSSkipVerify,
-		CACertPath:    clusterSpec.CACertPath,
-		Certpath:      clusterSpec.Certpath,
-		Keypath:       clusterSpec.Keypath,
 		UseXattrs:     TestUseXattrs(),
 		BucketName:    string(testBucketName),
+		TLSSkipVerify: clusterSpec.TLSSkipVerify,
+		// use longer timeout than DefaultBucketOpTimeout to avoid timeouts in test harness from using buckets after flush, which takes some time to reinitialize
+		CACertPath: clusterSpec.CACertpath,
+		Certpath:   clusterSpec.X509Certpath,
+		Keypath:    clusterSpec.X509Keypath,
 	}
 	if clusterSpec.Username != "" && clusterSpec.Password != "" {
 		spec.Auth = TestAuthenticator{
@@ -58,7 +59,7 @@ func getTestBucketSpec(clusterSpec CouchbaseClusterSpec, testBucketName tbpBucke
 
 // RequireNumTestBuckets skips the given test if there are not enough test buckets available to use.
 func RequireNumTestBuckets(t testing.TB, numRequired int) {
-	usable := GTestBucketPool.NumUsableBuckets()
+	usable := GTestBucketPool.numBuckets
 	if usable < numRequired {
 		t.Skipf("Only had %d usable test buckets available (test requires %d)", usable, numRequired)
 	}

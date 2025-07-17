@@ -102,9 +102,9 @@ func TestConfigToBucketPointName(t *testing.T) {
 	clusterSpec := base.TestClusterSpec(t)
 	dbConfig.Username = clusterSpec.Username
 	dbConfig.Password = clusterSpec.Password
-	dbConfig.KeyPath = clusterSpec.Keypath
-	dbConfig.CertPath = clusterSpec.Certpath
-	dbConfig.CACertPath = clusterSpec.CACertPath
+	dbConfig.KeyPath = clusterSpec.X509Keypath
+	dbConfig.CertPath = clusterSpec.X509Certpath
+	dbConfig.CACertPath = clusterSpec.CACertpath
 	dbConfig.Scopes = nil
 
 	// create bucket with . in the name

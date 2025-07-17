@@ -43,9 +43,9 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.Bootstrap.Username = clusterSpec.Username
 	config.Bootstrap.Password = clusterSpec.Password
 	config.Bootstrap.ServerTLSSkipVerify = &clusterSpec.TLSSkipVerify
-	config.Bootstrap.CACertPath = clusterSpec.CACertPath
-	config.Bootstrap.X509CertPath = clusterSpec.Certpath
-	config.Bootstrap.X509KeyPath = clusterSpec.Keypath
+	config.Bootstrap.CACertPath = clusterSpec.CACertpath
+	config.Bootstrap.X509CertPath = clusterSpec.X509Certpath
+	config.Bootstrap.X509KeyPath = clusterSpec.X509Keypath
 	config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
 
 	uniqueUUID, err := uuid.NewRandom()

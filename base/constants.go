@@ -28,10 +28,6 @@ const (
 	kTestCouchbaseServerURL = "couchbase://localhost"
 	kTestWalrusURL          = rosmar.InMemoryURL
 
-	// These settings are used when running unit tests against a live Couchbase Server to create/flush buckets
-	DefaultCouchbaseAdministrator = "Administrator"
-	DefaultCouchbasePassword      = "password"
-
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"
 	TestEnvWalrusUrl          = "SG_TEST_ROSMAR_URL"
@@ -100,10 +96,10 @@ const (
 
 	// This primarily depends on MaxIdleConnsPerHost as the limiting factor, but sets some upper limit just to avoid
 	// being completely unlimited
-	DefaultHttpMaxIdleConns = "64000"
+	DefaultHttpMaxIdleConns = 64000
 
 	// Keep idle connections around for a maximimum of 90 seconds.  This is the same value used by the Go DefaultTransport.
-	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
+	DefaultHttpIdleConnTimeout = 90000 * time.Millisecond
 
 	// Number of kv connections (pipelines) per Couchbase Server node
 	DefaultGocbKvPoolSize = 2
@@ -200,6 +196,13 @@ var (
 
 	// MaxPrincipalNameLen is the maximum length for user and role names, accounting for internal prefixes, and is used to validate CRUD
 	MaxPrincipalNameLen = 250 - Max(len(UserPrefixRoot), len(RolePrefixRoot))
+)
+
+const (
+	// ContentTypeJSON is the content type for JSON requests.
+	ContentTypeJSON = "application/json"
+	// ContentTypeFormEncoded is the content type for form-encoded requests.
+	ContentTypeFormEncoded = "application/x-www-form-urlencoded"
 )
 
 // UnitTestUrl returns the configured test URL.

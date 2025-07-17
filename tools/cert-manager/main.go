@@ -621,10 +621,10 @@ func main() {
 	}
 	log.Printf("Successfully generated and loaded X.509 certs into Couchbase Server")
 	clusterSpec := base.CouchbaseClusterSpec{
-		Server:     args.connStr,
-		Certpath:   sgPair.PEMFilepath,
-		Keypath:    sgPair.KeyFilePath,
-		CACertPath: ca.PEMFilepath,
+		Server:       args.connStr,
+		X509Certpath: sgPair.PEMFilepath,
+		X509Keypath:  sgPair.KeyFilePath,
+		CACertpath:   ca.PEMFilepath,
 	}
 	log.Printf("Couchbase Cluster Spec: %+v\n", clusterSpec)
 	clusterSpecJSON, err := json.Marshal(clusterSpec)

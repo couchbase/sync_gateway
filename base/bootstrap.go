@@ -48,6 +48,17 @@ type BootstrapConnection interface {
 	Close()
 }
 
+// CouchbaseClusterSpec define how to make a connection to Couchbase Server
+type CouchbaseClusterSpec struct {
+	Server        string `json:"server,omitempty"`          // connection string to connect to the Couchbase cluster
+	Username      string `json:"username,omitempty"`        // RBAC username to authenticate with the cluster
+	Password      string `json:"passowrd,omitempty"`        // RBAC password to authenticate with the cluster
+	X509Certpath  string `json:"certpath,omitempty"`        // X.509 cert path to authenticate with the cluster
+	X509Keypath   string `json:"keypath, omitempty"`        // X.509 key path to authenticate with the cluster
+	CACertpath    string `json:"cacertpath,omitempty"`      // CA cert path to use for TLS connections
+	TLSSkipVerify bool   `json:"tls_skip_verify,omitempty"` // If true, do not validate TLS certificate
+}
+
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
 type CouchbaseCluster struct {
 	server                  string
@@ -141,28 +152,18 @@ func (c *cachedBucketConnections) _set(bucketName string, bucket *cachedBucket) 
 
 var _ BootstrapConnection = &CouchbaseCluster{}
 
-// CouchbaseClusterSpec defines the credentials to make a connection to a cluster. This is a subset of a bucket specification and is serializable only for test purposes.
-type CouchbaseClusterSpec struct {
-	Server        string `json:"server,omitempty"`        // Couchbase server address (e.g. "couchbases://127.0.0.1")
-	Certpath      string `json:"certpath,omitempty"`      // X.509 cert path
-	Keypath       string `json:"keypath,omitempty"`       // X.509 key path
-	CACertPath    string `json:"cacertpath,omitempty"`    // X.509 CA cert path
-	Username      string `json:"username,omitempty"`      // RBAC username
-	Password      string `json:"password,omitempty"`      // RBAC password
-	TLSSkipVerify bool   `json:"tlsSkipVerify,omitempty"` // Skip TLS verification for the server
-}
-
 // NewCouchbaseCluster creates and opens a Couchbase Server cluster connection.
-func NewCouchbaseCluster(ctx context.Context, spec CouchbaseClusterSpec, forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
+func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
+	forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
 	useXattrConfig bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
-	securityConfig, err := GoCBv2SecurityConfig(ctx, &spec.TLSSkipVerify, spec.CACertPath)
+	securityConfig, err := GoCBv2SecurityConfig(ctx, Ptr(clusterSpec.TLSSkipVerify), clusterSpec.CACertpath)
 	if err != nil {
 		return nil, err
 	}
 
 	clusterAuthConfig, err := GoCBv2Authenticator(
-		spec.Username, spec.Password,
-		spec.Certpath, spec.Keypath,
+		clusterSpec.Username, clusterSpec.Password,
+		clusterSpec.X509Certpath, clusterSpec.X509Keypath,
 	)
 	if err != nil {
 		return nil, err
@@ -189,7 +190,7 @@ func NewCouchbaseCluster(ctx context.Context, spec CouchbaseClusterSpec, forcePe
 	}
 
 	cbCluster := &CouchbaseCluster{
-		server:               spec.Server,
+		server:               clusterSpec.Server,
 		forcePerBucketAuth:   forcePerBucketAuth,
 		perBucketAuth:        perBucketAuth,
 		clusterOptions:       clusterOptions,

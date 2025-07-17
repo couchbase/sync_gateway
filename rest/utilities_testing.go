@@ -248,9 +248,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 	clusterSpec := base.TestClusterSpec(rt.TB())
 	sc.Bootstrap.Server = clusterSpec.Server
-	sc.Bootstrap.CACertPath = clusterSpec.CACertPath
-	sc.Bootstrap.X509CertPath = clusterSpec.Certpath
-	sc.Bootstrap.X509KeyPath = clusterSpec.Keypath
+	sc.Bootstrap.CACertPath = clusterSpec.CACertpath
+	sc.Bootstrap.X509CertPath = clusterSpec.X509Certpath
+	sc.Bootstrap.X509KeyPath = clusterSpec.X509Keypath
 	sc.Bootstrap.Username = clusterSpec.Username
 	sc.Bootstrap.Password = clusterSpec.Password
 	sc.Bootstrap.ServerTLSSkipVerify = &clusterSpec.TLSSkipVerify
