@@ -76,8 +76,8 @@ func getGoCBConnSpec(server string, defaults *GoCBConnStringParams) (*gocbconnst
 		}
 	}
 	asValues.Set("max_perhost_idle_http_connections", strconv.Itoa(DefaultHttpMaxIdleConnsPerHost))
-	asValues.Set("max_idle_http_connections", DefaultHttpMaxIdleConns)
-	asValues.Set("idle_http_connection_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
+	asValues.Set("max_idle_http_connections", fmt.Sprintf("%d", DefaultHttpMaxIdleConns))
+	asValues.Set("idle_http_connection_timeout", fmt.Sprintf("%d", DefaultHttpIdleConnTimeout.Milliseconds()))
 
 	connSpec.Options = asValues
 	return &connSpec, nil

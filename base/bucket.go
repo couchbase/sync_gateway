@@ -34,7 +34,8 @@ const (
 	DefaultPool = "default"
 )
 
-const DefaultViewTimeoutSecs uint32 = 75 // 75s
+// DefaultViewTimeout is the default timeout for view queries.
+const DefaultViewTimeout = 75 * time.Second
 
 // WrappingBucket interface used to identify buckets that wrap an underlying
 // bucket (leaky bucket, logging bucket)
@@ -178,7 +179,7 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 	// If the user doesn't specify any timeout, default to 75s
 	if b.ViewQueryTimeoutSecs == nil {
-		return uint64(DefaultViewTimeoutSecs) * 1000
+		return uint64(DefaultViewTimeout.Milliseconds())
 	}
 
 	// If the user specifies 0, then translate that to "No timeout"

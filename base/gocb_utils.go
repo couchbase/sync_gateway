@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -190,4 +191,76 @@ func MgmtRequest(client *http.Client, mgmtEp, method, uri, contentType, username
 		return nil, 0, err
 	}
 	return respBytes, response.StatusCode, nil
+}
+
+// NewClusterAgent creates a new gocbcore agent for a couchbase cluster.
+func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec) (*gocbcore.Agent, error) {
+	authenticator, err := GoCBCoreAuthConfig(spec.Username, spec.Password, spec.X509Certpath, spec.X509Keypath)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsRootCAProvider, err := GoCBCoreTLSRootCAProvider(ctx, Ptr(spec.TLSSkipVerify), spec.CACertpath)
+	if err != nil {
+		return nil, err
+	}
+
+	config := gocbcore.AgentConfig{
+		SecurityConfig: gocbcore.SecurityConfig{
+			TLSRootCAProvider: tlsRootCAProvider,
+			Auth:              authenticator,
+		},
+	}
+
+	DebugfCtx(ctx, KeyAll, "Parsing cluster connection string %q", UD(spec.Server))
+	beforeFromConnStr := time.Now()
+	err = config.FromConnStr(spec.Server)
+	if err != nil {
+		return nil, err
+	}
+	if d := time.Since(beforeFromConnStr); d > FromConnStrWarningThreshold {
+		WarnfCtx(ctx, "Parsed cluster connection string %q in: %v", UD(spec.Server), d)
+	} else {
+		DebugfCtx(ctx, KeyAll, "Parsed cluster connection string %q in: %v", UD(spec.Server), d)
+	}
+
+	agent, err := gocbcore.CreateAgent(&config)
+	if err != nil {
+		return nil, err
+	}
+
+	shouldCloseAgent := true
+	defer func() {
+		if shouldCloseAgent {
+			if err := agent.Close(); err != nil {
+				WarnfCtx(ctx, "unable to close gocb agent: %v", err)
+			}
+		}
+	}()
+
+	agentReadyErr := make(chan error)
+	_, err = agent.WaitUntilReady(
+		time.Now().Add(5*time.Second),
+		gocbcore.WaitUntilReadyOptions{
+			ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService},
+		},
+		func(result *gocbcore.WaitUntilReadyResult, err error) {
+			agentReadyErr <- err
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := <-agentReadyErr; err != nil {
+		if _, ok := errors.Unwrap(err).(x509.UnknownAuthorityError); ok {
+			err = fmt.Errorf("%w - Provide a CA cert, or set tls_skip_verify to true in config", err)
+		}
+
+		return nil, err
+	}
+
+	shouldCloseAgent = false
+	return agent, nil
 }

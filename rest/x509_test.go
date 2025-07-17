@@ -78,12 +78,17 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 
 	username, password, _ := tb.BucketSpec.Auth.GetCredentials()
 
-	sc.Bootstrap.Server = tb.BucketSpec.Server
-	sc.Bootstrap.Username = username
-	sc.Bootstrap.Password = password
-
-	_, err := initClusterAgent(base.TestCtx(t), sc.Bootstrap.Server, sc.Bootstrap.Username, sc.Bootstrap.Password,
-		sc.Bootstrap.X509CertPath, sc.Bootstrap.X509KeyPath, sc.Bootstrap.CACertPath, sc.Bootstrap.ServerTLSSkipVerify)
+	_, err := base.NewClusterAgent(base.TestCtx(t),
+		base.CouchbaseClusterSpec{
+			Server:        tb.BucketSpec.Server,
+			Username:      username,
+			Password:      password,
+			X509Certpath:  sc.Bootstrap.X509CertPath,
+			X509Keypath:   sc.Bootstrap.X509KeyPath,
+			CACertpath:    sc.Bootstrap.CACertPath,
+			TLSSkipVerify: base.ValDefault(sc.Bootstrap.ServerTLSSkipVerify, false),
+		},
+	)
 	assert.Error(t, err)
 
 	assert.Contains(t, err.Error(), "Provide a CA cert, or set tls_skip_verify to true in config")
