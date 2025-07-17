@@ -395,7 +395,7 @@ type sgReplicateManager struct {
 	heartbeatListener          *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
 	localNodeUUID              string                        // nodeUUID for this SG node
 	activeReplicators          map[string]*ActiveReplicator  // currently assigned replications
-	activeReplicatorsLock      sync.RWMutex                  // Mutex for activeReplications
+	activeReplicatorsLock      base.LoggingRWMutex           // Mutex for activeReplications
 	clusterUpdateTerminator    chan struct{}                 // Terminator for cluster update retry
 	clusterSubscribeTerminator chan struct{}                 // Terminator for cluster change monitoring
 	closeWg                    sync.WaitGroup                // Teardown waitgroup for subscribe and retry goroutines
@@ -495,6 +495,7 @@ func NewSGReplicateManager(ctx context.Context, dbContext *DatabaseContext, cfg 
 		dbContext:                  dbContext,
 		activeReplicators:          make(map[string]*ActiveReplicator),
 		CheckpointInterval:         DefaultCheckpointInterval,
+		activeReplicatorsLock:      base.NewLoggingRWMutex(ctx, "SGReplicateManager.activeReplicatorsLock"),
 	}, nil
 
 }
