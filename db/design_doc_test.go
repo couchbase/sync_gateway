@@ -20,7 +20,7 @@ import (
 )
 
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
-
+	base.TestRequiresViews(t)
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -90,6 +90,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 }
 
 func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
+	base.TestRequiresViews(t)
 	setDesignDocPreviousVersionsForTest(t, "2.0")
 
 	ctx := base.TestCtx(t)
@@ -154,6 +155,7 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 
 // Test remove obsolete design docs returns the same in both preview and non-preview
 func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
+	base.TestRequiresViews(t)
 	setDesignDocPreviousVersionsForTest(t, "test")
 
 	ctx := base.TestCtx(t)

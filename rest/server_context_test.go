@@ -95,17 +95,18 @@ func (client *MockClient) RespondToGET(url string, response *http.Response) {
 
 // convenience function to get a BucketConfig for a given TestBucket.
 func bucketConfigFromTestBucket(tb *base.TestBucket) BucketConfig {
-	tbUser, tbPassword, _ := tb.BucketSpec.Auth.GetCredentials()
-	return BucketConfig{
+	c := BucketConfig{
 		Server:     &tb.BucketSpec.Server,
 		Bucket:     &tb.BucketSpec.BucketName,
-		Username:   tbUser,
-		Password:   tbPassword,
 		CertPath:   tb.BucketSpec.Certpath,
 		KeyPath:    tb.BucketSpec.Keypath,
 		CACertPath: tb.BucketSpec.CACertPath,
 		KvTLSPort:  tb.BucketSpec.KvTLSPort,
 	}
+	if tb.BucketSpec.Auth != nil {
+		c.Username, c.Password, _ = tb.BucketSpec.Auth.GetCredentials()
+	}
+	return c
 }
 
 func TestAllDatabaseNames(t *testing.T) {
@@ -118,7 +119,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb2.Close(ctx)
 
 	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{UseTLSServer: base.Ptr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify())},
+		Bootstrap: BootstrapConfig{UseTLSServer: base.Ptr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify(t))},
 		API:       APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
@@ -301,23 +302,23 @@ outerLoop:
 }
 
 func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
-	serverURL := base.UnitTestUrl()
-	if !base.ServerIsTLS(serverURL) {
-		t.Skipf("URI %s needs to start with couchbases://", serverURL)
+	if !base.TestHasOnlyX509Auth(t) {
+		t.Skip("This test can only run using x509 client auth")
 	}
 	ctx := base.TestCtx(t)
-	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
+	clusterSpec := base.TestClusterSpec(t)
 	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:       serverURL,
-			X509CertPath: certPath,
-			X509KeyPath:  keyPath,
-			CACertPath:   caCertPath,
+			Server:       clusterSpec.Server,
+			X509CertPath: clusterSpec.Certpath,
+			X509KeyPath:  clusterSpec.Keypath,
+			CACertPath:   clusterSpec.CACertPath,
 		},
 	}, false)
-	svrctx.Close(ctx)
+	defer svrctx.Close(ctx)
 
 	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)
 	require.NoError(t, err)
@@ -572,7 +573,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
+			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify(t)),
 		},
 		API: APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface},
 	}
@@ -760,7 +761,7 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 				startupConfig := &StartupConfig{
 					Bootstrap: BootstrapConfig{
 						UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-						ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
+						ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify(t)),
 					},
 				}
 
@@ -990,6 +991,7 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t) // this test should not fail with x509, but does
 	rt := NewRestTesterMultipleCollections(t, nil, 3)
 	defer rt.Close()
 	ctx := base.TestCtx(t)

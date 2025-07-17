@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -42,7 +43,7 @@ func GoCBv2Authenticator(username, password, certPath, keyPath string) (a gocb.A
 	if certPath != "" && keyPath != "" {
 		cert, certLoadErr := tls.LoadX509KeyPair(certPath, keyPath)
 		if certLoadErr != nil {
-			return nil, certLoadErr
+			return nil, fmt.Errorf("Could not load cert: %s, keypath:%s err: %w", certPath, keyPath, certLoadErr)
 		}
 		return gocb.CertificateAuthenticator{
 			ClientCertificate: &cert,

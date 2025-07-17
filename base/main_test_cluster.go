@@ -10,8 +10,11 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,16 +44,18 @@ type tbpCluster struct {
 	minorVersion int
 	version      string
 	// cluster can be used to perform cluster-level operations (but not bucket-level operations)
-	cluster *gocb.Cluster
+	cluster     *gocb.Cluster
+	clusterSpec CouchbaseClusterSpec // cluster spec used to connect to the cluster
 }
 
 // newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.
 func newTestCluster(ctx context.Context, server string, tbp *TestBucketPool) *tbpCluster {
 	tbpCluster := &tbpCluster{
-		logger: tbp.Logf,
-		server: server,
+		logger:      tbp.Logf,
+		server:      server,
+		clusterSpec: tbp.clusterSpec,
 	}
-	tbpCluster.cluster, tbpCluster.connstr = getGocbClusterForTest(ctx, server)
+	tbpCluster.cluster, tbpCluster.connstr = getGocbClusterForTest(ctx, tbp.clusterSpec)
 	metadata, err := tbpCluster.cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
 	if err != nil {
 		tbp.Fatalf(ctx, "Couldn't get cluster metadata: %v", err)
@@ -64,13 +69,15 @@ func newTestCluster(ctx context.Context, server string, tbp *TestBucketPool) *tb
 }
 
 // getGocbClusterForTest makes cluster connection. Callers must close. Returns the cluster and the connection string used to connect.
-func getGocbClusterForTest(ctx context.Context, server string) (*gocb.Cluster, string) {
-
+func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*gocb.Cluster, string) {
 	spec := BucketSpec{
-		Server:        server,
-		TLSSkipVerify: true,
+		Server:        clusterSpec.Server,
+		TLSSkipVerify: clusterSpec.TLSSkipVerify,
 		// use longer timeout than DefaultBucketOpTimeout to avoid timeouts in test harness from using buckets after flush, which takes some time to reinitialize
 		BucketOpTimeout: Ptr(time.Duration(30) * time.Second),
+		CACertPath:      clusterSpec.CACertPath,
+		Certpath:        clusterSpec.Certpath,
+		Keypath:         clusterSpec.Keypath,
 	}
 	connStr, err := spec.GetGoCBConnString()
 	if err != nil {
@@ -82,7 +89,7 @@ func getGocbClusterForTest(ctx context.Context, server string) (*gocb.Cluster, s
 		FatalfCtx(ctx, "Couldn't initialize cluster security config: %v", err)
 	}
 
-	authenticatorConfig, authErr := GoCBv2Authenticator(TestClusterUsername(), TestClusterPassword(), spec.Certpath, spec.Keypath)
+	authenticatorConfig, authErr := GoCBv2Authenticator(clusterSpec.Username, clusterSpec.Password, spec.Certpath, spec.Keypath)
 	if authErr != nil {
 		FatalfCtx(ctx, "Couldn't initialize cluster authenticator config: %v", authErr)
 	}
@@ -97,7 +104,7 @@ func getGocbClusterForTest(ctx context.Context, server string) (*gocb.Cluster, s
 
 	cluster, err := gocb.Connect(connStr, clusterOptions)
 	if err != nil {
-		FatalfCtx(ctx, "Couldn't connect to %q: %v", server, err)
+		FatalfCtx(ctx, "Couldn't connect to %q: %v", clusterSpec.Server, err)
 	}
 	const clusterReadyTimeout = 90 * time.Second
 	err = cluster.WaitUntilReady(clusterReadyTimeout, nil)
@@ -124,7 +131,7 @@ func (c *tbpCluster) getBucketNames() ([]string, error) {
 	}
 
 	var names []string
-	for name, _ := range bucketSettings {
+	for name := range bucketSettings {
 		names = append(names, name)
 	}
 
@@ -156,9 +163,9 @@ func (c *tbpCluster) removeBucket(name string) error {
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
 func (c *tbpCluster) openTestBucket(ctx context.Context, testBucketName tbpBucketName, waitUntilReady time.Duration) (Bucket, error) {
 
-	bucketCluster, connstr := getGocbClusterForTest(ctx, c.server)
+	bucketCluster, connstr := getGocbClusterForTest(ctx, c.clusterSpec)
 
-	bucketSpec := getTestBucketSpec(testBucketName)
+	bucketSpec := getTestBucketSpec(c.clusterSpec, testBucketName)
 
 	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, connstr, waitUntilReady, false)
 	if err != nil {
@@ -241,4 +248,34 @@ func (c *tbpCluster) mobileXDCRCompatible(ctx context.Context) (bool, error) {
 	c.logger(ctx, "cluster does not support mobile XDCR")
 
 	return false, nil
+}
+
+func getTestClusterSpec() (*CouchbaseClusterSpec, error) {
+	clusterSpecPath := os.Getenv("SG_TEST_CLUSTER_SPEC")
+	var spec CouchbaseClusterSpec
+	if clusterSpecPath != "" {
+		contents, err := os.ReadFile(clusterSpecPath)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't read cluster spec file %q: %w", clusterSpecPath, err)
+		}
+		err = json.Unmarshal(contents, &spec)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't unmarshal cluster spec file %q: %w", clusterSpecPath, err)
+		}
+	} else {
+		spec.Username = TestClusterUsername()
+		spec.Password = TestClusterPassword()
+		tlsSkipVerify, isSet := os.LookupEnv(TestEnvTLSSkipVerify)
+		if isSet {
+			val, err := strconv.ParseBool(tlsSkipVerify)
+			if err != nil {
+				return nil, err
+			}
+			spec.TLSSkipVerify = val
+		} else {
+			spec.TLSSkipVerify = DefaultTestTLSSkipVerify
+		}
+		spec.Server = UnitTestUrl()
+	}
+	return &spec, nil
 }

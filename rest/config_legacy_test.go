@@ -298,7 +298,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	defer tb.Close(ctx)
 
 	config := fmt.Sprintf(`{
-	"server_tls_skip_verify": %t,
+	"server_tls_skip_verify": true,
 	"interface": ":4444",
 	"adminInterface": ":4445",
 	"databases": {
@@ -316,7 +316,6 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 		}
 	}
 }`,
-		base.TestTLSSkipVerify(),
 		base.UnitTestUrl(),
 		base.TestClusterUsername(),
 		base.TestClusterPassword(),
@@ -398,7 +397,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	// Config to migrate to persistent config on bucket
 	config := `
 	{
-		"server_tls_skip_verify": %t,
+		"server_tls_skip_verify": true,
 		"databases": {
 			"db": {
 				"server": "%s",
@@ -425,7 +424,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 			}
 		}
 	}`
-	config = fmt.Sprintf(config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), rt.Bucket().GetName())
+	config = fmt.Sprintf(config, base.TestClusterUsername(), base.TestClusterPassword(), rt.Bucket().GetName())
 
 	tmpDir := t.TempDir()
 

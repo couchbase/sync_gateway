@@ -173,6 +173,9 @@ func getDbConfigFromLegacyConfig(rt *rest.RestTester) string {
 	// Need to sanitize the db config, but can't use sanitizeDbConfigs because it assumes non-empty server address
 	dbConfig.Username = ""
 	dbConfig.Password = ""
+	dbConfig.KeyPath = ""
+	dbConfig.CertPath = ""
+	dbConfig.CACertPath = ""
 	dbConfigBytes, err := base.JSONMarshal(dbConfig)
 	require.NoError(rt.TB(), err)
 	return string(dbConfigBytes)
@@ -244,7 +247,6 @@ func TestMetadataIDRenameDatabase(t *testing.T) {
 
 // Verifies that matching metadataIDs are computed if two config groups for the same database are upgraded
 func TestMetadataIDWithConfigGroups(t *testing.T) {
-
 	tb1 := base.GetTestBucket(t)
 	// Create a non-persistent rest tester.  Standard RestTester
 	// creates a database 'db' targeting the default collection for legacy config.

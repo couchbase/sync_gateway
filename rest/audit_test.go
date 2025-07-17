@@ -38,6 +38,9 @@ func TestAuditLoggingFields(t *testing.T) {
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
 
+	if !base.UnitTestUrlIsWalrus() {
+		base.TestRequiresCouchbaseServerBasicAuth(t)
+	}
 	const (
 		requestInfoHeaderName       = "extra-audit-logging-header"
 		requestUser                 = "alice"

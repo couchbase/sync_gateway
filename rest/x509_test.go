@@ -12,17 +12,13 @@ package rest
 
 import (
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestX509RoundtripUsingIP is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
@@ -31,7 +27,7 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
-	tb, _, _, _ := setupX509Tests(t, true)
+	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
@@ -51,7 +47,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
-	tb, _, _, _ := setupX509Tests(t, false)
+	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
@@ -69,18 +65,19 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
-	tb, _, _, _ := setupX509Tests(t, true)
+	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
 	tb.BucketSpec.CACertPath = ""
 
 	sc := DefaultStartupConfig("")
 
-	username, password, _ := tb.BucketSpec.Auth.GetCredentials()
-
 	sc.Bootstrap.Server = tb.BucketSpec.Server
-	sc.Bootstrap.Username = username
-	sc.Bootstrap.Password = password
+	if tb.BucketSpec.Auth != nil {
+		username, password, _ := tb.BucketSpec.Auth.GetCredentials()
+		sc.Bootstrap.Username = username
+		sc.Bootstrap.Password = password
+	}
 
 	_, err := initClusterAgent(base.TestCtx(t), sc.Bootstrap.Server, sc.Bootstrap.Username, sc.Bootstrap.Password,
 		sc.Bootstrap.X509CertPath, sc.Bootstrap.X509KeyPath, sc.Bootstrap.CACertPath, sc.Bootstrap.ServerTLSSkipVerify)
@@ -91,7 +88,7 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 
 func TestAttachmentCompactionRun(t *testing.T) {
 	ctx := base.TestCtx(t)
-	tb, _, _, _ := setupX509Tests(t, true)
+	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
@@ -113,77 +110,4 @@ func TestAttachmentCompactionRun(t *testing.T) {
 
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.Equal(t, int64(20), status.MarkedAttachments)
-}
-
-func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucket, caCertPath string, certPath string, keyPath string) {
-	if !x509TestsEnabled() {
-		t.Skipf("x509 tests not enabled via %s flag", x509TestFlag)
-	}
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("X509 not supported in Walrus")
-	}
-
-	testURL, err := url.Parse(base.UnitTestUrl())
-	require.NoError(t, err)
-	testIP := net.ParseIP(testURL.Hostname())
-	if testIP == nil && useIPAddress {
-		t.Skipf("Test requires %s to be an IP address, but had: %v", base.TestEnvCouchbaseServerUrl, testURL.Hostname())
-	}
-
-	if testIP != nil && !useIPAddress {
-		t.Skipf("Test requires %s to be a domain name, but had an IP: %v", base.TestEnvCouchbaseServerUrl, testURL.Hostname())
-	}
-
-	assertHostnameMatch(t, testURL)
-
-	ca := generateX509CA(t)
-
-	var testIPs []net.IP
-	var testURls []string
-
-	if useIPAddress {
-		testIPs = []net.IP{testIP}
-	}
-
-	if !useIPAddress {
-		testURls = []string{testURL.Hostname()}
-	}
-
-	nodePair := generateX509Node(t, ca, testIPs, testURls)
-	sgPair := generateX509SG(t, ca, base.TestClusterUsername(), time.Now().Add(time.Hour*24))
-	saveX509Files(t, ca, nodePair, sgPair)
-
-	usingDocker, dockerName := base.TestUseCouchbaseServerDockerName()
-	if usingDocker {
-		err = loadCertsIntoCouchbaseServerDocker(base.TestCtx(t), *testURL, ca, nodePair, dockerName)
-	} else {
-		isLocalX509, localUserName := base.TestX509LocalServer()
-		if isLocalX509 {
-			err = loadCertsIntoLocalCouchbaseServer(base.TestCtx(t), *testURL, ca, nodePair, localUserName)
-		} else {
-			err = loadCertsIntoCouchbaseServer(base.TestCtx(t), *testURL, ca, nodePair)
-		}
-	}
-	require.NoError(t, err)
-
-	tb := base.GetTestBucket(t)
-
-	// force couchbases:// scheme
-	if useIPAddress {
-		tb.BucketSpec.Server = "couchbases://" + testIP.String()
-	} else {
-		tb.BucketSpec.Server = "couchbases://" + testURL.Hostname()
-	}
-
-	caCertPath = ca.PEMFilepath
-	certPath = sgPair.PEMFilepath
-	keyPath = sgPair.KeyFilePath
-
-	// use x509 for auth
-	tb.BucketSpec.CACertPath = caCertPath
-	tb.BucketSpec.Certpath = certPath
-	tb.BucketSpec.Keypath = keyPath
-
-	return tb, caCertPath, certPath, keyPath
 }

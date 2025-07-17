@@ -10,15 +10,15 @@
 DEFAULT_PACKAGE_TIMEOUT="45m"
 
 set -u
+set -e # Abort on errors
+set -x # Output all executed shell commands
 
 if [ "${1:-}" == "-m" ]; then
     echo "Running in automated master integration mode"
     # Set automated setting parameters
-    SG_COMMIT="master"
     TARGET_PACKAGE="..."
     TARGET_TEST="ALL"
     RUN_WALRUS="true"
-    USE_GO_MODULES="true"
     DETECT_RACES="false"
     SG_EDITION="EE"
     XATTRS="true"
@@ -33,8 +33,30 @@ if [ "${1:-}" == "-m" ]; then
     SG_CBCOLLECT_ALWAYS="false"
 fi
 
-set -e # Abort on errors
-set -x # Output all executed shell commands
+REQUIRED_VARS=(
+    COUCHBASE_SERVER_PROTOCOL
+    COUCHBASE_SERVER_VERSION
+    GSI
+    SG_TEST_BUCKET_POOL_SIZE
+    SG_TEST_BUCKET_POOL_DEBUG
+    RUN_WALRUS
+    TARGET_TEST
+    TARGET_PACKAGE
+    SG_EDITION
+    TLS_SKIP_VERIFY
+    XATTRS
+)
+for var in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!var-}" ]; then
+        echo "Error: Required environment varaible $var is not set"
+        exit 1
+    fi
+done
+
+if [ "${SG_TEST_X509:-}" == "true" -a "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
+    echo "Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests"
+    exit 1
+fi
 
 # Use Git SSH and define private repos
 git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
@@ -44,40 +66,18 @@ export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 SG_COMMIT_HASH=$(git rev-parse HEAD)
 echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
-# Use Go modules (3.1 and above) or bootstrap for legacy Sync Gateway versions (3.0 and below)
-if [ "${USE_GO_MODULES:-}" == "false" ]; then
-    mkdir -p sgw_int_testing # Make the directory if it does not exist
-    cp bootstrap.sh sgw_int_testing/bootstrap.sh
-    cd sgw_int_testing
-    chmod +x bootstrap.sh
-    ./bootstrap.sh -c ${SG_COMMIT} -e ee
-    export GO111MODULE=off
-    go get -u -v github.com/tebeka/go2xunit
-    go get -u -v github.com/axw/gocov/gocov
-    go get -u -v github.com/AlekSi/gocov-xml
-else
-    # Install tools to use after job has completed
-    # go2xunit will fail with 1.23 with name mismatch (try disabling parallel mode), but without any t.Parallel()
-    go install golang.org/dl/go1.22.8@latest
-    ~/go/bin/go1.22.8 download
-    ~/go/bin/go1.22.8 install -v github.com/tebeka/go2xunit@latest
-    go install -v github.com/axw/gocov/gocov@latest
-    go install -v github.com/AlekSi/gocov-xml@latest
-fi
-
-if [ "${SG_TEST_X509:-}" == "true" -a "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
-    echo "Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests"
-    exit 1
-fi
+# Install tools to use after job has completed
+# go2xunit will fail with 1.23 with name mismatch (try disabling parallel mode), but without any t.Parallel()
+go install golang.org/dl/go1.22.8@latest
+~/go/bin/go1.22.8 download
+~/go/bin/go1.22.8 install -v github.com/tebeka/go2xunit@latest
+go install -v github.com/axw/gocov/gocov@latest
+go install -v github.com/AlekSi/gocov-xml@latest
 
 # Set environment vars
 GO_TEST_FLAGS="-v -p 1 -count=${RUN_COUNT:-1}"
 INT_LOG_FILE_NAME="verbose_int"
 
-if [ -d "godeps" ]; then
-    export GOPATH=$(pwd)/godeps
-fi
-export PATH=$PATH:$(go env GOPATH)/bin
 echo "PATH: $PATH"
 
 if [ "${TEST_DEBUG:-}" == "true" ]; then
@@ -121,15 +121,23 @@ if [ "${MULTI_NODE:-}" == "true" ]; then
     ./integration-test/start_server.sh -m "${COUCHBASE_SERVER_VERSION}"
     export SG_TEST_BUCKET_NUM_REPLICAS=1
 else
-    # single node
+    echo
     ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
-    export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME="couchbase"
+fi
+
+if [ "${SG_TEST_X509:-}" != "true" ]; then
+    ./integration-test/create_cbs_x509_certs.sh
+    SG_TEST_CLUSTER_SPEC=${PWD}/integration-test/certs/couchbase_cluster_spec.json
+    export SG_TEST_CLUSTER_SPEC
+    COUCHBASE_SERVER_ADDR=localhost
+else
+    COUCHBASE_SERVER_ADDR=127.0.0.1
 fi
 
 # Set up test environment variables for CBS runs
 export SG_TEST_USE_XATTRS=${XATTRS}
 export SG_TEST_USE_GSI=${GSI}
-export SG_TEST_COUCHBASE_SERVER_URL="${COUCHBASE_SERVER_PROTOCOL}://127.0.0.1"
+export SG_TEST_COUCHBASE_SERVER_URL="${COUCHBASE_SERVER_PROTOCOL}://${COUCHBASE_SERVER_ADDR}"
 export SG_TEST_BACKING_STORE="Couchbase"
 export SG_TEST_BUCKET_POOL_SIZE=${SG_TEST_BUCKET_POOL_SIZE}
 export SG_TEST_BUCKET_POOL_DEBUG=${SG_TEST_BUCKET_POOL_DEBUG}
@@ -141,7 +149,15 @@ else
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_devmode"
 fi
 
-go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+case $(uname) in
+    Darwin)
+        STDBUF=/opt/homebrew/opt/coreutils/libexec/gnubin/stdbuf
+        ;;
+    *)
+        STDBUF=stdbuf
+        ;;
+esac
+go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | ${STDBUF} -oL tee "${INT_LOG_FILE_NAME}.out.raw" | ${STDBUF} -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true

@@ -25,6 +25,7 @@ func TestCheckPermissions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 
 	clusterAdminPermission := Permission{"!admin", false}
 	clusterReadOnlyAdminPermission := Permission{"!ro_admin", false}
@@ -138,20 +139,19 @@ func TestCheckPermissions(t *testing.T) {
 }
 
 func TestCheckPermissionsWithX509(t *testing.T) {
-	serverURL := base.UnitTestUrl()
-	if !base.ServerIsTLS(serverURL) {
-		t.Skipf("URI %s needs to start with couchbases://", serverURL)
+	if !base.TestHasOnlyX509Auth(t) {
+		t.Skip("This test can only run using x509 client auth")
 	}
-	ctx := base.TestCtx(t)
-	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
-	defer tb.Close(ctx)
 
+	ctx := base.TestCtx(t)
+
+	clusterSpec := base.TestClusterSpec(t)
 	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:       serverURL,
-			X509CertPath: certPath,
-			X509KeyPath:  keyPath,
-			CACertPath:   caCertPath,
+			Server:       clusterSpec.Server,
+			X509CertPath: clusterSpec.Certpath,
+			X509KeyPath:  clusterSpec.Keypath,
+			CACertPath:   clusterSpec.CACertPath,
 		},
 	}, false)
 	defer svrctx.Close(ctx)
@@ -177,6 +177,7 @@ func TestCheckRoles(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -272,8 +273,11 @@ func TestCheckRoles(t *testing.T) {
 		},
 	}
 
-	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	gocbBucket, err := base.AsGocbV2Bucket(rt.Bucket())
 	require.NoError(t, err)
+	eps, err := gocbBucket.MgmtEps()
+	require.NoError(t, err)
+	httpClient := gocbBucket.HttpClient(rt.Context())
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
@@ -294,6 +298,7 @@ func TestAdminAuth(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -436,20 +441,20 @@ func TestAdminAuth(t *testing.T) {
 }
 
 func TestAdminAuthWithX509(t *testing.T) {
-	serverURL := base.UnitTestUrl()
-	if !base.ServerIsTLS(serverURL) {
-		t.Skipf("URI %s needs to start with couchbases://", serverURL)
+	if !base.TestHasOnlyX509Auth(t) {
+		t.Skip("This test can only run using x509 client auth")
 	}
 	ctx := base.TestCtx(t)
-	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
+	clusterSpec := base.TestClusterSpec(t)
 	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:       serverURL,
-			X509CertPath: certPath,
-			X509KeyPath:  keyPath,
-			CACertPath:   caCertPath,
+			Server:       clusterSpec.Server,
+			X509CertPath: clusterSpec.Certpath,
+			X509KeyPath:  clusterSpec.Keypath,
+			CACertPath:   clusterSpec.CACertPath,
 		},
 	}, false)
 	defer svrctx.Close(ctx)
@@ -471,9 +476,8 @@ func TestAdminAuthWithX509(t *testing.T) {
 	assert.Equal(t, http.StatusOK, statusCode)
 
 	_, statusCode, err = checkAdminAuth(ctx, "", "invalidUser", "invalidPassword", "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, statusCode)
-	require.Contains(t, err.Error(), ErrInvalidLogin.Message)
 }
 
 func TestAdminAPIAuth(t *testing.T) {
@@ -915,6 +919,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	clusterAdminPermission := Permission{"!admin", false}
 
 	// Some random role and perm
@@ -1001,6 +1006,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 	base.TestsRequireMobileRBAC(t)
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	mobileSyncGateway := "mobile_sync_gateway"
 	syncGatewayDevOps := "sync_gateway_dev_ops"
 	syncGatewayApp := "sync_gateway_app"
@@ -1467,6 +1473,7 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	tb := base.GetTestBucket(t)

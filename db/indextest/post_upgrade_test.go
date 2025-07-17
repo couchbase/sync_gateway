@@ -203,6 +203,7 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 }
 
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyQuery)
 
 	for _, useXattrs := range []bool{true, false} {

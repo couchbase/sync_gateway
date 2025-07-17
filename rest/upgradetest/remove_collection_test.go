@@ -24,6 +24,7 @@ func TestRemoveCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("test relies on CBS management API")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	base.TestRequiresCollections(t)
 	numCollections := 2
 	base.RequireNumTestBuckets(t, 2)

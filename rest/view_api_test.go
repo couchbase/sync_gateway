@@ -22,6 +22,7 @@ import (
 )
 
 func TestDesignDocs(t *testing.T) {
+	base.TestRequiresViews(t)
 	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
@@ -566,6 +567,7 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 }
 
 func TestPostInstallCleanup(t *testing.T) {
+	base.TestRequiresViews(t)
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel)}`,
 	}

@@ -28,6 +28,8 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
+	// test is written for basic auth in legacy config
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -45,7 +47,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 		}
 	}
 }`,
-		base.TestTLSSkipVerify(),
+		base.TestTLSSkipVerify(t),
 		base.UnitTestUrl(),
 		base.TestClusterUsername(),
 		base.TestClusterPassword(),
@@ -156,7 +158,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
-			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(t), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
 			configPath := filepath.Join(tmpDir, "config.json")
 			err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
@@ -220,7 +222,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	config := fmt.Sprintf(`{
-	"server_tls_skip_verify": %t,
+	"server_tls_skip_verify": true,
 	"databases": {
 		"db": {
 			"server": "%s",
@@ -230,7 +232,6 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		}
 	}
 }`,
-		base.TestTLSSkipVerify(),
 		base.UnitTestUrl(),
 		base.TestClusterUsername(),
 		base.TestClusterPassword(),
@@ -245,7 +246,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	require.NoError(t, err)
 
 	updatedConfig := fmt.Sprintf(`{
-	"server_tls_skip_verify": %t,
+	"server_tls_skip_verify": true,
 	"databases": {
 		"db": {
 			"revs_limit": 20000,
@@ -256,7 +257,6 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		}
 	}
 }`,
-		base.TestTLSSkipVerify(),
 		base.UnitTestUrl(),
 		base.TestClusterUsername(),
 		base.TestClusterPassword(),
@@ -301,7 +301,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 			}
 		}
 	}`,
-		base.TestTLSSkipVerify(),
+		base.TestTLSSkipVerify(t),
 		configUpgradeGroupID,
 		base.UnitTestUrl(),
 		base.TestClusterUsername(),

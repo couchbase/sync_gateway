@@ -962,6 +962,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
 
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	ctx := base.TestCtx(t)
 
@@ -978,7 +979,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
+			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify(t)),
 		},
 	}
 	databases := DbConfigMap{
@@ -1444,12 +1445,16 @@ func TestDefaultLogging(t *testing.T) {
 func TestSetupServerContext(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
+		clusterSpec := base.TestClusterSpec(t)
 		config := DefaultStartupConfig("")
-		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
-		config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
-		config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
-		config.Bootstrap.Username = base.TestClusterUsername()
-		config.Bootstrap.Password = base.TestClusterPassword()
+		config.Bootstrap.Server = clusterSpec.Server
+		config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(clusterSpec.Server))
+		config.Bootstrap.ServerTLSSkipVerify = base.Ptr(clusterSpec.TLSSkipVerify)
+		config.Bootstrap.Username = clusterSpec.Username
+		config.Bootstrap.Password = clusterSpec.Password
+		config.Bootstrap.CACertPath = clusterSpec.CACertPath
+		config.Bootstrap.X509CertPath = clusterSpec.Certpath
+		config.Bootstrap.X509KeyPath = clusterSpec.Keypath
 		ctx := base.TestCtx(t)
 		sc, err := SetupServerContext(ctx, &config, false)
 		require.NoError(t, err)
@@ -3138,6 +3143,7 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 }
 
 func TestTLSWithoutCerts(t *testing.T) {
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -3261,6 +3267,7 @@ func TestRoleUpdatedAtField(t *testing.T) {
 }
 
 func TestServerUUIDRuntimeServerConfig(t *testing.T) {
+	base.TestRequiresCouchbaseServerBasicAuth(t) // this is a bug in ServerContext.getClusterUUID() which needs to use x509 auth
 	testCases := []struct {
 		name             string
 		persistentConfig bool

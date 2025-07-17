@@ -7859,6 +7859,7 @@ func TestBanEmptyReplicationID(t *testing.T) {
 }
 
 func TestExistingConfigEmptyReplicationID(t *testing.T) {
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	bucket := base.GetTestBucket(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{

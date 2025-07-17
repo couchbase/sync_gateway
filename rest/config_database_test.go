@@ -89,6 +89,7 @@ func TestConfigToBucketPointName(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Need cbs bucket for this test")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTPResp, base.KeyHTTP)
 
 	rt := NewRestTester(t, nil)
@@ -98,8 +99,12 @@ func TestConfigToBucketPointName(t *testing.T) {
 	// create db config to point to bucket with . in the name
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Bucket = base.Ptr(testBucketName)
-	dbConfig.Username = base.TestClusterUsername()
-	dbConfig.Password = base.TestClusterPassword()
+	clusterSpec := base.TestClusterSpec(t)
+	dbConfig.Username = clusterSpec.Username
+	dbConfig.Password = clusterSpec.Password
+	dbConfig.KeyPath = clusterSpec.Keypath
+	dbConfig.CertPath = clusterSpec.Certpath
+	dbConfig.CACertPath = clusterSpec.CACertPath
 	dbConfig.Scopes = nil
 
 	// create bucket with . in the name

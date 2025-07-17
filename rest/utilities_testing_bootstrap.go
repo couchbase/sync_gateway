@@ -38,10 +38,14 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.API.MetricsInterface = randomPort
 	config.Unsupported.DiagnosticInterface = randomPort
 
-	config.Bootstrap.Server = base.UnitTestUrl()
-	config.Bootstrap.Username = base.TestClusterUsername()
-	config.Bootstrap.Password = base.TestClusterPassword()
-	config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
+	clusterSpec := base.TestClusterSpec(t)
+	config.Bootstrap.Server = clusterSpec.Server
+	config.Bootstrap.Username = clusterSpec.Username
+	config.Bootstrap.Password = clusterSpec.Password
+	config.Bootstrap.ServerTLSSkipVerify = &clusterSpec.TLSSkipVerify
+	config.Bootstrap.CACertPath = clusterSpec.CACertPath
+	config.Bootstrap.X509CertPath = clusterSpec.Certpath
+	config.Bootstrap.X509KeyPath = clusterSpec.Keypath
 	config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
 
 	uniqueUUID, err := uuid.NewRandom()

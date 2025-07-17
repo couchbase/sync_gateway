@@ -2087,20 +2087,28 @@ func TestHandleDBConfig(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, dbname, gotName)
 
-	un, _, _ := tb.BucketSpec.Auth.GetCredentials()
-	gotusername, ok := respBody["username"].(string)
-	require.True(t, ok)
-	assert.Equal(t, un, gotusername)
-	gotpassword, ok := respBody["password"].(string)
-	require.True(t, ok)
-	assert.Equal(t, base.RedactedStr, gotpassword)
+	if !base.TestHasOnlyX509Auth(t) {
+		un, _, _ := tb.BucketSpec.Auth.GetCredentials()
+		gotusername, ok := respBody["username"].(string)
+		require.True(t, ok)
+		assert.Equal(t, un, gotusername)
+		gotpassword, ok := respBody["password"].(string)
+		require.True(t, ok)
+		assert.Equal(t, base.RedactedStr, gotpassword)
+		_, ok = respBody["certpath"]
+		require.False(t, ok)
+		_, ok = respBody["keypath"]
+		require.False(t, ok)
+		_, ok = respBody["cacertpath"]
+		require.False(t, ok)
+	} else {
+		require.NotContains(t, respBody, "username")
+		require.NotContains(t, respBody, "password")
+		require.Equal(t, rt.TestBucket.BucketSpec.Certpath, respBody["certpath"])
+		require.Equal(t, rt.TestBucket.BucketSpec.Keypath, respBody["keypath"])
+		require.Equal(t, rt.TestBucket.BucketSpec.CACertPath, respBody["cacertpath"])
 
-	_, ok = respBody["certpath"]
-	require.False(t, ok)
-	_, ok = respBody["keypath"]
-	require.False(t, ok)
-	_, ok = respBody["cacertpath"]
-	require.False(t, ok)
+	}
 }
 
 func TestHandleDeleteDB(t *testing.T) {
@@ -2201,7 +2209,12 @@ func TestConfigRedaction(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, base.RedactedStr, unmarshaledConfig.Password)
+	if base.TestHasOnlyX509Auth(t) {
+		require.Equal(t, "", unmarshaledConfig.Password)
+
+	} else {
+		assert.Equal(t, base.RedactedStr, unmarshaledConfig.Password)
+	}
 	assert.Equal(t, base.RedactedStr, *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default server config redaction
@@ -2210,7 +2223,11 @@ func TestConfigRedaction(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, base.RedactedStr, unmarshaledServerConfig.Bootstrap.Password)
+	if base.TestHasOnlyX509Auth(t) {
+		require.Equal(t, "", unmarshaledServerConfig.Bootstrap.Password)
+	} else {
+		assert.Equal(t, base.RedactedStr, unmarshaledServerConfig.Bootstrap.Password)
+	}
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
@@ -2596,8 +2613,12 @@ func TestInitialStartupConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert on a couple values to make sure they are set
-	assert.Equal(t, base.TestClusterUsername(), initialStartupConfig.Bootstrap.Username)
-	assert.Equal(t, base.RedactedStr, initialStartupConfig.Bootstrap.Password)
+	if base.TestHasOnlyX509Auth(t) {
+		require.Equal(t, rt.ServerContext().Config.Bootstrap.X509CertPath, initialStartupConfig.Bootstrap.X509CertPath)
+	} else {
+		assert.Equal(t, base.TestClusterUsername(), initialStartupConfig.Bootstrap.Username)
+		assert.Equal(t, base.RedactedStr, initialStartupConfig.Bootstrap.Password)
+	}
 
 	// Assert error logging is nil
 	assert.Nil(t, initialStartupConfig.Logging.Error)
@@ -2646,9 +2667,10 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
 	assert.Equal(t, base.UnitTestUrl(), runtimeServerConfigResponse.Bootstrap.Server)
-	assert.Equal(t, base.TestClusterUsername(), runtimeServerConfigResponse.Bootstrap.Username)
-	assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
-
+	assert.Equal(t, test.Bootstrap.Username, runtimeServerConfigResponse.Bootstrap.Username)
+	if !base.TestHasOnlyX509Auth(t) {
+		assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
+	}
 	// Make request to enable error logger
 	resp = rt.SendAdminRequest("PUT", "/_config", `
 	{
@@ -2686,7 +2708,9 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
+	if !base.TestHasOnlyX509Auth(t) {
+		assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
+	}
 
 	// Setup replication to ensure it is visible in returned config
 	replicationConfig := `{
@@ -2768,11 +2792,14 @@ func TestDbConfigCredentials(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbConfig))
 
 	// runtime config, we expect to see the credentials used by the database (either bootstrap or per-db - but in this case, bootstrap)
-	assert.Equal(t, base.TestClusterUsername(), dbConfig.Username)
-	assert.Equal(t, base.RedactedStr, dbConfig.Password)
-	assert.Equal(t, "", dbConfig.CACertPath)
-	assert.Equal(t, "", dbConfig.CertPath)
-	assert.Equal(t, "", dbConfig.KeyPath)
+	assert.Equal(t, rt.ServerContext().Config.Bootstrap.Username, dbConfig.Username)
+	assert.Equal(t, rt.ServerContext().Config.Bootstrap.CACertPath, dbConfig.CACertPath)
+	assert.Equal(t, rt.ServerContext().Config.Bootstrap.X509CertPath, dbConfig.CertPath)
+	assert.Equal(t, rt.ServerContext().Config.Bootstrap.X509KeyPath, dbConfig.KeyPath)
+	if !base.TestHasOnlyX509Auth(t) {
+		assert.Equal(t, base.RedactedStr, dbConfig.Password)
+	}
+
 }
 
 func TestInvalidDBConfig(t *testing.T) {
@@ -2847,6 +2874,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{AdminInterfaceAuthentication: true})
 	defer rt.Close()
@@ -2945,6 +2973,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 func TestLegacyCredentialInheritance(t *testing.T) {
 	rest.RequireBucketSpecificCredentials(t)
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	ctx := base.TestCtx(t)
@@ -3357,6 +3386,7 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	tb := base.GetTestBucket(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: tb})
@@ -3789,6 +3819,7 @@ func TestDatabaseCreationWithEnvVariable(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 
 	tb := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -3825,6 +3856,7 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	base.TestRequiresCouchbaseServerBasicAuth(t)
 
 	tb := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)

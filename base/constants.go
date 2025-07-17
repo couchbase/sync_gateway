@@ -32,16 +32,6 @@ const (
 	DefaultCouchbaseAdministrator = "Administrator"
 	DefaultCouchbasePassword      = "password"
 
-	// Couchbase 5.x notes:
-	// For every bucket that the tests will create (DefaultTestBucketname):
-	//   1. Create an RBAC user with username equal to the bucket name
-	//   2. Set the password to DefaultTestPassword
-	//   3. Give "Admin" RBAC rights
-
-	DefaultTestBucketname = "test_data_bucket"
-	DefaultTestUsername   = DefaultTestBucketname
-	DefaultTestPassword   = "password"
-
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"
 	TestEnvWalrusUrl          = "SG_TEST_ROSMAR_URL"

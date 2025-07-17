@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -83,9 +84,28 @@ func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 	body := url.Values{}
 	body.Add("name", xdcrClusterName)
 	body.Add("hostname", serverURL.Hostname())
-	body.Add("username", base.TestClusterUsername())
-	body.Add("password", base.TestClusterPassword())
-	body.Add("secure", "full")
+	if bucket.GetSpec().Auth != nil {
+		username, password, _ := bucket.GetSpec().Auth.GetCredentials()
+		body.Add("username", username)
+		body.Add("password", password)
+	} else {
+		caCert, err := os.ReadFile(bucket.GetSpec().CACertPath)
+		if err != nil {
+			return err
+		}
+		body.Add("certificate", string(caCert))
+		cert, err := os.ReadFile(bucket.GetSpec().Certpath)
+		if err != nil {
+			return err
+		}
+		body.Add("clientCertificate", string(cert))
+		key, err := os.ReadFile(bucket.GetSpec().Keypath)
+		if err != nil {
+			return err
+		}
+		body.Add("clientKey", string(key))
+		body.Add("secureType", "full")
+	}
 	url := cbsRemoteClustersEndpoint
 
 	output, statusCode, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", strings.NewReader(body.Encode()))
