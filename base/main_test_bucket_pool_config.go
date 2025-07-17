@@ -69,6 +69,9 @@ const (
 
 	// Environment variable to define a cluster spec file listing authentication information to connect.
 	tbpEnvClusterSpec = "SG_TEST_CLUSTER_SPEC"
+
+	// Environment variable used by bucket pool to specify the conflict resolution strategy to use for the test buckets.
+	tbpEnvXDCRConflictResolutionStrategy = "SG_TEST_XDCR_CONFLICT_RESOLUTION_STRATEGY"
 )
 
 // TestsUseNamedCollections returns true if the tests use named collections.
