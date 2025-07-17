@@ -204,18 +204,25 @@ func getCouchbaseServerVersion(agent *gocbcore.Agent, clusterSpec CouchbaseClust
 }
 
 // insertBucket creates a bucket into Couchbase Server. This operation is asynchronous, so will continue after this function is called.
-func (c *tbpCluster) insertBucket(name string, quotaMB int) error {
+func (c *tbpCluster) insertBucket(name string, quotaMB int, conflictResolution XDCRConflictResolutionStrategy) error {
 	numReplicas, err := tbpNumReplicas()
 	if err != nil {
 		return err
 	}
 	body := url.Values{}
 	body.Set("bucketType", "couchbase")
-	// if c.isServerEnterprise() {
-	// default is MWW which is "seqno" str
-	// LWW is only supported on Enterprise Edition
-	// body.Set("conflictResolutionType", "lww")
-	// }
+	if c.isServerEnterprise() {
+		// default is MWW which is "seqno" str
+		// LWW is only supported on Enterprise Edition
+		switch conflictResolution {
+		case XDCRConflictResolutionStrategyLWW:
+			body.Set("conflictResolutionType", "lww")
+		case XDCRConflictResolutionStrategyMWW:
+			body.Set("conflictResolutionType", "seqno")
+		default:
+			return fmt.Errorf("unsupported conflict resolution strategy %q", conflictResolution)
+		}
+	}
 	body.Set("flushEnabled", "1")
 	body.Set("name", name)
 	body.Set("numReplicas", strconv.Itoa(numReplicas))

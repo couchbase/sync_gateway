@@ -66,6 +66,9 @@ const (
 
 	// Environment variable to specify the topology tests to run
 	TbpEnvTopologyTests = "SG_TEST_TOPOLOGY_TESTS"
+
+	// Environment variable used by bucket pool to specify the conflict resolution strategy to use for the test buckets.
+	tbpEnvXDCRConflictResolutionStrategy = "SG_TEST_XDCR_CONFLICT_RESOLUTION_STRATEGY"
 )
 
 // TestsUseNamedCollections returns true if the tests use named collections.

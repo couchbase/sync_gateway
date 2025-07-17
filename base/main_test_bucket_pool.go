@@ -73,6 +73,9 @@ type TestBucketPool struct {
 
 	// clusterSpec defines how to connect to the couchbase server cluster
 	clusterSpec CouchbaseClusterSpec
+
+	// xdcrConflictResolutionStrategy defines the conflict resolution strategy to use for XDCR, defined at bucket creation time.
+	xdcrConflictResolutionStrategy XDCRConflictResolutionStrategy
 }
 
 type TestBucketPoolOptions struct {
@@ -83,6 +86,14 @@ type TestBucketPoolOptions struct {
 	NumCollectionsPerBucket int      // setting this value in main_test.go will override the default
 	TeardownFuncs           []func() // functions to be run after Main is completed but before standard teardown functions run
 }
+
+// XDCRConflictResolutionStrategy defines the conflict resolution strategy to use for XDCR, defined at bucket creation time.
+type XDCRConflictResolutionStrategy string
+
+const (
+	XDCRConflictResolutionStrategyLWW XDCRConflictResolutionStrategy = "lww"
+	XDCRConflictResolutionStrategyMWW XDCRConflictResolutionStrategy = "mww"
+)
 
 func NewTestBucketPool(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
 	return NewTestBucketPoolWithOptions(ctx, bucketReadierFunc, bucketInitFunc, TestBucketPoolOptions{})
@@ -117,20 +128,37 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	}
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
+
+	conflictResolutionStrategy := XDCRConflictResolutionStrategyLWW
+	switch os.Getenv(tbpEnvXDCRConflictResolutionStrategy) {
+	case "":
+		// use default LWW strategy
+	case string(XDCRConflictResolutionStrategyMWW):
+		if UnitTestUrlIsWalrus() {
+			FatalfCtx(ctx, "Walrus does not support MWW conflict resolution strategy for XDCR, see CBG-4759")
+		}
+		conflictResolutionStrategy = XDCRConflictResolutionStrategyMWW
+	case string(XDCRConflictResolutionStrategyLWW):
+		conflictResolutionStrategy = XDCRConflictResolutionStrategyLWW
+	default:
+		FatalfCtx(ctx, "Invalid value for %s: %s. Valid values are: %s, %s", tbpEnvXDCRConflictResolutionStrategy, os.Getenv(tbpEnvXDCRConflictResolutionStrategy), XDCRConflictResolutionStrategyLWW, XDCRConflictResolutionStrategyMWW)
+	}
+
 	tbp := TestBucketPool{
-		integrationMode:         !UnitTestUrlIsWalrus() && !TestUseExistingBucket(),
-		numBuckets:              numBuckets,
-		readyBucketPool:         make(chan Bucket, numBuckets),
-		bucketReadierQueue:      make(chan tbpBucketName, numBuckets),
-		bucketReadierWaitGroup:  &sync.WaitGroup{},
-		ctxCancelFunc:           ctxCancelFunc,
-		preserveBuckets:         preserveBuckets,
-		bucketInitFunc:          bucketInitFunc,
-		unclosedBuckets:         make(map[string]map[string]struct{}),
-		useExistingBucket:       TestUseExistingBucket(),
-		useDefaultScope:         options.UseDefaultScope,
-		numCollectionsPerBucket: numCollectionsPerBucket,
-		verbose:                 *NewAtomicBool(tbpVerbose()),
+		integrationMode:                !UnitTestUrlIsWalrus() && !TestUseExistingBucket(),
+		numBuckets:                     numBuckets,
+		readyBucketPool:                make(chan Bucket, numBuckets),
+		bucketReadierQueue:             make(chan tbpBucketName, numBuckets),
+		bucketReadierWaitGroup:         &sync.WaitGroup{},
+		ctxCancelFunc:                  ctxCancelFunc,
+		preserveBuckets:                preserveBuckets,
+		bucketInitFunc:                 bucketInitFunc,
+		unclosedBuckets:                make(map[string]map[string]struct{}),
+		useExistingBucket:              TestUseExistingBucket(),
+		useDefaultScope:                options.UseDefaultScope,
+		numCollectionsPerBucket:        numCollectionsPerBucket,
+		verbose:                        *NewAtomicBool(tbpVerbose()),
+		xdcrConflictResolutionStrategy: conflictResolutionStrategy,
 		clusterSpec: CouchbaseClusterSpec{
 			Server:        UnitTestUrl(),
 			Username:      TestClusterUsername(),
@@ -538,7 +566,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 			ctx := BucketNameCtx(ctx, bucketName)
 
 			tbp.Logf(ctx, "Creating new test bucket")
-			err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB)
+			err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB, tbp.xdcrConflictResolutionStrategy)
 			if ctx.Err() != nil {
 				return
 			} else if err != nil {
