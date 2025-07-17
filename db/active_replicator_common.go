@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"expvar"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -44,11 +43,11 @@ type activeReplicatorCommon struct {
 	statusKey             string // key used when persisting replication status
 	state                 string
 	lastError             error
-	stateErrorLock        sync.RWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
+	stateErrorLock        base.LoggingRWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
 	replicationStats      *BlipSyncStats
 	_getStatusCallback    func() *ReplicationStatus
 	onReplicatorComplete  ReplicatorCompleteFunc
-	lock                  sync.RWMutex
+	lock                  base.LoggingRWMutex
 	ctx                   context.Context
 	ctxCancel             context.CancelFunc
 	reconnectActive       base.AtomicBool                                             // Tracks whether reconnect goroutine is active
@@ -115,6 +114,8 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 		CheckpointID:     checkpointID,
 		initialStatus:    initialStatus,
 		statusKey:        metakeys.ReplicationStatusKey(checkpointID),
+		stateErrorLock:   base.NewLoggingRWMutex(ctx, "activeReplicatorCommon.stateErrorLock"),
+		lock:             base.NewLoggingRWMutex(ctx, "activeReplicatorCommon.lock"),
 	}
 
 	if config.CollectionsEnabled {
