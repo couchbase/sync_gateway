@@ -213,6 +213,7 @@ func TestCollectionsPublicChannelViaSyncFn(t *testing.T) {
 	require.Len(t, changesResults.Results, 3)
 	t.Logf("changes results: %s", changesResults.Summary())
 
+	// since we're filtering only to channel A, no docs are returned
 	changesResults = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter="+base.ByChannelFilter+"&channels=A", username, false)
 	require.Len(t, changesResults.Results, 1)
 	t.Logf("changes results: %s", changesResults.Summary())
