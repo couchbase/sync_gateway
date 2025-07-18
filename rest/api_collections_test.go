@@ -188,6 +188,7 @@ func TestCollectionsPublicChannelViaSyncFn(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	pathPrivate := "/{{.keyspace}}/docstillpublic"
+	// The "channels" property in the document is ignored because the SyncFn routes all documents to the "!" channel.
 	resp = rt.SendAdminRequest(http.MethodPut, pathPrivate, `{"channels":["a"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
