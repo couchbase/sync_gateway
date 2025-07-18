@@ -117,7 +117,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 func TestCollectionsPublicChannel(t *testing.T) {
 	const (
 		username = "alice"
-		password = "pass"
+		password = RestTesterDefaultUserPassword
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -155,6 +155,9 @@ func TestCollectionsPublicChannel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, alldocsresp.TotalRows)
 	assert.Len(t, alldocsresp.Rows, 1)
+
+	changesResp := rt.GetChangesOneShot(t, "keyspace", 0, username, 2)
+	t.Logf("changes resp: %s", changesResp.BodyBytes())
 }
 
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
