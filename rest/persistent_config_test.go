@@ -47,7 +47,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 		}
 	}
 }`,
-		base.TestTLSSkipVerify(t),
+		base.TestTLSSkipVerify(),
 		base.UnitTestUrl(),
 		base.TestClusterUsername(),
 		base.TestClusterPassword(),
@@ -158,7 +158,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
-			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(t), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
 			configPath := filepath.Join(tmpDir, "config.json")
 			err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
@@ -301,7 +301,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 			}
 		}
 	}`,
-		base.TestTLSSkipVerify(t),
+		base.TestTLSSkipVerify(),
 		configUpgradeGroupID,
 		base.UnitTestUrl(),
 		base.TestClusterUsername(),

@@ -199,7 +199,7 @@ func TestUseXattrs() bool {
 }
 
 // TestTLSSkipVerify returns true if in a test environment there should not be TLS certificate verification.
-func TestTLSSkipVerify(t testing.TB) bool {
+func TestTLSSkipVerify() bool {
 	return GTestBucketPool.clusterSpec.TLSSkipVerify
 }
 
@@ -209,25 +209,6 @@ func TestUseCouchbaseServerDockerName() (bool, string) {
 		return false, ""
 	}
 	return true, testX509CouchbaseServerDockerName
-}
-
-func TestX509LocalServer(t testing.TB) (bool, string) {
-	testX509LocalServer, isSet := os.LookupEnv(TestEnvX509Local)
-	if !isSet {
-		return false, ""
-	}
-
-	val, err := strconv.ParseBool(testX509LocalServer)
-	if err != nil {
-		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvX509Local, testX509LocalServer, err))
-	}
-
-	username, isSet := os.LookupEnv(TestEnvX509LocalUser)
-	if !isSet {
-		panic(fmt.Sprintf("TestEnvX509LocalUser must be set when TestEnvX509Local=true"))
-	}
-
-	return val, username
 }
 
 // TestSupportsMobileXDCR returns true to mobile XDCR bucket setting has been set to true for test bucket, false otherwise
@@ -782,11 +763,6 @@ func TestRequiresGocbDCPClient(t testing.TB) {
 	}
 }
 
-// TestClusterSpec returns the cluster specification used by the bucket pool.
-func TestClusterSpec(t testing.TB) CouchbaseClusterSpec {
-	return GTestBucketPool.clusterSpec
-}
-
 // RequireDocNotFoundError asserts that the given error represents a document not found error.
 func RequireDocNotFoundError(t testing.TB, e error) {
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
@@ -1016,4 +992,9 @@ func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataSto
 				Collection: scopeAndCollection[1]})
 	}
 	return nonDefaultDataStoreNames
+}
+
+// TestClusterSpec returns the cluster spec for the test bucket pool.
+func TestClusterSpec(t testing.TB) CouchbaseClusterSpec {
+	return GTestBucketPool.clusterSpec
 }

@@ -1951,20 +1951,12 @@ func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context) (*http.
 	return httpCli, nil
 }
 
-func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClientWithoutClientCerts() ([]string, *http.Client, error) {
-	if sc.GoCBAgent == nil {
-		return nil, nil, fmt.Errorf("unable to obtain agent")
-	}
-
-	return sc.GoCBAgent.MgmtEps(), sc.NoX509HTTPClient, nil
-}
-
 func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
 	if sc.GoCBAgent == nil {
 		return nil, nil, fmt.Errorf("unable to obtain agent")
 	}
 
-	return sc.GoCBAgent.MgmtEps(), sc.GoCBAgent.HTTPClient(), nil
+	return sc.GoCBAgent.MgmtEps(), sc.NoX509HTTPClient, nil
 }
 
 // CheckPermissions is used for Admin authentication to check a CBS RBAC user.

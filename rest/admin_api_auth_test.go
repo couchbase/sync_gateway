@@ -273,11 +273,8 @@ func TestCheckRoles(t *testing.T) {
 		},
 	}
 
-	gocbBucket, err := base.AsGocbV2Bucket(rt.Bucket())
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
-	eps, err := gocbBucket.MgmtEps()
-	require.NoError(t, err)
-	httpClient := gocbBucket.HttpClient(rt.Context())
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {

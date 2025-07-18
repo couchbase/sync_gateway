@@ -979,7 +979,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify(t)),
+			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
 		},
 	}
 	databases := DbConfigMap{

@@ -323,7 +323,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.X509CertPath = testBucket.BucketSpec.Certpath
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
 
-		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify(rt.TB())
+		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
 		require.NoError(rt.TB(), rt.RestTesterServerContext.initializeGocbAdminConnection(ctx))
 	}
 	require.NoError(rt.TB(), rt.RestTesterServerContext.initializeBootstrapConnection(ctx))

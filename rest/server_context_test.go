@@ -119,7 +119,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb2.Close(ctx)
 
 	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{UseTLSServer: base.Ptr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify(t))},
+		Bootstrap: BootstrapConfig{UseTLSServer: base.Ptr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify())},
 		API:       APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
@@ -573,7 +573,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify(t)),
+			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
 		},
 		API: APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface},
 	}
@@ -761,7 +761,7 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 				startupConfig := &StartupConfig{
 					Bootstrap: BootstrapConfig{
 						UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-						ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify(t)),
+						ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
 					},
 				}
 

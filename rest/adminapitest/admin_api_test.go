@@ -2666,8 +2666,9 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
-	assert.Equal(t, base.UnitTestUrl(), runtimeServerConfigResponse.Bootstrap.Server)
-	assert.Equal(t, test.Bootstrap.Username, runtimeServerConfigResponse.Bootstrap.Username)
+
+	assert.Equal(t, base.TestClusterSpec(t).Server, runtimeServerConfigResponse.Bootstrap.Server)
+	assert.Equal(t, base.TestClusterSpec(t).Username, runtimeServerConfigResponse.Bootstrap.Username)
 	if !base.TestHasOnlyX509Auth(t) {
 		assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
 	}
