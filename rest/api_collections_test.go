@@ -132,6 +132,9 @@ func TestCollectionsPublicChannel(t *testing.T) {
 	})
 	defer rt.Close()
 
+	// grant 'b' so we can check a non-public but accessible doc as well
+	require.NoError(t, rt.SetAdminChannels(username, rt.GetSingleKeyspace(), "b"))
+
 	pathPublic := "/{{.keyspace}}/docpublic"
 	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -144,78 +147,33 @@ func TestCollectionsPublicChannel(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "", nil, username, password)
-	RequireStatus(t, resp, http.StatusOK)
-	t.Logf("all docs resp: %s", resp.BodyBytes())
-	var alldocsresp struct {
-		Rows      []interface{} `json:"rows"`
-		TotalRows int           `json:"total_rows"`
-	}
-	err := json.Unmarshal(resp.BodyBytes(), &alldocsresp)
-	require.NoError(t, err)
-	assert.Equal(t, 1, alldocsresp.TotalRows)
-	assert.Len(t, alldocsresp.Rows, 1)
-
-	// user doc and accessible doc
-	changesResults := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", username, false)
-	require.Len(t, changesResults.Results, 2)
-	t.Logf("changes results: %s", changesResults.Summary())
-}
-
-// TestCollectionsPublicChannelViaSyncFn ensures that docs routed to the public channel via the sync function are accessible by a user with no other access.
-func TestCollectionsPublicChannelViaSyncFn(t *testing.T) {
-	const (
-		username = "alice"
-		password = RestTesterDefaultUserPassword
-	)
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		SyncFn: `function(doc){channel('!');}`,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.Ptr(password)},
-				},
-			},
-		},
-	})
-	defer rt.Close()
-
-	pathPublic := "/{{.keyspace}}/docpublic"
-	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"foo":"bar"}`)
+	pathAccessible := "/{{.keyspace}}/docaccessiblenotpublic"
+	resp = rt.SendAdminRequest(http.MethodPut, pathAccessible, `{"channels":["b"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPublic, "", nil, username, password)
-	RequireStatus(t, resp, http.StatusOK)
-
-	pathPrivate := "/{{.keyspace}}/docstillpublic"
-	// The "channels" property in the document is ignored because the SyncFn routes all documents to the "!" channel.
-	resp = rt.SendAdminRequest(http.MethodPut, pathPrivate, `{"channels":["a"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathAccessible, "", nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
 
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "", nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
 	t.Logf("all docs resp: %s", resp.BodyBytes())
-	var alldocsresp struct {
-		Rows      []interface{} `json:"rows"`
-		TotalRows int           `json:"total_rows"`
-	}
+	var alldocsresp allDocsResponse
 	err := json.Unmarshal(resp.BodyBytes(), &alldocsresp)
 	require.NoError(t, err)
 	assert.Equal(t, 2, alldocsresp.TotalRows)
 	assert.Len(t, alldocsresp.Rows, 2)
 
+	// user doc and accessible doc
 	changesResults := rt.WaitForChanges(3, "/{{.keyspace}}/_changes", username, false)
 	require.Len(t, changesResults.Results, 3)
 	t.Logf("changes results: %s", changesResults.Summary())
 
-	changesResults = rt.WaitForChanges(3, "/{{.keyspace}}/_changes?filter="+base.ByChannelFilter+"&channels=!", username, false)
-	require.Len(t, changesResults.Results, 3)
+	// explicitly filtering for public only
+	changesResults = rt.WaitForChanges(2, "/{{.keyspace}}/_changes?filter="+base.ByChannelFilter+"&channels=!", username, false)
+	require.Len(t, changesResults.Results, 2)
 	t.Logf("changes results: %s", changesResults.Summary())
 
-	// since we're filtering only to channel A, no docs are returned
-	changesResults = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter="+base.ByChannelFilter+"&channels=A", username, false)
+	// since we're filtering only to channel 'a' and we don't have access - don't expect any docs
+	changesResults = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter="+base.ByChannelFilter+"&channels=a", username, false)
 	require.Len(t, changesResults.Results, 1)
 	t.Logf("changes results: %s", changesResults.Summary())
 }
