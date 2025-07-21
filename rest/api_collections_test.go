@@ -117,20 +117,15 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 func TestCollectionsPublicChannel(t *testing.T) {
 	const (
 		username = "alice"
-		password = "pass"
+		password = RestTesterDefaultUserPassword
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.Ptr(password)},
-				},
-			},
-		},
 	})
 	defer rt.Close()
+
+	rt.CreateUser(username, []string{"b"})
 
 	pathPublic := "/{{.keyspace}}/docpublic"
 	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
@@ -144,17 +139,32 @@ func TestCollectionsPublicChannel(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
+	pathAccessible := "/{{.keyspace}}/docaccessiblenotpublic"
+	resp = rt.SendAdminRequest(http.MethodPut, pathAccessible, `{"channels":["b"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathAccessible, "", nil, username, password)
+	RequireStatus(t, resp, http.StatusOK)
+
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "", nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
 	t.Logf("all docs resp: %s", resp.BodyBytes())
-	var alldocsresp struct {
-		Rows      []interface{} `json:"rows"`
-		TotalRows int           `json:"total_rows"`
-	}
+	var alldocsresp allDocsResponse
 	err := json.Unmarshal(resp.BodyBytes(), &alldocsresp)
 	require.NoError(t, err)
-	assert.Equal(t, 1, alldocsresp.TotalRows)
-	assert.Len(t, alldocsresp.Rows, 1)
+	assert.Equal(t, 2, alldocsresp.TotalRows)
+	assert.Len(t, alldocsresp.Rows, 2)
+
+	// user doc and accessible doc
+	changesResults := rt.WaitForChanges(3, "/{{.keyspace}}/_changes", username, false)
+	t.Logf("changes results: %s", changesResults.Summary())
+
+	// explicitly filtering for public only
+	changesResults = rt.WaitForChanges(2, "/{{.keyspace}}/_changes?filter="+base.ByChannelFilter+"&channels=!", username, false)
+	t.Logf("changes results: %s", changesResults.Summary())
+
+	// since we're filtering only to channel 'a' and we don't have access - don't expect any docs
+	changesResults = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter="+base.ByChannelFilter+"&channels=a", username, false)
+	t.Logf("changes results: %s", changesResults.Summary())
 }
 
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
