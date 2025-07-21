@@ -12,7 +12,6 @@ package rest
 
 import (
 	"encoding/base64"
-// Removed the fmt import as it is not used in production code.
 	"net/http"
 	"testing"
 
