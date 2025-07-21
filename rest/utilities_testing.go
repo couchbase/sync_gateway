@@ -1093,7 +1093,13 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 		return err
 	}
 
-	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
+	if scopeName == nil || collectionName == nil {
+		if channels != nil {
+			currentConfig.ExplicitChannels = base.SetFromArray(channels)
+		}
+	} else {
+		currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
+	}
 	// Remove read only properties returned from the user api
 	for _, scope := range currentConfig.CollectionAccess {
 		if scope != nil {
