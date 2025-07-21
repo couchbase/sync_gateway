@@ -1057,7 +1057,7 @@ func TestAttachmentContentType(t *testing.T) {
 
 	// Ran against allow insecure
 	rt.GetDatabase().ServeInsecureAttachmentTypes = true
-	for index := range tests {
+	for index, _ := range tests {
 		response := rt.SendRequest("GET", fmt.Sprintf("/{{.keyspace}}/doc_allow_insecure_%d/login.aspx", index), "")
 		contentDisposition := response.Header().Get("Content-Disposition")
 
