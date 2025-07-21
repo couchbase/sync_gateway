@@ -133,7 +133,11 @@ func TestCollectionsPublicChannel(t *testing.T) {
 	defer rt.Close()
 
 	// grant 'b' so we can check a non-public but accessible doc as well
-	require.NoError(t, rt.SetAdminChannels(username, rt.GetSingleKeyspace(), "b"))
+	if rt.GetDatabase().OnlyDefaultCollection() {
+		require.NoError(t, rt.SetAdminChannels(username, rt.GetDatabase().Name, "b"))
+	} else {
+		require.NoError(t, rt.SetAdminChannels(username, rt.GetSingleKeyspace(), "b"))
+	}
 
 	pathPublic := "/{{.keyspace}}/docpublic"
 	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
