@@ -899,7 +899,7 @@ func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
 }
 
 // MoveAttachmentXattrFromGlobalToSync is a test only function that will move any defined attachment metadata in _globalSync.attachments_meta to _sync.attachments. This turns a document written with Sync Gateway 4.0 style attachments to a document with Sync Gateway <4.0 style attachments.
-func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docID string, cas uint64, value, syncXattr []byte, attachments AttachmentsMeta, macroExpand bool, dataStore base.DataStore) {
+func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore, docID string, value []byte, macroExpand bool) {
 	docSync := GetRawSyncXattr(t, dataStore, docID)
 	docSync.Attachments = GetRawGlobalSync(t, dataStore, docID).GlobalAttachments
 
@@ -916,8 +916,9 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docI
 	newSync, err := base.JSONMarshal(docSync)
 	require.NoError(t, err)
 
-	_, cas, err = dataStore.GetRaw(docID)
+	_, cas, err := dataStore.GetRaw(docID)
 	require.NoError(t, err)
+	ctx := base.TestCtx(t)
 	_, err = dataStore.WriteWithXattrs(ctx, docID, 0, cas, value, map[string][]byte{base.SyncXattrName: newSync}, []string{base.GlobalXattrName}, opts)
 	require.NoError(t, err)
 }

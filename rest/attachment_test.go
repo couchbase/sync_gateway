@@ -1057,7 +1057,7 @@ func TestAttachmentContentType(t *testing.T) {
 
 	// Ran against allow insecure
 	rt.GetDatabase().ServeInsecureAttachmentTypes = true
-	for index, _ := range tests {
+	for index := range tests {
 		response := rt.SendRequest("GET", fmt.Sprintf("/{{.keyspace}}/doc_allow_insecure_%d/login.aspx", index), "")
 		contentDisposition := response.Header().Get("Content-Disposition")
 
@@ -2232,7 +2232,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 //   - Tests document update through blip to a doc with attachment metadata defined in sync data
 //   - Assert that the c doc update this way will migrate the attachment metadata from sync data to global sync data
 func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 		AutoImport:   base.Ptr(false),
@@ -2253,52 +2253,33 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 		btcRunner.StartPull(btc.id)
 		btcRunner.StartPush(btc.id)
 		ds := rt.GetSingleDataStore()
-		ctx := base.TestCtx(t)
 
 		initialVersion := btc.rt.PutDocWithAttachment(doc1ID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
 		btc.rt.WaitForPendingChanges()
 		btcRunner.WaitForVersion(btc.id, doc1ID, initialVersion)
 
-		value, xattrs, cas, err := ds.GetWithXattrs(ctx, doc1ID, []string{base.SyncXattrName, base.GlobalXattrName})
-		require.NoError(t, err)
-		syncXattr, ok := xattrs[base.SyncXattrName]
-		require.True(t, ok)
-		globalXattr, ok := xattrs[base.GlobalXattrName]
-		require.True(t, ok)
-
-		var attachs db.GlobalSyncData
-		err = base.JSONUnmarshal(globalXattr, &attachs)
+		value, _, err := ds.GetRaw(doc1ID)
 		require.NoError(t, err)
 
 		// move attachment metadata from global xattr to sync xattr
-		db.MoveAttachmentXattrFromGlobalToSync(t, ctx, doc1ID, cas, value, syncXattr, attachs.GlobalAttachments, true, ds)
+		db.MoveAttachmentXattrFromGlobalToSync(t, ds, doc1ID, value, true)
 
 		// push revision from client
 		doc1Version := btcRunner.AddRev(btc.id, doc1ID, &initialVersion, []byte(`{"new": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`))
 
 		rt.WaitForVersion(doc1ID, doc1Version)
-
 		// assert the pushed rev updates the doc in bucket and migrates attachment metadata in process
-		xattrs, _, err = ds.GetXattrs(ctx, doc1ID, []string{base.SyncXattrName, base.GlobalXattrName})
-		require.NoError(t, err)
-		syncXattr, ok = xattrs[base.SyncXattrName]
-		require.True(t, ok)
-		globalXattr, ok = xattrs[base.GlobalXattrName]
-		require.True(t, ok)
+		require.Empty(t, db.GetRawSyncXattr(t, ds, doc1ID).Attachments)
+		require.Equal(t, db.AttachmentMap{
+			"hello.txt": {
+				Digest:  "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				Length:  11,
+				Revpos:  1,
+				Version: 2,
+				Stub:    true,
+			},
+		}, db.GetRawGlobalSyncAttachments(t, ds, doc1ID))
 
-		// empty global sync,
-		attachs = db.GlobalSyncData{}
-		err = base.JSONUnmarshal(globalXattr, &attachs)
-		require.NoError(t, err)
-		var syncData db.SyncData
-		err = base.JSONUnmarshal(syncXattr, &syncData)
-		require.NoError(t, err)
-
-		// assert that the attachment metadata has been moved
-		assert.NotNil(t, attachs.GlobalAttachments)
-		assert.Nil(t, syncData.Attachments)
-		att := attachs.GlobalAttachments["hello.txt"].(map[string]interface{})
-		assert.Equal(t, float64(11), att["length"])
 	})
 }
 
@@ -2844,7 +2825,6 @@ func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersio
 func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	docID := "foo16"
 	attBody := []byte(`hi`)
@@ -2855,17 +2835,18 @@ func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 	// Create a document with legacy attachment.
 	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
-	// get global xattr and assert the attachment is there
-	xattrs, _, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.GlobalXattrName})
-	require.NoError(t, err)
-	require.Contains(t, xattrs, base.GlobalXattrName)
-	var globalXattr db.GlobalSyncData
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
-	hi := globalXattr.GlobalAttachments["hi.txt"].(map[string]interface{})
+	ds := rt.GetSingleDataStore()
 
-	assert.Len(t, globalXattr.GlobalAttachments, 1)
-	assert.Equal(t, float64(2), hi["length"])
-
+	require.Empty(t, db.GetRawSyncXattr(t, ds, docID).Attachments)
+	require.Equal(t, db.AttachmentMap{
+		"hi.txt": {
+			ContentType: "text/plain",
+			Digest:      "sha1-witfkXg0JglCjW9RssWvTAveakI=",
+			Length:      2,
+			Revpos:      1,
+			Stub:        true,
+		},
+	}, db.GetRawGlobalSyncAttachments(t, ds, docID))
 	// Create a document with legacy attachment but do not attempt to migrate
 	docID = "baa16"
 	CreateDocWithLegacyAttachmentNoMigration(t, rt, docID, rawDoc, attKey, attBody)
@@ -2875,15 +2856,16 @@ func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 	RequireStatus(t, resp, http.StatusConflict)
 
 	// get xattrs of new doc we had the conflict update for, assert that the attachment metadata has been moved to global xattr
-	xattrs, _, err = collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.GlobalXattrName})
-	require.NoError(t, err)
-	require.Contains(t, xattrs, base.GlobalXattrName)
-	globalXattr = db.GlobalSyncData{}
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
-	newatt := globalXattr.GlobalAttachments["hi.txt"].(map[string]interface{})
-
-	assert.Len(t, globalXattr.GlobalAttachments, 1)
-	assert.Equal(t, float64(2), newatt["length"])
+	require.Empty(t, db.GetRawSyncXattr(t, ds, docID).Attachments)
+	require.Equal(t, db.AttachmentMap{
+		"hi.txt": {
+			ContentType: "text/plain",
+			Digest:      "sha1-witfkXg0JglCjW9RssWvTAveakI=",
+			Length:      2,
+			Revpos:      1,
+			Stub:        true,
+		},
+	}, db.GetRawGlobalSyncAttachments(t, ds, docID))
 }
 
 // TestAttachmentMigrationToGlobalXattrOnUpdate:
@@ -2894,6 +2876,7 @@ func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	ds := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	docID := "baa"
@@ -2926,20 +2909,16 @@ func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 	_ = rt.UpdateDoc(docID, vrs, body)
 
 	// assert that the attachments moved to global xattr after doc update
-	xattrs, _, err = collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
-	require.NoError(t, err)
-	require.Contains(t, xattrs, base.GlobalXattrName)
-	require.Contains(t, xattrs, base.SyncXattrName)
-
-	bucketSyncData = db.SyncData{}
-	globalXattr = db.GlobalSyncData{}
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
-
-	assert.Nil(t, bucketSyncData.Attachments)
-	assert.NotNil(t, globalXattr.GlobalAttachments)
-	attMeta := globalXattr.GlobalAttachments["camera.txt"].(map[string]interface{})
-	assert.Equal(t, float64(20), attMeta["length"])
+	require.Empty(t, db.GetRawSyncXattr(t, ds, docID).Attachments)
+	require.Equal(t, db.AttachmentMap{
+		"camera.txt": {
+			Digest:  "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=",
+			Length:  20,
+			Revpos:  1,
+			Version: 2,
+			Stub:    true,
+		},
+	}, db.GetRawGlobalSyncAttachments(t, ds, docID))
 }
 
 func TestBlipPushRevWithAttachment(t *testing.T) {

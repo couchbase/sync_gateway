@@ -778,8 +778,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
-		docSyncData := GetRawSyncXattr(t, collection.dataStore, docKey)
-		assert.Empty(t, docSyncData.Attachments)
+		assert.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
 		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 		return db, ctx
 	}
@@ -882,10 +881,15 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NotContains(t, body1, BodyAttachments)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		syncData := GetRawSyncXattr(t, collection.dataStore, docKey)
-		require.Empty(t, syncData.Attachments)
-		globalSyncAttachments := GetRawGlobalSyncAttachments(t, collection.dataStore, docKey)
-		base.RequireKeysEqual(t, []string{"hello.txt"}, globalSyncAttachments)
+		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+		require.Equal(t, AttachmentMap{
+			"hello.txt": {
+				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				Length: 11,
+				Revpos: 1,
+				Stub:   true,
+			},
+		}, GetRawGlobalSyncAttachments(t, collection.dataStore, docKey))
 	})
 
 	// Adding a new attachment should migrate existing attachments, without losing any.
@@ -942,9 +946,23 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NotContains(t, body1, BodyAttachments)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		syncData = GetRawSyncXattr(t, collection.dataStore, docKey)
-		globalSyncAttachments := GetRawGlobalSyncAttachments(t, collection.dataStore, docKey)
-		base.RequireKeysEqual(t, []string{"bye.txt", "hello.txt"}, globalSyncAttachments)
+		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+		require.Equal(t, AttachmentMap{
+			"hello.txt": {
+				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				Revpos: 1,
+				Stub:   true,
+				Length: 11,
+			},
+			"bye.txt": {
+				ContentType: "text/plain",
+				Digest:      "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+				Revpos:      4,
+				Stub:        true,
+				Version:     2,
+				Length:      19,
+			},
+		}, GetRawGlobalSyncAttachments(t, collection.dataStore, docKey))
 	})
 }
 
@@ -1041,15 +1059,34 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	require.NoError(t, err)
 
 	// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
-	docSyncData := GetRawSyncXattr(t, collection.dataStore, docKey)
-	base.RequireKeysEqual(t, []string{"bye.txt"}, docSyncData.Attachments)
+	require.Equal(t, AttachmentsMeta{
+		"bye.txt": map[string]any{
+			"digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			"length": float64(19),
+			"revpos": float64(1),
+			"stub":   true,
+		},
+	}, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
 	base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 
 	rev, err := collection.GetRev(ctx, docKey, "3-a", true, nil)
 	require.NoError(t, err)
 
 	// read-only in-memory transformation should've been applied here, both attachments should be present in rev.Attachments
-	base.RequireKeysEqual(t, []string{"hello.txt", "bye.txt"}, rev.Attachments)
+	require.Equal(t, AttachmentsMeta{
+		"bye.txt": map[string]any{
+			"digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			"length": float64(19),
+			"revpos": float64(1),
+			"stub":   true,
+		},
+		"hello.txt": map[string]any{
+			"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			"length": json.Number("11"),
+			"revpos": json.Number("1"),
+			"stub":   true,
+		},
+	}, rev.Attachments)
 
 	// _attachments shouldn't be present in the body at this point.
 	// It will be stamped in for 1.x clients that require it further up the stack.
@@ -1058,8 +1095,14 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	require.NotContains(t, body1, BodyAttachments)
 
 	// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-	docSyncData = GetRawSyncXattr(t, collection.dataStore, docKey)
-	base.RequireKeysEqual(t, []string{"bye.txt"}, docSyncData.Attachments)
+	require.Equal(t, AttachmentsMeta{
+		"bye.txt": map[string]any{
+			"digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			"length": float64(19),
+			"revpos": float64(1),
+			"stub":   true,
+		},
+	}, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
 	base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 }
 

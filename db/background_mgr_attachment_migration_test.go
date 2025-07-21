@@ -42,18 +42,10 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 	// Move some subset of the documents attachment metadata from global sync to sync data
 	for j := 0; j < 5; j++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), j)
-		value, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
-		require.NoError(t, err)
-		syncXattr, ok := xattrs[base.SyncXattrName]
-		assert.True(t, ok)
-		globalXattr, ok := xattrs[base.GlobalXattrName]
-		assert.True(t, ok)
-
-		var attachs GlobalSyncData
-		err = base.JSONUnmarshal(globalXattr, &attachs)
+		value, _, err := collection.dataStore.GetRaw(key)
 		require.NoError(t, err)
 
-		MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, true, collection.dataStore)
+		MoveAttachmentXattrFromGlobalToSync(t, collection.dataStore, key, value, true)
 	}
 
 	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
@@ -216,7 +208,10 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	// define some attachment meta on sync data
 	syncData.Attachments = AttachmentsMeta{}
 	att := map[string]interface{}{
-		"stub": true,
+		"stub":   true,
+		"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+		"length": 11,
+		"revpos": 1,
 	}
 	syncData.Attachments["someAtt.txt"] = att
 
@@ -243,18 +238,21 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	// assert that the sync info metadata version doc has been written to the database collection
 	AssertSyncInfoMetaVersion(t, collection.dataStore)
 
-	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
-	require.NoError(t, err)
-	require.Contains(t, xattrs, base.GlobalXattrName)
-	require.Contains(t, xattrs, base.SyncXattrName)
-
-	var globalSync GlobalSyncData
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalSync))
-	syncData = SyncData{}
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
-
-	require.NotNil(t, globalSync.GlobalAttachments)
-	assert.NotNil(t, globalSync.GlobalAttachments["someAtt.txt"])
-	assert.NotNil(t, globalSync.GlobalAttachments["myatt"])
-	assert.Nil(t, syncData.Attachments)
+	require.Equal(t, AttachmentMap{
+		"someAtt.txt": {
+			Stub:   true,
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Revpos: 1,
+		},
+		"myatt": {
+			Stub:        true,
+			ContentType: "text/plain",
+			Version:     2,
+			Length:      12,
+			Digest:      "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE=",
+			Revpos:      1,
+		},
+	}, GetRawGlobalSyncAttachments(t, collection.dataStore, key))
+	require.Empty(t, GetRawSyncXattr(t, collection.dataStore, key).Attachments)
 }
