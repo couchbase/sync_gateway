@@ -62,9 +62,22 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 		rt.WaitForVersion(docID, version)
 
+		// revpos isn't checked, so it isn't a problem that these are different, but it is probably not intentional
+		revpos := 2
+		if btc.UseHLV() {
+			revpos = 1
+		}
 		syncData := db.GetRawSyncXattr(t, rt.GetSingleDataStore(), docID)
 		require.Empty(t, syncData.Attachments)
-		base.RequireKeysEqual(t, []string{"myAttachment"}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), docID))
+		require.Equal(t, db.AttachmentMap{
+			"myAttachment": {
+				Digest:  "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=",
+				Revpos:  revpos,
+				Length:  6,
+				Stub:    true,
+				Version: 2,
+			},
+		}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), docID))
 
 		// Turn deltas on
 		btc.ClientDeltas = true
@@ -82,7 +95,15 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 		syncData = db.GetRawSyncXattr(t, rt.GetSingleDataStore(), docID)
 		require.Empty(t, syncData.Attachments)
-		base.RequireKeysEqual(t, []string{"myAttachment"}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), docID))
+		require.Equal(t, db.AttachmentMap{
+			"myAttachment": {
+				Digest:  "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=",
+				Length:  6,
+				Revpos:  revpos,
+				Stub:    true,
+				Version: 2,
+			},
+		}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), docID))
 	})
 }
 
@@ -126,6 +147,7 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 			expBody       []byte
 			docID         string
 			hasAttachment bool
+			revpos        int
 		}{
 			// test case: pushing delta with key update onto doc with _attachment in json value
 			{
@@ -140,6 +162,7 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				initialBody:   []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				bodyUpdate:    []byte(`{"key1":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				hasAttachment: true,
+				revpos:        1,
 			},
 			{
 				// test case: pushing delta with attachment defined onto doc with _attachment in json value
@@ -147,6 +170,7 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				initialBody:   []byte(`{"key":"_attachments"}`),
 				bodyUpdate:    []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				hasAttachment: true,
+				revpos:        2,
 			},
 			{
 				// test case: pushing delta with _attachment json value onto doc with attachment defined
@@ -154,6 +178,7 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 				initialBody:   []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				bodyUpdate:    []byte(`{"key":"_attachments","_attachments":{"myAttachment":{"data":"` + attData + `"}}}`),
 				hasAttachment: true,
+				revpos:        1,
 			},
 		}
 		for _, tc := range testcases {
@@ -169,7 +194,15 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 			if tc.hasAttachment {
 				syncData := db.GetRawSyncXattr(t, rt.GetSingleDataStore(), tc.docID)
 				require.Empty(t, syncData.Attachments)
-				base.RequireKeysEqual(t, []string{"myAttachment"}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), tc.docID))
+				require.Equal(t, db.AttachmentMap{
+					"myAttachment": {
+						Digest:  "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=",
+						Revpos:  tc.revpos,
+						Length:  6,
+						Stub:    true,
+						Version: 2,
+					},
+				}, db.GetRawGlobalSyncAttachments(t, rt.GetSingleDataStore(), tc.docID), "mismatched attachments for doc %s", tc.docID)
 			}
 		}
 	})

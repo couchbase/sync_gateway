@@ -402,6 +402,15 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	// body should only have 3 top-level entries _id, _rev, _attachments
 	base.RequireKeysEqual(t, []string{"_id", "_rev", "_attachments"}, body)
+	require.Equal(t, db.AttachmentMap{
+		"attach1": {
+			ContentType: "text/plain",
+			Digest:      "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
+			Length:      30,
+			Revpos:      1,
+			Stub:        true,
+		},
+	}, db.GetAttachmentsFromInlineBody(t, response.BodyBytes()))
 }
 
 // Test for regression of issue #447
