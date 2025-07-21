@@ -898,12 +898,10 @@ func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
 	return revNo
 }
 
-// MoveAttachmentXattrFromGlobalToSync is a test only function that will move any defined attachment metadata in global xattr to sync data xattr
+// MoveAttachmentXattrFromGlobalToSync is a test only function that will move any defined attachment metadata in _globalSync.attachments_meta to _sync.attachments. This turns a document written with Sync Gateway 4.0 style attachments to a document with Sync Gateway <4.0 style attachments.
 func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docID string, cas uint64, value, syncXattr []byte, attachments AttachmentsMeta, macroExpand bool, dataStore base.DataStore) {
-	var docSync SyncData
-	err := base.JSONUnmarshal(syncXattr, &docSync)
-	require.NoError(t, err)
-	docSync.Attachments = attachments
+	docSync := GetRawSyncXattr(t, dataStore, docID)
+	docSync.Attachments = GetRawGlobalSync(t, dataStore, docID).GlobalAttachments
 
 	opts := &sgbucket.MutateInOptions{}
 	// this should be true for cases we want to move the attachment metadata without causing a new import feed event
@@ -918,6 +916,8 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docI
 	newSync, err := base.JSONMarshal(docSync)
 	require.NoError(t, err)
 
+	_, cas, err = dataStore.GetRaw(docID)
+	require.NoError(t, err)
 	_, err = dataStore.WriteWithXattrs(ctx, docID, 0, cas, value, map[string][]byte{base.SyncXattrName: newSync}, []string{base.GlobalXattrName}, opts)
 	require.NoError(t, err)
 }
@@ -948,6 +948,16 @@ func GetRawSyncXattr(t *testing.T, collection base.DataStore, docID string) Sync
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	return syncData
+}
+
+// GetRawGlobalSync retrieves the _globalSync xattr. Fails if the xattr is not found.
+func GetRawGlobalSync(t *testing.T, collection base.DataStore, docID string) GlobalSyncData {
+	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.GlobalXattrName})
+	require.NoError(t, err, "Could not find _globalSync xattr for %s", docID)
+	require.Contains(t, xattrs, base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
+	var globalSyncData GlobalSyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalSyncData))
+	return globalSyncData
 }
 
 // GetRawGlobalSyncAttachments retrieves the attachments from the _globalSync.attachments xattr for a given document ID.
