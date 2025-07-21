@@ -317,7 +317,6 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 			// Check the request body was NOT the delta
 			msgBody, err := msg.Body()
 			assert.NoError(t, err)
-			fmt.Printf("msgBody: %s\n", string(msgBody))
 			assert.JSONEq(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}, "greetings": [{"hello": "world!"}, {"hi": "alice"}]}`, string(msgBody))
 		}
 
