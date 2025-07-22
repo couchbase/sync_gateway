@@ -88,6 +88,7 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 			CACertpath:    sc.Bootstrap.CACertPath,
 			TLSSkipVerify: base.ValDefault(sc.Bootstrap.ServerTLSSkipVerify, false),
 		},
+		base.TestClusterReadyTimeout,
 	)
 	assert.Error(t, err)
 
