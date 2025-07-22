@@ -2772,18 +2772,6 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 	body = `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	rt.PutDoc(key, body)
 
-	_, xattrs, _, err := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
-	require.NoError(t, err)
-
-	syncXattr, ok = xattrs[base.SyncXattrName]
-	require.True(t, ok)
-	globalXattr, ok = xattrs[base.GlobalXattrName]
-	require.True(t, ok)
-	// grab defined attachment metadata to move to sync data
-	attachs = db.GlobalSyncData{}
-	err = base.JSONUnmarshal(globalXattr, &attachs)
-	require.NoError(t, err)
-
 	// change doc body to trigger import on feed
 	value = []byte(`{"test": "doc"}`)
 	db.MoveAttachmentXattrFromGlobalToSync(t, dataStore, key, value, false)

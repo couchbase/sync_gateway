@@ -234,10 +234,24 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
 		require.Equal(t, db.AttachmentsMeta{
-			"myatt": map[string]any{},
+			"myatt": map[string]any{
+				"content_type": "text/plain",
+				"digest":       "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE=",
+				"length":       12,
+				"revpos":       1,
+				"stub":         true,
+				"ver":          2,
+			},
 		}, doc.Attachments)
 		require.Equal(t, db.AttachmentMap{
-			"myatt": {},
+			"myatt": {
+				ContentType: "text/plain",
+				Digest:      "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE=",
+				Length:      12,
+				Revpos:      1,
+				Stub:        true,
+				Version:     2,
+			},
 		}, db.GetRawGlobalSyncAttachments(t, collection.GetCollectionDatastore(), key))
 		require.Empty(t, db.GetRawSyncXattr(t, collection.GetCollectionDatastore(), key).Attachments)
 	}
