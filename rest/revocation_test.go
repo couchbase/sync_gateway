@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2378,18 +2379,18 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 	const waitMarkerID = "docmarker"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		var throw bool
+		var throw atomic.Bool
 		// Two callbacks to cover usage with CBS/Xattrs and without
 		revocationTester, rt := InitScenario(
 			t, &RestTesterConfig{
 				LeakyBucketConfig: &base.LeakyBucketConfig{
 					GetWithXattrCallback: func(key string) error {
-						if throw {
+						if throw.Load() {
 							return fmt.Errorf("Leaky Bucket GetWithXattrCallback Error")
 						}
 						return nil
 					}, GetRawCallback: func(key string) error {
-						if throw {
+						if throw.Load() {
 							return fmt.Errorf("Leaky Bucket GetRawCallback Error")
 						}
 						return nil
@@ -2423,7 +2424,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 		firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
-		throw = true
+		throw.Store(true)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		// Remove role from user
