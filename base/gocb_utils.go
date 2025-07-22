@@ -194,7 +194,7 @@ func MgmtRequest(client *http.Client, mgmtEp, method, uri, contentType, username
 }
 
 // NewClusterAgent creates a new gocbcore agent for a couchbase cluster.
-func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec) (*gocbcore.Agent, error) {
+func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilReadyTimeout time.Duration) (*gocbcore.Agent, error) {
 	authenticator, err := GoCBCoreAuthConfig(spec.Username, spec.Password, spec.X509Certpath, spec.X509Keypath)
 	if err != nil {
 		return nil, err
@@ -240,7 +240,7 @@ func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec) (*gocbcore.
 
 	agentReadyErr := make(chan error)
 	_, err = agent.WaitUntilReady(
-		time.Now().Add(5*time.Second),
+		time.Now().Add(waitUntilReadyTimeout),
 		gocbcore.WaitUntilReadyOptions{
 			ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService},
 		},

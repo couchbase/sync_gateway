@@ -23,6 +23,8 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 )
 
+const TestClusterReadyTimeout = 90 * time.Second
+
 // tbpCluster represents a gocb v2 cluster
 type tbpCluster struct {
 	// version is the Couchbase Server version
@@ -37,7 +39,7 @@ type tbpCluster struct {
 
 // newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.
 func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbpCluster, error) {
-	agent, err := NewClusterAgent(ctx, clusterSpec)
+	agent, err := NewClusterAgent(ctx, clusterSpec, TestClusterReadyTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create cluster agent: %w", err)
 	}
@@ -92,10 +94,9 @@ func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec
 	if err != nil {
 		return nil, "", fmt.Errorf("couldn't connect to cluster %q: %w", connStr, err)
 	}
-	const clusterReadyTimeout = 90 * time.Second
-	err = cluster.WaitUntilReady(clusterReadyTimeout, nil)
+	err = cluster.WaitUntilReady(TestClusterReadyTimeout, nil)
 	if err != nil {
-		FatalfCtx(ctx, "Cluster not ready after %ds: %v", int(clusterReadyTimeout.Seconds()), err)
+		FatalfCtx(ctx, "Cluster not ready after %ds: %v", int(TestClusterReadyTimeout.Seconds()), err)
 	}
 	return cluster, connStr, nil
 }
