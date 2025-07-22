@@ -520,7 +520,7 @@ func (rc *LRURevisionCache) removeFromCacheByCV(ctx context.Context, docID strin
 	elem := element.Value.(*revCacheValue)
 
 	// we can only remove this value if the value has finished loading from the bucket
-	_, _ = base.RetryLoop(ctx, "remove from revision cache by rev", func() (shouldRetry bool, err error, _ any) {
+	_, _ = base.RetryLoop(ctx, "remove from revision cache by cv", func() (shouldRetry bool, err error, _ any) {
 		if !elem.canEvict.Load() {
 			// value is still in process of being loaded from bucket, we need to wait for this to finish
 			return true, nil, nil
