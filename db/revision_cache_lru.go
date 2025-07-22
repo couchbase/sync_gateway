@@ -518,6 +518,16 @@ func (rc *LRURevisionCache) removeFromCacheByCV(ctx context.Context, docID strin
 	}
 	// grab the revid key from the value to enable us to remove the reference from the rev lookup map too
 	elem := element.Value.(*revCacheValue)
+
+	// we can only remove this value if the value has finished loading from the bucket
+	_, _ = base.RetryLoop(ctx, "remove from revision cache by rev", func() (shouldRetry bool, err error, _ any) {
+		if !elem.canEvict.Load() {
+			// value is still in process of being loaded from bucket, we need to wait for this to finish
+			return true, nil, nil
+		}
+		return false, nil, nil
+	}, base.CreateMaxDoublingSleeperFunc(30, 10, 500))
+
 	legacyKey := IDAndRev{DocID: docID, RevID: elem.revID, CollectionID: collectionID}
 	rc.lruList.Remove(element)
 	delete(rc.hlvCache, key)
@@ -538,6 +548,16 @@ func (rc *LRURevisionCache) removeFromCacheByRev(ctx context.Context, docID, rev
 	}
 	// grab the cv key from the value to enable us to remove the reference from the rev lookup map too
 	elem := element.Value.(*revCacheValue)
+
+	// we can only remove this value if the value has finished loading from the bucket
+	_, _ = base.RetryLoop(ctx, "remove from revision cache by rev", func() (shouldRetry bool, err error, _ any) {
+		if !elem.canEvict.Load() {
+			// value is still in process of being loaded from bucket, we need to wait for this to finish
+			return true, nil, nil
+		}
+		return false, nil, nil
+	}, base.CreateMaxDoublingSleeperFunc(30, 10, 500))
+
 	hlvKey := IDandCV{DocID: docID, Source: elem.cv.SourceID, Version: elem.cv.Value, CollectionID: collectionID}
 	rc.lruList.Remove(element)
 	// decrement the overall memory bytes count
