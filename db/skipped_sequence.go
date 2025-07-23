@@ -114,12 +114,7 @@ func (s *SkippedSequenceSkiplist) PushSkippedSequenceEntry(entry skiplist.Skippe
 
 // getOldest returns the start sequence of the first element in the skipped sequence list
 func (s *SkippedSequenceSkiplist) getOldest() uint64 {
-	elem := s.list.Front()
-	if elem != nil {
-		return elem.Key().Start
-	}
-	// list empty
-	return 0
+	return s.list.FrontKey().Start
 }
 
 // getStats will return all associated stats with the skipped sequence list
