@@ -3171,7 +3171,7 @@ func TestPublicAllDocsApiStats(t *testing.T) {
 }
 
 func TestSilentHandlerLoggingInTrace(t *testing.T) {
-	// must have debug assert the ensure below endpoints don't show in debug logs
+	// must have debug to assert that the endpoints below don't show in debug logs
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp)
 
 	rt := NewRestTester(t, nil)
