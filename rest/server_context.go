@@ -1841,8 +1841,6 @@ func (sc *ServerContext) updateCalculatedStats(ctx context.Context) {
 // Uses retry loop
 func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Agent, error) {
 	err, agent := base.RetryLoop(ctx, "Initialize Cluster Agent", func() (shouldRetry bool, err error, agent *gocbcore.Agent) {
-		// this timeout is pretty short since we are doing external retries
-		waitUntilReadyTimeout := 5 * time.Second
 		agent, err = base.NewClusterAgent(
 			ctx,
 			base.CouchbaseClusterSpec{
@@ -1853,7 +1851,11 @@ func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Age
 				X509Keypath:   sc.Config.Bootstrap.X509KeyPath,
 				CACertpath:    sc.Config.Bootstrap.CACertPath,
 				TLSSkipVerify: base.ValDefault(sc.Config.Bootstrap.ServerTLSSkipVerify, false),
-			}, waitUntilReadyTimeout)
+			},
+			base.CouchbaseClusterWaitUntilReadyOptions{
+				// this timeout is pretty short since we are doing external retries
+				Timeout: 5 * time.Second,
+			})
 		if err != nil {
 			// since we're starting up - let's be verbose (on console) about these retries happening ... otherwise it looks like nothing is happening ...
 			base.ConsolefCtx(ctx, base.LevelInfo, base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)

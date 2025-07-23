@@ -193,8 +193,14 @@ func MgmtRequest(client *http.Client, mgmtEp, method, uri, contentType, username
 	return respBytes, response.StatusCode, nil
 }
 
+// CouchbaseClusterWaitUntilReadyOptions defines options when calling gocbcore.Agent.WaitUntilReady.
+type CouchbaseClusterWaitUntilReadyOptions struct {
+	RetryStrategy gocbcore.RetryStrategy // Retry strategy to use when waiting for the cluster to be ready
+	Timeout       time.Duration          // Timeout for waiting for the cluster to be ready
+}
+
 // NewClusterAgent creates a new gocbcore agent for a couchbase cluster.
-func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilReadyTimeout time.Duration) (*gocbcore.Agent, error) {
+func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilReadyOptions CouchbaseClusterWaitUntilReadyOptions) (*gocbcore.Agent, error) {
 	authenticator, err := GoCBCoreAuthConfig(spec.Username, spec.Password, spec.X509Certpath, spec.X509Keypath)
 	if err != nil {
 		return nil, err
@@ -226,7 +232,7 @@ func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilRe
 
 	agent, err := gocbcore.CreateAgent(&config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gocbcore.CreateAgent failed: %w", err)
 	}
 
 	shouldCloseAgent := true
@@ -240,9 +246,10 @@ func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilRe
 
 	agentReadyErr := make(chan error)
 	_, err = agent.WaitUntilReady(
-		time.Now().Add(waitUntilReadyTimeout),
+		time.Now().Add(waitUntilReadyOptions.Timeout),
 		gocbcore.WaitUntilReadyOptions{
-			ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService},
+			ServiceTypes:  []gocbcore.ServiceType{gocbcore.MgmtService},
+			RetryStrategy: waitUntilReadyOptions.RetryStrategy,
 		},
 		func(result *gocbcore.WaitUntilReadyResult, err error) {
 			agentReadyErr <- err
@@ -250,7 +257,7 @@ func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilRe
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gocbcore.Agent.WaitUntilReady failed: %w", err)
 	}
 
 	if err := <-agentReadyErr; err != nil {
@@ -258,7 +265,7 @@ func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilRe
 			err = fmt.Errorf("%w - Provide a CA cert, or set tls_skip_verify to true in config", err)
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("cluster agent is not ready after %vs: %w", waitUntilReadyOptions.Timeout.Seconds(), err)
 	}
 
 	shouldCloseAgent = false

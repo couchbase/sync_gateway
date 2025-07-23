@@ -39,7 +39,11 @@ type tbpCluster struct {
 
 // newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.
 func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbpCluster, error) {
-	agent, err := NewClusterAgent(ctx, clusterSpec, TestClusterReadyTimeout)
+	agent, err := NewClusterAgent(ctx, clusterSpec,
+		CouchbaseClusterWaitUntilReadyOptions{
+			Timeout:       TestClusterReadyTimeout,
+			RetryStrategy: gocbcore.NewBestEffortRetryStrategy(nil),
+		})
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create cluster agent: %w", err)
 	}
