@@ -3179,7 +3179,7 @@ func TestSilentHandlerLoggingInTrace(t *testing.T) {
 
 	base.AssertLogNotContains(t, "_ping", func() {
 		resp := rt.SendRequest(http.MethodGet, "/_ping", "")
-		require.Equal(t, http.StatusOK, resp.Code)
+		RequireStatus(t, resp, http.StatusOK)
 	})
 
 	base.AssertLogNotContains(t, "/metrics", func() {
