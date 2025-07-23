@@ -2883,7 +2883,7 @@ func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 //   - Update this doc through sync gateway
 //   - Assert that the attachment metadata in moved from sync data to global xattr on update
 func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{AutoImport: base.Ptr(false)})
 	defer rt.Close()
 	ds := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -2919,15 +2919,11 @@ func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 
 	// assert that the attachments moved to global xattr after doc update
 	require.Empty(t, db.GetRawSyncXattr(t, ds, docID).Attachments)
-	revpos := 1
-	if !base.IsEnterpriseEdition() {
-		revpos = 2 // CBG-4766 this is not intentional, and maybe should be fixed. However, neither CBL nor SG since 3.0 use revpos, so a fix is low priority
-	}
 	require.Equal(t, db.AttachmentMap{
 		"camera.txt": {
 			Digest:  "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=",
 			Length:  20,
-			Revpos:  revpos,
+			Revpos:  2,
 			Version: 2,
 			Stub:    true,
 		},
