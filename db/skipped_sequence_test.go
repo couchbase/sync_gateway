@@ -697,7 +697,7 @@ func TestGetOldestSkippedSequence(t *testing.T) {
 			expected:  2,
 		},
 		{
-			name:     "empty_slice",
+			name:     "empty_list",
 			empty:    true,
 			expected: 0,
 		},
