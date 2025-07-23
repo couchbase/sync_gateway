@@ -150,7 +150,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 // makeSilentHandler creates an http.Handler that will run a handler with the given method only logging at debug
 func makeSilentHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
-		httpLogLevel: base.Ptr(base.LevelDebug),
+		httpLogLevel: base.Ptr(base.LevelTrace),
 	})
 }
 
