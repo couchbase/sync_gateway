@@ -150,6 +150,10 @@ func (v Version) IsEmpty() bool {
 	return v.SourceID == "" && v.Value == 0
 }
 
+func (v Version) Equal(other Version) bool {
+	return v.SourceID == other.SourceID && v.Value == other.Value
+}
+
 // StringForVersionDelta will take a version struct and convert the value to delta format
 // (encoding it to LE hex, stripping any 0's off the end and stripping leading 0x)
 func (v Version) StringForVersionDelta() string {
@@ -273,7 +277,7 @@ func (hlv *HybridLogicalVector) InvalidateMV() {
 		if source == hlv.SourceID {
 			continue
 		}
-		hlv.setPreviousVersion(source, value)
+		hlv.SetPreviousVersion(source, value)
 	}
 	hlv.MergeVersions = nil
 }
@@ -346,13 +350,13 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
 			if hlv.PreviousVersions[i] == 0 {
-				hlv.setPreviousVersion(i, v)
+				hlv.SetPreviousVersion(i, v)
 			} else {
 				// if we get here then there is entry for this source in PV so we must check if its newer or not
 				otherHLVPVValue := v
 				localHLVPVValue := hlv.PreviousVersions[i]
 				if localHLVPVValue < otherHLVPVValue {
-					hlv.setPreviousVersion(i, v)
+					hlv.SetPreviousVersion(i, v)
 				}
 			}
 		}
@@ -384,8 +388,8 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 	return outputSpec
 }
 
-// setPreviousVersion will take a source/version pair and add it to the HLV previous versions map
-func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64) {
+// SetPreviousVersion will take a source/version pair and add it to the HLV previous versions map
+func (hlv *HybridLogicalVector) SetPreviousVersion(source string, version uint64) {
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(HLVVersions)
 	}

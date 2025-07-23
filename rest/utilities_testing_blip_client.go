@@ -38,6 +38,23 @@ const (
 	RevtreeSubtestName       = "revTree"
 )
 
+// BlipTesterClientConflictResolverType is the type of conflict resolver used by blip test clients when conflicts are received by a pull replication.
+type BlipTesterClientConflictResolverType string
+
+const (
+	ConflictResolverLastWriteWins BlipTesterClientConflictResolverType = "lww"
+
+	ConflictResolverDefault = ConflictResolverLastWriteWins
+)
+
+func (c BlipTesterClientConflictResolverType) IsValid() bool {
+	switch c {
+	case ConflictResolverLastWriteWins:
+		return true
+	}
+	return false
+}
+
 type BlipTesterClientOpts struct {
 	ClientDeltas                  bool // Support deltas on the client side
 	Username                      string
@@ -63,6 +80,9 @@ type BlipTesterClientOpts struct {
 
 	// SourceID is used to define the SourceID for the blip client
 	SourceID string
+
+	// ConflictResolver defines how to resolve conflicts on a pull replication.
+	ConflictResolver BlipTesterClientConflictResolverType
 }
 
 // defaultBlipTesterClientRevsLimit is the number of revisions sent as history when the client replicates - older revisions are not sent, and may not be stored.
@@ -276,6 +296,45 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, hlvHistory: latestRev.HLV, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
 }
 
+// _resolveConflict will resolve a conflict for the given incoming version. This will mutate the hlv, and return the expected body and version to write.
+func (cd *clientDoc) _resolveConflict(opts resolveConflictOptions) (resolvedBody []byte, resolvedVersion db.Version) {
+	// fetch client's latest version to do conflict check and resolution
+	latestLocalRev := cd._latestRev(opts.t)
+	if latestLocalRev == nil {
+		// no existing rev - accept incoming rev
+		return opts.incomingBody, opts.incomingVersion
+	}
+	clientCV := latestLocalRev.version.CV
+
+	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
+	if latestLocalRev.version.CV.Equal(opts.incomingVersion) {
+		require.FailNowf(opts.t, "incoming revision is equal to client revision", "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", opts.incomingVersion, clientCV)
+	}
+	if opts.incomingVersion.SourceID == clientCV.SourceID {
+		// incomingVersion has the same sourceID as the local version.
+
+		// Potentially we should add a check to make sure that the HLV is not rolling back
+		/// incomingCV.Value > clientCV.Value
+		return opts.incomingBody, opts.incomingVersion
+	}
+
+	switch opts.conflictResolver {
+	case ConflictResolverLastWriteWins:
+		if opts.incomingVersion.Value > clientCV.Value {
+			// incoming rev is newer than the client version, accept this as the new version
+			return opts.incomingBody, opts.incomingVersion
+		}
+		newVersion := db.Version{SourceID: opts.localSourceID, Value: uint64(opts.hlc.Now())}
+		require.NoError(opts.t, opts.hlv.AddVersion(newVersion), "couldn't add incoming HLV into client HLV")
+		opts.hlv.SetPreviousVersion(opts.incomingVersion.SourceID, opts.incomingVersion.Value)
+		return latestLocalRev.body, newVersion
+	default:
+		opts.t.Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", opts.conflictResolver)
+	}
+	opts.t.Fatalf("Unreachable code in _resolveConflict - should never reach here")
+	return latestLocalRev.body, latestLocalRev.version.CV // unreachable, but required to satisfy return type
+}
+
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
@@ -307,6 +366,16 @@ type BlipTesterCollectionClient struct {
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
 
 	hlc *rosmar.HybridLogicalClock
+}
+
+type resolveConflictOptions struct {
+	t                testing.TB
+	incomingVersion  db.Version
+	incomingBody     []byte
+	hlv              *db.HybridLogicalVector
+	hlc              *rosmar.HybridLogicalClock
+	localSourceID    string // SourceID of the local client
+	conflictResolver BlipTesterClientConflictResolverType
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
@@ -1951,16 +2020,26 @@ func (btcc *BlipTesterCollectionClient) addRev(docID string, opts revOptions) {
 	defer btcc.seqLock.Unlock()
 	newClientSeq := btcc._nextSequence()
 
+	doc, ok := btcc._getClientDoc(docID)
+	body, newCV := doc._resolveConflict(resolveConflictOptions{
+		t:                btcc.TB(),
+		incomingVersion:  opts.newVersion.CV,
+		incomingBody:     opts.body,
+		hlv:              &opts.hlv,
+		hlc:              btcc.hlc,
+		localSourceID:    btcc.parent.SourceID,
+		conflictResolver: btcc.parent.ConflictResolver,
+	})
+	opts.newVersion.CV = newCV
 	docRev := clientDocRev{
 		clientSeq: newClientSeq,
 		version:   opts.newVersion,
-		body:      opts.body,
+		body:      body,
 		isDelete:  opts.isDelete,
 		message:   opts.msg,
 		HLV:       opts.hlv,
 	}
 
-	doc, ok := btcc._getClientDoc(docID)
 	if !ok {
 		doc = newClientDocument(docID, newClientSeq, &docRev)
 	} else {
