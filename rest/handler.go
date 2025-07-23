@@ -126,6 +126,9 @@ const (
 	metricsPrivs
 )
 
+// silentRequestLogLevel is the log level used for handlers that are silent, meaning they only log at trace level
+const silentRequestLogLevel = base.LevelTrace
+
 type handlerMethod func(*handler) error
 
 // makeHandlerWithOptions creates an http.Handler that will run a handler with the given method handlerOptions
@@ -150,7 +153,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 // makeSilentHandler creates an http.Handler that will run a handler with the given method only logging at debug
 func makeSilentHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
-		httpLogLevel: base.Ptr(base.LevelTrace),
+		httpLogLevel: base.Ptr(silentRequestLogLevel),
 	})
 }
 
@@ -748,7 +751,7 @@ func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, confi
 
 // isSilentRequest returns true if the handler represents a request we should suppress http logging on.
 func (h *handler) isSilentRequest() bool {
-	return h.httpLogLevel != nil && *h.httpLogLevel == base.LevelDebug
+	return h.httpLogLevel != nil && *h.httpLogLevel == silentRequestLogLevel
 }
 
 func (h *handler) logRequestLine() {
