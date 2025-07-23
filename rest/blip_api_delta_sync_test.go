@@ -62,7 +62,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 		rt.WaitForVersion(docID, version)
 
-		// revpos isn't checked, so it isn't a problem that these are different, but it is probably not intentional
+		// CBG-4766 this is not intentional, and maybe should be fixed. However, neither CBL nor SG since 3.0 use revpos, so a fix is low priority
 		revpos := 2
 		if btc.UseHLV() {
 			revpos = 1

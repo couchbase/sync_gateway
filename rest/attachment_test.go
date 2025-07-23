@@ -2921,7 +2921,7 @@ func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 	require.Empty(t, db.GetRawSyncXattr(t, ds, docID).Attachments)
 	revpos := 1
 	if !base.IsEnterpriseEdition() {
-		revpos = 2 // this is not intentional, and maybe should be fixed. However, neither CBL nor SG since 3.0 use revpos, so a fix is low priority
+		revpos = 2 // CBG-4766 this is not intentional, and maybe should be fixed. However, neither CBL nor SG since 3.0 use revpos, so a fix is low priority
 	}
 	require.Equal(t, db.AttachmentMap{
 		"camera.txt": {
