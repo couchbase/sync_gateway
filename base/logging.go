@@ -406,6 +406,22 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 	assert.Contains(t, b.String(), s)
 }
 
+// AssertLogNotContains asserts that the logs produced by function f do not contain string s.
+func AssertLogNotContains(t *testing.T, s string, f func()) {
+	// Temporarily override logger output
+	b := &bytes.Buffer{}
+	mw := io.MultiWriter(b, os.Stderr)
+	consoleLogger.Load().logger.SetOutput(mw)
+	// Call the given function
+	f()
+
+	FlushLogBuffers()
+	consoleLogger.Load().FlushBufferToLog()
+	// do not reset output in defer, since we are accessing b.String() after
+	consoleLogger.Load().logger.SetOutput(os.Stderr)
+	assert.NotContains(t, b.String(), s)
+}
+
 // AuditLogContents returns that the audit logs produced by function f.
 func AuditLogContents(t testing.TB, f func(t testing.TB)) []byte {
 	// Temporarily override logger output

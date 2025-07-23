@@ -3169,3 +3169,40 @@ func TestPublicAllDocsApiStats(t *testing.T) {
 	assert.Equal(t, int64(5), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPreFilterPublicAllDocs.Value())
 	assert.Equal(t, int64(4), rt.GetDatabase().DbStats.DatabaseStats.NumDocsPostFilterPublicAllDocs.Value())
 }
+
+func TestSilentHandlerLoggingInTrace(t *testing.T) {
+	// must have debug to assert that the endpoints below don't show in debug logs
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp)
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	base.AssertLogNotContains(t, "_ping", func() {
+		resp := rt.SendRequest(http.MethodGet, "/_ping", "")
+		RequireStatus(t, resp, http.StatusOK)
+	})
+
+	base.AssertLogNotContains(t, "/metrics", func() {
+		headers := map[string]string{
+			"Authorization": GetBasicAuthHeader(t, base.TestClusterUsername(), base.TestClusterPassword()),
+		}
+		resp := rt.SendMetricsRequestWithHeaders(http.MethodGet, "/metrics", "", headers)
+		RequireStatus(t, resp, http.StatusOK)
+	})
+
+	base.AssertLogNotContains(t, "/_metrics", func() {
+		headers := map[string]string{
+			"Authorization": GetBasicAuthHeader(t, base.TestClusterUsername(), base.TestClusterPassword()),
+		}
+		resp := rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers)
+		RequireStatus(t, resp, http.StatusOK)
+	})
+
+	base.AssertLogNotContains(t, "/_expvar", func() {
+		headers := map[string]string{
+			"Authorization": GetBasicAuthHeader(t, base.TestClusterUsername(), base.TestClusterPassword()),
+		}
+		resp := rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_expvar", "", headers)
+		RequireStatus(t, resp, http.StatusOK)
+	})
+}
