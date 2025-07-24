@@ -21,7 +21,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -53,14 +52,7 @@ var ErrLoginRequired = base.HTTPErrorf(http.StatusUnauthorized, "Login required"
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
-// If set to true, diagnostic data will be dumped if there's a problem with MIME multipart data
-var DebugMultipart bool = false
-
 var lastSerialNum uint64 = 0
-
-func init() {
-	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
-}
 
 var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
 
@@ -1357,22 +1349,8 @@ func (h *handler) readDocument() (db.Body, error) {
 	case "", "application/json":
 		return h.readJSON()
 	case "multipart/related":
-		if DebugMultipart {
-			raw, err := h.readBody()
-			if err != nil {
-				return nil, err
-			}
-			reader := multipart.NewReader(bytes.NewReader(raw), attrs["boundary"])
-			body, err := ReadMultipartDocument(reader)
-			if err != nil {
-				_ = os.WriteFile("GatewayPUT.mime", raw, 0600)
-				base.WarnfCtx(h.ctx(), "Error reading MIME data: copied to file GatewayPUT.mime")
-			}
-			return body, err
-		} else {
-			reader := multipart.NewReader(h.requestBody, attrs["boundary"])
-			return ReadMultipartDocument(reader)
-		}
+		reader := multipart.NewReader(h.requestBody, attrs["boundary"])
+		return ReadMultipartDocument(reader)
 	default:
 		return nil, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 	}
