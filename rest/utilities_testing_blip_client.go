@@ -645,7 +645,6 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 				v, err := db.ParseVersion(revID)
 				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
 				newVersion = DocVersion{CV: v}
-				require.NoError(btr.TB(), hlv.AddVersion(v))
 			} else {
 				newVersion = DocVersion{RevTreeID: revID}
 			}
@@ -826,7 +825,6 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			v, err := db.ParseVersion(revID)
 			require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
 			newVersion = DocVersion{CV: v}
-			require.NoError(btr.TB(), hlv.AddVersion(v))
 		} else {
 			newVersion = DocVersion{RevTreeID: revID}
 		}
@@ -2021,7 +2019,7 @@ func (btcc *BlipTesterCollectionClient) addRev(docID string, opts revOptions) {
 	newClientSeq := btcc._nextSequence()
 
 	doc, ok := btcc._getClientDoc(docID)
-	body, newCV := doc._resolveConflict(resolveConflictOptions{
+	body, resolvedVersion := doc._resolveConflict(resolveConflictOptions{
 		t:                btcc.TB(),
 		incomingVersion:  opts.newVersion.CV,
 		incomingBody:     opts.body,
@@ -2030,7 +2028,9 @@ func (btcc *BlipTesterCollectionClient) addRev(docID string, opts revOptions) {
 		localSourceID:    btcc.parent.SourceID,
 		conflictResolver: btcc.parent.ConflictResolver,
 	})
-	opts.newVersion.CV = newCV
+	if btcc.UseHLV() {
+		require.NoError(btcc.TB(), opts.hlv.AddVersion(resolvedVersion))
+	}
 	docRev := clientDocRev{
 		clientSeq: newClientSeq,
 		version:   opts.newVersion,
