@@ -898,12 +898,10 @@ func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
 	return revNo
 }
 
-// MoveAttachmentXattrFromGlobalToSync is a test only function that will move any defined attachment metadata in global xattr to sync data xattr
-func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docID string, cas uint64, value, syncXattr []byte, attachments AttachmentsMeta, macroExpand bool, dataStore base.DataStore) {
-	var docSync SyncData
-	err := base.JSONUnmarshal(syncXattr, &docSync)
-	require.NoError(t, err)
-	docSync.Attachments = attachments
+// MoveAttachmentXattrFromGlobalToSync is a test only function that will move any defined attachment metadata in _globalSync.attachments_meta to _sync.attachments. This turns a document written with Sync Gateway 4.0 style attachments to a document with Sync Gateway <4.0 style attachments.
+func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore, docID string, value []byte, macroExpand bool) {
+	docSync := GetRawSyncXattr(t, dataStore, docID)
+	docSync.Attachments = GetRawGlobalSync(t, dataStore, docID).GlobalAttachments
 
 	opts := &sgbucket.MutateInOptions{}
 	// this should be true for cases we want to move the attachment metadata without causing a new import feed event
@@ -918,6 +916,9 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, ctx context.Context, docI
 	newSync, err := base.JSONMarshal(docSync)
 	require.NoError(t, err)
 
+	_, cas, err := dataStore.GetRaw(docID)
+	require.NoError(t, err)
+	ctx := base.TestCtx(t)
 	_, err = dataStore.WriteWithXattrs(ctx, docID, 0, cas, value, map[string][]byte{base.SyncXattrName: newSync}, []string{base.GlobalXattrName}, opts)
 	require.NoError(t, err)
 }
@@ -938,4 +939,52 @@ func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
 	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	assert.Equal(t, "4.0.0", syncInfo.MetaDataVersion)
+}
+
+// GetRawSyncXattr retrieves the _sync xattr from the bucket without going through typical CRUD processing.
+func GetRawSyncXattr(t *testing.T, collection base.DataStore, docID string) SyncData {
+	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.SyncXattrName})
+	require.NoError(t, err, "Could not find _sync xattr for %s", docID)
+	require.Contains(t, xattrs, base.SyncXattrName, "Could not find _sync xattr for %s", docID)
+	var syncData SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+	return syncData
+}
+
+// GetRawGlobalSync retrieves the _globalSync xattr. Fails if the xattr is not found.
+func GetRawGlobalSync(t *testing.T, collection base.DataStore, docID string) GlobalSyncData {
+	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.GlobalXattrName})
+	require.NoError(t, err, "Could not find _globalSync xattr for %s", docID)
+	require.Contains(t, xattrs, base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
+	var globalSyncData GlobalSyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalSyncData))
+	return globalSyncData
+}
+
+// GetRawGlobalSyncAttachments retrieves the attachments from the _globalSync.attachments xattr for a given document ID.
+func GetRawGlobalSyncAttachments(t *testing.T, collection base.DataStore, docID string) AttachmentMap {
+	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.GlobalXattrName})
+	require.NoError(t, err, "Could not find _globalSync xattr for %s", docID)
+	require.Contains(t, xattrs, base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
+	var globalSyncData struct {
+		Attachments AttachmentMap `json:"attachments_meta"`
+	}
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalSyncData))
+	return globalSyncData.Attachments
+}
+
+// GetAttachmentsFromInlineBody returns the attachment data when it is part of a json body. This could be from:
+// - GET /ks/{docID}
+// blip message with _attachments field.
+func GetAttachmentsFromInlineBody(t *testing.T, responseBody []byte) AttachmentMap {
+	var body struct {
+		Attachments AttachmentMap `json:"_attachments"`
+	}
+	require.NoError(t, base.JSONUnmarshal(responseBody, &body))
+	return body.Attachments
+}
+
+// GetAttachmentsFrom1xBody returns the attachment data when it returned from Get1xBody functions, where the data is already db.Body.
+func GetAttachmentsFrom1xBody(t *testing.T, body Body) AttachmentMap {
+	return GetAttachmentsFromInlineBody(t, base.MustJSONMarshal(t, body))
 }

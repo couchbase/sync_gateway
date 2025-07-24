@@ -19,11 +19,13 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"maps"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1002,4 +1004,16 @@ func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataSto
 // TestClusterSpec returns the cluster spec for the test bucket pool.
 func TestClusterSpec(t *testing.T) CouchbaseClusterSpec {
 	return GTestBucketPool.clusterSpec
+}
+
+// RequireKeysEqual asserts that a map has the expected keys.
+func RequireKeysEqual[T any](t testing.TB, expectedKeys []string, actual map[string]T, msgAndArgs ...any) {
+	require.ElementsMatch(t, expectedKeys, slices.Collect(maps.Keys(actual)), msgAndArgs...)
+}
+
+// RequireXattrNotFound asserts that the given xattr is not found on the document.
+func RequireXattrNotFound(t testing.TB, dataStore sgbucket.DataStore, docID string, xattrName string) {
+	xattrs, _, err := dataStore.GetXattrs(TestCtx(t), docID, []string{xattrName})
+	require.Error(t, err, fmt.Sprintf("Expected xattr %q to not be found on document %q but has contents %s", xattrName, docID, xattrs[xattrName]))
+	RequireXattrNotFoundError(t, err)
 }

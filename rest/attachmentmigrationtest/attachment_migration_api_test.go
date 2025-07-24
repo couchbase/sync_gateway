@@ -233,23 +233,35 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
-		assert.NotNil(t, doc.SyncData.Attachments)
+		require.Equal(t, db.AttachmentsMeta{
+			"myatt": map[string]any{
+				"content_type": "text/plain",
+				"digest":       "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE=",
+				"length":       12,
+				"revpos":       1,
+				"stub":         true,
+				"ver":          2,
+			},
+		}, doc.Attachments)
+		require.Equal(t, db.AttachmentMap{
+			"myatt": {
+				ContentType: "text/plain",
+				Digest:      "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE=",
+				Length:      12,
+				Revpos:      1,
+				Stub:        true,
+				Version:     2,
+			},
+		}, db.GetRawGlobalSyncAttachments(t, collection.GetCollectionDatastore(), key))
+		require.Empty(t, db.GetRawSyncXattr(t, collection.GetCollectionDatastore(), key).Attachments)
 	}
 
 	// Move some subset of the documents attachment metadata from global sync to sync data
 	for j := 0; j < 5; j++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), j)
-		value, xattrs, cas, err := collection.GetCollectionDatastore().GetWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
-		require.NoError(t, err)
-		syncXattr, ok := xattrs[base.SyncXattrName]
-		assert.True(t, ok)
-		globalXattr, ok := xattrs[base.GlobalXattrName]
-		assert.True(t, ok)
-
-		var attachs db.GlobalSyncData
-		err = base.JSONUnmarshal(globalXattr, &attachs)
+		value, _, err := collection.GetCollectionDatastore().GetRaw(key)
 		require.NoError(t, err)
 
-		db.MoveAttachmentXattrFromGlobalToSync(t, ctx, key, cas, value, syncXattr, attachs.GlobalAttachments, true, collection.GetCollectionDatastore())
+		db.MoveAttachmentXattrFromGlobalToSync(t, collection.GetCollectionDatastore(), key, value, true)
 	}
 }

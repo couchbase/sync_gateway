@@ -70,15 +70,15 @@ func TestAttachmentRoundTrip(t *testing.T) {
 
 	doc := RestDocument{}
 	attachmentMap := db.AttachmentMap{
-		"foo": &db.DocAttachment{
+		"foo": db.DocAttachment{
 			ContentType: "application/octet-stream",
 			Digest:      "WHATEVER",
 		},
-		"bar": &db.DocAttachment{
+		"bar": db.DocAttachment{
 			ContentType: "text/plain",
 			Digest:      "something",
 		},
-		"baz": &db.DocAttachment{
+		"baz": db.DocAttachment{
 			Data: []byte(""),
 		},
 	}

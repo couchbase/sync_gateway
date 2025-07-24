@@ -1906,7 +1906,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 	}
 
 	doc.SetAttachments(db.AttachmentMap{
-		input.attachmentName: &myAttachment,
+		input.attachmentName: myAttachment,
 	})
 
 	docBody, err := base.JSONMarshal(doc)
@@ -2297,7 +2297,7 @@ func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 				return db.AttachmentMap{}, err
 			}
 
-			attachmentMap[attachmentName] = &docAttachment
+			attachmentMap[attachmentName] = docAttachment
 		}
 
 		// Avoid the unnecessary re-Marshal + re-Unmarshal

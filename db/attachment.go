@@ -46,11 +46,17 @@ type updatedAttachment struct {
 // updatedAttachments holds the user facing attachment name and raw contents
 type updatedAttachments map[string]updatedAttachment
 
-// A map of keys -> DocAttachments.
-type AttachmentMap map[string]*DocAttachment
+// AttachmentMap can represent:
+//   - _sync.attachments
+//   - _globalSync.attachments_meta
+//   - inline body `_attachments` from blip rev messages
+//   - inline body `_attachments`from pre Sync Gateway 2.5
+type AttachmentMap map[string]DocAttachment
 
-// A struct which models an attachment.  Currently only used by test code, however
-// new code or refactoring in the main codebase should try to use where appropriate.
+// DocAttachment models an attachment. This could be attachment metadata or the full body of an attachment.
+//   - `_sync.attachments` : Data field should not be present
+//   - `_globalSync.attachments_meta` : Data field should not be present
+//   - `_attachments` body from blip or REST input/output: Data field could be present if Stub: false
 type DocAttachment struct {
 	ContentType string `json:"content_type,omitempty"`
 	Digest      string `json:"digest,omitempty"`
@@ -58,7 +64,7 @@ type DocAttachment struct {
 	Revpos      int    `json:"revpos,omitempty"`
 	Stub        bool   `json:"stub,omitempty"`
 	Version     int    `json:"ver,omitempty"`
-	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
+	Data        []byte `json:"data,omitempty"` // this field is present for unmarshalling data but typically should not be marshalled for output.
 }
 
 // ErrAttachmentTooLarge is returned when an attempt to attach an oversize attachment is made.

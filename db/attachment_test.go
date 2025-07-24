@@ -35,7 +35,6 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	deltasEnabled := base.IsEnterpriseEdition()
-	xattrsEnabled := base.TestUseXattrs()
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
 		Enabled:          deltasEnabled,
@@ -49,13 +48,13 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal([]byte(rev1Data), &rev1Body))
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	rev1ID, docRev1, err := collection.Put(ctx, docID, rev1Body)
+	revid1, docRev1, err := collection.Put(ctx, docID, rev1Body)
 	require.NoError(t, err)
-	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
+	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", revid1)
 
 	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
 	rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
-	if deltasEnabled && xattrsEnabled {
+	if deltasEnabled {
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 	} else {
@@ -68,7 +67,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-	docRev2, _, err := collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
+	docRev2, _, err := collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", revid1}, true, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
 	// now in any case - we'll have rev 1 backed up
@@ -80,7 +79,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	// and rev 2 should be present only for the xattrs and deltas case
 	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
 	rev2OldBody, err := collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
-	if deltasEnabled && xattrsEnabled {
+	if deltasEnabled {
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
 	} else {
@@ -103,92 +102,95 @@ func TestAttachments(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	revid, docRev1, err := collection.Put(ctx, "doc1", body)
-	rev1id := revid
-	assert.NoError(t, err, "Couldn't create document")
+	rev1id, docRev1, err := collection.Put(ctx, "doc1", body)
+	require.NoError(t, err)
 
 	log.Printf("Retrieve doc...")
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
-	atts := gotbody[BodyAttachments].(AttachmentsMeta)
-
-	hello := atts["hello.txt"].(map[string]interface{})
-	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, 11, hello["length"])
-	assert.Equal(t, 1, hello["revpos"])
-
-	bye := atts["bye.txt"].(map[string]interface{})
-	assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
-	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, 19, bye["length"])
-	assert.Equal(t, 1, bye["revpos"])
-
+	require.NoError(t, err)
+	atts := GetAttachmentsFrom1xBody(t, gotbody)
+	require.Equal(t, AttachmentMap{
+		"hello.txt": DocAttachment{
+			Data:   []byte("hello world"),
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Revpos: 1,
+		},
+		"bye.txt": DocAttachment{
+			Data:   []byte("goodbye cruel world"),
+			Digest: "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			Length: 19,
+			Revpos: 1,
+		},
+	}, atts)
 	log.Printf("Create rev 2...")
 	rev2str := `{"_attachments": {"hello.txt": {"stub":true, "revpos":1}, "bye.txt": {"data": "YnllLXlh"}}}`
 	var body2 Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev2str), &body2))
-	body2[BodyRev] = revid
-	revid, _, err = collection.Put(ctx, "doc1", body2)
-	assert.NoError(t, err, "Couldn't update document")
-	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", revid)
+	body2[BodyRev] = rev1id
+	rev2id, _, err := collection.Put(ctx, "doc1", body2)
+	require.NoError(t, err, "Couldn't update document")
+	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", rev2id)
 
 	log.Printf("Retrieve doc...")
 	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
-	atts = gotbody[BodyAttachments].(AttachmentsMeta)
-
-	hello = atts["hello.txt"].(map[string]interface{})
-	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, float64(11), hello["length"])
-	assert.Equal(t, float64(1), hello["revpos"])
-
-	bye = atts["bye.txt"].(map[string]interface{})
-	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
-	assert.Equal(t, "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", bye["digest"])
-	assert.Equal(t, 6, bye["length"])
-	assert.Equal(t, 2, bye["revpos"])
-
+	require.NoError(t, err)
+	atts = GetAttachmentsFrom1xBody(t, gotbody)
+	require.Equal(t, AttachmentMap{
+		"hello.txt": DocAttachment{
+			Data:   []byte("hello world"),
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Revpos: 1,
+		},
+		"bye.txt": DocAttachment{
+			Data:   []byte("bye-ya"),
+			Digest: "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=",
+			Length: 6,
+			Revpos: 2,
+		},
+	}, atts)
 	log.Printf("Retrieve doc with atts_since...")
 	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "", false, []string{"1-ca9ad22802b66f662ff171f226211d5c", "1-foo", "993-bar"})
-	assert.NoError(t, err, "Couldn't get document")
-	atts = gotbody[BodyAttachments].(AttachmentsMeta)
-
-	hello = atts["hello.txt"].(map[string]interface{})
-	assert.Nil(t, hello["data"])
-
-	bye = atts["bye.txt"].(map[string]interface{})
-	require.NotNil(t, bye["data"])
-	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
-	require.NotNil(t, bye["digest"])
-	assert.Equal(t, "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", bye["digest"])
-	require.NotNil(t, bye["length"])
-	assert.Equal(t, 6, bye["length"])
-	require.NotNil(t, bye["revpos"])
-	assert.Equal(t, 2, bye["revpos"])
+	require.NoError(t, err, "Couldn't get document")
+	atts = GetAttachmentsFrom1xBody(t, gotbody)
+	require.Equal(t, AttachmentMap{
+		"hello.txt": DocAttachment{
+			Stub:   true,
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Revpos: 1,
+		},
+		"bye.txt": DocAttachment{
+			Stub:   false,
+			Data:   []byte("bye-ya"),
+			Digest: "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=",
+			Length: 6,
+			Revpos: 2,
+		},
+	}, atts)
 
 	log.Printf("Create rev 3...")
 	rev3str := `{"_attachments": {"bye.txt": {"stub":true,"revpos":2}}}`
 	var body3 Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev3str), &body3))
-	body3[BodyRev] = revid
-	revid, _, err = collection.Put(ctx, "doc1", body3)
+	body3[BodyRev] = rev2id
+	rev3id, _, err := collection.Put(ctx, "doc1", body3)
 	assert.NoError(t, err, "Couldn't update document")
-	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", revid)
+	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", rev3id)
 
 	log.Printf("Retrieve doc...")
 	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
-	atts = gotbody[BodyAttachments].(AttachmentsMeta)
-
-	assert.Nil(t, atts["hello.txt"])
-
-	bye = atts["bye.txt"].(map[string]interface{})
-	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
-	assert.Equal(t, "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", bye["digest"])
-	assert.Equal(t, float64(6), bye["length"])
-	assert.Equal(t, float64(2), bye["revpos"])
+	require.NoError(t, err, "Couldn't get document")
+	atts = GetAttachmentsFrom1xBody(t, gotbody)
+	require.Equal(t, AttachmentMap{
+		"bye.txt": DocAttachment{
+			Data:   []byte("bye-ya"),
+			Digest: "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=",
+			Length: 6,
+			Revpos: 2,
+		},
+	}, atts)
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
 	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
@@ -238,32 +240,32 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	require.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	require.NoError(t, err, "Couldn't get document")
-	atts := gotbody[BodyAttachments].(AttachmentsMeta)
 
-	assertAttachments := func(atts AttachmentsMeta) {
-		hello := atts["hello.txt"].(map[string]interface{})
-		assert.Equal(t, "hello world", string(hello["data"].([]byte)))
-		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, 11, hello["length"])
-		assert.Equal(t, 1, hello["revpos"])
-
-		bye := atts["bye.txt"].(map[string]interface{})
-		assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
-		assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-		assert.Equal(t, 19, bye["length"])
-		assert.Equal(t, 1, bye["revpos"])
+	assertAttachments := func(atts AttachmentMap) {
+		require.Equal(t, AttachmentMap{
+			"hello.txt": DocAttachment{
+				Data:   []byte("hello world"),
+				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				Length: 11,
+				Revpos: 1,
+			},
+			"bye.txt": DocAttachment{
+				Data:   []byte("goodbye cruel world"),
+				Digest: "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+				Length: 19,
+				Revpos: 1,
+			},
+		}, atts)
 		getCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
 		require.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
 		require.Equal(t, initCount, getCount)
 	}
-	assertAttachments(atts)
+	assertAttachments(GetAttachmentsFrom1xBody(t, gotbody))
 
 	// Repeat, validate no additional get operations
 	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	require.NoError(t, err, "Couldn't get document")
-	atts = gotbody[BodyAttachments].(AttachmentsMeta)
-
-	assertAttachments(atts)
+	assertAttachments(GetAttachmentsFrom1xBody(t, gotbody))
 }
 
 func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
@@ -320,13 +322,14 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 	// 4. Get the document, check attachments
 	finalDoc, err := collection.Get1xBody(ctx, "doc1")
 	require.NoError(t, err)
-	attachments := GetBodyAttachments(finalDoc)
-	assert.True(t, attachments != nil, "_attachments should be present in GET response")
-	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
-	assert.True(t, attachmentOk, "hello.txt attachment should be present in GET response")
-	_, digestOk := attachment["digest"]
-	assert.True(t, digestOk, "digest should be set for attachment hello.txt in GET response")
-
+	require.Equal(t, AttachmentMap{
+		"hello.txt": DocAttachment{
+			Stub:   true,
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Revpos: 2,
+		},
+	}, GetAttachmentsFrom1xBody(t, finalDoc))
 }
 
 func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
@@ -383,15 +386,15 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	// 4. Get the document, check attachments
 	finalDoc, err := collection.Get1xBody(ctx, "doc1")
 	require.NoError(t, err)
-	log.Printf("get doc attachments: %v", finalDoc)
 
-	attachments := GetBodyAttachments(finalDoc)
-	assert.True(t, attachments != nil, "_attachments should be present in GET response")
-	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
-	assert.True(t, attachmentOk, "hello.txt attachment should be present in GET response")
-	_, digestOk := attachment["digest"]
-	assert.True(t, digestOk, "digest should be set for attachment hello.txt in GET response")
-
+	require.Equal(t, AttachmentMap{
+		"hello.txt": DocAttachment{
+			Stub:   true,
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Revpos: 3,
+		},
+	}, GetAttachmentsFrom1xBody(t, finalDoc))
 }
 
 func TestForEachStubAttachmentErrors(t *testing.T) {
@@ -678,18 +681,19 @@ func TestStoreAttachments(t *testing.T) {
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
 	revId, doc, err = collection.Put(ctx, "doc3", revBody)
-	assert.NoError(t, err, "Couldn't update document")
+	require.NoError(t, err)
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
-	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
-	attachment = doc.Attachments["att1.txt"].(map[string]interface{})
-	assert.Equal(t, "text/plain", attachment["content_type"])
-	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
-	assert.Empty(t, attachment["encoded_length"])
-	assert.Equal(t, int(8), attachment["length"])
-	assert.Empty(t, attachment["encoding"])
-	assert.NotEmpty(t, attachment["revpos"])
-	assert.True(t, attachment["stub"].(bool))
+	require.Equal(t, AttachmentsMeta{
+		"att1.txt": map[string]any{
+			"content_type": "text/plain",
+			"digest":       "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=",
+			"length":       8,
+			"revpos":       1,
+			"stub":         true,
+			"ver":          2,
+		},
+	}, doc.Attachments)
 
 	// Simulate error scenario for attachment without data; stub is not provided; If the data is
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
@@ -722,29 +726,6 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		db, ctx = setupTestDB(t)
 
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-
-		// Put a document with hello.txt attachment, to write attachment to the bucket
-		rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
-		var body Body
-		assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-		_, _, err := collection.Put(ctx, "doc1", body)
-		assert.NoError(t, err, "Couldn't create document")
-
-		gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
-		assert.NoError(t, err, "Couldn't get document")
-		atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
-		assert.True(t, ok)
-
-		hello, ok := atts["hello.txt"].(map[string]interface{})
-		assert.True(t, ok)
-
-		helloData, ok := hello["data"].([]byte)
-		assert.True(t, ok)
-
-		assert.Equal(t, "hello world", string(helloData))
-		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, 11, hello["length"])
-		assert.Equal(t, 1, hello["revpos"])
 
 		// Create 2.1 style document - metadata in sync data, _attachments in body, referencing attachment created above
 		bodyPre25 := `{
@@ -793,22 +774,12 @@ func TestMigrateBodyAttachments(t *testing.T) {
   }
 }`
 
-		if base.TestUseXattrs() {
-			_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
-			assert.NoError(t, err)
-		} else {
-			newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
-			assert.NoError(t, err)
-			ok, err := collection.dataStore.Add(docKey, 0, newBody)
-			assert.NoError(t, err)
-			assert.True(t, ok)
-		}
+		_, err := collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
+		require.NoError(t, err)
 
 		// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
-		docSyncData, err := collection.GetDocSyncData(ctx, docKey)
-		assert.NoError(t, err)
-		assert.Empty(t, docSyncData.Attachments)
-
+		assert.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 		return db, ctx
 	}
 
@@ -837,9 +808,9 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-		syncData, err := collection.GetDocSyncData(ctx, docKey)
-		assert.NoError(t, err)
+		syncData := GetRawSyncXattr(t, collection.dataStore, docKey)
 		assert.Empty(t, syncData.Attachments)
+		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 	})
 
 	// Reading a non-active revision shouldn't perform an upgrade, but should transform the metadata in memory for the returned rev.
@@ -867,9 +838,9 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-		syncData, err := collection.GetDocSyncData(ctx, docKey)
-		assert.NoError(t, err)
+		syncData := GetRawSyncXattr(t, collection.dataStore, docKey)
 		assert.Empty(t, syncData.Attachments)
+		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 	})
 
 	// Writing a new rev should migrate the metadata and write that upgrade back to the bucket.
@@ -907,13 +878,18 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		// It will be stamped in for 1.x clients that require it further up the stack.
 		body1, err := rev.Body()
 		require.NoError(t, err)
-		bodyAtts, foundBodyAtts := body1[BodyAttachments]
-		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+		require.NotContains(t, body1, BodyAttachments)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		syncData, err := collection.GetDocSyncData(ctx, docKey)
-		assert.NoError(t, err)
-		assert.Len(t, syncData.Attachments, 1)
+		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+		require.Equal(t, AttachmentMap{
+			"hello.txt": {
+				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				Length: 11,
+				Revpos: 1,
+				Stub:   true,
+			},
+		}, GetRawGlobalSyncAttachments(t, collection.dataStore, docKey))
 	})
 
 	// Adding a new attachment should migrate existing attachments, without losing any.
@@ -929,9 +905,9 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.Len(t, rev.Attachments, 1)
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-		syncData, err := collection.GetDocSyncData(ctx, docKey)
-		assert.NoError(t, err)
-		assert.Empty(t, syncData.Attachments)
+		syncData := GetRawSyncXattr(t, collection.dataStore, docKey)
+		require.Empty(t, syncData.Attachments)
+		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 
 		byeTxtData, err := base64.StdEncoding.DecodeString("Z29vZGJ5ZSBjcnVlbCB3b3JsZA==")
 		require.NoError(t, err)
@@ -967,19 +943,32 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		// It will be stamped in for 1.x clients that require it further up the stack.
 		body1, err := rev.Body()
 		require.NoError(t, err)
-		bodyAtts, foundBodyAtts := body1[BodyAttachments]
-		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+		require.NotContains(t, body1, BodyAttachments)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		syncData, err = collection.GetDocSyncData(ctx, docKey)
-		assert.NoError(t, err)
-		assert.Len(t, syncData.Attachments, 2)
+		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+		require.Equal(t, AttachmentMap{
+			"hello.txt": {
+				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				Revpos: 1,
+				Stub:   true,
+				Length: 11,
+			},
+			"bye.txt": {
+				ContentType: "text/plain",
+				Digest:      "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+				Revpos:      4,
+				Stub:        true,
+				Version:     2,
+				Length:      19,
+			},
+		}, GetRawGlobalSyncAttachments(t, collection.dataStore, docKey))
 	})
 }
 
 // TestMigrateBodyAttachmentsMerge will set up a document with attachments in both pre-2.5 and post-2.5 metadata, making sure that both attachments are preserved.
 func TestMigrateBodyAttachmentsMerge(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 
 	const docKey = "TestAttachmentMigrate"
 
@@ -992,34 +981,24 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	var body Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
 	_, _, err := collection.Put(ctx, "doc1", body)
-	assert.NoError(t, err, "Couldn't create document")
+	require.NoError(t, err, "Couldn't create document")
 
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
-	atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
-	assert.True(t, ok)
-
-	hello, ok := atts["hello.txt"].(map[string]interface{})
-	assert.True(t, ok)
-
-	helloData, ok := hello["data"].([]byte)
-	assert.True(t, ok)
-
-	assert.Equal(t, "hello world", string(helloData))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, 11, hello["length"])
-	assert.Equal(t, 1, hello["revpos"])
-
-	bye, ok := atts["bye.txt"].(map[string]interface{})
-	assert.True(t, ok)
-
-	byeData, ok := bye["data"].([]byte)
-	assert.True(t, ok)
-
-	assert.Equal(t, "goodbye cruel world", string(byeData))
-	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, 19, bye["length"])
-	assert.Equal(t, 1, bye["revpos"])
+	require.NoError(t, err)
+	require.Equal(t, AttachmentMap{
+		"hello.txt": DocAttachment{
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Data:   []byte("hello world"),
+			Revpos: 1,
+		},
+		"bye.txt": DocAttachment{
+			Digest: "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			Length: 19,
+			Data:   []byte("goodbye cruel world"),
+			Revpos: 1,
+		},
+	}, GetAttachmentsFrom1xBody(t, gotbody))
 
 	// Create 2.1 style document - metadata in sync data, _attachments in body, referencing attachments created above
 	bodyPre25 := `{
@@ -1076,50 +1055,55 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
   }
 }`
 
-	if base.TestUseXattrs() {
-		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
-		assert.NoError(t, err)
-	} else {
-		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
-		assert.NoError(t, err)
-		ok, err := collection.dataStore.Add(docKey, 0, newBody)
-		assert.NoError(t, err)
-		assert.True(t, ok)
-	}
+	_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
+	require.NoError(t, err)
 
 	// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
-	docSyncData, err := collection.GetDocSyncData(ctx, docKey)
-	assert.NoError(t, err)
-	assert.Len(t, docSyncData.Attachments, 1)
-	_, ok = docSyncData.Attachments["hello.txt"]
-	assert.False(t, ok)
-	_, ok = docSyncData.Attachments["bye.txt"]
-	assert.True(t, ok)
+	require.Equal(t, AttachmentsMeta{
+		"bye.txt": map[string]any{
+			"digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			"length": float64(19),
+			"revpos": float64(1),
+			"stub":   true,
+		},
+	}, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+	base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 
 	rev, err := collection.GetRev(ctx, docKey, "3-a", true, nil)
 	require.NoError(t, err)
 
 	// read-only in-memory transformation should've been applied here, both attachments should be present in rev.Attachments
-	assert.Len(t, rev.Attachments, 2)
-	_, ok = rev.Attachments["hello.txt"]
-	assert.True(t, ok)
-	_, ok = rev.Attachments["bye.txt"]
-	assert.True(t, ok)
+	require.Equal(t, AttachmentsMeta{
+		"bye.txt": map[string]any{
+			"digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			"length": float64(19),
+			"revpos": float64(1),
+			"stub":   true,
+		},
+		"hello.txt": map[string]any{
+			"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			"length": json.Number("11"),
+			"revpos": json.Number("1"),
+			"stub":   true,
+		},
+	}, rev.Attachments)
 
 	// _attachments shouldn't be present in the body at this point.
 	// It will be stamped in for 1.x clients that require it further up the stack.
 	body1, err := rev.Body()
 	require.NoError(t, err)
-	bodyAtts, foundBodyAtts := body1[BodyAttachments]
-	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+	require.NotContains(t, body1, BodyAttachments)
 
 	// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-	docSyncData, err = collection.GetDocSyncData(ctx, docKey)
-	assert.NoError(t, err)
-	_, ok = docSyncData.Attachments["hello.txt"]
-	assert.False(t, ok)
-	_, ok = docSyncData.Attachments["bye.txt"]
-	assert.True(t, ok)
+	require.Equal(t, AttachmentsMeta{
+		"bye.txt": map[string]any{
+			"digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			"length": float64(19),
+			"revpos": float64(1),
+			"stub":   true,
+		},
+	}, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+	base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 }
 
 // TestMigrateBodyAttachmentsMergeConflicting will set up a document with the same attachment name in both pre-2.5 and post-2.5 metadata, making sure that the metadata with the most recent revpos is chosen.
@@ -1136,45 +1120,30 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	var body Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
 	_, _, err := collection.Put(ctx, "doc1", body)
-	assert.NoError(t, err, "Couldn't create document")
+	require.NoError(t, err, "Couldn't create document")
 
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
-	atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
-	assert.True(t, ok)
-
-	hello, ok := atts["hello.txt"].(map[string]interface{})
-	assert.True(t, ok)
-
-	helloData, ok := hello["data"].([]byte)
-	assert.True(t, ok)
-
-	assert.Equal(t, "hello world", string(helloData))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, 11, hello["length"])
-	assert.Equal(t, 1, hello["revpos"])
-
-	bye, ok := atts["bye.txt"].(map[string]interface{})
-	assert.True(t, ok)
-
-	byeData, ok := bye["data"].([]byte)
-	assert.True(t, ok)
-
-	assert.Equal(t, "goodbye cruel world", string(byeData))
-	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, 19, bye["length"])
-	assert.Equal(t, 1, bye["revpos"])
-
-	new, ok := atts["new.txt"].(map[string]interface{})
-	assert.True(t, ok)
-
-	newData, ok := new["data"].([]byte)
-	assert.True(t, ok)
-
-	assert.Equal(t, "new data", string(newData))
-	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", new["digest"])
-	assert.Equal(t, 8, new["length"])
-	assert.Equal(t, 1, new["revpos"])
+	require.NoError(t, err)
+	require.Equal(t, AttachmentMap{
+		"hello.txt": DocAttachment{
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Data:   []byte("hello world"),
+			Revpos: 1,
+		},
+		"bye.txt": DocAttachment{
+			Digest: "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+			Length: 19,
+			Data:   []byte("goodbye cruel world"),
+			Revpos: 1,
+		},
+		"new.txt": DocAttachment{
+			Digest: "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=",
+			Length: 8,
+			Data:   []byte("new data"),
+			Revpos: 1,
+		},
+	}, GetAttachmentsFrom1xBody(t, gotbody))
 
 	// Create 2.1 style document - metadata in sync data, _attachments in body, referencing attachments created above
 	bodyPre25 := `{
@@ -1243,42 +1212,34 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
   }
 }`
 
-	if base.TestUseXattrs() {
-		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
-		assert.NoError(t, err)
-	} else {
-		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
-		assert.NoError(t, err)
-		ok, err := collection.dataStore.Add(docKey, 0, newBody)
-		assert.NoError(t, err)
-		assert.True(t, ok)
-	}
+	_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
+	assert.NoError(t, err)
 
 	rev, err := collection.GetRev(ctx, docKey, "3-a", true, nil)
 	require.NoError(t, err)
 
 	// read-only in-memory transformation should've been applied here, both attachments should be present in rev.Attachments
+	require.Equal(t, AttachmentsMeta{
+		"hello.txt": map[string]any{
+			"digest": "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=",
+			"length": json.Number("8"),
+			"revpos": json.Number("2"),
+			"stub":   true,
+		},
+		"bye.txt": map[string]any{
+			"digest": "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=",
+			"length": float64(8),
+			"revpos": float64(2),
+			"stub":   true,
+		},
+	}, rev.Attachments)
 	assert.Len(t, rev.Attachments, 2)
-
-	// see if we got new.txt's meta for both attachments (because of the higher revpos)
-	helloAtt, ok := rev.Attachments["hello.txt"]
-	assert.True(t, ok)
-	helloAttMeta, ok := helloAtt.(map[string]interface{})
-	assert.True(t, ok)
-	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", helloAttMeta["digest"])
-
-	byeAtt, ok := rev.Attachments["bye.txt"]
-	assert.True(t, ok)
-	byeAttMeta, ok := byeAtt.(map[string]interface{})
-	assert.True(t, ok)
-	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", byeAttMeta["digest"])
 
 	// _attachments shouldn't be present in the body at this point.
 	// It will be stamped in for 1.x clients that require it further up the stack.
 	body1, err := rev.Body()
 	require.NoError(t, err)
-	bodyAtts, foundBodyAtts := body1[BodyAttachments]
-	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+	require.NotContains(t, body1, BodyAttachments)
 }
 
 func TestAllowedAttachments(t *testing.T) {
