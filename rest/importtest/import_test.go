@@ -2751,7 +2751,7 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that the attachment metadata has been moved
-	require.Empty(t, db.GetRawSyncXattr(t, dataStore, key).Attachments)
+	require.Empty(t, db.GetRawSyncXattr(t, dataStore, key).AttachmentsPre4dot0)
 	require.Equal(t, db.AttachmentMap{
 		"hello.txt": {
 			Digest:  "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
@@ -2782,7 +2782,7 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 	}, 1)
 
 	// grab the sync and global xattr from doc2
-	require.Empty(t, db.GetRawSyncXattr(t, dataStore, key).Attachments)
+	require.Empty(t, db.GetRawSyncXattr(t, dataStore, key).AttachmentsPre4dot0)
 	require.Equal(t, db.AttachmentMap{
 		"hello.txt": {
 			Digest:  "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
@@ -2824,7 +2824,7 @@ func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
 	_, _ = rt.GetDoc(key)
 
 	// assert that the attachment metadata has been moved
-	require.Empty(t, db.GetRawSyncXattr(t, dataStore, key).Attachments)
+	require.Empty(t, db.GetRawSyncXattr(t, dataStore, key).AttachmentsPre4dot0)
 	require.Equal(t, db.AttachmentMap{
 		"hello.txt": {
 			Digest:  "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
@@ -2847,7 +2847,7 @@ func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusConflict)
 
 	// assert that the attachment metadata has been moved
-	require.Empty(t, db.GetRawSyncXattr(t, dataStore, key).Attachments)
+	require.Empty(t, db.GetRawSyncXattr(t, dataStore, key).AttachmentsPre4dot0)
 	require.Equal(t, db.AttachmentMap{
 		"hello.txt": {
 			Digest:  "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",

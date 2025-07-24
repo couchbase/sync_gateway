@@ -647,8 +647,8 @@ func TestStoreAttachments(t *testing.T) {
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
-	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
-	attachment := doc.Attachments["att1.txt"].(map[string]interface{})
+	assert.NotEmpty(t, doc.Attachments(), "Attachment metadata should be populated")
+	attachment := doc.Attachments()["att1.txt"].(map[string]interface{})
 	assert.Equal(t, "text/plain", attachment["content_type"])
 	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
 	assert.Equal(t, 8, attachment["encoded_length"])
@@ -665,8 +665,8 @@ func TestStoreAttachments(t *testing.T) {
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
-	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
-	attachment = doc.Attachments["att1.txt"].(map[string]interface{})
+	assert.NotEmpty(t, doc.Attachments(), "Attachment metadata should be populated")
+	attachment = doc.Attachments()["att1.txt"].(map[string]interface{})
 	assert.Equal(t, "text/plain", attachment["content_type"])
 	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
 	assert.Equal(t, 8, attachment["encoded_length"])
@@ -693,7 +693,7 @@ func TestStoreAttachments(t *testing.T) {
 			"stub":         true,
 			"ver":          2,
 		},
-	}, doc.Attachments)
+	}, doc.Attachments())
 
 	// Simulate error scenario for attachment without data; stub is not provided; If the data is
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
@@ -778,7 +778,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
-		assert.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+		assert.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).AttachmentsPre4dot0)
 		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 		return db, ctx
 	}
@@ -809,7 +809,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
 		syncData := GetRawSyncXattr(t, collection.dataStore, docKey)
-		assert.Empty(t, syncData.Attachments)
+		assert.Empty(t, syncData.AttachmentsPre4dot0)
 		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 	})
 
@@ -839,7 +839,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
 		syncData := GetRawSyncXattr(t, collection.dataStore, docKey)
-		assert.Empty(t, syncData.Attachments)
+		assert.Empty(t, syncData.AttachmentsPre4dot0)
 		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 	})
 
@@ -881,7 +881,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NotContains(t, body1, BodyAttachments)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).AttachmentsPre4dot0)
 		require.Equal(t, AttachmentMap{
 			"hello.txt": {
 				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
@@ -906,7 +906,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
 		syncData := GetRawSyncXattr(t, collection.dataStore, docKey)
-		require.Empty(t, syncData.Attachments)
+		require.Empty(t, syncData.AttachmentsPre4dot0)
 		base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 
 		byeTxtData, err := base64.StdEncoding.DecodeString("Z29vZGJ5ZSBjcnVlbCB3b3JsZA==")
@@ -946,7 +946,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NotContains(t, body1, BodyAttachments)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).AttachmentsPre4dot0)
 		require.Equal(t, AttachmentMap{
 			"hello.txt": {
 				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
@@ -1066,7 +1066,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 			"revpos": float64(1),
 			"stub":   true,
 		},
-	}, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+	}, GetRawSyncXattr(t, collection.dataStore, docKey).AttachmentsPre4dot0)
 	base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 
 	rev, err := collection.GetRev(ctx, docKey, "3-a", true, nil)
@@ -1102,7 +1102,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 			"revpos": float64(1),
 			"stub":   true,
 		},
-	}, GetRawSyncXattr(t, collection.dataStore, docKey).Attachments)
+	}, GetRawSyncXattr(t, collection.dataStore, docKey).AttachmentsPre4dot0)
 	base.RequireXattrNotFound(t, collection.dataStore, docKey, base.GlobalXattrName)
 }
 

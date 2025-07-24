@@ -68,7 +68,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 			revpos = 1
 		}
 		syncData := db.GetRawSyncXattr(t, rt.GetSingleDataStore(), docID)
-		require.Empty(t, syncData.Attachments)
+		require.Empty(t, syncData.AttachmentsPre4dot0)
 		require.Equal(t, db.AttachmentMap{
 			"myAttachment": {
 				Digest:  "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=",
@@ -94,7 +94,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 		rt.WaitForVersion(docID, version)
 
 		syncData = db.GetRawSyncXattr(t, rt.GetSingleDataStore(), docID)
-		require.Empty(t, syncData.Attachments)
+		require.Empty(t, syncData.AttachmentsPre4dot0)
 		require.Equal(t, db.AttachmentMap{
 			"myAttachment": {
 				Digest:  "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=",
@@ -193,7 +193,7 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 
 			if tc.hasAttachment {
 				syncData := db.GetRawSyncXattr(t, rt.GetSingleDataStore(), tc.docID)
-				require.Empty(t, syncData.Attachments)
+				require.Empty(t, syncData.AttachmentsPre4dot0)
 				require.Equal(t, db.AttachmentMap{
 					"myAttachment": {
 						Digest:  "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=",

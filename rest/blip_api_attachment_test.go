@@ -324,7 +324,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		assert.Equal(t, map[string]interface{}{"hi": "dave"}, greetings[0])
 
 		assert.Len(t, doc.Attachments, 1)
-		hello, ok := doc.Attachments["hello.txt"].(map[string]interface{})
+		hello, ok := doc.Attachments()["hello.txt"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 		assert.Equal(t, float64(11), hello["length"])

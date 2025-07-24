@@ -901,7 +901,7 @@ func RetrieveDocRevSeqNo(t *testing.T, docxattr []byte) uint64 {
 // MoveAttachmentXattrFromGlobalToSync is a test only function that will move any defined attachment metadata in _globalSync.attachments_meta to _sync.attachments. This turns a document written with Sync Gateway 4.0 style attachments to a document with Sync Gateway <4.0 style attachments.
 func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore, docID string, value []byte, macroExpand bool) {
 	docSync := GetRawSyncXattr(t, dataStore, docID)
-	docSync.Attachments = GetRawGlobalSync(t, dataStore, docID).GlobalAttachments
+	docSync.AttachmentsPre4dot0 = GetRawGlobalSync(t, dataStore, docID).Attachments
 
 	opts := &sgbucket.MutateInOptions{}
 	// this should be true for cases we want to move the attachment metadata without causing a new import feed event
