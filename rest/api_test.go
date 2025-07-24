@@ -3205,4 +3205,9 @@ func TestSilentHandlerLoggingInTrace(t *testing.T) {
 		resp := rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_expvar", "", headers)
 		RequireStatus(t, resp, http.StatusOK)
 	})
+
+	base.AssertLogNotContains(t, "/_expvar", func() {
+		resp := rt.SendAdminRequest(http.MethodGet, "/_expvar", "")
+		RequireStatus(t, resp, http.StatusOK)
+	})
 }

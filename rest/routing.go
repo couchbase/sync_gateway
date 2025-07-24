@@ -287,7 +287,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleStats)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix,
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar, handlerOptions{
-			httpLogLevel: base.Ptr(base.LevelDebug), // silent handler
+			httpLogLevel: base.Ptr(silentRequestLogLevel), // silent handler
 			sgcollect:    true,
 		})).Methods("GET")
 	r.Handle("/_profile/{profilename}",
