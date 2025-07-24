@@ -1,0 +1,58 @@
+# Copyright 2025-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+name: shell
+permissions:
+  contents: read
+
+on:
+  push:
+    # Only run when we change a shell script
+    paths:
+      - '*.sh'
+    branches:
+      - 'main'
+      - 'release/*'
+      - 'feature/*'
+      - 'CBG*'
+      - 'ci-*'
+  pull_request:
+    # Only run when we change an API spec
+    paths:
+      - '*.sh'
+    branches:
+      - 'main'
+      - 'release/*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'release/')}}
+
+jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          ignore_paths: |
+            ./build.sh
+            ./bootstrap.sh
+            ./bench.sh
+            ./integration-test/service-test.sh
+            ./integration-test/service-install-tests.sh
+            ./rewrite-manifest.sh
+            ./snap-manifest.sh
+            ./set-version-stamp.sh
+            ./service/sync_gateway_service_install.sh
+            ./service/sync_gateway_service_uninstall.sh
+            ./service/sync_gateway_service_upgrade.sh
+            ./test-integration-init.sh
+            ./test.sh
