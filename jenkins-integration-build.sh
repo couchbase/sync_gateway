@@ -91,7 +91,7 @@ else
 fi
 
 if [ "${DETECT_RACES:-}" == "true" ]; then
-    GO_TEST_FLAGS=(-race)
+    GO_TEST_FLAGS+=(-race)
 fi
 
 if [ "${FAIL_FAST:-}" == "true" ]; then

@@ -22,7 +22,7 @@ on:
       - 'CBG*'
       - 'ci-*'
   pull_request:
-    # Only run when we change an API spec
+    # Only run when we change a shell script
     paths:
       - '*.sh'
     branches:
