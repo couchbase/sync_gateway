@@ -41,7 +41,11 @@ func TestUserXattrsRawGet(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := rt.Context()
-	_, err = rt.GetSingleDataStore().UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, "val")}, nil)
+	_, err = rt.GetSingleDataStore().UpdateXattrs(ctx, docKey, 0, cas,
+		map[string][]byte{
+			xattrKey: base.MustJSONMarshal(t, "val"),
+		},
+		nil)
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -52,14 +56,10 @@ func TestUserXattrsRawGet(t *testing.T) {
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docKey, "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	var RawReturn struct {
-		Meta struct {
-			Xattrs map[string]interface{} `json:"xattrs"`
-		} `json:"_meta"`
-	}
+	var rawReturn rest.RawDocResponse
 
-	err = json.Unmarshal(resp.BodyBytes(), &RawReturn)
+	err = json.Unmarshal(resp.BodyBytes(), &rawReturn)
 	require.NoError(t, err)
 
-	assert.Equal(t, "val", RawReturn.Meta.Xattrs[xattrKey])
+	assert.Equal(t, "val", rawReturn.Xattrs.RawDocXattrsOthers[xattrKey], "Expected xattr value to match")
 }

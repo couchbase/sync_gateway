@@ -1120,26 +1120,15 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 	return nil
 }
 
-type SimpleSync struct {
-	Channels map[string]interface{}
-	Rev      channels.RevAndVersion
-	Sequence uint64
-}
-
-type RawResponse struct {
-	Sync    SimpleSync `json:"_sync"`
-	Deleted bool       `json:"_deleted"`
-}
-
 // GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
 // Used by tests that need to validate sequences (for grants, etc)
 func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
 	require.Equal(rt.TB(), http.StatusOK, response.Code, "Error getting raw document %s", response.Body.String())
 
-	var rawResponse RawResponse
+	var rawResponse RawDocResponse
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
-	return rawResponse.Sync.Sequence
+	return rawResponse.Xattrs.Sync.Sequence
 }
 
 // ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
@@ -2444,7 +2433,7 @@ func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 	return string(replicationPayload)
 }
 
-func HasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
+func HasActiveChannel(channelSet channels.ChannelMap, channelName string) bool {
 	if channelSet == nil {
 		return false
 	}
