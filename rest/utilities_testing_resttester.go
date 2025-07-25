@@ -498,8 +498,7 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 }
 
 type RawDocResponse struct {
-	Xattrs  RawDocXattrs `json:"_xattrs"`
-	Deleted bool         `json:"_deleted"` // FIXME: no longer true in 4.0
+	Xattrs RawDocXattrs `json:"_xattrs"`
 }
 
 // RawDocXattrs is a non-exhaustive set of xattrs returned by the _raw endpoint. Used for test assertions.
