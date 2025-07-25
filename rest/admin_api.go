@@ -1516,6 +1516,9 @@ func (h *handler) handleGetRawDoc() error {
 	}
 
 	responseBody, err = base.InjectJSONProperties(responseBody, base.KVPair{Key: "_xattrs", Val: json.RawMessage(xattrsObject)})
+	if err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject xattrs into response: %s", err)
+	}
 
 	base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
 		base.AuditFieldDocID: docID,
