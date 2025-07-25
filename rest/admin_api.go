@@ -1433,7 +1433,7 @@ func (h *handler) handleGetRawDoc() error {
 		docID                     = h.PathVar("docid")
 		includeDoc, includeDocSet = h.getOptBoolQuery("include_doc", true)
 		redact                    = h.getBoolQuery("redact")
-		redactSalt                = h.getQuery("redactSalt")
+		redactSalt                = h.getQuery("salt")
 	)
 
 	if redact {
