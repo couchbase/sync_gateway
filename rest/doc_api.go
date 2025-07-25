@@ -590,7 +590,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
 		body := newDoc.Body(h.ctx())
 
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
+		newDoc.SetAttachments(db.GetBodyAttachments(body))
 		delete(body, db.BodyAttachments)
 		newDoc.UpdateBody(body)
 	}
