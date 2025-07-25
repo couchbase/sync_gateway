@@ -174,7 +174,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	// If delta sync is enabled, old doc may be available based on the backup used for delta generation, if it hasn't already
 	// been converted to a delta
 	if !rt.GetDatabase().DeltaSyncEnabled() {
-		assert.NotNil(t, rawInsertResponse.Xattrs.Sync.Channels, "No channels in sync data for SDK insert")
+		assert.NotNil(t, rawUpdateResponse.Xattrs.Sync.Channels, "No channels in sync data for SDK insert")
 		assert.True(t, rest.HasActiveChannel(rawUpdateResponse.Xattrs.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
 	}
 
@@ -188,7 +188,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	assert.NotNil(t, rawInsertResponse.Xattrs.Sync.Channels, "No channels in sync data for SDK insert")
+	assert.NotNil(t, rawDeleteResponse.Xattrs.Sync.Channels, "No channels in sync data for SDK insert")
 	log.Printf("update channels: %+v", rawDeleteResponse.Xattrs.Sync.Channels)
 	if !rt.GetDatabase().DeltaSyncEnabled() {
 		assert.True(t, rest.HasActiveChannel(rawDeleteResponse.Xattrs.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
