@@ -15,7 +15,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,17 +82,20 @@ func removeSyncGatewayBackingPeers(peers map[string]Peer) map[string]bool {
 	return peersToRemove
 }
 
-// createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents.
-// It is not known at this stage which write the "winner" will be, since conflict resolution can happen at replication time which may not be LWW, or may be LWW but with a new value.
+// createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents, then
+// returns the last peer to have a doc created on it
 func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) (lastWrite BodyAndVersion) {
 	backingPeers := removeSyncGatewayBackingPeers(peers)
 	documentVersion := make([]BodyAndVersion, 0, len(peers))
-	// See https://github.com/couchbase/sync_gateway/pull/7286/ this might not be possible to know the version
 	for peerName, peer := range peers {
 		if backingPeers[peerName] {
 			continue
 		}
-		docBody := fmt.Appendf([]byte(`{"activePeer": "%s", "topology": "%s", "action": "create"}`), peerName, topologyDescription)
+		if peer.Type() == PeerTypeCouchbaseLite {
+			// FIXME: Skipping Couchbase Lite tests for multi actor conflicts, CBG-4434
+			continue
+		}
+		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))
 		docVersion := peer.CreateDocument(dsName, docID, docBody)
 		t.Logf("%s - createVersion: %#v", peerName, docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
@@ -151,38 +153,4 @@ func getDocID(t *testing.T) string {
 		name = strings.ReplaceAll(name, char, "_")
 	}
 	return fmt.Sprintf("doc_%s", name)
-}
-
-// waitForConvergingVersion waits for the same document version to reach all peers.
-func waitForConvergingVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string) {
-	t.Logf("waiting for converged doc versions across all peers")
-	if !assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		for peerAid, peerA := range peers.SortedPeers() {
-			docMetaA, bodyA := peerA.GetDocument(dsName, docID)
-			for peerBid, peerB := range peers.SortedPeers() {
-				if peerAid == peerBid {
-					continue
-				}
-				docMetaB, bodyB := peerB.GetDocument(dsName, docID)
-				cvA, cvB := docMetaA.CV(t), docMetaB.CV(t)
-				require.Equalf(c, cvA, cvB, "CV mismatch: %s:%#v != %s:%#v", peerAid, docMetaA, peerBid, docMetaB)
-				require.Equalf(c, bodyA, bodyB, "body mismatch: %s:%s != %s:%s", peerAid, bodyA, peerBid, bodyB)
-			}
-		}
-	}, totalWaitTime, pollInterval) {
-		// do if !assert->require pattern so we can delay PrintGlobalDocState evaluation
-		require.FailNowf(t, "Peers did not converge on version", "Global state for doc %q on all peers:\n%s\nReplications: %s", docID, peers.PrintGlobalDocState(t, dsName, docID), replications)
-	}
-}
-
-// PrintGlobalDocState returns the current state of a document across all peers, and also logs it on `t`.
-func (p Peers) PrintGlobalDocState(t testing.TB, dsName base.ScopeAndCollectionName, docID string) string {
-	var globalState strings.Builder
-	for peerName, peer := range p {
-		docMeta, body := peer.GetDocument(dsName, docID)
-		globalState.WriteString(fmt.Sprintf("====\npeer(%s)\n----\n%#v\nbody:%v\n", peerName, docMeta, body))
-	}
-	globalStateStr := globalState.String()
-	t.Logf("Global doc %q state for all peers:\n%s", docID, globalStateStr)
-	return globalStateStr
 }

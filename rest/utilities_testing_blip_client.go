@@ -298,6 +298,10 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 
 // _resolveConflict will resolve a conflict for the given incoming version. This will mutate the hlv, and return the expected body and version to write.
 func (cd *clientDoc) _resolveConflict(opts resolveConflictOptions) (resolvedBody []byte, resolvedVersion db.Version) {
+	if opts.usingRevTree {
+		// consider implementing conflict resolution based on generation for rev id, but right now just accept incoming revtree and overwrite
+		return opts.incomingBody, opts.incomingVersion
+	}
 	// fetch client's latest version to do conflict check and resolution
 	latestLocalRev := cd._latestRev(opts.t)
 	if latestLocalRev == nil {
@@ -368,14 +372,24 @@ type BlipTesterCollectionClient struct {
 	hlc *rosmar.HybridLogicalClock
 }
 
+// resolveConflictOptions contains all the options for resolving conflicts
 type resolveConflictOptions struct {
-	t                testing.TB
-	incomingVersion  db.Version
-	incomingBody     []byte
-	hlv              *db.HybridLogicalVector
-	hlc              *rosmar.HybridLogicalClock
-	localSourceID    string // SourceID of the local client
+	// t is the testing.TB instance used for assertions
+	t testing.TB
+	// incomingVersion is the expected version to write for the client document, prior to conflict resolution
+	incomingVersion db.Version
+	// incomingBody is the expected version to write for the body, prior to conflict resolution
+	incomingBody []byte
+	// hlv is a *mutable* HybridLogicalVector representing the state of the document. It should not contain the incomingVersion.
+	hlv *db.HybridLogicalVector
+	// hlc is the HybridLogicalClock used to generate new versions if the incoming version loses the conflict resolution
+	hlc *rosmar.HybridLogicalClock
+	// localSourceID is generate new versions if the incoming version loses the conflict resolution
+	localSourceID string
+	// conflictResolver represents the type of conflict resolution to use
 	conflictResolver BlipTesterClientConflictResolverType
+	// usingRevTree indicates whether the client is using revTrees. If using revtrees, neither MWW/LWW are implemented yet and it is always resolved as remoteWins.
+	usingRevTree bool
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
@@ -686,6 +700,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 				require.False(btr.TB(), msg.NoReply(), "expected delta rev message to be sent without noreply flag: %+v", msg)
 				response := msg.Response()
 				response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
+				return
 			}
 
 			// unmarshal body to extract deltaSrc
@@ -1030,6 +1045,9 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 		opts.SourceID = fmt.Sprintf("btc-%d", id.ID())
 	}
 
+	if opts.ConflictResolver == "" {
+		opts.ConflictResolver = ConflictResolverLastWriteWins
+	}
 	client = &BlipTesterClient{
 		BlipTesterClientOpts: *opts,
 		rt:                   rt,
@@ -2019,15 +2037,20 @@ func (btcc *BlipTesterCollectionClient) addRev(docID string, opts revOptions) {
 	newClientSeq := btcc._nextSequence()
 
 	doc, ok := btcc._getClientDoc(docID)
-	body, resolvedVersion := doc._resolveConflict(resolveConflictOptions{
-		t:                btcc.TB(),
-		incomingVersion:  opts.newVersion.CV,
-		incomingBody:     opts.body,
-		hlv:              &opts.hlv,
-		hlc:              btcc.hlc,
-		localSourceID:    btcc.parent.SourceID,
-		conflictResolver: btcc.parent.ConflictResolver,
-	})
+	body := opts.body
+	resolvedVersion := opts.newVersion.CV
+	if ok {
+		body, resolvedVersion = doc._resolveConflict(resolveConflictOptions{
+			t:                btcc.TB(),
+			incomingVersion:  opts.newVersion.CV,
+			incomingBody:     opts.body,
+			usingRevTree:     !btcc.UseHLV(),
+			hlv:              &opts.hlv,
+			hlc:              btcc.hlc,
+			localSourceID:    btcc.parent.SourceID,
+			conflictResolver: btcc.parent.ConflictResolver,
+		})
+	}
 	if btcc.UseHLV() {
 		require.NoError(btcc.TB(), opts.hlv.AddVersion(resolvedVersion))
 	}

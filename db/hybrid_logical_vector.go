@@ -150,6 +150,7 @@ func (v Version) IsEmpty() bool {
 	return v.SourceID == "" && v.Value == 0
 }
 
+// Equal returns true if sourceID and value of the two versions are equal.
 func (v Version) Equal(other Version) bool {
 	return v.SourceID == other.SourceID && v.Value == other.Value
 }
