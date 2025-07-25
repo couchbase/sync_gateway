@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -23,6 +24,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -131,6 +133,21 @@ func (sd *SyncData) getCurrentChannels() base.Set {
 	return ch
 }
 
+// RedactRawSyncData runs HashRedact on the given sync data.
+func RedactRawSyncData(syncData []byte, salt string) ([]byte, error) {
+	if salt == "" {
+		salt = uuid.New().String()
+	}
+
+	var sd SyncData
+	if err := json.Unmarshal(syncData, &sd); err != nil {
+		return nil, fmt.Errorf("couldn't unmarshal sync data: %w", err)
+	}
+
+	return sd.HashRedact(salt).MarshalJSON()
+}
+
+// HashRedact redacts UserData inside SyncData, by hashing channel names, user access, role access, and attachment names.
 func (sd *SyncData) HashRedact(salt string) SyncData {
 
 	// Creating a new SyncData with the redacted info. We copy all the information which stays the same and create new

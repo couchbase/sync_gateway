@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -22,8 +23,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -1423,78 +1424,120 @@ func (h *handler) handleDeleteDB() error {
 	return nil
 }
 
-// raw document access for admin api
-
+// handleGetRawDoc returns the raw version of the stored document for diagnostic purposes.
+// It can optionally redact UserData in the sync metadata and allows a custom salt for correlating with collected logs.
 func (h *handler) handleGetRawDoc() error {
 	h.assertAdminOnly()
-	docid := h.PathVar("docid")
 
-	includeDoc, includeDocSet := h.getOptBoolQuery("include_doc", true)
-	redact, _ := h.getOptBoolQuery("redact", false)
-	salt := h.getQuery("salt")
+	var (
+		docID                     = h.PathVar("docid")
+		includeDoc, includeDocSet = h.getOptBoolQuery("include_doc", true)
+		redact                    = h.getBoolQuery("redact")
+		redactSalt                = h.getQuery("redactSalt")
+	)
 
-	if redact && includeDoc && includeDocSet {
-		return base.HTTPErrorf(http.StatusBadRequest, "redact and include_doc cannot be true at the same time. "+
-			"If you want to redact you must specify include_doc=false")
-	}
-
-	if redact && !includeDocSet {
-		includeDoc = false
-	}
-
-	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
-	if err != nil {
-		return err
-	}
-
-	rawBytes := []byte(base.EmptyDocument)
-	if includeDoc {
-		if doc.IsDeleted() {
-			rawBytes = []byte(db.DeletedDocument)
-		} else {
-			docRawBodyBytes, err := doc.BodyBytes(h.ctx())
-			if err != nil {
-				return err
-			}
-			rawBytes = docRawBodyBytes
-		}
-	}
-
-	syncData := doc.SyncData
 	if redact {
-		if salt == "" {
-			salt = uuid.New().String()
+		// cannot explicitly include doc and redact - it doesn't make sense since the doc body itself is considered UserData and eligible for redaction.
+		if includeDocSet && includeDoc {
+			return base.HTTPErrorf(http.StatusBadRequest, "redact and include_doc cannot be true at the same time. "+
+				"If you want to redact you must specify include_doc=false")
 		}
-		syncData = doc.SyncData.HashRedact(salt)
+		// if include_doc was not explicitly set, and we want to redact, then automatically set include_doc to false
+		includeDoc = false
+	} else {
+		if redactSalt != "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "redactSalt can only be used when redact=true")
+		}
 	}
 
-	rawBytes, err = base.InjectJSONProperties(rawBytes, base.KVPair{Key: base.SyncPropertyName, Val: syncData})
-	if err != nil {
+	// collect the set of xattrs to fetch that Sync Gateway is interested in.
+	xattrKeys := []string{
+		base.SyncXattrName,
+		base.GlobalXattrName,
+		base.MouXattrName,
+		base.VvXattrName,
+	}
+	userXattrKey := h.db.Options.UserXattrKey
+	if userXattrKey != "" {
+		// we'll redact this later after fetching - it's still useful to know it was present even if we can't see the contents.
+		xattrKeys = append(xattrKeys, h.db.Options.UserXattrKey)
+	}
 
+	var (
+		err         error
+		docBody     []byte
+		xattrValues map[string][]byte
+	)
+	if includeDoc {
+		docBody, xattrValues, _, err = h.collection.GetCollectionDatastore().GetWithXattrs(h.ctx(), docID, xattrKeys)
+	} else {
+		xattrValues, _, err = h.collection.GetCollectionDatastore().GetXattrs(h.ctx(), docID, xattrKeys)
+	}
+	if err != nil && !errors.Is(err, base.ErrNotFound) {
 		return err
 	}
 
-	if h.db.Options.UserXattrKey != "" {
-		metaMap, err := doc.GetMetaMap(h.db.Options.UserXattrKey)
-		if err != nil {
-			return err
-		}
+	responseBody := []byte(base.EmptyDocument)
+	if docBody != nil {
+		responseBody = docBody
+	}
 
-		rawBytes, err = base.InjectJSONProperties(rawBytes, base.KVPair{Key: "_meta", Val: metaMap})
-		if err != nil {
-			return err
+	xattrsObject := []byte(base.EmptyDocument)
+
+	// inject xattrs as top-level properties in the doc - this isn't *quite* representative of the actual stored doc,
+	// since they are outside the doc body as separate objects, but we'll stamp a marker value in each xattr object to tell us whether it was injected or inline in the original doc body.
+	for _, k := range xattrKeys {
+		v := xattrValues[k]
+		if !redact {
+			xattrsObject, err = base.InjectJSONProperties(xattrsObject, base.KVPair{Key: k, Val: json.RawMessage(v)})
+			if err != nil {
+				return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject xattr %q into response: %s", k, err)
+			}
+		} else {
+			// xattr-specific redaction
+			switch k {
+			case base.SyncXattrName:
+				redactedV, err := db.RedactRawSyncData(v, redactSalt)
+				if err != nil {
+					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't redact sync data: %s", err)
+				}
+				xattrsObject, err = base.InjectJSONProperties(xattrsObject, base.KVPair{Key: k, Val: json.RawMessage(redactedV)})
+				if err != nil {
+					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject sync data into response: %s", err)
+				}
+			case userXattrKey:
+				// include the key but not the value so we can see _something_ was present.
+				xattrsObject, err = base.InjectJSONPropertiesFromBytes(xattrsObject, base.KVPairBytes{Key: k, Val: []byte(`"redacted"`)})
+				if err != nil {
+					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject user xattr into response: %s", err)
+				}
+			}
 		}
 	}
+
+	responseBody, err = base.InjectJSONProperties(responseBody, base.KVPair{Key: "_xattrs", Val: json.RawMessage(xattrsObject)})
+
 	base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
-		base.AuditFieldDocID: docid,
+		base.AuditFieldDocID: docID,
 	})
 	if includeDoc {
+		// try to extract a revision from the sync data
+		docCurrentRev := "unknown"
+		if syncData, ok := xattrValues[base.SyncXattrName]; ok {
+			var sdRev struct {
+				Rev channels.RevAndVersion `json:"rev"`
+			}
+			if err := json.Unmarshal(syncData, &sdRev); err != nil {
+				return base.HTTPErrorf(http.StatusInternalServerError, "couldn't unmarshal rev from SyncData for doc %q: %s", base.UD(docID), err)
+			}
+			docCurrentRev = sdRev.Rev.RevTreeID
+		}
 		base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
-			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: doc.SyncData.CurrentRev,
+			base.AuditFieldDocID:      docID,
+			base.AuditFieldDocVersion: docCurrentRev,
 		})
 	}
-	h.writeRawJSON(rawBytes)
+	h.writeRawJSON(responseBody)
 	return nil
 }
 

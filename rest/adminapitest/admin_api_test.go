@@ -1798,34 +1798,27 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test redact being disabled by default
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
-	var body map[string]interface{}
-	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	syncData := body[base.SyncPropertyName]
-	assert.Equal(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.Equal(t, []interface{}{[]interface{}{"achannel"}}, syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	rawResponseStr := res.Body.String()
+	require.Contains(t, rawResponseStr, "achannel")
+	require.Contains(t, rawResponseStr, `"foo":"bar"`)
 
 	// Test redacted
-	body = map[string]interface{}{}
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?redact=true&include_doc=false", ``)
-	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	syncData = body[base.SyncPropertyName]
-	require.NotNil(t, syncData)
-	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.NotEqual(t, []interface{}{[]interface{}{"achannel"}}, syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	rawResponseStr = res.Body.String()
+	require.NotContains(t, rawResponseStr, "achannel")
+	require.NotContains(t, rawResponseStr, "foo")
+	require.NotContains(t, rawResponseStr, "bar")
 
 	// Test include doc false doesn't return doc
-	body = map[string]interface{}{}
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=false", ``)
-	assert.NotContains(t, res.Body.String(), "foo")
+	rawResponseStr = res.Body.String()
+	require.NotContains(t, rawResponseStr, "foo")
+	require.NotContains(t, rawResponseStr, "bar")
 
 	// Test doc is returned by default
-	body = map[string]interface{}{}
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
-	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.Equal(t, body["foo"], "bar")
+	rawResponseStr = res.Body.String()
+	require.Contains(t, rawResponseStr, `"foo":"bar"`)
 
 	// Test that you can't use include_doc and redact at the same time
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=true&redact=true", ``)
@@ -1845,20 +1838,24 @@ func TestRawTombstone(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
-	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+version.RevTreeID+`"`)
-	assert.Contains(t, string(resp.BodyBytes()), `"foo":"bar"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
+	rawResponseStr := resp.Body.String()
+	assert.NotContains(t, rawResponseStr, `"_id":"`+docID+`"`)
+	assert.NotContains(t, rawResponseStr, `"_rev":"`+version.RevTreeID+`"`)
+	assert.Contains(t, rawResponseStr, `"foo":"bar"`)
+	assert.NotContains(t, rawResponseStr, `"_deleted":true`)
 
 	// Delete the doc
 	deletedVersion := rt.DeleteDoc(docID, version)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
-	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+deletedVersion.RevTreeID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"foo":"bar"`)
-	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
+	rawResponseStr = resp.Body.String()
+	assert.NotContains(t, rawResponseStr, `"_id":"`+docID+`"`)
+	assert.NotContains(t, rawResponseStr, `"_rev":"`+deletedVersion.RevTreeID+`"`)
+	assert.NotContains(t, rawResponseStr, `"foo":"bar"`)
+	var sd rest.RawDocResponse
+	require.NoError(t, base.JSONUnmarshal([]byte(rawResponseStr), &sd))
+	assert.Equal(t, 1, int(sd.Xattrs.Sync.Flags&channels.Deleted))
 }
 
 func TestHandleCreateDB(t *testing.T) {
@@ -2110,9 +2107,10 @@ func TestHandleDeleteDB(t *testing.T) {
 	// Try to delete the database which doesn't exists
 	resp := rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, string(resp.BodyBytes()), "no such database")
+	rawResponseStr := resp.Body.String()
+	assert.Contains(t, rawResponseStr, "no such database")
 	var v map[string]interface{}
-	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", string(resp.BodyBytes()))
+	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", rawResponseStr)
 
 	// Create the database
 	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", `{"server":"walrus:"}`)
@@ -3016,7 +3014,7 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	// Get config values before taking db offline
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	require.Equal(t, http.StatusOK, resp.Code)
-	dbConfigBeforeOffline := string(resp.BodyBytes())
+	dbConfigBeforeOffline := resp.Body.String()
 
 	// Take DB offline
 	resp = rt.SendAdminRequest("POST", "/db/_offline", "")
@@ -3025,7 +3023,7 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	// Check offline config matches online config
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, dbConfigBeforeOffline, string(resp.BodyBytes()))
+	assert.Equal(t, dbConfigBeforeOffline, resp.Body.String())
 }
 
 func TestDbOfflineConfigPersistent(t *testing.T) {
