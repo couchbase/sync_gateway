@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"strings"
@@ -700,46 +701,43 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 	return bodyBytes, attachments, nil
 }
 
-// mergeAttachments copies the docAttachments map, and merges pre25Attachments into it.
-// conflicting attachment names falls back to a revpos comparison - highest wins.
-func mergeAttachments(pre25Attachments, docAttachments AttachmentsMeta) AttachmentsMeta {
-	if len(pre25Attachments)+len(docAttachments) == 0 {
+// mergeAttachments copies the attachmentsB map, and merges attachmentsA into it. If both maps are nil, return nil.
+// Conflicting attachment names fall back to a revpos comparison - highest wins. If equivalent, attachment from attachmentsB wins.
+func mergeAttachments(attachmentsA, attachmentsB AttachmentsMeta) AttachmentsMeta {
+	if len(attachmentsA)+len(attachmentsB) == 0 {
 		return nil // noop
-	} else if len(pre25Attachments) == 0 {
-		return copyMap(docAttachments)
-	} else if len(docAttachments) == 0 {
-		return copyMap(pre25Attachments)
+	} else if len(attachmentsA) == 0 {
+		return copyMap(attachmentsB)
+	} else if len(attachmentsB) == 0 {
+		return copyMap(attachmentsA)
 	}
 
-	merged := make(AttachmentsMeta, len(docAttachments))
-	for k, v := range docAttachments {
-		merged[k] = v
-	}
+	merged := maps.Clone(attachmentsB)
 
-	// Iterate over pre-2.5 attachments, and merge with docAttachments
-	for attName, pre25Att := range pre25Attachments {
-		if docAtt, exists := docAttachments[attName]; !exists {
-			// we didn't have an attachment matching this name already in syncData, so we'll use the pre-2.5 attachment.
-			merged[attName] = pre25Att
+	// Iterate over source attachments, and merge with attachmentsB
+	for attName, attA := range attachmentsA {
+		if attB, exists := attachmentsB[attName]; !exists {
+			// we didn't have an attachment matching this name already in syncData, so we'll use the attachment from attachmentsA.
+			merged[attName] = attA
 		} else {
-			// we had the same attachment name in docAttachments and in pre25Attachments.
+			// we had the same attachment name in attachmentsB and in pre25Attachments.
 			// Use whichever has the highest revpos.
-			var pre25AttRevpos, docAttRevpos int64
-			if pre25AttMeta, ok := pre25Att.(map[string]interface{}); ok {
-				pre25AttRevpos, ok = base.ToInt64(pre25AttMeta["revpos"])
+			var attARevpos, attBRevpos int64
+			if attAMeta, ok := attA.(map[string]interface{}); ok {
+				attARevpos, ok = base.ToInt64(attAMeta["revpos"])
 				if !ok {
-					// pre25 revpos wasn't a number, docAttachment should win.
+					// There was no revpos in attachmentsA, so attachmentsB attachment will win.
 					continue
 				}
 			}
-			if docAttMeta, ok := docAtt.(map[string]interface{}); ok {
-				// if docAttRevpos can't be converted into an int64, pre25 revpos wins, so fall through with docAttRevpos=0
-				docAttRevpos, _ = base.ToInt64(docAttMeta["revpos"])
+			if attBMeta, ok := attB.(map[string]interface{}); ok {
+				// if attBRevpos can't be converted into an int64, pre25 revpos wins, so fall through with attBRevpos=0
+				attBRevpos, _ = base.ToInt64(attBMeta["revpos"])
 			}
 
-			// pre-2.5 meta has larger revpos
-			if pre25AttRevpos > docAttRevpos {
-				merged[attName] = pre25Att
+			// attachmentsA has larger revpos
+			if attARevpos > attBRevpos {
+				merged[attName] = attA
 			}
 		}
 	}

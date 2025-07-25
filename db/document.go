@@ -101,7 +101,7 @@ type SyncData struct {
 	Crc32c              string               `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
 	Crc32cUserXattr     string               `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
 	TombstonedAt        int64                `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
-	AttachmentsPre4dot0 AttachmentsMeta      `json:"attachments,omitempty"`
+	AttachmentsPre4dot0 AttachmentsMeta      `json:"attachments,omitempty"`             // Location of _attachments metadata for pre-4.0 attachments, stored in _sync xattr or _sync inline. In 4.0 and later, attachments are in _globalSync._attachments_meta
 	ChannelSet          []ChannelSetEntry    `json:"channel_set"`
 	ChannelSetHistory   []ChannelSetEntry    `json:"channel_set_history"`
 	HLV                 *HybridLogicalVector `json:"-"` // Marshalled/Unmarshalled separately from SyncData for storage in _vv, see MarshalWithXattrs/UnmarshalWithXattrs
