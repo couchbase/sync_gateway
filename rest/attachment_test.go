@@ -2745,7 +2745,6 @@ func CreateDocWithLegacyAttachmentNoMigration(t *testing.T, rt *RestTester, docI
 
 func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta map[string]interface{}) {
 	body := rt.GetDocBody(docID)
-	fmt.Printf("body=%v\n", body)
 	attachments, ok := body["_attachments"].(map[string]interface{})
 	require.True(t, ok)
 	return attachments
@@ -2833,7 +2832,6 @@ func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersio
 //   - Add new doc with legacy attachment but do not attempt to migrate after write
 //   - Trigger on demand import for write and assert that the attachment is moved ot global xattr
 func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
 	rt := NewRestTester(t, &RestTesterConfig{AutoImport: base.Ptr(false)})
 	defer rt.Close()
 
