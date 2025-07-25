@@ -1661,7 +1661,6 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	// 4. Trigger import of update via SG retrieval
 	response = getRawDocWithOnDemandImport(rt, key)
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	assert.Equal(t, 200, response.Code)
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
