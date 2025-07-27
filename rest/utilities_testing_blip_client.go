@@ -618,6 +618,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 				require.False(btr.TB(), msg.NoReply(), "expected delta rev message to be sent without noreply flag: %+v", msg)
 				response := msg.Response()
 				response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
+				return
 			}
 
 			// unmarshal body to extract deltaSrc
