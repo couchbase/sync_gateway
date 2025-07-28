@@ -1473,7 +1473,7 @@ func (h *handler) handleGetRawDoc() error {
 	} else {
 		xattrValues, _, err = h.collection.GetCollectionDatastore().GetXattrs(h.ctx(), docID, xattrKeys)
 	}
-	if err != nil && !errors.Is(err, base.ErrNotFound) {
+	if err != nil {
 		return err
 	}
 
