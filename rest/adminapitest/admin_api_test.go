@@ -1801,6 +1801,20 @@ func TestRawRedaction(t *testing.T) {
 	rawResponseStr := res.Body.String()
 	require.Contains(t, rawResponseStr, "achannel")
 	require.Contains(t, rawResponseStr, `"foo":"bar"`)
+	if base.TestUseXattrs() {
+		// xattr metadata
+		require.NotContains(t, rawResponseStr, `"_sync":null`)    // ensure sync data below is not inline - xattr version should be non-nil
+		require.Contains(t, rawResponseStr, `"_sync":{`)          // sync data
+		require.Contains(t, rawResponseStr, `"_globalSync":null`) // global sync data - only relevant if attachments exist
+		require.Contains(t, rawResponseStr, `"$document":{`)      // virtual xattr - implemented on both Rosmar and CB Server
+	} else {
+		// inline sync data - null xattrs
+		// NOTE: this branch isn't possible in 4.0 - but it's possible we may backport the `/_raw` changes so is here at least for coverage
+		require.Contains(t, rawResponseStr, `"_sync":{`)          // sync data (inline)
+		require.Contains(t, rawResponseStr, `"$document":{`)      // virtual xattrs always exist
+		require.Contains(t, rawResponseStr, `"_sync":null`)       // sync data (xattr)
+		require.Contains(t, rawResponseStr, `"_globalSync":null`) // global sync data (xattr)
+	}
 
 	// Test redacted
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?redact=true&include_doc=false", ``)

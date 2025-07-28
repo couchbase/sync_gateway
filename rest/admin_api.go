@@ -1456,6 +1456,7 @@ func (h *handler) handleGetRawDoc() error {
 		base.GlobalXattrName,
 		base.MouXattrName,
 		base.VvXattrName,
+		base.VirtualDocumentXattr,
 	}
 	userXattrKey := h.db.Options.UserXattrKey
 	if userXattrKey != "" {
