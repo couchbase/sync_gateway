@@ -43,7 +43,7 @@ get:
             additionalProperties: true
             properties:
               _xattrs:
-                description: The extended attributes of the document, which can include Sync Gateway metadata, such as revision history, channel information, and other sync-related data. This is non-exhaustive and only includes xattrs that are relevant to Sync Gateway.
+                description: The extended attributes of the document, which can include Sync Gateway metadata, such as revision history, channel information, and other sync-related data. This is non-exhaustive and only includes xattrs that are relevant to Sync Gateway. Any `null` values indicate the xattr is not present on the document.
                 type: object
                 properties:
                   _sync:
@@ -60,6 +60,10 @@ get:
                     additionalProperties: true
                   _vv:
                     description: Version vector for the document.
+                    type: object
+                    additionalProperties: true
+                  $document:
+                    description: Document virtual xattrs.
                     type: object
                     additionalProperties: true
     '400':

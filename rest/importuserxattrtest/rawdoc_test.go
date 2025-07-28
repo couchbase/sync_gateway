@@ -46,7 +46,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 			xattrKey: base.MustJSONMarshal(t, "val"),
 		},
 		nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1

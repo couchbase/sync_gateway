@@ -1798,6 +1798,7 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test redact being disabled by default
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
+	rest.RequireStatus(t, res, http.StatusOK)
 	rawResponseStr := res.Body.String()
 	require.Contains(t, rawResponseStr, "achannel")
 	require.Contains(t, rawResponseStr, `"foo":"bar"`)
@@ -1818,6 +1819,7 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test redacted
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?redact=true&include_doc=false", ``)
+	rest.RequireStatus(t, res, http.StatusOK)
 	rawResponseStr = res.Body.String()
 	require.NotContains(t, rawResponseStr, "achannel")
 	require.NotContains(t, rawResponseStr, "foo")
@@ -1825,12 +1827,14 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test include doc false doesn't return doc
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=false", ``)
+	rest.RequireStatus(t, res, http.StatusOK)
 	rawResponseStr = res.Body.String()
 	require.NotContains(t, rawResponseStr, "foo")
 	require.NotContains(t, rawResponseStr, "bar")
 
 	// Test doc is returned by default
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
+	rest.RequireStatus(t, res, http.StatusOK)
 	rawResponseStr = res.Body.String()
 	require.Contains(t, rawResponseStr, `"foo":"bar"`)
 
@@ -1851,6 +1855,7 @@ func TestRawTombstone(t *testing.T) {
 	version := rest.DocVersionFromPutResponse(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	rawResponseStr := resp.Body.String()
 	assert.NotContains(t, rawResponseStr, `"_id":"`+docID+`"`)
@@ -1862,6 +1867,7 @@ func TestRawTombstone(t *testing.T) {
 	deletedVersion := rt.DeleteDoc(docID, version)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	rawResponseStr = resp.Body.String()
 	assert.NotContains(t, rawResponseStr, `"_id":"`+docID+`"`)
@@ -3028,7 +3034,7 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	// Get config values before taking db offline
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	require.Equal(t, http.StatusOK, resp.Code)
-	dbConfigBeforeOffline := resp.Body.String()
+	dbConfigBeforeOffline := resp.BodyString()
 
 	// Take DB offline
 	resp = rt.SendAdminRequest("POST", "/db/_offline", "")
@@ -3037,7 +3043,7 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	// Check offline config matches online config
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, dbConfigBeforeOffline, resp.Body.String())
+	assert.Equal(t, dbConfigBeforeOffline, resp.BodyString())
 }
 
 func TestDbOfflineConfigPersistent(t *testing.T) {

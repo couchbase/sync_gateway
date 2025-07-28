@@ -66,8 +66,8 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	return DocVersion{RevTreeID: *r.RevID}, body
 }
 
+// TriggerOnDemandImport will use the REST API to trigger on an demand import via GET. This function intentionally does not check error codes in case the document does not exist or is invalid to be imported.
 func (rt *RestTester) TriggerOnDemandImport(docID string) {
-	// Trigger on-demand import for the document, don't care about response
 	_ = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", docID), "")
 }
 
@@ -502,6 +502,7 @@ type RawDocResponse struct {
 }
 
 // RawDocXattrs is a non-exhaustive set of xattrs returned by the _raw endpoint. Used for test assertions.
+// TODO: Replace with JSON v2's inline - this implementation puts well-known fields into the "other" map as well, which isn't great but not worth fixing.
 type RawDocXattrs struct {
 	RawDocXattrsWellKnown
 	RawDocXattrsOthers
@@ -516,7 +517,7 @@ type RawDocXattrsWellKnown struct {
 }
 
 // RawDocXattrsOthers contains fields that can only be known at runtime (e.g. user xattr names)
-type RawDocXattrsOthers map[string]interface{}
+type RawDocXattrsOthers map[string]any
 
 func (t *RawDocXattrs) MarshalJSON() ([]byte, error) {
 	// overwrite fields in Main into Extra
@@ -531,10 +532,11 @@ func (t *RawDocXattrs) MarshalJSON() ([]byte, error) {
 }
 
 func (t *RawDocXattrs) UnmarshalJSON(p []byte) error {
-	if err := json.Unmarshal(p, &t.RawDocXattrsWellKnown); err != nil {
+	// unmarshal others first - and overwrite with known fields after
+	if err := json.Unmarshal(p, &t.RawDocXattrsOthers); err != nil {
 		return err
 	}
-	return json.Unmarshal(p, &t.RawDocXattrsOthers)
+	return json.Unmarshal(p, &t.RawDocXattrsWellKnown)
 }
 
 var _ json.Unmarshaler = &RawDocXattrs{}

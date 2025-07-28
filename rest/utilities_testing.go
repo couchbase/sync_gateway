@@ -2433,18 +2433,6 @@ func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 	return string(replicationPayload)
 }
 
-func HasActiveChannel(channelSet channels.ChannelMap, channelName string) bool {
-	if channelSet == nil {
-		return false
-	}
-	value, ok := channelSet[channelName]
-	if !ok || value != nil { // An entry for the channel name with a nil value represents an active channel
-		return false
-	}
-
-	return true
-}
-
 func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()

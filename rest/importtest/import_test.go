@@ -109,10 +109,19 @@ func TestImportFeedWithRecursiveSyncFunction(t *testing.T) {
 	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportErrorCount.Value, 2)
 }
 
-func getRawDocWithOnDemandImport(rt *rest.RestTester, docID string) *rest.TestResponse {
-	// trigger on-demand import - since 4.0 _raw will not do this
+// getRawDocWithOnDemandImport returns an unmarshalled RawDocResponse after triggering an on-demand import
+func getRawDocWithOnDemandImport(rt *rest.RestTester, docID string) rest.RawDocResponse {
+	// trigger on-demand import - since 4.0 _raw will not do this and most tests are written in a way that won't do an import otherwise (auto or on-demand without /_raw)
 	rt.TriggerOnDemandImport(docID)
-	return rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
+
+	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
+	rest.RequireStatus(rt.TB(), resp, http.StatusOK)
+
+	var rawInsertResponse rest.RawDocResponse
+	err := base.JSONUnmarshal(resp.BodyBytes(), &rawInsertResponse)
+	require.NoError(rt.TB(), err, "Unable to unmarshal raw response")
+
+	return rawInsertResponse
 }
 
 // Test import of an SDK delete.
@@ -147,14 +156,8 @@ func TestXattrImportOldDoc(t *testing.T) {
 	_, err := dataStore.Add(key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
-	response := getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
-	assert.NotNil(t, rawInsertResponse.Xattrs.Sync.Channels, "No channels in sync data for SDK insert")
-	log.Printf("insert channels: %+v", rawInsertResponse.Xattrs.Sync.Channels)
-	assert.True(t, rest.HasActiveChannel(rawInsertResponse.Xattrs.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
+	rawInsertResponse := getRawDocWithOnDemandImport(rt, key)
+	assert.Containsf(t, rawInsertResponse.Xattrs.Sync.Channels, "oldDocNil", "oldDoc was not nil during import of SDK insert")
 
 	// 2. Test oldDoc behaviour during SDK update
 
@@ -165,35 +168,22 @@ func TestXattrImportOldDoc(t *testing.T) {
 	err = rt.GetSingleDataStore().Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestImportDelete")
 
-	response = getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawUpdateResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
-
+	rawUpdateResponse := getRawDocWithOnDemandImport(rt, key)
 	// If delta sync is enabled, old doc may be available based on the backup used for delta generation, if it hasn't already
 	// been converted to a delta
 	if !rt.GetDatabase().DeltaSyncEnabled() {
-		assert.NotNil(t, rawUpdateResponse.Xattrs.Sync.Channels, "No channels in sync data for SDK insert")
-		assert.True(t, rest.HasActiveChannel(rawUpdateResponse.Xattrs.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
+		assert.Containsf(t, rawUpdateResponse.Xattrs.Sync.Channels, "oldDocNil", "oldDoc was not nil during import of SDK update")
 	}
 
 	// 3. Test oldDoc behaviour during SDK delete
 	err = dataStore.Delete(key)
 	assert.NoError(t, err, "Unable to delete doc TestImportDelete")
 
-	response = getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawDeleteResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawDeleteResponse)
-	log.Printf("Post-delete: %s", response.Body.Bytes())
-	assert.NoError(t, err, "Unable to unmarshal raw response")
-	assert.NotNil(t, rawDeleteResponse.Xattrs.Sync.Channels, "No channels in sync data for SDK insert")
-	log.Printf("update channels: %+v", rawDeleteResponse.Xattrs.Sync.Channels)
+	rawDeleteResponse := getRawDocWithOnDemandImport(rt, key)
 	if !rt.GetDatabase().DeltaSyncEnabled() {
-		assert.True(t, rest.HasActiveChannel(rawDeleteResponse.Xattrs.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
+		assert.Containsf(t, rawDeleteResponse.Xattrs.Sync.Channels, "oldDocNil", "oldDoc was not nil during import of SDK delete")
 	}
-	assert.True(t, rest.HasActiveChannel(rawDeleteResponse.Xattrs.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
+	assert.Containsf(t, rawDeleteResponse.Xattrs.Sync.Channels, "docDeleted", "doc did not set _deleted:true for SDK delete")
 }
 
 // Test import ancestor handling
@@ -236,14 +226,8 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	err := dataStore.Set(docID, 0, nil, updatedBody)
 	assert.NoError(t, err)
 
-	response := getRawDocWithOnDemandImport(rt, docID)
-	assert.Equal(t, 200, response.Code)
-	var rawResponse rest.RawDocResponse
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rawResponse))
-	log.Printf("raw response: %s", response.Body.Bytes())
-	assert.Len(t, rawResponse.Xattrs.Sync.Channels, 1)
-	_, ok := rawResponse.Xattrs.Sync.Channels["oldDocNil"]
-	assert.True(t, ok)
+	rawResponse := getRawDocWithOnDemandImport(rt, docID)
+	assert.Containsf(t, rawResponse.Xattrs.Sync.Channels, "oldDocNil", "oldDoc was not nil during import of SDK update")
 }
 
 // Validate tombstone w/ xattrs
@@ -416,22 +400,13 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	_, err := dataStore.Add(key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestResurrectViaSDK")
 
-	response := getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	rt.TriggerOnDemandImport(key)
 
 	// 2. Delete the doc through the SDK
 	err = dataStore.Delete(key)
 	assert.NoError(t, err, "Unable to delete doc TestResurrectViaSDK")
 
-	response = getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawDeleteResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawDeleteResponse)
-	log.Printf("Post-delete: %s", response.Body.Bytes())
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	rt.TriggerOnDemandImport(key)
 
 	// 3. Recreate the doc through the SDK (with different data)
 	updatedBody := make(map[string]interface{})
@@ -441,14 +416,8 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	err = dataStore.Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestResurrectViaSDK")
 
-	response = getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawUpdateResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
-	_, ok := rawUpdateResponse.Xattrs.Sync.Channels["HBO"]
-	assert.True(t, ok, "Didn't find expected channel (HBO) on resurrected doc")
-
+	rawUpdateResponse := getRawDocWithOnDemandImport(rt, key)
+	assert.Containsf(t, rawUpdateResponse.Xattrs.Sync.Channels, "HBO", "Didn't find expected channel (HBO) on resurrected doc")
 }
 
 // Attempt to delete a document that's already been deleted via the SDK
@@ -913,7 +882,6 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	// Get raw to retrieve metadata, and validate bodies have been moved to xattr
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	assert.Equal(t, 200, rawResponse.Code)
-	rawResponse.DumpBody()
 	var doc rawDocResponseTreeMetadata
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
 	assert.Len(t, doc.Xattrs.Sync.RevTree.BodyKeyMap, 3)
@@ -982,7 +950,6 @@ func TestMigrateTombstone(t *testing.T) {
 	// Get raw to retrieve metadata, and validate bodies have been moved to xattr
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	assert.Equal(t, 200, rawResponse.Code)
-	rawResponse.DumpBody()
 	var doc rest.RawDocResponse
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
 	assert.Equal(t, "2-6b1e1af9190829c1ceab6f1c8fb9fa3f", doc.Xattrs.Sync.RevAndVersion.RevTreeID)
@@ -1053,7 +1020,6 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	// Get raw to retrieve metadata, and validate bodies have been moved to xattr
 	rawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
 	assert.Equal(t, 200, rawResponse.Code)
-	rawResponse.DumpBody()
 	var doc rawDocResponseTreeMetadata
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
 	assert.Len(t, doc.Xattrs.Sync.RevTree.BodyKeyMap, 1)
@@ -1639,11 +1605,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval, this will not populate the rev cache.
-	response := getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	rawInsertResponse := getRawDocWithOnDemandImport(rt, key)
 	rev1id := rawInsertResponse.Xattrs.Sync.RevAndVersion.RevTreeID
 
 	// Populate rev cache by getting the doc again
@@ -1660,17 +1622,14 @@ func TestImportRevisionCopy(t *testing.T) {
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 4. Trigger import of update via SG retrieval
-	response = getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	rt.TriggerOnDemandImport(key)
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
 	assert.Equal(t, 200, response.Code)
 }
 
@@ -1706,11 +1665,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval
-	response := getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	rawInsertResponse := getRawDocWithOnDemandImport(rt, key)
 	rev1id := rawInsertResponse.Xattrs.Sync.RevAndVersion.RevTreeID
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
@@ -1725,13 +1680,10 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 5. Trigger import of update via SG retrieval
-	response = getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	rt.TriggerOnDemandImport(key)
 
 	// 6. Attempt to retrieve previous revision body.  Should return missing, as rev wasn't in rev cache when import occurred.
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
 	assert.Equal(t, 404, response.Code)
 }
 
@@ -1764,11 +1716,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval
-	response := getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	rawInsertResponse := getRawDocWithOnDemandImport(rt, key)
 	rev1id := rawInsertResponse.Xattrs.Sync.RevAndVersion.RevTreeID
 
 	// 3. Update via SDK
@@ -1779,17 +1727,14 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 4. Trigger import of update via SG retrieval
-	response = getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, 200, response.Code)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	rt.TriggerOnDemandImport(key)
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body.  Should fail, as backup wasn't persisted
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
 	assert.Equal(t, 404, response.Code)
 }
 
@@ -1889,12 +1834,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	assert.NoError(t, err, "Unable to delete doc %s", docId)
 
 	// Get the doc and check deleted revision is getting imported
-	response = getRawDocWithOnDemandImport(rt, docId)
-	assert.Equal(t, http.StatusOK, response.Code)
-	var rawResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawResponse)
-	require.NoError(t, err, "Unable to unmarshal raw response")
-
+	rawResponse := getRawDocWithOnDemandImport(rt, docId)
 	assert.Equal(t, 1, int(rawResponse.Xattrs.Sync.Flags&channels.Deleted), "Expected deleted flag to be set in xattr")
 	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", rawResponse.Xattrs.Sync.RevAndVersion.RevTreeID)
 }
@@ -1927,10 +1867,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	assert.NoErrorf(t, err, "Unable to insert doc %s", key)
 
 	// Trigger import and check whether created document is getting imported
-	response := getRawDocWithOnDemandImport(rt, key)
-	assert.Equal(t, http.StatusOK, response.Code)
-	var respBody rest.RawDocResponse
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	respBody := getRawDocWithOnDemandImport(rt, key)
 	assert.NotEmpty(t, respBody.Xattrs.Sync.RevAndVersion.RevTreeID)
 
 	// Delete the document via SDK
@@ -1938,13 +1875,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	assert.NoErrorf(t, err, "Unable to delete doc %s", key)
 
 	// Trigger import and check whether deleted document is getting imported
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+key, "")
-	assert.Equal(t, http.StatusNotFound, response.Code)
-
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
-	assert.Equal(t, http.StatusOK, response.Code)
-	respBody = rest.RawDocResponse{}
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	respBody = getRawDocWithOnDemandImport(rt, key)
 	assert.Equal(t, 1, int(respBody.Xattrs.Sync.Flags&channels.Deleted), "Expected deleted flag to be set in xattr")
 	assert.NotEmpty(t, respBody.Xattrs.Sync.RevAndVersion.RevTreeID)
 }
@@ -2110,11 +2041,7 @@ func TestImportTouch(t *testing.T) {
 	require.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.
-	response := getRawDocWithOnDemandImport(rt, key)
-	require.Equal(t, 200, response.Code)
-	var rawInsertResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	require.NoError(t, err, "Unable to unmarshal raw response")
+	rawInsertResponse := getRawDocWithOnDemandImport(rt, key)
 	initialRev := rawInsertResponse.Xattrs.Sync.RevAndVersion.RevTreeID
 
 	// 2. Test import behaviour after SDK touch
@@ -2122,11 +2049,7 @@ func TestImportTouch(t *testing.T) {
 	require.NoError(t, err, "Unable to touch doc TestImportTouch")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.
-	response = getRawDocWithOnDemandImport(rt, key)
-	require.Equal(t, 200, response.Code)
-	var rawUpdateResponse rest.RawDocResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
-	require.NoError(t, err, "Unable to unmarshal raw response")
+	rawUpdateResponse := getRawDocWithOnDemandImport(rt, key)
 	require.Equal(t, initialRev, rawUpdateResponse.Xattrs.Sync.RevAndVersion.RevTreeID)
 }
 func TestImportingPurgedDocument(t *testing.T) {

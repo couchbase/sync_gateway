@@ -1444,10 +1444,8 @@ func (h *handler) handleGetRawDoc() error {
 		}
 		// if include_doc was not explicitly set, and we want to redact, then automatically set include_doc to false
 		includeDoc = false
-	} else {
-		if redactSalt != "" {
-			return base.HTTPErrorf(http.StatusBadRequest, "redactSalt can only be used when redact=true")
-		}
+	} else if redactSalt != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "redactSalt can only be used when redact=true")
 	}
 
 	// collect the set of xattrs to fetch that Sync Gateway is interested in.
@@ -1487,6 +1485,7 @@ func (h *handler) handleGetRawDoc() error {
 
 	// inject xattrs as top-level properties in the doc - this isn't *quite* representative of the actual stored doc,
 	// since they are outside the doc body as separate objects, but we'll stamp a marker value in each xattr object to tell us whether it was injected or inline in the original doc body.
+	// NOTE: Any xattrs which were not found are included and indicated as an explicit `null` value.
 	for _, k := range xattrKeys {
 		v := xattrValues[k]
 		if !redact {
@@ -1511,6 +1510,11 @@ func (h *handler) handleGetRawDoc() error {
 				xattrsObject, err = base.InjectJSONPropertiesFromBytes(xattrsObject, base.KVPairBytes{Key: k, Val: []byte(`"redacted"`)})
 				if err != nil {
 					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject user xattr into response: %s", err)
+				}
+			default:
+				xattrsObject, err = base.InjectJSONProperties(xattrsObject, base.KVPair{Key: k, Val: json.RawMessage(v)})
+				if err != nil {
+					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject xattr %q into response: %s", k, err)
 				}
 			}
 		}
