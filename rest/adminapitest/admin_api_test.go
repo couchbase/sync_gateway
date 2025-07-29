@@ -1789,57 +1789,63 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car"}`), 409)
 }
 
+// TestRawRedaction tests the /_raw endpoint with and without redaction
+// intentionally does string matching on redactable strings to avoid any regressions if we move around metadata without updating the test
 func TestRawRedaction(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
-	rest.RequireStatus(t, res, http.StatusCreated)
+	_ = rt.PutDoc("testdoc", `{"foo":"bar", "channels": ["achannel"], "_attachments": {"myattachment": {"data":"c29tZSBkYXRh", "content_type":"text/plain"}}}`)
 
 	// Test redact being disabled by default
-	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
+	res := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
 	rest.RequireStatus(t, res, http.StatusOK)
 	rawResponseStr := res.Body.String()
-	require.Contains(t, rawResponseStr, "achannel")
-	require.Contains(t, rawResponseStr, `"foo":"bar"`)
+	assert.Contains(t, rawResponseStr, "achannel")       // channel name
+	assert.Contains(t, rawResponseStr, `"foo":"bar"`)    // doc body
+	assert.Contains(t, rawResponseStr, `"myattachment"`) // attachment name
+	// check all requested xattrs are present, even in the values are `null`
 	if base.TestUseXattrs() {
-		// xattr metadata
-		require.NotContains(t, rawResponseStr, `"_sync":null`)    // ensure sync data below is not inline - xattr version should be non-nil
-		require.Contains(t, rawResponseStr, `"_sync":{`)          // sync data
-		require.Contains(t, rawResponseStr, `"_globalSync":null`) // global sync data - only relevant if attachments exist
-		require.Contains(t, rawResponseStr, `"$document":{`)      // virtual xattr - implemented on both Rosmar and CB Server
+		for _, xattrName := range base.SyncGatewayRawDocXattrs {
+			assert.Contains(t, rawResponseStr, `"`+xattrName+`":`)
+		}
 	} else {
-		// inline sync data - null xattrs
-		// NOTE: this branch isn't possible in 4.0 - but it's possible we may backport the `/_raw` changes so is here at least for coverage
-		require.Contains(t, rawResponseStr, `"_sync":{`)          // sync data (inline)
-		require.Contains(t, rawResponseStr, `"$document":{`)      // virtual xattrs always exist
-		require.Contains(t, rawResponseStr, `"_sync":null`)       // sync data (xattr)
-		require.Contains(t, rawResponseStr, `"_globalSync":null`) // global sync data (xattr)
+		// test framework won't allow the test to get this far in 4.0 but in case this is backported, let it fail, since the assertions will need to be tailored
+		t.Fatalf("inline sync data is not a supported configuration in 4.0+")
 	}
 
 	// Test redacted
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?redact=true&include_doc=false", ``)
 	rest.RequireStatus(t, res, http.StatusOK)
 	rawResponseStr = res.Body.String()
-	require.NotContains(t, rawResponseStr, "achannel")
-	require.NotContains(t, rawResponseStr, "foo")
-	require.NotContains(t, rawResponseStr, "bar")
+	assert.NotContains(t, rawResponseStr, "achannel")      // channel name should not be present
+	assert.NotContains(t, rawResponseStr, "myattachment")  // attachment name should not be present
+	assert.Contains(t, rawResponseStr, "attachments_meta") // check we have _some_ attachment metadata though
+	assert.Contains(t, rawResponseStr, "text/plain")       // check we have _some_ attachment metadata though
+	assert.NotContains(t, rawResponseStr, "foo")           // doc body should not be present
+	assert.NotContains(t, rawResponseStr, "bar")           // doc body should not be present
 
 	// Test include doc false doesn't return doc
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=false", ``)
 	rest.RequireStatus(t, res, http.StatusOK)
 	rawResponseStr = res.Body.String()
-	require.NotContains(t, rawResponseStr, "foo")
-	require.NotContains(t, rawResponseStr, "bar")
+	assert.Contains(t, rawResponseStr, "achannel")     // channel name should be present
+	assert.Contains(t, rawResponseStr, "myattachment") // attachment name should be present
+	assert.NotContains(t, rawResponseStr, "foo")       // doc body should not be present
+	assert.NotContains(t, rawResponseStr, "bar")       // doc body should not be present
 
 	// Test doc is returned by default
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
 	rest.RequireStatus(t, res, http.StatusOK)
 	rawResponseStr = res.Body.String()
-	require.Contains(t, rawResponseStr, `"foo":"bar"`)
+	assert.Contains(t, rawResponseStr, `"foo":"bar"`)
 
 	// Test that you can't use include_doc and redact at the same time
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=true&redact=true", ``)
+	rest.RequireStatus(t, res, http.StatusBadRequest)
+
+	// Salt without redaction not allowed
+	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?redact=false&salt=asdf", ``)
 	rest.RequireStatus(t, res, http.StatusBadRequest)
 }
 

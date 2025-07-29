@@ -157,6 +157,15 @@ const (
 	FromConnStrWarningThreshold = 10 * time.Second
 )
 
+// SyncGatewayRawDocXattrs is a list of xattrs that Sync Gateway will fetch when reading a raw document.
+var SyncGatewayRawDocXattrs = []string{
+	SyncXattrName,
+	GlobalXattrName,
+	VvXattrName,
+	MouXattrName,
+	VirtualDocumentXattr,
+}
+
 const (
 	DefaultScope             = "_default"
 	DefaultCollection        = "_default"

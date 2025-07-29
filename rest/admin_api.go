@@ -1448,30 +1448,12 @@ func (h *handler) handleGetRawDoc() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "redactSalt can only be used when redact=true")
 	}
 
-	// collect the set of xattrs to fetch that Sync Gateway is interested in.
-	xattrKeys := []string{
-		base.SyncXattrName,
-		base.GlobalXattrName,
-		base.MouXattrName,
-		base.VvXattrName,
-		base.VirtualDocumentXattr,
+	opts := db.GetRawDocOpts{
+		IncludeDoc: includeDoc,
+		Redact:     redact,
+		RedactSalt: redactSalt,
 	}
-	userXattrKey := h.db.Options.UserXattrKey
-	if userXattrKey != "" {
-		// we'll redact this later after fetching - it's still useful to know it was present even if we can't see the contents.
-		xattrKeys = append(xattrKeys, h.db.Options.UserXattrKey)
-	}
-
-	var (
-		err         error
-		docBody     []byte
-		xattrValues map[string][]byte
-	)
-	if includeDoc {
-		docBody, xattrValues, _, err = h.collection.GetCollectionDatastore().GetWithXattrs(h.ctx(), docID, xattrKeys)
-	} else {
-		xattrValues, _, err = h.collection.GetCollectionDatastore().GetXattrs(h.ctx(), docID, xattrKeys)
-	}
+	docBody, xattrValues, err := h.collection.GetRawDoc(h.ctx(), docID, &opts)
 	if err != nil {
 		return err
 	}
@@ -1481,46 +1463,7 @@ func (h *handler) handleGetRawDoc() error {
 		responseBody = docBody
 	}
 
-	xattrsObject := []byte(base.EmptyDocument)
-
-	// inject xattrs as top-level properties in the doc - this isn't *quite* representative of the actual stored doc,
-	// since they are outside the doc body as separate objects, but we'll stamp a marker value in each xattr object to tell us whether it was injected or inline in the original doc body.
-	// NOTE: Any xattrs which were not found are included and indicated as an explicit `null` value.
-	for _, k := range xattrKeys {
-		v := xattrValues[k]
-		if !redact {
-			xattrsObject, err = base.InjectJSONProperties(xattrsObject, base.KVPair{Key: k, Val: json.RawMessage(v)})
-			if err != nil {
-				return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject xattr %q into response: %s", k, err)
-			}
-		} else {
-			// xattr-specific redaction
-			switch k {
-			case base.SyncXattrName:
-				redactedV, err := db.RedactRawSyncData(v, redactSalt)
-				if err != nil {
-					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't redact sync data: %s", err)
-				}
-				xattrsObject, err = base.InjectJSONProperties(xattrsObject, base.KVPair{Key: k, Val: json.RawMessage(redactedV)})
-				if err != nil {
-					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject sync data into response: %s", err)
-				}
-			case userXattrKey:
-				// include the key but not the value so we can see _something_ was present.
-				xattrsObject, err = base.InjectJSONPropertiesFromBytes(xattrsObject, base.KVPairBytes{Key: k, Val: []byte(`"redacted"`)})
-				if err != nil {
-					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject user xattr into response: %s", err)
-				}
-			default:
-				xattrsObject, err = base.InjectJSONProperties(xattrsObject, base.KVPair{Key: k, Val: json.RawMessage(v)})
-				if err != nil {
-					return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject xattr %q into response: %s", k, err)
-				}
-			}
-		}
-	}
-
-	responseBody, err = base.InjectJSONProperties(responseBody, base.KVPair{Key: "_xattrs", Val: json.RawMessage(xattrsObject)})
+	responseBody, err = base.InjectJSONProperties(responseBody, base.KVPair{Key: "_xattrs", Val: xattrValues})
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "couldn't inject xattrs into response: %s", err)
 	}
@@ -1545,6 +1488,7 @@ func (h *handler) handleGetRawDoc() error {
 			base.AuditFieldDocVersion: docCurrentRev,
 		})
 	}
+
 	h.writeRawJSON(responseBody)
 	return nil
 }
