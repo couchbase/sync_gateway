@@ -425,6 +425,15 @@ func (tbp *TestBucketPool) Close(ctx context.Context) {
 	}
 
 	if tbp.cluster != nil {
+		for {
+			if len(tbp.readyBucketPool) == 0 {
+				break
+			}
+			select {
+			case bucket := <-tbp.readyBucketPool:
+				bucket.Close(ctx)
+			}
+		}
 		if err := tbp.cluster.close(); err != nil {
 			tbp.Logf(ctx, "Couldn't close cluster connection: %v", err)
 		}
