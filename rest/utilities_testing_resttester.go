@@ -66,6 +66,11 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	return DocVersion{RevTreeID: *r.RevID}, body
 }
 
+// TriggerOnDemandImport will use the REST API to trigger on an demand import via GET. This function intentionally does not check error codes in case the document does not exist or is invalid to be imported.
+func (rt *RestTester) TriggerOnDemandImport(docID string) {
+	_ = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", docID), "")
+}
+
 // GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevTreeID, "")
@@ -491,3 +496,47 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 	}
 	return rt.PutDocDirectly(docID, rawBody)
 }
+
+type RawDocResponse struct {
+	Xattrs RawDocXattrs `json:"_xattrs"`
+}
+
+// RawDocXattrs is a non-exhaustive set of xattrs returned by the _raw endpoint. Used for test assertions.
+// TODO: Replace with JSON v2's inline - this implementation puts well-known fields into the "other" map as well, which isn't great but not worth fixing.
+type RawDocXattrs struct {
+	RawDocXattrsWellKnown
+	RawDocXattrsOthers
+}
+
+// RawDocXattrsWellKnown contains well known fields - see RawDocXattrsOthers for those not known until runtime.
+type RawDocXattrsWellKnown struct {
+	Sync       db.SyncDataJSON `json:"_sync"`
+	GlobalSync map[string]any  `json:"_globalSync"`
+	VV         map[string]any  `json:"_vv"`
+	MOU        map[string]any  `json:"_mou"`
+}
+
+// RawDocXattrsOthers contains fields that can only be known at runtime (e.g. user xattr names)
+type RawDocXattrsOthers map[string]any
+
+func (t *RawDocXattrs) MarshalJSON() ([]byte, error) {
+	// overwrite fields in Main into Extra
+	data, err := json.Marshal(t.RawDocXattrsWellKnown)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &t.RawDocXattrsOthers); err != nil {
+		return nil, err
+	}
+	return json.Marshal(t.RawDocXattrsOthers)
+}
+
+func (t *RawDocXattrs) UnmarshalJSON(p []byte) error {
+	// unmarshal others first - and overwrite with known fields after
+	if err := json.Unmarshal(p, &t.RawDocXattrsOthers); err != nil {
+		return err
+	}
+	return json.Unmarshal(p, &t.RawDocXattrsWellKnown)
+}
+
+var _ json.Unmarshaler = &RawDocXattrs{}
