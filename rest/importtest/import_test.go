@@ -109,9 +109,11 @@ func TestImportFeedWithRecursiveSyncFunction(t *testing.T) {
 	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportErrorCount.Value, 2)
 }
 
-// getRawDocWithOnDemandImport returns an unmarshalled RawDocResponse after triggering an on-demand import
+// getRawDocWithOnDemandImport returns an unmarshalled RawDocResponse after triggering an on-demand import.
+//
+// Since 4.0, /_raw will not trigger on-demand import - since we don't want side effects from this API.
+// The combination of import+_raw is frequently used in tests for more detailed metadata assertions, but on-demand import instead of auto-import ensures test reliability.
 func getRawDocWithOnDemandImport(rt *rest.RestTester, docID string) rest.RawDocResponse {
-	// trigger on-demand import - since 4.0 _raw will not do this and most tests are written in a way that won't do an import otherwise (auto or on-demand without /_raw)
 	rt.TriggerOnDemandImport(docID)
 
 	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
