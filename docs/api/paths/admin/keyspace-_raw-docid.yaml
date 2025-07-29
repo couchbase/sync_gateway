@@ -49,22 +49,27 @@ get:
                   _sync:
                     description: Sync Gateway metadata for the document.
                     type: object
+                    nullable: true
                     additionalProperties: true
                   _globalSync:
                     description: Globally replicated Sync Gateway metadata for the document.
                     type: object
+                    nullable: true
                     additionalProperties: true
                   _mou:
                     description: Metadata-only update information.
                     type: object
+                    nullable: true
                     additionalProperties: true
                   _vv:
                     description: Version vector for the document.
                     type: object
+                    nullable: true
                     additionalProperties: true
                   $document:
                     description: Document virtual xattrs.
                     type: object
+                    nullable: true
                     additionalProperties: true
     '400':
       $ref: ../../components/responses.yaml#/request-problem
