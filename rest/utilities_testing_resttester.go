@@ -49,7 +49,7 @@ func (rt *RestTester) GetDocBody(docID string) db.Body {
 	return rt.GetDocBodyFromKeyspace("{{.keyspace}}", docID)
 }
 
-// GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
+// GetDocBodyFromKeyspace returns the doc body for the given docID in the specified keyspace. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocBodyFromKeyspace(keyspace, docID string) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/"+keyspace+"/"+docID, "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
