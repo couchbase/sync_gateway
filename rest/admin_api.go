@@ -1471,17 +1471,20 @@ func (h *handler) handleGetRawDoc() error {
 	base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
 		base.AuditFieldDocID: docID,
 	})
-	if includeDoc {
-		// try to extract a revision from the sync data
+	if includeDoc && base.AuditEventIsEnabled(h.ctx(), base.AuditIDDocumentRead) {
+		// best-effort attempt to extract a revision from the raw sync data
 		docCurrentRev := "unknown"
 		if syncData, ok := xattrValues[base.SyncXattrName]; ok {
 			var sdRev struct {
 				Rev channels.RevAndVersion `json:"rev"`
 			}
 			if err := json.Unmarshal(syncData, &sdRev); err != nil {
-				return base.HTTPErrorf(http.StatusInternalServerError, "couldn't unmarshal rev from SyncData for doc %q: %s", base.UD(docID), err)
+				// syncData is not normally generally redacted, but in this case we know it's malformed in some way and want the raw data in the log message.
+				// This data may contain channel names, etc. which _are_ classed as UserData, so tag the whole thing.
+				base.WarnfCtx(h.ctx(), "couldn't unmarshal doc %q SyncData xattr value %q: %s", base.UD(docID), base.UD(syncData), err)
+			} else {
+				docCurrentRev = sdRev.Rev.RevTreeID
 			}
-			docCurrentRev = sdRev.Rev.RevTreeID
 		}
 		base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
 			base.AuditFieldDocID:      docID,

@@ -1855,12 +1855,20 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 
 }
 
-func TestGetRawDocumentError(t *testing.T) {
+func TestGetRawDocumentErrors(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/doc", ``)
+	// not found
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+t.Name(), ``)
 	assert.Equal(t, http.StatusNotFound, response.Code)
+
+	// invalid sync data
+	_, err := rt.GetSingleDataStore().WriteWithXattrs(t.Context(), t.Name()+"invalsyncdata", 0, 0, []byte(`{"doc":"body"}`),
+		map[string][]byte{base.SyncXattrName: []byte(`"invalid sync data"`)}, nil, nil)
+	require.NoError(t, err)
+	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+t.Name()+"invalsyncdata", ``)
+	assert.Equal(t, http.StatusOK, response.Code)
 }
 
 func TestWebhookProperties(t *testing.T) {
