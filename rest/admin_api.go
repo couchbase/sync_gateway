@@ -1479,7 +1479,9 @@ func (h *handler) handleGetRawDoc() error {
 				Rev channels.RevAndVersion `json:"rev"`
 			}
 			if err := json.Unmarshal(syncData, &sdRev); err != nil {
-				base.WarnfCtx(h.ctx(), "couldn't unmarshal doc %q SyncData xattr value %q: %s", base.UD(docID), syncData, err)
+				// syncData is not normally generally redactedl, but in this case we know it's malformed in some way and want the raw data in the log message.
+				// This data may contain channel names, etc. which _are_ classed as UserData, so tag the whole thing.
+				base.WarnfCtx(h.ctx(), "couldn't unmarshal doc %q SyncData xattr value %q: %s", base.UD(docID), base.UD(syncData), err)
 			} else {
 				docCurrentRev = sdRev.Rev.RevTreeID
 			}
