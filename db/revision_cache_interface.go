@@ -301,7 +301,7 @@ func (rev *DocumentRevision) Mutable1xBody(ctx context.Context, db *DatabaseColl
 	}
 
 	if showCV && rev.CV != nil {
-		b["_cv"] = rev.CV.String()
+		b[BodyCV] = rev.CV.String()
 	}
 
 	if rev.Deleted {

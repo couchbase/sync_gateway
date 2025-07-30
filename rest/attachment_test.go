@@ -400,8 +400,8 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/notexistyet", "")
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	// body should only have 3 top-level entries _id, _rev, _attachments
-	base.RequireKeysEqual(t, []string{"_id", "_rev", "_attachments"}, body)
+	// body should only have metadata entries - no actual document body contents
+	base.RequireKeysEqual(t, []string{db.BodyCV, db.BodyId, db.BodyRev, db.BodyAttachments}, body)
 	require.Equal(t, db.AttachmentMap{
 		"attach1": {
 			ContentType: "text/plain",
@@ -2978,6 +2978,7 @@ func TestBlipPushRevWithAttachment(t *testing.T) {
 			},
 			"_id":  docID,
 			"_rev": rtVersion.RevTreeID,
+			"_cv":  rtVersion.CV.String(),
 		}, body)
 
 		response := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attachmentName), "")
