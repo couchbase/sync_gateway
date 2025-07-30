@@ -197,12 +197,19 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodPut, "/db._default._default/doc1", docBody)
 	RequireStatus(t, response, http.StatusCreated)
 
-	// retrieve doc in both ways (_default._default and no fully-qualified keyspace)
-	body := rt.GetDocBodyFromKeyspace("db._default._default", "doc1")
-	assert.Equal(t, "bar", body["foo"])
+	version, _ := rt.GetDoc("doc1")
 
-	body = rt.GetDocBodyFromKeyspace("db", "doc1")
-	assert.Equal(t, "bar", body["foo"])
+	// retrieve doc in both ways (explicit and implicit _default scope/collection)
+	for _, keyspace := range []string{
+		"db._default._default", // fully qualified
+		"db",                   // implicit
+	} {
+		body := rt.GetDocBodyFromKeyspace(keyspace, "doc1")
+		assert.Equal(t, "bar", body["foo"])
+		assert.Equal(t, "doc1", body["_id"])
+		assert.Equal(t, version.RevTreeID, body["_rev"])
+		assert.Equal(t, version.CV.String(), body["_cv"])
+	}
 }
 
 func TestSingleCollectionDCP(t *testing.T) {
