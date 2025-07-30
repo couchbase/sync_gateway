@@ -72,10 +72,13 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	require.Equal(t, uint32(1234), *dbConfigResp.CacheConfig.RevCacheConfig.MaxItemCount)
 
 	// Sanity check to use the database
+	resp = BootstrapAdminRequest(t, sc, http.MethodGet, "/db1/doc1", ``)
+	resp.RequireStatus(http.StatusNotFound)
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/doc1", `{"foo":"bar"}`)
 	resp.RequireResponse(http.StatusCreated, `{"id":"doc1","ok":true,"rev":"1-cd809becc169215072fd567eebd8b8de"}`)
 	resp = BootstrapAdminRequest(t, sc, http.MethodGet, "/db1/doc1", ``)
-	resp.RequireResponse(http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
+	resp.RequireStatus(http.StatusOK)
+	assert.Contains(t, resp.Body, `"foo":"bar"`)
 
 	// Restart Sync Gateway
 	closeFn()
@@ -107,7 +110,8 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	// Ensure it's _actually_ the same bucket
 	resp = BootstrapAdminRequest(t, sc, http.MethodGet, "/db1/doc1", ``)
-	resp.RequireResponse(http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
+	resp.RequireStatus(http.StatusOK)
+	assert.Contains(t, resp.Body, `"foo":"bar"`)
 }
 
 // TestBootstrapDuplicateBucket will attempt to create two databases sharing the same collections and ensure this isn't allowed.

@@ -356,7 +356,8 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		assert.Equal(t, doc1ID, respBody[db.BodyId])
 		require.Equal(t, db.Body{
 			"_id":  doc1ID,
-			"_rev": "2-10000d5ec533b29b117e60274b1e3653",
+			"_rev": version2.RevTreeID,
+			"_cv":  version2.CV.String(),
 			"greetings": []any{
 				map[string]any{"hello": "world!"},
 				map[string]any{"hi": "alice"},

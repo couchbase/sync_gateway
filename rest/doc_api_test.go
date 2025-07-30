@@ -145,32 +145,32 @@ func TestGuestReadOnly(t *testing.T) {
 		},
 		}},
 	)
-
 	defer rt.Close()
 
-	rt.GetDatabase()
+	const docID = "doc"
+
 	// Write a document as admin
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"val": "test"}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Attempt to read as guest
-	response = rt.SendRequest("GET", "/{{.keyspace}}/doc", "")
-	RequireStatus(t, response, http.StatusOK)
-	assert.Equal(t, `{"_id":"doc","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+	body := rt.GetDocBody(docID)
+	assert.Equal(t, "test", body["val"].(string))
+	rev := body["_rev"].(string)
 
 	// Attempt to write as guest
-	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
+	response = rt.SendRequest(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{"val": "newval"}`)
 	RequireStatus(t, response, http.StatusForbidden)
 
 	// Attempt to access _blipsync as guest - blip sync handling for read-only GUEST is applied at replication level (to allow pull-only replications).
 	// Should succeed permission check, and only fail on websocket upgrade
-	response = rt.SendRequest("GET", "/{{.db}}/_blipsync", "")
+	response = rt.SendRequest(http.MethodGet, "/{{.db}}/_blipsync", "")
 	RequireStatus(t, response, http.StatusUpgradeRequired)
 
 	// Verify matching on _blipsync path doesn't incorrectly match docs, attachments
-	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc_named_blipsync", "")
+	response = rt.SendRequest(http.MethodPut, "/{{.keyspace}}/doc_named_blipsync", "")
 	RequireStatus(t, response, http.StatusForbidden)
-	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc/_blipsync", "")
+	response = rt.SendRequest(http.MethodPut, "/{{.keyspace}}/doc/_blipsync", "")
 	RequireStatus(t, response, http.StatusForbidden)
 
 }
@@ -189,23 +189,13 @@ func TestGetDocWithCV(t *testing.T) {
 		multipart bool
 	}{
 		{
-			name:   "get doc",
-			url:    "/{{.keyspace}}/doc1",
-			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar"}`, docID, docVersion.RevTreeID),
-		},
-		{
-			name:   "get doc with rev",
-			url:    fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s", docVersion.RevTreeID),
-			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar"}`, docID, docVersion.RevTreeID),
-		},
-		{
 			name:   "get doc with cv",
-			url:    "/{{.keyspace}}/doc1?show_cv=true",
+			url:    "/{{.keyspace}}/doc1",
 			output: fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}`, docID, docVersion.RevTreeID, docVersion.CV),
 		},
 		{
 			name:   "get doc with open_revs=all and cv no multipart",
-			url:    "/{{.keyspace}}/doc1?open_revs=all&show_cv=true",
+			url:    "/{{.keyspace}}/doc1?open_revs=all",
 			output: fmt.Sprintf(`[{"ok": {"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}}]`, docID, docVersion.RevTreeID, docVersion.CV),
 			headers: map[string]string{
 				"Accept": "application/json",
@@ -214,7 +204,7 @@ func TestGetDocWithCV(t *testing.T) {
 
 		{
 			name:      "get doc with open_revs=all and cv",
-			url:       "/{{.keyspace}}/doc1?open_revs=all&show_cv=true",
+			url:       "/{{.keyspace}}/doc1?open_revs=all",
 			output:    fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar"}`, docID, docVersion.RevTreeID, docVersion.CV),
 			multipart: true,
 		},
