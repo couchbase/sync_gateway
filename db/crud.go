@@ -3318,7 +3318,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		// previousVersion didn't match, but proposed version and server CV have matching source, and proposed version is newer
 		return ProposedRev_OK, ""
 	} else {
-		// Temporary (CBG-4466): check the full HLV that's being sent by CBL with proposeChanges messages.
+		// Temporary (CBG-4461): check the full HLV that's being sent by CBL with proposeChanges messages.
 		// If the current server cv is dominated by the incoming HLV (i.e. the incoming HLV has an entry for the same source
 		// with a version that's greater than or equal to the server's cv), then we can accept the proposed version.
 		proposedHLV, _, err := ExtractHLVFromBlipMessage(proposedHLVString)

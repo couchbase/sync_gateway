@@ -1204,14 +1204,20 @@ func (btcc *BlipTesterCollectionClient) sendProposeChanges(ctx context.Context, 
 		if i > 0 {
 			proposeChangesRequestBody.WriteString(",")
 		}
-		proposeChangesRequestBody.WriteString(fmt.Sprintf(`["%s","%s"`, change.docID, change.Rev()))
+		rev := change.Rev()
+		if btcc.UseHLV() {
+			// Until CBG-4461 is implemented the second value in the array is the full HLV.
+			rev += "," + change.historyStr()
+		}
+		fmt.Fprintf(proposeChangesRequestBody, `["%s","%s"`, change.docID, rev)
+
 		// write last known server version to support no-conflict mode
 		if serverVersion, ok := btcc.getLastReplicatedRev(change.docID); ok {
 			base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version for doc %s = %v", change.docID, serverVersion)
 			if btcc.UseHLV() {
-				proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.CV.String()))
+				fmt.Fprintf(proposeChangesRequestBody, `,"%s"`, serverVersion.CV.String())
 			} else {
-				proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.RevTreeID))
+				fmt.Fprintf(proposeChangesRequestBody, `,"%s"`, serverVersion.RevTreeID)
 			}
 		}
 		proposeChangesRequestBody.WriteString(`]`)
@@ -1272,6 +1278,11 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 	// if there is something wrong with the delta, resend as a non delta
 	if errorCode == strconv.Itoa(http.StatusUnprocessableEntity) && deltasSupported {
 		btcc.sendRev(ctx, change, false)
+		return
+	}
+	if errorCode == strconv.Itoa(http.StatusConflict) {
+		// If there is a conflict created between the proceeding proposeChanges and this rev message.
+		// this is not an error.
 		return
 	}
 	require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %#v", revResp)
