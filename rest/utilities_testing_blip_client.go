@@ -1281,7 +1281,7 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 		return
 	}
 	if errorCode == strconv.Itoa(http.StatusConflict) {
-		// If there is a conflict created between the proceeding proposeChanges and this rev message.
+		// If there is a conflict created between the preceding proposeChanges and this rev message.
 		// this is not an error.
 		return
 	}
