@@ -70,7 +70,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		fromDs = fromBucket.DefaultDataStore()
 		toDs = toBucket.DefaultDataStore()
 	}
-	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 	docCas := make(map[string]uint64)
 	for _, doc := range []string{syncDoc, attachmentDoc, normalDoc} {
@@ -155,7 +155,7 @@ func getTwoBucketDataStores(t *testing.T) (base.Bucket, sgbucket.DataStore, base
 func TestReplicateVV(t *testing.T) {
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
 	hlvAgent := db.NewHLVAgent(t, fromDs, "fakeHLVSourceID", base.VvXattrName)
@@ -276,7 +276,7 @@ func TestReplicateVV(t *testing.T) {
 func TestVVWriteTwice(t *testing.T) {
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
 	docID := "doc1"
@@ -311,7 +311,7 @@ func TestVVObeyMou(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest)
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
 	docID := "doc1"
@@ -390,7 +390,7 @@ func TestVVMouImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest)
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
 	docID := "doc1"
@@ -500,7 +500,7 @@ func TestVVMouImport(t *testing.T) {
 func TestLWWAfterInitialReplication(t *testing.T) {
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
 	docID := "doc1"
@@ -631,9 +631,9 @@ func TestVVMultiActor(t *testing.T) {
 	}
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
-	fromBucketSourceID, err := GetSourceID(ctx, fromBucket)
+	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
-	toBucketSourceID, err := GetSourceID(ctx, toBucket)
+	toBucketSourceID, err := base.GetSourceID(ctx, toBucket)
 	require.NoError(t, err)
 
 	// Create document on source

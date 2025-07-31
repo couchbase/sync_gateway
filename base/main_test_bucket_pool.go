@@ -32,6 +32,43 @@ import (
 // GTestBucketPool is a global instance of a TestBucketPool used to manage a pool of buckets for integration testing.
 var GTestBucketPool *TestBucketPool
 
+// rosmarTracker is simplified implemenation of a bucketReadierQueue for rosmar buckets. The only purpose of this
+// tracker is to be able to name in low sequential orders like Couchbase Server bucket pool: rosmar0, rosmar1, etc.
+type rosmarTracker struct {
+	lock          sync.Mutex
+	activeBuckets []bool
+}
+
+// newRosmarTracker initializes a new rosmarTracker with the specified number of buckets.
+func newRosmarTracker(numBuckets int) *rosmarTracker {
+	r := &rosmarTracker{
+		activeBuckets: make([]bool, numBuckets),
+	}
+	return r
+}
+
+// getNextBucketIdx returns the next available bucket index in a rosmarTracker. This will return the lowest available
+// number starting at 0. If all buckets are in use, it will return an error.
+func (r *rosmarTracker) GetNextBucketIdx() (int, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	// iterate over len of activeBuckets to find the first lexicographically in a map
+	for i, active := range r.activeBuckets {
+		if !active {
+			r.activeBuckets[i] = true
+			return i, nil
+		}
+	}
+	return 0, fmt.Errorf("no rosmar buckets available, all have been used")
+}
+
+// ReleaseBucketIdx releases a bucket index in a rosmarTracker. This should be called when a bucket is no longer in use.
+func (r *rosmarTracker) ReleaseBucketIdx(idx int) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.activeBuckets[idx] = false
+}
+
 // TestBucketPool is used to manage a pool of pre-prepared buckets for testing purposes.
 type TestBucketPool struct {
 	// integrationMode should be true if using Couchbase Server. If this is false, Walrus buckets are returned instead of pooled buckets.
@@ -59,6 +96,8 @@ type TestBucketPool struct {
 	// keep track of tests that don't close their buckets, map of test names to bucket names
 	unclosedBuckets     map[string]map[string]struct{}
 	unclosedBucketsLock sync.Mutex
+
+	rosmarBuckets rosmarTracker
 
 	// skipCollections may be true for older Couchbase Server versions that do not support collections.
 	skipCollections bool
@@ -154,6 +193,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		preserveBuckets:                preserveBuckets,
 		bucketInitFunc:                 bucketInitFunc,
 		unclosedBuckets:                make(map[string]map[string]struct{}),
+		rosmarBuckets:                  *newRosmarTracker(numBuckets),
 		useExistingBucket:              TestUseExistingBucket(),
 		useDefaultScope:                options.UseDefaultScope,
 		numCollectionsPerBucket:        numCollectionsPerBucket,
@@ -250,12 +290,13 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		tbp.Fatalf(testCtx, "nil TestBucketPool, but not using a Walrus test URL")
 	}
 
-	id, err := GenerateRandomID()
-	require.NoError(t, err)
-
+	bucketIdx, err := tbp.rosmarBuckets.GetNextBucketIdx()
+	if err != nil {
+		tbp.Fatalf(testCtx, "Couldn't get next rosmar bucket index: %v", err)
+	}
 	var walrusBucket *rosmar.Bucket
 	const typeName = "rosmar"
-	bucketName := tbpBucketNamePrefix + "rosmar_" + id
+	bucketName := fmt.Sprintf("rosmar%d", bucketIdx)
 	if url == "walrus:" || url == rosmar.InMemoryURL {
 		walrusBucket, err = rosmar.OpenBucket(url, bucketName, rosmar.CreateOrOpen)
 	} else {
@@ -305,9 +346,10 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		// Persisted buckets should call close and delete
 		closeErr := walrusBucket.CloseAndDelete(ctx)
 		if closeErr != nil {
-			tbp.Logf(ctx, "Unexpected error closing persistent %s bucket: %v", typeName, closeErr)
+			tbp.Fatalf(ctx, "Unexpected error closing persistent %s bucket: %v", typeName, closeErr)
+			return
 		}
-
+		tbp.rosmarBuckets.ReleaseBucketIdx(bucketIdx)
 	}
 }
 

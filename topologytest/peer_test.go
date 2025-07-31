@@ -237,7 +237,7 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 	case PeerTypeCouchbaseServer:
 		bucket, ok := buckets[opts.BucketID]
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)
-		sourceID, err := xdcr.GetSourceID(base.TestCtx(t), bucket)
+		sourceID, err := base.GetSourceID(base.TestCtx(t), bucket)
 		require.NoError(t, err)
 		p := &CouchbaseServerPeer{
 			name:               name,
