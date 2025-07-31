@@ -30,7 +30,7 @@ func (h *handler) handleGetDoc() error {
 	revid := h.getQuery("rev")
 	openRevs := h.getQuery("open_revs")
 	showExp := h.getBoolQuery("show_exp")
-	showCV := h.getBoolQuery("show_cv")
+	const showCV = true // Post-beta 4.0 _always_ returns CV - negligible impact to revtree-only clients and promotes CV as the preferred OCC value
 
 	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
 		return h.handleGetDocReplicator2(docid, revid)
@@ -74,7 +74,8 @@ func (h *handler) handleGetDoc() error {
 			HistoryFrom:      revsFrom,
 			AttachmentsSince: attachmentsSince,
 			ShowExp:          showExp,
-			ShowCV:           showCV})
+			ShowCV:           showCV,
+		})
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
 				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
@@ -141,7 +142,8 @@ func (h *handler) handleGetDoc() error {
 						HistoryFrom:      revsFrom,
 						AttachmentsSince: attachmentsSince,
 						ShowExp:          showExp,
-						ShowCV:           showCV})
+						ShowCV:           showCV,
+					})
 					if err != nil {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
@@ -168,7 +170,8 @@ func (h *handler) handleGetDoc() error {
 					HistoryFrom:      revsFrom,
 					AttachmentsSince: attachmentsSince,
 					ShowExp:          showExp,
-					ShowCV:           showCV})
+					ShowCV:           showCV,
+				})
 				if err != nil {
 					revBody = db.Body{"missing": revid} // TODO: More specific error
 				} else {

@@ -21,7 +21,6 @@ get:
     - $ref: ../../components/parameters.yaml#/rev
     - $ref: ../../components/parameters.yaml#/open_revs
     - $ref: ../../components/parameters.yaml#/show_exp
-    - $ref: ../../components/parameters.yaml#/show_cv
     - $ref: ../../components/parameters.yaml#/revs_from
     - $ref: ../../components/parameters.yaml#/atts_since
     - $ref: ../../components/parameters.yaml#/revs_limit

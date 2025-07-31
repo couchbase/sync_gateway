@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -131,71 +132,105 @@ func (sd *SyncData) getCurrentChannels() base.Set {
 	return ch
 }
 
-func (sd *SyncData) HashRedact(salt string) SyncData {
-
-	// Creating a new SyncData with the redacted info. We copy all the information which stays the same and create new
-	// items for the redacted data. The data to be redacted is populated below.
-	redactedSyncData := SyncData{
-		CurrentRev:          sd.CurrentRev,
-		NewestRev:           sd.NewestRev,
-		Flags:               sd.Flags,
-		Sequence:            sd.Sequence,
-		UnusedSequences:     sd.UnusedSequences,
-		RecentSequences:     sd.RecentSequences,
-		History:             RevTree{},
-		Channels:            channels.ChannelMap{},
-		Access:              UserAccessMap{},
-		RoleAccess:          UserAccessMap{},
-		Expiry:              sd.Expiry,
-		Cas:                 sd.Cas,
-		Crc32c:              sd.Crc32c,
-		TombstonedAt:        sd.TombstonedAt,
-		AttachmentsPre4dot0: AttachmentsMeta{},
+// RedactRawGlobalSyncData runs HashRedact on the given global sync data.
+func RedactRawGlobalSyncData(syncData []byte, redactSalt string) ([]byte, error) {
+	if redactSalt == "" {
+		return nil, fmt.Errorf("redact salt must be set")
 	}
 
-	// Populate and redact channels
+	var gsd GlobalSyncData
+	if err := json.Unmarshal(syncData, &gsd); err != nil {
+		return nil, fmt.Errorf("couldn't unmarshal sync data: %w", err)
+	}
+
+	if err := gsd.HashRedact(redactSalt); err != nil {
+		return nil, fmt.Errorf("couldn't redact global sync data: %w", err)
+	}
+
+	return json.Marshal(gsd)
+}
+
+// HashRedact does in-place redaction of UserData inside GlobalSyncData, by hashing attachment names.
+func (gsd *GlobalSyncData) HashRedact(salt string) error {
+	for k, v := range gsd.GlobalAttachments {
+		gsd.GlobalAttachments[base.Sha1HashString(k, salt)] = v
+		delete(gsd.GlobalAttachments, k)
+	}
+	return nil
+}
+
+// RedactRawSyncData runs HashRedact on the given sync data.
+func RedactRawSyncData(syncData []byte, redactSalt string) ([]byte, error) {
+	if redactSalt == "" {
+		return nil, fmt.Errorf("redact salt must be set")
+	}
+
+	var sd SyncDataAlias
+	if err := json.Unmarshal(syncData, &sd); err != nil {
+		return nil, fmt.Errorf("couldn't unmarshal sync data: %w", err)
+	}
+
+	if err := sd.HashRedact(redactSalt); err != nil {
+		return nil, fmt.Errorf("couldn't redact sync data: %w", err)
+	}
+
+	return json.Marshal(sd)
+}
+
+// HashRedact does in-place redaction of UserData inside SyncData, by hashing channel names, user access, role access, and attachment names.
+func (sd *SyncDataAlias) HashRedact(salt string) error {
+
+	// Redact channel names
 	for k, v := range sd.Channels {
-		redactedSyncData.Channels[base.Sha1HashString(k, salt)] = v
+		sd.Channels[base.Sha1HashString(k, salt)] = v
+		delete(sd.Channels, k)
+	}
+	for i, v := range sd.ChannelSet {
+		sd.ChannelSet[i].Name = base.Sha1HashString(v.Name, salt)
+	}
+	for i, v := range sd.ChannelSetHistory {
+		sd.ChannelSetHistory[i].Name = base.Sha1HashString(v.Name, salt)
 	}
 
-	// Populate and redact history. This is done as it also includes channel names
+	// Redact history. This is done as it also includes channel names
 	for k, revInfo := range sd.History {
-
 		if revInfo.Channels != nil {
-			redactedChannels := base.Set{}
+			redactedChannels := make(base.Set, len(revInfo.Channels))
 			for existingChanKey := range revInfo.Channels {
 				redactedChannels.Add(base.Sha1HashString(existingChanKey, salt))
 			}
 			revInfo.Channels = redactedChannels
 		}
-
-		redactedSyncData.History[k] = revInfo
+		sd.History[k] = revInfo
 	}
 
-	// Populate and redact user access
+	// Redact user access
 	for k, v := range sd.Access {
 		accessTimerSet := map[string]channels.VbSequence{}
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
-		redactedSyncData.Access[base.Sha1HashString(k, salt)] = accessTimerSet
+		sd.Access[base.Sha1HashString(k, salt)] = accessTimerSet
+		delete(sd.Access, k)
 	}
 
-	// Populate and redact user role access
+	// Redact user role access
 	for k, v := range sd.RoleAccess {
 		accessTimerSet := map[string]channels.VbSequence{}
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
-		redactedSyncData.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
+		sd.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
+		delete(sd.RoleAccess, k)
 	}
 
-	// Populate and redact attachment names
+	// Redact attachment names (pre-4.0 attachment location)
 	for k, v := range sd.AttachmentsPre4dot0 {
-		redactedSyncData.AttachmentsPre4dot0[base.Sha1HashString(k, salt)] = v
+		sd.AttachmentsPre4dot0[base.Sha1HashString(k, salt)] = v
+
 	}
 
-	return redactedSyncData
+	return nil
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.

@@ -1789,46 +1789,63 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car"}`), 409)
 }
 
+// TestRawRedaction tests the /_raw endpoint with and without redaction
+// intentionally does string matching on redactable strings to avoid any regressions if we move around metadata without updating the test
 func TestRawRedaction(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
-	rest.RequireStatus(t, res, http.StatusCreated)
+	_ = rt.PutDoc("testdoc", `{"foo":"bar", "channels": ["achannel"], "_attachments": {"myattachment": {"data":"c29tZSBkYXRh", "content_type":"text/plain"}}}`)
 
 	// Test redact being disabled by default
-	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
-	var body map[string]interface{}
-	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	syncData := body[base.SyncPropertyName]
-	assert.Equal(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.Equal(t, []interface{}{[]interface{}{"achannel"}}, syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	res := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
+	rest.RequireStatus(t, res, http.StatusOK)
+	rawResponseStr := res.Body.String()
+	assert.Contains(t, rawResponseStr, "achannel")       // channel name
+	assert.Contains(t, rawResponseStr, `"foo":"bar"`)    // doc body
+	assert.Contains(t, rawResponseStr, `"myattachment"`) // attachment name
+	// check all requested xattrs are present, even in the values are `null`
+	if base.TestUseXattrs() {
+		for _, xattrName := range base.SyncGatewayRawDocXattrs {
+			assert.Contains(t, rawResponseStr, `"`+xattrName+`":`)
+		}
+	} else {
+		// test framework won't allow the test to get this far in 4.0 but in case this is backported, let it fail, since the assertions will need to be tailored
+		t.Fatalf("inline sync data is not a supported configuration in 4.0+")
+	}
 
 	// Test redacted
-	body = map[string]interface{}{}
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?redact=true&include_doc=false", ``)
-	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	syncData = body[base.SyncPropertyName]
-	require.NotNil(t, syncData)
-	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.NotEqual(t, []interface{}{[]interface{}{"achannel"}}, syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	rest.RequireStatus(t, res, http.StatusOK)
+	rawResponseStr = res.Body.String()
+	assert.NotContains(t, rawResponseStr, "achannel")      // channel name should not be present
+	assert.NotContains(t, rawResponseStr, "myattachment")  // attachment name should not be present
+	assert.Contains(t, rawResponseStr, "attachments_meta") // check we have _some_ attachment metadata though
+	assert.Contains(t, rawResponseStr, "text/plain")       // check we have _some_ attachment metadata though
+	assert.NotContains(t, rawResponseStr, "foo")           // doc body should not be present
+	assert.NotContains(t, rawResponseStr, "bar")           // doc body should not be present
 
 	// Test include doc false doesn't return doc
-	body = map[string]interface{}{}
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=false", ``)
-	assert.NotContains(t, res.Body.String(), "foo")
+	rest.RequireStatus(t, res, http.StatusOK)
+	rawResponseStr = res.Body.String()
+	assert.Contains(t, rawResponseStr, "achannel")     // channel name should be present
+	assert.Contains(t, rawResponseStr, "myattachment") // attachment name should be present
+	assert.NotContains(t, rawResponseStr, "foo")       // doc body should not be present
+	assert.NotContains(t, rawResponseStr, "bar")       // doc body should not be present
 
 	// Test doc is returned by default
-	body = map[string]interface{}{}
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
-	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.Equal(t, body["foo"], "bar")
+	rest.RequireStatus(t, res, http.StatusOK)
+	rawResponseStr = res.Body.String()
+	assert.Contains(t, rawResponseStr, `"foo":"bar"`)
 
 	// Test that you can't use include_doc and redact at the same time
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=true&redact=true", ``)
+	rest.RequireStatus(t, res, http.StatusBadRequest)
+
+	// Salt without redaction not allowed
+	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?redact=false&salt=asdf", ``)
 	rest.RequireStatus(t, res, http.StatusBadRequest)
 }
 
@@ -1844,21 +1861,27 @@ func TestRawTombstone(t *testing.T) {
 	version := rest.DocVersionFromPutResponse(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
-	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+version.RevTreeID+`"`)
-	assert.Contains(t, string(resp.BodyBytes()), `"foo":"bar"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
+	rawResponseStr := resp.Body.String()
+	assert.NotContains(t, rawResponseStr, `"_id":"`+docID+`"`)
+	assert.NotContains(t, rawResponseStr, `"_rev":"`+version.RevTreeID+`"`)
+	assert.Contains(t, rawResponseStr, `"foo":"bar"`)
+	assert.NotContains(t, rawResponseStr, `"_deleted":true`)
 
 	// Delete the doc
 	deletedVersion := rt.DeleteDoc(docID, version)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
-	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+deletedVersion.RevTreeID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"foo":"bar"`)
-	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
+	rawResponseStr = resp.Body.String()
+	assert.NotContains(t, rawResponseStr, `"_id":"`+docID+`"`)
+	assert.NotContains(t, rawResponseStr, `"_rev":"`+deletedVersion.RevTreeID+`"`)
+	assert.NotContains(t, rawResponseStr, `"foo":"bar"`)
+	var sd rest.RawDocResponse
+	require.NoError(t, base.JSONUnmarshal([]byte(rawResponseStr), &sd))
+	assert.Equal(t, 1, int(sd.Xattrs.Sync.Flags&channels.Deleted))
 }
 
 func TestHandleCreateDB(t *testing.T) {
@@ -2110,9 +2133,10 @@ func TestHandleDeleteDB(t *testing.T) {
 	// Try to delete the database which doesn't exists
 	resp := rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, string(resp.BodyBytes()), "no such database")
+	rawResponseStr := resp.Body.String()
+	assert.Contains(t, rawResponseStr, "no such database")
 	var v map[string]interface{}
-	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", string(resp.BodyBytes()))
+	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", rawResponseStr)
 
 	// Create the database
 	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", `{"server":"walrus:"}`)
@@ -3016,7 +3040,7 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	// Get config values before taking db offline
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	require.Equal(t, http.StatusOK, resp.Code)
-	dbConfigBeforeOffline := string(resp.BodyBytes())
+	dbConfigBeforeOffline := resp.BodyString()
 
 	// Take DB offline
 	resp = rt.SendAdminRequest("POST", "/db/_offline", "")
@@ -3025,7 +3049,7 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	// Check offline config matches online config
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, dbConfigBeforeOffline, string(resp.BodyBytes()))
+	assert.Equal(t, dbConfigBeforeOffline, resp.BodyString())
 }
 
 func TestDbOfflineConfigPersistent(t *testing.T) {

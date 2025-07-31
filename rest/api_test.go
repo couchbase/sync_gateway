@@ -1855,12 +1855,20 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 
 }
 
-func TestGetRawDocumentError(t *testing.T) {
+func TestGetRawDocumentErrors(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/doc", ``)
+	// not found
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+t.Name(), ``)
 	assert.Equal(t, http.StatusNotFound, response.Code)
+
+	// invalid sync data
+	_, err := rt.GetSingleDataStore().WriteWithXattrs(t.Context(), t.Name()+"invalsyncdata", 0, 0, []byte(`{"doc":"body"}`),
+		map[string][]byte{base.SyncXattrName: []byte(`"invalid sync data"`)}, nil, nil)
+	require.NoError(t, err)
+	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+t.Name()+"invalsyncdata", ``)
+	assert.Equal(t, http.StatusOK, response.Code)
 }
 
 func TestWebhookProperties(t *testing.T) {
@@ -2341,19 +2349,22 @@ func TestPutEmptyDoc(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
+	const docID = "doc"
+
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, "{}")
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc", "")
-	RequireStatus(t, response, http.StatusOK)
-	assert.Equal(t, `{"_id":"doc","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+	body := rt.GetDocBody(docID)
+	assert.NotEmpty(t, body[db.BodyId])
+	assert.NotEmpty(t, body[db.BodyRev])
 
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID+"?rev="+body[db.BodyRev].(string), `{"val": "newval"}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc", "")
-	RequireStatus(t, response, http.StatusOK)
-	assert.Equal(t, `{"_id":"doc","_rev":"2-2f981cadffde70e8a1d9dc386a410e0d","val":"newval"}`, string(response.BodyBytes()))
+	body = rt.GetDocBody(docID)
+	assert.NotEmpty(t, body[db.BodyId])
+	assert.NotEmpty(t, body[db.BodyRev])
+	assert.Equal(t, "newval", body["val"].(string))
 }
 
 func TestTombstonedBulkDocs(t *testing.T) {

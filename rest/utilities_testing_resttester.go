@@ -46,24 +46,33 @@ func (rt *RestTester) UpdateTB(t *testing.T) {
 
 // GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocBody(docID string) db.Body {
-	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-	RequireStatus(rt.TB(), rawResponse, 200)
+	return rt.GetDocBodyFromKeyspace("{{.keyspace}}", docID)
+}
+
+// GetDocBodyFromKeyspace returns the doc body for the given docID in the specified keyspace. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDocBodyFromKeyspace(keyspace, docID string) db.Body {
+	rawResponse := rt.SendAdminRequest("GET", "/"+keyspace+"/"+docID, "")
+	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	require.NotNil(rt.TB(), body)
 	return body
 }
 
 // GetDoc returns the doc body and version for the given docID. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-	RequireStatus(rt.TB(), rawResponse, 200)
+	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-	var r struct {
-		RevID *string `json:"_rev"`
-	}
-	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &r))
-	return DocVersion{RevTreeID: *r.RevID}, body
+	version, err := db.ParseVersion(body[db.BodyCV].(string))
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevTreeID: body[db.BodyRev].(string), CV: version}, body
+}
+
+// TriggerOnDemandImport will use the REST API to trigger on an demand import via GET. This function intentionally does not check error codes in case the document does not exist or is invalid to be imported.
+func (rt *RestTester) TriggerOnDemandImport(docID string) {
+	_ = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", docID), "")
 }
 
 // GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
@@ -84,7 +93,7 @@ func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
 
 // PutDoc will upsert the document with a given contents.
 func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
-	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s?show_cv=true", rt.GetSingleKeyspace(), docID), body)
+	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
 	RequireStatus(rt.TB(), rawResponse, 201)
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
 }
@@ -130,7 +139,7 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		require.NotEqual(rt.TB(), "", version.CV.String(), "Expected CV if RevTreeID in WaitForVersion")
 	}
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?show_cv=true", "")
+		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 		if !assert.Contains(c, []int{200, 201}, rawResponse.Code, "Unexpected status code for %s", rawResponse.Body.String()) {
 			return
 		}
@@ -140,7 +149,7 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 			assert.Equal(c, version.RevTreeID, body.ExtractRev())
 		}
 		if !version.CV.IsEmpty() {
-			assert.Equal(c, version.CV.String(), body["_cv"].(string))
+			assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
 		}
 	}, 10*time.Second, 50*time.Millisecond)
 }
@@ -491,3 +500,47 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 	}
 	return rt.PutDocDirectly(docID, rawBody)
 }
+
+type RawDocResponse struct {
+	Xattrs RawDocXattrs `json:"_xattrs"`
+}
+
+// RawDocXattrs is a non-exhaustive set of xattrs returned by the _raw endpoint. Used for test assertions.
+// TODO: Replace with JSON v2's inline - this implementation puts well-known fields into the "other" map as well, which isn't great but not worth fixing.
+type RawDocXattrs struct {
+	RawDocXattrsWellKnown
+	RawDocXattrsOthers
+}
+
+// RawDocXattrsWellKnown contains well known fields - see RawDocXattrsOthers for those not known until runtime.
+type RawDocXattrsWellKnown struct {
+	Sync       db.SyncDataJSON `json:"_sync"`
+	GlobalSync map[string]any  `json:"_globalSync"`
+	VV         map[string]any  `json:"_vv"`
+	MOU        map[string]any  `json:"_mou"`
+}
+
+// RawDocXattrsOthers contains fields that can only be known at runtime (e.g. user xattr names)
+type RawDocXattrsOthers map[string]any
+
+func (t *RawDocXattrs) MarshalJSON() ([]byte, error) {
+	// overwrite fields in Main into Extra
+	data, err := json.Marshal(t.RawDocXattrsWellKnown)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &t.RawDocXattrsOthers); err != nil {
+		return nil, err
+	}
+	return json.Marshal(t.RawDocXattrsOthers)
+}
+
+func (t *RawDocXattrs) UnmarshalJSON(p []byte) error {
+	// unmarshal others first - and overwrite with known fields after
+	if err := json.Unmarshal(p, &t.RawDocXattrsOthers); err != nil {
+		return err
+	}
+	return json.Unmarshal(p, &t.RawDocXattrsWellKnown)
+}
+
+var _ json.Unmarshaler = &RawDocXattrs{}
