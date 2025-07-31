@@ -298,14 +298,6 @@ func ValidateDatabaseName(dbName string) error {
 	return nil
 }
 
-// getNewDatabaseSleeperFunc returns a sleeper function during database connection
-func getNewDatabaseSleeperFunc() base.RetrySleeper {
-	return base.CreateDoublingSleeperFunc(
-		13, // MaxNumRetries approx 40 seconds total retry duration
-		5,  // InitialRetrySleepTimeMS
-	)
-}
-
 // connectToBucketErrorHandling takes the given spec and error and returns a formatted error, along with whether it was a fatal error.
 func connectToBucketErrorHandling(ctx context.Context, spec base.BucketSpec, gotErr error) (fatalError bool, err error) {
 	if gotErr != nil {
@@ -352,28 +344,12 @@ func ConnectToBucket(ctx context.Context, spec base.BucketSpec, failFast bool) (
 	}
 
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
-	err, ibucket := base.RetryLoop(ctx, description, worker, getNewDatabaseSleeperFunc())
+	err, ibucket := base.RetryLoop(ctx, description, worker, base.GetNewDatabaseSleeperFunc())
 	if err != nil {
 		return nil, err
 	}
 
 	return ibucket.(base.Bucket), nil
-}
-
-// GetServerUUID returns Couchbase Server Cluster UUID on a timeout. If running against rosmar, do return an empty string.
-func GetServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
-	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
-	if err != nil {
-		return "", nil
-	}
-	// start a retry loop to get server ID
-	worker := func() (bool, error, interface{}) {
-		uuid, err := base.GetServerUUID(ctx, gocbV2Bucket)
-		return err != nil, err, uuid
-	}
-
-	err, uuid := base.RetryLoop(ctx, "Getting ServerUUID", worker, getNewDatabaseSleeperFunc())
-	return uuid.(string), err
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
@@ -400,7 +376,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	serverUUID, err := GetServerUUID(ctx, bucket)
+	serverUUID, err := base.GetServerUUID(ctx, bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -422,7 +398,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	if err != nil {
 		return nil, err
 	}
-	sourceID, err := CreateEncodedSourceID(bucketUUID, serverUUID)
+	sourceID, err := base.GetSourceID(ctx, bucket)
 	if err != nil {
 		return nil, err
 	}
