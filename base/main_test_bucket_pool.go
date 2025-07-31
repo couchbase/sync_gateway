@@ -439,16 +439,15 @@ func (tbp *TestBucketPool) Close(ctx context.Context) {
 	}
 
 	if tbp.cluster != nil {
+	bucketLoop:
 		for _ = range tbp.numBuckets {
-			if len(tbp.readyBucketPool) == 0 {
-				break
+			select {
+			case bucket := <-tbp.readyBucketPool:
+				tbp.Logf(ctx, "Closing bucket %s", bucket.GetName())
+				bucket.Close(ctx)
+			default:
+				break bucketLoop
 			}
-			bucket, ok := <-tbp.readyBucketPool
-			if !ok {
-				break
-			}
-			tbp.Logf(ctx, "Closing bucket %s", bucket.GetName())
-			bucket.Close(ctx)
 		}
 		if err := tbp.cluster.close(); err != nil {
 			tbp.Logf(ctx, "Couldn't close cluster connection: %v", err)
