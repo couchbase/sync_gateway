@@ -36,16 +36,13 @@ var GTestBucketPool *TestBucketPool
 // tracker is to be able to name in low sequential orders like Couchbase Server bucket pool: rosmar0, rosmar1, etc.
 type rosmarTracker struct {
 	lock          sync.Mutex
-	activeBuckets map[int]bool
+	activeBuckets []bool
 }
 
 // newRosmarTracker initializes a new rosmarTracker with the specified number of buckets.
 func newRosmarTracker(numBuckets int) *rosmarTracker {
 	r := &rosmarTracker{
-		activeBuckets: make(map[int]bool, numBuckets),
-	}
-	for i := range numBuckets {
-		r.activeBuckets[i] = false
+		activeBuckets: make([]bool, numBuckets),
 	}
 	return r
 }
@@ -56,8 +53,8 @@ func (r *rosmarTracker) GetNextBucketIdx() (int, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	// iterate over len of activeBuckets to find the first lexicographically in a map
-	for i := range len(r.activeBuckets) {
-		if !r.activeBuckets[i] {
+	for i, active := range r.activeBuckets {
+		if !active {
 			r.activeBuckets[i] = true
 			return i, nil
 		}
