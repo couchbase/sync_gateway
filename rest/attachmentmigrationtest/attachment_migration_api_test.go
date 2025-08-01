@@ -242,7 +242,7 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 				"stub":         true,
 				"ver":          2,
 			},
-		}, doc.Attachments)
+		}, doc.Attachments())
 		require.Equal(t, db.AttachmentMap{
 			"myatt": {
 				ContentType: "text/plain",
@@ -253,7 +253,7 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 				Version:     2,
 			},
 		}, db.GetRawGlobalSyncAttachments(t, collection.GetCollectionDatastore(), key))
-		require.Empty(t, db.GetRawSyncXattr(t, collection.GetCollectionDatastore(), key).Attachments)
+		require.Empty(t, db.GetRawSyncXattr(t, collection.GetCollectionDatastore(), key).AttachmentsPre4dot0)
 	}
 
 	// Move some subset of the documents attachment metadata from global sync to sync data
