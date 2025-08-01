@@ -152,9 +152,9 @@ func RedactRawGlobalSyncData(syncData []byte, redactSalt string) ([]byte, error)
 
 // HashRedact does in-place redaction of UserData inside GlobalSyncData, by hashing attachment names.
 func (gsd *GlobalSyncData) HashRedact(salt string) error {
-	for k, v := range gsd.GlobalAttachments {
-		gsd.GlobalAttachments[base.Sha1HashString(k, salt)] = v
-		delete(gsd.GlobalAttachments, k)
+	for k, v := range gsd.Attachments {
+		gsd.Attachments[base.Sha1HashString(k, salt)] = v
+		delete(gsd.Attachments, k)
 	}
 	return nil
 }
