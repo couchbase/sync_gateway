@@ -315,7 +315,7 @@ func (cd *clientDoc) _resolveConflict(ctx context.Context, opts resolveConflictO
 
 	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
 	if latestLocalRev.version.CV.Equal(opts.incomingVersion) {
-		require.FailNowf(opts.t, "incoming revision is equal to client revision", "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", opts.incomingVersion, clientCV)
+		require.FailNowf(opts.t, fmt.Sprintf("incoming revision %#+v is equal to client revision %#+v - this should've been filtered via changes response before ending up as a rev", opts.incomingVersion, clientCV))
 	}
 	if opts.incomingVersion.SourceID == clientCV.SourceID {
 		// incomingVersion has the same sourceID as the local version.
@@ -388,11 +388,11 @@ type resolveConflictOptions struct {
 	hlv *db.HybridLogicalVector
 	// hlc is the HybridLogicalClock used to generate new versions if the incoming version loses the conflict resolution
 	hlc *rosmar.HybridLogicalClock
-	// localSourceID is generate new versions if the incoming version loses the conflict resolution
+	// localSourceID is used to generate new versions if the incoming version loses the conflict resolution
 	localSourceID string
 	// conflictResolver represents the type of conflict resolution to use
 	conflictResolver BlipTesterClientConflictResolverType
-	// usingRevTree indicates whether the client is using revTrees. If using revtrees, neither MWW/LWW are implemented yet and it is always resolved as remoteWins.
+	// usingRevTree indicates whether the client is using revtrees. If using revtrees, neither MWW/LWW are implemented yet and it is always resolved as remoteWins.
 	usingRevTree bool
 }
 

@@ -3584,10 +3584,8 @@ func TestBlipPullConflict(t *testing.T) {
 		)
 		rt.CreateUser(username, []string{"*"})
 		docID := "doc1"
-		// CBG-3778 won't need a round trip to get a version
 		sgVersion := rt.PutDocDirectly(docID, db.Body{"actor": "sg"})
 
-		fmt.Printf("sgVersion: %s\n", sgVersion)
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, Username: "alice"}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
