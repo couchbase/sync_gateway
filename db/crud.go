@@ -361,20 +361,36 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 //   - attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //     revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //     that hasn't changed since one of those revisions will be returned as a stub.
-func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string) (revision DocumentRevision, err error) {
-	if revid != "" {
+func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV string, maxHistory int, historyFrom []string) (DocumentRevision, error) {
+	var (
+		revID *string
+		cv    *Version
+	)
+
+	var (
+		revision DocumentRevision
+		getErr   error
+	)
+	if revOrCV != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.GetWithRev(ctx, docid, revid, RevCacheOmitDelta)
+		if currentVersion, parseErr := ParseVersion(revOrCV); parseErr != nil {
+			// try as a rev ID
+			revID = &revOrCV
+			revision, getErr = db.revisionCache.GetWithRev(ctx, docid, *revID, RevCacheOmitDelta)
+		} else {
+			cv = &currentVersion
+			revision, getErr = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta)
+		}
 	} else {
-		// No rev ID given, so load active revision
-		revision, err = db.revisionCache.GetActive(ctx, docid)
+		// No rev given, so load active revision
+		revision, getErr = db.revisionCache.GetActive(ctx, docid)
 	}
-	if err != nil {
-		return DocumentRevision{}, err
+	if getErr != nil {
+		return DocumentRevision{}, getErr
 	}
 
-	return db.documentRevisionForRequest(ctx, docid, revision, &revid, nil, maxHistory, historyFrom)
+	return db.documentRevisionForRequest(ctx, docid, revision, revID, cv, maxHistory, historyFrom)
 }
 
 // documentRevisionForRequest processes the given DocumentRevision and returns a version of it for a given client request, depending on access, deleted, etc.

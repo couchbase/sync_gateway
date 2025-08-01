@@ -102,6 +102,15 @@ get:
       schema:
         type: boolean
         default: false
+    - name: version_type
+      in: query
+      description: The type of document versioning to use for the changes feed.
+      schema:
+        type: string
+        default: rev
+        enum:
+          - rev
+          - cv
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed
@@ -166,6 +175,13 @@ post:
               description: 'When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.'
               type: boolean
               default: false
+            version_type:
+              description: The type of document versioning to use for the changes feed.
+              type: string
+              default: rev
+              enum:
+                - rev
+                - cv
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed

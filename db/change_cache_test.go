@@ -534,7 +534,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:           "doc-1",
-		Changes:      []ChangeRev{{"rev": "1-a"}},
+		Changes:      []ChangeByVersionType{{"rev": "1-a"}},
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := changes[len(changes)-1].Seq
@@ -568,7 +568,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3, LowSeq: 3},
 		ID:           "doc-3",
-		Changes:      []ChangeRev{{"rev": "1-a"}},
+		Changes:      []ChangeByVersionType{{"rev": "1-a"}},
 		collectionID: collectionID,
 	}, changes[0])
 
@@ -722,7 +722,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	require.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:           "doc-1",
-		Changes:      []ChangeRev{{"rev": "1-a"}},
+		Changes:      []ChangeByVersionType{{"rev": "1-a"}},
 		collectionID: collectionID}, changes[0])
 
 	// Test backfill clear - sequence numbers go back to standard handling

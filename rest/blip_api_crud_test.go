@@ -2342,7 +2342,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
-		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+		RequireChangeRev(t, version, changes.Results[0].Changes[0])
 
 		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
@@ -2351,7 +2351,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
-		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+		RequireChangeRev(t, version, changes.Results[0].Changes[0])
 
 		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
@@ -2362,11 +2362,11 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		changes = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		assert.Equal(t, "doc", changes.Results[0].ID)
-		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+		RequireChangeRev(t, version, changes.Results[0].Changes[0])
 		assert.Equal(t, "3-1bc9dd04c8a257ba28a41eaad90d32de", changes.Results[0].Changes[0]["rev"])
 		assert.False(t, changes.Results[0].Revoked)
 		assert.Equal(t, "docmarker", changes.Results[1].ID)
-		RequireChangeRevVersion(t, docMarkerVersion, changes.Results[1].Changes[0])
+		RequireChangeRev(t, docMarkerVersion, changes.Results[1].Changes[0])
 		assert.Equal(t, "1-999bcad4aab47f0a8a24bd9d3598060c", changes.Results[1].Changes[0]["rev"])
 		assert.False(t, changes.Results[1].Revoked)
 
@@ -2427,7 +2427,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 		changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
-		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+		RequireChangeRev(t, version, changes.Results[0].Changes[0])
 
 		btcRunner.StartOneshotPull(btc.id)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
@@ -2438,7 +2438,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		// At this point changes should send revocation, as document isn't in any of the user's channels
 		changes = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		assert.Equal(t, docID, changes.Results[0].ID)
-		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+		RequireChangeRev(t, version, changes.Results[0].Changes[0])
 
 		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: "A", Continuous: false})
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)

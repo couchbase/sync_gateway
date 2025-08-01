@@ -120,11 +120,11 @@ func parseIntegerSequenceID(str string) (SequenceID, error) {
 			return SequenceID{}, err
 		}
 	} else {
-		return SequenceID{}, base.HTTPErrorf(400, "Invalid sequence")
+		return SequenceID{}, base.HTTPErrorf(400, "Invalid sequence: %q", str)
 	}
 
 	if err != nil {
-		return SequenceID{}, base.HTTPErrorf(400, "Invalid sequence")
+		return SequenceID{}, base.HTTPErrorf(400, "Invalid sequence: %q", str)
 	}
 	return s, nil
 }
