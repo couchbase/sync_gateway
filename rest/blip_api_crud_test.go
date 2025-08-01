@@ -3592,11 +3592,13 @@ func TestBlipPullConflict(t *testing.T) {
 
 		client := btcRunner.SingleCollection(btc.id)
 		preConflictCBLVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(cblBody))
+		require.NotEqual(t, sgVersion, preConflictCBLVersion)
 
 		btcRunner.StartOneshotPull(btc.id)
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.NotEqual(t, sgVersion, preConflictCBLVersion)
+			_, _, postConflictCBLVersion := client.GetDoc(docID)
+			assert.NotEqual(t, sgVersion, postConflictCBLVersion)
 		}, time.Second*10, time.Millisecond*10, "Expected sgVersion and cblVersion to be different")
 
 		postConflictDoc, postConflictHLV, postConflictVersion := client.GetDoc(docID)
