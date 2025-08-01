@@ -2420,11 +2420,15 @@ func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion 
 	var r struct {
 		DocID *string `json:"id"`
 		RevID *string `json:"rev"`
+		CV    *string `json:"cv"`
 	}
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return DocVersion{RevTreeID: *r.RevID}
+	require.NotNil(t, r.CV, "expecting non-nil conflict vector from response: %s", string(response.BodyBytes()))
+	cv, err := db.ParseVersion(*r.CV)
+	require.NoError(t, err, "invalid CV from response: %s", string(response.BodyBytes()))
+	return DocVersion{RevTreeID: *r.RevID, CV: cv}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {

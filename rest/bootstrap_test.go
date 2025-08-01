@@ -75,7 +75,13 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	resp = BootstrapAdminRequest(t, sc, http.MethodGet, "/db1/doc1", ``)
 	resp.RequireStatus(http.StatusNotFound)
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/doc1", `{"foo":"bar"}`)
-	resp.RequireResponse(http.StatusCreated, `{"id":"doc1","ok":true,"rev":"1-cd809becc169215072fd567eebd8b8de"}`)
+	resp.RequireStatus(http.StatusCreated)
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &body))
+	// check for CV existence, but delete it since the value wil differ each time
+	require.Contains(t, body, "cv")
+	delete(body, "cv")
+	require.Equal(t, db.Body{"id": "doc1", "ok": true, "rev": "1-cd809becc169215072fd567eebd8b8de"}, body)
 	resp = BootstrapAdminRequest(t, sc, http.MethodGet, "/db1/doc1", ``)
 	resp.RequireStatus(http.StatusOK)
 	assert.Contains(t, resp.Body, `"foo":"bar"`)

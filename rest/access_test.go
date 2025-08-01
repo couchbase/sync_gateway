@@ -1144,7 +1144,7 @@ func TestAllDocsCV(t *testing.T) {
 	defer rt.Close()
 
 	const docID = "foo"
-	docVersion := rt.PutDocDirectly(docID, db.Body{"foo": "bar"})
+	docVersion := rt.PutDoc(docID, `{"foo": "bar"}`)
 
 	testCases := []struct {
 		name   string
