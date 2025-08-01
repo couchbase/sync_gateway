@@ -466,7 +466,7 @@ func TestChangesVersionType(t *testing.T) {
 		changesRequestQueryParams string
 		changesRequestBody        string
 		expectedStatus            int
-		expectedVersionType       string
+		expectedVersionType       db.ChangesVersionType
 		expectedDocs              int
 	}{
 		{
@@ -480,7 +480,7 @@ func TestChangesVersionType(t *testing.T) {
 			changesRequestMethod:      http.MethodGet,
 			changesRequestQueryParams: "",
 			expectedStatus:            http.StatusOK,
-			expectedVersionType:       "rev",
+			expectedVersionType:       db.ChangesVersionTypeRevTreeID,
 			expectedDocs:              2,
 		},
 		{
@@ -488,7 +488,7 @@ func TestChangesVersionType(t *testing.T) {
 			changesRequestMethod:      http.MethodGet,
 			changesRequestQueryParams: "?version_type=rev",
 			expectedStatus:            http.StatusOK,
-			expectedVersionType:       "rev",
+			expectedVersionType:       db.ChangesVersionTypeRevTreeID,
 			expectedDocs:              2,
 		},
 		{
@@ -496,7 +496,7 @@ func TestChangesVersionType(t *testing.T) {
 			changesRequestMethod:      http.MethodGet,
 			changesRequestQueryParams: "?version_type=cv",
 			expectedStatus:            http.StatusOK,
-			expectedVersionType:       "cv",
+			expectedVersionType:       db.ChangesVersionTypeCV,
 			expectedDocs:              2,
 		},
 		{
@@ -504,7 +504,7 @@ func TestChangesVersionType(t *testing.T) {
 			changesRequestMethod:      http.MethodGet,
 			changesRequestQueryParams: "?version_type=rev&filter=_doc_ids&doc_ids=doc1",
 			expectedStatus:            http.StatusOK,
-			expectedVersionType:       "rev",
+			expectedVersionType:       db.ChangesVersionTypeRevTreeID,
 			expectedDocs:              1,
 		},
 		{
@@ -512,7 +512,7 @@ func TestChangesVersionType(t *testing.T) {
 			changesRequestMethod:      http.MethodGet,
 			changesRequestQueryParams: "?version_type=cv&filter=_doc_ids&doc_ids=doc1",
 			expectedStatus:            http.StatusOK,
-			expectedVersionType:       "cv",
+			expectedVersionType:       db.ChangesVersionTypeCV,
 			expectedDocs:              1,
 		},
 		{
@@ -521,7 +521,7 @@ func TestChangesVersionType(t *testing.T) {
 			changesRequestQueryParams: "",
 			changesRequestBody:        `{"version_type":"rev"}`,
 			expectedStatus:            http.StatusOK,
-			expectedVersionType:       "rev",
+			expectedVersionType:       db.ChangesVersionTypeRevTreeID,
 			expectedDocs:              2,
 		},
 		{
@@ -530,7 +530,7 @@ func TestChangesVersionType(t *testing.T) {
 			changesRequestQueryParams: "",
 			changesRequestBody:        `{"version_type":"cv"}`,
 			expectedStatus:            http.StatusOK,
-			expectedVersionType:       "cv",
+			expectedVersionType:       db.ChangesVersionTypeCV,
 			expectedDocs:              2,
 		},
 		{
@@ -539,7 +539,7 @@ func TestChangesVersionType(t *testing.T) {
 			changesRequestQueryParams: "",
 			changesRequestBody:        `{"version_type":"cv", "filter":"_doc_ids", "doc_ids":["doc1"]}`,
 			expectedStatus:            http.StatusOK,
-			expectedVersionType:       "cv",
+			expectedVersionType:       db.ChangesVersionTypeCV,
 			expectedDocs:              1,
 		},
 	}
@@ -563,7 +563,7 @@ func TestChangesVersionType(t *testing.T) {
 				for _, change := range changeEntry.Changes {
 					require.Len(t, change, 1) // ensure only one version type is present
 					// and that it was the expected one (and we have a value)
-					versionValue, ok := change[db.ChangesVersionType(test.expectedVersionType)]
+					versionValue, ok := change[test.expectedVersionType]
 					require.Truef(t, ok, "Expected version type %s, got %v", test.expectedVersionType, change)
 					require.NotEmpty(t, versionValue)
 				}
