@@ -42,6 +42,8 @@ type ChangesOptions struct {
 	VersionType    ChangesVersionType // The type of version to use for the changes feed. This is used to determine whether to use send revtree IDs or CV in the changes feed entries.
 }
 
+// ChangesVersionType determines the preferred version type to use in changes feed entries.
+// If the requested version type is not available, the feed will attempt to fall back to ChangesVersionTypeRevTreeID which should always be available.
 type ChangesVersionType string
 
 const (
@@ -58,6 +60,15 @@ func ParseChangesVersionType(s string) (ChangesVersionType, error) {
 	default:
 		return "", fmt.Errorf("unknown changes version type: %q", s)
 	}
+}
+
+// ChangeVersionString attempts to return the version string for the preferred ChangesVersionType, but will fall back to rev if cv is not available when requested.
+func (ce *ChangeEntry) ChangeVersionString(versionType ChangesVersionType) string {
+	if s, ok := ce.Changes[0][versionType]; ok {
+		return s
+	}
+	// requested version type not found, return `rev` as a fallback.
+	return ce.Changes[0][ChangesVersionTypeRevTreeID]
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
@@ -128,7 +139,10 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 			base.WarnfCtx(ctx, "Changes feed: error getting doc %q: %v", base.UD(entry.ID), err)
 			return
 		}
-		db.AddDocInstanceToChangeEntry(ctx, entry, doc, options)
+		if err := db.AddDocInstanceToChangeEntry(ctx, entry, doc, options); err != nil {
+			base.WarnfCtx(ctx, "Changes feed: error adding doc %q to change entry: %v", base.UD(entry.ID), err)
+			return
+		}
 
 	} else if includeConflicts {
 		// Load doc metadata only
@@ -139,11 +153,14 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 			base.WarnfCtx(ctx, "Changes feed: error getting doc sync data %q: %v", base.UD(entry.ID), err)
 			return
 		}
-		db.AddDocInstanceToChangeEntry(ctx, entry, doc, options)
+		if err := db.AddDocInstanceToChangeEntry(ctx, entry, doc, options); err != nil {
+			base.WarnfCtx(ctx, "Changes feed: error adding doc %q to change entry: %v", base.UD(entry.ID), err)
+			return
+		}
 
 	} else if options.IncludeDocs {
 		// Retrieve document via rev cache
-		revID := entry.Changes[0]["rev"]
+		revID := entry.ChangeVersionString(options.VersionType)
 		err := db.AddDocToChangeEntryUsingRevCache(ctx, entry, revID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
@@ -162,12 +179,16 @@ func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx conte
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
-func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Context, entry *ChangeEntry, doc *Document, options ChangesOptions) {
+func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Context, entry *ChangeEntry, doc *Document, options ChangesOptions) error {
 
 	includeConflicts := options.Conflicts && entry.branched
 
-	revID := entry.Changes[0]["rev"]
+	revID := entry.ChangeVersionString(options.VersionType)
 	if includeConflicts {
+		// should've been validated in the handler layer but be defensive
+		if options.VersionType == ChangesVersionTypeCV {
+			return fmt.Errorf("changes feed does not support showing in-conflict revisions when using version_type=cv")
+		}
 		doc.History.forEachLeaf(func(leaf *RevInfo) {
 			if leaf.ID != revID {
 				if !leaf.Deleted {
@@ -187,6 +208,8 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 			base.WarnfCtx(ctx, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
 		}
 	}
+
+	return nil
 }
 
 // Parameters
@@ -553,7 +576,7 @@ func makeRevocationChangeEntry(ctx context.Context, logEntry *LogEntry, seqID Se
 }
 
 // AuditReadEvent issues a read event for this change entry. If there is no document body, there will be no event used.
-func (ce *ChangeEntry) AuditReadEvent(ctx context.Context) {
+func (ce *ChangeEntry) AuditReadEvent(ctx context.Context, versionType ChangesVersionType) {
 	if ce.Err != nil {
 		return
 	}
@@ -562,7 +585,7 @@ func (ce *ChangeEntry) AuditReadEvent(ctx context.Context) {
 	}
 	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
 		base.AuditFieldDocID:      ce.ID,
-		base.AuditFieldDocVersion: ce.Changes[0]["rev"],
+		base.AuditFieldDocVersion: ce.ChangeVersionString(versionType),
 	})
 }
 
@@ -1387,7 +1410,10 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 	row.Removed = base.SetFromArray(removedChannels)
 	if options.IncludeDocs || options.Conflicts {
-		db.AddDocInstanceToChangeEntry(ctx, row, populatedDoc, options)
+		if err := db.AddDocInstanceToChangeEntry(ctx, row, populatedDoc, options); err != nil {
+			base.WarnfCtx(ctx, "Unable to add doc instance to change entry for %s: %v", base.UD(docid), err)
+			return nil
+		}
 	}
 
 	return row

@@ -104,7 +104,7 @@ get:
         default: false
     - name: version_type
       in: query
-      description: The type of document versioning to use for the changes feed.
+      description: The preferred type of document versioning to use for the changes feed.
       schema:
         type: string
         default: rev
@@ -176,7 +176,7 @@ post:
               type: boolean
               default: false
             version_type:
-              description: The type of document versioning to use for the changes feed.
+              description: The preferred type of document versioning to use for the changes feed.
               type: string
               default: rev
               enum:

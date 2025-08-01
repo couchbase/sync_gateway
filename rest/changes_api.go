@@ -190,6 +190,10 @@ func (h *handler) handleChanges() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid version_type: %v", err)
 		}
 
+		if options.Conflicts && options.VersionType == db.ChangesVersionTypeCV {
+			return base.HTTPErrorf(http.StatusBadRequest, "Cannot use 'style=all_docs' with 'version_type=cv'")
+		}
+
 		useRequestPlus, _ := h.getOptBoolQuery("request_plus", h.db.Options.ChangesRequestPlus)
 		if useRequestPlus && feed != feedTypeContinuous {
 			var seqErr error
@@ -424,7 +428,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					}
 					_ = encoder.Encode(entry)
 					lastSeq = entry.Seq
-					entry.AuditReadEvent(h.ctx())
+					entry.AuditReadEvent(h.ctx(), options.VersionType)
 				}
 
 			case <-heartbeat:
@@ -497,7 +501,7 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 					break
 				}
 
-				change.AuditReadEvent(h.ctx())
+				change.AuditReadEvent(h.ctx(), options.VersionType)
 			}
 		} else {
 			_, err = h.response.Write([]byte("\n"))
@@ -574,7 +578,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				return err
 			}
 			for _, change := range changes {
-				change.AuditReadEvent(h.ctx())
+				change.AuditReadEvent(h.ctx(), options.VersionType)
 			}
 			return err
 		})
