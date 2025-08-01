@@ -315,7 +315,7 @@ func (cd *clientDoc) _resolveConflict(ctx context.Context, opts resolveConflictO
 
 	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
 	if latestLocalRev.version.CV.Equal(opts.incomingVersion) {
-		require.FailNowf(opts.t, fmt.Sprintf("incoming revision %#+v is equal to client revision %#+v - this should've been filtered via changes response before ending up as a rev", opts.incomingVersion, clientCV))
+		require.FailNow(opts.t, fmt.Sprintf("incoming revision %#+v is equal to client revision %#+v - this should've been filtered via changes response before ending up as a rev", opts.incomingVersion, clientCV))
 	}
 	if opts.incomingVersion.SourceID == clientCV.SourceID {
 		// incomingVersion has the same sourceID as the local version.
