@@ -50,9 +50,9 @@ func (v DocMetadata) IsHLVEqual(other DocMetadata) bool {
 
 func (v DocMetadata) hlvEquals(hlv *db.HybridLogicalVector) bool {
 	if v.ImplicitHLV != nil {
-		return v.ImplicitHLV.Equals(hlv)
+		return v.ImplicitHLV.Equal(hlv)
 	} else if v.HLV != nil {
-		return v.HLV.Equals(hlv)
+		return v.HLV.Equal(hlv)
 	}
 	return hlv == nil
 }
