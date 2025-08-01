@@ -449,3 +449,125 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 	assert.Equal(t, bucketUUID, changes.Results[0].CurrentVersion.SourceID)
 	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Value)
 }
+
+// TestChangesVersionType tests the /_changes REST endpoint with different version_type parameters for each possible underlying feed type and HTTP method.
+func TestChangesVersionType(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	rt.PutDoc("doc1", `{"foo":"bar"}`)
+	rt.PutDoc("doc2", `{"buzz":"quux"}`)
+
+	rt.WaitForPendingChanges()
+
+	tests := []struct {
+		name                      string
+		changesRequestMethod      string
+		changesRequestQueryParams string
+		changesRequestBody        string
+		expectedStatus            int
+		expectedVersionType       string
+		expectedDocs              int
+	}{
+		{
+			name:                      "invalid version_type",
+			changesRequestMethod:      http.MethodGet,
+			changesRequestQueryParams: "?version_type=invalid",
+			expectedStatus:            http.StatusBadRequest,
+		},
+		{
+			name:                      "empty version_type",
+			changesRequestMethod:      http.MethodGet,
+			changesRequestQueryParams: "",
+			expectedStatus:            http.StatusOK,
+			expectedVersionType:       "rev",
+			expectedDocs:              2,
+		},
+		{
+			name:                      "rev version_type",
+			changesRequestMethod:      http.MethodGet,
+			changesRequestQueryParams: "?version_type=rev",
+			expectedStatus:            http.StatusOK,
+			expectedVersionType:       "rev",
+			expectedDocs:              2,
+		},
+		{
+			name:                      "cv version_type",
+			changesRequestMethod:      http.MethodGet,
+			changesRequestQueryParams: "?version_type=cv",
+			expectedStatus:            http.StatusOK,
+			expectedVersionType:       "cv",
+			expectedDocs:              2,
+		},
+		{
+			name:                      "rev docid filter",
+			changesRequestMethod:      http.MethodGet,
+			changesRequestQueryParams: "?version_type=rev&filter=_doc_ids&doc_ids=doc1",
+			expectedStatus:            http.StatusOK,
+			expectedVersionType:       "rev",
+			expectedDocs:              1,
+		},
+		{
+			name:                      "cv docid filter",
+			changesRequestMethod:      http.MethodGet,
+			changesRequestQueryParams: "?version_type=cv&filter=_doc_ids&doc_ids=doc1",
+			expectedStatus:            http.StatusOK,
+			expectedVersionType:       "cv",
+			expectedDocs:              1,
+		},
+		{
+			name:                      "rev post",
+			changesRequestMethod:      http.MethodPost,
+			changesRequestQueryParams: "",
+			changesRequestBody:        `{"version_type":"rev"}`,
+			expectedStatus:            http.StatusOK,
+			expectedVersionType:       "rev",
+			expectedDocs:              2,
+		},
+		{
+			name:                      "cv post",
+			changesRequestMethod:      http.MethodPost,
+			changesRequestQueryParams: "",
+			changesRequestBody:        `{"version_type":"cv"}`,
+			expectedStatus:            http.StatusOK,
+			expectedVersionType:       "cv",
+			expectedDocs:              2,
+		},
+		{
+			name:                      "cv docid filter post",
+			changesRequestMethod:      http.MethodPost,
+			changesRequestQueryParams: "",
+			changesRequestBody:        `{"version_type":"cv", "filter":"_doc_ids", "doc_ids":["doc1"]}`,
+			expectedStatus:            http.StatusOK,
+			expectedVersionType:       "cv",
+			expectedDocs:              1,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.NotEmptyf(t, test.changesRequestMethod, "Test case %q requires a changesRequestMethod to be set", test.name)
+
+			if test.expectedStatus != http.StatusOK {
+				resp := rt.SendAdminRequest(test.changesRequestMethod, fmt.Sprintf("/{{.keyspace}}/_changes%s", test.changesRequestQueryParams), test.changesRequestBody)
+				RequireStatus(t, resp, test.expectedStatus)
+				return
+			}
+
+			resp := rt.SendAdminRequest(test.changesRequestMethod, fmt.Sprintf("/{{.keyspace}}/_changes%s", test.changesRequestQueryParams), test.changesRequestBody)
+			RequireStatus(t, resp, test.expectedStatus)
+			var changesResults ChangesResults
+			require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &changesResults))
+			require.Len(t, changesResults.Results, test.expectedDocs)
+			for _, changeEntry := range changesResults.Results {
+				for _, change := range changeEntry.Changes {
+					require.Len(t, change, 1) // ensure only one version type is present
+					// and that it was the expected one (and we have a value)
+					versionValue, ok := change[db.ChangesVersionType(test.expectedVersionType)]
+					require.Truef(t, ok, "Expected version type %s, got %v", test.expectedVersionType, change)
+					require.NotEmpty(t, versionValue)
+				}
+			}
+		})
+	}
+}

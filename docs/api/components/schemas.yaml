@@ -551,8 +551,13 @@ Changes-feed:
               type: object
               properties:
                 rev:
-                  description: The new revision that was caused by that change.
+                  description: The new Revision ID that was caused by that change. This is omitted when the `version_type` parameter is `cv`.
                   type: string
+                  optional: true
+                cv:
+                  description: The new Current Version that was caused by that change. This is present only when the `version_type` parameter is `cv`.
+                  type: string
+                  optional: true
             uniqueItems: true
       uniqueItems: true
     last_seq:
