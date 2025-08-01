@@ -571,3 +571,42 @@ func TestChangesVersionType(t *testing.T) {
 		})
 	}
 }
+
+func TestChangesFeedCVWithOldRevOnlyData(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	seq, err := db.AllocateTestSequence(rt.GetDatabase())
+	require.NoError(t, err)
+	oldDoc := "oldDoc"
+	oldDocBody := []byte(`{"body_field":"1234"}`)
+	oldDocSyncData := []byte(fmt.Sprintf(`{"sequence":%d,"rev":{"rev": "1-abc"},"value_crc32c":"%s"}`, seq, base.Crc32cHashString(oldDocBody)))
+	_, err = rt.GetSingleDataStore().WriteWithXattrs(t.Context(), oldDoc, 0, 0, oldDocBody, map[string][]byte{base.SyncXattrName: oldDocSyncData}, nil, nil)
+	require.NoError(t, err)
+
+	rt.PutDoc("newDoc", `{"foo":"bar"}`)
+
+	rt.WaitForPendingChanges()
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?version_type=cv", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var changesResults ChangesResults
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &changesResults))
+	require.Len(t, changesResults.Results, 2)
+	for i, changeEntry := range changesResults.Results {
+		for _, change := range changeEntry.Changes {
+			require.Len(t, change, 1) // ensure only one version type is present
+			// and that it was the expected one (and we have a value)
+			var expectedType db.ChangesVersionType
+			if i == 0 {
+				// first doc was written with a RevID and no CV available
+				expectedType = db.ChangesVersionTypeRevTreeID
+			} else {
+				expectedType = db.ChangesVersionTypeCV
+			}
+			versionValue, ok := change[expectedType]
+			require.Truef(t, ok, "Expected version type %s, got %v", expectedType, change)
+			require.NotEmpty(t, versionValue)
+		}
+	}
+}

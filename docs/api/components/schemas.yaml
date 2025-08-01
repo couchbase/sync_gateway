@@ -549,15 +549,18 @@ Changes-feed:
             type: array
             items:
               type: object
+              minProperties: 1
+              maxProperties: 1
               properties:
                 rev:
-                  description: The new Revision ID that was caused by that change. This is omitted when the `version_type` parameter is `cv`.
+                  description: |
+                    The new Revision ID associated with the change.
+                    This is usually omitted in favour of the `cv` property when the `version_type` preference is set to `cv`,
+                    however data written prior to Sync Gateway 4.0 can still emit `rev` only change entries if we do not have a `cv` available for that document revision.
                   type: string
-                  optional: true
                 cv:
-                  description: The new Current Version that was caused by that change. This is present only when the `version_type` parameter is `cv`.
+                  description: The new Current Version associated with the change. This value requires the `version_type` preference set to `cv`.
                   type: string
-                  optional: true
             uniqueItems: true
       uniqueItems: true
     last_seq:
