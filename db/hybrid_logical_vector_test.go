@@ -1408,7 +1408,7 @@ func TestAddVersion(t *testing.T) {
 
 			expectedHLV, _, err := ExtractHLVFromBlipMessage(tc.expectedHLV)
 			require.NoError(t, err)
-			require.True(t, hlv.Equals(expectedHLV), "expected %#v does not match actual %#v", expectedHLV, hlv)
+			require.True(t, hlv.Equal(expectedHLV), "expected %#v does not match actual %#v", expectedHLV, hlv)
 
 		})
 	}

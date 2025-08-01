@@ -878,7 +878,7 @@ func (c *DatabaseCollectionWithUser) UpsertTestDocWithVersion(ctx context.Contex
 		versions, _, err := parseVectorValues(mergeVersionsStr)
 		require.NoError(t, err, "malformed mergeVersionsStr")
 		for _, version := range versions {
-			newDocHLV.setMergeVersion(version.SourceID, version.Value)
+			newDocHLV.SetMergeVersion(version.SourceID, version.Value)
 		}
 	}
 

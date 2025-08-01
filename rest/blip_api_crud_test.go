@@ -3566,3 +3566,60 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 		})
 	}
 }
+
+func TestBlipPullConflict(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeySGTest)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTesterPersistentConfig(t)
+		defer rt.Close()
+
+		const (
+			username = "alice"
+			cblBody  = `{"actor": "cbl"}`
+			sgBody   = `{"actor": "sg"}`
+		)
+		rt.CreateUser(username, []string{"*"})
+		docID := "doc1"
+		// CBG-3778 won't need a round trip to get a version
+		sgVersion := rt.PutDocDirectly(docID, db.Body{"actor": "sg"})
+
+		fmt.Printf("sgVersion: %s\n", sgVersion)
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, Username: "alice"}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		client := btcRunner.SingleCollection(btc.id)
+		preConflictCBLVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(cblBody))
+
+		btcRunner.StartOneshotPull(btc.id)
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.NotEqual(t, sgVersion, preConflictCBLVersion)
+		}, time.Second*10, time.Millisecond*10, "Expected sgVersion and cblVersion to be different")
+
+		postConflictDoc, postConflictHLV, postConflictVersion := client.GetDoc(docID)
+		require.Equal(t, cblBody, string(postConflictDoc))
+		// after resolving the conflict, the CBL version should remain the same but the ver of the CV is
+		// updated to be newer than the pre-conflict CBL version
+		require.Equal(t, preConflictCBLVersion.CV.SourceID, postConflictVersion.CV.SourceID)
+		require.Greater(t, postConflictVersion.CV.Value, preConflictCBLVersion.CV.Value)
+		require.Empty(t, postConflictHLV.PreviousVersions)
+		require.Equal(t, db.HLVVersions{
+			sgVersion.CV.SourceID:             sgVersion.CV.Value,
+			preConflictCBLVersion.CV.SourceID: preConflictCBLVersion.CV.Value,
+		}, postConflictHLV.MergeVersions)
+
+		btcRunner.StartPush(btc.id)
+		rt.WaitForVersion(docID, *postConflictVersion)
+
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		bucketDoc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		require.True(t, bucketDoc.HLV.Equal(postConflictHLV), "Expected bucket doc HLV to match post-conflict HLV, got %v, expected %v", bucketDoc.HLV, postConflictHLV)
+	})
+
+}

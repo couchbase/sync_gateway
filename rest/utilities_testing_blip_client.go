@@ -38,6 +38,26 @@ const (
 	RevtreeSubtestName       = "revTree"
 )
 
+// BlipTesterClientConflictResolverType is the type of conflict resolver used by blip test clients when conflicts are received by a pull replication.
+type BlipTesterClientConflictResolverType string
+
+const (
+	// ConflictResolverLastWriteWins is the conflict resolver that resolves conflicts by looking at the cv value to pick the latest version.
+	ConflictResolverLastWriteWins BlipTesterClientConflictResolverType = "lww"
+
+	// ConflictResolverDefault represents the default conflict resolver used by Couchbase Lite.
+	ConflictResolverDefault = ConflictResolverLastWriteWins
+)
+
+// IsValid checks if the conflict resolver type is valid.
+func (c BlipTesterClientConflictResolverType) IsValid() bool {
+	switch c {
+	case ConflictResolverLastWriteWins:
+		return true
+	}
+	return false
+}
+
 type BlipTesterClientOpts struct {
 	ClientDeltas                  bool // Support deltas on the client side
 	Username                      string
@@ -63,6 +83,9 @@ type BlipTesterClientOpts struct {
 
 	// SourceID is used to define the SourceID for the blip client
 	SourceID string
+
+	// ConflictResolver defines how to resolve conflicts on a pull replication.
+	ConflictResolver BlipTesterClientConflictResolverType
 }
 
 // defaultBlipTesterClientRevsLimit is the number of revisions sent as history when the client replicates - older revisions are not sent, and may not be stored.
@@ -276,6 +299,50 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, hlvHistory: latestRev.HLV, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
 }
 
+// _resolveConflict will resolve a conflict for the given incoming version. This will mutate the hlv, and return the expected body and version to write.
+func (cd *clientDoc) _resolveConflict(ctx context.Context, opts resolveConflictOptions) (resolvedBody []byte, resolvedVersion db.Version) {
+	if opts.usingRevTree {
+		// consider implementing conflict resolution based on generation for rev id, but right now just accept incoming revtree and overwrite
+		return opts.incomingBody, opts.incomingVersion
+	}
+	// fetch client's latest version to do conflict check and resolution
+	latestLocalRev := cd._latestRev(opts.t)
+	if latestLocalRev == nil {
+		// no existing rev - accept incoming rev
+		return opts.incomingBody, opts.incomingVersion
+	}
+	clientCV := latestLocalRev.version.CV
+
+	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
+	if latestLocalRev.version.CV.Equal(opts.incomingVersion) {
+		require.FailNowf(opts.t, "incoming revision is equal to client revision", "incoming revision %v is equal to client revision %v - should've been filtered via changes response before ending up as a rev", opts.incomingVersion, clientCV)
+	}
+	if opts.incomingVersion.SourceID == clientCV.SourceID {
+		// incomingVersion has the same sourceID as the local version.
+
+		// Potentially we should add a check to make sure that the HLV is not rolling back
+		/// incomingCV.Value > clientCV.Value
+		return opts.incomingBody, opts.incomingVersion
+	}
+
+	switch opts.conflictResolver {
+	case ConflictResolverLastWriteWins:
+		if opts.incomingVersion.Value > clientCV.Value {
+			base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision and picking Sync Gateway version")
+			// incoming rev is newer than the client version, accept this as the new version
+			return opts.incomingBody, opts.incomingVersion
+		}
+		opts.hlv.SetMergeVersion(opts.incomingVersion.SourceID, opts.incomingVersion.Value)
+		opts.hlv.SetMergeVersion(clientCV.SourceID, clientCV.Value)
+		newVersion := db.Version{SourceID: opts.localSourceID, Value: uint64(opts.hlc.Now())}
+		return latestLocalRev.body, newVersion
+	default:
+		opts.t.Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", opts.conflictResolver)
+	}
+	opts.t.Fatalf("Unreachable code in _resolveConflict - should never reach here")
+	return latestLocalRev.body, latestLocalRev.version.CV // unreachable, but required to satisfy return type
+}
+
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
@@ -307,6 +374,26 @@ type BlipTesterCollectionClient struct {
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
 
 	hlc *rosmar.HybridLogicalClock
+}
+
+// resolveConflictOptions contains all the options for resolving conflicts
+type resolveConflictOptions struct {
+	// t is the testing.TB instance used for assertions
+	t testing.TB
+	// incomingVersion is the expected version to write for the client document, prior to conflict resolution
+	incomingVersion db.Version
+	// incomingBody is the expected version to write for the body, prior to conflict resolution
+	incomingBody []byte
+	// hlv is a *mutable* HybridLogicalVector representing the state of the document. It should not contain the incomingVersion.
+	hlv *db.HybridLogicalVector
+	// hlc is the HybridLogicalClock used to generate new versions if the incoming version loses the conflict resolution
+	hlc *rosmar.HybridLogicalClock
+	// localSourceID is generate new versions if the incoming version loses the conflict resolution
+	localSourceID string
+	// conflictResolver represents the type of conflict resolution to use
+	conflictResolver BlipTesterClientConflictResolverType
+	// usingRevTree indicates whether the client is using revTrees. If using revtrees, neither MWW/LWW are implemented yet and it is always resolved as remoteWins.
+	usingRevTree bool
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
@@ -408,11 +495,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	ctx := base.DatabaseLogCtx(base.TestCtx(btr.bt.restTester.TB()), btr.bt.restTester.GetDatabase().Name, nil)
 	btr.bt.blipContext.DefaultHandler = btr.defaultHandler()
 	handlers := map[string]func(*blip.Message){
-		db.MessageNoRev:           btr.handleNoRev(btc),
+		db.MessageNoRev:           btr.handleNoRev(ctx, btc),
 		db.MessageGetAttachment:   btr.handleGetAttachment(btc),
 		db.MessageRev:             btr.handleRev(ctx, btc),
 		db.MessageProposeChanges:  btr.handleProposeChanges(btc),
-		db.MessageChanges:         btr.handleChanges(btc),
+		db.MessageChanges:         btr.handleChanges(ctx, btc),
 		db.MessageProveAttachment: btr.handleProveAttachment(ctx, btc),
 	}
 	for profile, handler := range handlers {
@@ -447,7 +534,7 @@ func (btr *BlipTesterReplicator) handleProveAttachment(ctx context.Context, btc 
 }
 
 // handleChanges handles changes messages on the blip tester client
-func (btr *BlipTesterReplicator) handleChanges(btc *BlipTesterClient) func(*blip.Message) {
+func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTesterClient) func(*blip.Message) {
 	revsLimit := base.ValDefault(btc.revsLimit, defaultBlipTesterClientRevsLimit)
 	return func(msg *blip.Message) {
 		btcc := btc.getCollectionClientFromMessage(msg)
@@ -500,6 +587,7 @@ func (btr *BlipTesterReplicator) handleChanges(btc *BlipTesterClient) func(*blip
 						knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
 						continue
 					} else if localHLV.DominatesSource(changesVersion) {
+						base.DebugfCtx(ctx, base.KeySGTest, "Skipping changes for incoming doc %q with rev %d@%s as we already have a newer version %#+v", docID, changesVersion.Value, changesVersion.SourceID, localHLV)
 						knownRevs[i] = nil // Send back null to signal we don't need this change
 					} else {
 						require.NotEmpty(btr.TB(), localHLV.GetCurrentVersionString())
@@ -576,7 +664,6 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 				v, err := db.ParseVersion(revID)
 				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
 				newVersion = DocVersion{CV: v}
-				require.NoError(btr.TB(), hlv.AddVersion(v))
 			} else {
 				newVersion = DocVersion{RevTreeID: revID}
 			}
@@ -599,7 +686,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 				}
 				rev.replacedVersion = replacedVersion
 			}
-			btcc.addRev(docID, rev)
+			btcc.addRev(ctx, docID, rev)
 
 			if !msg.NoReply() {
 				response := msg.Response()
@@ -758,7 +845,6 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			v, err := db.ParseVersion(revID)
 			require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
 			newVersion = DocVersion{CV: v}
-			require.NoError(btr.TB(), hlv.AddVersion(v))
 		} else {
 			newVersion = DocVersion{RevTreeID: revID}
 		}
@@ -782,7 +868,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			}
 			rev.replacedVersion = replacedVersion
 		}
-		btcc.addRev(docID, rev)
+		btcc.addRev(ctx, docID, rev)
 
 		if !msg.NoReply() {
 			response := msg.Response()
@@ -809,7 +895,7 @@ func (btr *BlipTesterReplicator) handleGetAttachment(btc *BlipTesterClient) func
 }
 
 // handleNoRev handles noRev messages on the blip tester client
-func (btr *BlipTesterReplicator) handleNoRev(btc *BlipTesterClient) func(msg *blip.Message) {
+func (btr *BlipTesterReplicator) handleNoRev(ctx context.Context, btc *BlipTesterClient) func(msg *blip.Message) {
 	return func(msg *blip.Message) {
 		btcc := btc.getCollectionClientFromMessage(msg)
 
@@ -827,7 +913,7 @@ func (btr *BlipTesterReplicator) handleNoRev(btc *BlipTesterClient) func(msg *bl
 			newVersion.RevTreeID = revID
 		}
 
-		btcc.addRev(docID, revOptions{
+		btcc.addRev(ctx, docID, revOptions{
 			newVersion: newVersion,
 			msg:        msg,
 		})
@@ -964,6 +1050,9 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 		opts.SourceID = fmt.Sprintf("btc-%d", id.ID())
 	}
 
+	if opts.ConflictResolver == "" {
+		opts.ConflictResolver = ConflictResolverLastWriteWins
+	}
 	client = &BlipTesterClient{
 		BlipTesterClientOpts: *opts,
 		rt:                   rt,
@@ -1204,14 +1293,23 @@ func (btcc *BlipTesterCollectionClient) sendProposeChanges(ctx context.Context, 
 		if i > 0 {
 			proposeChangesRequestBody.WriteString(",")
 		}
-		proposeChangesRequestBody.WriteString(fmt.Sprintf(`["%s","%s"`, change.docID, change.Rev()))
+		rev := change.Rev()
+		require.NotEqual(btcc.TB(), "", rev)
+		if btcc.UseHLV() {
+			// Until CBG-4461 is implemented the second value in the array is the full HLV.
+			if change.historyStr() != "" {
+				rev += "," + change.historyStr()
+			}
+		}
+		fmt.Fprintf(proposeChangesRequestBody, `["%s","%s"`, change.docID, rev)
+
 		// write last known server version to support no-conflict mode
 		if serverVersion, ok := btcc.getLastReplicatedRev(change.docID); ok {
 			base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version for doc %s = %v", change.docID, serverVersion)
 			if btcc.UseHLV() {
-				proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.CV.String()))
+				fmt.Fprintf(proposeChangesRequestBody, `,"%s"`, serverVersion.CV.String())
 			} else {
-				proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.RevTreeID))
+				fmt.Fprintf(proposeChangesRequestBody, `,"%s"`, serverVersion.RevTreeID)
 			}
 		}
 		proposeChangesRequestBody.WriteString(`]`)
@@ -1272,6 +1370,11 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 	// if there is something wrong with the delta, resend as a non delta
 	if errorCode == strconv.Itoa(http.StatusUnprocessableEntity) && deltasSupported {
 		btcc.sendRev(ctx, change, false)
+		return
+	}
+	if errorCode == strconv.Itoa(http.StatusConflict) {
+		// If there is a conflict created between the proceeding proposeChanges and this rev message.
+		// this is not an error.
 		return
 	}
 	require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %#v", revResp)
@@ -1947,21 +2050,45 @@ type revOptions struct {
 }
 
 // addRev adds a revision for a specific document.
-func (btcc *BlipTesterCollectionClient) addRev(docID string, opts revOptions) {
+func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string, opts revOptions) {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
 	newClientSeq := btcc._nextSequence()
 
+	doc, ok := btcc._getClientDoc(docID)
+	body := opts.body
+	resolvedCV := opts.newVersion.CV
+	if ok {
+		body, resolvedCV = doc._resolveConflict(ctx, resolveConflictOptions{
+			t:                btcc.TB(),
+			incomingVersion:  opts.newVersion.CV,
+			incomingBody:     opts.body,
+			usingRevTree:     !btcc.UseHLV(),
+			hlv:              &opts.hlv,
+			hlc:              btcc.hlc,
+			localSourceID:    btcc.parent.SourceID,
+			conflictResolver: btcc.parent.ConflictResolver,
+		})
+	}
+	if btcc.UseHLV() {
+		require.NoError(btcc.TB(), opts.hlv.AddVersion(resolvedCV))
+		if resolvedCV != opts.newVersion.CV {
+			base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision, resulting hlv: %#+v\n", opts.hlv)
+		}
+	}
+	resolvedVersion := DocVersion{
+		RevTreeID: opts.newVersion.RevTreeID,
+		CV:        resolvedCV,
+	}
 	docRev := clientDocRev{
 		clientSeq: newClientSeq,
-		version:   opts.newVersion,
-		body:      opts.body,
+		version:   resolvedVersion,
+		body:      body,
 		isDelete:  opts.isDelete,
 		message:   opts.msg,
 		HLV:       opts.hlv,
 	}
 
-	doc, ok := btcc._getClientDoc(docID)
 	if !ok {
 		doc = newClientDocument(docID, newClientSeq, &docRev)
 	} else {
@@ -1977,7 +2104,12 @@ func (btcc *BlipTesterCollectionClient) addRev(docID string, opts revOptions) {
 		doc._seqsByVersions[*opts.replacedVersion] = newClientSeq
 	}
 	if opts.updateLatestServerVersion {
-		doc._latestServerVersion = docRev.version
+		doc._latestServerVersion = opts.newVersion
+	}
+	// if we resolved a conflict, then we might need to push this conflict back
+	if opts.newVersion.CV != resolvedCV {
+		base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision and picking CBL version. HLV %#+v\n", opts.hlv)
+		btcc._seqCond.Broadcast()
 	}
 }
 
