@@ -2314,8 +2314,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		btcRunner.StartPull(btc.id)
 		btcRunner.StartPush(btc.id)
 
-		doc1Version := rt.PutDocDirectly(doc1ID, db.Body{})
-		doc2Version := rt.PutDocDirectly(doc2ID, db.Body{})
+		doc1Version := rt.PutDoc(doc1ID, "{}")
+		doc2Version := rt.PutDoc(doc2ID, "{}")
 
 		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 		btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
@@ -2370,7 +2370,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 		btcRunner.StartPush(btc.id)
 
 		// Add doc1
-		doc1Version := rt.PutDocDirectly(doc1ID, db.Body{})
+		doc1Version := rt.PutDoc(doc1ID, "{}")
 
 		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 
@@ -2648,9 +2648,9 @@ func TestCBLRevposHandling(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
 		defer btc.Close()
 
-		startingBody := db.Body{"foo": "bar"}
-		doc1Version1 := rt.PutDocDirectly(doc1ID, startingBody)
-		doc2Version1 := rt.PutDocDirectly(doc2ID, startingBody)
+		startingBody := `{"foo": "bar"}`
+		doc1Version1 := rt.PutDoc(doc1ID, startingBody)
+		doc2Version1 := rt.PutDoc(doc2ID, startingBody)
 
 		rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)

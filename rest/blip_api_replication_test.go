@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,7 +50,7 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		btcRunner.StartPull(client.id)
 
 		// create doc1 on SG and wait to replicate to client
-		versionDoc1 := rt.PutDocDirectly(docID, JsonToMap(t, `{"test": "value"}`))
+		versionDoc1 := rt.PutDoc(docID, `{"test": "value"}`)
 		btcRunner.WaitForVersion(client.id, docID, versionDoc1)
 
 		// alter sync data of this doc to artificially create skipped sequences
@@ -77,11 +76,11 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		}, time.Second*10, time.Millisecond*100)
 
 		// assert new change added still replicates to client
-		versionDoc2 := rt.PutDocDirectly(docID2, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
+		versionDoc2 := rt.PutDoc(docID2, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 		btcRunner.WaitForVersion(client.id, docID2, versionDoc2)
 
 		// update doc1 that will trigger unused seq release to clear skipped and assert that update is received
-		versionDoc1 = rt.UpdateDocDirectly(docID, versionDoc1, JsonToMap(t, `{"test": "new value"}`))
+		versionDoc1 = rt.UpdateDoc(docID, versionDoc1, `{"test": "new value"}`)
 		btcRunner.WaitForVersion(client.id, docID, versionDoc1)
 
 		// assert skipped is cleared and skipped sequence broadcast is not sent
@@ -117,12 +116,12 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		btcRunner.StartPush(client.id)
 
 		// create doc1 on SG
-		docBody := db.Body{"greetings": []map[string]interface{}{{"hello": "world!"}, {"hi": "alice"}}}
-		version := rt.PutDocDirectly(docID, docBody)
+		docBody := `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`
+		version := rt.PutDoc(docID, docBody)
 
 		// wait for doc on client
 		data := btcRunner.WaitForVersion(client.id, docID, version)
-		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+		assert.Equal(t, docBody, string(data))
 
 		// update doc1 on client
 		newRev := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))

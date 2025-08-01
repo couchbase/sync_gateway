@@ -93,7 +93,12 @@ func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
 
 // PutDoc will upsert the document with a given contents.
 func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
-	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
+	return rt.PutDocWithKeyspace(rt.GetSingleKeyspace(), docID, body)
+}
+
+// PutDocWithKeyspace will upsert the document with a given contents in the specified keyspace.
+func (rt *RestTester) PutDocWithKeyspace(keyspace, docID string, body string) DocVersion {
+	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", keyspace, docID), body)
 	RequireStatus(rt.TB(), rawResponse, 201)
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
 }
@@ -154,6 +159,21 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	}, 10*time.Second, 50*time.Millisecond)
 }
 
+// WaitForRevTreeVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revtree version. If version is not found, the test will fail.
+//
+// This is a stub for until ISGR supports CV.
+func (rt *RestTester) WaitForRevTreeVersion(docID string, version DocVersion) {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
+		if !assert.Contains(c, []int{200, 201}, rawResponse.Code, "Unexpected status code for %s", rawResponse.Body.String()) {
+			return
+		}
+		var body db.Body
+		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+		assert.Equal(c, version.RevTreeID, body.ExtractRev())
+	}, 10*time.Second, 50*time.Millisecond)
+}
+
 // WaitForTombstone waits for a the document version to exist and be tombstoned. If the document is not found, the test will fail.
 func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -172,6 +192,20 @@ func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 	}, time.Second*10, time.Millisecond*100)
 }
 
+// WaitForRevTreeTombstone waits for a the document version to exist and be tombstoned. If the document is not found, the test will fail.
+//
+// This is a stub for until ISGR supports CV.
+func (rt *RestTester) WaitForRevTreeTombstone(docID string, deleteVersion DocVersion) {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		if !assert.NoError(c, err) {
+			return
+		}
+		assert.NotEqual(c, int64(0), doc.TombstonedAt)
+		assert.Equal(c, deleteVersion.RevTreeID, doc.SyncData.CurrentRev)
+	}, time.Second*10, time.Millisecond*100)
+}
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
 	var lastSeq string
 	successFunc := func() bool {
@@ -452,41 +486,6 @@ func (rt *RestTester) RequireDbOnline() {
 	require.Equal(rt.TB(), "Online", body["state"].(string))
 }
 
-// TEMPORARY HELPER METHODS FOR BLIP TEST CLIENT RUNNER
-func (rt *RestTester) PutDocDirectly(docID string, body db.Body) DocVersion {
-	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	rev, doc, err := collection.Put(ctx, docID, body)
-	require.NoError(rt.TB(), err)
-	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
-}
-
-func (rt *RestTester) UpdateDocDirectly(docID string, version DocVersion, body db.Body) DocVersion {
-	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	body[db.BodyId] = docID
-	body[db.BodyRev] = version.RevTreeID
-	rev, doc, err := collection.Put(ctx, docID, body)
-	require.NoError(rt.TB(), err)
-	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
-}
-
-func (rt *RestTester) DeleteDocDirectly(docID string, version DocVersion) DocVersion {
-	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	// TODO: CBG-4426 - DeleteDocDirectly does not support CV
-	rev, doc, err := collection.DeleteDoc(ctx, docID, version.RevTreeID)
-	require.NoError(rt.TB(), err)
-	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
-}
-
-func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollection, docID string, body db.Body) DocVersion {
-	dbUser := &db.DatabaseCollectionWithUser{
-		DatabaseCollection: collection,
-	}
-	ctx := base.UserLogCtx(collection.AddCollectionContext(rt.Context()), "gotest", base.UserDomainBuiltin, nil)
-	rev, doc, err := dbUser.Put(ctx, docID, body)
-	require.NoError(rt.TB(), err)
-	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
-}
-
 // PutDocWithAttachment will upsert the document with a given contents and attachments.
 func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachmentName, attachmentBody string) DocVersion {
 	// create new body with a 1.x style inline attachment body like `{"_attachments": {"camera.txt": {"data": "Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`.
@@ -498,7 +497,7 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 	rawBody[db.BodyAttachments] = map[string]any{
 		attachmentName: map[string]any{"data": attachmentBody},
 	}
-	return rt.PutDocDirectly(docID, rawBody)
+	return rt.PutDoc(docID, string(base.MustJSONMarshal(rt.TB(), rawBody)))
 }
 
 type RawDocResponse struct {

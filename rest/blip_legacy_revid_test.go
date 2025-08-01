@@ -259,7 +259,7 @@ func TestProcessLegacyRev(t *testing.T) {
 	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	// add doc to SGW
-	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
 	// Send another rev of same doc
@@ -329,7 +329,7 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	)
 
 	// 1. CBL sends rev=1010@CBL1, history=1-abc when SGW has current rev 1-abc (document underwent an update before being pushed to SGW)
-	docVersion := rt.PutDocDirectly(docID, db.Body{"test": "doc"})
+	docVersion := rt.PutDoc(docID, `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
@@ -349,7 +349,7 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	assert.NotNil(t, bucketDoc.History[rev1ID])
 
 	// 2. CBL sends rev=1010@CBL1, history=1000@CBL2,1-abc when SGW has current rev 1-abc (document underwent multiple p2p updates before being pushed to SGW)
-	docVersion = rt.PutDocDirectly(docID2, db.Body{"test": "doc"})
+	docVersion = rt.PutDoc(docID2, `{"test": "doc"}`)
 	rev1ID = docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
@@ -370,7 +370,7 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	assert.NotNil(t, bucketDoc.History[rev1ID])
 
 	// 3. CBL sends rev=1010@CBL1, history=1000@CBL2,2-abc,1-abc when SGW has current rev 1-abc (document underwent multiple legacy and p2p updates before being pushed to SGW)
-	docVersion = rt.PutDocDirectly(docID3, db.Body{"test": "doc"})
+	docVersion = rt.PutDoc(docID3, `{"test": "doc"}`)
 	rev1ID = docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
@@ -405,9 +405,9 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 
 	// 5. CBL sends rev=1010@CBL1, history=2-abc and SGW has 1000@CBL2, 2-abc
 	// although HLV's are in conflict, this should pass conflict check as local current rev is parent of incoming rev
-	docVersion = rt.PutDocDirectly(docID5, db.Body{"test": "doc"})
+	docVersion = rt.PutDoc(docID5, `{"test": "doc"}`)
 
-	docVersion = rt.UpdateDocDirectly(docID5, docVersion, db.Body{"some": "update"})
+	docVersion = rt.UpdateDoc(docID5, docVersion, `{"some": "update"}`)
 	version := docVersion.CV.Value
 	rev2ID := docVersion.RevTreeID
 	pushedRev := db.Version{
@@ -433,7 +433,7 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	// - a pre 4.0 client pulling this doc on one shot replication
 	// - then this doc being updated a couple of times on client before client gets upgraded to 4.0
 	// - after the upgrade client updates it again and pushes to SGW
-	docVersion = rt.PutDocDirectly(docID6, db.Body{"test": "doc"})
+	docVersion = rt.PutDoc(docID6, `{"test": "doc"}`)
 	rev1ID = docVersion.RevTreeID
 
 	pushedRev = db.Version{
@@ -480,13 +480,13 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	)
 
 	// 1. conflicting changes with legacy rev on both sides of communication (no upgrade of doc at all)
-	docVersion := rt.PutDocDirectly(docID, db.Body{"test": "doc"})
+	docVersion := rt.PutDoc(docID, `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly(docID, docVersion, db.Body{"some": "update"})
+	docVersion = rt.UpdateDoc(docID, docVersion, `{"some": "update"}`)
 	rev2ID := docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly(docID, docVersion, db.Body{"some": "update2"})
+	docVersion = rt.UpdateDoc(docID, docVersion, `{"some": "update2"}`)
 
 	// remove hlv here to simulate a legacy rev
 	require.NoError(t, ds.RemoveXattrs(base.TestCtx(t), docID, []string{base.VvXattrName}, docVersion.CV.Value))
@@ -498,13 +498,13 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	require.ErrorContains(t, err, "Document revision conflict")
 
 	// 2. same as above but not having the rev be legacy on SGW side (don't remove the hlv)
-	docVersion = rt.PutDocDirectly(docID2, db.Body{"test": "doc"})
+	docVersion = rt.PutDoc(docID2, `{"test": "doc"}`)
 	rev1ID = docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly(docID2, docVersion, db.Body{"some": "update"})
+	docVersion = rt.UpdateDoc(docID2, docVersion, `{"some": "update"}`)
 	rev2ID = docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly(docID2, docVersion, db.Body{"some": "update2"})
+	docVersion = rt.UpdateDoc(docID2, docVersion, `{"some": "update2"}`)
 
 	history = []string{rev2ID, rev1ID}
 	sent, _, _, err = bt.SendRevWithHistory(docID2, "3-abc", history, []byte(`{"key": "val"}`), blip.Properties{})
@@ -512,10 +512,10 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	require.ErrorContains(t, err, "Document revision conflict")
 
 	// 3. CBL sends rev=1010@CBL1, history=1000@CBL2,1-abc when SGW has current rev 2-abc (document underwent multiple p2p updates before being pushed to SGW)
-	docVersion = rt.PutDocDirectly(docID3, db.Body{"test": "doc"})
+	docVersion = rt.PutDoc(docID3, `{"test": "doc"}`)
 	rev1ID = docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly(docID3, docVersion, db.Body{"some": "update"})
+	docVersion = rt.UpdateDoc(docID3, docVersion, `{"some": "update"}`)
 
 	// remove hlv here to simulate a legacy rev
 	require.NoError(t, ds.RemoveXattrs(base.TestCtx(t), docID3, []string{base.VvXattrName}, docVersion.CV.Value))
@@ -545,10 +545,10 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 	defer bt.Close()
 	rt := bt.restTester
 
-	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
-	docVersion2 := rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	docVersion2 := rt.UpdateDoc("doc1", docVersion, `{"test": "update"}`)
 	// wait for pending change to avoid flakes where changes feed didn't pick up this change
 	rt.WaitForPendingChanges()
 	receivedChangesRequestWg := sync.WaitGroup{}
@@ -646,7 +646,7 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
-	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
 	newDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
@@ -753,7 +753,7 @@ func TestCBLHasPreUpgradeMutationThatHasNotBeenReplicated(t *testing.T) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	ds := rt.GetSingleDataStore()
 
-	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
@@ -790,10 +790,10 @@ func TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows(t *testing.T) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	ds := rt.GetSingleDataStore()
 
-	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	docVersion = rt.UpdateDoc("doc1", docVersion, `{"test": "update"}`)
 	rev2ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
@@ -829,10 +829,10 @@ func TestPushOfPostUpgradeMutationThatHasCommonAncestorToSGWVersion(t *testing.T
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	ds := rt.GetSingleDataStore()
 
-	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	docVersion = rt.UpdateDoc("doc1", docVersion, `{"test": "update"}`)
 	rev2ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
@@ -868,13 +868,13 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPreUpgradeSGWMutation(t *
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	ds := rt.GetSingleDataStore()
 
-	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	docVersion = rt.UpdateDoc("doc1", docVersion, `{"test": "update"}`)
 	rev2ID := docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update1"})
+	docVersion = rt.UpdateDoc("doc1", docVersion, `{"test": "update1"}`)
 	rev3ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
@@ -910,13 +910,13 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPostUpgradeSGWMutation(t 
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
-	docVersion := rt.PutDocDirectly("doc1", db.Body{"test": "doc"})
+	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update"})
+	docVersion = rt.UpdateDoc("doc1", docVersion, `{"test": "update"}`)
 	rev2ID := docVersion.RevTreeID
 
-	docVersion = rt.UpdateDocDirectly("doc1", docVersion, db.Body{"test": "update1"})
+	docVersion = rt.UpdateDoc("doc1", docVersion, `{"test": "update1"}`)
 	rev3ID := docVersion.RevTreeID
 
 	// send rev 3-def
@@ -954,7 +954,7 @@ func TestConflictBetweenPostUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testi
 		docID2 = "doc2"
 	)
 
-	docVersion := rt.PutDocDirectly(docID, db.Body{"test": "doc"})
+	docVersion := rt.PutDoc(docID, `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
 	history := []string{rev1ID}
@@ -970,7 +970,7 @@ func TestConflictBetweenPostUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testi
 	assert.Equal(t, docVersion.CV.Value, bucketDoc.HLV.PreviousVersions[docVersion.CV.SourceID])
 
 	// conflict rev
-	docVersion = rt.PutDocDirectly(docID2, db.Body{"some": "doc"})
+	docVersion = rt.PutDoc(docID2, `{"some": "doc"}`)
 	rev1ID = docVersion.RevTreeID
 
 	history = []string{"1-abc"}
@@ -998,7 +998,7 @@ func TestLegacyRevNotInConflict(t *testing.T) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	const docID = "doc1"
 
-	docVersion := rt.PutDocDirectly(docID, db.Body{"test": "doc"})
+	docVersion := rt.PutDoc(docID, `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
 	// have two history entries, 1 rev from a different CBL and 1 legacy rev, should generate conflict
