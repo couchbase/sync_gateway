@@ -222,12 +222,16 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	cancelCtx, cancelFunc := context.WithCancel(context.WithoutCancel(ctx)) // separate cancel context from parent cancel context
 
 	var originPatterns []string // no origin headers for ISGR
+	var blipContext *blip.Context
+
+	// CBG-4780: WIll hard code to use < 4 protocols for now, as the ISGR doesn't support 4+ protocols.
+	arc.config.SupportedBLIPProtocols = []string{CBMobileReplicationV3.SubprotocolString()}
 	// NewSGBlipContext doesn't set cancellation context - active replication cancellation on db close is handled independently
-	// TODO: CBG-3661 ActiveReplicator subprotocol versions
-	// - make this configurable for testing mixed-version replications
-	// - if unspecified, default to v2 and v3 until VV is supported with ISGR, then also include v4
-	protocols := []string{CBMobileReplicationV3.SubprotocolString(), CBMobileReplicationV2.SubprotocolString()}
-	ctx, blipContext, err := NewSGBlipContextWithProtocols(ctx, arc.config.ID+idSuffix, originPatterns, protocols, cancelCtx)
+	if len(arc.config.SupportedBLIPProtocols) > 0 {
+		ctx, blipContext, err = NewSGBlipContextWithProtocols(ctx, arc.config.ID+idSuffix, originPatterns, arc.config.SupportedBLIPProtocols, cancelCtx)
+	} else {
+		ctx, blipContext, err = NewSGBlipContext(ctx, arc.config.ID+idSuffix, originPatterns, cancelCtx)
+	}
 	if err != nil {
 		cancelFunc()
 		return nil, nil, err

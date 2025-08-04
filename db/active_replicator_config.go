@@ -114,6 +114,9 @@ type ActiveReplicatorConfig struct {
 	// Returns an error from ActiveReplicator.Stop() if the replicator encountered any recovered panics inside handlers.
 	// Intended for test usage only, enabled by default but disabled for the prod-ISGR codepath.
 	reportHandlerPanicsOnStop *bool
+
+	// SupportedBLIPProtocols is a list of BLIP protocols supported by the active replicator.
+	SupportedBLIPProtocols        []string
 }
 
 // SetCheckpointPrefix is a cross-package way of defining a checkpoint prefix for an ActiveReplicatorConfig intended for test usage.
