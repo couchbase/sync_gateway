@@ -28,8 +28,12 @@ type DocVersion struct {
 	CV        Version
 }
 
-func (v *DocVersion) String() string {
-	return fmt.Sprintf("RevTreeID: %s", v.RevTreeID)
+func (v DocVersion) String() string {
+	return fmt.Sprintf("RevTreeID:%s,CV:%#v", v.RevTreeID, v.CV)
+}
+
+func (v DocVersion) GoString() string {
+	return fmt.Sprintf("DocVersion{RevTreeID:%s,CV:%#v}", v.RevTreeID, v.CV)
 }
 
 func (v DocVersion) Equal(o DocVersion) bool {

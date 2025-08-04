@@ -27,7 +27,7 @@ func TestMain(m *testing.M) {
 		base.SkipTestMain(m, "Tests are disabled for Couchbase Server by default, to enable set %s=true environment variable", base.TbpEnvTopologyTests)
 		return
 	}
-	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192}
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192, NumCollectionsPerBucket: 1}
 	// Do not create indexes for this test, so they are built by server_context.go
 	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }

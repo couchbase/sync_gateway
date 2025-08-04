@@ -41,18 +41,18 @@ func (v DocMetadata) CV(t require.TestingT) db.Version {
 
 func (v DocMetadata) IsHLVEqual(other DocMetadata) bool {
 	if v.ImplicitHLV != nil {
-		return other.hlvEquals(v.ImplicitHLV)
+		return other.hlvEqual(v.ImplicitHLV)
 	} else if v.HLV != nil {
-		return other.hlvEquals(v.HLV)
+		return other.hlvEqual(v.HLV)
 	}
 	return other.ImplicitHLV == nil && other.HLV == nil
 }
 
-func (v DocMetadata) hlvEquals(hlv *db.HybridLogicalVector) bool {
+func (v DocMetadata) hlvEqual(hlv *db.HybridLogicalVector) bool {
 	if v.ImplicitHLV != nil {
-		return v.ImplicitHLV.Equals(hlv)
+		return v.ImplicitHLV.Equal(hlv)
 	} else if v.HLV != nil {
-		return v.HLV.Equals(hlv)
+		return v.HLV.Equal(hlv)
 	}
 	return hlv == nil
 }
