@@ -30,6 +30,8 @@ func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*Ac
 	apr := ActivePullReplicator{
 		activeReplicatorCommon: replicator,
 	}
+	// CBG-4780: WIll hard code to use < 4 protocols for now, as the ISGR doesn't support 4+ protocols.
+	replicator.config.SupportedBLIPProtocols = []string{CBMobileReplicationV3.SubprotocolString()}
 	replicator.registerFunctions(apr._getStatus, apr._connect, apr.registerCheckpointerCallbacks)
 	return &apr, nil
 }
