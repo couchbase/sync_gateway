@@ -224,7 +224,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	var originPatterns []string // no origin headers for ISGR
 	var blipContext *blip.Context
 
-	// CBG-4780: WIll hard code to use < 4 protocols for now, as the ISGR doesn't support 4+ protocols.
+	// CBG-4780: Will hard code to use < 4 protocols for now, as the ISGR doesn't support 4+ protocols.
 	arc.config.SupportedBLIPProtocols = []string{CBMobileReplicationV3.SubprotocolString()}
 	// NewSGBlipContext doesn't set cancellation context - active replication cancellation on db close is handled independently
 	if len(arc.config.SupportedBLIPProtocols) > 0 {
