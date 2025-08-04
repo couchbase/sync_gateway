@@ -116,7 +116,7 @@ type ActiveReplicatorConfig struct {
 	reportHandlerPanicsOnStop *bool
 
 	// SupportedBLIPProtocols is a list of BLIP protocols supported by the active replicator.
-	SupportedBLIPProtocols        []string
+	SupportedBLIPProtocols []string
 }
 
 // SetCheckpointPrefix is a cross-package way of defining a checkpoint prefix for an ActiveReplicatorConfig intended for test usage.
