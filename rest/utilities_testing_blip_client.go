@@ -2089,7 +2089,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	}
 	// if we resolved a conflict, then we might need to push this conflict back
 	if winner == localDocWinner {
-		base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision and picking CBL version. Incoming HLV: %#+v, Local HLV %#+v, Result HLV %#+v\n", opts.incomingHLV, localRev.HLV, docRev.HLV)
+		base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision and picking CBL version. Incoming HLV: %#+v, Local HLV %#+v, Result HLV %#+v", opts.incomingHLV, localRev.HLV, docRev.HLV)
 		btcc._seqCond.Broadcast()
 	}
 }
