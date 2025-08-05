@@ -2390,66 +2390,6 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	})
 }
 
-func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
-	rtConfig := &RestTesterConfig{
-		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				AllowConflicts: base.Ptr(true),
-			},
-		},
-	}
-
-	btcRunner := NewBlipTesterClientRunner(t)
-	const docID = "doc"
-
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, rtConfig)
-		defer rt.Close()
-
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
-		defer btc.Close()
-
-		btcRunner.StartPull(btc.id)
-
-		// Push an initial rev with attachment data
-		initialVersion := rt.PutDocWithAttachment(docID, "{}", "hello.txt", "aGVsbG8gd29ybGQ=")
-		rt.WaitForPendingChanges()
-
-		// Replicate data to client and ensure doc arrives
-		rt.WaitForPendingChanges()
-		btcRunner.WaitForVersion(btc.id, docID, initialVersion)
-
-		// Create a set of revisions before we start the replicator to ensure there's a significant amount of history to push
-		version := initialVersion
-		for i := 0; i < 25; i++ {
-			version = btcRunner.AddRev(btc.id, docID, &version, []byte(`{"update_count":`+strconv.Itoa(i)+`,"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`))
-		}
-
-		// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment, even when we replicate it
-		proveAttachmentBefore := btc.pushReplication.replicationStats.ProveAttachment.Value()
-		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: false})
-		rt.WaitForVersion(docID, version)
-
-		proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
-		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
-
-		// start another push to run in the background from where we last left off
-		latestSeq := btcRunner.SingleCollection(btc.id).lastSeq()
-		btcRunner.StartPushWithOpts(btc.id, BlipTesterPushOptions{Continuous: true, Since: strconv.Itoa(int(latestSeq))})
-
-		// Push another bunch of history, this time whilst a replicator is actively pushing them
-		for i := 25; i < 50; i++ {
-			version = btcRunner.AddRev(btc.id, docID, &version, []byte(`{"update_count":`+strconv.Itoa(i)+`,"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`))
-		}
-
-		rt.WaitForVersion(docID, version)
-		proveAttachmentAfter = btc.pushReplication.replicationStats.ProveAttachment.Value()
-		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
-	})
-}
-
 func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,

@@ -956,12 +956,6 @@ func (btcc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ve
 	rev.message = msg
 }
 
-func (c *BlipTesterCollectionClient) lastSeq() clientSeq {
-	c.seqLock.RLock()
-	defer c.seqLock.RUnlock()
-	return c._seqLast
-}
-
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) *BlipTesterReplicator {
 	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
 		connectingPassword:            RestTesterDefaultUserPassword,
