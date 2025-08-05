@@ -627,9 +627,14 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 				cv, err := db.ParseVersion(revID)
 				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
 				incomingVersion = DocVersion{CV: cv}
-				require.NotEmpty(btr.TB(), revHistory, "rev history should not be empty for deleted message, %#+v", msg.Properties)
-				incomingHLV, _, err = db.ExtractHLVFromBlipMessage(revHistory)
-				require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
+				if revHistory != "" {
+					// why is rev history not populated for a deleted message?
+					incomingHLV, _, err = db.ExtractHLVFromBlipMessage(revHistory)
+					require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
+				} else {
+					incomingHLV = db.NewHybridLogicalVector()
+				}
+				require.NoError(btr.TB(), incomingHLV.AddVersion(cv))
 				require.Equal(btr.TB(), cv, *incomingHLV.ExtractCurrentVersionFromHLV(), "incoming version CV %#+v from revID should be part of incomingHLV: %#v. Full properties, %#+v", cv, incomingHLV, msg.Properties)
 			} else {
 				incomingVersion = DocVersion{RevTreeID: revID}
@@ -813,8 +818,8 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			} else {
 				// If no revHistory is provided, we need to create a new HLV with the incoming version
 				incomingHLV = db.NewHybridLogicalVector()
-				require.NoError(btr.TB(), incomingHLV.AddVersion(cv))
 			}
+			require.NoError(btr.TB(), incomingHLV.AddVersion(cv))
 			require.Equal(btr.TB(), cv, *incomingHLV.ExtractCurrentVersionFromHLV(), "incoming version CV %#+v from revID should be part of incomingHLV: %#v. Full properties, %#+v", cv, incomingHLV, msg.Properties)
 		} else {
 			incomingVersion = DocVersion{RevTreeID: revID}

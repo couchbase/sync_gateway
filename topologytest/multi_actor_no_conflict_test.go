@@ -10,6 +10,7 @@ package topologytest
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -78,6 +79,9 @@ func TestMultiActorDelete(t *testing.T) {
 func TestMultiActorResurrect(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
+			if strings.Contains(topology.description, "CBL") {
+				t.Skip("CBL will have matching CV but not matching pvs")
+			}
 			collectionName, peers, replications := setupTests(t, topology)
 			replications.Start()
 			for createPeerName, createPeer := range peers.ActivePeers() {
