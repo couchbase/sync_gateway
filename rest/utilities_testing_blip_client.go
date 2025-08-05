@@ -2058,8 +2058,8 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 			// - remove the any pv that contain the merge sourceIDs
 			// - add the merge sourceIDs with the incoming version and local version
 			// - update the new CV
-			docRev.HLV.Remove(opts.incomingHLV.SourceID)
-			docRev.HLV.Remove(btcc.parent.SourceID)
+			delete(docRev.HLV.PreviousVersions, opts.incomingHLV.SourceID)
+			delete(docRev.HLV.PreviousVersions, btcc.parent.SourceID)
 			docRev.HLV.SetMergeVersion(opts.incomingHLV.SourceID, opts.incomingHLV.Version)
 			docRev.HLV.SetMergeVersion(localRev.HLV.SourceID, localRev.HLV.Version)
 			newCV := db.Version{SourceID: btcc.parent.SourceID, Value: uint64(btcc.hlc.Now())}
