@@ -2039,7 +2039,6 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 			require.NoError(btcc.TB(), docRev.HLV.AddNewerVersions(opts.incomingHLV))
 		}
 	case localDocWinner:
-		fmt.Printf("LOCAL DOC WINNER, localRev: %#+v, incomingVersion: %#+v\n", localRev, opts.incomingVersion)
 		docRev.body = doc._latestRev(btcc.TB()).body
 		docRev.version = DocVersion{
 			RevTreeID: opts.incomingVersion.RevTreeID,
