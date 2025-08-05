@@ -3568,7 +3568,7 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 }
 
 func TestBlipPullConflict(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeySGTest)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync, base.KeySyncMsg, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.SkipSubtest[RevtreeSubtestName] = true
@@ -3607,7 +3607,7 @@ func TestBlipPullConflict(t *testing.T) {
 		// updated to be newer than the pre-conflict CBL version
 		require.Equal(t, preConflictCBLVersion.CV.SourceID, postConflictVersion.CV.SourceID)
 		require.Greater(t, postConflictVersion.CV.Value, preConflictCBLVersion.CV.Value)
-		require.Empty(t, postConflictHLV.PreviousVersions)
+		require.Empty(t, postConflictHLV.PreviousVersions, "postConflictHLV: %#+v\n", postConflictHLV)
 		require.Equal(t, db.HLVVersions{
 			sgVersion.CV.SourceID:             sgVersion.CV.Value,
 			preConflictCBLVersion.CV.SourceID: preConflictCBLVersion.CV.Value,

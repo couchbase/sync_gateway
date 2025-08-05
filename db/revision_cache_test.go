@@ -2239,3 +2239,55 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 	_, exists = collection.revisionCache.Peek(ctx, docID, doc.CurrentRev)
 	require.False(t, exists)
 }
+
+func TestRemoveFromRevLookup(t *testing.T) {
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	backingStoreMap := CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 10,
+		MaxBytes:     0,
+	}
+	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
+
+	ctx := base.TestCtx(t)
+
+	// Fill up the rev cache with the first 10 docs
+	for docID := 0; docID < 10; docID++ {
+		id := strconv.Itoa(docID)
+		vrs := uint64(docID)
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &Version{Value: vrs, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	}
+	assert.Equal(t, int64(10), cacheNumItems.Value())
+	assert.Equal(t, int64(20), memoryBytesCounted.Value())
+	assert.Equal(t, 10, len(cache.cache))
+	assert.Equal(t, 10, len(cache.hlvCache))
+
+	// simulate a user xattr update:
+	// 1. Removes form rev lookup cache
+	// 2. Enter new entry with same revID and docID but diff CV
+	// 3. Assert that eviction eventually aligns the cache items in each lookup map
+	cache.RemoveRevOnly(ctx, "1", "1-abc", testCollectionID)
+	assert.Equal(t, int64(10), cacheNumItems.Value())
+	assert.Equal(t, int64(20), memoryBytesCounted.Value())
+	assert.Equal(t, 10, cache.lruList.Len())
+	assert.Equal(t, 9, len(cache.cache))
+	assert.Equal(t, 10, len(cache.hlvCache))
+
+	// add new entry to cache for docID 1 with a different CV but same revID
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: "1", RevID: "1-abc", CV: &Version{Value: 1234, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	assert.Equal(t, int64(10), cacheNumItems.Value())
+	assert.Equal(t, int64(20), memoryBytesCounted.Value())
+	assert.Equal(t, 10, cache.lruList.Len())
+	assert.Equal(t, 9, len(cache.cache)) // we should have 9 items in the rev lookup as we removed one item above
+	assert.Equal(t, 10, len(cache.hlvCache))
+
+	// add new doc to trigger eviction of old doc "1" value in the cache that has entry in hlv cache to an item but the revID lookup
+	// for this item will be to a different value (given the simulation of user xattr update above). This means that this
+	// will trigger an eviction from CV lookup but no revID lookup thus aligning the lookup maps once again.
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: "someNewDoc", RevID: "1-abc", CV: &Version{Value: 123456, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	assert.Equal(t, int64(10), cacheNumItems.Value())
+	assert.Equal(t, int64(20), memoryBytesCounted.Value())
+	assert.Equal(t, 10, cache.lruList.Len())
+	assert.Equal(t, 10, len(cache.cache)) // we should now have 10 items in rev lookup given the item above aligned the lookups after eviction
+	assert.Equal(t, 10, len(cache.hlvCache))
+}

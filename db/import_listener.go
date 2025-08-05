@@ -240,7 +240,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 				base.DebugfCtx(ctx, base.KeyImport, "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
 			}
 		}
-	} else if syncData != nil && syncData.Attachments != nil {
+	} else if syncData != nil && syncData.AttachmentsPre4dot0 != nil {
 		base.DebugfCtx(ctx, base.KeyImport, "Attachment metadata found in sync data for doc with id %s, migrating attachment metadata", base.UD(docID))
 		// we have attachments to migrate
 		err := collection.MigrateAttachmentMetadata(ctx, docID, event.Cas, syncData)

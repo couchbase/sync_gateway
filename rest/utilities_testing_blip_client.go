@@ -299,48 +299,36 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, hlvHistory: latestRev.HLV, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
 }
 
-// _resolveConflict will resolve a conflict for the given incoming version. This will mutate the hlv, and return the expected body and version to write.
-func (cd *clientDoc) _resolveConflict(ctx context.Context, opts resolveConflictOptions) (resolvedBody []byte, resolvedVersion db.Version) {
-	if opts.usingRevTree {
-		// consider implementing conflict resolution based on generation for rev id, but right now just accept incoming revtree and overwrite
-		return opts.incomingBody, opts.incomingVersion
-	}
-	// fetch client's latest version to do conflict check and resolution
-	latestLocalRev := cd._latestRev(opts.t)
-	if latestLocalRev == nil {
-		// no existing rev - accept incoming rev
-		return opts.incomingBody, opts.incomingVersion
-	}
-	clientCV := latestLocalRev.version.CV
+type conflictResolutionWinner uint
 
+const (
+	remoteDocWinner conflictResolutionWinner = iota // The remote document is the winner in the conflict resolution
+	localDocWinner                                  // The local document is the winner in the conflict resolution
+)
+
+func (r *clientDocRev) _pickConflictWinner(t testing.TB, incomingCV db.Version, conflictResolver BlipTesterClientConflictResolverType) conflictResolutionWinner {
+	localCV := r.HLV.ExtractCurrentVersionFromHLV()
 	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
-	if latestLocalRev.version.CV.Equal(opts.incomingVersion) {
-		require.FailNow(opts.t, fmt.Sprintf("incoming revision %#+v is equal to client revision %#+v - this should've been filtered via changes response before ending up as a rev", opts.incomingVersion, clientCV))
+	if localCV.Equal(incomingCV) {
+		require.FailNow(t, fmt.Sprintf("incoming CV %#+v is equal to local CV revision %#+v - this should've been filtered via changes response before ending up as a rev", incomingCV, r))
 	}
-	if opts.incomingVersion.SourceID == clientCV.SourceID {
+	if incomingCV.SourceID == localCV.SourceID {
 		// incomingVersion has the same sourceID as the local version.
 
 		// Potentially we should add a check to make sure that the HLV is not rolling back
 		/// incomingCV.Value > clientCV.Value
-		return opts.incomingBody, opts.incomingVersion
+		return remoteDocWinner
 	}
 
-	switch opts.conflictResolver {
+	switch conflictResolver {
 	case ConflictResolverLastWriteWins:
-		if opts.incomingVersion.Value > clientCV.Value {
-			base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision and picking Sync Gateway version")
-			// incoming rev is newer than the client version, accept this as the new version
-			return opts.incomingBody, opts.incomingVersion
+		if incomingCV.Value > localCV.Value {
+			return remoteDocWinner
 		}
-		opts.hlv.SetMergeVersion(opts.incomingVersion.SourceID, opts.incomingVersion.Value)
-		opts.hlv.SetMergeVersion(clientCV.SourceID, clientCV.Value)
-		newVersion := db.Version{SourceID: opts.localSourceID, Value: uint64(opts.hlc.Now())}
-		return latestLocalRev.body, newVersion
-	default:
-		opts.t.Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", opts.conflictResolver)
+		return localDocWinner
 	}
-	opts.t.Fatalf("Unreachable code in _resolveConflict - should never reach here")
-	return latestLocalRev.body, latestLocalRev.version.CV // unreachable, but required to satisfy return type
+	t.Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", conflictResolver)
+	return localDocWinner // unreachable, but required to satisfy return type
 }
 
 type BlipTesterCollectionClient struct {
@@ -374,26 +362,6 @@ type BlipTesterCollectionClient struct {
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
 
 	hlc *rosmar.HybridLogicalClock
-}
-
-// resolveConflictOptions contains all the options for resolving conflicts
-type resolveConflictOptions struct {
-	// t is the testing.TB instance used for assertions
-	t testing.TB
-	// incomingVersion is the expected version to write for the client document, prior to conflict resolution
-	incomingVersion db.Version
-	// incomingBody is the expected version to write for the body, prior to conflict resolution
-	incomingBody []byte
-	// hlv is a *mutable* HybridLogicalVector representing the state of the document. It should not contain the incomingVersion.
-	hlv *db.HybridLogicalVector
-	// hlc is the HybridLogicalClock used to generate new versions if the incoming version loses the conflict resolution
-	hlc *rosmar.HybridLogicalClock
-	// localSourceID is used to generate new versions if the incoming version loses the conflict resolution
-	localSourceID string
-	// conflictResolver represents the type of conflict resolution to use
-	conflictResolver BlipTesterClientConflictResolverType
-	// usingRevTree indicates whether the client is using revtrees. If using revtrees, neither MWW/LWW are implemented yet and it is always resolved as remoteWins.
-	usingRevTree bool
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
@@ -653,27 +621,26 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 		require.NoError(btr.TB(), err)
 
 		if msg.Properties[db.RevMessageDeleted] == "1" {
-			var newVersion DocVersion
-			var hlv db.HybridLogicalVector
+			var incomingVersion DocVersion
+			var incomingHLV *db.HybridLogicalVector
 			if btc.UseHLV() {
-				if revHistory != "" {
-					existingVersion, _, err := db.ExtractHLVFromBlipMessage(revHistory)
-					require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
-					hlv = *existingVersion
-				}
-				v, err := db.ParseVersion(revID)
+				cv, err := db.ParseVersion(revID)
 				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
-				newVersion = DocVersion{CV: v}
+				incomingVersion = DocVersion{CV: cv}
+				require.NotEmpty(btr.TB(), revHistory, "rev history should not be empty for deleted message, %#+v", msg.Properties)
+				incomingHLV, _, err = db.ExtractHLVFromBlipMessage(revHistory)
+				require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
+				require.Equal(btr.TB(), cv, *incomingHLV.ExtractCurrentVersionFromHLV(), "incoming version CV %#+v from revID should be part of incomingHLV: %#v. Full properties, %#+v", cv, incomingHLV, msg.Properties)
 			} else {
-				newVersion = DocVersion{RevTreeID: revID}
+				incomingVersion = DocVersion{RevTreeID: revID}
 			}
 			rev := revOptions{
-				newVersion:                newVersion,
+				incomingVersion:           incomingVersion,
 				body:                      body,
 				isDelete:                  true,
 				msg:                       msg,
 				updateLatestServerVersion: true,
-				hlv:                       hlv,
+				incomingHLV:               incomingHLV,
 			}
 			if replacedRev != "" {
 				var replacedVersion *DocVersion
@@ -834,27 +801,31 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			body, err = base.JSONMarshal(bodyJSON)
 			require.NoError(btr.TB(), err)
 		}
-		var newVersion DocVersion
-		var hlv db.HybridLogicalVector
+		var incomingVersion DocVersion
+		var incomingHLV *db.HybridLogicalVector
 		if btc.UseHLV() {
-			if revHistory != "" {
-				existingVersion, _, err := db.ExtractHLVFromBlipMessage(revHistory)
-				require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
-				hlv = *existingVersion
-			}
-			v, err := db.ParseVersion(revID)
+			cv, err := db.ParseVersion(revID)
 			require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
-			newVersion = DocVersion{CV: v}
+			incomingVersion = DocVersion{CV: cv}
+			if revHistory != "" {
+				incomingHLV, _, err = db.ExtractHLVFromBlipMessage(revHistory)
+				require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
+			} else {
+				// If no revHistory is provided, we need to create a new HLV with the incoming version
+				incomingHLV = db.NewHybridLogicalVector()
+				require.NoError(btr.TB(), incomingHLV.AddVersion(cv))
+			}
+			require.Equal(btr.TB(), cv, *incomingHLV.ExtractCurrentVersionFromHLV(), "incoming version CV %#+v from revID should be part of incomingHLV: %#v. Full properties, %#+v", cv, incomingHLV, msg.Properties)
 		} else {
-			newVersion = DocVersion{RevTreeID: revID}
+			incomingVersion = DocVersion{RevTreeID: revID}
 		}
 
 		rev := revOptions{
-			newVersion:                newVersion,
+			incomingVersion:           incomingVersion,
 			body:                      body,
 			msg:                       msg,
 			updateLatestServerVersion: true,
-			hlv:                       hlv,
+			incomingHLV:               incomingHLV,
 		}
 
 		if replacedRev != "" {
@@ -901,21 +872,21 @@ func (btr *BlipTesterReplicator) handleNoRev(ctx context.Context, btc *BlipTeste
 
 		docID := msg.Properties[db.NorevMessageId]
 		revID := msg.Properties[db.NorevMessageRev]
-		newVersion := DocVersion{}
+		incomingVersion := DocVersion{}
 
 		if btc.UseHLV() {
 			cv, err := db.ParseVersion(revID)
 			if err != nil {
 				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
 			}
-			newVersion.CV = cv
+			incomingVersion.CV = cv
 		} else {
-			newVersion.RevTreeID = revID
+			incomingVersion.RevTreeID = revID
 		}
 
 		btcc.addRev(ctx, docID, revOptions{
-			newVersion: newVersion,
-			msg:        msg,
+			incomingVersion: incomingVersion,
+			msg:             msg,
 		})
 	}
 
@@ -983,15 +954,6 @@ func (btcc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ve
 	doc._latestServerVersion = version
 	rev := doc._revisionsBySeq[doc._seqsByVersions[version]]
 	rev.message = msg
-}
-
-func (btcc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (version DocVersion, ok bool) {
-	btcc.seqLock.RLock()
-	defer btcc.seqLock.RUnlock()
-	doc, ok := btcc._getClientDoc(docID)
-	require.True(btcc.TB(), ok, "docID %q not found in _seqFromDocID", docID)
-	latestServerVersion := doc._latestServerVersion
-	return latestServerVersion, latestServerVersion.RevTreeID != "" || latestServerVersion.CV.Value != 0
 }
 
 func (c *BlipTesterCollectionClient) lastSeq() clientSeq {
@@ -1253,6 +1215,31 @@ func (e proposeChangeBatchEntry) Rev() string {
 	return e.version.RevTreeID
 }
 
+func (e proposeChangeBatchEntry) MarshalJSON() ([]byte, error) {
+	output := &bytes.Buffer{}
+	rev := e.Rev()
+	if e.useHLV() {
+		// Until CBG-4461 is implemented the second value in the array is the full HLV.
+		if e.historyStr() != "" {
+			rev += "," + e.historyStr()
+		}
+	}
+	fmt.Fprintf(output, `["%s","%s"`, e.docID, rev)
+	if e.latestServerVersion.RevTreeID != "" || e.latestServerVersion.CV.Value != 0 {
+		if e.useHLV() {
+			fmt.Fprintf(output, `,"%s"`, e.latestServerVersion.CV.String())
+		} else {
+			fmt.Fprintf(output, `,"%s"`, e.latestServerVersion.RevTreeID)
+		}
+	}
+	fmt.Fprintf(output, "]")
+	return output.Bytes(), nil
+}
+
+func (e proposeChangeBatchEntry) GoString() string {
+	return fmt.Sprintf("proposeChangeBatchEntry{docID: %q, version:%v,revTreeIDHistory:%v,hlvHistory:%v,seq:%d,latestServerVersion:%v,isDelete: %t}", e.docID, e.version, e.revTreeIDHistory, e.hlvHistory, e.seq, e.latestServerVersion, e.isDelete)
+}
+
 // StartPull will begin a push replication with the given options between the client and server
 func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
 	require.True(btcc.TB(), btcc.pushRunning.CASRetry(false, true), "push replication already running")
@@ -1288,37 +1275,11 @@ func (btcc *BlipTesterCollectionClient) sendProposeChanges(ctx context.Context, 
 	proposeChangesRequest := blip.NewRequest()
 	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
 
-	proposeChangesRequestBody := bytes.NewBufferString(`[`)
-	for i, change := range changesBatch {
-		if i > 0 {
-			proposeChangesRequestBody.WriteString(",")
-		}
-		rev := change.Rev()
-		require.NotEqual(btcc.TB(), "", rev)
-		if btcc.UseHLV() {
-			// Until CBG-4461 is implemented the second value in the array is the full HLV.
-			if change.historyStr() != "" {
-				rev += "," + change.historyStr()
-			}
-		}
-		fmt.Fprintf(proposeChangesRequestBody, `["%s","%s"`, change.docID, rev)
+	proposeChangesRequestBody, err := base.JSONMarshal(changesBatch)
+	require.NoError(btcc.TB(), err, "error marshalling proposeChanges request body: %v", err)
+	proposeChangesRequest.SetBody(proposeChangesRequestBody)
 
-		// write last known server version to support no-conflict mode
-		if serverVersion, ok := btcc.getLastReplicatedRev(change.docID); ok {
-			base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version for doc %s = %v", change.docID, serverVersion)
-			if btcc.UseHLV() {
-				fmt.Fprintf(proposeChangesRequestBody, `,"%s"`, serverVersion.CV.String())
-			} else {
-				fmt.Fprintf(proposeChangesRequestBody, `,"%s"`, serverVersion.RevTreeID)
-			}
-		}
-		proposeChangesRequestBody.WriteString(`]`)
-	}
-	proposeChangesRequestBody.WriteString(`]`)
-	proposeChangesRequestBodyBytes := proposeChangesRequestBody.Bytes()
-	proposeChangesRequest.SetBody(proposeChangesRequestBodyBytes)
-
-	base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges request: %s", string(proposeChangesRequestBodyBytes))
+	base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges request body: %s, changes:%#+v", string(proposeChangesRequestBody), changesBatch)
 
 	btcc.addCollectionProperty(proposeChangesRequest)
 
@@ -1363,7 +1324,7 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 
 	btcc.addCollectionProperty(revRequest)
 	btcc.sendPushMsg(revRequest)
-	base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %v", change.docID, change.version)
+	base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %#v", change.docID, change.version)
 	// block until remote has actually processed the rev and sent a response
 	revResp := revRequest.Response()
 	errorCode := revResp.Properties["Error-Code"]
@@ -1378,7 +1339,7 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 		return
 	}
 	require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %#v", revResp)
-	base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
+	base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %#v", change.docID, change.version)
 	btcc.updateLastReplicatedRev(change.docID, change.version, revRequest)
 }
 
@@ -1749,7 +1710,7 @@ func (btcc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion 
 		var found bool
 		var lastKnownVersion *DocVersion
 		data, lastKnownVersion, found = btcc.GetVersion(docID, docVersion)
-		assert.True(c, found, "Could not find docID:%+v Version %+v, last known version: %s", docID, docVersion, lastKnownVersion)
+		assert.True(c, found, "Could not find docID:%+v Version %+v, last known version: %#v", docID, docVersion, lastKnownVersion)
 	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v Version %+v", docID, docVersion)
 	return data
 }
@@ -2040,13 +2001,13 @@ func (btcc *BlipTesterCollectionClient) pruneVersion(docID string, version DocVe
 }
 
 type revOptions struct {
-	body                      []byte                 // body of the revision, nil if this is a deletion
-	msg                       *blip.Message          // message that wrote this revision, could be a rev or changes messages
-	isDelete                  bool                   // isDelete is true if this revision is a tombstone
-	newVersion                DocVersion             // newVersion is the version of the new revision
-	replacedVersion           *DocVersion            // replacedVersion is the version of the revision that was replaced, to update the global structure of all docIDs<->rev
-	updateLatestServerVersion bool                   // updateLatestServerVersion is true if the latestServerVersion should be updated to the newVersion. This only keeps track of a single Sync Gateway.
-	hlv                       db.HybridLogicalVector // hlv is the HybridLogicalVector for the revision, TODO: make sure this is actually full HLV and not the incoming version
+	body                      []byte                  // body of the revision, nil if this is a deletion
+	msg                       *blip.Message           // message that wrote this revision, could be a rev or changes messages
+	isDelete                  bool                    // isDelete is true if this revision is a tombstone
+	incomingVersion           DocVersion              // newVersion is the version of the new revision
+	replacedVersion           *DocVersion             // replacedVersion is the version of the revision that was replaced, to update the global structure of all docIDs<->rev
+	updateLatestServerVersion bool                    // updateLatestServerVersion is true if the latestServerVersion should be updated to the newVersion. This only keeps track of a single Sync Gateway.
+	incomingHLV               *db.HybridLogicalVector // the incoming hlv for the revision. This is nil if revtrees are used and non nil if HLVs are used.
 }
 
 // addRev adds a revision for a specific document.
@@ -2055,41 +2016,63 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	defer btcc.seqLock.Unlock()
 	newClientSeq := btcc._nextSequence()
 
-	doc, ok := btcc._getClientDoc(docID)
-	body := opts.body
-	resolvedCV := opts.newVersion.CV
-	if ok {
-		body, resolvedCV = doc._resolveConflict(ctx, resolveConflictOptions{
-			t:                btcc.TB(),
-			incomingVersion:  opts.newVersion.CV,
-			incomingBody:     opts.body,
-			usingRevTree:     !btcc.UseHLV(),
-			hlv:              &opts.hlv,
-			hlc:              btcc.hlc,
-			localSourceID:    btcc.parent.SourceID,
-			conflictResolver: btcc.parent.ConflictResolver,
-		})
+	winner := remoteDocWinner
+	var localRev *clientDocRev
+	doc, hasLocalDoc := btcc._getClientDoc(docID)
+	// No conflict resolution for revtree at this time
+	var updatedHLV *db.HybridLogicalVector
+	if hasLocalDoc {
+		localRev = doc._latestRev(btcc.TB())
+		winner = localRev._pickConflictWinner(btcc.TB(), opts.incomingVersion.CV, btcc.parent.ConflictResolver)
+		// Start HLV with the local version, if it exists
+		updatedHLV = localRev.HLV.Copy()
+	} else {
+		updatedHLV = db.NewHybridLogicalVector()
 	}
-	if btcc.UseHLV() {
-		require.NoError(btcc.TB(), opts.hlv.AddVersion(resolvedCV))
-		if resolvedCV != opts.newVersion.CV {
-			base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision, resulting hlv: %#+v\n", opts.hlv)
-		}
-	}
-	resolvedVersion := DocVersion{
-		RevTreeID: opts.newVersion.RevTreeID,
-		CV:        resolvedCV,
-	}
+	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{
 		clientSeq: newClientSeq,
-		version:   resolvedVersion,
-		body:      body,
 		isDelete:  opts.isDelete,
 		message:   opts.msg,
-		HLV:       opts.hlv,
+		HLV:       *updatedHLV,
+	}
+	switch winner {
+	case remoteDocWinner:
+		docRev.body = opts.body
+		docRev.version = opts.incomingVersion
+		if btcc.UseHLV() {
+			// Add the incoming HLV to the local HLV, regardless of winner
+			require.NoError(btcc.TB(), docRev.HLV.AddNewerVersions(opts.incomingHLV))
+		}
+	case localDocWinner:
+		fmt.Printf("LOCAL DOC WINNER, localRev: %#+v, incomingVersion: %#+v\n", localRev, opts.incomingVersion)
+		docRev.body = doc._latestRev(btcc.TB()).body
+		docRev.version = DocVersion{
+			RevTreeID: opts.incomingVersion.RevTreeID,
+		}
+
+		if btcc.UseHLV() {
+			// move all versions from remote HLV to local HLV
+			require.NoError(btcc.TB(), docRev.HLV.AddNewerVersions(opts.incomingHLV))
+			// manually reconstruct the HLV
+			// - remove the any pv that contain the merge sourceIDs
+			// - add the merge sourceIDs with the incoming version and local version
+			// - update the new CV
+			docRev.HLV.Remove(opts.incomingHLV.SourceID)
+			docRev.HLV.Remove(btcc.parent.SourceID)
+			docRev.HLV.SetMergeVersion(opts.incomingHLV.SourceID, opts.incomingHLV.Version)
+			docRev.HLV.SetMergeVersion(localRev.HLV.SourceID, localRev.HLV.Version)
+			newCV := db.Version{SourceID: btcc.parent.SourceID, Value: uint64(btcc.hlc.Now())}
+			// can not call AddVersion, since that will invalidate mv and move to pv. Set SourceID and Version directly on HybridLogicalVector
+			docRev.HLV.SourceID = newCV.SourceID
+			docRev.HLV.Version = newCV.Value
+			docRev.version.CV = newCV
+		}
+	default:
+		require.FailNow(btcc.TB(), fmt.Sprintf("Unknown type of document winner %#v", winner))
 	}
 
-	if !ok {
+	if !hasLocalDoc {
 		doc = newClientDocument(docID, newClientSeq, &docRev)
 	} else {
 		// remove existing entry and replace with new seq
@@ -2104,11 +2087,11 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 		doc._seqsByVersions[*opts.replacedVersion] = newClientSeq
 	}
 	if opts.updateLatestServerVersion {
-		doc._latestServerVersion = opts.newVersion
+		doc._latestServerVersion = opts.incomingVersion
 	}
 	// if we resolved a conflict, then we might need to push this conflict back
-	if opts.newVersion.CV != resolvedCV {
-		base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision and picking CBL version. HLV %#+v\n", opts.hlv)
+	if winner == localDocWinner {
+		base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision and picking CBL version. Incoming HLV: %#+v, Local HLV %#+v, Result HLV %#+v\n", opts.incomingHLV, localRev.HLV, docRev.HLV)
 		btcc._seqCond.Broadcast()
 	}
 }

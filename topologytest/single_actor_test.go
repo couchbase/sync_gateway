@@ -21,6 +21,7 @@ func TestSingleActorCreate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
+			replications.Start()
 			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
@@ -44,6 +45,7 @@ func TestSingleActorUpdate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
+			replications.Start()
 			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
@@ -74,6 +76,7 @@ func TestSingleActorDelete(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
+			replications.Start()
 			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)
@@ -104,6 +107,7 @@ func TestSingleActorResurrect(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
+			replications.Start()
 			for activePeerID, activePeer := range peers.ActivePeers() {
 				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					updatePeersT(t, peers)

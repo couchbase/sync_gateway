@@ -23,7 +23,7 @@ func TestMultiActorUpdate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
-
+			replications.Start()
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for updatePeerName, updatePeer := range peers {
 					docID := getDocID(t) + "_create=" + createPeerName + ",update=" + updatePeerName
@@ -51,7 +51,7 @@ func TestMultiActorDelete(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
-
+			replications.Start()
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for deletePeerName, deletePeer := range peers {
 					docID := getDocID(t) + "_create=" + createPeerName + ",update=" + deletePeerName
@@ -79,7 +79,7 @@ func TestMultiActorResurrect(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
-
+			replications.Start()
 			for createPeerName, createPeer := range peers.ActivePeers() {
 				for deletePeerName, deletePeer := range peers {
 					for resurrectPeerName, resurrectPeer := range peers {

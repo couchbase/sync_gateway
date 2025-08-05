@@ -330,11 +330,6 @@ func setupTests(t *testing.T, topology Topology) (base.ScopeAndCollectionName, P
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV, base.KeyCRUD, base.KeySync)
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
-
-	for _, replication := range replications {
-		// temporarily start the replication before writing the document, limitation of CouchbaseLiteMockPeer as active peer since WriteDocument is calls PushRev
-		replication.Start()
-	}
 	return getSingleDsName(), peers, replications
 }
 

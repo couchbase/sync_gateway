@@ -48,7 +48,7 @@ func newRosmarTracker(numBuckets int) *rosmarTracker {
 }
 
 // getNextBucketIdx returns the next available bucket index in a rosmarTracker. This will return the lowest available
-// number starting at 0. If all buckets are in use, it will return an error.
+// number starting at 1. If all buckets are in use, it will return an error.
 func (r *rosmarTracker) GetNextBucketIdx() (int, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -56,7 +56,7 @@ func (r *rosmarTracker) GetNextBucketIdx() (int, error) {
 	for i, active := range r.activeBuckets {
 		if !active {
 			r.activeBuckets[i] = true
-			return i, nil
+			return i + 1, nil
 		}
 	}
 	return 0, fmt.Errorf("no rosmar buckets available, all have been used")
@@ -66,7 +66,7 @@ func (r *rosmarTracker) GetNextBucketIdx() (int, error) {
 func (r *rosmarTracker) ReleaseBucketIdx(idx int) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	r.activeBuckets[idx] = false
+	r.activeBuckets[idx-1] = false
 }
 
 // TestBucketPool is used to manage a pool of pre-prepared buckets for testing purposes.

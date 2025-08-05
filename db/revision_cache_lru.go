@@ -93,6 +93,10 @@ func (sc *ShardedLRURevisionCache) RemoveWithCV(ctx context.Context, docID strin
 	sc.getShard(docID).RemoveWithCV(ctx, docID, cv, collectionID)
 }
 
+func (sc *ShardedLRURevisionCache) RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32) {
+	sc.getShard(docID).RemoveRevOnly(ctx, docID, revID, collectionID)
+}
+
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
 	backingStores        map[uint32]RevisionCacheBackingStore
@@ -507,6 +511,12 @@ func (rc *LRURevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *
 	rc.removeFromCacheByCV(ctx, docID, cv, collectionID)
 }
 
+// RemoveRevOnly removes a rev from revision cache lookup map, if present.
+func (rc *LRURevisionCache) RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32) {
+	// This will only remove the entry from the rev lookup map, not the lru list
+	rc.removeFromRevLookup(ctx, docID, revID, collectionID)
+}
+
 // removeFromCacheByCV removes an entry from rev cache by CV
 func (rc *LRURevisionCache) removeFromCacheByCV(ctx context.Context, docID string, cv *Version, collectionID uint32) {
 	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.Value, CollectionID: collectionID}
@@ -518,6 +528,7 @@ func (rc *LRURevisionCache) removeFromCacheByCV(ctx context.Context, docID strin
 	}
 	// grab the revid key from the value to enable us to remove the reference from the rev lookup map too
 	elem := element.Value.(*revCacheValue)
+
 	legacyKey := IDAndRev{DocID: docID, RevID: elem.revID, CollectionID: collectionID}
 	rc.lruList.Remove(element)
 	delete(rc.hlvCache, key)
@@ -538,6 +549,7 @@ func (rc *LRURevisionCache) removeFromCacheByRev(ctx context.Context, docID, rev
 	}
 	// grab the cv key from the value to enable us to remove the reference from the rev lookup map too
 	elem := element.Value.(*revCacheValue)
+
 	hlvKey := IDandCV{DocID: docID, Source: elem.cv.SourceID, Version: elem.cv.Value, CollectionID: collectionID}
 	rc.lruList.Remove(element)
 	// decrement the overall memory bytes count
@@ -546,6 +558,16 @@ func (rc *LRURevisionCache) removeFromCacheByRev(ctx context.Context, docID, rev
 	// remove from CV lookup map too
 	delete(rc.hlvCache, hlvKey)
 	rc.cacheNumItems.Add(-1)
+}
+
+// removeFromRevLookup will only remove the entry from the rev lookup map, if present. Underlying element must stay in list for eviction to work.
+func (rc *LRURevisionCache) removeFromRevLookup(ctx context.Context, docID, revID string, collectionID uint32) {
+	key := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	// only delete from rev lookup map, if we delete underlying element in list, the now elem in the HLV lookup map
+	// will never be evicted leading to potential unbounded growth of HLV lookup map
+	delete(rc.cache, key)
 }
 
 // removeValue removes a value from the revision cache, if present and the value matches the the value. If there's an item in the revision cache with a matching docID and revID but the document is different, this item will not be removed from the rev cache.
@@ -583,8 +605,17 @@ func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, nu
 		}
 		hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: value.collectionID}
 		revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
-		delete(rc.cache, revKey)
 		delete(rc.hlvCache, hlvKey)
+		if elem := rc.cache[revKey]; elem != nil {
+			revValue := elem.Value.(*revCacheValue)
+			// we need to check if the value pointed to by the rev lookup map is the same value we're evicting, this is
+			// because we can have can currently have two items with the same docID and revID, but different CVs due to
+			// a new HLV being generated for user xattr updates where we don't generate a new revID.
+			if revValue.cv.String() == value.cv.String() {
+				// this rev lookup item matches the value we're evicting, so remove it
+				delete(rc.cache, revKey)
+			}
+		}
 		numItemsEvicted++
 		numBytesEvicted += value.getItemBytes()
 	}
@@ -832,8 +863,17 @@ func (rc *LRURevisionCache) performEviction(ctx context.Context) {
 			}
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
 			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: value.collectionID}
-			delete(rc.cache, revKey)
 			delete(rc.hlvCache, hlvKey)
+			if elem := rc.cache[revKey]; elem != nil {
+				revValue := elem.Value.(*revCacheValue)
+				// we need to check if the value pointed to by the rev lookup map is the same value we're evicting, this is
+				// because we can have can currently have two items with the same docID and revID, but different CVs due to
+				// a new HLV being generated for user xattr updates where we don't generate a new revID.
+				if revValue.cv.String() == value.cv.String() {
+					// this rev lookup item matches the value we're evicting, so remove it
+					delete(rc.cache, revKey)
+				}
+			}
 			numItemsRemoved++
 			valueBytes := value.getItemBytes()
 			numBytesRemoved += valueBytes
