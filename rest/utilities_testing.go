@@ -885,7 +885,8 @@ func (cr ChangesResults) Summary() string {
 
 // RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
-	RequireDocVersionEqual(t, expected, DocVersion{RevTreeID: changeRev["rev"]})
+	// CV will only be populated if changes requests it
+	require.Equal(t, expected.RevTreeID, changeRev["rev"], "Expected rev %s, got %s", expected.RevTreeID, changeRev["rev"])
 }
 
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
@@ -2397,12 +2398,20 @@ func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
 
 // RequireDocVersionEqual calls t.Fail if two document versions are not equal.
 func RequireDocVersionEqual(t testing.TB, expected, actual DocVersion) {
-	require.True(t, expected.Equal(actual), "Versions mismatch.  Expected: %s, Actual: %s", expected, actual)
+	if !expected.CV.IsEmpty() {
+		require.Equal(t, expected.CV.String(), actual.CV.String(), "Versions mismatch.  Expected: %s, Actual: %s", expected, actual)
+	} else {
+		require.Equal(t, expected.RevTreeID, actual.RevTreeID, "Versions mismatch.  Expected: %s, Actual: %s", expected.RevTreeID, actual.RevTreeID)
+	}
 }
 
 // RequireDocVersionNotEqual calls t.Fail if two document versions are equal.
 func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
-	require.False(t, expected.Equal(actual), "Versions match. Version should not be %s", expected)
+	if !expected.CV.IsEmpty() {
+		require.NotEqual(t, expected.CV.String(), actual.CV.String(), "Versions mismatch.  Expected: %s, Actual: %s", expected, actual)
+	} else {
+		require.NotEqual(t, expected.RevTreeID, actual.RevTreeID, "Versions mismatch.  Expected: %s, Actual: %s", expected.RevTreeID, actual.RevTreeID)
+	}
 }
 
 // EmptyDocVersion reprents an empty document version.

@@ -32,11 +32,19 @@ func (v *DocVersion) String() string {
 	return fmt.Sprintf("RevTreeID: %s", v.RevTreeID)
 }
 
-func (v DocVersion) Equal(o DocVersion) bool {
-	if v.RevTreeID != o.RevTreeID {
-		return false
+// RevOrCVEqual compares two DocVersions for equality. It checks RevID if defined or CV is defined.
+func (v DocVersion) RevOrCVEqual(o DocVersion) bool {
+	if v.RevTreeID != "" && o.RevTreeID != "" {
+		if v.RevTreeID == o.RevTreeID {
+			return true
+		}
 	}
-	return true
+	if !v.CV.IsEmpty() && !o.CV.IsEmpty() {
+		if v.CV.String() == o.CV.String() {
+			return true
+		}
+	}
+	return false
 }
 
 func (v DocVersion) GetRev(useHLV bool) string {

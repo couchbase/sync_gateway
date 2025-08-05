@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Helper functions for SGR testing
@@ -68,9 +69,12 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 	return activeRT
 }
 
-// requireDocumentVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
-func requireDocumentVersion(t testing.TB, expected rest.DocVersion, doc *db.Document) {
-	rest.RequireDocVersionEqual(t, expected, rest.DocVersion{RevTreeID: doc.SyncData.CurrentRev})
+// requireDocumentVersion asserts that the given document has the expected version
+func requireDocumentVersion(t testing.TB, expected rest.DocVersion, doc *db.Document, checkCV bool) {
+	if checkCV {
+		require.Equal(t, expected.CV, *doc.SyncData.HLV.ExtractCurrentVersionFromHLV())
+	}
+	require.Equal(t, expected.RevTreeID, doc.SyncData.CurrentRev)
 }
 
 // createOrUpdateDoc creates a new document the specified document id, and body value in a channel named "alice".

@@ -2072,7 +2072,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	rt2.CreateUser(username, []string{username})
 
 	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["`+username+`"]}`)
+	version := rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","channels":["`+username+`"]}`))
 
 	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
 	remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
@@ -2114,7 +2114,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc)
+	requireDocumentVersion(t, version, doc, false)
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -2609,7 +2609,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc)
+	requireDocumentVersion(t, version, doc, false)
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
 	assert.Equal(t, "rt2", body["source"])
@@ -2626,7 +2626,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	doc2, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc2)
+	requireDocumentVersion(t, version, doc2, false)
 
 	body, err = doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3024,7 +3024,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	for i := 0; i < numRT2DocsInitial; i++ {
 		rt1Version := rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
 		rt2Version := rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		rest.RequireDocVersionEqual(t, rt1Version, rt2Version)
+		require.Equal(t, rt1Version.RevTreeID, rt2Version.RevTreeID)
 	}
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -3097,7 +3097,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
 		rt1Version := rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
 		rt2Version := rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		rest.RequireDocVersionEqual(t, rt1Version, rt2Version)
+		require.Equal(t, rt1Version.RevTreeID, rt2Version.RevTreeID)
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
@@ -3233,7 +3233,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc)
+	requireDocumentVersion(t, version, doc, false)
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3299,7 +3299,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc)
+	requireDocumentVersion(t, version, doc, false)
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3317,7 +3317,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	doc2, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc2)
+	requireDocumentVersion(t, version, doc2, false)
 
 	body, err = doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3718,7 +3718,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc)
+	requireDocumentVersion(t, version, doc, false)
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3787,7 +3787,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc)
+	requireDocumentVersion(t, version, doc, false)
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3804,7 +3804,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.True(t, doc.IsDeleted())
-	requireDocumentVersion(t, deletedVersion, doc)
+	requireDocumentVersion(t, deletedVersion, doc, false)
 }
 
 // TestActiveReplicatorPullPurgeOnRemoval:
@@ -3868,7 +3868,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc)
+	requireDocumentVersion(t, version, doc, false)
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -4067,7 +4067,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
-			requireDocumentVersion(t, test.expectedLocalVersion, doc)
+			requireDocumentVersion(t, test.expectedLocalVersion, doc, false)
 
 			// This is skipped for tombstone tests running with xattr as xattr tombstones don't have a body to assert
 			// against
@@ -4290,7 +4290,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
-			requireDocumentVersion(t, test.expectedVersion, doc)
+			requireDocumentVersion(t, test.expectedVersion, doc, false)
 			requireBodyEqual(t, test.expectedBody, doc)
 			t.Logf("Doc %s is %+v", docID, doc)
 			t.Logf("Doc %s attachments are %+v", docID, doc.Attachments())
@@ -4317,7 +4317,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			// Validate results on the remote (rt2)
 			rt2Since := remoteDoc.Sequence
-			if test.expectedVersion.Equal(test.remoteVersion) {
+			if test.expectedVersion.RevOrCVEqual(test.remoteVersion) {
 				// no changes should have been pushed back up to rt2, because this rev won.
 				rt2Since = 0
 			}
@@ -4328,7 +4328,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
-			requireDocumentVersion(t, test.expectedVersion, doc)
+			requireDocumentVersion(t, test.expectedVersion, doc, false)
 			requireBodyEqual(t, test.expectedBody, doc)
 			t.Logf("Remote Doc %s is %+v", docID, doc)
 			t.Logf("Remote Doc %s attachments are %+v", docID, doc.Attachments())
@@ -4419,7 +4419,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, version, doc)
+	requireDocumentVersion(t, version, doc, false)
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -5142,7 +5142,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	doc, err := rt2collection.GetDocument(rt2ctx, rt1docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, rt1Version, doc)
+	requireDocumentVersion(t, rt1Version, doc, false)
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -5161,7 +5161,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	doc, err = rt1collection.GetDocument(rt1ctx, rt2docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	requireDocumentVersion(t, rt2Version, doc)
+	requireDocumentVersion(t, rt2Version, doc, false)
 
 	body, err = doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -5890,7 +5890,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
-			requireDocumentVersion(t, test.expectedLocalVersion, doc)
+			requireDocumentVersion(t, test.expectedLocalVersion, doc, false)
 			ctx := base.TestCtx(t)
 			t.Logf("doc.Body(): %v", doc.Body(ctx))
 			assert.Equal(t, test.expectedLocalBody, doc.Body(ctx))
