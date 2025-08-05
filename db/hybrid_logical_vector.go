@@ -143,6 +143,10 @@ func (v Version) String() string {
 	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 
+func (v Version) GoString() string {
+	return fmt.Sprintf("Version{SourceID:%s, Value:%d}", v.SourceID, v.Value)
+}
+
 // IsEmpty returns true if the version is empty/zero value.
 func (v Version) IsEmpty() bool {
 	return v.SourceID == "" && v.Value == 0
@@ -179,7 +183,7 @@ func NewHybridLogicalVector() *HybridLogicalVector {
 	}
 }
 
-func (hlv *HybridLogicalVector) Equals(other *HybridLogicalVector) bool {
+func (hlv *HybridLogicalVector) Equal(other *HybridLogicalVector) bool {
 	if hlv.SourceID != other.SourceID {
 		return false
 	}
@@ -663,6 +667,6 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 	return nil
 }
 
-func (hlv *HybridLogicalVector) GoString() string {
-	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%+v, MergeVersions:%+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
+func (hlv HybridLogicalVector) GoString() string {
+	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%#+v, MergeVersions:%#+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
 }

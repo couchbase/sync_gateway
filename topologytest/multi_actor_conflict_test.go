@@ -21,8 +21,6 @@ func TestMultiActorConflictCreate(t *testing.T) {
 	for _, topology := range append(simpleTopologies, Topologies...) {
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
-			replications.Stop()
-
 			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 			replications.Start()
@@ -47,7 +45,6 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
-			replications.Stop()
 
 			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
@@ -79,8 +76,6 @@ func TestMultiActorConflictDelete(t *testing.T) {
 		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
-			replications.Stop()
-
 			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
 
@@ -115,7 +110,6 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 		}
 		t.Run(topology.description, func(t *testing.T) {
 			collectionName, peers, replications := setupTests(t, topology)
-			replications.Stop()
 
 			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, collectionName, peers, docID, topology.description)
