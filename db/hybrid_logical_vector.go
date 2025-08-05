@@ -419,7 +419,6 @@ func (hlv *HybridLogicalVector) SetMergeVersion(source string, version uint64) {
 		hlv.MergeVersions = make(HLVVersions)
 	}
 	hlv.MergeVersions[source] = version
-	base.DebugfCtx(base.BackgroundCtx, "hlv=%+v", hlv)
 }
 
 func (hlv *HybridLogicalVector) IsVersionKnown(otherVersion Version) bool {
