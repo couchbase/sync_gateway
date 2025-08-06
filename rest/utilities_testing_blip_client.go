@@ -326,7 +326,7 @@ func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVec
 	localCV := localHLV.ExtractCurrentVersionFromHLV()
 	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
 	if localCV.Equal(*incomingCV) {
-		require.FailNow(t, fmt.Sprintf("incoming CV %#+v is equal to local revision %#+v - this should've been filtered via changes response before ending up as a rev. This is only true if there is a single replication occuring, two simultaneous replications (e.g. P2P) could cause this. If there are multiple replications, modify code.", incomingCV, latestRev))
+		require.FailNow(t, fmt.Sprintf("incoming CV %#+v is equal to local revision %#+v - this should've been filtered via changes response before ending up as a rev. This is only true if there is a single replication occurring, two simultaneous replications (e.g. P2P) could cause this. If there are multiple replications, modify code.", incomingCV, latestRev))
 	}
 	// standard no conflict case. In the simple case, this happens when:
 	//  - SG writes document 1@cbs1
@@ -382,7 +382,6 @@ func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.Hybr
 	delete(updatedHLV.PreviousVersions, incomingHLV.SourceID)
 	delete(updatedHLV.PreviousVersions, btcc.parent.SourceID)
 	delete(updatedHLV.PreviousVersions, latestLocalHLV.SourceID)
-	panic("here")
 	updatedHLV.SetMergeVersion(incomingHLV.SourceID, incomingHLV.Version)
 	updatedHLV.SetMergeVersion(latestLocalHLV.SourceID, latestLocalHLV.Version)
 	updatedHLV.SourceID = btcc.parent.SourceID
