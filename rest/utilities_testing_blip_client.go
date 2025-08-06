@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"iter"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -299,36 +300,93 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, hlvHistory: latestRev.HLV, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
 }
 
-type conflictResolutionWinner uint
+// _getLatestHLVCopy returns a copy of the HLV. If there is no document, return an empty HLV.
+func (cd *clientDoc) _getLatestHLVCopy(t testing.TB) db.HybridLogicalVector {
+	// Get the latest HLV for the document, if it exists
+	if cd == nil {
+		return *db.NewHybridLogicalVector()
+	}
+	latestRev := cd._latestRev(t)
+	return *latestRev.HLV.Copy()
+}
 
-const (
-	remoteDocWinner conflictResolutionWinner = iota // The remote document is the winner in the conflict resolution
-	localDocWinner                                  // The local document is the winner in the conflict resolution
-)
+func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVector) bool {
+	// there is no local document
+	if cd == nil {
+		return false
+	}
+	latestRev := cd._latestRev(t)
+	if latestRev.version.RevTreeID != "" {
+		// currently no conflict detection or resolution for revtree clients.
+		return false
+	}
 
-func (r *clientDocRev) _pickConflictWinner(t testing.TB, incomingCV db.Version, conflictResolver BlipTesterClientConflictResolverType) conflictResolutionWinner {
-	localCV := r.HLV.ExtractCurrentVersionFromHLV()
+	localHLV := latestRev.HLV
+	incomingCV := incomingHLV.ExtractCurrentVersionFromHLV()
+	localCV := localHLV.ExtractCurrentVersionFromHLV()
 	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
-	if localCV.Equal(incomingCV) {
-		require.FailNow(t, fmt.Sprintf("incoming CV %#+v is equal to local CV revision %#+v - this should've been filtered via changes response before ending up as a rev", incomingCV, r))
+	if localCV.Equal(*incomingCV) {
+		require.FailNow(t, fmt.Sprintf("incoming CV %#+v is equal to local revision %#+v - this should've been filtered via changes response before ending up as a rev. This is only true if there is a single replication occuring, two simultaneous replications (e.g. P2P) could cause this. If there are multiple replications, modify code.", incomingCV, latestRev))
 	}
-	if incomingCV.SourceID == localCV.SourceID {
-		// incomingVersion has the same sourceID as the local version.
-
-		// Potentially we should add a check to make sure that the HLV is not rolling back
-		/// incomingCV.Value > clientCV.Value
-		return remoteDocWinner
+	// standard no conflict case. In the simple case, this happens when:
+	//  - SG writes document 1@cbs1
+	//  - CBL pulls document 1@cbs1
+	//  - SG writes document 2@cbs1
+	if incomingHLV.DominatesSource(*localCV) {
+		return false
 	}
 
-	switch conflictResolver {
+	// local revision is newer than incoming revision. Common case:
+	// - CBL writes document 1@cbl1
+	// - CBL pushes to SG as 1@cbl1
+	// - CBL pulls document 1@cbl1
+	//
+	// NOTE: without P2P replication, this should not be the case and we would not get this revision, since CBL
+	// would respond to a SG changes message that CBL does not need this revision
+	if localHLV.DominatesSource(*incomingCV) {
+		require.FailNow(t, fmt.Sprintf("incoming CV %#+v has lower version than the local revision %#+v - this should've been filtered via changes response before ending up as a rev. blip tester would reply that to Sync Gateway that it doesn't need this revision", incomingCV, localHLV))
+		return false
+	}
+	// Check if conflict has been previously resolved.
+	// - If merge versions are empty, then it has not be resolved.
+	// - If merge versions do not match, then it has not been resolved.
+	if len(incomingHLV.MergeVersions) != 0 && len(localHLV.MergeVersions) != 0 && maps.Equal(incomingHLV.MergeVersions, localHLV.MergeVersions) {
+		return false
+	}
+	return true
+}
+
+func (btcc *BlipTesterCollectionClient) _resolveConflict(incomingHLV *db.HybridLogicalVector, incomingBody []byte, localDoc *clientDocRev) (body []byte, hlv db.HybridLogicalVector) {
+	switch btcc.parent.ConflictResolver {
 	case ConflictResolverLastWriteWins:
-		if incomingCV.Value > localCV.Value {
-			return remoteDocWinner
-		}
-		return localDocWinner
+		return btcc._resolveConflictLWW(incomingHLV, incomingBody, localDoc)
 	}
-	t.Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", conflictResolver)
-	return localDocWinner // unreachable, but required to satisfy return type
+	btcc.TB().Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", btcc.parent.ConflictResolver)
+	return nil, db.HybridLogicalVector{}
+}
+
+func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.HybridLogicalVector, incomingBody []byte, latestLocalRev *clientDocRev) (body []byte, hlv db.HybridLogicalVector) {
+	latestLocalHLV := latestLocalRev.HLV
+	updatedHLV := latestLocalRev.HLV.Copy()
+	// resolve conflict in favor of remote document
+	if incomingHLV.Version > latestLocalHLV.Version {
+		require.NoError(btcc.TB(), updatedHLV.AddNewerVersions(incomingHLV))
+		return incomingBody, *updatedHLV
+	}
+	// move all versions from remote HLV to local HLV, this might not be correct since it will invalidate the new mv. AddNewerVersions will update the CV as well.
+	require.NoError(btcc.TB(), updatedHLV.AddNewerVersions(incomingHLV))
+	// manually reconstruct the HLV
+	// - remove the any pv that contain the merge sourceIDs
+	// - add the merge sourceIDs with the incoming version and local version
+	// - update the new CV
+	delete(updatedHLV.PreviousVersions, incomingHLV.SourceID)
+	delete(updatedHLV.PreviousVersions, btcc.parent.SourceID)
+	delete(updatedHLV.PreviousVersions, latestLocalHLV.SourceID)
+	updatedHLV.SetMergeVersion(incomingHLV.SourceID, incomingHLV.Version)
+	updatedHLV.SetMergeVersion(latestLocalHLV.SourceID, latestLocalHLV.Version)
+	updatedHLV.SourceID = btcc.parent.SourceID
+	updatedHLV.Version = uint64(btcc.hlc.Now())
+	return latestLocalRev.body, *updatedHLV
 }
 
 type BlipTesterCollectionClient struct {
@@ -615,30 +673,12 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
 		replacedRev := msg.Properties[db.RevMessageReplacedRev]
-		revHistory := msg.Properties[db.RevMessageHistory]
 
 		body, err := msg.Body()
 		require.NoError(btr.TB(), err)
 
 		if msg.Properties[db.RevMessageDeleted] == "1" {
-			var incomingVersion DocVersion
-			var incomingHLV *db.HybridLogicalVector
-			if btc.UseHLV() {
-				cv, err := db.ParseVersion(revID)
-				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
-				incomingVersion = DocVersion{CV: cv}
-				if revHistory != "" {
-					// why is rev history not populated for a deleted message?
-					incomingHLV, _, err = db.ExtractHLVFromBlipMessage(revHistory)
-					require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
-				} else {
-					incomingHLV = db.NewHybridLogicalVector()
-				}
-				require.NoError(btr.TB(), incomingHLV.AddVersion(cv))
-				require.Equal(btr.TB(), cv, *incomingHLV.ExtractCurrentVersionFromHLV(), "incoming version CV %#+v from revID should be part of incomingHLV: %#v. Full properties, %#+v", cv, incomingHLV, msg.Properties)
-			} else {
-				incomingVersion = DocVersion{RevTreeID: revID}
-			}
+			incomingHLV, incomingVersion := btc.getVersionsFromRevMessage(msg)
 			rev := revOptions{
 				incomingVersion:           incomingVersion,
 				body:                      body,
@@ -806,25 +846,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			body, err = base.JSONMarshal(bodyJSON)
 			require.NoError(btr.TB(), err)
 		}
-		var incomingVersion DocVersion
-		var incomingHLV *db.HybridLogicalVector
-		if btc.UseHLV() {
-			cv, err := db.ParseVersion(revID)
-			require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
-			incomingVersion = DocVersion{CV: cv}
-			if revHistory != "" {
-				incomingHLV, _, err = db.ExtractHLVFromBlipMessage(revHistory)
-				require.NoError(btr.TB(), err, "error extracting HLV %q: %v", revHistory, err)
-			} else {
-				// If no revHistory is provided, we need to create a new HLV with the incoming version
-				incomingHLV = db.NewHybridLogicalVector()
-			}
-			require.NoError(btr.TB(), incomingHLV.AddVersion(cv))
-			require.Equal(btr.TB(), cv, *incomingHLV.ExtractCurrentVersionFromHLV(), "incoming version CV %#+v from revID should be part of incomingHLV: %#v. Full properties, %#+v", cv, incomingHLV, msg.Properties)
-		} else {
-			incomingVersion = DocVersion{RevTreeID: revID}
-		}
-
+		incomingHLV, incomingVersion := btc.getVersionsFromRevMessage(msg)
 		rev := revOptions{
 			incomingVersion:           incomingVersion,
 			body:                      body,
@@ -2015,59 +2037,29 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	defer btcc.seqLock.Unlock()
 	newClientSeq := btcc._nextSequence()
 
-	winner := remoteDocWinner
-	var localRev *clientDocRev
+	newBody := opts.body
+	newVersion := opts.incomingVersion
 	doc, hasLocalDoc := btcc._getClientDoc(docID)
-	// No conflict resolution for revtree at this time
-	var updatedHLV *db.HybridLogicalVector
-	if hasLocalDoc {
-		localRev = doc._latestRev(btcc.TB())
-		winner = localRev._pickConflictWinner(btcc.TB(), opts.incomingVersion.CV, btcc.parent.ConflictResolver)
-		// Start HLV with the local version, if it exists
-		updatedHLV = localRev.HLV.Copy()
+	updatedHLV := doc._getLatestHLVCopy(btcc.TB())
+	if doc._hasConflict(btcc.TB(), opts.incomingHLV) {
+		newBody, updatedHLV = btcc._resolveConflict(opts.incomingHLV, opts.body, doc._latestRev(btcc.TB()))
+		base.DebugfCtx(ctx, base.KeySGTest, "Resolved conflict for docID %q, incomingHLV:%v, existingHLV:%v, updatedHLV:%v", docID, opts.incomingHLV, doc._latestRev(btcc.TB()).HLV, updatedHLV)
 	} else {
-		updatedHLV = db.NewHybridLogicalVector()
+		base.DebugfCtx(ctx, base.KeySGTest, "No conflict")
+		if btcc.UseHLV() {
+			// Add the incoming HLV to the local HLV, regardless of winner
+			require.NoError(btcc.TB(), updatedHLV.AddNewerVersions(opts.incomingHLV))
+		}
 	}
+	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{
 		clientSeq: newClientSeq,
 		isDelete:  opts.isDelete,
 		message:   opts.msg,
-		HLV:       *updatedHLV,
-	}
-	switch winner {
-	case remoteDocWinner:
-		docRev.body = opts.body
-		docRev.version = opts.incomingVersion
-		if btcc.UseHLV() {
-			// Add the incoming HLV to the local HLV, regardless of winner
-			require.NoError(btcc.TB(), docRev.HLV.AddNewerVersions(opts.incomingHLV))
-		}
-	case localDocWinner:
-		docRev.body = doc._latestRev(btcc.TB()).body
-		docRev.version = DocVersion{
-			RevTreeID: opts.incomingVersion.RevTreeID,
-		}
-
-		if btcc.UseHLV() {
-			// move all versions from remote HLV to local HLV
-			require.NoError(btcc.TB(), docRev.HLV.AddNewerVersions(opts.incomingHLV))
-			// manually reconstruct the HLV
-			// - remove the any pv that contain the merge sourceIDs
-			// - add the merge sourceIDs with the incoming version and local version
-			// - update the new CV
-			delete(docRev.HLV.PreviousVersions, opts.incomingHLV.SourceID)
-			delete(docRev.HLV.PreviousVersions, btcc.parent.SourceID)
-			docRev.HLV.SetMergeVersion(opts.incomingHLV.SourceID, opts.incomingHLV.Version)
-			docRev.HLV.SetMergeVersion(localRev.HLV.SourceID, localRev.HLV.Version)
-			newCV := db.Version{SourceID: btcc.parent.SourceID, Value: uint64(btcc.hlc.Now())}
-			// can not call AddVersion, since that will invalidate mv and move to pv. Set SourceID and Version directly on HybridLogicalVector
-			docRev.HLV.SourceID = newCV.SourceID
-			docRev.HLV.Version = newCV.Value
-			docRev.version.CV = newCV
-		}
-	default:
-		require.FailNow(btcc.TB(), fmt.Sprintf("Unknown type of document winner %#v", winner))
+		body:      newBody,
+		HLV:       updatedHLV,
+		version:   newVersion,
 	}
 
 	if !hasLocalDoc {
@@ -2088,8 +2080,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 		doc._latestServerVersion = opts.incomingVersion
 	}
 	// if we resolved a conflict, then we might need to push this conflict back
-	if winner == localDocWinner {
-		base.DebugfCtx(ctx, base.KeySGTest, "Using LWW to resolve a conflicted revision and picking CBL version. Incoming HLV: %#+v, Local HLV %#+v, Result HLV %#+v", opts.incomingHLV, localRev.HLV, docRev.HLV)
+	if newVersion != opts.incomingVersion {
 		btcc._seqCond.Broadcast()
 	}
 }
@@ -2115,4 +2106,23 @@ func (btc *BlipTesterClient) AssertDeltaSrcProperty(t *testing.T, msg *blip.Mess
 	require.NoError(t, err)
 	rev := docVersion.GetRev(subProtocol >= db.CBMobileReplicationV4)
 	assert.Equal(t, rev, msg.Properties[db.RevMessageDeltaSrc])
+}
+
+// getHLVFromRevMessage extracts the full HLV from a rev message. This will fail the test if the message does not contain a valid HLV.
+func (btc *BlipTesterClient) getVersionsFromRevMessage(msg *blip.Message) (*db.HybridLogicalVector, DocVersion) {
+	revID := msg.Properties[db.RevMessageRev]
+	require.NotEmpty(btc.TB(), revID, "revID is empty in message %#+v", msg.Properties)
+	if !btc.UseHLV() {
+		return nil, DocVersion{RevTreeID: revID}
+	}
+	revHistory := msg.Properties[db.RevMessageHistory]
+	hlvStr := revID
+	if revHistory != "" {
+		hlvStr += "," + revHistory
+	}
+	hlv, _, err := db.ExtractHLVFromBlipMessage(hlvStr)
+	require.NoError(btc.TB(), err)
+	require.NotEmpty(btc.TB(), hlv.SourceID, "HLV SourceID is empty from message %#+v, hlv=%q", msg.Properties, hlvStr)
+	require.NotEmpty(btc.TB(), hlv.Version, "HLV Version is empty from message %#+v, hlv=%q", msg.Properties, hlvStr)
+	return hlv, DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
 }
