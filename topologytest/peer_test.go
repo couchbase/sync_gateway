@@ -51,6 +51,9 @@ type Peer interface {
 	// WaitForDocVersion waits for a document to reach a specific version. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
 	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body
 
+	// WaitForCV waits for a document to reach a specific CV. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
+	WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body
+
 	// WaitForTombstoneVersion waits for a document to reach a specific version. This document must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications)
 

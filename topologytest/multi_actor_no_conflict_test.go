@@ -102,7 +102,12 @@ func TestMultiActorResurrect(t *testing.T) {
 
 							resBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.description))
 							resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
-							waitForVersionAndBody(t, collectionName, peers, replications, docID, resurrectVersion)
+							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are lost on a resurrection
+							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
+								waitForCVAndBody(t, collectionName, peers, replications, docID, resurrectVersion)
+							} else {
+								waitForVersionAndBody(t, collectionName, peers, replications, docID, resurrectVersion)
+							}
 						})
 					}
 				}

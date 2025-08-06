@@ -153,6 +153,25 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 	return doc.Body(ctx)
 }
 
+// WaitForCV waits for a document to reach a specific CV. The test will fail if the document does not reach the expected version in 20s.
+func (p *SyncGatewayPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
+	collection, ctx := p.getCollection(dsName)
+	var doc *db.Document
+	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
+		var err error
+		doc, err = collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(c, err)
+		if doc == nil {
+			return
+		}
+		version := DocMetadataFromDocument(doc)
+		bodyBytes, err := doc.BodyBytes(ctx)
+		assert.NoError(c, err)
+		assertCVEqual(c, docID, p.name, version, bodyBytes, expected, replications)
+	}, totalWaitTime, pollInterval)
+	return doc.Body(ctx)
+}
+
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) {
 	docBytes := p.WaitForDocVersion(dsName, docID, expected, replications)

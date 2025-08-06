@@ -15,7 +15,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,6 +59,15 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, pee
 	}
 }
 
+// waitForCVAndBody waits for a document to reach a specific cv on all peers.
+func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string, expectedVersion BodyAndVersion) {
+	t.Logf("waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
+	for _, peer := range peers.SortedPeers() {
+		t.Logf("waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
+		body := peer.WaitForCV(dsName, docID, expectedVersion.docMeta, replications)
+		requireBodyEqual(t, expectedVersion.body, body)
+	}
+}
 func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string, expectedVersion BodyAndVersion) {
 	t.Logf("waiting for tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
 	for _, peer := range peers.SortedPeers() {
@@ -154,31 +162,6 @@ func getDocID(t *testing.T) string {
 		name = strings.ReplaceAll(name, char, "_")
 	}
 	return fmt.Sprintf("doc_%s", name)
-}
-
-// waitForConvergingVersion waits for the same document version to reach all peers.
-func waitForConvergingVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string) {
-	t.Logf("waiting for converged doc versions across all peers")
-	var docMetaA DocMetadata
-	var bodyA db.Body
-	if !assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		for peerAid, peerA := range peers.SortedPeers() {
-			docMetaA, bodyA = peerA.GetDocument(dsName, docID)
-			for peerBid, peerB := range peers.SortedPeers() {
-				if peerAid == peerBid {
-					continue
-				}
-				docMetaB, bodyB := peerB.GetDocument(dsName, docID)
-				cvA, cvB := docMetaA.CV(t), docMetaB.CV(t)
-				require.Equalf(c, cvA, cvB, "CV mismatch: %s:%#v != %s:%#v", peerAid, docMetaA, peerBid, docMetaB)
-				require.Equalf(c, bodyA, bodyB, "body mismatch: %s:%s != %s:%s", peerAid, bodyA, peerBid, bodyB)
-			}
-		}
-	}, totalWaitTime, pollInterval) {
-		// do if !assert->require pattern so we can delay PrintGlobalDocState evaluation
-		require.FailNowf(t, "Peers did not converge on version", "Global state for doc %q on all peers:\n%s\nReplications: %s", docID, peers.PrintGlobalDocState(t, dsName, docID), replications)
-	}
-	t.Logf("Peers converged on %q version: %#+v body %s", docID, docMetaA, bodyA)
 }
 
 // PrintGlobalDocState returns the current state of a document across all peers, and also logs it on `t`.

@@ -142,6 +142,22 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 	return body
 }
 
+// WaitForCV waits for a document to reach a specific CV. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
+func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
+	var data []byte
+	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
+		var actual *DocMetadata
+		data, actual = p.getLatestDocVersion(dsName, docID)
+		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
+			return
+		}
+		assertCVEqual(c, docID, p.name, *actual, data, expected, replications)
+	}, totalWaitTime, pollInterval)
+	var body db.Body
+	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))
+	return body
+}
+
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) {
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)

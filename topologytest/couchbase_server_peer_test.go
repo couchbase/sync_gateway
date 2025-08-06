@@ -184,6 +184,14 @@ func (p *CouchbaseServerPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, d
 	return body
 }
 
+// WaitForCV waits for a document to reach a specific CV. The test will fail if the document does not reach the expected version in 20s.
+func (p *CouchbaseServerPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
+	docBytes := p.waitForCV(dsName, docID, expected, replications)
+	var body db.Body
+	require.NoError(p.TB(), base.JSONUnmarshal(docBytes, &body), "couldn't unmarshal docID %s: %s", docID, docBytes)
+	return body
+}
+
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseServerPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) {
 	docBytes := p.waitForDocVersion(dsName, docID, expected, replications)
@@ -204,6 +212,24 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 		}
 		version = getDocVersion(docID, p, cas, xattrs)
 		assertHLVEqual(c, docID, p.name, version, docBytes, expected, replications)
+	}, totalWaitTime, pollInterval)
+	return docBytes
+}
+
+// waitForCV waits for a document to reach a specific CV and returns the body in bytes. The bytes will be nil if the document is a tombstone. The test will fail if the document does not reach the expected version in 20s.
+func (p *CouchbaseServerPeer) waitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) []byte {
+	var docBytes []byte
+	var version DocMetadata
+	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
+		var err error
+		var xattrs map[string][]byte
+		var cas uint64
+		docBytes, xattrs, cas, err = p.getCollection(dsName).GetWithXattrs(p.Context(), docID, metadataXattrNames)
+		if !assert.NoError(c, err) {
+			return
+		}
+		version = getDocVersion(docID, p, cas, xattrs)
+		assertCVEqual(c, docID, p.name, version, docBytes, expected, replications)
 	}, totalWaitTime, pollInterval)
 	return docBytes
 }

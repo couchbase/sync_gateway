@@ -29,13 +29,13 @@ type DocMetadata struct {
 }
 
 // CV returns the current version of the document.
-func (v DocMetadata) CV(t require.TestingT) db.Version {
+func (v DocMetadata) CV(t assert.TestingT) db.Version {
 	if v.ImplicitHLV != nil {
 		return *v.ImplicitHLV.ExtractCurrentVersionFromHLV()
 	} else if v.HLV != nil {
 		return *v.HLV.ExtractCurrentVersionFromHLV()
 	}
-	require.FailNowf(t, "no hlv available", "%#v", v)
+	assert.FailNowf(t, "no hlv available", "%#v", v)
 	return db.Version{}
 }
 
@@ -91,4 +91,9 @@ func DocMetadataFromDocVersion(t testing.TB, docID string, hlv *db.HybridLogical
 // assertHLVEqual asserts that the HLV of the version is equal to the expected HLV.
 func assertHLVEqual(t assert.TestingT, docID string, p string, version DocMetadata, body []byte, expected DocMetadata, replications Replications) {
 	assert.True(t, version.IsHLVEqual(expected), "Actual HLV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v\nActual Body: %s\nReplications:\n%s", docID, p, expected, version, body, replications.Stats())
+}
+
+// assertCV asserts that CV of the version is equal to the expected CV.
+func assertCVEqual(t assert.TestingT, docID string, p string, version DocMetadata, body []byte, expected DocMetadata, replications Replications) {
+	assert.Equal(t, expected.CV(t), version.CV(t), "Actual HLV's CV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v\nActual Body: %s\nReplications:\n%s", docID, p, expected, version, body, replications.Stats())
 }
