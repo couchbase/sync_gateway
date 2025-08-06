@@ -382,6 +382,7 @@ func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.Hybr
 	delete(updatedHLV.PreviousVersions, incomingHLV.SourceID)
 	delete(updatedHLV.PreviousVersions, btcc.parent.SourceID)
 	delete(updatedHLV.PreviousVersions, latestLocalHLV.SourceID)
+	panic("here")
 	updatedHLV.SetMergeVersion(incomingHLV.SourceID, incomingHLV.Version)
 	updatedHLV.SetMergeVersion(latestLocalHLV.SourceID, latestLocalHLV.Version)
 	updatedHLV.SourceID = btcc.parent.SourceID
@@ -1242,7 +1243,7 @@ func (e proposeChangeBatchEntry) MarshalJSON() ([]byte, error) {
 	if e.useHLV() {
 		// Until CBG-4461 is implemented the second value in the array is the full HLV.
 		if e.historyStr() != "" {
-			rev += "," + e.historyStr()
+			rev += ";" + e.historyStr()
 		}
 	}
 	fmt.Fprintf(output, `["%s","%s"`, e.docID, rev)
@@ -2118,7 +2119,7 @@ func (btc *BlipTesterClient) getVersionsFromRevMessage(msg *blip.Message) (*db.H
 	revHistory := msg.Properties[db.RevMessageHistory]
 	hlvStr := revID
 	if revHistory != "" {
-		hlvStr += "," + revHistory
+		hlvStr += ";" + revHistory
 	}
 	hlv, _, err := db.ExtractHLVFromBlipMessage(hlvStr)
 	require.NoError(btc.TB(), err)

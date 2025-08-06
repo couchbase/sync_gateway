@@ -3619,7 +3619,7 @@ func TestBlipPullConflict(t *testing.T) {
 		collection, ctx := rt.GetSingleTestDatabaseCollection()
 		bucketDoc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		require.NoError(t, err)
-		require.True(t, bucketDoc.HLV.Equal(postConflictHLV), "Expected bucket doc HLV to match post-conflict HLV, got %v, expected %v", bucketDoc.HLV, postConflictHLV)
+		require.True(t, bucketDoc.HLV.Equal(postConflictHLV), "Expected bucket doc HLV to match post-conflict HLV, got %#v, expected %#v", bucketDoc.HLV, postConflictHLV)
 	})
 
 }
