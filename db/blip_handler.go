@@ -1116,7 +1116,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	if bh.clientType == BLIPClientTypeSGR2 && len(legacyRevList) == 0 {
 		revTree, ok := rq.Properties[RevMessageTreeHistory]
 		if ok {
-			revTreeProperty = append(revTreeProperty, strings.Split(revTree, ",")...)
+			revTreeProperty = append(revTreeProperty, strings.Split(revTree, ",")...) // nolint: all
 		}
 	}
 
