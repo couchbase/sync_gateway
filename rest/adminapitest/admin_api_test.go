@@ -9,6 +9,7 @@
 package adminapitest
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1794,12 +1795,17 @@ func TestPurgeWithOldAttachment(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	_ = rt.PutDocWithAttachment("doc1", `{"foo":"doc1"}`, "att1", "b25lCg==")
+	const att1 = "first attachment"
+	att1Data := base64.StdEncoding.EncodeToString([]byte(att1))
+	_ = rt.PutDocWithAttachment("doc1", `{"foo":"doc1"}`, "att1", att1Data)
 
 	rawBody, rawXattrs, _, err := rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
 	require.NoError(t, err)
 	assert.NotNil(t, rawBody)
 	assert.NotNil(t, rawXattrs)
+	var gloablSync db.GlobalSyncData
+	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &gloablSync))
+	assert.Equal(t, len(att1), int(gloablSync.Attachments["att1"].(map[string]any)["length"].(float64)))
 
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"]}`)
 	rest.RequireStatus(t, response, http.StatusOK)
@@ -1814,13 +1820,20 @@ func TestPurgeWithOldAttachment(t *testing.T) {
 	assert.Nil(t, rawBody)
 	assert.Empty(t, rawXattrs)
 
-	// Here we're overwriting any previous global sync that may exist, so attachments being resurrected aren't an actual issue for us.
-	_ = rt.PutDocDirectly("doc1", db.Body{"foo": "doc1"})
+	// Overwriting the document here is intentional: after purging, we want to verify that re-inserting the document does not resurrect any previous attachments or metadata.
+	// This ensures the purge operation fully removed all traces of the original document, and that the new insert starts from a clean state.
+	const att2 = "att two"
+	att2Data := base64.StdEncoding.EncodeToString([]byte(att2))
+	_ = rt.PutDocWithAttachment("doc1", `{"foo":"doc1"}`, "att2", att2Data)
 
 	rawBody, rawXattrs, _, err = rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
 	require.NoError(t, err)
 	assert.NotNil(t, rawBody)
 	assert.NotNil(t, rawXattrs)
+	gloablSync = db.GlobalSyncData{}
+	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &gloablSync))
+	assert.NotContains(t, gloablSync.Attachments, "att1")
+	assert.Equal(t, len(att2), int(gloablSync.Attachments["att2"].(map[string]any)["length"].(float64)))
 }
 
 // TestRawRedaction tests the /_raw endpoint with and without redaction
