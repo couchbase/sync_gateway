@@ -2409,7 +2409,7 @@ func RequireDocRevTreeEqual(t *testing.T, expected, actual DocVersion) {
 
 // RequireDocVersionNotEqual calls t.Fail if two document versions are equal.
 func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
-	// CBG-4751: should be able to uncomment this lien once cv is included in write response
+	// CBG-4751: should be able to uncomment this line once cv is included in write response
 	//require.NotEqual(t, expected.CV.String(), actual.CV.String(), "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
 	require.NotEqual(t, expected.RevTreeID, actual.RevTreeID, "Versions mismatch.  Expected: %v, Actual: %v", expected.RevTreeID, actual.RevTreeID)
 }

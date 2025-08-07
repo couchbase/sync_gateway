@@ -3131,12 +3131,12 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalSync)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && !base.IsXattrNotFoundError(err) {
-			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
+			base.WarnfCtx(ctx, "Error fetching doc %s during changes handling: %v", base.UD(docid), err)
 		}
 		missing = append(missing, rev)
 		return
 	}
-	// parse in coming version, if it's not know to local doc hlv then it is missing, if it is and is a new version
+	// parse in coming version, if it's not known to local doc hlv then it is marked as missing, if it is and is a newer version
 	// then it is also marked as missing
 	cvValue, err := ParseVersion(rev)
 	if err != nil {

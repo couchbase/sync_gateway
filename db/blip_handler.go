@@ -1015,10 +1015,6 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
-	//if bh.useHLV() && bh.conflictResolver != nil {
-	//	return base.HTTPErrorf(http.StatusNotImplemented, "conflict resolver handling (ISGR) not yet implemented for v4 protocol")
-	//}
-
 	// throttle concurrent revs
 	if cap(bh.inFlightRevsThrottle) > 0 {
 		select {
