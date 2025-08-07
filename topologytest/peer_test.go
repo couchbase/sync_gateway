@@ -147,12 +147,10 @@ func (p Peers) NonImportSortedPeers() iter.Seq2[string, Peer] {
 	}
 	return func(yield func(k string, v Peer) bool) {
 		for _, peerName := range peerNames {
-			fmt.Printf("TopologyTest: yielding peer %s\n", peerName)
 			peer := p[peerName]
 			if peer.Type() == PeerTypeCouchbaseServer {
 				// If the peer is a Couchbase Server peer, we do not want to yield it if it is the only peer with that backing bucket.
 				if len(backingBuckets[peer.GetBackingBucket().GetName()]) > 1 {
-					fmt.Printf("TopologyTest: skipping peer %s\n", peerName)
 					continue
 				}
 			}

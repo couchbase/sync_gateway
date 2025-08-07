@@ -200,7 +200,7 @@ func (p *CouchbaseServerPeer) WaitForCV(dsName sgbucket.DataStoreName, docID str
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseServerPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) {
 	docBytes := p.waitForDocVersion(dsName, docID, expected, topology)
-	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s.%s", docID, docBytes, topology)
+	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s. %s", docID, docBytes, topology.GetDocState(p.TB(), dsName, docID))
 }
 
 // waitForDocVersion waits for a document to reach a specific version and returns the body in bytes. The bytes will be nil if the document is a tombstone. The test will fail if the document does not reach the expected version in 20s.
