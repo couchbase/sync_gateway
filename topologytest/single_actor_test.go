@@ -18,17 +18,16 @@ import (
 // 2. create document on a single active peer (version1)
 // 3. wait for convergence on other peers
 func TestSingleActorCreate(t *testing.T) {
-	for _, topology := range append(simpleTopologies, Topologies...) {
-		t.Run(topology.description, func(t *testing.T) {
-			collectionName, peers, replications := setupTests(t, topology)
-			replications.Start()
-			for activePeerID, activePeer := range peers.ActivePeers() {
-				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
-					updatePeersT(t, peers)
+	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
+		t.Run(topologySpec.description, func(t *testing.T) {
+			collectionName, topology := setupTests(t, topologySpec)
+			topology.StartReplications()
+			for activePeerID, activePeer := range topology.ActivePeers() {
+				topology.Run(t, fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					docID := getDocID(t)
-					docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
+					docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topologySpec.description))
 					docVersion := activePeer.CreateDocument(collectionName, docID, docBody)
-					waitForVersionAndBody(t, collectionName, peers, replications, docID, docVersion)
+					waitForVersionAndBody(t, collectionName, docID, docVersion, topology)
 				})
 			}
 		})
@@ -42,24 +41,22 @@ func TestSingleActorCreate(t *testing.T) {
 // 4. update document on a single active peer (version2)
 // 5. wait for convergence on other peers
 func TestSingleActorUpdate(t *testing.T) {
-	for _, topology := range append(simpleTopologies, Topologies...) {
-		t.Run(topology.description, func(t *testing.T) {
-			collectionName, peers, replications := setupTests(t, topology)
-			replications.Start()
-			for activePeerID, activePeer := range peers.ActivePeers() {
-				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
-					updatePeersT(t, peers)
-
+	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
+		t.Run(topologySpec.description, func(t *testing.T) {
+			collectionName, topology := setupTests(t, topologySpec)
+			topology.StartReplications()
+			for activePeerID, activePeer := range topology.ActivePeers() {
+				topology.Run(t, fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
+					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription))
 					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
 
-					waitForVersionAndBody(t, collectionName, peers, replications, docID, createVersion)
+					waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
-					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, activePeerID, topology.description))
+					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, activePeerID, topology.specDescription))
 					updateVersion := activePeer.WriteDocument(collectionName, docID, body2)
 
-					waitForVersionAndBody(t, collectionName, peers, replications, docID, updateVersion)
+					waitForVersionAndBody(t, collectionName, docID, updateVersion, topology)
 				})
 			}
 		})
@@ -73,22 +70,21 @@ func TestSingleActorUpdate(t *testing.T) {
 // 4. delete document on a single active peer (version2)
 // 5. wait for convergence on other peers for a deleted document with correct hlv
 func TestSingleActorDelete(t *testing.T) {
-	for _, topology := range append(simpleTopologies, Topologies...) {
-		t.Run(topology.description, func(t *testing.T) {
-			collectionName, peers, replications := setupTests(t, topology)
-			replications.Start()
-			for activePeerID, activePeer := range peers.ActivePeers() {
-				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
-					updatePeersT(t, peers)
+	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
+		t.Run(topologySpec.description, func(t *testing.T) {
+			collectionName, topology := setupTests(t, topologySpec)
+			topology.StartReplications()
+			for activePeerID, activePeer := range topology.ActivePeers() {
+				topology.Run(t, fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
+					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription))
 					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
 
-					waitForVersionAndBody(t, collectionName, peers, replications, docID, createVersion)
+					waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
 					deleteVersion := activePeer.DeleteDocument(collectionName, docID)
-					waitForTombstoneVersion(t, collectionName, peers, replications, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: activePeerID})
+					waitForTombstoneVersion(t, collectionName, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: activePeerID}, topology)
 				})
 			}
 		})
@@ -104,25 +100,23 @@ func TestSingleActorDelete(t *testing.T) {
 // 6. resurrect document on a single active peer (version3)
 // 7. wait for convergence on other peers for a resurrected document with correct hlv
 func TestSingleActorResurrect(t *testing.T) {
-	for _, topology := range append(simpleTopologies, Topologies...) {
-		t.Run(topology.description, func(t *testing.T) {
-			collectionName, peers, replications := setupTests(t, topology)
-			replications.Start()
-			for activePeerID, activePeer := range peers.ActivePeers() {
-				t.Run(fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
-					updatePeersT(t, peers)
-
+	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
+		t.Run(topologySpec.description, func(t *testing.T) {
+			collectionName, topology := setupTests(t, topologySpec)
+			topology.StartReplications()
+			for activePeerID, activePeer := range topology.ActivePeers() {
+				topology.Run(t, fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.description))
+					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription))
 					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
-					waitForVersionAndBody(t, collectionName, peers, replications, docID, createVersion)
+					waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
 					deleteVersion := activePeer.DeleteDocument(collectionName, docID)
-					waitForTombstoneVersion(t, collectionName, peers, replications, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: activePeerID})
+					waitForTombstoneVersion(t, collectionName, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: activePeerID}, topology)
 
-					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "resurrect"}`, activePeerID, topology.description))
+					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "resurrect"}`, activePeerID, topology.specDescription))
 					resurrectVersion := activePeer.WriteDocument(collectionName, docID, body2)
-					waitForVersionAndBody(t, collectionName, peers, replications, docID, resurrectVersion)
+					waitForVersionAndBody(t, collectionName, docID, resurrectVersion, topology)
 				})
 			}
 		})

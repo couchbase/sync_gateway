@@ -50,62 +50,43 @@ func stripInternalProperties(body db.Body) {
 }
 
 // waitForVersionAndBody waits for a document to reach a specific version on all peers.
-func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string, expectedVersion BodyAndVersion) {
+func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
 	t.Logf("waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
-	for _, peer := range peers.SortedPeers() {
+	for _, peer := range topology.SortedPeers() {
 		t.Logf("waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
-		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta, replications)
+		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta, topology)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
 }
 
 // waitForCVAndBody waits for a document to reach a specific cv on all peers.
-func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string, expectedVersion BodyAndVersion) {
+func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
 	t.Logf("waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
-	for _, peer := range peers.SortedPeers() {
+	for _, peer := range topology.SortedPeers() {
 		t.Logf("waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
-		body := peer.WaitForCV(dsName, docID, expectedVersion.docMeta, replications)
+		body := peer.WaitForCV(dsName, docID, expectedVersion.docMeta, topology)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
 }
-func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, replications Replications, docID string, expectedVersion BodyAndVersion) {
+func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
 	t.Logf("waiting for tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
-	for _, peer := range peers.SortedPeers() {
+	for _, peer := range topology.SortedPeers() {
 		t.Logf("waiting for tombstone version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
-		peer.WaitForTombstoneVersion(dsName, docID, expectedVersion.docMeta, replications)
+		peer.WaitForTombstoneVersion(dsName, docID, expectedVersion.docMeta, topology)
 	}
-}
-
-// removeSyncGatewayBackingPeers will check if there is sync gateway in topology, if so will track the backing CBS
-// so we can skip creating docs on these peers (avoiding conflicts between docs created on the SGW and cbs)
-func removeSyncGatewayBackingPeers(peers map[string]Peer) map[string]bool {
-	peersToRemove := make(map[string]bool)
-	if peers["sg1"] != nil {
-		// remove the backing store from doc update cycle to avoid conflicts on creating the document in bucket
-		peersToRemove["cbs1"] = true
-	}
-	if peers["sg2"] != nil {
-		// remove the backing store from doc update cycle to avoid conflicts on creating the document in bucket
-		peersToRemove["cbs2"] = true
-	}
-	return peersToRemove
 }
 
 // createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents, then
 // returns the last peer to have a doc created on it
-func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) (lastWrite BodyAndVersion) {
-	backingPeers := removeSyncGatewayBackingPeers(peers)
-	documentVersion := make([]BodyAndVersion, 0, len(peers))
-	for peerName, peer := range peers {
-		if backingPeers[peerName] {
-			continue
-		}
+func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
+	var documentVersion []BodyAndVersion
+	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		if peer.Type() == PeerTypeCouchbaseLite {
 			// FIXME: Skipping Couchbase Lite tests for multi actor conflicts, CBG-4434
 			continue
 		}
-		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topologyDescription))
-		docVersion := peer.CreateDocument(dsName, docID, docBody)
+		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topology.specDescription)
+		docVersion := peer.CreateDocument(dsName, docID, []byte(docBody))
 		t.Logf("%s - createVersion: %#v", peerName, docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
@@ -117,15 +98,11 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 
 // updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations, then
 // returns the last peer to have a doc updated on it.
-func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID, topologyDescription string) (lastWrite BodyAndVersion) {
-	backingPeers := removeSyncGatewayBackingPeers(peers)
+func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
-	for peerName, peer := range peers {
-		if backingPeers[peerName] {
-			continue
-		}
-		docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topologyDescription))
-		docVersion := peer.WriteDocument(dsName, docID, docBody)
+	for peerName, peer := range topology.peers.NonImportSortedPeers() {
+		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topology.specDescription)
+		docVersion := peer.WriteDocument(dsName, docID, []byte(docBody))
 		t.Logf("updateVersion: %#v", docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
@@ -137,13 +114,9 @@ func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, pee
 
 // deleteConflictDocs will delete a doc on each peer of the same doc ID to create conflicting document deletions, then
 // returns the last peer to have a doc deleted on it
-func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, peers Peers, docID string) (lastWrite BodyAndVersion) {
-	backingPeers := removeSyncGatewayBackingPeers(peers)
+func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
-	for peerName, peer := range peers {
-		if backingPeers[peerName] {
-			continue
-		}
+	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		deleteVersion := peer.DeleteDocument(dsName, docID)
 		t.Logf("deleteVersion: %#v", deleteVersion)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
@@ -162,16 +135,4 @@ func getDocID(t *testing.T) string {
 		name = strings.ReplaceAll(name, char, "_")
 	}
 	return fmt.Sprintf("doc_%s", name)
-}
-
-// PrintGlobalDocState returns the current state of a document across all peers, and also logs it on `t`.
-func (p Peers) PrintGlobalDocState(t testing.TB, dsName base.ScopeAndCollectionName, docID string) string {
-	var globalState strings.Builder
-	for peerName, peer := range p {
-		docMeta, body := peer.GetDocument(dsName, docID)
-		globalState.WriteString(fmt.Sprintf("====\npeer(%s)\n----\n%#v\nbody:%v\n", peerName, docMeta, body))
-	}
-	globalStateStr := globalState.String()
-	t.Logf("Global doc %q state for all peers:\n%s", docID, globalStateStr)
-	return globalStateStr
 }

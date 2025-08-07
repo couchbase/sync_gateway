@@ -70,6 +70,17 @@ func (p *CouchbaseLiteMockPeer) GetDocument(dsName sgbucket.DataStoreName, docID
 	return *meta, body
 }
 
+// GetDocumentIfExists returns the latest version of a document.
+func (p *CouchbaseLiteMockPeer) GetDocumentIfExists(dsName sgbucket.DataStoreName, docID string) (m DocMetadata, body *db.Body, exists bool) {
+	bodyBytes, meta := p.getLatestDocVersion(dsName, docID)
+	if meta == nil {
+		return DocMetadata{}, nil, false
+	}
+	require.NotNil(p.TB(), meta, "docID:%s not found on %s", docID, p)
+	require.NoError(p.TB(), base.JSONUnmarshal(bodyBytes, &body))
+	return *meta, body, true
+}
+
 // getSingleSGBlipClient returns the single blip client for the peer. If there are multiple clients, or no clients it will fail the test. This is temporary to stub support for multiple Sync Gateway peers, see CBG-4433.
 func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
 	// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
@@ -127,7 +138,7 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, do
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
+func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
@@ -135,7 +146,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
 			return
 		}
-		assertHLVEqual(c, docID, p.name, *actual, data, expected, replications)
+		assertHLVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
 	}, totalWaitTime, pollInterval)
 	var body db.Body
 	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))
@@ -143,7 +154,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 }
 
 // WaitForCV waits for a document to reach a specific CV. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body {
+func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
@@ -151,7 +162,7 @@ func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID s
 		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
 			return
 		}
-		assertCVEqual(c, docID, p.name, *actual, data, expected, replications)
+		assertCVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
 	}, totalWaitTime, pollInterval)
 	var body db.Body
 	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))
@@ -159,14 +170,14 @@ func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID s
 }
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) {
+func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) {
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	expectedVersion := db.DocVersion{CV: expected.CV(p.TB())}
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		isTombstone, err := client.IsVersionTombstone(docID, expectedVersion)
 		require.NoError(c, err)
-		assert.True(c, isTombstone, "expected docID %s on peer %s to be deleted. Replications:\n%s", docID, p, replications.Stats())
-	}, totalWaitTime, pollInterval)
+		assert.True(c, isTombstone, "expected docID %s on peer %s to be deleted.", docID, p)
+	}, totalWaitTime, pollInterval, topology.GetDocState(p.TB(), dsName, docID))
 }
 
 // Close will shut down the peer and close any active replications on the peer.
