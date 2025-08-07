@@ -176,7 +176,9 @@ func NewTaskID(contextID string, taskName string) string {
 
 // TestCtx creates a context for the given test which is also cancelled once the test has completed.
 func TestCtx(t testing.TB) context.Context {
-	return LogContextWith(t.Context(), &LogContext{TestName: t.Name()})
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	t.Cleanup(cancelCtx)
+	return LogContextWith(ctx, &LogContext{TestName: t.Name()})
 }
 
 // BucketCtx extends the parent context with a bucket name.
