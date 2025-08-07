@@ -162,7 +162,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	require.Len(t, changes, 1)
 	assert.Equal(t, "doc2", changes[0].ID)
-	assert.Equal(t, []ChangeRev{{"rev": revid}}, changes[0].Changes)
+	assert.Equal(t, []ChangeByVersionType{{"rev": revid}}, changes[0].Changes)
 
 	// validate from zero
 	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
@@ -234,7 +234,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	require.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 1},
 		ID:           "alpha",
-		Changes:      []ChangeRev{{"rev": revid}},
+		Changes:      []ChangeByVersionType{{"rev": revid}},
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
@@ -279,7 +279,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		ID:           "alpha",
 		Removed:      base.SetOf("A"),
 		allRemoved:   true,
-		Changes:      []ChangeRev{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}},
+		Changes:      []ChangeByVersionType{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}},
 		collectionID: collectionID}, changes[0])
 
 	printChanges(changes)
@@ -352,7 +352,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	require.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 1},
 		ID:           "alpha",
-		Changes:      []ChangeRev{{"rev": revid}},
+		Changes:      []ChangeByVersionType{{"rev": revid}},
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
@@ -392,7 +392,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	require.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3},
 		ID:           "alpha",
-		Changes:      []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}},
+		Changes:      []ChangeByVersionType{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}},
 		collectionID: collectionID}, changes[0])
 
 	printChanges(changes)

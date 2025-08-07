@@ -883,8 +883,8 @@ func (cr ChangesResults) Summary() string {
 	return strings.Join(revs, ", ")
 }
 
-// RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
-func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
+// RequireChangeRevVersion asserts that the given ChangeByVersionType has the expected version for a given entry returned by _changes feed
+func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeByVersionType) {
 	RequireDocVersionEqual(t, expected, DocVersion{RevTreeID: changeRev["rev"]})
 }
 
