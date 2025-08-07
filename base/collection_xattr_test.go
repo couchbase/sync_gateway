@@ -11,9 +11,12 @@ package base
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1647,5 +1650,116 @@ func requireDocFoundOrCasMismatchError(t testing.TB, err error) {
 	if !errors.Is(err, sgbucket.ErrKeyExists) && !IsCasMismatch(err) {
 		errMsg := fmt.Sprintf("Expected error to be either a doc found or cas mismatch error, got %+v", err)
 		require.Fail(t, errMsg)
+	}
+}
+
+// TestDeleteWithXattrs tests various combinations of deleting documents (with zero to many xattrs, some of which may not exist) across bucket implementations to ensure consistency in behavior.
+func TestDeleteWithXattrs(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	col := bucket.GetSingleDataStore()
+
+	tests := []struct {
+		name           string
+		xattrsValues   map[string][]byte
+		xattrsToDelete []string
+		expectedXattrs []string
+	}{
+		{
+			name:           "delete with no xattrs",
+			xattrsValues:   nil,
+			xattrsToDelete: nil,
+			expectedXattrs: nil,
+		},
+		{
+			name:           "delete one only existing xattr",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"xattr1"},
+			expectedXattrs: nil,
+		},
+		{
+			name:           "delete two existing xattrs",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`), "xattr2": []byte(`{"c":"d"}`)},
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			expectedXattrs: nil,
+		},
+		{
+			name:           "delete one xattr and one non-existing xattr",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"xattr1", "notexists"},
+			expectedXattrs: nil,
+		},
+		{
+			name:           "delete one non-existing xattr",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"notexists"},
+			expectedXattrs: []string{"xattr1"},
+		},
+		{
+			name:           "create and delete system xattr",
+			xattrsValues:   map[string][]byte{"_sync": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"_sync"},
+			expectedXattrs: nil,
+		},
+		{
+			name:           "create and delete normal and system xattr",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`), "_sync": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"_sync"},
+			expectedXattrs: nil, // user xattrs get removed along with regular delete...
+		},
+		{
+			name:           "create normal and system and do regular delete",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`), "_sync": []byte(`{"a":"b"}`)},
+			xattrsToDelete: nil,
+			expectedXattrs: []string{"_sync"},
+		},
+		{
+			name:           "create normal and system and delete system",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`), "_sync": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"_sync"},
+			expectedXattrs: []string{"xattr1"},
+		},
+		{
+			name:           "create two system xattrs and delete one",
+			xattrsValues:   map[string][]byte{"_sync": []byte(`{"a":"b"}`), "_globalSync": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"_sync"},
+			expectedXattrs: []string{"_globalSync"},
+		},
+		{
+			name:           "create normal xattr and two system xattrs and delete one system xattr",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`), "_sync": []byte(`{"a":"b"}`), "_globalSync": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"_sync"},
+			expectedXattrs: []string{"_globalSync"}, // user xattrs get removed along with regular delete...
+		},
+		{
+			name:           "create xattr and delete non-existing system xattr",
+			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`)},
+			xattrsToDelete: []string{"_sync"},
+			expectedXattrs: []string{"xattr1"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			docID := t.Name()
+
+			_, err := col.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo": "bar"}`), test.xattrsValues, nil, nil)
+			require.NoError(t, err)
+
+			err = col.DeleteWithXattrs(ctx, docID, test.xattrsToDelete)
+			require.NoError(t, err)
+
+			v, xv, _, err := col.GetWithXattrs(ctx, docID, slices.Collect(maps.Keys(test.xattrsValues)))
+			if len(test.expectedXattrs) == 0 {
+				assert.Errorf(t, err, "Expected document and all xattrs to be deleted, but it still exists (no error on get)")
+				assert.Truef(t, IsDocNotFoundError(err), "Expected document to be deleted, but got an error other than not found: %v", err)
+			} else {
+				require.NoErrorf(t, err, "Expected document or at least one xattr to still exist with xattrs after deletion")
+			}
+			assert.Nil(t, v, "Expected document to be deleted, but it still exists")
+			assert.Equal(t, test.expectedXattrs, slices.Collect(maps.Keys(xv)), "Expected xattrs to match expected values after deletion")
+		})
 	}
 }
