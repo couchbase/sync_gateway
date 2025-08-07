@@ -901,18 +901,16 @@ func (btr *BlipTesterReplicator) handleNoRev(ctx context.Context, btc *BlipTeste
 		revID := msg.Properties[db.NorevMessageRev]
 		incomingVersion := DocVersion{}
 
+		incomingHLV := &db.HybridLogicalVector{}
 		if btc.UseHLV() {
-			cv, err := db.ParseVersion(revID)
-			if err != nil {
-				require.NoError(btr.TB(), err, "error parsing version %q: %v", revID, err)
-			}
-			incomingVersion.CV = cv
+			incomingHLV, incomingVersion = btc.getVersionsFromRevMessage(msg)
 		} else {
 			incomingVersion.RevTreeID = revID
 		}
 
 		btcc.addRev(ctx, docID, revOptions{
 			incomingVersion: incomingVersion,
+			incomingHLV:     incomingHLV,
 			msg:             msg,
 		})
 	}
@@ -2041,6 +2039,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	newVersion := opts.incomingVersion
 	doc, hasLocalDoc := btcc._getClientDoc(docID)
 	updatedHLV := doc._getLatestHLVCopy(btcc.TB())
+	require.NotNil(btcc.TB(), updatedHLV, "updatedHLV should not be nil for docID %q", docID)
 	if doc._hasConflict(btcc.TB(), opts.incomingHLV) {
 		newBody, updatedHLV = btcc._resolveConflict(opts.incomingHLV, opts.body, doc._latestRev(btcc.TB()))
 		base.DebugfCtx(ctx, base.KeySGTest, "Resolved conflict for docID %q, incomingHLV:%v, existingHLV:%v, updatedHLV:%v", docID, opts.incomingHLV, doc._latestRev(btcc.TB()).HLV, updatedHLV)
@@ -2115,14 +2114,9 @@ func (btc *BlipTesterClient) getVersionsFromRevMessage(msg *blip.Message) (*db.H
 	if !btc.UseHLV() {
 		return nil, DocVersion{RevTreeID: revID}
 	}
-	revHistory := msg.Properties[db.RevMessageHistory]
-	hlvStr := revID
-	if revHistory != "" {
-		hlvStr += ";" + revHistory
-	}
-	hlv, _, err := db.ExtractHLVFromBlipMessage(hlvStr)
-	require.NoError(btc.TB(), err)
-	require.NotEmpty(btc.TB(), hlv.SourceID, "HLV SourceID is empty from message %#+v, hlv=%q", msg.Properties, hlvStr)
-	require.NotEmpty(btc.TB(), hlv.Version, "HLV Version is empty from message %#+v, hlv=%q", msg.Properties, hlvStr)
+	hlv, _, err := db.GetHLVFromRevMessage(msg)
+	require.NoError(btc.TB(), err, "Failed to extract HLV from message %#+v", msg.Properties)
+	require.NotEmpty(btc.TB(), hlv.SourceID, "HLV SourceID is empty from message %#+v", msg.Properties)
+	require.NotEmpty(btc.TB(), hlv.Version, "HLV Version is empty from message %#+v, hlv=%q", msg.Properties)
 	return hlv, DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
 }

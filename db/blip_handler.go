@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -1086,18 +1087,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			history = append(history, strings.Split(historyStr, ",")...)
 		}
 	} else {
-		versionVectorStr := rev
-		if historyStr != "" {
-			// this means that there is a mv
-			if strings.Contains(historyStr, ";") {
-				versionVectorStr += "," + historyStr
-			} else {
-				versionVectorStr += ";" + historyStr
-			}
-		}
-		incomingHLV, legacyRevList, err = ExtractHLVFromBlipMessage(versionVectorStr)
+		incomingHLV, legacyRevList, err = GetHLVFromRevMessage(rq)
 		if err != nil {
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v.  HLV:%v Error: %v", base.UD(docID), versionVectorStr, err)
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v. Error: %v", base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
 		}
 		newDoc.HLV = incomingHLV
@@ -1662,4 +1654,25 @@ func allowedAttachmentKey(docID, digest string, activeCBMobileSubprotocol CBMobi
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, profile, endpoint)
+}
+
+// GetHLVFromRevMessage extracts the full HLV from a rev message. This will fail the test if the message does not contain a valid HLV.
+//
+// Function will return list of revIDs if legacy revtree IDs were found in the HLV history section (PV)
+func GetHLVFromRevMessage(msg *blip.Message) (*HybridLogicalVector, []string, error) {
+	revID := msg.Properties[RevMessageRev]
+	if revID == "" {
+		return nil, nil, errors.New("RevID property is empty")
+	}
+	versionVectorStr := revID
+	historyStr := msg.Properties[RevMessageHistory]
+	if historyStr != "" {
+		// this means that there is a mv
+		if strings.Contains(historyStr, ";") {
+			versionVectorStr += "," + historyStr
+		} else {
+			versionVectorStr += ";" + historyStr
+		}
+	}
+	return extractHLVFromBlipString(versionVectorStr)
 }

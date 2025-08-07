@@ -475,7 +475,7 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 
 }
 
-// ExtractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
+// extractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
 // blip string may be the following formats
 //  1. cv only:    		cv
 //  2. cv and pv:  		cv;pv
@@ -483,7 +483,7 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 //
 // Function will return list of revIDs if legacy rev ID was found in the HLV history section (PV)
 // TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
-func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, []string, error) {
+func extractHLVFromBlipString(versionVectorStr string) (*HybridLogicalVector, []string, error) {
 	hlv := &HybridLogicalVector{}
 
 	vectorFields := strings.Split(versionVectorStr, ";")
