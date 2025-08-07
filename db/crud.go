@@ -2892,7 +2892,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 	}
 
 	if db.UseXattrs() {
-		err := db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+		err := db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
 		if err != nil {
 			return err
 		}

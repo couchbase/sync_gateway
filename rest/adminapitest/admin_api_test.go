@@ -1789,6 +1789,40 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car"}`), 409)
 }
 
+// TestPurgeWithOldAttachment ensures that purging a document with an attachment actually removes it and a recreated document does not have the old attachment.
+func TestPurgeWithOldAttachment(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	_ = rt.PutDocWithAttachment("doc1", `{"foo":"doc1"}`, "att1", "b25lCg==")
+
+	rawBody, rawXattrs, _, err := rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	assert.NotNil(t, rawBody)
+	assert.NotNil(t, rawXattrs)
+
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"]}`)
+	rest.RequireStatus(t, response, http.StatusOK)
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, db.Body{"purged": map[string]any{"doc1": []interface{}{"*"}}}, body)
+
+	// inspect bucket doc to ensure SG's xattrs are gone
+	rawBody, rawXattrs, _, err = rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
+	assert.Nil(t, rawBody)
+	assert.Empty(t, rawXattrs)
+
+	// Here we're overwriting any previous global sync that may exist, so attachments being resurrected aren't an actual issue for us.
+	_ = rt.PutDocDirectly("doc1", db.Body{"foo": "doc1"})
+
+	rawBody, rawXattrs, _, err = rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	assert.NotNil(t, rawBody)
+	assert.NotNil(t, rawXattrs)
+}
+
 // TestRawRedaction tests the /_raw endpoint with and without redaction
 // intentionally does string matching on redactable strings to avoid any regressions if we move around metadata without updating the test
 func TestRawRedaction(t *testing.T) {
