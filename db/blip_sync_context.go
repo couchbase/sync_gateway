@@ -868,4 +868,3 @@ func (bsc *BlipSyncContext) useHLV() bool {
 func (bsc *BlipSyncContext) sendRevTreeProperty() bool {
 	return bsc.activeCBMobileSubprotocol >= CBMobileReplicationV4 && bsc.clientType == BLIPClientTypeSGR2
 }
-
