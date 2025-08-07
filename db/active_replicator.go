@@ -258,6 +258,9 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		return nil, nil, err
 	}
 
+	// set client type to SGW on active peer
+	bsc.SetClientType(BLIPClientTypeSGR2)
+
 	// set active subprotocol after handshake
 	err = bsc.SetActiveCBMobileSubprotocol(blipContext.ActiveSubprotocol())
 	if err != nil {

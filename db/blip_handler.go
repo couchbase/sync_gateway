@@ -908,12 +908,18 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 
 	if redactedRev != nil {
 		var history []string
+		var revTreeProperty []string
 		if !bsc.useHLV() {
 			history = toHistory(redactedRev.History, knownRevs, maxHistory)
 		} else {
 			history = append(history, redactedRev.hlvHistory)
 		}
-		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "")
+		if bsc.sendRevTreeProperty() {
+			revTreeProperty = append(revTreeProperty, redactedRev.RevID)
+			revTreeProperty = append(revTreeProperty, toHistory(redactedRev.History, knownRevs, maxHistory)...)
+		}
+
+		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "", revTreeProperty)
 		return bsc.sendRevisionWithProperties(ctx, sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 
@@ -1078,6 +1084,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
 	var legacyRevList []string
+	// we can probably use legacyRevList instead of this but to avoid hooking this up to write code we will use
+	// separate list for now, pending CBG-4790
+	var revTreeProperty []string
 	changeIsVector := strings.Contains(rev, "@")
 	if !bh.useHLV() || !changeIsVector {
 		newDoc.RevID = rev
@@ -1101,6 +1110,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
 		}
 		newDoc.HLV = incomingHLV
+	}
+
+	// if the client is SGW and there are no legacy revs being sent (i.e. doc is no pre upgraded doc) check the rev tree property
+	if bh.clientType == BLIPClientTypeSGR2 && len(legacyRevList) == 0 {
+		revTree, ok := rq.Properties[RevMessageTreeHistory]
+		if ok {
+			revTreeProperty = append(revTreeProperty, strings.Split(revTree, ",")...)
+		}
 	}
 
 	newDoc.UpdateBodyBytes(bodyBytes)
