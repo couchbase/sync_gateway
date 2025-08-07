@@ -8,15 +8,15 @@
 
 package topologytest
 
-// Topology defines a topology for a set of peers and replications. This can include Couchbase Server, Sync Gateway, and Couchbase Lite peers, with push or pull replications between them.
-type Topology struct {
+// TopologySpecification defines a topology for a set of peers and replications. This can include Couchbase Server, Sync Gateway, and Couchbase Lite peers, with push or pull replications between them.
+type TopologySpecification struct {
 	description  string
 	peers        map[string]PeerOptions
 	replications []PeerReplicationDefinition
 }
 
 // Topologies represents user configurations of replications.
-var Topologies = []Topology{
+var TopologySpecifications = []TopologySpecification{
 	{
 		/*
 			+ - - - - - - +
@@ -273,9 +273,9 @@ var Topologies = []Topology{
 	*/
 }
 
-// simpleTopologies represents simplified topologies to make testing the integration test code easier.
+// simpleTopologySpecifications represents simplified topologies to make testing the integration test code easier.
 // nolint: unused
-var simpleTopologies = []Topology{
+var simpleTopologySpecifications = []TopologySpecification{
 	{
 
 		/*

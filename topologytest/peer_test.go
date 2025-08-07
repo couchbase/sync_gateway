@@ -15,6 +15,7 @@ import (
 	"iter"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/xdcr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,6 +43,10 @@ func init() {
 type Peer interface {
 	// GetDocument returns the latest version of a document. The test will fail the document does not exist.
 	GetDocument(dsName sgbucket.DataStoreName, docID string) (DocMetadata, db.Body)
+
+	// GetDocument returns the latest version of a document if it exists.
+	GetDocumentIfExists(dsName sgbucket.DataStoreName, docID string) (DocMetadata, *db.Body, bool)
+
 	// CreateDocument creates a document on the peer. The test will fail if the document already exists.
 	CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion
 	// WriteDocument upserts a document to the peer. The test will fail if the write does not succeed. Reasons for failure might be sync function rejections for Sync Gateway rejections.
@@ -49,10 +55,13 @@ type Peer interface {
 	DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata
 
 	// WaitForDocVersion waits for a document to reach a specific version. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
-	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications) db.Body
+	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body
+
+	// WaitForCV waits for a document to reach a specific CV. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
+	WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body
 
 	// WaitForTombstoneVersion waits for a document to reach a specific version. This document must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
-	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, replications Replications)
+	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology)
 
 	// CreateReplication creates a replication instance
 	CreateReplication(Peer, PeerReplicationConfig) PeerReplication
@@ -117,7 +126,42 @@ func (p Peers) SortedPeers() iter.Seq2[string, Peer] {
 	}
 }
 
-// UniqueTopologyPeers returns a list of unique peers in the topology. If there is an identical symmetric peer, do not return it.
+// NonImportSortedPeers returns a sorted iterator peers that will not cause import operations. For example:
+//   - cbs1 <-> sg1 <-> cbl1 would return sg1 and cbl1, but not cbs1
+//   - cbs1 <-> cbs2 would return cbs1 and cbs2
+//   - cbs1 <-> sg1 <-> cbl1 and cbs1 <-> cbs2 would return sg1, cbl1, cbs2, but not cbs1
+func (p Peers) NonImportSortedPeers() iter.Seq2[string, Peer] {
+	peerNames := slices.Collect(maps.Keys(p))
+	slices.Sort(peerNames)
+	backingBuckets := make(map[string][]string, len(peerNames))
+	for peerName, peer := range p {
+		if peer.GetBackingBucket() == nil {
+			continue // Couchbase Lite peers do not have a backing bucket
+		}
+		bucketPeers, ok := backingBuckets[peer.GetBackingBucket().GetName()]
+		if !ok {
+			bucketPeers = make([]string, 0)
+		}
+		bucketPeers = append(bucketPeers, peerName)
+		backingBuckets[peer.GetBackingBucket().GetName()] = bucketPeers
+	}
+	return func(yield func(k string, v Peer) bool) {
+		for _, peerName := range peerNames {
+			peer := p[peerName]
+			if peer.Type() == PeerTypeCouchbaseServer {
+				// If the peer is a Couchbase Server peer, we do not want to yield it if it is the only peer with that backing bucket.
+				if len(backingBuckets[peer.GetBackingBucket().GetName()]) > 1 {
+					continue
+				}
+			}
+			if !yield(peerName, p[peerName]) {
+				return
+			}
+		}
+	}
+}
+
+// ActivePeers returns a list of unique peers in the topology. If there is an identical symmetric peer, do not return it.
 func (p Peers) ActivePeers() iter.Seq2[string, Peer] {
 	keys := slices.Collect(maps.Keys(p))
 	slices.Sort(keys)
@@ -161,6 +205,62 @@ func (r Replications) Stats() string {
 		stats += fmt.Sprintf("%s: %s\n", replication, replication.Stats())
 	}
 	return stats
+}
+
+// Topology describes an instantiated set of peers and replications.
+type Topology struct {
+	peers           Peers
+	replications    Replications
+	specDescription string // description of the topology specification used to create this topology
+}
+
+// GetDocState returns the current state of a document across all peers.
+func (to Topology) GetDocState(t assert.TestingT, dsName sgbucket.DataStoreName, docID string) string {
+	globalState := &strings.Builder{}
+	for peerName, peer := range to.peers.SortedPeers() {
+		docMeta, body, ok := peer.GetDocumentIfExists(dsName, docID)
+		if !ok {
+			fmt.Fprintf(globalState, "====\npeer(%s)\n----\nDocument %s does not exist\n", peerName, docID)
+			continue
+		}
+		fmt.Fprintf(globalState, "====\npeer(%s)\n----\n%#v\nbody:%v\n", peerName, docMeta, body)
+	}
+	for _, replication := range to.replications {
+		fmt.Fprintf(globalState, "====\nreplication(%s)\n----\n%s\n", replication, replication.Stats())
+	}
+	return globalState.String()
+}
+
+// ActivePeers returns a list of unique peers in the topology. If there is an identical symmetric peer, do not return it.
+func (to Topology) ActivePeers() iter.Seq2[string, Peer] {
+	return to.peers.ActivePeers()
+}
+
+// SortedPeers returns a sorted list of peers by name, for deterministic output.
+func (to Topology) SortedPeers() iter.Seq2[string, Peer] {
+	return to.peers.SortedPeers()
+}
+
+// Run is equivalent to testing.T.Run() but updates the underlying TB to the new testing.T
+// so that checks are made against the right instance (otherwise the outer test complains
+// "subtest may have called FailNow on a parent test")
+func (to *Topology) Run(t *testing.T, name string, test func(*testing.T)) {
+	t.Run(name, func(t *testing.T) {
+		for _, peer := range to.peers {
+			oldTB := peer.TB().(*testing.T)
+			t.Cleanup(func() { peer.UpdateTB(oldTB) })
+			peer.UpdateTB(t)
+		}
+		test(t)
+	})
+}
+
+func (to Topology) StartReplications() {
+	to.replications.Start()
+}
+
+func (to Topology) StopReplications() {
+	to.replications.Stop()
 }
 
 // PeerReplicationDirection represents the direction of a replication from the active peer.
@@ -317,20 +417,12 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) Peers {
 	return peers
 }
 
-func updatePeersT(t *testing.T, peers map[string]Peer) {
-	for _, peer := range peers {
-		oldTB := peer.TB().(*testing.T)
-		t.Cleanup(func() { peer.UpdateTB(oldTB) })
-		peer.UpdateTB(t)
-	}
-}
-
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
-func setupTests(t *testing.T, topology Topology) (base.ScopeAndCollectionName, Peers, Replications) {
+func setupTests(t *testing.T, topology TopologySpecification) (base.ScopeAndCollectionName, Topology) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV, base.KeyCRUD, base.KeySync)
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
-	return getSingleDsName(), peers, replications
+	return getSingleDsName(), Topology{peers: peers, replications: replications}
 }
 
 func TestPeerImplementation(t *testing.T) {
@@ -385,6 +477,10 @@ func TestPeerImplementation(t *testing.T) {
 				defer pushReplication.Stop()
 				replications = append(replications, pushReplication)
 			}
+			topology := Topology{
+				peers:        peers,
+				replications: replications,
+			}
 
 			docID := t.Name()
 			collectionName := getSingleDsName()
@@ -399,7 +495,7 @@ func TestPeerImplementation(t *testing.T) {
 				require.Empty(t, createVersion.docMeta.RevTreeID)
 			}
 
-			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta, replications)
+			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta, topology)
 			// Check Get after creation
 			roundtripGetVersion, roundtripGetbody := peer.GetDocument(collectionName, docID)
 			require.Equal(t, createVersion.docMeta, roundtripGetVersion)
@@ -416,7 +512,7 @@ func TestPeerImplementation(t *testing.T) {
 			} else {
 				require.Empty(t, updateVersion.docMeta.RevTreeID)
 			}
-			peer.WaitForDocVersion(collectionName, docID, updateVersion.docMeta, replications)
+			peer.WaitForDocVersion(collectionName, docID, updateVersion.docMeta, topology)
 
 			// Check Get after update
 			roundtripGetVersion, roundtripGetbody = peer.GetDocument(collectionName, docID)
@@ -435,7 +531,7 @@ func TestPeerImplementation(t *testing.T) {
 			} else {
 				require.Empty(t, deleteVersion.RevTreeID)
 			}
-			peer.WaitForTombstoneVersion(collectionName, docID, deleteVersion, replications)
+			peer.WaitForTombstoneVersion(collectionName, docID, deleteVersion, topology)
 
 			// Resurrection
 			resurrectionBody := []byte(`{"op": "resurrection"}`)
@@ -454,7 +550,7 @@ func TestPeerImplementation(t *testing.T) {
 			} else {
 				require.Empty(t, resurrectionVersion.docMeta.RevTreeID)
 			}
-			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta, replications)
+			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta, topology)
 
 			ctx := peer.Context()
 			if peer.Type() != PeerTypeCouchbaseLite {
