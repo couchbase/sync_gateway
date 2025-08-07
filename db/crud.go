@@ -3122,6 +3122,37 @@ func (c *DatabaseCollection) checkForUpgrade(ctx context.Context, key string, un
 	return doc, rawDocument
 }
 
+func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, docid, rev string) (missing, possible []string) {
+	if strings.HasPrefix(docid, "_design/") && db.user != nil {
+		return // Users can't upload design docs, so ignore them
+	}
+	// todo: CBG-4782 utilise known revs for rev tree property in ISGR by returning know rev tree id's in possible list
+
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalSync)
+	if err != nil {
+		if !base.IsDocNotFoundError(err) && !base.IsXattrNotFoundError(err) {
+			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
+		}
+		missing = append(missing, rev)
+		return
+	}
+	// parse in coming version, if it's not know to local doc hlv then it is missing, if it is and is a new version
+	// then it is also marked as missing
+	cvValue, err := ParseVersion(rev)
+	if err != nil {
+		base.WarnfCtx(ctx, "error parse change version for doc %s: %v", base.UD(docid), err)
+		missing = append(missing, rev)
+		return
+	}
+	// CBG-4792: enhance here for conflict check - return conflict rev similar to propose changes here link ticket
+	if doc.HLV.DominatesSource(cvValue) {
+		// incoming version is dominated by local doc hlv, so it is not missing
+		return
+	}
+	missing = append(missing, rev)
+	return
+}
+
 // ////// REVS_DIFF:
 
 // Given a document ID and a set of revision IDs, looks up which ones are not known. Returns an

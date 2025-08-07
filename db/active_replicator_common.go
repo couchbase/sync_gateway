@@ -124,7 +124,7 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 		direction:        direction,
 	}
 	// CBG-4780: WIll hard code to use < 4 protocols for now, as the ISGR doesn't support 4+ protocols.
-	arc.config.SupportedBLIPProtocols = []string{CBMobileReplicationV3.SubprotocolString(), CBMobileReplicationV2.SubprotocolString()}
+	//arc.config.SupportedBLIPProtocols = []string{CBMobileReplicationV3.SubprotocolString(), CBMobileReplicationV2.SubprotocolString()}
 
 	if config.CollectionsEnabled {
 		arc.namedCollections = make(map[base.ScopeAndCollectionName]*activeReplicatorCollection)

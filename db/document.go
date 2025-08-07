@@ -1477,3 +1477,10 @@ func unmarshalRevSeqNo(revSeqNoBytes []byte) (uint64, error) {
 	}
 	return revSeqNo, nil
 }
+
+func (doc *Document) ExtractDocVersion() DocVersion {
+	return DocVersion{
+		RevTreeID: doc.CurrentRev,
+		CV: *doc.HLV.ExtractCurrentVersionFromHLV(),
+	}
+}
