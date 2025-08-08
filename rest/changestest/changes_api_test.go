@@ -1809,7 +1809,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 			"type":     "pruned",
 			"channels": []string{"gamma"},
 		}
-		docVersion := rt.UpdateDocDirectly("doc_pruned", db.DocVersion{RevTreeID: revid}, body)
+		docVersion := rt.UpdateDoc("doc_pruned", db.DocVersion{RevTreeID: revid}, string(base.MustJSONMarshal(t, body)))
 		revid = docVersion.RevTreeID
 		cvs = append(cvs, docVersion.CV.String())
 	}

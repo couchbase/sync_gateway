@@ -389,13 +389,14 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.collection.Put(h.ctx(), docid, body)
+	newRev, doc, err := h.collection.Put(h.ctx(), docid, body)
 	if err != nil {
 		return err
 	}
 	h.setEtag(newRev)
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	// CBG-4751: add tests for CV
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`","cv":"`+doc.HLV.GetCurrentVersionString()+`"}`))
 	return nil
 }
 
@@ -532,8 +533,12 @@ func (h *handler) handlePutDoc() error {
 			return err
 		}
 	}
-
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	// doc is nil if document already exists, and CV is empty. Consider fixing in CBG-4751 to return current HLV. CBG-4751 will add tests.
+	if doc == nil {
+		h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	} else {
+		h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`","cv":"`+doc.HLV.GetCurrentVersionString()+`"}`))
+	}
 	return nil
 }
 
@@ -671,9 +676,10 @@ func (h *handler) handleDeleteDoc() error {
 			return err
 		}
 	}
-	newRev, _, err := h.collection.DeleteDoc(h.ctx(), docid, revid)
+	newRev, doc, err := h.collection.DeleteDoc(h.ctx(), docid, revid)
 	if err == nil {
-		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+		// CBG-4751: should add tests for CV
+		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`","cv":"`+doc.HLV.GetCurrentVersionString()+`"}`))
 	}
 	return err
 }
