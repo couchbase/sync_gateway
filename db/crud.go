@@ -1023,7 +1023,6 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
 	}
-	fmt.Println("new hlv", d.HLV)
 	return d, nil
 }
 
@@ -2600,8 +2599,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			hlvHistory:  doc.HLV.ToHistoryForHLV(),
 			CV:          &Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version},
 		}
-
-		fmt.Println("put at rev cache", documentRevision.Deleted, documentRevision.History)
 
 		if updateRevCache {
 			if createNewRevIDSkipped {
