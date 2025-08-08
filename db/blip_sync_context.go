@@ -687,7 +687,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		if vrsErr != nil {
 			return vrsErr
 		}
-		docRev, originalErr = handleChangesResponseCollection.GetCV(bsc.loggingCtx, docID, &version)
+		docRev, originalErr = handleChangesResponseCollection.GetCV(bsc.loggingCtx, docID, &version, true)
 	}
 
 	// set if we find an alternative revision to send in the event the originally requested rev is unavailable

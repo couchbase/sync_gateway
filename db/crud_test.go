@@ -1959,7 +1959,7 @@ func TestGetCVWithDocResidentInCache(t *testing.T) {
 			vrs := doc.HLV.Version
 			src := doc.HLV.SourceID
 			sv := &Version{Value: vrs, SourceID: src}
-			revision, err := collection.GetCV(ctx, docID, sv)
+			revision, err := collection.GetCV(ctx, docID, sv, false)
 			require.NoError(t, err)
 			if testCase.access {
 				assert.Equal(t, rev, revision.RevID)
@@ -2018,7 +2018,7 @@ func TestGetByCVForDocNotResidentInCache(t *testing.T) {
 	vrs := doc.HLV.Version
 	src := doc.HLV.SourceID
 	sv := &Version{Value: vrs, SourceID: src}
-	revision, err := collection.GetCV(ctx, doc1ID, sv)
+	revision, err := collection.GetCV(ctx, doc1ID, sv, false)
 	require.NoError(t, err)
 
 	// assert the fetched doc is the first doc we added and assert that we did in fact get cache miss
@@ -2072,7 +2072,7 @@ func TestGetCVActivePathway(t *testing.T) {
 			revBody := Body{"channels": testCase.docChannels}
 			rev, doc, err := collection.Put(ctx, docID, revBody)
 			require.NoError(t, err)
-			revision, err := collection.GetCV(ctx, docID, nil)
+			revision, err := collection.GetCV(ctx, docID, nil, false)
 
 			if testCase.access == true {
 				require.NoError(t, err)
