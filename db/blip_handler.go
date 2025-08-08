@@ -695,10 +695,23 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	expectedSeqs := make(map[IDAndRev]SequenceID, 0)
 	alreadyKnownSeqs := make([]SequenceID, 0)
 
+	versionVectorProtocol := bh.useHLV()
+
 	for _, change := range changeList {
 		docID := change[1].(string)
-		revID := change[2].(string)
-		missing, possible := bh.collection.RevDiff(bh.loggingCtx, docID, []string{revID})
+		rev := change[2].(string)
+		var missing, possible []string
+
+		changeIsVector := false
+		if versionVectorProtocol {
+			changeIsVector = strings.Contains(rev, "@")
+		}
+		if !versionVectorProtocol || !changeIsVector {
+			missing, possible = bh.collection.RevDiff(bh.loggingCtx, docID, []string{rev})
+		} else {
+			missing, possible = bh.collection.CheckChangeVersion(bh.loggingCtx, docID, rev)
+		}
+
 		if nWritten > 0 {
 			output.Write([]byte(","))
 		}
@@ -740,7 +753,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			if collectionCtx.sgr2PullAlreadyKnownSeqsCallback != nil {
 				seq, err := ParseJSONSequenceID(seqStr(bh.loggingCtx, change[0]))
 				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q / %q: %v", change[0], base.UD(docID), rev, err)
 				} else {
 					// we're not able to checkpoint a sequence we can't parse and aren't expecting so just skip the callback if we errored
 					alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
@@ -763,9 +776,9 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 				seq, err := ParseJSONSequenceID(seqStr(bh.loggingCtx, change[0]))
 				if err != nil {
 					// We've already asked for the doc/rev for the sequence so assume we're going to receive it... Just log this and carry on
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q / %q: %v", change[0], base.UD(docID), rev, err)
 				} else {
-					expectedSeqs[IDAndRev{DocID: docID, RevID: revID}] = seq
+					expectedSeqs[IDAndRev{DocID: docID, RevID: rev}] = seq
 				}
 			}
 		}
@@ -1000,10 +1013,6 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			bh.db.DbStats.DatabaseStats.NumDocWritesRejected.Add(1)
 			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database cache is behind and cannot accept writes at this time. Please try again later.")
 		}
-	}
-
-	if bh.useHLV() && bh.conflictResolver != nil {
-		return base.HTTPErrorf(http.StatusNotImplemented, "conflict resolver handling (ISGR) not yet implemented for v4 protocol")
 	}
 
 	// throttle concurrent revs
