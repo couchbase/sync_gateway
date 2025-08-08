@@ -152,6 +152,11 @@ func (v Version) IsEmpty() bool {
 	return v.SourceID == "" && v.Value == 0
 }
 
+// Equal returns true if sourceID and value of the two versions are equal.
+func (v Version) Equal(other Version) bool {
+	return v.SourceID == other.SourceID && v.Value == other.Value
+}
+
 // StringForVersionDelta will take a version struct and convert the value to delta format
 // (encoding it to LE hex, stripping any 0's off the end and stripping leading 0x)
 func (v Version) StringForVersionDelta() string {
@@ -183,6 +188,7 @@ func NewHybridLogicalVector() *HybridLogicalVector {
 	}
 }
 
+// Equal compares the full HLV to another HLV.
 func (hlv *HybridLogicalVector) Equal(other *HybridLogicalVector) bool {
 	if hlv.SourceID != other.SourceID {
 		return false
@@ -200,6 +206,19 @@ func (hlv *HybridLogicalVector) Equal(other *HybridLogicalVector) bool {
 	}
 
 	return true
+}
+
+func (hlv *HybridLogicalVector) Copy() *HybridLogicalVector {
+	if hlv == nil {
+		return nil
+	}
+	return &HybridLogicalVector{
+		CurrentVersionCAS: hlv.CurrentVersionCAS,
+		SourceID:          hlv.SourceID,
+		Version:           hlv.Version,
+		MergeVersions:     maps.Clone(hlv.MergeVersions),
+		PreviousVersions:  maps.Clone(hlv.PreviousVersions),
+	}
 }
 
 // GetCurrentVersion returns the current version from the HLV in memory.
@@ -275,7 +294,7 @@ func (hlv *HybridLogicalVector) InvalidateMV() {
 		if source == hlv.SourceID {
 			continue
 		}
-		hlv.setPreviousVersion(source, value)
+		hlv.SetPreviousVersion(source, value)
 	}
 	hlv.MergeVersions = nil
 }
@@ -340,7 +359,7 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 
 	// Copy incoming merge versions (previously existing merge versions will have been moved to pv by AddVersion)
 	for i, v := range otherVector.MergeVersions {
-		hlv.setMergeVersion(i, v)
+		hlv.SetMergeVersion(i, v)
 	}
 
 	if len(otherVector.PreviousVersions) != 0 {
@@ -348,13 +367,13 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVecto
 		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
 			if hlv.PreviousVersions[i] == 0 {
-				hlv.setPreviousVersion(i, v)
+				hlv.SetPreviousVersion(i, v)
 			} else {
 				// if we get here then there is entry for this source in PV so we must check if its newer or not
 				otherHLVPVValue := v
 				localHLVPVValue := hlv.PreviousVersions[i]
 				if localHLVPVValue < otherHLVPVValue {
-					hlv.setPreviousVersion(i, v)
+					hlv.SetPreviousVersion(i, v)
 				}
 			}
 		}
@@ -386,16 +405,16 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 	return outputSpec
 }
 
-// setPreviousVersion will take a source/version pair and add it to the HLV previous versions map
-func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64) {
+// SetPreviousVersion will take a source/version pair and add it to the HLV previous versions map
+func (hlv *HybridLogicalVector) SetPreviousVersion(source string, version uint64) {
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(HLVVersions)
 	}
 	hlv.PreviousVersions[source] = version
 }
 
-// setMergeVersion will take a source/version pair and add it to the HLV merge versions map
-func (hlv *HybridLogicalVector) setMergeVersion(source string, version uint64) {
+// SetMergeVersion will take a source/version pair and add it to the HLV merge versions map
+func (hlv *HybridLogicalVector) SetMergeVersion(source string, version uint64) {
 	if hlv.MergeVersions == nil {
 		hlv.MergeVersions = make(HLVVersions)
 	}
@@ -456,7 +475,7 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 
 }
 
-// ExtractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
+// extractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
 // blip string may be the following formats
 //  1. cv only:    		cv
 //  2. cv and pv:  		cv;pv
@@ -464,7 +483,7 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 //
 // Function will return list of revIDs if legacy rev ID was found in the HLV history section (PV)
 // TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
-func ExtractHLVFromBlipMessage(versionVectorStr string) (*HybridLogicalVector, []string, error) {
+func extractHLVFromBlipString(versionVectorStr string) (*HybridLogicalVector, []string, error) {
 	hlv := &HybridLogicalVector{}
 
 	vectorFields := strings.Split(versionVectorStr, ";")

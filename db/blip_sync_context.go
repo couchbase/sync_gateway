@@ -372,7 +372,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			if bsc.useDeltas && len(knownRevsArray) > 0 {
 				if revID, ok := knownRevsArray[0].(string); ok {
 					if versionVectorProtocol {
-						msgHLV, _, err := ExtractHLVFromBlipMessage(revID)
+						// Is this full history?
+						msgHLV, _, err := extractHLVFromBlipString(revID)
 						if err != nil {
 							base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication.", base.UD(docID))
 							deltaSrcRevID = "" // will force falling back to full body replication below
@@ -387,7 +388,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 
 			for _, rev := range knownRevsArray {
 				if revID, ok := rev.(string); ok {
-					msgHLV, _, err := ExtractHLVFromBlipMessage(revID)
+					// Is this full history?
+					msgHLV, _, err := extractHLVFromBlipString(revID)
 					if err != nil {
 						// assume we have received legacy rev if we cannot parse hlv from known revs, and we are in vv replication
 						if versionVectorProtocol {
