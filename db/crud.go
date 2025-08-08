@@ -2867,7 +2867,7 @@ func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid strin
 
 // Purges a document from the bucket (no tombstone)
 func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, needsAudit bool) error {
-	doc, err := db.GetDocument(ctx, key, DocUnmarshalAll)
+	doc, rawBucketDoc, err := db.GetDocumentWithRaw(ctx, key, DocUnmarshalAll)
 	if err != nil {
 		return err
 	}
@@ -2892,8 +2892,15 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 	}
 
 	if db.UseXattrs() {
-		err := db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
-		if err != nil {
+		// Clean up _sync and _globalSync (if present). Leave _vv and _mou since they are also shared by XDCR/Eventing.
+		xattrsToDelete := []string{base.SyncXattrName, base.GlobalXattrName}
+		// TODO: CBG-4796 - we currently need to determine a list of present xattrs before we delete to avoid differences
+		// between Rosmar and Couchbase Server implementations of DeleteWithXattrs and GetWithXattrs.
+		var presentXattrsToDelete []string
+		if rawBucketDoc != nil && rawBucketDoc.Xattrs != nil {
+			presentXattrsToDelete = base.KeysPresent(rawBucketDoc.Xattrs, xattrsToDelete)
+		}
+		if err := db.dataStore.DeleteWithXattrs(ctx, key, presentXattrsToDelete); err != nil {
 			return err
 		}
 	} else {
