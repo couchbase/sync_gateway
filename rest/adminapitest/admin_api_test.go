@@ -1803,9 +1803,9 @@ func TestPurgeWithOldAttachment(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, rawBody)
 	assert.NotNil(t, rawXattrs)
-	var gloablSync db.GlobalSyncData
-	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &gloablSync))
-	assert.Equal(t, len(att1), int(gloablSync.Attachments["att1"].(map[string]any)["length"].(float64)))
+	var globalSync db.GlobalSyncData
+	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &globalSync))
+	assert.Equal(t, len(att1), int(globalSync.Attachments["att1"].(map[string]any)["length"].(float64)))
 
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"]}`)
 	rest.RequireStatus(t, response, http.StatusOK)
@@ -1830,10 +1830,10 @@ func TestPurgeWithOldAttachment(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, rawBody)
 	assert.NotNil(t, rawXattrs)
-	gloablSync = db.GlobalSyncData{}
-	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &gloablSync))
-	assert.NotContains(t, gloablSync.Attachments, "att1")
-	assert.Equal(t, len(att2), int(gloablSync.Attachments["att2"].(map[string]any)["length"].(float64)))
+	globalSync = db.GlobalSyncData{}
+	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &globalSync))
+	assert.NotContains(t, globalSync.Attachments, "att1")
+	assert.Equal(t, len(att2), int(globalSync.Attachments["att2"].(map[string]any)["length"].(float64)))
 }
 
 // TestRawRedaction tests the /_raw endpoint with and without redaction
