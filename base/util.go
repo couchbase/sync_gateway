@@ -1814,3 +1814,14 @@ func SlicesEqualIgnoreOrder[T comparable](a, b []T) bool {
 	}
 	return true
 }
+
+// KeysPresent returns the subset of keys that are present in m, preserving input order of keys.
+func KeysPresent[K comparable, V any](m map[K]V, keys []K) []K {
+	result := make([]K, 0, len(keys))
+	for _, k := range keys {
+		if _, ok := m[k]; ok {
+			result = append(result, k)
+		}
+	}
+	return result
+}

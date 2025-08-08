@@ -9,6 +9,7 @@
 package adminapitest
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1787,6 +1788,52 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 
 	// Create new versions of the doc2 fails because it already exists
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car"}`), 409)
+}
+
+// TestPurgeWithOldAttachment ensures that purging a document with an attachment actually removes it and a recreated document does not have the old attachment.
+func TestPurgeWithOldAttachment(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	const att1 = "first attachment"
+	att1Data := base64.StdEncoding.EncodeToString([]byte(att1))
+	_ = rt.PutDocWithAttachment("doc1", `{"foo":"doc1"}`, "att1", att1Data)
+
+	rawBody, rawXattrs, _, err := rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	assert.NotNil(t, rawBody)
+	assert.NotNil(t, rawXattrs)
+	var globalSync db.GlobalSyncData
+	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &globalSync))
+	assert.Equal(t, len(att1), int(globalSync.Attachments["att1"].(map[string]any)["length"].(float64)))
+
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"]}`)
+	rest.RequireStatus(t, response, http.StatusOK)
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, db.Body{"purged": map[string]any{"doc1": []interface{}{"*"}}}, body)
+
+	// inspect bucket doc to ensure SG's xattrs are gone
+	rawBody, rawXattrs, _, err = rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
+	assert.Nil(t, rawBody)
+	assert.Empty(t, rawXattrs)
+
+	// Overwriting the document here is intentional: after purging, we want to verify that re-inserting the document does not resurrect any previous attachments or metadata.
+	// This ensures the purge operation fully removed all traces of the original document, and that the new insert starts from a clean state.
+	const att2 = "att two"
+	att2Data := base64.StdEncoding.EncodeToString([]byte(att2))
+	_ = rt.PutDocWithAttachment("doc1", `{"foo":"doc1"}`, "att2", att2Data)
+
+	rawBody, rawXattrs, _, err = rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	assert.NotNil(t, rawBody)
+	assert.NotNil(t, rawXattrs)
+	globalSync = db.GlobalSyncData{}
+	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &globalSync))
+	assert.NotContains(t, globalSync.Attachments, "att1")
+	assert.Equal(t, len(att2), int(globalSync.Attachments["att2"].(map[string]any)["length"].(float64)))
 }
 
 // TestRawRedaction tests the /_raw endpoint with and without redaction
