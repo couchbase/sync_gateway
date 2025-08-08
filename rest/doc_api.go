@@ -395,6 +395,7 @@ func (h *handler) handlePutAttachment() error {
 	}
 	h.setEtag(newRev)
 
+	// CBG-4751: add tests for CV
 	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`","cv":"`+doc.HLV.GetCurrentVersionString()+`"}`))
 	return nil
 }
@@ -532,7 +533,7 @@ func (h *handler) handlePutDoc() error {
 			return err
 		}
 	}
-	// FIXME: TestConcurrentNewEditsFalse does not always have a doc populated
+	// doc is nil if document already exists, and CV is empty. Consider fixing in CBG-4751 to return current HLV. CBG-4751 will add tests.
 	if doc == nil {
 		h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	} else {
@@ -677,6 +678,7 @@ func (h *handler) handleDeleteDoc() error {
 	}
 	newRev, doc, err := h.collection.DeleteDoc(h.ctx(), docid, revid)
 	if err == nil {
+		// CBG-4751: should add tests for CV
 		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`","cv":"`+doc.HLV.GetCurrentVersionString()+`"}`))
 	}
 	return err

@@ -3751,7 +3751,6 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 //   - Deletes the document in rt2, and waits for the tombstone to get to rt1.
 func TestActiveReplicatorPullTombstone(t *testing.T) {
-	t.Skip("TEMP")
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
