@@ -605,12 +605,17 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
 	var history []string
+	var revTreeProperty []string
 	if bsc.useHLV() {
 		history = append(history, revDelta.HlvHistory)
 	} else {
 		history = revDelta.RevisionHistory
 	}
-	properties := blipRevMessageProperties(history, revDelta.ToDeleted, seq, "")
+	if bsc.sendRevTreeProperty() {
+		revTreeProperty = append(revTreeProperty, revDelta.ToRevID)
+		revTreeProperty = append(revTreeProperty, revDelta.RevisionHistory...)
+	}
+	properties := blipRevMessageProperties(history, revDelta.ToDeleted, seq, "", revTreeProperty)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
@@ -768,14 +773,20 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 			history = append(history, docRev.hlvHistory)
 		}
 	}
+
+	var revTreeHistoryProperty []string
 	if legacyRev {
 		// append current revID and rest of rev tree after hlv history
 		revTreeHistory := toHistory(docRev.History, knownRevs, maxHistory)
 		history = append(history, docRev.RevID)
 		history = append(history, revTreeHistory...)
+	} else if bsc.sendRevTreeProperty() {
+		// if no legacy revs being sent and we are communicating with SGW client we should send revision history in the rev message
+		revTreeHistoryProperty = append(revTreeHistoryProperty, docRev.RevID) // we need current rev
+		revTreeHistoryProperty = append(revTreeHistoryProperty, toHistory(docRev.History, knownRevs, maxHistory)...)
 	}
 
-	properties := blipRevMessageProperties(history, docRev.Deleted, seq, replacedRevID)
+	properties := blipRevMessageProperties(history, docRev.Deleted, seq, replacedRevID, revTreeHistoryProperty)
 	if base.LogDebugEnabled(ctx, base.KeySync) {
 		replacedRevMsg := ""
 		if replacedRevID != "" {
@@ -850,4 +861,10 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 
 func (bsc *BlipSyncContext) useHLV() bool {
 	return bsc.activeCBMobileSubprotocol >= CBMobileReplicationV4
+}
+
+// sendRevTreeProperty returns true if the rev tree property should be sent in the rev message. That is if we are
+// replicating with version vectors and the client we're communicating with is a SGW peer
+func (bsc *BlipSyncContext) sendRevTreeProperty() bool {
+	return bsc.activeCBMobileSubprotocol >= CBMobileReplicationV4 && bsc.clientType == BLIPClientTypeSGR2
 }

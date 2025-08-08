@@ -77,6 +77,7 @@ const (
 	RevMessageDeleted     = "deleted"
 	RevMessageSequence    = "sequence"
 	RevMessageHistory     = "history"
+	RevMessageTreeHistory = "revTree"
 	RevMessageNoConflicts = "noconflicts"
 	RevMessageDeltaSrc    = "deltaSrc"
 	RevMessageReplacedRev = "replacedRev"
