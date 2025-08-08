@@ -1112,7 +1112,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		newDoc.HLV = incomingHLV
 	}
 
-	// if the client is SGW and there are no legacy revs being sent (i.e. doc is no pre upgraded doc) check the rev tree property
+	// if the client is SGW and there are no legacy revs being sent (i.e. doc is not a pre-upgraded doc) check the rev tree property
 	if bh.clientType == BLIPClientTypeSGR2 && len(legacyRevList) == 0 {
 		revTree, ok := rq.Properties[RevMessageTreeHistory]
 		if ok {
