@@ -695,10 +695,23 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	expectedSeqs := make(map[IDAndRev]SequenceID, 0)
 	alreadyKnownSeqs := make([]SequenceID, 0)
 
+	versionVectorProtocol := bh.useHLV()
+
 	for _, change := range changeList {
 		docID := change[1].(string)
-		revID := change[2].(string)
-		missing, possible := bh.collection.RevDiff(bh.loggingCtx, docID, []string{revID})
+		rev := change[2].(string)
+		var missing, possible []string
+
+		changeIsVector := false
+		if versionVectorProtocol {
+			changeIsVector = strings.Contains(rev, "@")
+		}
+		if !versionVectorProtocol || !changeIsVector {
+			missing, possible = bh.collection.RevDiff(bh.loggingCtx, docID, []string{rev})
+		} else {
+			missing, possible = bh.collection.CheckChangeVersion(bh.loggingCtx, docID, rev)
+		}
+
 		if nWritten > 0 {
 			output.Write([]byte(","))
 		}
@@ -740,7 +753,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			if collectionCtx.sgr2PullAlreadyKnownSeqsCallback != nil {
 				seq, err := ParseJSONSequenceID(seqStr(bh.loggingCtx, change[0]))
 				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q / %q: %v", change[0], base.UD(docID), rev, err)
 				} else {
 					// we're not able to checkpoint a sequence we can't parse and aren't expecting so just skip the callback if we errored
 					alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
@@ -763,9 +776,9 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 				seq, err := ParseJSONSequenceID(seqStr(bh.loggingCtx, change[0]))
 				if err != nil {
 					// We've already asked for the doc/rev for the sequence so assume we're going to receive it... Just log this and carry on
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q / %q: %v", change[0], base.UD(docID), rev, err)
 				} else {
-					expectedSeqs[IDAndRev{DocID: docID, RevID: revID}] = seq
+					expectedSeqs[IDAndRev{DocID: docID, RevID: rev}] = seq
 				}
 			}
 		}
@@ -908,12 +921,18 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 
 	if redactedRev != nil {
 		var history []string
+		var revTreeProperty []string
 		if !bsc.useHLV() {
 			history = toHistory(redactedRev.History, knownRevs, maxHistory)
 		} else {
 			history = append(history, redactedRev.hlvHistory)
 		}
-		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "")
+		if bsc.sendRevTreeProperty() {
+			revTreeProperty = append(revTreeProperty, redactedRev.RevID)
+			revTreeProperty = append(revTreeProperty, toHistory(redactedRev.History, knownRevs, maxHistory)...)
+		}
+
+		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "", revTreeProperty)
 		return bsc.sendRevisionWithProperties(ctx, sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 
@@ -1002,10 +1021,6 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
-	if bh.useHLV() && bh.conflictResolver != nil {
-		return base.HTTPErrorf(http.StatusNotImplemented, "conflict resolver handling (ISGR) not yet implemented for v4 protocol")
-	}
-
 	// throttle concurrent revs
 	if cap(bh.inFlightRevsThrottle) > 0 {
 		select {
@@ -1078,6 +1093,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
 	var legacyRevList []string
+	// we can probably use legacyRevList instead of this but to avoid hooking this up to write code we will use
+	// separate list for now, pending CBG-4790
+	var revTreeProperty []string
 	changeIsVector := strings.Contains(rev, "@")
 	if !bh.useHLV() || !changeIsVector {
 		newDoc.RevID = rev
@@ -1101,6 +1119,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
 		}
 		newDoc.HLV = incomingHLV
+	}
+
+	// if the client is SGW and there are no legacy revs being sent (i.e. doc is not a pre-upgraded doc) check the rev tree property
+	if bh.clientType == BLIPClientTypeSGR2 && len(legacyRevList) == 0 {
+		revTree, ok := rq.Properties[RevMessageTreeHistory]
+		if ok {
+			revTreeProperty = append(revTreeProperty, strings.Split(revTree, ",")...) // nolint: all
+		}
 	}
 
 	newDoc.UpdateBodyBytes(bodyBytes)

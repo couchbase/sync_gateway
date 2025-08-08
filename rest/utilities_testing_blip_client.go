@@ -899,21 +899,6 @@ func (btcc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ve
 	rev.message = msg
 }
 
-func (btcc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (version DocVersion, ok bool) {
-	btcc.seqLock.RLock()
-	defer btcc.seqLock.RUnlock()
-	doc, ok := btcc._getClientDoc(docID)
-	require.True(btcc.TB(), ok, "docID %q not found in _seqFromDocID", docID)
-	latestServerVersion := doc._latestServerVersion
-	return latestServerVersion, latestServerVersion.RevTreeID != "" || latestServerVersion.CV.Value != 0
-}
-
-func (c *BlipTesterCollectionClient) lastSeq() clientSeq {
-	c.seqLock.RLock()
-	defer c.seqLock.RUnlock()
-	return c._seqLast
-}
-
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) *BlipTesterReplicator {
 	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
 		connectingPassword:            RestTesterDefaultUserPassword,
@@ -1164,6 +1149,24 @@ func (e proposeChangeBatchEntry) Rev() string {
 	return e.version.RevTreeID
 }
 
+func (e proposeChangeBatchEntry) MarshalJSON() ([]byte, error) {
+	output := &bytes.Buffer{}
+	fmt.Fprintf(output, `["%s","%s"`, e.docID, e.Rev())
+	if e.latestServerVersion.RevTreeID != "" || e.latestServerVersion.CV.Value != 0 {
+		if e.useHLV() {
+			fmt.Fprintf(output, `,"%s"`, e.latestServerVersion.CV.String())
+		} else {
+			fmt.Fprintf(output, `,"%s"`, e.latestServerVersion.RevTreeID)
+		}
+	}
+	fmt.Fprintf(output, "]")
+	return output.Bytes(), nil
+}
+
+func (e proposeChangeBatchEntry) GoString() string {
+	return fmt.Sprintf("proposeChangeBatchEntry{docID: %q, version:%v,revTreeIDHistory:%v,hlvHistory:%v,seq:%d,latestServerVersion:%v,isDelete: %t}", e.docID, e.version, e.revTreeIDHistory, e.hlvHistory, e.seq, e.latestServerVersion, e.isDelete)
+}
+
 // StartPull will begin a push replication with the given options between the client and server
 func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
 	require.True(btcc.TB(), btcc.pushRunning.CASRetry(false, true), "push replication already running")
@@ -1199,28 +1202,11 @@ func (btcc *BlipTesterCollectionClient) sendProposeChanges(ctx context.Context, 
 	proposeChangesRequest := blip.NewRequest()
 	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
 
-	proposeChangesRequestBody := bytes.NewBufferString(`[`)
-	for i, change := range changesBatch {
-		if i > 0 {
-			proposeChangesRequestBody.WriteString(",")
-		}
-		proposeChangesRequestBody.WriteString(fmt.Sprintf(`["%s","%s"`, change.docID, change.Rev()))
-		// write last known server version to support no-conflict mode
-		if serverVersion, ok := btcc.getLastReplicatedRev(change.docID); ok {
-			base.DebugfCtx(ctx, base.KeySGTest, "specifying last known server version for doc %s = %v", change.docID, serverVersion)
-			if btcc.UseHLV() {
-				proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.CV.String()))
-			} else {
-				proposeChangesRequestBody.WriteString(fmt.Sprintf(`,"%s"`, serverVersion.RevTreeID))
-			}
-		}
-		proposeChangesRequestBody.WriteString(`]`)
-	}
-	proposeChangesRequestBody.WriteString(`]`)
-	proposeChangesRequestBodyBytes := proposeChangesRequestBody.Bytes()
-	proposeChangesRequest.SetBody(proposeChangesRequestBodyBytes)
+	proposeChangesRequestBody, err := base.JSONMarshal(changesBatch)
+	require.NoError(btcc.TB(), err, "error marshalling proposeChanges request body: %v", err)
+	proposeChangesRequest.SetBody(proposeChangesRequestBody)
 
-	base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges request: %s", string(proposeChangesRequestBodyBytes))
+	base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges request body: %s, changes:%#+v", string(proposeChangesRequestBody), changesBatch)
 
 	btcc.addCollectionProperty(proposeChangesRequest)
 
@@ -1265,7 +1251,7 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 
 	btcc.addCollectionProperty(revRequest)
 	btcc.sendPushMsg(revRequest)
-	base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %v", change.docID, change.version)
+	base.DebugfCtx(ctx, base.KeySGTest, "sent doc %s / %#v", change.docID, change.version)
 	// block until remote has actually processed the rev and sent a response
 	revResp := revRequest.Response()
 	errorCode := revResp.Properties["Error-Code"]
@@ -1275,7 +1261,7 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 		return
 	}
 	require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %#v", revResp)
-	base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %v", change.docID, change.version)
+	base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %#v", change.docID, change.version)
 	btcc.updateLastReplicatedRev(change.docID, change.version, revRequest)
 }
 
@@ -1646,7 +1632,7 @@ func (btcc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion 
 		var found bool
 		var lastKnownVersion *DocVersion
 		data, lastKnownVersion, found = btcc.GetVersion(docID, docVersion)
-		assert.True(c, found, "Could not find docID:%+v Version %+v, last known version: %s", docID, docVersion, lastKnownVersion)
+		assert.True(c, found, "Could not find docID:%+v Version %+v, last known version: %#v", docID, docVersion, lastKnownVersion)
 	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v Version %+v", docID, docVersion)
 	return data
 }

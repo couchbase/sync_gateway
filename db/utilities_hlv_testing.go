@@ -28,11 +28,16 @@ type DocVersion struct {
 	CV        Version
 }
 
-func (v *DocVersion) String() string {
-	return fmt.Sprintf("RevTreeID: %s", v.RevTreeID)
+func (v DocVersion) String() string {
+	return fmt.Sprintf("RevTreeID:%s,CV:%#v", v.RevTreeID, v.CV)
 }
 
-func (v DocVersion) Equal(o DocVersion) bool {
+func (v DocVersion) GoString() string {
+	return fmt.Sprintf("DocVersion{RevTreeID:%s,CV:%#v}", v.RevTreeID, v.CV)
+}
+
+// Can maybe be changed to check both rev and cv when CBG-4790, CBG-4791 are implemented
+func (v DocVersion) DocVersionRevTreeEqual(o DocVersion) bool {
 	if v.RevTreeID != o.RevTreeID {
 		return false
 	}
