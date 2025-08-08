@@ -1153,7 +1153,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			if parseErr != nil {
 				return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to parse version for delta source for doc %s, error: %v", base.UD(docID), err)
 			}
-			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &deltaSrcVersion)
+			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &deltaSrcVersion, false)
 		} else {
 			deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
 		}
