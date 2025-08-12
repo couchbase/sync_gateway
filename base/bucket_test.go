@@ -530,6 +530,7 @@ func TestKeyNotFound(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 	ds := bucket.GetSingleDataStore()
+	assert.False(t, true)
 	var body []byte
 	_, getErr := ds.Get("nonexistentKey", &body)
 	RequireDocNotFoundError(t, getErr)
