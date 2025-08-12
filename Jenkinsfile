@@ -42,7 +42,7 @@ pipeline {
                         sh "which go"
                         sh "go version"
                         sh "go env"
-                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                        sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                             sh '''
                                 [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
                                 ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
@@ -278,6 +278,40 @@ pipeline {
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
                                             unstable("At least one EE unit test failed")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('LiteCore') {
+                    stages {
+                        stage('against CE') {
+                            // TODO: Remove skip
+                            when { expression { return false } }
+                            steps {
+                                echo 'Example of where we could run an alternate version of lite-core unit tests, or against a running SG CE'
+                            }
+                        }
+                        stage('against EE') {
+                            // CBG-2237 skipping stage due to regular litecore test segfaults
+                            when { expression { return false } }
+                            steps {
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
+                                sh 'touch verbose_litecore.out'
+                                sh 'touch verbose_litecore-sg_trace.out'
+                                script {
+                                    withCredentials([sshUserPrivateKey(credentialsId: 'CB_SG_Robot_Github_SSH_Key', keyFileVariable: 'KEY')]) {
+                                        try {
+                                            sh 'docker run --rm -v $KEY:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
+                                        } catch (Exception e) {
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_litecore*.out', fingerprint: false
+                                            unstable("EE LIteCore Test Failed")
                                         }
                                     }
                                 }
