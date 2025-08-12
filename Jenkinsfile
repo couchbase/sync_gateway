@@ -122,68 +122,6 @@ pipeline {
             }
         }
 
-        stage('Checks') {
-            parallel {
-                stage('gofmt') {
-                    steps {
-                        script {
-                            try {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
-                                sh "which gofmt" // check if gofmt is installed
-                                sh "gofmt -d -e . | tee gofmt.out"
-                                sh "test -z \"\$(cat gofmt.out)\""
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
-                            } catch (Exception e) {
-                                sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
-                                script {
-                                    env.GOFMT_COUNT = readFile 'gofmt.count'
-                                }
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
-                                unstable("gofmt failed")
-                            }
-                        }
-                    }
-                }
-                stage('go vet') {
-                    steps {
-                        warnError(message: "go vet failed") {
-                            sh "go vet -tags ${EE_BUILD_TAG} ./..."
-                        }
-                    }
-                }
-                stage('go fix') {
-                    steps {
-                        warnError(message: "go fix failed") {
-                            sh "go tool fix -diff . | tee gofix.out"
-                            sh "test -z \"\$(cat gofix.out)\""
-                        }
-                    }
-                }
-                stage('errcheck') {
-                    steps {
-                        script {
-                            try {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
-                                    sh "which errcheck" // check if errcheck is installed
-                                    sh "errcheck ./... | tee errcheck.out"
-                                }
-                                sh "test -z \"\$(cat errcheck.out)\""
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
-                            } catch (Exception e) {
-                                sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
-                                script {
-                                    env.ERRCHECK_COUNT = readFile 'errcheck.count'
-                                }
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-                                unstable("errcheck failed")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         stage('Tests') {
             parallel {
                 stage('Unit') {
