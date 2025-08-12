@@ -188,6 +188,8 @@ func TestDisabledFlagsErrorAndDoNotMutateConfig(t *testing.T) {
 
 	// All disabled flags should be mentioned in the error
 	assert.Contains(t, err.Error(), "bootstrap.password")
+	assert.Contains(t, err.Error(), "Use config file to specify bootstrap password")
+	assert.Contains(t, err.Error(), "use X.509 cert/key path flags instead.")
 
 	// And none should have modified the config
 	assert.Equal(t, "", config.Bootstrap.Password)
