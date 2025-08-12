@@ -569,8 +569,12 @@ func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName stri
 type PerBucketCredentialsConfig map[string]*CredentialsConfig
 
 type CredentialsConfig struct {
-	Username     string `json:"username,omitempty"       help:"Username for authenticating to the bucket"`
-	Password     string `json:"password,omitempty"       help:"Password for authenticating to the bucket"`
+	Username string `json:"username,omitempty"       help:"Username for authenticating to the bucket"`
+	Password string `json:"password,omitempty"       help:"Password for authenticating to the bucket"`
+	CredentialsConfigX509
+}
+
+type CredentialsConfigX509 struct {
 	X509CertPath string `json:"x509_cert_path,omitempty" help:"Cert path (public key) for X.509 bucket auth"`
 	X509KeyPath  string `json:"x509_key_path,omitempty"  help:"Key path (private key) for X.509 bucket auth"`
 }

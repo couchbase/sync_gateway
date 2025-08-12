@@ -29,6 +29,10 @@ func TestAllConfigFlags(t *testing.T) {
 
 	flags := []string{}
 	for name, flagConfig := range flagMap {
+		// Skip disabled flags in this test - they will intentionally error when set
+		if flagConfig.disabled {
+			continue
+		}
 		rFlagVal := reflect.ValueOf(flagConfig.flagValue).Elem()
 		switch rFlagVal.Interface().(type) {
 		case string: // Test different types of strings
@@ -44,12 +48,12 @@ func TestAllConfigFlags(t *testing.T) {
 				val = "partial"
 			case *base.LogLevel:
 				val = "trace"
-			case *PerDatabaseCredentialsConfig:
-				val = `{"db1":{"password":"foo"}}`
-			case *base.PerBucketCredentialsConfig:
-				val = `{"bucket":{"password":"foo"}}`
 			case *[]uint:
 				val = `123,456,789`
+			case *PerDatabaseCredentialsConfig:
+				val = `{"db1":{"x509_cert_path":"cert","x509_key_path":"key"}}`
+			case *base.PerBucketCredentialsConfig:
+				val = `{"bucket":{"x509_cert_path":"cert","x509_key_path":"key"}}`
 			}
 			flags = append(flags, "-"+name, val)
 		case bool:
@@ -166,4 +170,65 @@ func countFields(cfg interface{}) (fields int) {
 		}
 	}
 	return fields
+}
+
+// Ensure disabled flags error and are not wired into StartupConfig
+func TestDisabledFlagsErrorAndDoNotMutateConfig(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	config := NewEmptyStartupConfig()
+
+	flags := registerConfigFlags(&config, fs)
+
+	// Only disabled flag now is bootstrap.password
+	err := fs.Parse([]string{"-bootstrap.password", "sup3rsecret"})
+	require.NoError(t, err)
+
+	err = fillConfigWithFlags(fs, flags)
+	require.Error(t, err)
+
+	// All disabled flags should be mentioned in the error
+	assert.Contains(t, err.Error(), "bootstrap.password")
+
+	// And none should have modified the config
+	assert.Equal(t, "", config.Bootstrap.Password)
+	// Not set by this test
+	assert.Nil(t, config.DatabaseCredentials)
+	assert.Nil(t, config.BucketCredentials)
+}
+
+// Validate x509-only JSON for per-db and per-bucket flags
+func TestPerCredsFlagsX509Only(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	config := NewEmptyStartupConfig()
+	flags := registerConfigFlags(&config, fs)
+
+	// Valid X.509 only JSON should work
+	err := fs.Parse([]string{
+		"-database_credentials", `{"db1":{"x509_cert_path":"cert","x509_key_path":"key"}}`,
+		"-bucket_credentials", `{"bucket":{"x509_cert_path":"cert","x509_key_path":"key"}}`,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fillConfigWithFlags(fs, flags))
+	require.NotNil(t, config.DatabaseCredentials)
+	require.NotNil(t, config.BucketCredentials)
+	require.NotNil(t, config.DatabaseCredentials["db1"])
+	require.NotNil(t, config.BucketCredentials["bucket"])
+	assert.Equal(t, "cert", config.DatabaseCredentials["db1"].X509CertPath)
+	assert.Equal(t, "key", config.DatabaseCredentials["db1"].X509KeyPath)
+	assert.Equal(t, "cert", config.BucketCredentials["bucket"].X509CertPath)
+	assert.Equal(t, "key", config.BucketCredentials["bucket"].X509KeyPath)
+
+	// Username/password must be rejected by JSON decoding (unknown fields)
+	fs = flag.NewFlagSet("test", flag.ContinueOnError)
+	config = NewEmptyStartupConfig()
+	flags = registerConfigFlags(&config, fs)
+	err = fs.Parse([]string{
+		"-database_credentials", `{"db1":{"username":"u","password":"p"}}`,
+		"-bucket_credentials", `{"bucket":{"username":"u","password":"p"}}`,
+	})
+	require.NoError(t, err)
+	err = fillConfigWithFlags(fs, flags)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "database_credentials")
+	assert.Contains(t, err.Error(), "bucket_credentials")
 }
