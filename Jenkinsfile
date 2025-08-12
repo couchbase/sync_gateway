@@ -42,10 +42,10 @@ pipeline {
                         sh "which go"
                         sh "go version"
                         sh "go env"
-                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                        sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                             sh '''
                                 [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
-                                ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
+                                ssh-keyscan github.com >> ~/.ssh/known_hosts
                             '''
                             sh "go get -v -tags ${EE_BUILD_TAG} ./..."
                         }
@@ -196,7 +196,8 @@ pipeline {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
-                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... > verbose_ce.out.raw || true'
+                                    //sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... > verbose_ce.out.raw || true'
+                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./auth > verbose_ce.out.raw || true'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
@@ -248,6 +249,7 @@ pipeline {
 
                                     // Build EE coverprofiles
                                     sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... > verbose_ee.out.raw || true"
+                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./auth > verbose_ee.out.raw || true"
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
@@ -328,7 +330,7 @@ pipeline {
                                 echo 'Queueing Integration test for branch "main" ...'
                                 // Queues up an async integration test run using default build params (main branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                build job: 'MasterIntegration', quietPeriod: 3600, wait: false
+                                build job: 'MainIntegration', quietPeriod: 3600, wait: false
                             }
                         }
 
