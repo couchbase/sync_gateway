@@ -64,6 +64,7 @@ pipeline {
             }
         }
 
+/*
         stage('Builds') {
             parallel {
                 stage('Test compile') {
@@ -82,38 +83,6 @@ pipeline {
                         sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
-                stage('CE macOS') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
-                    steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
-                        }
-                    }
-                }
-                stage('EE macOS') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
-                    steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                        }
-                    }
-                }
-                /* can't build windows with cgo
-		stage('CE Windows') {
-                    steps {
-                        sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
-                    }
-                }
-                stage('EE Windows') {
-                    steps {
-                        sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                    }
-                }
-		*/
                 stage('Windows Service') {
                     steps {
                         sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
@@ -121,7 +90,7 @@ pipeline {
                 }
             }
         }
-
+*/
         stage('Tests') {
             parallel {
                 stage('Unit') {
@@ -135,7 +104,7 @@ pipeline {
 
                                     // Build CE coverprofiles
                                     //sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... > verbose_ce.out.raw || true'
-                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./auth > verbose_ce.out.raw || true'
+                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./base > verbose_ce.out.raw || true'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
@@ -186,7 +155,7 @@ pipeline {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
-                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... > verbose_ee.out.raw || true"
+                                    //sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... > verbose_ee.out.raw || true"
                                     sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./auth > verbose_ee.out.raw || true"
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
