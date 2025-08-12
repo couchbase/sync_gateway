@@ -368,6 +368,7 @@ pipeline {
             recordCoverage(tools: [[parser: 'GO_COV', pattern: 'cover*out']])
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
+            cleanWs(disableDeferredWipeout: true)
         }
         unstable {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
