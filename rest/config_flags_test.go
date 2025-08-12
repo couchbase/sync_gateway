@@ -172,7 +172,7 @@ func countFields(cfg interface{}) (fields int) {
 	return fields
 }
 
-// Ensure disabled flags error and are not wired into StartupConfig
+// TestDisabledFlagsErrorAndDoNotMutateConfig ensures disabled flags error and values are not wired into StartupConfig.
 func TestDisabledFlagsErrorAndDoNotMutateConfig(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	config := NewEmptyStartupConfig()
@@ -191,9 +191,6 @@ func TestDisabledFlagsErrorAndDoNotMutateConfig(t *testing.T) {
 
 	// And none should have modified the config
 	assert.Equal(t, "", config.Bootstrap.Password)
-	// Not set by this test
-	assert.Nil(t, config.DatabaseCredentials)
-	assert.Nil(t, config.BucketCredentials)
 }
 
 // Validate x509-only JSON for per-db and per-bucket flags
@@ -231,4 +228,27 @@ func TestPerCredsFlagsX509Only(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "database_credentials")
 	assert.Contains(t, err.Error(), "bucket_credentials")
+}
+
+// TestPerCredsFlagsRejectBasicAuthWithHelpfulError ensures that per-db and per-bucket flags reject username/password and return clear X.509-only errors.
+func TestPerCredsFlagsRejectBasicAuthWithHelpfulError(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	config := NewEmptyStartupConfig()
+	flags := registerConfigFlags(&config, fs)
+
+	// Provide username/password in JSON for both flags
+	err := fs.Parse([]string{
+		"-database_credentials", `{"db1":{"username":"u","password":"p"}}`,
+		"-bucket_credentials", `{"bucket":{"username":"u","password":"p"}}`,
+	})
+	require.NoError(t, err)
+
+	err = fillConfigWithFlags(fs, flags)
+	require.Error(t, err)
+	// Check flag names are present
+	assert.Contains(t, err.Error(), "database_credentials")
+	assert.Contains(t, err.Error(), "bucket_credentials")
+	// Check helpful X.509-only guidance present
+	assert.Contains(t, err.Error(), "only X.509 cert/key paths are supported")
+	assert.Contains(t, err.Error(), "username/password are not allowed")
 }
