@@ -70,8 +70,9 @@ func TestImportFeed(t *testing.T) {
 
 	xattrs, _, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]))
-	require.Equal(t, uint64(1), getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo)
+	// can not assert on a specific revseqno due to revseqno starting at the max_cas of any previously deleted document
+	require.Greater(t, db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]), uint64(0))
+	require.Greater(t, getMou(t, xattrs[base.MouXattrName]).PreviousRevSeqNo, uint64(0))
 	// Attempt to get the document via Sync Gateway.
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
@@ -2606,9 +2607,9 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	require.NoError(t, err)
 
 	revNo := db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+	// can not assert on a specific revseqno due to revseqno starting at the max_cas of any previously deleted document
 	mou := getMou(t, xattrs[base.MouXattrName])
-	// curr rev no should be 2, so prev rev is 1
-	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
+	require.Greater(t, revNo, mou.PreviousRevSeqNo)
 
 	err = dataStore.Set(mobileKey, 0, nil, []byte(`{"test":"update"}`))
 	require.NoError(t, err)
@@ -2620,10 +2621,10 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	xattrs, _, err = dataStore.GetXattrs(ctx, mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
 
+	// can not assert on a specific revseqno due to revseqno starting at the max_cas of any previously deleted document
 	revNo = db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
 	mou = getMou(t, xattrs[base.MouXattrName])
-	// curr rev no should be 4, so prev rev is 3
-	assert.Equal(t, revNo-1, mou.PreviousRevSeqNo)
+	require.Greater(t, revNo, mou.PreviousRevSeqNo)
 
 }
 
