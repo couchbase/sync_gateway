@@ -3601,7 +3601,7 @@ func TestBlipPullConflict(t *testing.T) {
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			_, _, postConflictCBLVersion := client.GetDoc(docID)
-			assert.NotEqual(t, sgVersion, postConflictCBLVersion)
+			assert.NotEqual(t, preConflictCBLVersion, postConflictCBLVersion)
 		}, time.Second*10, time.Millisecond*10, "Expected sgVersion and cblVersion to be different")
 
 		postConflictDoc, postConflictHLV, postConflictVersion := client.GetDoc(docID)
@@ -3609,7 +3609,7 @@ func TestBlipPullConflict(t *testing.T) {
 		// after resolving the conflict, the CBL version should remain the same but the ver of the CV is
 		// updated to be newer than the pre-conflict CBL version
 		require.Equal(t, preConflictCBLVersion.CV.SourceID, postConflictVersion.CV.SourceID)
-		require.Greater(t, postConflictVersion.CV.Value, preConflictCBLVersion.CV.Value, "PreConflictHLV %#v PostConflictHLV %#v", preConflictVersion, postConflictHLV)
+		require.Greater(t, postConflictVersion.CV.Value, preConflictCBLVersion.CV.Value, "PreConflictHLV %#v PostConflictHLV %#v", preConflictCBLVersion, postConflictHLV)
 		require.Empty(t, postConflictHLV.PreviousVersions, "postConflictHLV: %#+v\n", postConflictHLV)
 		require.Equal(t, db.HLVVersions{
 			sgVersion.CV.SourceID:             sgVersion.CV.Value,
