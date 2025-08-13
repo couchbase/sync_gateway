@@ -3609,7 +3609,7 @@ func TestBlipPullConflict(t *testing.T) {
 		// after resolving the conflict, the CBL version should remain the same but the ver of the CV is
 		// updated to be newer than the pre-conflict CBL version
 		require.Equal(t, preConflictCBLVersion.CV.SourceID, postConflictVersion.CV.SourceID)
-		require.Greater(t, postConflictVersion.CV.Value, preConflictCBLVersion.CV.Value)
+		require.Greater(t, postConflictVersion.CV.Value, preConflictCBLVersion.CV.Value, "PreConflictHLV %#v PostConflictHLV %#v", preConflictVersion, postConflictHLV)
 		require.Empty(t, postConflictHLV.PreviousVersions, "postConflictHLV: %#+v\n", postConflictHLV)
 		require.Equal(t, db.HLVVersions{
 			sgVersion.CV.SourceID:             sgVersion.CV.Value,
@@ -3624,5 +3624,4 @@ func TestBlipPullConflict(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, bucketDoc.HLV.Equal(postConflictHLV), "Expected bucket doc HLV to match post-conflict HLV, got %#v, expected %#v", bucketDoc.HLV, postConflictHLV)
 	})
-
 }
