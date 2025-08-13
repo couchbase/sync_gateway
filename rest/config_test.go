@@ -1805,14 +1805,14 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 			name:              "db x509 override from username/password",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
-			credentialsConfig: &base.CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			credentialsConfig: &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key}},
 			expectX509:        true,
 		},
 		{
 			name:              "db x509 override",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/bs-x509cert", X509KeyPath: "/tmp/bs-x509key"},
-			credentialsConfig: &base.CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			credentialsConfig: &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key}},
 			expectX509:        true,
 		},
 	}
@@ -2566,7 +2566,7 @@ func TestBucketCredentialsValidation(t *testing.T) {
 		{
 			name: "Valid bucket using x509",
 			startupConfig: StartupConfig{
-				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: "cert", X509KeyPath: "key"}}},
 			},
 		},
 		{
@@ -2584,48 +2584,48 @@ func TestBucketCredentialsValidation(t *testing.T) {
 			name: "Blank database and filled bucket creds provided",
 			startupConfig: StartupConfig{
 				DatabaseCredentials: PerDatabaseCredentialsConfig{},
-				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: "cert", X509KeyPath: "key"}}},
 			},
 		},
 		{
 			name: "Filled database and blank bucket creds provided",
 			startupConfig: StartupConfig{
 				BucketCredentials:   base.PerBucketCredentialsConfig{},
-				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: "cert", X509KeyPath: "key"}}},
 			},
 		},
 		{
 			name: "Database and bucket creds provided",
 			startupConfig: StartupConfig{
-				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
-				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: "cert", X509KeyPath: "key"}}},
+				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: "cert", X509KeyPath: "key"}}},
 			},
 		},
 		{
 			name: "Bucket creds for x509 and basic auth",
 			startupConfig: StartupConfig{
-				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key", Username: "uname", Password: "pword"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: "cert", X509KeyPath: "key"}, Username: "uname", Password: "pword"}},
 			},
 			expectedError: &bucketCredsError,
 		},
 		{
 			name: "Bucket creds for x509 key and basic auth password only",
 			startupConfig: StartupConfig{
-				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509KeyPath: "key", Password: "pword"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509KeyPath: "key"}, Password: "pword"}},
 			},
 			expectedError: &bucketCredsError,
 		},
 		{
 			name: "Bucket creds for x509 cert and basic auth username only",
 			startupConfig: StartupConfig{
-				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: "cert"}, Username: "uname"}},
 			},
 			expectedError: &bucketCredsError,
 		},
 		{
 			name: "Bucket creds for x509 cert and basic auth username only",
 			startupConfig: StartupConfig{
-				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{CredentialsConfigX509: base.CredentialsConfigX509{X509CertPath: "cert"}, Username: "uname"}},
 			},
 			expectedError: &bucketCredsError,
 		},

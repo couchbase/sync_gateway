@@ -171,7 +171,6 @@ func TestSanitizeDbConfigs(t *testing.T) {
 			assert.Nil(t, dbConfigMap)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.expectedError)
-			return
 
 		})
 	}
