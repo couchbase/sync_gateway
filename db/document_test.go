@@ -633,7 +633,7 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on attachments
-	atts := doc.Attachments
+	atts := doc.Attachments()
 	assert.Len(t, atts, 2)
 	hello := atts["hello.txt"].(map[string]interface{})
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
@@ -656,7 +656,7 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on attachments
-	atts = doc.Attachments
+	atts = doc.Attachments()
 	assert.Len(t, atts, 2)
 	hello = atts["hello.txt"].(map[string]interface{})
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])

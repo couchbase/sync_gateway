@@ -98,7 +98,7 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 			}
 			digest := Sha1DigestKey(attachment)
 			key := MakeAttachmentKey(AttVersion2, doc.ID, digest)
-			_, updated := doc.SyncData.Attachments[name]
+			_, updated := doc.Attachments()[name]
 			newAttachments[key] = updatedAttachment{
 				body:    attachment,
 				name:    name,

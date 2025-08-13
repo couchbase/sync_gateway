@@ -115,6 +115,12 @@ func (f AuditFields) merge(ctx context.Context, overwrites AuditFields) AuditFie
 	return f
 }
 
+// AuditEventIsEnabled checks if the given audit event ID is enabled for the current context.
+// This may be used to avoid the cost of some data processing/gathering ahead of an audit event.
+func AuditEventIsEnabled(ctx context.Context, id AuditID) bool {
+	return auditLogger.Load().shouldLog(id, ctx)
+}
+
 // Audit creates and logs an audit event for the given ID and a set of additional data associated with the request.
 func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	var fields AuditFields

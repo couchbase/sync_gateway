@@ -479,7 +479,8 @@ func (h *handler) handleBulkGet() error {
 					HistoryFrom:      revsFrom,
 					AttachmentsSince: attsSince,
 					ShowExp:          showExp,
-					ShowCV:           showCV})
+					ShowCV:           showCV,
+				})
 			}
 
 			if err != nil {

@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -87,24 +88,24 @@ func (m *MetadataOnlyUpdate) PreviousCAS() uint64 {
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	CurrentRev        string               `json:"-"`                 // CurrentRev.  Persisted as RevAndVersion in SyncDataJSON
-	NewestRev         string               `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags             uint8                `json:"flags,omitempty"`
-	Sequence          uint64               `json:"sequence,omitempty"`
-	UnusedSequences   []uint64             `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences   []uint64             `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	Channels          channels.ChannelMap  `json:"channels,omitempty"`
-	Access            UserAccessMap        `json:"access,omitempty"`
-	RoleAccess        UserAccessMap        `json:"role_access,omitempty"`
-	Expiry            *time.Time           `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas               string               `json:"cas"`                               // String representation of a cas value, populated via macro expansion
-	Crc32c            string               `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
-	Crc32cUserXattr   string               `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
-	TombstonedAt      int64                `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
-	Attachments       AttachmentsMeta      `json:"attachments,omitempty"`
-	ChannelSet        []ChannelSetEntry    `json:"channel_set"`
-	ChannelSetHistory []ChannelSetEntry    `json:"channel_set_history"`
-	HLV               *HybridLogicalVector `json:"-"` // Marshalled/Unmarshalled separately from SyncData for storage in _vv, see MarshalWithXattrs/UnmarshalWithXattrs
+	CurrentRev          string               `json:"-"`                 // CurrentRev.  Persisted as RevAndVersion in SyncDataJSON
+	NewestRev           string               `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags               uint8                `json:"flags,omitempty"`
+	Sequence            uint64               `json:"sequence,omitempty"`
+	UnusedSequences     []uint64             `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences     []uint64             `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	Channels            channels.ChannelMap  `json:"channels,omitempty"`
+	Access              UserAccessMap        `json:"access,omitempty"`
+	RoleAccess          UserAccessMap        `json:"role_access,omitempty"`
+	Expiry              *time.Time           `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas                 string               `json:"cas"`                               // String representation of a cas value, populated via macro expansion
+	Crc32c              string               `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr     string               `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
+	TombstonedAt        int64                `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
+	AttachmentsPre4dot0 AttachmentsMeta      `json:"attachments,omitempty"`             // Location of _attachments metadata for pre-4.0 attachments, stored in _sync xattr or _sync inline. In 4.0 and later, attachments are in _globalSync._attachments_meta
+	ChannelSet          []ChannelSetEntry    `json:"channel_set"`
+	ChannelSetHistory   []ChannelSetEntry    `json:"channel_set_history"`
+	HLV                 *HybridLogicalVector `json:"-"` // Marshalled/Unmarshalled separately from SyncData for storage in _vv, see MarshalWithXattrs/UnmarshalWithXattrs
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -131,71 +132,105 @@ func (sd *SyncData) getCurrentChannels() base.Set {
 	return ch
 }
 
-func (sd *SyncData) HashRedact(salt string) SyncData {
-
-	// Creating a new SyncData with the redacted info. We copy all the information which stays the same and create new
-	// items for the redacted data. The data to be redacted is populated below.
-	redactedSyncData := SyncData{
-		CurrentRev:      sd.CurrentRev,
-		NewestRev:       sd.NewestRev,
-		Flags:           sd.Flags,
-		Sequence:        sd.Sequence,
-		UnusedSequences: sd.UnusedSequences,
-		RecentSequences: sd.RecentSequences,
-		History:         RevTree{},
-		Channels:        channels.ChannelMap{},
-		Access:          UserAccessMap{},
-		RoleAccess:      UserAccessMap{},
-		Expiry:          sd.Expiry,
-		Cas:             sd.Cas,
-		Crc32c:          sd.Crc32c,
-		TombstonedAt:    sd.TombstonedAt,
-		Attachments:     AttachmentsMeta{},
+// RedactRawGlobalSyncData runs HashRedact on the given global sync data.
+func RedactRawGlobalSyncData(syncData []byte, redactSalt string) ([]byte, error) {
+	if redactSalt == "" {
+		return nil, fmt.Errorf("redact salt must be set")
 	}
 
-	// Populate and redact channels
+	var gsd GlobalSyncData
+	if err := json.Unmarshal(syncData, &gsd); err != nil {
+		return nil, fmt.Errorf("couldn't unmarshal sync data: %w", err)
+	}
+
+	if err := gsd.HashRedact(redactSalt); err != nil {
+		return nil, fmt.Errorf("couldn't redact global sync data: %w", err)
+	}
+
+	return json.Marshal(gsd)
+}
+
+// HashRedact does in-place redaction of UserData inside GlobalSyncData, by hashing attachment names.
+func (gsd *GlobalSyncData) HashRedact(salt string) error {
+	for k, v := range gsd.Attachments {
+		gsd.Attachments[base.Sha1HashString(k, salt)] = v
+		delete(gsd.Attachments, k)
+	}
+	return nil
+}
+
+// RedactRawSyncData runs HashRedact on the given sync data.
+func RedactRawSyncData(syncData []byte, redactSalt string) ([]byte, error) {
+	if redactSalt == "" {
+		return nil, fmt.Errorf("redact salt must be set")
+	}
+
+	var sd SyncDataAlias
+	if err := json.Unmarshal(syncData, &sd); err != nil {
+		return nil, fmt.Errorf("couldn't unmarshal sync data: %w", err)
+	}
+
+	if err := sd.HashRedact(redactSalt); err != nil {
+		return nil, fmt.Errorf("couldn't redact sync data: %w", err)
+	}
+
+	return json.Marshal(sd)
+}
+
+// HashRedact does in-place redaction of UserData inside SyncData, by hashing channel names, user access, role access, and attachment names.
+func (sd *SyncDataAlias) HashRedact(salt string) error {
+
+	// Redact channel names
 	for k, v := range sd.Channels {
-		redactedSyncData.Channels[base.Sha1HashString(k, salt)] = v
+		sd.Channels[base.Sha1HashString(k, salt)] = v
+		delete(sd.Channels, k)
+	}
+	for i, v := range sd.ChannelSet {
+		sd.ChannelSet[i].Name = base.Sha1HashString(v.Name, salt)
+	}
+	for i, v := range sd.ChannelSetHistory {
+		sd.ChannelSetHistory[i].Name = base.Sha1HashString(v.Name, salt)
 	}
 
-	// Populate and redact history. This is done as it also includes channel names
+	// Redact history. This is done as it also includes channel names
 	for k, revInfo := range sd.History {
-
 		if revInfo.Channels != nil {
-			redactedChannels := base.Set{}
+			redactedChannels := make(base.Set, len(revInfo.Channels))
 			for existingChanKey := range revInfo.Channels {
 				redactedChannels.Add(base.Sha1HashString(existingChanKey, salt))
 			}
 			revInfo.Channels = redactedChannels
 		}
-
-		redactedSyncData.History[k] = revInfo
+		sd.History[k] = revInfo
 	}
 
-	// Populate and redact user access
+	// Redact user access
 	for k, v := range sd.Access {
 		accessTimerSet := map[string]channels.VbSequence{}
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
-		redactedSyncData.Access[base.Sha1HashString(k, salt)] = accessTimerSet
+		sd.Access[base.Sha1HashString(k, salt)] = accessTimerSet
+		delete(sd.Access, k)
 	}
 
-	// Populate and redact user role access
+	// Redact user role access
 	for k, v := range sd.RoleAccess {
 		accessTimerSet := map[string]channels.VbSequence{}
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
-		redactedSyncData.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
+		sd.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
+		delete(sd.RoleAccess, k)
 	}
 
-	// Populate and redact attachment names
-	for k, v := range sd.Attachments {
-		redactedSyncData.Attachments[base.Sha1HashString(k, salt)] = v
+	// Redact attachment names (pre-4.0 attachment location)
+	for k, v := range sd.AttachmentsPre4dot0 {
+		sd.AttachmentsPre4dot0[base.Sha1HashString(k, salt)] = v
+
 	}
 
-	return redactedSyncData
+	return nil
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
@@ -204,7 +239,7 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 // Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type Document struct {
 	SyncData                               // Sync metadata
-	GlobalSyncData                         // Global sync metadata, this will hold non cluster specific sync metadata to be copied by XDCR
+	_globalSync        GlobalSyncData      // Global sync metadata, this will hold non cluster specific sync metadata to be copied by XDCR
 	_body              Body                // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
 	_rawBody           []byte              // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
 	ID                 string              `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
@@ -215,13 +250,13 @@ type Document struct {
 	Deleted        bool
 	DocExpiry      uint32
 	RevID          string
-	DocAttachments AttachmentsMeta
 	inlineSyncData bool
 	RevSeqNo       uint64 // Server rev seq no for a document
 }
 
+// GlobalSyncData is the structure for the system xattr that is migrated with XDCR.
 type GlobalSyncData struct {
-	GlobalAttachments AttachmentsMeta `json:"attachments_meta,omitempty"`
+	Attachments AttachmentsMeta `json:"attachments_meta,omitempty"`
 }
 
 type historyOnlySyncData struct {
@@ -278,8 +313,8 @@ func (doc *Document) BodyWithSpecialProperties(ctx context.Context) ([]byte, err
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
-	if len(doc.Attachments) > 0 {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
+	if len(doc.Attachments()) > 0 {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments()})
 	}
 
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
@@ -420,6 +455,9 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 			doc.Deleted_OLD = false
 			doc.Flags |= channels.Deleted // Backward compatibility with old Deleted property
 		}
+		doc.SetAttachments(mergeAttachments(doc.SyncData.AttachmentsPre4dot0, doc.Attachments()))
+		doc.SyncData.AttachmentsPre4dot0 = nil
+
 	}
 	return doc, nil
 }
@@ -1127,6 +1165,11 @@ func (doc *Document) UnmarshalJSON(data []byte) error {
 }
 
 func (doc *Document) MarshalJSON() (data []byte, err error) {
+	// The calling code in ImportDoc will marshal the document since it takes a body with _sync inline.
+	// Make sure that _sync._attachments is present in the document body since _globalSync._attachments_meta
+	// can not be seen in an inline body.
+	doc.SyncData.AttachmentsPre4dot0 = doc.Attachments()
+	defer func() { doc.SyncData.AttachmentsPre4dot0 = nil }()
 	if doc._rawBody != nil {
 		data, err = base.InjectJSONProperties(doc._rawBody, base.KVPair{
 			Key: base.SyncPropertyName,
@@ -1183,11 +1226,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			}
 		}
 		if len(globalSyncData) > 0 {
-			if err := base.JSONUnmarshal(globalSyncData, &doc.GlobalSyncData); err != nil {
+			if err := base.JSONUnmarshal(globalSyncData, &doc._globalSync); err != nil {
 				base.WarnfCtx(ctx, "Failed to unmarshal globalSync xattr for key %v, globalSync will be ignored. Err: %v globalSync:%s", base.UD(doc.ID), err, globalSyncData)
 			}
-			doc.SyncData.Attachments = doc.GlobalSyncData.GlobalAttachments
 		}
+		doc.SetAttachments(mergeAttachments(doc.SyncData.AttachmentsPre4dot0, doc.Attachments()))
+		doc.SyncData.AttachmentsPre4dot0 = nil
 		doc._rawBody = data
 		// Unmarshal body if requested and present
 		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
@@ -1210,11 +1254,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			}
 		}
 		if len(globalSyncData) > 0 {
-			if err := base.JSONUnmarshal(globalSyncData, &doc.GlobalSyncData); err != nil {
+			if err := base.JSONUnmarshal(globalSyncData, &doc._globalSync); err != nil {
 				base.WarnfCtx(ctx, "Failed to unmarshal globalSync xattr for key %v, globalSync will be ignored. Err: %v globalSync:%s", base.UD(doc.ID), err, globalSyncData)
 			}
-			doc.SyncData.Attachments = doc.GlobalSyncData.GlobalAttachments
 		}
+		doc.SetAttachments(mergeAttachments(doc.SyncData.AttachmentsPre4dot0, doc.Attachments()))
+		doc.SyncData.AttachmentsPre4dot0 = nil
 		doc._rawBody = data
 	case DocUnmarshalHistory:
 		if syncXattrData != nil {
@@ -1303,11 +1348,6 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
 	}
-	// assign any attachments we have stored in document sync data to global sync data
-	// then nil the sync data attachments to prevent marshalling of it
-	doc.GlobalSyncData.GlobalAttachments = doc.Attachments
-	doc.Attachments = nil
-
 	syncXattr, err = base.JSONMarshal(doc.SyncData)
 	if err != nil {
 		return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
@@ -1320,14 +1360,11 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 		}
 	}
 	// marshal global xattrs if there are attachments defined
-	if len(doc.GlobalSyncData.GlobalAttachments) > 0 {
-		globalXattr, err = base.JSONMarshal(doc.GlobalSyncData)
+	if len(doc.Attachments()) > 0 {
+		globalXattr, err = base.JSONMarshal(doc._globalSync)
 		if err != nil {
 			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc GlobalXattr with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
-		// restore attachment meta to sync data post global xattr construction
-		doc.Attachments = make(AttachmentsMeta)
-		doc.Attachments = doc.GlobalSyncData.GlobalAttachments
 	}
 
 	return data, syncXattr, vvXattr, mouXattr, globalXattr, nil
@@ -1365,6 +1402,16 @@ func (d *Document) HasCurrentVersion(ctx context.Context, cv Version) error {
 		return base.ErrNotFound
 	}
 	return nil
+}
+
+// SetAttachments updates the attachments metadata for the document.
+func (d *Document) SetAttachments(attachments AttachmentsMeta) {
+	d._globalSync.Attachments = attachments
+}
+
+// Attachments returns the attachments for the document.
+func (d *Document) Attachments() AttachmentsMeta {
+	return d._globalSync.Attachments
 }
 
 // SyncDataAlias is an alias for SyncData that doesn't define custom MarshalJSON/UnmarshalJSON
@@ -1429,4 +1476,11 @@ func unmarshalRevSeqNo(revSeqNoBytes []byte) (uint64, error) {
 		return 0, fmt.Errorf("Failed convert rev seq number %s", revSeqNoBytes)
 	}
 	return revSeqNo, nil
+}
+
+func (doc *Document) ExtractDocVersion() DocVersion {
+	return DocVersion{
+		RevTreeID: doc.CurrentRev,
+		CV:        *doc.HLV.ExtractCurrentVersionFromHLV(),
+	}
 }

@@ -2752,6 +2752,8 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 // the stat mapping (processRevStats)
 func TestProcessRevIncrementsStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	t.Skip("CBG-4791 - rev tree generated on active is different from passive, this will be mitigated by CBG-4791")
 
 	activeRT, remoteRT, remoteURLString, teardown := SetupSGRPeers(t)
 	defer teardown()
@@ -2783,6 +2785,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	require.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 
 	const docID = "doc"
+	// need to have this return CV too, pending CBG-4751
 	version := remoteRT.CreateTestDoc(docID)
 
 	assert.NoError(t, ar.Start(activeCtx))

@@ -10,8 +10,10 @@ package base
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -372,14 +374,25 @@ func getMaxTTL(ctx context.Context, store CouchbaseBucketStore) (int, error) {
 	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
 }
 
-// Get the Server UUID of the bucket, this is also known as the Cluster UUID
-func GetServerUUID(ctx context.Context, store CouchbaseBucketStore) (uuid string, err error) {
-	respBytes, _, err := store.MgmtRequest(ctx, http.MethodGet, "/pools", "application/json", nil)
+// GetServerUUID returns Couchbase Server Cluster UUID on a timeout. If running against rosmar, do return an empty string.
+func GetServerUUID(ctx context.Context, bucket Bucket) (string, error) {
+	gocbV2Bucket, err := AsGocbV2Bucket(bucket)
 	if err != nil {
-		return "", err
+		return "", nil
+	}
+	// start a retry loop to get server ID
+	worker := func() (bool, error, string) {
+		respBytes, _, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodGet, "/pools", "application/json", nil)
+		if err != nil {
+			return true, err, ""
+		}
+
+		uuid, err := ParseClusterUUID(respBytes)
+		return false, err, uuid
 	}
 
-	return ParseClusterUUID(respBytes)
+	err, uuid := RetryLoop(ctx, "Getting ServerUUID", worker, GetNewDatabaseSleeperFunc())
+	return uuid, err
 }
 
 func ParseClusterUUID(respBytes []byte) (string, error) {
@@ -521,4 +534,44 @@ func RequireNoBucketTTL(ctx context.Context, b Bucket) error {
 	}
 
 	return nil
+}
+
+// GetSourceID returns the source ID for a bucket.
+func GetSourceID(ctx context.Context, bucket Bucket) (string, error) {
+	// for rosmar bucket and testing, use the bucket name as the source ID to make it easier to identify the source
+	gocbBucket, err := AsGocbV2Bucket(bucket)
+	if err != nil {
+		return bucket.GetName(), nil
+	}
+
+	// If not overwriting the source ID, for rosmar, serverUUID would be ""
+	serverUUID, err := GetServerUUID(ctx, gocbBucket)
+	if err != nil {
+		return "", err
+	}
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return "", err
+	}
+	return CreateEncodedSourceID(bucketUUID, serverUUID)
+}
+
+// CreateEncodedSourceID will hash the bucket UUID and cluster UUID using md5 hash function then will base64 encode it
+// This function is in sync with xdcr implementation of UUIDstoDocumentSource https://github.com/couchbase/goxdcr/blob/dfba7a5b4251d93db46e2b0b4b55ea014218931b/hlv/hlv.go#L51
+func CreateEncodedSourceID(bucketUUID, clusterUUID string) (string, error) {
+	md5Hash := md5.Sum([]byte(bucketUUID + clusterUUID))
+	hexStr := hex.EncodeToString(md5Hash[:])
+	source, err := HexToBase64(hexStr)
+	if err != nil {
+		return "", err
+	}
+	return string(source), nil
+}
+
+// GetNewDatabaseSleeperFunc returns a sleeper function during database connection
+func GetNewDatabaseSleeperFunc() RetrySleeper {
+	return CreateDoublingSleeperFunc(
+		13, // MaxNumRetries approx 40 seconds total retry duration
+		5,  // InitialRetrySleepTimeMS
+	)
 }

@@ -1807,3 +1807,50 @@ func TestSlicesEqualUnordered(t *testing.T) {
 		})
 	}
 }
+
+func TestKeysPresent(t *testing.T) {
+	tests := []struct {
+		name string
+		m    map[string]int
+		keys []string
+		want []string
+	}{
+		{
+			name: "all present",
+			m:    map[string]int{"a": 1, "b": 2, "c": 3},
+			keys: []string{"a", "b"},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "some present",
+			m:    map[string]int{"a": 1, "b": 2},
+			keys: []string{"a", "x", "b", "y"},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "none present",
+			m:    map[string]int{"a": 1},
+			keys: []string{"x", "y"},
+			want: []string{},
+		},
+		{
+			name: "empty keys",
+			m:    map[string]int{"a": 1},
+			keys: nil,
+			want: []string{},
+		},
+		{
+			name: "empty map",
+			m:    map[string]int{},
+			keys: []string{"a"},
+			want: []string{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := KeysPresent(tc.m, tc.keys)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

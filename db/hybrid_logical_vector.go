@@ -9,9 +9,7 @@
 package db
 
 import (
-	"crypto/md5"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"maps"
 	"sort"
@@ -145,6 +143,10 @@ func (v Version) String() string {
 	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 
+func (v Version) GoString() string {
+	return fmt.Sprintf("Version{SourceID:%s, Value:%d}", v.SourceID, v.Value)
+}
+
 // IsEmpty returns true if the version is empty/zero value.
 func (v Version) IsEmpty() bool {
 	return v.SourceID == "" && v.Value == 0
@@ -181,7 +183,7 @@ func NewHybridLogicalVector() *HybridLogicalVector {
 	}
 }
 
-func (hlv *HybridLogicalVector) Equals(other *HybridLogicalVector) bool {
+func (hlv *HybridLogicalVector) Equal(other *HybridLogicalVector) bool {
 	if hlv.SourceID != other.SourceID {
 		return false
 	}
@@ -597,18 +599,6 @@ func EncodeValueStr(value string) (string, error) {
 	return base.StringDecimalToLittleEndianHex(strings.TrimSpace(value))
 }
 
-// CreateEncodedSourceID will hash the bucket UUID and cluster UUID using md5 hash function then will base64 encode it
-// This function is in sync with xdcr implementation of UUIDstoDocumentSource https://github.com/couchbase/goxdcr/blob/dfba7a5b4251d93db46e2b0b4b55ea014218931b/hlv/hlv.go#L51
-func CreateEncodedSourceID(bucketUUID, clusterUUID string) (string, error) {
-	md5Hash := md5.Sum([]byte(bucketUUID + clusterUUID))
-	hexStr := hex.EncodeToString(md5Hash[:])
-	source, err := base.HexToBase64(hexStr)
-	if err != nil {
-		return "", err
-	}
-	return string(source), nil
-}
-
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 	type BucketVector struct {
 		CurrentVersionCAS string    `json:"cvCas,omitempty"`
@@ -677,6 +667,6 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 	return nil
 }
 
-func (hlv *HybridLogicalVector) GoString() string {
-	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%+v, MergeVersions:%+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
+func (hlv HybridLogicalVector) GoString() string {
+	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%#+v, MergeVersions:%#+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
 }

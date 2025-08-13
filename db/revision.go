@@ -27,6 +27,7 @@ type Body map[string]interface{}
 const (
 	BodyDeleted        = "_deleted"
 	BodyRev            = "_rev"
+	BodyCV             = "_cv"
 	BodyId             = "_id"
 	BodyRevisions      = "_revisions"
 	BodyAttachments    = "_attachments"

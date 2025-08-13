@@ -514,8 +514,9 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	defer rt.Close()
 
 	var response *TestResponse
-	var docSeqArr []float64
+	var docSeqArr []uint64
 	var body db.Body
+	var rawDocResponse RawDocResponse
 
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
@@ -524,10 +525,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 		require.Equal(t, http.StatusOK, response.Code)
 
-		err := json.Unmarshal(response.BodyBytes(), &body)
+		err := json.Unmarshal(response.BodyBytes(), &rawDocResponse)
 		require.NoError(t, err)
 
-		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
+		docSeqArr = append(docSeqArr, rawDocResponse.Xattrs.Sync.Sequence)
 	}
 
 	ds := rt.GetSingleDataStore()
@@ -597,7 +598,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
-		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
+		assert.True(t, doc.Sequence > docSeqArr[i])
 	}
 
 	assert.Equal(t, int64(12), resyncStatus.DocsChanged)

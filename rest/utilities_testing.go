@@ -885,7 +885,8 @@ func (cr ChangesResults) Summary() string {
 
 // RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
-	RequireDocVersionEqual(t, expected, DocVersion{RevTreeID: changeRev["rev"]})
+	// CV will only be populated if changes requests it
+	require.Equal(t, expected.RevTreeID, changeRev["rev"], "Expected rev %s, got %s", expected.RevTreeID, changeRev["rev"])
 }
 
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
@@ -1120,26 +1121,15 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 	return nil
 }
 
-type SimpleSync struct {
-	Channels map[string]interface{}
-	Rev      channels.RevAndVersion
-	Sequence uint64
-}
-
-type RawResponse struct {
-	Sync    SimpleSync `json:"_sync"`
-	Deleted bool       `json:"_deleted"`
-}
-
 // GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
 // Used by tests that need to validate sequences (for grants, etc)
 func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
 	require.Equal(rt.TB(), http.StatusOK, response.Code, "Error getting raw document %s", response.Body.String())
 
-	var rawResponse RawResponse
+	var rawResponse RawDocResponse
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
-	return rawResponse.Sync.Sequence
+	return rawResponse.Xattrs.Sync.Sequence
 }
 
 // ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
@@ -2408,12 +2398,25 @@ func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
 
 // RequireDocVersionEqual calls t.Fail if two document versions are not equal.
 func RequireDocVersionEqual(t testing.TB, expected, actual DocVersion) {
-	require.True(t, expected.Equal(actual), "Versions mismatch.  Expected: %s, Actual: %s", expected, actual)
+	require.Equal(t, expected.CV, actual.CV, "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
+	require.Equal(t, expected.RevTreeID, actual.RevTreeID, "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
+}
+
+// RequireDocRevTreeEqual fails test if rev tree id's are not equal
+func RequireDocRevTreeEqual(t *testing.T, expected, actual DocVersion) {
+	require.Equal(t, expected.RevTreeID, actual.RevTreeID)
 }
 
 // RequireDocVersionNotEqual calls t.Fail if two document versions are equal.
 func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
-	require.False(t, expected.Equal(actual), "Versions match. Version should not be %s", expected)
+	// CBG-4751: should be able to uncomment this line once cv is included in write response
+	//require.NotEqual(t, expected.CV.String(), actual.CV.String(), "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
+	require.NotEqual(t, expected.RevTreeID, actual.RevTreeID, "Versions mismatch.  Expected: %v, Actual: %v", expected.RevTreeID, actual.RevTreeID)
+}
+
+// RequireDocumentCV asserts that the document's CV matches the expected version.
+func RequireDocumentCV(t *testing.T, expected DocVersion, actualVersion DocVersion) {
+	require.Equal(t, expected.CV, actualVersion.CV)
 }
 
 // EmptyDocVersion reprents an empty document version.
@@ -2442,18 +2445,6 @@ func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 	replicationPayload, err := json.Marshal(config)
 	require.NoError(t, err)
 	return string(replicationPayload)
-}
-
-func HasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
-	if channelSet == nil {
-		return false
-	}
-	value, ok := channelSet[channelName]
-	if !ok || value != nil { // An entry for the channel name with a nil value represents an active channel
-		return false
-	}
-
-	return true
 }
 
 func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {

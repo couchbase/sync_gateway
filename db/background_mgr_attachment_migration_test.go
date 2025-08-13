@@ -36,7 +36,7 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
-		assert.NotNil(t, doc.SyncData.Attachments)
+		assert.NotNil(t, doc.Attachments())
 	}
 
 	// Move some subset of the documents attachment metadata from global sync to sync data
@@ -95,7 +95,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
-		require.NotNil(t, doc.SyncData.Attachments)
+		require.NotNil(t, doc.Attachments())
 	}
 	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
 	require.NotNil(t, attachMigrationMgr)
@@ -206,14 +206,14 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	// define some attachment meta on sync data
-	syncData.Attachments = AttachmentsMeta{}
+	syncData.AttachmentsPre4dot0 = AttachmentsMeta{}
 	att := map[string]interface{}{
 		"stub":   true,
 		"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
 		"length": 11,
 		"revpos": 1,
 	}
-	syncData.Attachments["someAtt.txt"] = att
+	syncData.AttachmentsPre4dot0["someAtt.txt"] = att
 
 	updateXattrs := map[string][]byte{
 		base.SyncXattrName: base.MustJSONMarshal(t, syncData),
@@ -254,5 +254,5 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 			Revpos:      1,
 		},
 	}, GetRawGlobalSyncAttachments(t, collection.dataStore, key))
-	require.Empty(t, GetRawSyncXattr(t, collection.dataStore, key).Attachments)
+	require.Empty(t, GetRawSyncXattr(t, collection.dataStore, key).AttachmentsPre4dot0)
 }

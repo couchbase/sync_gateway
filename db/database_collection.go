@@ -10,12 +10,15 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/google/uuid"
 )
 
 // DatabaseCollection provides a representation of a single collection of a database.
@@ -57,6 +60,79 @@ func (c *DatabaseCollection) AllowConflicts() bool {
 		return *c.dbCtx.Options.AllowConflicts
 	}
 	return base.DefaultAllowConflicts
+}
+
+type GetRawDocOpts struct {
+	IncludeDoc bool // If true, the document body will be returned as well as the metadata.
+	Redact     bool
+	RedactSalt string
+}
+
+// GetRawDoc returns the persisted version of a document, including its SG-related xattrs.
+func (c *DatabaseCollection) GetRawDoc(ctx context.Context, docID string, opts *GetRawDocOpts) (docBody json.RawMessage, xattrs map[string]json.RawMessage, err error) {
+	if opts == nil {
+		// default
+		opts = &GetRawDocOpts{
+			IncludeDoc: true,
+		}
+	}
+
+	if opts.Redact && opts.RedactSalt == "" {
+		// generate a random salt if one is not provided
+		opts.RedactSalt = uuid.New().String()
+	} else if !opts.Redact && opts.RedactSalt != "" {
+		return nil, nil, fmt.Errorf("RedactSalt provided to GetRawDoc but Redact is not enabled")
+	}
+
+	// collect the set of xattrs to fetch that Sync Gateway is interested in.
+	xattrKeys := slices.Clone(base.SyncGatewayRawDocXattrs)
+	userXattrKey := c.dbCtx.Options.UserXattrKey
+	if userXattrKey != "" {
+		// we'll redact this later after fetching - it's still useful to know it was present even if we can't see the contents.
+		xattrKeys = append(xattrKeys, userXattrKey)
+	}
+
+	var xattrValuesBytes map[string][]byte
+	if opts.IncludeDoc {
+		docBody, xattrValuesBytes, _, err = c.dataStore.GetWithXattrs(ctx, docID, xattrKeys)
+	} else {
+		xattrValuesBytes, _, err = c.dataStore.GetXattrs(ctx, docID, xattrKeys)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// stamp all requested xattrKeys and populate with values where appropriate (ensures null values are present)
+	xattrs = make(map[string]json.RawMessage, len(xattrValuesBytes))
+	for _, k := range xattrKeys {
+		if opts.Redact {
+			switch k {
+			case base.SyncXattrName:
+				redactedV, err := RedactRawSyncData(xattrValuesBytes[k], opts.RedactSalt)
+				if err != nil {
+					return nil, nil, fmt.Errorf("couldn't redact sync data: %w", err)
+				}
+				xattrs[k] = redactedV
+			case base.GlobalXattrName:
+				redactedV, err := RedactRawGlobalSyncData(xattrValuesBytes[k], opts.RedactSalt)
+				if err != nil {
+					return nil, nil, fmt.Errorf("couldn't redact global sync data: %w", err)
+				}
+				xattrs[k] = redactedV
+			case userXattrKey:
+				// include the key but not the value so we can see _something_ was present.
+				xattrs[k] = []byte(`"redacted"`)
+			default:
+				// no redaction for this key
+				xattrs[k] = xattrValuesBytes[k]
+			}
+		} else {
+			// redaction disabled
+			xattrs[k] = xattrValuesBytes[k]
+		}
+	}
+
+	return docBody, xattrs, nil
 }
 
 func (c *DatabaseCollection) GetCollectionDatastore() base.DataStore {

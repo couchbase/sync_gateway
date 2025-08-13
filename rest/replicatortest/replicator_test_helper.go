@@ -68,11 +68,6 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 	return activeRT
 }
 
-// requireDocumentVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
-func requireDocumentVersion(t testing.TB, expected rest.DocVersion, doc *db.Document) {
-	rest.RequireDocVersionEqual(t, expected, rest.DocVersion{RevTreeID: doc.SyncData.CurrentRev})
-}
-
 // createOrUpdateDoc creates a new document the specified document id, and body value in a channel named "alice".
 func createDoc(rt *rest.RestTester, docID string, bodyValue string) rest.DocVersion {
 	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)

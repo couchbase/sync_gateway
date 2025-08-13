@@ -286,6 +286,8 @@ func (arc *activeReplicatorCommon) reconnect() {
 				return false, ctx.Err(), nil
 			}
 
+			base.DebugfCtx(arc.ctx, base.KeyReplicate, "Attempting to reconnect replicator %s", arc.config.ID)
+
 			// preserve lastError from the previous connect attempt
 			arc.setState(ReplicationStateReconnecting)
 
@@ -302,7 +304,9 @@ func (arc *activeReplicatorCommon) reconnect() {
 			arc._publishStatus()
 
 			if err != nil {
-				base.InfofCtx(arc.ctx, base.KeyReplicate, "error starting replicator on reconnect: %v", err)
+				base.InfofCtx(arc.ctx, base.KeyReplicate, "error starting replicator %s on reconnect: %v", arc.config.ID, err)
+			} else {
+				base.DebugfCtx(arc.ctx, base.KeyReplicate, "replicator %s successfully reconnected", arc.config.ID)
 			}
 			return err != nil, err, nil
 		}

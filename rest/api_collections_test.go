@@ -184,25 +184,32 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 	})
 	defer rt.Close()
 
+	const docBody = `{"foo":"bar"}`
+
 	// can't put doc into invalid keyspaces
-	response := rt.SendAdminRequest("PUT", "/db.invalidScope.invalidCollection/doc1", "{}")
+	response := rt.SendAdminRequest(http.MethodPut, "/db.invalidScope.invalidCollection/doc1", docBody)
 	RequireStatus(t, response, http.StatusNotFound)
 
-	response = rt.SendAdminRequest("PUT", "/db.invalidCollection/doc1", "{}")
+	response = rt.SendAdminRequest(http.MethodPut, "/db.invalidCollection/doc1", docBody)
 	RequireStatus(t, response, http.StatusNotFound)
 
 	// can put doc into _default scope/collection explicitly ... or implicitly (tested elsewhere e.g: TestPutEmptyDoc)
-	response = rt.SendAdminRequest("PUT", "/db._default._default/doc1", "{}")
+	response = rt.SendAdminRequest(http.MethodPut, "/db._default._default/doc1", docBody)
 	RequireStatus(t, response, http.StatusCreated)
 
-	// retrieve doc in both ways (_default._default and no fully-qualified keyspace)
-	response = rt.SendAdminRequest("GET", "/db._default._default/doc1", "")
-	RequireStatus(t, response, http.StatusOK)
-	assert.Equal(t, `{"_id":"doc1","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+	version, _ := rt.GetDoc("doc1")
 
-	response = rt.SendAdminRequest("GET", "/db/doc1", "")
-	RequireStatus(t, response, http.StatusOK)
-	assert.Equal(t, `{"_id":"doc1","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+	// retrieve doc in both ways (explicit and implicit _default scope/collection)
+	for _, keyspace := range []string{
+		"db._default._default", // fully qualified
+		"db",                   // implicit
+	} {
+		body := rt.GetDocBodyFromKeyspace(keyspace, "doc1")
+		assert.Equal(t, "bar", body["foo"])
+		assert.Equal(t, "doc1", body["_id"])
+		assert.Equal(t, version.RevTreeID, body["_rev"])
+		assert.Equal(t, version.CV.String(), body["_cv"])
+	}
 }
 
 func TestSingleCollectionDCP(t *testing.T) {
