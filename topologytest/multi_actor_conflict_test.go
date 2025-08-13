@@ -24,8 +24,34 @@ func TestMultiActorConflictCreate(t *testing.T) {
 			docID := getDocID(t)
 			docVersion := createConflictingDocs(t, collectionName, docID, topology)
 			topology.StartReplications()
-			waitForVersionAndBody(t, collectionName, docID, docVersion, topology)
-
+			// Can not assert on full HLV here. CV should converge, but CBL actors can have PV that does not match that of the other peers.
+			//        + - - - - - - +      +- - - - - - -+
+			//        '  cluster A  '      '  cluster B  '
+			//        ' +---------+ '      ' +---------+ '
+			//        ' |  cbs1   | ' <--> ' |  cbs2   | '
+			//        ' +---------+ '      ' +---------+ '
+			//        ' +---------+ '      ' +---------+ '
+			//        ' |   sg1   | '      ' |   sg2   | '
+			//        ' +---------+ '      ' +---------+ '
+			//        + - - - - - - +      +- - - - - - -+
+			//              ^                     ^
+			//              |                     |
+			//              |                     |
+			//              v                     v
+			//          +---------+          +---------+
+			//          |   cbl1  |          |   cbl2  |
+			//          +---------+          +---------+
+			// Couchbase Server, since conflict resolution in XDCR will overwrite the HLV.
+			// 1. sg1 creates unique document cv: 1@rosmar1
+			// 2. sg2 creates unique document cv: 2@rosmar2
+			// 3. cbl1 pulls 1@rosmar1
+			// 4. cbl2 pull 2@rosmar2
+			// 5. cbs1 pulls 2@rosmar2, overwriting cv:1@rosmar1
+			// 6. cbl1 pulls 2@rosmar2, creating cv: 2@rosmar2, pv:1@rosmar1 overwriting
+			// Final state:
+			//    - cv:2@rosmar2 on cbs1, cbs2, cbl2
+			//    - cv:2@rosmar2, pv:1@rosmar1 on cbl1
+			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 		})
 	}
 }
