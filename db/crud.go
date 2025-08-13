@@ -437,7 +437,7 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 	return revision, nil
 }
 
-func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version) (revision DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version, revTreeHistory bool) (revision DocumentRevision, err error) {
 	if cv != nil {
 		revision, err = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta)
 	} else {
@@ -446,8 +446,12 @@ func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, c
 	if err != nil {
 		return DocumentRevision{}, err
 	}
+	maxHistory := 0
+	if revTreeHistory {
+		maxHistory = math.MaxInt32
+	}
 
-	return db.documentRevisionForRequest(ctx, docid, revision, nil, cv, 0, nil)
+	return db.documentRevisionForRequest(ctx, docid, revision, nil, cv, maxHistory, nil)
 }
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
@@ -2863,7 +2867,7 @@ func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid strin
 
 // Purges a document from the bucket (no tombstone)
 func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, needsAudit bool) error {
-	doc, err := db.GetDocument(ctx, key, DocUnmarshalAll)
+	doc, rawBucketDoc, err := db.GetDocumentWithRaw(ctx, key, DocUnmarshalAll)
 	if err != nil {
 		return err
 	}
@@ -2888,8 +2892,15 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 	}
 
 	if db.UseXattrs() {
-		err := db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
-		if err != nil {
+		// Clean up _sync and _globalSync (if present). Leave _vv and _mou since they are also shared by XDCR/Eventing.
+		xattrsToDelete := []string{base.SyncXattrName, base.GlobalXattrName}
+		// TODO: CBG-4796 - we currently need to determine a list of present xattrs before we delete to avoid differences
+		// between Rosmar and Couchbase Server implementations of DeleteWithXattrs and GetWithXattrs.
+		var presentXattrsToDelete []string
+		if rawBucketDoc != nil && rawBucketDoc.Xattrs != nil {
+			presentXattrsToDelete = base.KeysPresent(rawBucketDoc.Xattrs, xattrsToDelete)
+		}
+		if err := db.dataStore.DeleteWithXattrs(ctx, key, presentXattrsToDelete); err != nil {
 			return err
 		}
 	} else {
@@ -3120,6 +3131,37 @@ func (c *DatabaseCollection) checkForUpgrade(ctx context.Context, key string, un
 		return nil, nil
 	}
 	return doc, rawDocument
+}
+
+func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, docid, rev string) (missing, possible []string) {
+	if strings.HasPrefix(docid, "_design/") && db.user != nil {
+		return // Users can't upload design docs, so ignore them
+	}
+	// todo: CBG-4782 utilise known revs for rev tree property in ISGR by returning know rev tree id's in possible list
+
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalSync)
+	if err != nil {
+		if !base.IsDocNotFoundError(err) && !base.IsXattrNotFoundError(err) {
+			base.WarnfCtx(ctx, "Error fetching doc %s during changes handling: %v", base.UD(docid), err)
+		}
+		missing = append(missing, rev)
+		return
+	}
+	// parse in coming version, if it's not known to local doc hlv then it is marked as missing, if it is and is a newer version
+	// then it is also marked as missing
+	cvValue, err := ParseVersion(rev)
+	if err != nil {
+		base.WarnfCtx(ctx, "error parse change version for doc %s: %v", base.UD(docid), err)
+		missing = append(missing, rev)
+		return
+	}
+	// CBG-4792: enhance here for conflict check - return conflict rev similar to propose changes here link ticket
+	if doc.HLV.DominatesSource(cvValue) {
+		// incoming version is dominated by local doc hlv, so it is not missing
+		return
+	}
+	missing = append(missing, rev)
+	return
 }
 
 // ////// REVS_DIFF:

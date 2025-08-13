@@ -3222,3 +3222,25 @@ func TestSilentHandlerLoggingInTrace(t *testing.T) {
 		RequireStatus(t, resp, http.StatusOK)
 	})
 }
+
+// TestHLVUpdateOnRevReplicatorPut:
+//   - Test that the HLV is updated correctly when a document is put via the rev replicator running in rev mode
+func TestHLVUpdateOnRevReplicatorPut(t *testing.T) {
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	docID := t.Name()
+	newVersion := DocVersion{
+		RevTreeID: "1-abc",
+	}
+	_ = rt.PutNewEditsFalse(docID, newVersion, EmptyDocVersion(), `{"some":"body"}`)
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, docID)
+	require.NoError(t, err)
+
+	assert.Equal(t, rt.GetDatabase().EncodedSourceID, syncData.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+}

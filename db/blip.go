@@ -84,7 +84,7 @@ func defaultBlipLogger(ctx context.Context) blip.LogFn {
 }
 
 // blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
-func blipRevMessageProperties(revisionHistory []string, deleted bool, seq SequenceID, replacedRevID string) blip.Properties {
+func blipRevMessageProperties(revisionHistory []string, deleted bool, seq SequenceID, replacedRevID string, revTreeProperty []string) blip.Properties {
 	properties := make(blip.Properties)
 
 	// TODO: Assert? db.SequenceID.MarshalJSON can never error
@@ -93,6 +93,10 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq Sequen
 
 	if len(revisionHistory) > 0 {
 		properties[RevMessageHistory] = strings.Join(revisionHistory, ",")
+	}
+
+	if len(revTreeProperty) > 0 {
+		properties[RevMessageTreeHistory] = strings.Join(revTreeProperty, ",")
 	}
 
 	if deleted {
