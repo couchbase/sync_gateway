@@ -372,7 +372,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			if bsc.useDeltas && len(knownRevsArray) > 0 {
 				if revID, ok := knownRevsArray[0].(string); ok {
 					if versionVectorProtocol {
-						// Is this full history?
+						// extract cv from the known revs array
 						msgHLV, _, err := extractHLVFromBlipString(revID)
 						if err != nil {
 							base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication.", base.UD(docID))
@@ -386,18 +386,28 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 				}
 			}
 
+			var cvInKnownRevs bool
+
 			for _, rev := range knownRevsArray {
 				if revID, ok := rev.(string); ok {
-					// Is this full history?
+					// extract cv from the known revs array
 					msgHLV, _, err := extractHLVFromBlipString(revID)
 					if err != nil {
-						// assume we have received legacy rev if we cannot parse hlv from known revs, and we are in vv replication
+						// assume we have received legacy rev if the following conditions are met:
+						//  - we cannot parse cv from known revs
+						//  - we are in vv enabled replication
+						// 	- the first element of known rev array was NOT a CV
 						if versionVectorProtocol {
-							legacyRev = true
+							if !cvInKnownRevs {
+								// if cv wasn't the first element in known revs array, this will be legacy doc
+								legacyRev = true
+							}
 						}
 					} else {
 						// extract cv as string
 						revID = msgHLV.GetCurrentVersionString()
+						// mark that we have seen a CV in known revs so we can mark as non legacy rev
+						cvInKnownRevs = true
 					}
 					// we can assume here that if we fail to parse hlv, we have received a rev id in known revs. If we don't fail to parse hlv
 					// then we have extracted cv from it and can assign the cv string to known revs here

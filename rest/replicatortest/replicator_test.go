@@ -2114,10 +2114,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// CBG-4791: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// commenting out this assertion on both cv and revID and temp just asserting on cv
-	//rest.RequireDocVersionEqual(t, version, doc.ExtractVersion())
-	rest.RequireDocumentCV(t, version, doc.ExtractDocVersion())
+	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -2198,9 +2195,6 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// wait for the documents originally written to rt2 to arrive at rt1
-	// CBG-4791: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// temporarily emptying revID so it doesn't assert on it
-	doc1Version.RevTreeID = ""
 	rt1.WaitForVersion(docID1, doc1Version)
 
 	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
@@ -3244,10 +3238,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// commenting out this assertion on both cv and revID and temp just asserting on cv
-	//rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-	rest.RequireDocumentCV(t, version, doc.ExtractDocVersion())
+	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3732,10 +3723,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// commenting out this assertion on both cv and revID and temp just asserting on cv
-	//rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-	rest.RequireDocumentCV(t, version, doc.ExtractDocVersion())
+	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3804,10 +3792,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// CBG-4791: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// commenting out this assertion on both cv and revID and temp just asserting on cv
-	//rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-	rest.RequireDocumentCV(t, version, doc.ExtractDocVersion())
+	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -3824,10 +3809,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.True(t, doc.IsDeleted())
-	// CBG-4791: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// commenting out this assertion on both cv and revID and temp just asserting on cv
-	//rest.RequireDocVersionEqual(t, deletedVersion, doc.ExtractDocVersion())
-	rest.RequireDocumentCV(t, deletedVersion, doc.ExtractDocVersion())
+	rest.RequireDocVersionEqual(t, deletedVersion, doc.ExtractDocVersion())
 }
 
 // TestActiveReplicatorPullPurgeOnRemoval:
@@ -3891,10 +3873,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// CBG-4791: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// commenting out this assertion on both cv and revID and temp just asserting on cv
-	//rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-	rest.RequireDocumentCV(t, version, doc.ExtractDocVersion())
+	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -5173,10 +5152,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	doc, err := rt2collection.GetDocument(rt2ctx, rt1docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// CBG-4790 + CBG-4791: different rev id being generated on active compared to remote, this wil be fixed in future
-	// commenting out this assertion on both cv and revID and temp just asserting on cv
-	//rest.RequireDocVersionEqual(t, rt1Version, doc.ExtractDocVersion())
-	rest.RequireDocumentCV(t, rt1Version, doc.ExtractDocVersion())
+	rest.RequireDocVersionEqual(t, rt1Version, doc.ExtractDocVersion())
 
 	body, err := doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -5195,10 +5171,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	doc, err = rt1collection.GetDocument(rt1ctx, rt2docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	// CBG-4790 + CBG-4791: different rev id being generated on active compared to remote, this wil be fixed in future
-	// commenting out this assertion on both cv and revID and temp just asserting on cv
-	//rest.RequireDocVersionEqual(t, rt1Version, doc.ExtractDocVersion())
-	rest.RequireDocumentCV(t, rt2Version, doc.ExtractDocVersion())
+	rest.RequireDocVersionEqual(t, rt2Version, doc.ExtractDocVersion())
 
 	body, err = doc.GetDeepMutableBody()
 	require.NoError(t, err)
@@ -6925,30 +6898,19 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	assert.NoError(t, ar.Start(activeCtx))
 
 	// Wait for active to replicate to passive
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4790
-	// removing revID ot just use CV to assert
-	fullVersion := version
-	version.RevTreeID = ""
 	passiveRT.WaitForVersion("test", version)
 
 	// Delete active document
-	deletedVersion := activeRT.DeleteDocDirectly("test", fullVersion)
+	deletedVersion := activeRT.DeleteDocDirectly("test", version)
 
 	// Assert that the tombstone is replicated to passive
 	// Get revision 2 on passive peer to assert it has been (a) replicated and (b) deleted
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	//removing revID ot just use CV to assert
-	fullVersion = deletedVersion
-	deletedVersion.RevTreeID = ""
 	passiveRT.WaitForTombstone("test", deletedVersion)
 
 	// Resurrect tombstoned document
-	resurrectedVersion := activeRT.UpdateDocDirectly("test", fullVersion, rest.JsonToMap(t, `{"field2":"f2_2"}`))
+	resurrectedVersion := activeRT.UpdateDocDirectly("test", deletedVersion, rest.JsonToMap(t, `{"field2":"f2_2"}`))
 
 	// Replicate resurrection to passive
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// removing revID ot just use CV to assert
-	resurrectedVersion.RevTreeID = ""
 	passiveRT.WaitForVersion("test", resurrectedVersion)
 
 	// Shutdown replicator to close out
@@ -7017,16 +6979,12 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	assert.NoError(t, ar.Start(activeCtx))
 
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// removing revID ot just use CV to assert
-	fullVersion := version
-	version.RevTreeID = ""
 	passiveRT.WaitForVersion("test", version)
 
 	assert.NoError(t, ar.Stop())
 
 	// Make 2nd revision
-	version2 := activeRT.UpdateDocDirectly("test", fullVersion, rest.JsonToMap(t, `{"field1":"f1_2","field2":"f2_2"}`))
+	version2 := activeRT.UpdateDocDirectly("test", version, rest.JsonToMap(t, `{"field1":"f1_2","field2":"f2_2"}`))
 	activeRT.WaitForPendingChanges()
 
 	passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollection()
@@ -7037,14 +6995,12 @@ func TestUnprocessableDeltas(t *testing.T) {
 	rev.BodyBytes = []byte("{invalid}")
 	passiveRTCollection.GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev)
 
-	assert.NoError(t, ar.Start(activeCtx))
-	// Check if it replicated
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
-	// removing revID ot just use CV to assert
-	version2.RevTreeID = ""
-	passiveRT.WaitForVersion("test", version2)
-
-	assert.NoError(t, ar.Stop())
+	base.AssertLogContains(t, "Unable to unmarshal mutable body for doc test", func() {
+		assert.NoError(t, ar.Start(activeCtx))
+		// Check if it replicated
+		passiveRT.WaitForVersion("test", version2)
+		assert.NoError(t, ar.Stop())
+	})
 }
 
 // CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
@@ -7112,7 +7068,6 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 // Tests replication and Rest API
 func TestUnderscorePrefixSupport(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	t.Skip("CBG-4790: different rev id being generated on active compared to remote, causing conflict on doc update")
 
 	passiveRT := rest.NewRestTester(t, nil)
 	defer passiveRT.Close()
@@ -7341,9 +7296,6 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4790
-	// removing revID to just use CV to assert
-	version.RevTreeID = ""
 	passiveRT.WaitForVersion(docID, version)
 
 	resp = activeRT.SendAdminRequest("GET", "/{{.db}}/_replication/"+t.Name(), "")
@@ -7377,16 +7329,14 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	defer reduceTestCheckpointInterval(9999 * time.Hour)()
 
 	collection, ctx := activeRT.GetSingleTestDatabaseCollectionWithUser()
-	_, doc, err := collection.Put(ctx, "test", db.Body{})
+	revID, doc, err := collection.Put(ctx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
 	activeRT.CreateReplication(t.Name(), remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
-	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4790
-	// removing revID to just use CV to assert
-	passiveRT.WaitForVersion("test", rest.DocVersion{CV: *doc.HLV.ExtractCurrentVersionFromHLV()})
+	passiveRT.WaitForVersion("test", rest.DocVersion{RevTreeID: revID, CV: *doc.HLV.ExtractCurrentVersionFromHLV()})
 
 	// assert on the processed seq list being updated before stopping the active replicator
 	ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, t.Name())
