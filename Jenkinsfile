@@ -11,8 +11,6 @@ pipeline {
         EE_BUILD_TAG = "cb_sg_enterprise"
         SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
-        GO111MODULE = "on"
-        GOCACHE = "${WORKSPACE}/.gocache"
     }
 
     tools {
@@ -42,7 +40,7 @@ pipeline {
                         sh "which go"
                         sh "go version"
                         sh "go env"
-                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                        sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                             sh '''
                                 [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
                                 ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
@@ -66,12 +64,6 @@ pipeline {
 
         stage('Builds') {
             parallel {
-                stage('Test compile') {
-                    steps {
-                        // run no tests but force them to be compiled
-                        sh "go test -run=- -count=1 ./..."
-                    }
-                }
                 stage('CE Linux') {
                     steps {
                         sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
@@ -82,103 +74,9 @@ pipeline {
                         sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
-                stage('CE macOS') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
-                    steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
-                        }
-                    }
-                }
-                stage('EE macOS') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
-                    steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                        }
-                    }
-                }
-                /* can't build windows with cgo
-		stage('CE Windows') {
-                    steps {
-                        sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
-                    }
-                }
-                stage('EE Windows') {
-                    steps {
-                        sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                    }
-                }
-		*/
                 stage('Windows Service') {
                     steps {
                         sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
-                    }
-                }
-            }
-        }
-
-        stage('Checks') {
-            parallel {
-                stage('gofmt') {
-                    steps {
-                        script {
-                            try {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
-                                sh "which gofmt" // check if gofmt is installed
-                                sh "gofmt -d -e . | tee gofmt.out"
-                                sh "test -z \"\$(cat gofmt.out)\""
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
-                            } catch (Exception e) {
-                                sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
-                                script {
-                                    env.GOFMT_COUNT = readFile 'gofmt.count'
-                                }
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
-                                unstable("gofmt failed")
-                            }
-                        }
-                    }
-                }
-                stage('go vet') {
-                    steps {
-                        warnError(message: "go vet failed") {
-                            sh "go vet -tags ${EE_BUILD_TAG} ./..."
-                        }
-                    }
-                }
-                stage('go fix') {
-                    steps {
-                        warnError(message: "go fix failed") {
-                            sh "go tool fix -diff . | tee gofix.out"
-                            sh "test -z \"\$(cat gofix.out)\""
-                        }
-                    }
-                }
-                stage('errcheck') {
-                    steps {
-                        script {
-                            try {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
-                                    sh "which errcheck" // check if errcheck is installed
-                                    sh "errcheck ./... | tee errcheck.out"
-                                }
-                                sh "test -z \"\$(cat errcheck.out)\""
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
-                            } catch (Exception e) {
-                                sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
-                                script {
-                                    env.ERRCHECK_COUNT = readFile 'errcheck.count'
-                                }
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-                                unstable("errcheck failed")
-                            }
-                        }
                     }
                 }
             }
@@ -285,41 +183,6 @@ pipeline {
                         }
                     }
                 }
-
-                stage('LiteCore') {
-                    stages {
-                        stage('against CE') {
-                            // TODO: Remove skip
-                            when { expression { return false } }
-                            steps {
-                                echo 'Example of where we could run an alternate version of lite-core unit tests, or against a running SG CE'
-                            }
-                        }
-                        stage('against EE') {
-                            // CBG-2237 skipping stage due to regular litecore test segfaults
-                            when { expression { return false } }
-                            steps {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
-                                sh 'touch verbose_litecore.out'
-                                sh 'touch verbose_litecore-sg_trace.out'
-                                script {
-                                    withCredentials([sshUserPrivateKey(credentialsId: 'CB SG Robot Github SSH Key', keyFileVariable: 'KEY')]) {
-                                        try {
-                                            sh 'docker run --rm -v $KEY:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
-                                        } catch (Exception e) {
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
-                                            // archive verbose test logs in the event of a test failure
-                                            archiveArtifacts artifacts: 'verbose_litecore*.out', fingerprint: false
-                                            unstable("EE LIteCore Test Failed")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 stage('Integration') {
                     stages {
                         stage('main') {
@@ -328,23 +191,7 @@ pipeline {
                                 echo 'Queueing Integration test for branch "main" ...'
                                 // Queues up an async integration test run using default build params (main branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                build job: 'MasterIntegration', quietPeriod: 3600, wait: false
-                            }
-                        }
-
-                        stage('PR') {
-                            // TODO: Remove skip
-                            when { expression { return false } }
-                            steps {
-                                // TODO: Read labels on PR for 'integration-test'
-                                // if present, run stage as separate GH status
-                                echo 'Example of where we can run integration tests for this commit'
-                                gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
-                                    echo "Waiting for integration test to finish..."
-                                    // TODO: add commit parameter
-                                    // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
-                                    build job: 'sync-gateway-integration-master', wait: true, propagate: false
-                                }
+                                build job: 'MainIntegration', quietPeriod: 3600, wait: false
                             }
                         }
                     }
@@ -397,7 +244,6 @@ pipeline {
         }
         cleanup {
             cleanWs(disableDeferredWipeout: true)
-            sh "go clean -cache"
-	}
+	      }
     }
 }
