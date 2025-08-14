@@ -2072,7 +2072,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	rt2.CreateUser(username, []string{username})
 
 	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","channels":["`+username+`"]}`))
+	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["`+username+`"]}`)
 
 	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
 	remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
@@ -2189,7 +2189,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	docIDPrefix := t.Name() + "rt2doc"
 
 	docID1 := docIDPrefix + "1"
-	doc1Version := rt2.PutDocDirectly(docID1, rest.JsonToMap(t, `{"source":"rt2","channels":["`+username+`"]}`))
+	doc1Version := rt2.PutDoc(docID1, `{"source":"rt2","channels":["`+username+`"]}`)
 	rt2.WaitForPendingChanges()
 
 	// Start the replicator (implicit connect)
@@ -2580,7 +2580,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
 
 	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`))
+	version := rt2.PutDoc(docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 
 	// Active
 	rt1 := rest.NewRestTester(t, nil)
@@ -2623,7 +2623,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
 
 	docID = t.Name() + "rt2doc2"
-	version = rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`))
+	version = rt2.PutDoc(docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
 
 	// wait for the new document written to rt2 to arrive at rt1
 	changesResults = rt1.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -3211,7 +3211,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	ctx1 := rt1.Context()
 
 	docID := t.Name() + "rt1doc1"
-	version := rt1.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt1","channels":["alice"]}`))
+	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 	localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -3283,7 +3283,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
 
 	docID := t.Name() + "rt1doc1"
-	version := rt1.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`))
+	version := rt1.PutDoc(docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -3322,7 +3322,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
 
 	docID = t.Name() + "rt1doc2"
-	version = rt1.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`))
+	version = rt1.PutDoc(docID, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`)
 
 	// wait for the new document written to rt1 to arrive at rt2
 	changesResults = rt2.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -3700,7 +3700,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	defer rt1.Close()
 
 	docID := t.Name() + "rt1doc1"
-	version := rt1.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt1","channels":["alice"]}`))
+	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 	localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -3751,7 +3751,6 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 //   - Deletes the document in rt2, and waits for the tombstone to get to rt1.
 func TestActiveReplicatorPullTombstone(t *testing.T) {
-
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
@@ -3767,7 +3766,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	rt2.CreateUser(username, []string{username})
 
 	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","channels":["alice"]}`))
+	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
 	// Active
 
@@ -3814,7 +3813,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	assert.Equal(t, "rt2", body["source"])
 
 	// Tombstone the doc in rt2
-	deletedVersion := rt2.DeleteDocDirectly(docID, version)
+	deletedVersion := rt2.DeleteDoc(docID, version)
 
 	// wait for the tombstone written to rt2 to arrive at rt1
 	changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
@@ -3855,7 +3854,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	rt2.CreateUser(username, []string{username})
 
 	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","channels":["alice"]}`))
+	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
 	// Active
 	rt1 := rest.NewRestTester(t, nil)
@@ -4405,7 +4404,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	ctx1 := rt1.Context()
 
 	docID := t.Name() + "rt1doc1"
-	version := rt1.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt1","channels":["alice"]}`))
+	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -5129,7 +5128,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	ctx1 := rt1.Context()
 
 	rt1docID := t.Name() + "rt1doc1"
-	rt1Version := rt1.PutDocDirectly(rt1docID, rest.JsonToMap(t, `{"source":"rt1","channels":["alice"]}`))
+	rt1Version := rt1.PutDoc(rt1docID, `{"source":"rt1","channels":["alice"]}`)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5184,7 +5183,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	// write a doc on rt2 ...
 	rt2docID := t.Name() + "rt2doc1"
-	rt2Version := rt2.PutDocDirectly(rt2docID, rest.JsonToMap(t, `{"source":"rt2","channels":["alice"]}`))
+	rt2Version := rt2.PutDoc(rt2docID, `{"source":"rt2","channels":["alice"]}`)
 
 	// ... and wait to arrive at rt1
 	changesResults = rt1.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -6077,8 +6076,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			const doc2ID = "docid2"
 			doc2Version := rest.DocVersion{RevTreeID: "3-abc"}
-			localActiveRT.WaitForVersion(doc2ID, doc2Version)
-			remotePassiveRT.WaitForVersion(doc2ID, doc2Version)
+			localActiveRT.WaitForRevTreeVersion(doc2ID, doc2Version)
+			remotePassiveRT.WaitForRevTreeVersion(doc2ID, doc2Version)
 
 			// Stop the replication
 			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
@@ -6117,8 +6116,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for the recently longest branch to show up on both sides
-			localActiveRT.WaitForTombstone(doc2ID, rest.DocVersion{RevTreeID: "5-4a5f5a35196c37c117737afd5be1fc9b"})
-			remotePassiveRT.WaitForTombstone(doc2ID, rest.DocVersion{RevTreeID: "5-4a5f5a35196c37c117737afd5be1fc9b"})
+			localActiveRT.WaitForRevTreeTombstone(doc2ID, rest.DocVersion{RevTreeID: "5-4a5f5a35196c37c117737afd5be1fc9b"})
+			remotePassiveRT.WaitForRevTreeTombstone(doc2ID, rest.DocVersion{RevTreeID: "5-4a5f5a35196c37c117737afd5be1fc9b"})
 
 			// Stop the replication
 			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
@@ -6163,9 +6162,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			expectedVersion := rest.DocVersion{RevTreeID: expectedRevID}
 			// Wait for doc to show up on side that the resurrection was done
 			if test.resurrectLocal {
-				localActiveRT.WaitForVersion(doc2ID, expectedVersion)
+				localActiveRT.WaitForRevTreeVersion(doc2ID, expectedVersion)
 			} else {
-				remotePassiveRT.WaitForVersion(doc2ID, expectedVersion)
+				remotePassiveRT.WaitForRevTreeVersion(doc2ID, expectedVersion)
 			}
 
 			// Start the replication
@@ -6174,9 +6173,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for doc to replicate from side resurrection was done on to the other side
 			if test.resurrectLocal {
-				remotePassiveRT.WaitForVersion(doc2ID, expectedVersion)
+				remotePassiveRT.WaitForRevTreeVersion(doc2ID, expectedVersion)
 			} else {
-				localActiveRT.WaitForVersion(doc2ID, expectedVersion)
+				localActiveRT.WaitForRevTreeVersion(doc2ID, expectedVersion)
 			}
 		})
 	}
@@ -6276,7 +6275,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
 			// Wait for the original document revision written to activeRT to arrive at passiveRT.
-			passiveRT.WaitForVersion(docID, activeRTVersionCreated)
+			passiveRT.WaitForRevTreeVersion(docID, activeRTVersionCreated)
 
 			// Stop replication.
 			require.NoError(t, ar.Stop(), "Error stopping replication")
@@ -6302,7 +6301,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
 			expectedVersion := rest.NewDocVersionFromFakeRev(test.expectedRevID)
 			activeRT.WaitForTombstone(docID, expectedVersion)
-			passiveRT.WaitForTombstone(docID, expectedVersion)
+			passiveRT.WaitForRevTreeTombstone(docID, expectedVersion)
 		})
 	}
 }
@@ -6401,7 +6400,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			require.NoError(t, ar.Start(ctx1), "Error starting replication")
 			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
-			rt1.WaitForVersion(docID, rt2VersionCreated)
+			rt1.WaitForRevTreeVersion(docID, rt2VersionCreated)
 
 			// Stop replication.
 			require.NoError(t, ar.Stop(), "Error stopping replication")
@@ -6429,8 +6428,8 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
 
 			expectedVersion := rest.NewDocVersionFromFakeRev(test.expectedRevID)
-			rt1.WaitForTombstone(docID, expectedVersion)
-			rt2.WaitForTombstone(docID, expectedVersion)
+			rt1.WaitForRevTreeTombstone(docID, expectedVersion)
+			rt2.WaitForRevTreeTombstone(docID, expectedVersion)
 		})
 	}
 }
@@ -6559,7 +6558,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins)
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			remoteRT.WaitForVersion(docID, newVersion)
+			remoteRT.WaitForRevTreeVersion(docID, newVersion)
 
 			// Stop the replication
 			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
@@ -6756,7 +6755,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			remoteRT.WaitForVersion(docID, newVersion)
+			remoteRT.WaitForRevTreeVersion(docID, newVersion)
 
 			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 			rest.RequireStatus(t, response, http.StatusOK)
@@ -6788,7 +6787,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			rest.RequireStatus(t, response, http.StatusOK)
 
 			activeRT.WaitForVersion(docID, test.expectedFinalVersion)
-			remoteRT.WaitForVersion(docID, test.expectedFinalVersion)
+			remoteRT.WaitForRevTreeVersion(docID, test.expectedFinalVersion)
 
 			localDoc := activeRT.GetDocBody(docID)
 			localVersion := localDoc.ExtractRev()
@@ -6903,7 +6902,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	activeCtx := activeRT.Context()
 
 	// Create a document //
-	version := activeRT.PutDocDirectly("test", rest.JsonToMap(t, `{"field1":"f1_1","field2":"f2_1"}`))
+	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
 	activeRT.WaitForVersion("test", version)
 
 	// Set-up replicator //
@@ -6932,7 +6931,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	passiveRT.WaitForVersion("test", version)
 
 	// Delete active document
-	deletedVersion := activeRT.DeleteDocDirectly("test", fullVersion)
+	deletedVersion := activeRT.DeleteDoc("test", fullVersion)
 
 	// Assert that the tombstone is replicated to passive
 	// Get revision 2 on passive peer to assert it has been (a) replicated and (b) deleted
@@ -6943,7 +6942,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	passiveRT.WaitForTombstone("test", deletedVersion)
 
 	// Resurrect tombstoned document
-	resurrectedVersion := activeRT.UpdateDocDirectly("test", fullVersion, rest.JsonToMap(t, `{"field2":"f2_2"}`))
+	resurrectedVersion := activeRT.UpdateDoc("test", fullVersion, `{"field2":"f2_2"}`)
 
 	// Replicate resurrection to passive
 	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
@@ -6996,7 +6995,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	activeCtx := activeRT.Context()
 
 	// Create a document //
-	version := activeRT.PutDocDirectly("test", rest.JsonToMap(t, `{"field1":"f1_1","field2":"f2_1"}`))
+	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
 	activeRT.WaitForVersion("test", version)
 
 	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
@@ -7015,7 +7014,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", ar.GetStatus(activeCtx).LastSeqPush)
 
-	assert.NoError(t, ar.Start(activeCtx))
+	require.NoError(t, ar.Start(activeCtx))
 
 	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
 	// removing revID ot just use CV to assert
@@ -7023,10 +7022,10 @@ func TestUnprocessableDeltas(t *testing.T) {
 	version.RevTreeID = ""
 	passiveRT.WaitForVersion("test", version)
 
-	assert.NoError(t, ar.Stop())
+	require.NoError(t, ar.Stop())
 
 	// Make 2nd revision
-	version2 := activeRT.UpdateDocDirectly("test", fullVersion, rest.JsonToMap(t, `{"field1":"f1_2","field2":"f2_2"}`))
+	version2 := activeRT.UpdateDoc("test", fullVersion, `{"field1":"f1_2","field2":"f2_2"}`)
 	activeRT.WaitForPendingChanges()
 
 	passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollection()
@@ -7037,14 +7036,13 @@ func TestUnprocessableDeltas(t *testing.T) {
 	rev.BodyBytes = []byte("{invalid}")
 	passiveRTCollection.GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev)
 
-	assert.NoError(t, ar.Start(activeCtx))
+	require.NoError(t, ar.Start(activeCtx))
+	defer func() { assert.NoError(t, ar.Stop()) }()
 	// Check if it replicated
 	// CBG-4790: different rev id being generated on active compared to remote, this wil be fixed in CBG-4791
 	// removing revID ot just use CV to assert
 	version2.RevTreeID = ""
 	passiveRT.WaitForVersion("test", version2)
-
-	assert.NoError(t, ar.Stop())
 }
 
 // CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
@@ -7068,15 +7066,15 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	docID := t.Name()
 	// Create the docs //
 	// Doc rev 1
-	version1 := activeRT.PutDocDirectly(docID, rest.JsonToMap(t, `{"key":"12","channels": ["rev1chan"]}`))
+	version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
 	activeRT.WaitForVersion(docID, version1)
 
 	// doc rev 2
-	version2 := activeRT.UpdateDocDirectly(docID, version1, rest.JsonToMap(t, `{"key":"12","channels":["rev2+3chan"]}`))
+	version2 := activeRT.UpdateDoc(docID, version1, `{"key":"12","channels":["rev2+3chan"]}`)
 	activeRT.WaitForVersion(docID, version2)
 
 	// Doc rev 3
-	version3 := activeRT.UpdateDocDirectly(docID, version2, rest.JsonToMap(t, `{"key":"3","channels":["rev2+3chan"]}`))
+	version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
 	activeRT.WaitForVersion(docID, version3)
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
@@ -7323,7 +7321,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	require.NoError(t, err)
 
 	docID := "test"
-	version := activeRT.PutDocDirectly(docID, rest.JsonToMap(t, `{"prop":true}`))
+	version := activeRT.PutDoc(docID, `{"prop":true}`)
 
 	replConfig := `
 {

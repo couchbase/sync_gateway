@@ -257,7 +257,7 @@ func TestCollectionsReplication(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		version := btc.rt.PutDocDirectly(docID, db.Body{})
+		version := btc.rt.PutDoc(docID, "{}")
 
 		btc.rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
@@ -283,8 +283,8 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 		docName := "doc1"
 		body := `{"foo":"bar"}`
 		versions := make([]DocVersion, 0, len(btc.rt.GetKeyspaces()))
-		for _, collection := range btc.rt.GetDbCollections() {
-			docVersion := rt.PutDocDirectlyInCollection(collection, docName, db.Body{"foo": "bar"})
+		for _, ks := range btc.rt.GetKeyspaces() {
+			docVersion := rt.PutDocWithKeyspace(ks, docName, `{"foo": "bar"}`)
 			versions = append(versions, docVersion)
 		}
 		btc.rt.WaitForPendingChanges()
@@ -323,7 +323,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 		collectionDocIDs := make(map[string][]string)
 		collectionVersions := make(map[string][]DocVersion)
 		require.Len(t, btc.rt.GetKeyspaces(), 2)
-		for i, collection := range btc.rt.GetDbCollections() {
+		for i, ks := range btc.rt.GetKeyspaces() {
 			// intentionally create collections with different size replications to ensure one collection finishing won't cancel another one
 			docCount := 10
 			if i == 0 {
@@ -332,7 +332,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 			blipName := btc.rt.getCollectionsForBLIP()[i]
 			for j := 0; j < docCount; j++ {
 				docName := fmt.Sprintf("doc%d", j)
-				version := rt.PutDocDirectlyInCollection(collection, docName, db.Body{"foo": "bar"})
+				version := rt.PutDocWithKeyspace(ks, docName, `{"foo": "bar"}`)
 
 				collectionVersions[blipName] = append(collectionVersions[blipName], version)
 				collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
