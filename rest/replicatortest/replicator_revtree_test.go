@@ -350,7 +350,7 @@ func TestActiveReplicatorPushRevtreeLargeDiffInSize(t *testing.T) {
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
 
-	remoteDocRT2, err := rt2collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+	remoteDocRT2, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 	rest.RequireDocVersionEqual(t, version, remoteDocRT2.ExtractDocVersion())
 
