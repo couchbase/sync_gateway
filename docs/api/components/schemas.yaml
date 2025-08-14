@@ -548,19 +548,19 @@ Changes-feed:
             description: List of document leafs with each leaf containing only a `rev` field.
             type: array
             items:
-              type: object
-              minProperties: 1
-              maxProperties: 1
-              properties:
-                rev:
-                  description: |
-                    The new Revision ID associated with the change.
-                    This is usually omitted in favour of the `cv` property when the `version_type` preference is set to `cv`,
-                    however data written prior to Sync Gateway 4.0 can still emit `rev` only change entries if we do not have a `cv` available for that document revision.
-                  type: string
-                cv:
-                  description: The new Current Version associated with the change. This value requires the `version_type` preference set to `cv`.
-                  type: string
+              oneOf:
+                - type: object
+                  properties:
+                    rev:
+                      description: The Revision Tree ID associated with the change. This may be returned even when the `version_type` preference is set to `cv` if this document was an old revision written prior to upgrading to SG 4.0+
+                      type: string
+                  title: Revision Tree ID
+                - type: object
+                  properties:
+                    cv:
+                      description: The HLV Current Version associated with the change. This value requires the `version_type` preference set to `cv` and this document revision being written through SG 4.0+
+                      type: string
+                  title: HLV Current Version
             uniqueItems: true
       uniqueItems: true
     last_seq:
