@@ -662,7 +662,9 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	rt.WaitForPendingChanges()
 
 	receivedChangesRequestWg := sync.WaitGroup{}
+	receivedChangesRequestWg.Add(2)
 	revsFinishedWg := sync.WaitGroup{}
+	revsFinishedWg.Add(1)
 
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 		defer revsFinishedWg.Done()
@@ -682,6 +684,7 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	}
 
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+		defer receivedChangesRequestWg.Done()
 
 		log.Printf("got changes message: %+v", request)
 		body, err := request.Body()
@@ -713,7 +716,6 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 			require.NoError(t, err)
 			response.SetBody(emptyResponseValBytes)
 		}
-		receivedChangesRequestWg.Done()
 	}
 
 	subChangesRequest := bt.newRequest()
@@ -721,11 +723,6 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	subChangesRequest.Properties["continuous"] = "false"
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
-	// changes will be called again with empty changes so hence the wait group of 2
-	receivedChangesRequestWg.Add(2)
-
-	// expect 1 rev message
-	revsFinishedWg.Add(1)
 
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
