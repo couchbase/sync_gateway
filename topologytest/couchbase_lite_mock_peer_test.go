@@ -76,7 +76,10 @@ func (p *CouchbaseLiteMockPeer) GetDocumentIfExists(dsName sgbucket.DataStoreNam
 	if meta == nil {
 		return DocMetadata{}, nil, false
 	}
-	require.NotNil(p.TB(), meta, "docID:%s not found on %s", docID, p)
+	// document is tombstone
+	if bodyBytes == nil {
+		return *meta, nil, true
+	}
 	require.NoError(p.TB(), base.JSONUnmarshal(bodyBytes, &body))
 	return *meta, body, true
 }
