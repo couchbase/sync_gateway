@@ -3601,7 +3601,7 @@ func TestBlipPullConflict(t *testing.T) {
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			_, _, postConflictCBLVersion := client.GetDoc(docID)
-			assert.NotEqual(t, preConflictCBLVersion, postConflictCBLVersion)
+			assert.Greater(c, postConflictCBLVersion.CV.Value, preConflictCBLVersion.CV.Value)
 		}, time.Second*10, time.Millisecond*10, "Expected sgVersion and cblVersion to be different")
 
 		postConflictDoc, postConflictHLV, postConflictVersion := client.GetDoc(docID)
