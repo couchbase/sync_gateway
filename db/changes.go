@@ -204,17 +204,13 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 	}
 	if options.IncludeDocs {
 		var err error
-		// TODO: CBG-4776 - fetch by CV
-		if !isLegacyRev(revID) {
-			base.AssertfCtx(ctx, "AddDocInstanceToChangeEntry: got IncludeDocs and a CV - can't fetch doc body yet")
-			return nil
-		}
-
-		entry.Doc, _, err = db.get1xRevFromDoc(ctx, doc, revID, false)
-		db.dbStats().Database().NumDocReadsRest.Add(1)
+		// TODO: CBG-4776 - fetch by CV with sane APIs
+		err = db.AddDocToChangeEntryUsingRevCache(ctx, entry, revID)
 		if err != nil {
-			base.WarnfCtx(ctx, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
+			base.WarnfCtx(ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
+			return err
 		}
+		db.dbStats().Database().NumDocReadsRest.Add(1)
 	}
 
 	return nil
