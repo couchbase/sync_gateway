@@ -1366,9 +1366,9 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 	switch options.VersionType {
 	case ChangesVersionTypeCV:
-		row.Changes = []ChangeByVersionType{{options.VersionType: populatedDoc.HLV.GetCurrentVersionString()}}
+		row.Changes = []ChangeByVersionType{{ChangesVersionTypeCV: populatedDoc.HLV.GetCurrentVersionString()}}
 	case "", ChangesVersionTypeRevTreeID:
-		row.Changes = []ChangeByVersionType{{options.VersionType: populatedDoc.CurrentRev}}
+		row.Changes = []ChangeByVersionType{{ChangesVersionTypeRevTreeID: populatedDoc.CurrentRev}}
 	default:
 		base.AssertfCtx(ctx, "createChangeEntry called with an unsupported VersionType: %s", options.VersionType)
 	}
