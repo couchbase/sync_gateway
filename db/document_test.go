@@ -672,3 +672,77 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	assert.Equal(t, float64(2), bye["ver"])
 	assert.True(t, bye["stub"].(bool))
 }
+
+func TestAlignRevTreeHistory(t *testing.T) {
+	testCases := []struct {
+		name            string
+		currentRev      string
+		localRevTree    []string
+		incomingRevTree []string
+		expectedRevTree []string
+	}{
+		{
+			name:            "common history between the two",
+			currentRev:      "2-abc",
+			localRevTree:    []string{"2-abc", "1-abc"},
+			incomingRevTree: []string{"5-abc", "4-abc", "3-abc", "2-abc", "1-abc"},
+			expectedRevTree: []string{"5-abc", "4-abc", "3-abc", "2-abc", "1-abc"},
+		},
+		{
+			name:            "gap in histories, incoming larger",
+			currentRev:      "3-abc",
+			localRevTree:    []string{"1-abc", "2-abc", "3-abc"},
+			incomingRevTree: []string{"12-abc", "10-abc", "11-abc"},
+			expectedRevTree: []string{"12-abc", "10-abc", "11-abc"},
+		},
+		{
+			name:            "gap in histories, local larger",
+			currentRev:      "3-abc",
+			localRevTree:    []string{"12-abc", "11-abc", "10-abc"},
+			incomingRevTree: []string{"3-abc", "2-abc", "1-abc"},
+			expectedRevTree: []string{"3-abc", "2-abc", "1-abc"},
+		},
+		{
+			name:            "no common history, one generation above",
+			currentRev:      "3-abc",
+			localRevTree:    []string{"3-abc", "2-abc", "1-abc"},
+			incomingRevTree: []string{"5-abc", "4-abc"},
+			expectedRevTree: []string{"5-abc", "4-abc"},
+		},
+		{
+			name:            "one common rev between the two",
+			currentRev:      "4-abc",
+			localRevTree:    []string{"4-abc", "3-abc", "2-abc", "1-abc"},
+			incomingRevTree: []string{"5-abc", "4-abc"},
+			expectedRevTree: []string{"5-abc", "4-abc", "3-abc", "2-abc", "1-abc"},
+		},
+		{
+			name:            "same number of rev but diff in history",
+			currentRev:      "4-abc",
+			localRevTree:    []string{"4-abc", "3-abc", "2-abc", "1-abc"},
+			incomingRevTree: []string{"4-def", "3-def", "2-abc", "1-abc"},
+			expectedRevTree: []string{"4-def", "3-def", "2-abc", "1-abc"},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			// setup local rev tree for doc
+			var parent string
+			doc := NewDocument("doc")
+			doc.CurrentRev = tc.currentRev
+			for i := range tc.localRevTree {
+				err := doc.History.addRevision("doc", RevInfo{
+					ID:     tc.localRevTree[i],
+					Parent: parent,
+				})
+				parent = tc.localRevTree[i]
+				require.NoError(t, err)
+			}
+
+			err := doc.alignRevTreeHistory(ctx, doc, tc.incomingRevTree)
+			require.NoError(t, err)
+			base.RequireKeysEqual(t, tc.expectedRevTree, doc.History)
+		})
+	}
+}

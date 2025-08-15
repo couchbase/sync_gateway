@@ -1094,9 +1094,6 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
 	var legacyRevList []string
-	// we can probably use legacyRevList instead of this but to avoid hooking this up to write code we will use
-	// separate list for now, pending CBG-4790
-	var revTreeProperty []string
 	changeIsVector := strings.Contains(rev, "@")
 	if !bh.useHLV() || !changeIsVector {
 		newDoc.RevID = rev
@@ -1113,11 +1110,13 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		newDoc.HLV = incomingHLV
 	}
 
+	isBlipRevTreeProperty := false
 	// if the client is SGW and there are no legacy revs being sent (i.e. doc is not a pre-upgraded doc) check the rev tree property
 	if bh.clientType == BLIPClientTypeSGR2 && len(legacyRevList) == 0 {
 		revTree, ok := rq.Properties[RevMessageTreeHistory]
 		if ok {
-			revTreeProperty = append(revTreeProperty, strings.Split(revTree, ",")...) // nolint: all
+			legacyRevList = append(legacyRevList, strings.Split(revTree, ",")...)
+			isBlipRevTreeProperty = true
 		}
 	}
 
@@ -1341,7 +1340,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.useHLV() && changeIsVector {
-		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList)
+		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList, isBlipRevTreeProperty)
 	} else if bh.conflictResolver != nil {
 		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	} else {

@@ -3537,7 +3537,7 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 		t.Run(fmt.Sprintf("allowConflicts=%t", allowConflicts), func(t *testing.T) {
 			btcRunner := NewBlipTesterClientRunner(t)
 
-			btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4735 skipped pending work in this ticket
+			btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4786 skipped pending work in this ticket
 
 			btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 				rt := NewRestTester(t, &RestTesterConfig{
