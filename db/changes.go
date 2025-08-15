@@ -1370,7 +1370,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	case "", ChangesVersionTypeRevTreeID:
 		row.Changes = []ChangeByVersionType{{ChangesVersionTypeRevTreeID: populatedDoc.CurrentRev}}
 	default:
-		base.AssertfCtx(ctx, "createChangeEntry called with an unsupported VersionType: %s", options.VersionType)
+		base.AssertfCtx(ctx, "createChangeEntry called with an unsupported VersionType: %q", options.VersionType)
 	}
 
 	row.Deleted = populatedDoc.Deleted
@@ -1424,7 +1424,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 func (options ChangesOptions) String() string {
 	return fmt.Sprintf(
-		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, Revocations: %t, RequestPlusSeq: %d, VersionType: %s}`,
+		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, Revocations: %t, RequestPlusSeq: %d, VersionType: %q}`,
 		options.Since,
 		options.Limit,
 		options.Conflicts,
