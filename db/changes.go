@@ -1415,8 +1415,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	row.Removed = base.SetFromArray(removedChannels)
 	if options.IncludeDocs || options.Conflicts {
 		if err := db.AddDocInstanceToChangeEntry(ctx, row, populatedDoc, options); err != nil {
-			base.WarnfCtx(ctx, "Unable to add doc instance to change entry for %s: %v", base.UD(docid), err)
-			return nil
+			base.WarnfCtx(ctx, "Unable to add doc instance to change entry for %s: %v - will return metadata only", base.UD(docid), err)
 		}
 	}
 
