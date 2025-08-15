@@ -181,7 +181,6 @@ func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx conte
 	if err != nil {
 		return err
 	}
-	// TODO: Stamp CV?
 	entry.Doc, err = rev.As1xBytes(ctx, db, nil, nil, false)
 	return err
 }
