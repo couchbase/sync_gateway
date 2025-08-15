@@ -65,7 +65,11 @@ func ParseChangesVersionType(s string) (ChangesVersionType, error) {
 }
 
 // ChangeVersionString returns the first version string we found in the ChangeEntry.
-func (ce *ChangeEntry) ChangeVersionString() string {
+func (ce *ChangeEntry) ChangeVersionString(ctx context.Context) string {
+	if len(ce.Changes) == 0 {
+		base.AssertfCtx(ctx, "ChangesEntry has no changes: %s", ce.String())
+		return ""
+	}
 	// pick just the first entry in changes
 	for _, changeVersionString := range ce.Changes[0] {
 		// whichever version is present we'll return it - only expected to have one version type populated - since the feed is initialized with a preferred version type.
@@ -163,7 +167,7 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 
 	} else if options.IncludeDocs {
 		// Retrieve document via rev cache
-		revID := entry.ChangeVersionString()
+		revID := entry.ChangeVersionString(ctx)
 		err := db.AddDocToChangeEntryUsingRevCache(ctx, entry, revID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
@@ -187,7 +191,7 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 
 	includeConflicts := options.Conflicts && entry.branched
 
-	revID := entry.ChangeVersionString()
+	revID := entry.ChangeVersionString(ctx)
 	if includeConflicts {
 		// should've been validated in the handler layer but be defensive
 		if options.VersionType == ChangesVersionTypeCV {
@@ -592,7 +596,7 @@ func (ce *ChangeEntry) AuditReadEvent(ctx context.Context) {
 	}
 	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
 		base.AuditFieldDocID:      ce.ID,
-		base.AuditFieldDocVersion: ce.ChangeVersionString(),
+		base.AuditFieldDocVersion: ce.ChangeVersionString(ctx),
 	})
 }
 
