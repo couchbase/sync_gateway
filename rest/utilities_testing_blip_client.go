@@ -16,7 +16,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"iter"
-	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -325,35 +324,16 @@ func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVec
 	incomingCV := incomingHLV.ExtractCurrentVersionFromHLV()
 	localCV := localHLV.ExtractCurrentVersionFromHLV()
 	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
+	// this check is also performed in the function below but we should keep this here for extra context on FailNow call
 	if localCV.Equal(*incomingCV) {
 		require.FailNow(t, fmt.Sprintf("incoming CV %#+v is equal to local revision %#+v - this should've been filtered via changes response before ending up as a rev. This is only true if there is a single replication occurring, two simultaneous replications (e.g. P2P) could cause this. If there are multiple replications, modify code.", incomingCV, latestRev))
 	}
-	// standard no conflict case. In the simple case, this happens when:
-	//  - SG writes document 1@cbs1
-	//  - CBL pulls document 1@cbs1
-	//  - SG writes document 2@cbs1
-	if incomingHLV.DominatesSource(*localCV) {
-		return false
-	}
 
-	// local revision is newer than incoming revision. Common case:
-	// - CBL writes document 1@cbl1
-	// - CBL pushes to SG as 1@cbl1
-	// - CBL pulls document 1@cbl1
-	//
-	// NOTE: without P2P replication, this should not be the case and we would not get this revision, since CBL
-	// would respond to a SG changes message that CBL does not need this revision
-	if localHLV.DominatesSource(*incomingCV) {
+	inConflict, err := db.IsInConflict(t.Context(), &localHLV, incomingHLV)
+	if err != nil {
 		require.FailNow(t, fmt.Sprintf("incoming CV %#+v has lower version than the local revision %#+v - this should've been filtered via changes response before ending up as a rev. blip tester would reply that to Sync Gateway that it doesn't need this revision", incomingCV, localHLV))
-		return false
 	}
-	// Check if conflict has been previously resolved.
-	// - If merge versions are empty, then it has not be resolved.
-	// - If merge versions do not match, then it has not been resolved.
-	if len(incomingHLV.MergeVersions) != 0 && len(localHLV.MergeVersions) != 0 && maps.Equal(incomingHLV.MergeVersions, localHLV.MergeVersions) {
-		return false
-	}
-	return true
+	return inConflict
 }
 
 func (btcc *BlipTesterCollectionClient) _resolveConflict(incomingHLV *db.HybridLogicalVector, incomingBody []byte, localDoc *clientDocRev) (body []byte, hlv db.HybridLogicalVector) {

@@ -1413,3 +1413,52 @@ func TestAddVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestIsInConflict(t *testing.T) {
+	testCases := []struct {
+		name               string
+		localHLV           string
+		incomingHLV        string
+		expectedInConflict bool
+		expectedError      bool
+	}{
+		{
+			name:          "CV equal",
+			localHLV:      "111@abc;123@def",
+			incomingHLV:   "111@abc;123@ghi",
+			expectedError: true,
+		},
+		{
+			name:        "no conflict case",
+			localHLV:    "111@abc;123@def",
+			incomingHLV: "112@abc;123@ghi",
+		},
+		{
+			name:          "local revision is newer",
+			localHLV:      "111@abc;123@def",
+			incomingHLV:   "100@abc;123@ghi",
+			expectedError: true,
+		},
+		{
+			name:        "merge versions match",
+			localHLV:    "130@abc,123@def,100@ghi;50@jkl",
+			incomingHLV: "150@mno,123@def,100@ghi;50@jkl",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			localHLV, _, err := extractHLVFromBlipString(tc.localHLV)
+			require.NoError(t, err)
+			incomingHLV, _, err := extractHLVFromBlipString(tc.incomingHLV)
+			require.NoError(t, err)
+
+			inConflict, err := IsInConflict(t.Context(), localHLV, incomingHLV)
+			if tc.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.expectedInConflict, inConflict)
+		})
+	}
+}
