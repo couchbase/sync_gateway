@@ -545,7 +545,7 @@ Changes-feed:
             description: The document ID the change happened on.
             type: string
           changes:
-            description: List of document leafs with each leaf containing only a `rev` field.
+            description: List of document leafs with each leaf containing only a `rev` or `cv` field.
             type: array
             items:
               oneOf:
