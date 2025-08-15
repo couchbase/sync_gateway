@@ -712,21 +712,21 @@ func IsInConflict(ctx context.Context, localHLV, incomingHLV *HybridLogicalVecto
 	}
 
 	// standard no conflict case. In the simple case, this happens when:
-	//  - Client A writes document 1@cbs1
-	//  - Client B pulls document 1@cbs1 from Client A
-	//  - Client A writes document 2@cbs1
-	//	- Client B pulls document 2@cbs1 from Client A
+	//  - Client A writes document 1@srcA
+	//  - Client B pulls document 1@srcA from Client A
+	//  - Client A writes document 2@srcA
+	//	- Client B pulls document 2@srcA from Client A
 	if incomingHLV.DominatesSource(*localCV) {
 		return false, nil
 	}
 
 	// local revision is newer than incoming revision. Common case:
-	// - Client A writes document 1@cbl1
-	// - Client A pushes to Client B as 1@cbl1
-	// - Client A pulls document 1@cbl1 from Client B
+	// - Client A writes document 1@srcA
+	// - Client A pushes to Client B as 1@srcA
+	// - Client A pulls document 1@srcA from Client B
 	//
-	// NOTE: without P2P replication, this should not be the case and we would not get this revision, since CBL
-	// would respond to a SG changes message that CBL does not need this revision
+	// NOTE: without P2P replication, this should not be the case and we would not get this revision, since Client A
+	// would respond to a Client B changes message that Client A does not need this revision
 	if localHLV.DominatesSource(*incomingCV) {
 		return false, ErrNoNewVersionsToAdd
 	}
