@@ -9,7 +9,9 @@
 package db
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"maps"
 	"sort"
@@ -688,4 +690,51 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 
 func (hlv HybridLogicalVector) GoString() string {
 	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%#+v, MergeVersions:%#+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
+}
+
+// ErrNoNewVersionsToAdd will be thrown when there are no new versions from incoming HLV to be added to HLV that is local
+var ErrNoNewVersionsToAdd  = errors.New("no new versions to add to HLV")
+
+// IsInConflict is used to identify if two HLV's are in conflict or not. Will return boolean to indicate if in conflict
+// or not and will error for the following cases:
+//	- Local HLV dominates incoming HLV (meaning local version is a newer version that the incoming one)
+//	- Local CV matches incoming CV, so no new versions to add
+func IsInConflict(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector) (bool, error) {
+	incomingCV := incomingHLV.ExtractCurrentVersionFromHLV()
+	localCV := localHLV.ExtractCurrentVersionFromHLV()
+
+	// check if incoming CV and local CV are the same. This is needed here given that if both CV's are the same the
+	// below check to check local revision is newer than incoming revision will pass given the check and will add the
+	// incoming versions even if CV's are the same
+	if localCV.Equal(*incomingCV) {
+		base.DebugfCtx(ctx, base.KeyCRUD, "incoming CV %#+v is equal to local revision %#+v", incomingCV, localCV)
+		return false, ErrNoNewVersionsToAdd
+	}
+
+	// standard no conflict case. In the simple case, this happens when:
+	//  - SG writes document 1@cbs1
+	//  - CBL pulls document 1@cbs1
+	//  - SG writes document 2@cbs1
+	if incomingHLV.DominatesSource(*localCV) {
+		return false, nil
+	}
+
+	// local revision is newer than incoming revision. Common case:
+	// - CBL writes document 1@cbl1
+	// - CBL pushes to SG as 1@cbl1
+	// - CBL pulls document 1@cbl1
+	//
+	// NOTE: without P2P replication, this should not be the case and we would not get this revision, since CBL
+	// would respond to a SG changes message that CBL does not need this revision
+	if localHLV.DominatesSource(*incomingCV) {
+		return false, ErrNoNewVersionsToAdd
+	}
+	// Check if conflict has been previously resolved.
+	// - If merge versions are empty, then it has not be resolved.
+	// - If merge versions do not match, then it has not been resolved.
+	if len(incomingHLV.MergeVersions) != 0 && len(localHLV.MergeVersions) != 0 && maps.Equal(incomingHLV.MergeVersions, localHLV.MergeVersions) {
+		base.DebugfCtx(ctx, base.KeyVV, "merge versions match between local HLV %#v and incoming HLV %#v, conflict previously resolved", localHLV, incomingCV)
+		return false, nil
+	}
+	return true, nil
 }
