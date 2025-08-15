@@ -163,7 +163,7 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 	}
 }
 
-func  TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
+func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)
 
