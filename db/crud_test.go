@@ -1495,6 +1495,32 @@ func TestGetChannelsAndAccess(t *testing.T) {
 	}
 }
 
+func TestKnownRevsForCheckChangeVersion(t *testing.T) {
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// have three revisions on db for the doc
+	revID, doc, err := collection.Put(ctx, t.Name(), Body{"some": "data"})
+	require.NoError(t, err)
+	for i := 0; i < 2; i++ {
+		revID, doc, err = collection.Put(ctx, t.Name(), Body{"some": "data", BodyRev: revID})
+		require.NoError(t, err)
+	}
+
+	// call CheckChangeVersion with fake VV and the docID from above
+	missing, possible := collection.CheckChangeVersion(ctx, t.Name(), "123@src")
+
+	// assert that the missing revision is the CV and known revID is current revIDS of the document
+	require.Len(t, missing, 1)
+	require.Len(t, possible, 2)
+	// db's CV and revID of the doc should be returned as known revs by CheckChangeVersion
+	assert.Equal(t, "123@src", missing[0])
+	assert.Equal(t, doc.HLV.GetCurrentVersionString(), possible[0])
+	assert.Equal(t, doc.CurrentRev, possible[1])
+}
+
 func TestPutStampClusterUUID(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("This test only works on Couchbase Server and with XATTRS enabled")

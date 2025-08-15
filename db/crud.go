@@ -1211,7 +1211,15 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string, revTreeISGRProperty bool) (doc *Document, cv *Version, newRevID string, err error) {
+// PutExistingCurrentVersion:
+//   - newDoc: new incoming doc
+//   - newDocHLV: new incoming doc's HLV
+//   - existsingDoc: existing doc in bucket (if present)
+//   - revTreeHistory: list of revID's from the incoming docs history (including docs current rev).
+//   - alignRevTrees: if this is true then we will align the new write with the incoming docs rev tree. If this is
+//     false and len(revTreeHistory) > 0 then this meaans the lcoal version of this doc is legacy doc so this parameter
+//     will be used to check for conflicts.
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string, alignRevTrees bool) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
 		doc, unmarshalErr := db.unmarshalDocumentWithXattrs(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs, existingDoc.Cas, DocUnmarshalRev)
@@ -1265,7 +1273,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			// if incoming rev tree list is from a legacy pre upgraded doc, we should have new revID generation based
 			// off the previous current rev +1. If we have rev tree list filled from ISGR's rev tree property then we
 			// should use the current rev of inc
-			if !revTreeISGRProperty {
+			if !alignRevTrees {
 				newGeneration = prevGeneration + 1
 			} else {
 				newGeneration = prevGeneration
@@ -1283,7 +1291,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			if addNewerVersionsErr != nil {
 				return nil, nil, false, nil, addNewerVersionsErr
 			}
-			if revTreeISGRProperty {
+			if alignRevTrees {
 				err = doc.alignRevTreeHistory(ctx, newDoc, revTreeHistory)
 				if err != nil {
 					return nil, nil, false, nil, err
@@ -1302,7 +1310,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 				// the new document has a dominating hlv, so we can ignore any legacy rev revtree information on the incoming document
 				revTreeConflictChecked = true
-				if !revTreeISGRProperty {
+				if !alignRevTrees {
 					previousRevTreeID = doc.CurrentRev
 				} else {
 					// align rev tree here for ISGR replications
@@ -1313,14 +1321,14 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 			} else {
 				// if the legacy rev list is from ISGR property, we should not do a conflict check
-				if len(revTreeHistory) > 0 && !revTreeISGRProperty {
+				if len(revTreeHistory) > 0 && !alignRevTrees {
 					// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
 					parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
 					if err != nil {
 						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s, and conflict found in rev tree history", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
 						return nil, nil, false, nil, err
 					}
-					err = doc.addNewerRevisionsToHistory(newDoc, currentRevIndex, parent, revTreeHistory)
+					_, err = doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
@@ -1342,13 +1350,15 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		}
 		// rev tree conflict check if we have rev tree history to check against + finds current rev index to allow us
 		// to add any new revision to rev tree below.
-		// Only check for rev tree conflicts if we haven't already checked above
-		if !revTreeConflictChecked && len(revTreeHistory) > 0 && !revTreeISGRProperty {
+		// Only check for rev tree conflicts if we haven't already checked above AND if alignRevTrees is false given
+		// alignRevTrees can only be true for non legacy rev writes meaning when this is true we should be doing our
+		// conflict checking with incoming HLV
+		if !revTreeConflictChecked && len(revTreeHistory) > 0 && !alignRevTrees {
 			parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
 			if err != nil {
 				return nil, nil, false, nil, err
 			}
-			err = doc.addNewerRevisionsToHistory(newDoc, currentRevIndex, parent, revTreeHistory)
+			_, err = doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
 			if err != nil {
 				return nil, nil, false, nil, err
 			}
@@ -1362,7 +1372,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 
 		// generate rev id for new arriving doc
 		var newRev string
-		if !revTreeISGRProperty {
+		if !alignRevTrees {
 			// create a new revID for incoming write
 			strippedBody, _ := stripInternalProperties(newDoc._body)
 			encoding, err := base.JSONMarshalCanonical(strippedBody)
@@ -3366,6 +3376,9 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	}
 }
 
+// alignRevTreeHistory will take incoming rev tree list and add any newer revisions to the local document. If there is
+// history between the incoming rev tree and local rev tree differs then the local docs rev tree will be overwritten to
+// the incoming rev tree.
 func (doc *Document) alignRevTreeHistory(ctx context.Context, newDoc *Document, revTreeHistory []string) error {
 	currentRevIndex := len(revTreeHistory)
 	parent := ""
@@ -3381,30 +3394,36 @@ func (doc *Document) alignRevTreeHistory(ctx context.Context, newDoc *Document, 
 		base.DebugfCtx(ctx, base.KeyCRUD, "incoming rev tree history has different history than local doc %s, aligning local doc history with incoming rev tree history", base.UD(doc.ID))
 		// clean local history and make way for incoming history to replace it
 		doc.History = make(RevTree)
+		// reset current rev index and parent given we are building a new rev tree now
+		currentRevIndex = len(revTreeHistory)
+		parent = ""
 	}
 
-	err := doc.addNewerRevisionsToHistory(newDoc, currentRevIndex, parent, revTreeHistory)
+	newRev, err := doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
 	if err != nil {
 		return err
 	}
+	doc.CurrentRev = newRev
 	return nil
 }
 
-func (doc *Document) addNewerRevisionsToHistory(newDoc *Document, currentRevIndex int, parent string, docHistory []string) error {
+// addNewerRevisionsToRevTreeHistory will add any newer rev tree id's to the local document history
+func (doc *Document) addNewerRevisionsToRevTreeHistory(newDoc *Document, currentRevIndex int, parent string, docHistory []string) (string, error) {
+	// currentRevIndex here is the index of the incoming rev tree list to start from.
 	for i := currentRevIndex - 1; i >= 0; i-- {
 		err := doc.History.addRevision(newDoc.ID,
 			RevInfo{
 				ID:      docHistory[i],
-				Parent:  parent,
+				Parent:  parent, // set the parent of this revision to the element of docHistory from the last iteration
 				Deleted: i == 0 && newDoc.Deleted})
 
 		if err != nil {
-			return err
+			return "", err
 		}
 		parent = docHistory[i]
 	}
-	doc.CurrentRev = parent
-	return nil
+	// return last element added from docHistory, this will be the doc's new current rev for writes that are aligning rev tree
+	return parent, nil
 }
 
 const (
