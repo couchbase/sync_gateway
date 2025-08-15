@@ -58,7 +58,7 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 			ctx1 := rt1.Context()
 
 			docHistoryList := make([]string, 0, 11)
-			docID := "doc1"
+			docID := "doc1_" + tc.name
 			var version rest.DocVersion
 			if tc.replicationType == db.ActiveReplicatorTypePull {
 				version = rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","channels":["alice"]}`))
@@ -95,7 +95,7 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 				rt1Version, _ := rt1.GetDoc(docID)
 				rest.RequireDocVersionEqual(t, version, rt1Version)
 			} else {
-				changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+				changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 				changesResults.RequireDocIDs(t, []string{docID})
 
 				rt2Version, _ := rt2.GetDoc(docID)

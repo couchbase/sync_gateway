@@ -732,11 +732,12 @@ func TestAlignRevTreeHistory(t *testing.T) {
 			doc := NewDocument("doc")
 			doc.CurrentRev = tc.currentRev
 			for i := range tc.localRevTree {
-				doc.History.addRevision("doc", RevInfo{
+				err := doc.History.addRevision("doc", RevInfo{
 					ID:     tc.localRevTree[i],
 					Parent: parent,
 				})
 				parent = tc.localRevTree[i]
+				require.NoError(t, err)
 			}
 
 			err := doc.alignRevTreeHistory(ctx, doc, tc.incomingRevTree)
