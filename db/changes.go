@@ -51,6 +51,8 @@ const (
 	ChangesVersionTypeCV        ChangesVersionType = "cv"  // Use current version in changes feed entries
 )
 
+// ParseChangesVersionType parses a string into a ChangesVersionType.
+// If "" is passed, it defaults to ChangesVersionTypeRevTreeID as a default fallback.
 func ParseChangesVersionType(s string) (ChangesVersionType, error) {
 	switch ChangesVersionType(s) {
 	case "", ChangesVersionTypeRevTreeID:
