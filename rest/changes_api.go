@@ -501,7 +501,7 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 					break
 				}
 
-				change.AuditReadEvent(h.ctx(), options.VersionType)
+				change.AuditReadEvent(h.ctx())
 			}
 		} else {
 			_, err = h.response.Write([]byte("\n"))
@@ -578,7 +578,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				return err
 			}
 			for _, change := range changes {
-				change.AuditReadEvent(h.ctx(), options.VersionType)
+				change.AuditReadEvent(h.ctx())
 			}
 			return err
 		})
