@@ -329,7 +329,7 @@ func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVec
 		require.FailNow(t, fmt.Sprintf("incoming CV %#+v is equal to local revision %#+v - this should've been filtered via changes response before ending up as a rev. This is only true if there is a single replication occurring, two simultaneous replications (e.g. P2P) could cause this. If there are multiple replications, modify code.", incomingCV, latestRev))
 	}
 
-	inConflict, err := db.IsInConflict(nil, &localHLV, incomingHLV)
+	inConflict, err := db.IsInConflict(t.Context(), &localHLV, incomingHLV)
 	if err != nil {
 		require.FailNow(t, fmt.Sprintf("incoming CV %#+v has lower version than the local revision %#+v - this should've been filtered via changes response before ending up as a rev. blip tester would reply that to Sync Gateway that it doesn't need this revision", incomingCV, localHLV))
 	}

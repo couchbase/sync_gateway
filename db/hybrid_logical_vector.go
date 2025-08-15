@@ -693,12 +693,12 @@ func (hlv HybridLogicalVector) GoString() string {
 }
 
 // ErrNoNewVersionsToAdd will be thrown when there are no new versions from incoming HLV to be added to HLV that is local
-var ErrNoNewVersionsToAdd  = errors.New("no new versions to add to HLV")
+var ErrNoNewVersionsToAdd = errors.New("no new versions to add to HLV")
 
 // IsInConflict is used to identify if two HLV's are in conflict or not. Will return boolean to indicate if in conflict
 // or not and will error for the following cases:
-//	- Local HLV dominates incoming HLV (meaning local version is a newer version that the incoming one)
-//	- Local CV matches incoming CV, so no new versions to add
+//   - Local HLV dominates incoming HLV (meaning local version is a newer version that the incoming one)
+//   - Local CV matches incoming CV, so no new versions to add
 func IsInConflict(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector) (bool, error) {
 	incomingCV := incomingHLV.ExtractCurrentVersionFromHLV()
 	localCV := localHLV.ExtractCurrentVersionFromHLV()
