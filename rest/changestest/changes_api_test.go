@@ -837,6 +837,10 @@ func assertChangeEntryMatches(t *testing.T, expectedChangeEntryString string, re
 		var resultBody db.Body
 		assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
 		assert.NoError(t, resultBody.Unmarshal(result.Doc))
+
+		// strip out _cv - it's not deterministic in tests like _rev is, but also tests really shouldn't be comparing full bodies! It's so brittle...
+		delete(resultBody, db.BodyCV)
+
 		db.AssertEqualBodies(t, expectedBody, resultBody)
 	} else {
 		assert.Equal(t, expectedChange.Doc, result.Doc)
@@ -1893,6 +1897,10 @@ func TestChangesIncludeDocs(t *testing.T) {
 			var resultBody db.Body
 			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
 			assert.NoError(t, resultBody.Unmarshal(result.Doc))
+
+			// strip out _cv - it's not deterministic in tests like _rev is, but also tests really shouldn't be comparing full bodies! It's so brittle...
+			delete(resultBody, db.BodyCV)
+
 			db.AssertEqualBodies(t, expectedBody, resultBody)
 		} else {
 			assert.Equal(t, expectedChange.Doc, result.Doc)

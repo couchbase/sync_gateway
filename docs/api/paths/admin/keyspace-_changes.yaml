@@ -102,6 +102,18 @@ get:
       schema:
         type: boolean
         default: false
+    - name: version_type
+      in: query
+      description: The preferred type of document versioning to use for the changes feed.
+      schema:
+        type: string
+        default: rev
+        enum:
+          - rev
+          - cv
+        x-enumDescriptions:
+          rev: 'Revision Tree IDs. For example: 1-293a80ce8f4874724732f27d35b3959a13cd96e0'
+          cv: 'HLV Current Version. For example: 1854e4e557cc0000@zTWkmBiYZgNQo7BHVZrB/Q'
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed
@@ -166,6 +178,16 @@ post:
               description: 'When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.'
               type: boolean
               default: false
+            version_type:
+              description: The preferred type of document versioning to use for the changes feed.
+              type: string
+              default: rev
+              enum:
+                - rev
+                - cv
+              x-enumDescriptions:
+                rev: 'Revision Tree IDs. For example: 1-293a80ce8f4874724732f27d35b3959a13cd96e0'
+                cv: 'HLV Current Version. For example: 1854e4e557cc0000@zTWkmBiYZgNQo7BHVZrB/Q'
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed

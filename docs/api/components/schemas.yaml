@@ -545,14 +545,22 @@ Changes-feed:
             description: The document ID the change happened on.
             type: string
           changes:
-            description: List of document leafs with each leaf containing only a `rev` field.
+            description: List of document leafs with each leaf containing only a `rev` or `cv` field.
             type: array
             items:
-              type: object
-              properties:
-                rev:
-                  description: The new revision that was caused by that change.
-                  type: string
+              oneOf:
+                - type: object
+                  properties:
+                    rev:
+                      description: The Revision Tree ID associated with the change. This may be returned even when the `version_type` preference is set to `cv` if this document was an old revision written prior to upgrading to SG 4.0+
+                      type: string
+                  title: Revision Tree ID
+                - type: object
+                  properties:
+                    cv:
+                      description: The HLV Current Version associated with the change. This value requires the `version_type` preference set to `cv` and this document revision being written through SG 4.0+
+                      type: string
+                  title: HLV Current Version
             uniqueItems: true
       uniqueItems: true
     last_seq:

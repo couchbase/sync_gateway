@@ -883,10 +883,19 @@ func (cr ChangesResults) Summary() string {
 	return strings.Join(revs, ", ")
 }
 
-// RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
-func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
-	// CV will only be populated if changes requests it
-	require.Equal(t, expected.RevTreeID, changeRev["rev"], "Expected rev %s, got %s", expected.RevTreeID, changeRev["rev"])
+// RequireChangeRev asserts that the given db.ChangeByVersionType returned a /_changes feed has the expected DocVersion entry, for a given versionType (rev or cv)
+func RequireChangeRev(t *testing.T, expected DocVersion, changeRev db.ChangeByVersionType, versionType db.ChangesVersionType) {
+	// Only one version type will be populated on a changes feed, based on what the original request demanded and what version types are available on that particular revision.
+	var expectedStr string
+	switch versionType {
+	case db.ChangesVersionTypeRevTreeID:
+		expectedStr = expected.RevTreeID
+	case db.ChangesVersionTypeCV:
+		expectedStr = expected.CV.String()
+	default:
+		t.Fatalf("Unexpected version type: %q", versionType)
+	}
+	require.Equalf(t, expectedStr, changeRev[versionType], "Expected changeRev[%q]==%s, got %s", versionType, expected.RevTreeID, changeRev[versionType])
 }
 
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {

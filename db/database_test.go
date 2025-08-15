@@ -1718,7 +1718,7 @@ func TestConflicts(t *testing.T) {
 	assert.Equal(t, &ChangeEntry{
 		Seq:            SequenceID{Seq: 3},
 		ID:             "doc",
-		Changes:        []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
+		Changes:        []ChangeByVersionType{{"rev": "2-b"}, {"rev": "2-a"}},
 		branched:       true,
 		collectionID:   collectionID,
 		CurrentVersion: &Version{SourceID: source, Value: version},
@@ -1753,7 +1753,7 @@ func TestConflicts(t *testing.T) {
 	assert.Equal(t, &ChangeEntry{
 		Seq:            SequenceID{Seq: 4},
 		ID:             "doc",
-		Changes:        []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
+		Changes:        []ChangeByVersionType{{"rev": "2-a"}, {"rev": rev3}},
 		branched:       true,
 		collectionID:   collectionID,
 		CurrentVersion: &Version{SourceID: bucketUUID, Value: doc.Cas},

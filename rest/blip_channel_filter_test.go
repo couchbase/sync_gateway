@@ -46,7 +46,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 
 				client := btcRunner.SingleCollection(btc.id)
 				const docID = "doc1"
-				version1 := rt.PutDoc("doc1", `{"channels":["A"]}`)
+				version1 := rt.PutDocDirectly("doc1", JsonToMap(t, `{"channels":["A"]}`))
 				rt.WaitForPendingChanges()
 
 				response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=0&channels=A&include_docs=true", "", "alice")
@@ -56,10 +56,10 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 {
 	"results": [
 		{"seq":1, "id": "_user/alice", "changes":[]},
-		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+		{"seq":3, "id": "doc1", "doc": {"_id": "doc1", "_rev":"%s", "_cv":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
 	],
 	"last_seq": "3"
-}`, version1.RevTreeID, version1.RevTreeID)
+}`, version1.RevTreeID, version1.CV.String(), version1.RevTreeID)
 				require.JSONEq(t, expectedChanges1, string(response.BodyBytes()))
 
 				client.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: "A"})
@@ -67,9 +67,9 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 				btcRunner.WaitForVersion(btc.id, docID, version1)
 
 				// remove channel A from doc1
-				version2 := rt.UpdateDoc(docID, version1, `{"channels":["B"]}`)
+				version2 := rt.UpdateDocDirectly(docID, version1, JsonToMap(t, `{"channels":["B"]}`))
 				markerDocID := "marker"
-				markerDocVersion := rt.PutDoc(markerDocID, `{"channels":["A"]}`)
+				markerDocVersion := rt.PutDocDirectly(markerDocID, JsonToMap(t, `{"channels":["A"]}`))
 				rt.WaitForPendingChanges()
 
 				// alice will see doc1 rev2 with body
@@ -79,11 +79,11 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 				aliceExpectedChanges2 := fmt.Sprintf(`
 {
 	"results": [
-		{"seq":4, "id": "%s", "doc": {"_id": "%s", "_rev":"%s", "channels": ["B"]}, "changes": [{"rev":"%s"}]},
-		{"seq":5, "id": "%s", "doc": {"_id": "%s", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+		{"seq":4, "id": "%s", "doc": {"_id": "%s", "_rev":"%s", "_cv":"%s", "channels": ["B"]}, "changes": [{"rev":"%s"}]},
+		{"seq":5, "id": "%s", "doc": {"_id": "%s", "_rev":"%s", "_cv":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
 	],
 	"last_seq": "5"
-}`, docID, docID, version2.RevTreeID, version2.RevTreeID, markerDocID, markerDocID, markerDocVersion.RevTreeID, markerDocVersion.RevTreeID)
+}`, docID, docID, version2.RevTreeID, version2.CV.String(), version2.RevTreeID, markerDocID, markerDocID, markerDocVersion.RevTreeID, markerDocVersion.CV.String(), markerDocVersion.RevTreeID)
 				require.JSONEq(t, aliceExpectedChanges2, string(response.BodyBytes()))
 
 				client.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: "A"})
@@ -105,10 +105,10 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 {
 	"results": [
 		{"seq":4, "id": "doc1", "removed":["A"], "doc": {"_id": "doc1", "_rev":"%s", "_removed": true}, "changes": [{"rev":"%s"}]},
-		{"seq":5, "id": "%s", "doc": {"_id": "%s", "_rev":"%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
+		{"seq":5, "id": "%s", "doc": {"_id": "%s", "_rev":"%s", "_cv": "%s", "channels": ["A"]}, "changes": [{"rev":"%s"}]}
 	],
 	"last_seq": "5"
-}`, version2.RevTreeID, version2.RevTreeID, markerDocID, markerDocID, markerDocVersion.RevTreeID, markerDocVersion.RevTreeID)
+}`, version2.RevTreeID, version2.RevTreeID, markerDocID, markerDocID, markerDocVersion.RevTreeID, markerDocVersion.CV.String(), markerDocVersion.RevTreeID)
 				require.JSONEq(t, bobExpectedChanges2, string(response.BodyBytes()))
 			})
 		}
