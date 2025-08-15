@@ -175,6 +175,7 @@ func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx conte
 	if err != nil {
 		return err
 	}
+	// TODO: Stamp CV?
 	entry.Doc, err = rev.As1xBytes(ctx, db, nil, nil, false)
 	return err
 }
@@ -203,6 +204,12 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 	}
 	if options.IncludeDocs {
 		var err error
+		// TODO: CBG-4776 - fetch by CV
+		if !isLegacyRev(revID) {
+			base.AssertfCtx(ctx, "AddDocInstanceToChangeEntry: got IncludeDocs and a CV - can't fetch doc body yet")
+			return nil
+		}
+
 		entry.Doc, _, err = db.get1xRevFromDoc(ctx, doc, revID, false)
 		db.dbStats().Database().NumDocReadsRest.Add(1)
 		if err != nil {
@@ -559,7 +566,8 @@ func makeChangeEntry(ctx context.Context, logEntry *LogEntry, seqID SequenceID, 
 	// This allows current version to be nil in event of CV not being populated on log entry
 	// allowing omitempty to work as expected
 	if logEntry.SourceID != "" {
-		// TODO: Remove this if we change BLIP generateBlipSyncChanges and tests to use versionType and read the value from the normal Changes array... no reason to store this info in two places.
+		// TODO: CBG-4804: Remove this if we change BLIP generateBlipSyncChanges and tests to use versionType and read the value from the normal Changes array... no reason to store this info in two places.
+		// this also allows us to do a revtree ID fallback in cases where the CV is not available on an old rev, since the type is chosen inside when producing logentry and building the change row.
 		change.CurrentVersion = &Version{SourceID: logEntry.SourceID, Value: logEntry.Version}
 	}
 	if logEntry.Flags&channels.Removed != 0 {
