@@ -354,7 +354,7 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 
 // Underlying revision retrieval used by Get1xRevBody, Get1xRevBodyWithHistory, GetRevCopy.
 // Returns the revision of a document using the revision cache.
-//   - revid may be "", meaning the current revision.
+//   - revOrCV may be "", meaning the current revision. It can be a RevTree ID or a HLV CV.
 //   - maxHistory is >0 if the caller wants a revision history; it's the max length of the history.
 //   - historyFrom is an optional list of revIDs the client already has. If any of these are found
 //     in the revision's history, it will be trimmed after that revID.
