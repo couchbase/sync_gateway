@@ -705,24 +705,25 @@ func IsInConflict(ctx context.Context, localHLV, incomingHLV *HybridLogicalVecto
 
 	// check if incoming CV and local CV are the same. This is needed here given that if both CV's are the same the
 	// below check to check local revision is newer than incoming revision will pass given the check and will add the
-	// incoming versions even if CV's are the same
+	// incoming versions even if CVs are the same
 	if localCV.Equal(*incomingCV) {
-		base.DebugfCtx(ctx, base.KeyCRUD, "incoming CV %#+v is equal to local revision %#+v", incomingCV, localCV)
+		base.TracefCtx(ctx, base.KeyVV, "incoming CV %#+v is equal to local revision %#+v", incomingCV, localCV)
 		return false, ErrNoNewVersionsToAdd
 	}
 
 	// standard no conflict case. In the simple case, this happens when:
-	//  - SG writes document 1@cbs1
-	//  - CBL pulls document 1@cbs1
-	//  - SG writes document 2@cbs1
+	//  - Client A writes document 1@cbs1
+	//  - Client B pulls document 1@cbs1 from Client A
+	//  - Client A writes document 2@cbs1
+	//	- Client B pulls document 2@cbs1 from Client A
 	if incomingHLV.DominatesSource(*localCV) {
 		return false, nil
 	}
 
 	// local revision is newer than incoming revision. Common case:
-	// - CBL writes document 1@cbl1
-	// - CBL pushes to SG as 1@cbl1
-	// - CBL pulls document 1@cbl1
+	// - Client A writes document 1@cbl1
+	// - Client A pushes to Client B as 1@cbl1
+	// - Client A pulls document 1@cbl1 from Client B
 	//
 	// NOTE: without P2P replication, this should not be the case and we would not get this revision, since CBL
 	// would respond to a SG changes message that CBL does not need this revision
