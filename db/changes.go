@@ -1364,14 +1364,13 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 		return nil
 	}
 
-	row.Changes = []ChangeByVersionType{{ChangesVersionTypeRevTreeID: populatedDoc.CurrentRev}}
 	switch options.VersionType {
 	case ChangesVersionTypeCV:
-		row.Changes[0] = ChangeByVersionType{options.VersionType: populatedDoc.HLV.GetCurrentVersionString()}
-	case ChangesVersionTypeRevTreeID:
-		fallthrough
+		row.Changes = []ChangeByVersionType{{options.VersionType: populatedDoc.HLV.GetCurrentVersionString()}}
+	case "", ChangesVersionTypeRevTreeID:
+		row.Changes = []ChangeByVersionType{{options.VersionType: populatedDoc.CurrentRev}}
 	default:
-		// already initialized with a 'rev' change entry above
+		base.AssertfCtx(ctx, "createChangeEntry called with an unsupported VersionType: %s", options.VersionType)
 	}
 
 	row.Deleted = populatedDoc.Deleted
