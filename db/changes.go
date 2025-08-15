@@ -62,13 +62,14 @@ func ParseChangesVersionType(s string) (ChangesVersionType, error) {
 	}
 }
 
-// ChangeVersionString attempts to return the version string for the preferred ChangesVersionType, but will fall back to rev if cv is not available when requested.
-func (ce *ChangeEntry) ChangeVersionString(versionType ChangesVersionType) string {
-	if s, ok := ce.Changes[0][versionType]; ok {
-		return s
+// ChangeVersionString returns the first version string we found in the ChangeEntry.
+func (ce *ChangeEntry) ChangeVersionString() string {
+	// pick just the first entry in changes
+	for _, changeVersionString := range ce.Changes[0] {
+		// whichever version is present we'll return it - only expected to have one version type populated - since the feed is initialized with a preferred version type.
+		return changeVersionString
 	}
-	// requested version type not found, return `rev` as a fallback.
-	return ce.Changes[0][ChangesVersionTypeRevTreeID]
+	return ""
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
@@ -160,7 +161,7 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 
 	} else if options.IncludeDocs {
 		// Retrieve document via rev cache
-		revID := entry.ChangeVersionString(options.VersionType)
+		revID := entry.ChangeVersionString()
 		err := db.AddDocToChangeEntryUsingRevCache(ctx, entry, revID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
@@ -183,7 +184,7 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 
 	includeConflicts := options.Conflicts && entry.branched
 
-	revID := entry.ChangeVersionString(options.VersionType)
+	revID := entry.ChangeVersionString()
 	if includeConflicts {
 		// should've been validated in the handler layer but be defensive
 		if options.VersionType == ChangesVersionTypeCV {
@@ -576,7 +577,7 @@ func makeRevocationChangeEntry(ctx context.Context, logEntry *LogEntry, seqID Se
 }
 
 // AuditReadEvent issues a read event for this change entry. If there is no document body, there will be no event used.
-func (ce *ChangeEntry) AuditReadEvent(ctx context.Context, versionType ChangesVersionType) {
+func (ce *ChangeEntry) AuditReadEvent(ctx context.Context) {
 	if ce.Err != nil {
 		return
 	}
@@ -585,7 +586,7 @@ func (ce *ChangeEntry) AuditReadEvent(ctx context.Context, versionType ChangesVe
 	}
 	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
 		base.AuditFieldDocID:      ce.ID,
-		base.AuditFieldDocVersion: ce.ChangeVersionString(versionType),
+		base.AuditFieldDocVersion: ce.ChangeVersionString(),
 	})
 }
 

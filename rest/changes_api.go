@@ -428,7 +428,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					}
 					_ = encoder.Encode(entry)
 					lastSeq = entry.Seq
-					entry.AuditReadEvent(h.ctx(), options.VersionType)
+					entry.AuditReadEvent(h.ctx())
 				}
 
 			case <-heartbeat:
