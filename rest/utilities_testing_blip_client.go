@@ -62,7 +62,6 @@ func (c BlipTesterClientConflictResolverType) IsValid() bool {
 type BlipTesterClientOpts struct {
 	ClientDeltas                  bool // Support deltas on the client side
 	Username                      string
-	Channels                      []string
 	SendRevocations               bool
 	SupportedBLIPProtocols        []string
 	SkipCollectionsInitialization bool
@@ -982,15 +981,12 @@ func (btcc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ve
 }
 
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) *BlipTesterReplicator {
-	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
-		connectingPassword:            RestTesterDefaultUserPassword,
+	bt := NewBlipTesterFromSpecWithRT(btc.rt, &BlipTesterSpec{
 		connectingUsername:            btc.Username,
-		connectingUserChannelGrants:   btc.Channels,
 		blipProtocols:                 btc.SupportedBLIPProtocols,
 		skipCollectionsInitialization: skipCollectionsInitialization,
 		origin:                        btc.origin,
-	}, btc.rt)
-	require.NoError(tb, err)
+	})
 
 	r := &BlipTesterReplicator{
 		id:       id,

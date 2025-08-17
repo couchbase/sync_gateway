@@ -551,9 +551,10 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 			&rtConfig)
 		defer rt.Close()
 
+		const alice = "alice"
+		rt.CreateUser(alice, []string{"public"})
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "alice",
-			Channels:               []string{"public"},
+			Username:               alice,
 			ClientDeltas:           true,
 			SupportedBLIPProtocols: []string{db.CBMobileReplicationV2.SubprotocolString()},
 		})
@@ -618,6 +619,8 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 			rtConfig)
 		defer rt.Close()
 
+		const alice = "alice"
+		rt.CreateUser(alice, []string{"public"})
 		if rt.GetDatabase().DbStats.DeltaSync() != nil {
 			deltaCacheHitsStart = rt.GetDatabase().DbStats.DeltaSync().DeltaCacheHit.Value()
 			deltaCacheMissesStart = rt.GetDatabase().DbStats.DeltaSync().DeltaCacheMiss.Value()
@@ -626,8 +629,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		}
 
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "alice",
-			Channels:               []string{"public"},
+			Username:               alice,
 			ClientDeltas:           true,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		})
@@ -709,6 +711,14 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 			rtConfig)
 		defer rt.Close()
 
+		const (
+			user1 = "client1"
+			user2 = "client2"
+		)
+
+		rt.CreateUser(user1, []string{"*"})
+		rt.CreateUser(user2, []string{"*"})
+
 		var deltaCacheHitsStart int64
 		var deltaCacheMissesStart int64
 		var deltasRequestedStart int64
@@ -721,16 +731,14 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 			deltasSentStart = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 		}
 		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "client1",
-			Channels:               []string{"*"},
+			Username:               user1,
 			ClientDeltas:           true,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		})
 		defer client1.Close()
 
 		client2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "client2",
-			Channels:               []string{"*"},
+			Username:               user2,
 			ClientDeltas:           true,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		})

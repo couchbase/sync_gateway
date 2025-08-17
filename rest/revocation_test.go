@@ -1962,7 +1962,6 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          false,
-		FilterChannels:      []string{"ABC"},
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  base.TestsUseNamedCollections(),
@@ -2211,7 +2210,6 @@ func TestRevocationMessage(t *testing.T) {
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username:               "user",
-			Channels:               []string{"*"},
 			ClientDeltas:           false,
 			SendRevocations:        true,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
@@ -2321,7 +2319,6 @@ func TestRevocationNoRev(t *testing.T) {
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username:               "user",
-			Channels:               []string{"*"},
 			ClientDeltas:           false,
 			SendRevocations:        true,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
@@ -2403,7 +2400,6 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username:               "user",
-			Channels:               []string{"*"},
 			ClientDeltas:           false,
 			SendRevocations:        true,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,

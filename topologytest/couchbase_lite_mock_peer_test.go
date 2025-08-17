@@ -224,9 +224,10 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 		btcRunner:   rest.NewBlipTesterClientRunner(sg.rt.TB().(*testing.T)),
 		direction:   config.direction,
 	}
+	const username = "user"
+	sg.rt.CreateUser(username, []string{"*"})
 	replication.btc = replication.btcRunner.NewBlipTesterClientOptsWithRT(sg.rt, &rest.BlipTesterClientOpts{
-		Username:               "user",
-		Channels:               []string{"*"},
+		Username:               username,
 		SupportedBLIPProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()},
 		AllowCreationWithoutBlipTesterClientRunner: true,
 		SourceID: p.SourceID(),

@@ -12,7 +12,6 @@ package rest
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -50,8 +49,7 @@ import (
 func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{allowConflicts: true, GuestEnabled: true})
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{allowConflicts: true, GuestEnabled: true})
 	defer bt.Close()
 
 	// Verify Sync Gateway will accept the doc revision that is about to be sent
@@ -163,8 +161,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 
-	bt, err := NewBlipTester(t)
-	require.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTester(t)
 	defer func() {
 		unsubChangesRequest := bt.newRequest()
 		blip.NewRequest()
@@ -276,8 +273,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTester(t)
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTester(t)
 	defer bt.Close()
 
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
@@ -433,8 +429,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTester(t)
-	require.NoError(t, err)
+	bt := NewBlipTester(t)
 	defer bt.Close()
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
@@ -601,10 +596,9 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		GuestEnabled: true,
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	proposeChangesRequest := bt.newRequest()
@@ -640,10 +634,9 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		GuestEnabled: true,
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	// Write existing docs to server directly (not via blip)
@@ -754,18 +747,24 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create bliptester that is connected as user1, with access to the user1 channel
-	btUser1, err := NewBlipTesterFromSpec(t,
-		BlipTesterSpec{
-			connectingUsername: "user1",
-			connectingPassword: "1234",
-			syncFn:             channels.DocChannelsSyncFunction,
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
+	defer rt.Close()
+	const (
+		user1 = "user1"
+		user2 = "user2"
+	)
+	rt.CreateUser(user1, []string{user1})
+	rt.CreateUser(user2, []string{"*"})
+	btUser1 := NewBlipTesterFromSpecWithRT(rt,
+		&BlipTesterSpec{
+			connectingUsername: user1,
 		})
-	require.NoError(t, err)
 	defer btUser1.Close()
 
 	// Send the user1 doc
-	_, _, _, err = btUser1.SendRev(
+	_, _, _, err := btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
@@ -773,13 +772,9 @@ func TestPublicPortAuthentication(t *testing.T) {
 	)
 	require.NoError(t, err, "Error sending revision")
 
-	// Create bliptester that is connected as user2, with access to the * channel
-	btUser2, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		connectingUsername:          "user2",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // user2 has access to all channels
-	}, btUser1.restTester) // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
-	require.NoError(t, err, "Error creating BlipTester")
+	btUser2 := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{
+		connectingUsername: user2,
+	})
 	defer btUser2.Close()
 
 	// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access
@@ -796,7 +791,6 @@ func TestPublicPortAuthentication(t *testing.T) {
 	assert.Len(t, changesChannelUser1, 1)
 	change := changesChannelUser1[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
-
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.WaitForNumChanges(2)
 	assert.Len(t, changesChannelUser2, 2)
@@ -823,16 +817,17 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{
 		SyncFn: syncFunction,
 	}
-	var rt = NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	ctx := rt.Context()
+
+	const username = "user1"
+	rt.CreateUser(username, nil)
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
-	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
+	bt := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{
 		connectingUsername: "user1",
-		connectingPassword: "1234",
-	}, rt)
-	assert.NoError(t, err, "Error creating BlipTester")
+	})
+	defer bt.Close()
 
 	// Attempt to send a doc, should be rejected
 	_, _, _, sendErr := bt.SendRev(
@@ -845,7 +840,8 @@ function(doc, oldDoc) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator(ctx).GetUser("user1")
+	ctx := rt.Context()
+	user1, err := dbc.Authenticator(ctx).GetUser(username)
 	require.NoError(t, err)
 
 	userDb, err := db.GetDatabase(dbc, user1)
@@ -893,12 +889,12 @@ function(doc, oldDoc) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	const user1 = "user1"
+	rt.CreateUser(user1, nil)
 	// Create bliptester that is connected as user1, with no access to channel ABC
-	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	}, rt)
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{
+		connectingUsername: user1,
+	})
 	defer bt.Close()
 
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
@@ -1020,12 +1016,12 @@ function(doc, oldDoc) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	const user1 = "user1"
+	rt.CreateUser(user1, nil)
 	// Create bliptester that is connected as user1, with no access to channel ABC
-	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	}, rt)
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{
+		connectingUsername: user1,
+	})
 	defer bt.Close()
 
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
@@ -1156,12 +1152,12 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	const user1 = "user1"
+	rt.CreateUser(user1, nil)
 	btSpec := BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
+		connectingUsername: user1,
 	}
-	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, &btSpec)
 	defer bt.Close()
 
 	// Send non-deleted rev
@@ -1211,12 +1207,12 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 		maxConcurrentRevs: base.Ptr(maxConcurrentRevs),
 	})
 	defer rt.Close()
+	const user1 = "user1"
+	rt.CreateUser(user1, nil)
 	btSpec := BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
+		connectingUsername: user1,
 	}
-	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, &btSpec)
 	defer bt.Close()
 
 	wg := sync.WaitGroup{}
@@ -1252,12 +1248,12 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	const user1 = "user1"
+	rt.CreateUser(user1, nil)
 	btSpec := BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
+		connectingUsername: user1,
 	}
-	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, &btSpec)
 	defer bt.Close()
 
 	// Send non-deleted rev
@@ -1302,12 +1298,12 @@ func TestBlipSetCheckpoint(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	const user1 = "user1"
+	rt.CreateUser(user1, nil)
 	btSpec := BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
+		connectingUsername: user1,
 	}
-	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, &btSpec)
 	defer bt.Close()
 
 	// Create new checkpoint
@@ -1370,17 +1366,17 @@ func TestReloadUser(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	const username = "user1"
+	rt.CreateUser(username, nil)
 	ctx := rt.Context()
-	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	}, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{
+		connectingUsername: username,
+	})
 	defer bt.Close()
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator(ctx).GetUser("user1")
+	user1, err := dbc.Authenticator(ctx).GetUser(username)
 	require.NoError(t, err)
 
 	userDb, err := db.GetDatabase(dbc, user1)
@@ -1427,15 +1423,15 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	}, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	const username = "user1"
+	rt.CreateUser(username, nil)
+	bt := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{
+		connectingUsername: username,
+	})
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
-	_, _, _, err = bt.SendRev(
+	_, _, _, err := bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
@@ -1470,13 +1466,10 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
-		connectingPassword: "1234",
 		syncFn:             channels.DocChannelsSyncFunction,
 	})
-	require.NoError(t, err)
 	defer bt.Close()
 	dataStore := bt.restTester.GetSingleDataStore()
 
@@ -1510,12 +1503,9 @@ func TestCheckpoint(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
-		connectingPassword: "1234",
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	client := "testClient"
@@ -1588,11 +1578,11 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	}, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	const user1 = "user1"
+	rt.CreateUser(user1, nil)
+	bt := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{
+		connectingUsername: user1,
+	})
 	defer bt.Close()
 
 	// Add a doc that will be rejected by sync function, since user
@@ -1624,13 +1614,10 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername:          "user1",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // All channels
+	const username = "user1"
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		connectingUsername: username,
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Add a doc that will be rejected by sync function, since user
@@ -1661,12 +1648,10 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
+	const username = "user1"
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		connectingUsername: username,
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
@@ -1689,13 +1674,10 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 func TestPutRevConflictsMode(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts:     true,
 		connectingUsername: "user1",
-		connectingPassword: "1234",
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
@@ -1723,13 +1705,11 @@ func TestPutRevV4(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester with v4 protocol
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts:     false,
 		connectingUsername: "user1",
-		connectingPassword: "1234",
 		blipProtocols:      []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 	collection, ctx := bt.restTester.GetSingleTestDatabaseCollection()
 
@@ -1847,13 +1827,17 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
+	const (
+		user1 = "user1"
+		user2 = "user2"
+	)
+	rt.CreateUser(user1, []string{user1})
+	rt.CreateUser(user2, []string{user1})
 	btSpec := BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
+		connectingUsername: user1,
 		blipProtocols:      []string{db.CBMobileReplicationV2.SubprotocolString()},
 	}
-	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, &btSpec)
 	defer bt.Close()
 
 	// Workaround data race (https://gist.github.com/tleyden/0ace70b8a38b76a7beee95529610b6cf) that happens because
@@ -1861,13 +1845,10 @@ func TestGetRemovedDoc(t *testing.T) {
 	// The workaround uses a separate blipTester, and therefore a separate context.  It uses a different
 	// user to avoid an error when the NewBlipTesterFromSpec tries to create the user (eg, user1 already exists error)
 	btSpec2 := BlipTesterSpec{
-		connectingUsername:          "user2",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"user1"}, // so it can see user1's docs
-		blipProtocols:               []string{db.CBMobileReplicationV2.SubprotocolString()},
+		connectingUsername: user1,
+		blipProtocols:      []string{db.CBMobileReplicationV2.SubprotocolString()},
 	}
-	bt2, err := NewBlipTesterFromSpecWithRT(t, &btSpec2, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt2 := NewBlipTesterFromSpecWithRT(rt, &btSpec2)
 	defer bt2.Close()
 
 	// Add rev-1 in channel user1
@@ -1922,7 +1903,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Try to get rev 3 via REST API, and assert that _removed == true
 	headers := map[string]string{}
-	headers["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
+	headers["Authorization"] = GetBasicAuthHeader(t, btSpec.connectingUsername, RestTesterDefaultUserPassword)
 	response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/foo?rev=3-cde", "", headers)
 	restDocument := response.GetRestDocument()
 	assert.True(t, restDocument.IsRemoved())
@@ -1943,8 +1924,7 @@ func TestMissingNoRev(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
-	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, nil)
 	defer bt.Close()
 
 	// Create 5 docs
@@ -1962,7 +1942,7 @@ func TestMissingNoRev(t *testing.T) {
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	err = collection.Purge(ctx, doc0Id, true)
+	err := collection.Purge(ctx, doc0Id, true)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
@@ -2026,6 +2006,9 @@ func TestSendReplacementRevision(t *testing.T) {
 					})
 				defer rt.Close()
 
+				const alice = "alice"
+				rt.CreateUser(alice, userChannels)
+
 				docID := test.name
 				version1 := rt.PutDocDirectly(docID, JsonToMap(t, fmt.Sprintf(`{"foo":"bar","channels":["%s"]}`, rev1Channel)))
 				updatedVersion := make(chan DocVersion)
@@ -2046,11 +2029,10 @@ func TestSendReplacementRevision(t *testing.T) {
 				}
 
 				opts := &BlipTesterClientOpts{
-					Username:               "alice",
+					Username:               alice,
 					SupportedBLIPProtocols: SupportedBLIPProtocols,
 					sendReplacementRevs:    test.clientSendReplacementRevs,
 					changesEntryCallback:   changesEntryCallbackFn,
-					Channels:               userChannels,
 				}
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 				defer btc.Close()
@@ -2326,11 +2308,10 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 		defer rt.Close()
 
-		rt.CreateUser("user", []string{"A", "B"})
-
+		const user = "user"
+		rt.CreateUser(user, []string{"A", "B"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "user",
-			Channels:               []string{"*"},
+			Username:               user,
 			ClientDeltas:           false,
 			SendRevocations:        true,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
@@ -2409,11 +2390,10 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 		defer rt.Close()
 
-		rt.CreateUser("user", []string{"A", "B"})
-
+		const user = "user"
+		rt.CreateUser(user, []string{"A", "B"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "user",
-			Channels:               []string{"*"},
+			Username:               user,
 			ClientDeltas:           false,
 			SendRevocations:        true,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
@@ -2805,10 +2785,9 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		GuestEnabled: true,
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	// Send rev as guest with read-only=false
@@ -3011,9 +2990,10 @@ func TestRequestPlusPull(t *testing.T) {
 		defer rt.Close()
 		database := rt.GetDatabase()
 
-		// Initialize blip tester client (will create user)
+		const bernard = "bernard"
+		rt.CreateUser(bernard, nil)
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "bernard",
+			Username:               bernard,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		})
 		defer client.Close()
@@ -3074,9 +3054,10 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 		defer rt.Close()
 		database := rt.GetDatabase()
 
-		// Initialize blip tester client (will create user)
+		const bernard = "bernard"
+		rt.CreateUser(bernard, nil)
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "bernard",
+			Username:               bernard,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		})
 		defer client.Close()
@@ -3137,16 +3118,11 @@ func TestBlipRefreshUser(t *testing.T) {
 		defer rt.Close()
 
 		const username = "bernard"
-		// Initialize blip tester client (will create user)
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "bernard",
-			Channels:               []string{"chan1"},
+			Username:               username,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		})
 		defer btc.Close()
-
-		// add chan1 explicitly
-		rt.CreateUser(username, []string{"chan1"})
 
 		version := rt.PutDocDirectly(docID, db.Body{"channels": []string{"chan1"}})
 
@@ -3194,12 +3170,13 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 		})
 		defer rt.Close()
 
+		const bob = "bob"
+		rt.CreateUser(bob, []string{"ABC"})
 		collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
-			Username:               "bob",
-			Channels:               []string{"ABC"},
+			Username:               bob,
 		})
 		defer btc.Close()
 		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"some":"data", "channels":["ABC"]}`))
@@ -3319,6 +3296,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				validBody := fmt.Sprintf(`{"foo":"bar", "channel":%q}`, testCase.channel)
 				username := fmt.Sprintf("user_%d", i)
 
+				rt.CreateUser(username, []string{testCase.channel})
 				revID := rt.PutDoc(docID, validBody)
 
 				// Wait for initial revision to arrive over DCP before mutating
@@ -3337,7 +3315,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				btc2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 					Username:               username,
-					Channels:               []string{testCase.channel},
 					SupportedBLIPProtocols: SupportedBLIPProtocols,
 				})
 				defer btc2.Close()
@@ -3360,9 +3337,12 @@ func TestBlipDatabaseClose(t *testing.T) {
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTesterPersistentConfig(t)
 		defer rt.Close()
-		const username = "alice"
-		rt.CreateUser(username, []string{"*"})
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		const alice = "alice"
+		rt.CreateUser(alice, []string{"*"})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
+			&BlipTesterClientOpts{
+				Username: alice,
+			})
 		defer btc.Close()
 		var blipContextClosed atomic.Bool
 		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
@@ -3387,11 +3367,10 @@ func TestBlipDatabaseClose(t *testing.T) {
 }
 
 func TestPutRevBlip(t *testing.T) {
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{GuestEnabled: true, blipProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()}})
-	require.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{GuestEnabled: true, blipProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()}})
 	defer bt.Close()
 
-	_, _, _, err = bt.SendRev(
+	_, _, _, err := bt.SendRev(
 		"foo",
 		"2@stZPWD8vS/O3nsx9yb2Brw",
 		[]byte(`{"key": "val"}`),
@@ -3414,10 +3393,10 @@ func TestBlipMergeVersions(t *testing.T) {
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTesterPersistentConfig(t)
 		defer rt.Close()
-		username := "alice"
-		rt.CreateUser(username, []string{"*"})
+		const alice = "alice"
+		rt.CreateUser(alice, []string{"*"})
 		opts := &BlipTesterClientOpts{
-			Username:               username,
+			Username:               alice,
 			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
@@ -3514,9 +3493,11 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 			},
 		})
 		defer rt.Close()
-		const username = "alice"
-		rt.CreateUser(username, []string{"*"})
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		const alice = "alice"
+		rt.CreateUser(alice, []string{"*"})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
+			&BlipTesterClientOpts{Username: "alice"},
+		)
 		defer btc.Close()
 		var blipContextClosed atomic.Bool
 		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
@@ -3557,6 +3538,8 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 
 				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, ""), http.StatusNotFound)
 
+				const alice = "alice"
+				rt.CreateUser(alice, nil)
 				opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, Username: "alice"}
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 				defer btc.Close()
@@ -3581,15 +3564,18 @@ func TestBlipPullConflict(t *testing.T) {
 		defer rt.Close()
 
 		const (
-			username = "alice"
-			cblBody  = `{"actor": "cbl"}`
-			sgBody   = `{"actor": "sg"}`
+			alice   = "alice"
+			cblBody = `{"actor": "cbl"}`
+			sgBody  = `{"actor": "sg"}`
+			docID   = "doc1"
 		)
-		rt.CreateUser(username, []string{"*"})
-		docID := "doc1"
+		rt.CreateUser(alice, []string{"*"})
 		sgVersion := rt.PutDocDirectly(docID, db.Body{"actor": "sg"})
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, Username: "alice"}
+		opts := &BlipTesterClientOpts{
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:               alice,
+		}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 

@@ -31,12 +31,11 @@ import (
 func TestLegacyProposeChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	proposeChangesRequest := bt.newRequest()
@@ -67,12 +66,11 @@ func TestLegacyProposeChanges(t *testing.T) {
 func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, _ := rt.GetSingleTestDatabaseCollection()
@@ -248,12 +246,11 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 func TestProcessLegacyRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, _ := rt.GetSingleTestDatabaseCollection()
@@ -309,12 +306,11 @@ func TestProcessLegacyRev(t *testing.T) {
 func TestProcessRevWithLegacyHistory(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	ds := rt.GetSingleDataStore()
@@ -463,12 +459,11 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCRUD, base.KeyChanges, base.KeyImport)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	ds := rt.GetSingleDataStore()
@@ -536,12 +531,11 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 func TestChangesResponseLegacyRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 
@@ -636,12 +630,11 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -739,12 +732,11 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 func TestCBLHasPreUpgradeMutationThatHasNotBeenReplicated(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -776,12 +768,11 @@ func TestCBLHasPreUpgradeMutationThatHasNotBeenReplicated(t *testing.T) {
 func TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -815,12 +806,11 @@ func TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows(t *testing.T) {
 func TestPushOfPostUpgradeMutationThatHasCommonAncestorToSGWVersion(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -854,12 +844,11 @@ func TestPushOfPostUpgradeMutationThatHasCommonAncestorToSGWVersion(t *testing.T
 func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPreUpgradeSGWMutation(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -897,12 +886,11 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPreUpgradeSGWMutation(t *
 func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -937,12 +925,11 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPostUpgradeSGWMutation(t 
 func TestConflictBetweenPostUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -984,12 +971,11 @@ func TestConflictBetweenPostUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testi
 
 func TestLegacyRevNotInConflict(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
 		GuestEnabled:   true,
 		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
 	})
-	require.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
