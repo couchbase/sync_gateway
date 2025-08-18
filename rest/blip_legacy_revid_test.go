@@ -552,7 +552,14 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 	// wait for pending change to avoid flakes where changes feed didn't pick up this change
 	rt.WaitForPendingChanges()
 	receivedChangesRequestWg := sync.WaitGroup{}
+	// changes will be called:
+	// 1. doc1 changes
+	// 2. empty changes to indicate feed is complete
+	receivedChangesRequestWg.Add(2)
+
 	revsFinishedWg := sync.WaitGroup{}
+	// expect 1 rev message for doc1
+	revsFinishedWg.Add(1)
 
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 		defer revsFinishedWg.Done()
@@ -571,7 +578,7 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 	}
 
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
-
+		defer receivedChangesRequestWg.Done()
 		log.Printf("got changes message: %+v", request)
 		body, err := request.Body()
 		log.Printf("changes body: %v, err: %v", string(body), err)
@@ -602,7 +609,6 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 			require.NoError(t, err)
 			response.SetBody(emptyResponseValBytes)
 		}
-		receivedChangesRequestWg.Done()
 	}
 
 	subChangesRequest := bt.newRequest()
@@ -610,11 +616,6 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 	subChangesRequest.Properties["continuous"] = "false"
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
-	// changes will be called again with empty changes so hence the wait group of 2
-	receivedChangesRequestWg.Add(2)
-
-	// expect 1 rev message
-	revsFinishedWg.Add(1)
 
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
