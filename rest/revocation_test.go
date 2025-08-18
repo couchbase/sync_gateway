@@ -1963,6 +1963,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 		},
 		Continuous:          false,
 		PurgeOnRemoval:      true,
+		FilterChannels:      []string{"ABC"},
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
