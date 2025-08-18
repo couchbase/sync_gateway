@@ -295,7 +295,7 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 		}
 		revTreeIDHistory = append(revTreeIDHistory, cd._revisionsBySeq[seq].version.RevTreeID)
 	}
-	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, hlvHistory: latestRev.HLV, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
+	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, hlvHistory: *latestRev.HLV.Copy(), latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
 }
 
 // _getLatestHLVCopy returns a copy of the HLV. If there is no document, return an empty HLV.
