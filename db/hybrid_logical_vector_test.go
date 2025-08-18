@@ -179,7 +179,7 @@ func createHLVForTest(tb *testing.T, input string) *HybridLogicalVector {
 	return hlv
 }
 
-func TestAddNewerVersions(t *testing.T) {
+func TestHLVAddNewerVersions(t *testing.T) {
 	testCases := []struct {
 		name        string
 		existingHLV string
@@ -211,6 +211,46 @@ func TestAddNewerVersions(t *testing.T) {
 			incomingHLV: "4@c",
 			finalHLV:    "4@c;2@b,1@a",
 		},
+		{
+			name:        "incoming pv overwrite mv, equal values",
+			existingHLV: "3@c,2@b,1@a",
+			incomingHLV: "4@c;2@b,1@a",
+			finalHLV:    "4@c;2@b,1@a",
+		},
+		{
+			name:        "incoming mv overwrite pv, equal values",
+			existingHLV: "3@c;2@b,1@a",
+			incomingHLV: "4@c,2@b,1@a",
+			finalHLV:    "4@c,2@b,1@a",
+		},
+		{
+			name:        "incoming mv overwrite pv, greater values",
+			existingHLV: "3@c;2@b,1@a",
+			incomingHLV: "4@c,5@b,6@a",
+			finalHLV:    "4@c,5@b,6@a",
+		},
+		/* FIXME, this does not work yet.
+		{
+			name:        "incoming does not dominate pv",
+			existingHLV: "3@c;5@b,6@a",
+			incomingHLV: "4@c,1@b,2@a",
+			finalHLV:    "3@c;5@b,6@a",
+		},
+		*/
+		{
+			name:        "incoming mv partially overlaps with pv",
+			existingHLV: "3@c;2@b,1@a",
+			incomingHLV: "4@c,2@b,6@a",
+			finalHLV:    "4@c,2@b,6@a",
+		},
+		/* FIXME: this doesn't work yet
+		{
+			name:        "incoming mv partially overlaps with pv, but incoming mv should be wiped out",
+			existingHLV: "3@c;2@b,6@a",
+			incomingHLV: "4@c,2@b,1@a",
+			finalHLV:    "4@c;2@b,6@a",
+		},
+		*/
 	}
 
 	for _, test := range testCases {
