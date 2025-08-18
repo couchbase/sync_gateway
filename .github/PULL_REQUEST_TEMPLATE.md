@@ -12,5 +12,5 @@ Describe your PR here...
 - [ ] Link upstream PRs
 - [ ] Update Go module dependencies when merged
 
-## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGateway-Integration/build?delay=0sec)
-- [ ] `GSI=true,xattrs=true` https://jenkins.sgwdev.com/job/SyncGateway-Integration/000/
+## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGatewayIntegration/build?delay=0sec)
+- [ ] `GSI=true,xattrs=true` https://jenkins.sgwdev.com/job/SyncGatewayIntegration/0000/
