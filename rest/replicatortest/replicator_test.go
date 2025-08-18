@@ -4088,7 +4088,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			rest.RequireChangeRevVersion(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0])
+			rest.RequireChangeRev(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
 			t.Logf("Changes response is %+v", changesResults)
 
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
@@ -4307,7 +4307,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// Validate results on the local (rt1)
 			changesResults := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", localDoc.Sequence), "", true)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			rest.RequireChangeRevVersion(t, test.expectedVersion, changesResults.Results[0].Changes[0])
+			rest.RequireChangeRev(t, test.expectedVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
 			t.Logf("Changes response is %+v", changesResults)
 
 			rawDocResponse := rt1.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, "")
@@ -4351,7 +4351,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			}
 			changesResults = rt2.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", rt2Since), "", true)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			rest.RequireChangeRevVersion(t, test.expectedVersion, changesResults.Results[0].Changes[0])
+			rest.RequireChangeRev(t, test.expectedVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
 			t.Logf("Changes response is %+v", changesResults)
 
 			doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
@@ -5922,7 +5922,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			// Should end up as winner under default conflict resolution.
 			changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?&since=0", "", true)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			rest.RequireChangeRevVersion(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0])
+			rest.RequireChangeRev(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
 			t.Logf("Changes response is %+v", changesResults)
 
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()

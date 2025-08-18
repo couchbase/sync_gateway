@@ -241,6 +241,10 @@ func (rev *DocumentRevision) Inject1xBodyProperties(ctx context.Context, db *Dat
 		{Key: BodyRev, Val: rev.RevID},
 	}
 
+	if rev.CV != nil {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyCV, Val: rev.CV.String()})
+	}
+
 	if requestedHistory != nil {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: requestedHistory})
 	}

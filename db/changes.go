@@ -26,32 +26,69 @@ import (
 // Options for changes-feeds.  ChangesOptions must not contain any mutable pointer references, as
 // changes processing currently assumes a deep copy when doing chanOpts := changesOptions.
 type ChangesOptions struct {
-	Since          SequenceID      // sequence # to start _after_
-	Limit          int             // Max number of changes to return, if nonzero
-	Conflicts      bool            // Show all conflicting revision IDs, not just winning one?
-	IncludeDocs    bool            // Include doc body of each change?
-	Wait           bool            // Wait for results, instead of immediately returning empty result?
-	Continuous     bool            // Run continuously until terminated?
-	RequestPlusSeq uint64          // Do not stop changes before cached sequence catches up with requestPlusSeq
-	HeartbeatMs    uint64          // How often to send a heartbeat to the client
-	TimeoutMs      uint64          // After this amount of time, close the longpoll connection
-	ActiveOnly     bool            // If true, only return information on non-deleted, non-removed revisions
-	Revocations    bool            // Specifies whether revocation messages should be sent on the changes feed
-	clientType     clientType      // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
-	ChangesCtx     context.Context // Used for cancelling checking the changes feed should stop
+	Since          SequenceID         // sequence # to start _after_
+	Limit          int                // Max number of changes to return, if nonzero
+	Conflicts      bool               // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs    bool               // Include doc body of each change?
+	Wait           bool               // Wait for results, instead of immediately returning empty result?
+	Continuous     bool               // Run continuously until terminated?
+	RequestPlusSeq uint64             // Do not stop changes before cached sequence catches up with requestPlusSeq
+	HeartbeatMs    uint64             // How often to send a heartbeat to the client
+	TimeoutMs      uint64             // After this amount of time, close the longpoll connection
+	ActiveOnly     bool               // If true, only return information on non-deleted, non-removed revisions
+	Revocations    bool               // Specifies whether revocation messages should be sent on the changes feed
+	clientType     clientType         // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
+	ChangesCtx     context.Context    // Used for cancelling checking the changes feed should stop
+	VersionType    ChangesVersionType // The type of version to use for the changes feed. This is used to determine whether to use send revtree IDs or CV in the changes feed entries.
+}
+
+// ChangesVersionType determines the preferred version type to use in changes feed entries.
+// If the requested version type is not available, the feed will attempt to fall back to ChangesVersionTypeRevTreeID which should always be available.
+type ChangesVersionType string
+
+const (
+	ChangesVersionTypeRevTreeID ChangesVersionType = "rev" // Use revtree IDs in changes feed entries
+	ChangesVersionTypeCV        ChangesVersionType = "cv"  // Use current version in changes feed entries
+)
+
+// ParseChangesVersionType parses a string into a ChangesVersionType.
+// If "" is passed, it defaults to ChangesVersionTypeRevTreeID as a default fallback.
+func ParseChangesVersionType(s string) (ChangesVersionType, error) {
+	switch ChangesVersionType(s) {
+	case "", ChangesVersionTypeRevTreeID:
+		return ChangesVersionTypeRevTreeID, nil
+	case ChangesVersionTypeCV:
+		return ChangesVersionTypeCV, nil
+	default:
+		return "", fmt.Errorf("unknown changes version type: %q", s)
+	}
+}
+
+// ChangeVersionString returns the first version string we found in the ChangeEntry.
+func (ce *ChangeEntry) ChangeVersionString(ctx context.Context) string {
+	if len(ce.Changes) == 0 {
+		base.AssertfCtx(ctx, "ChangesEntry has no changes: %s", ce.String())
+		return ""
+	}
+	// pick just the first entry in changes
+	for _, changeVersionString := range ce.Changes[0] {
+		// whichever version is present we'll return it - only expected to have one version type populated - since the feed is initialized with a preferred version type.
+		return changeVersionString
+	}
+	return ""
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq            SequenceID      `json:"seq"`
-	ID             string          `json:"id"`
-	Deleted        bool            `json:"deleted,omitempty"`
-	Removed        base.Set        `json:"removed,omitempty"`
-	Doc            json.RawMessage `json:"doc,omitempty"`
-	Changes        []ChangeRev     `json:"changes"`
-	Err            error           `json:"err,omitempty"` // Used to notify feed consumer of errors
-	allRemoved     bool            // Flag to track whether an entry is a removal in all channels visible to the user.
+	Seq            SequenceID            `json:"seq"`
+	ID             string                `json:"id"`
+	Deleted        bool                  `json:"deleted,omitempty"`
+	Removed        base.Set              `json:"removed,omitempty"`
+	Doc            json.RawMessage       `json:"doc,omitempty"`
+	Changes        []ChangeByVersionType `json:"changes"`
+	Err            error                 `json:"err,omitempty"` // Used to notify feed consumer of errors
+	allRemoved     bool                  // Flag to track whether an entry is a removal in all channels visible to the user.
 	branched       bool
 	backfill       backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
 	principalDoc   bool         // Used to indicate _user/_role docs
@@ -74,14 +111,10 @@ const (
 	BackfillFlag_Complete
 )
 
-type ChangeRev map[string]string // Key is always "rev", value is rev ID
+type ChangeByVersionType map[ChangesVersionType]string // Keyed by the type of version in the value
 
 type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
-}
-
-func (db *DatabaseCollectionWithUser) AddDocToChangeEntry(ctx context.Context, entry *ChangeEntry, options ChangesOptions) {
-	db.addDocToChangeEntry(ctx, entry, options)
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
@@ -113,7 +146,10 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 			base.WarnfCtx(ctx, "Changes feed: error getting doc %q: %v", base.UD(entry.ID), err)
 			return
 		}
-		db.AddDocInstanceToChangeEntry(ctx, entry, doc, options)
+		if err := db.AddDocInstanceToChangeEntry(ctx, entry, doc, options); err != nil {
+			base.WarnfCtx(ctx, "Changes feed: error adding doc %q to change entry: %v", base.UD(entry.ID), err)
+			return
+		}
 
 	} else if includeConflicts {
 		// Load doc metadata only
@@ -124,11 +160,14 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 			base.WarnfCtx(ctx, "Changes feed: error getting doc sync data %q: %v", base.UD(entry.ID), err)
 			return
 		}
-		db.AddDocInstanceToChangeEntry(ctx, entry, doc, options)
+		if err := db.AddDocInstanceToChangeEntry(ctx, entry, doc, options); err != nil {
+			base.WarnfCtx(ctx, "Changes feed: error adding doc %q to change entry: %v", base.UD(entry.ID), err)
+			return
+		}
 
 	} else if options.IncludeDocs {
 		// Retrieve document via rev cache
-		revID := entry.Changes[0]["rev"]
+		revID := entry.ChangeVersionString(ctx)
 		err := db.AddDocToChangeEntryUsingRevCache(ctx, entry, revID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
@@ -147,31 +186,39 @@ func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx conte
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
-func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Context, entry *ChangeEntry, doc *Document, options ChangesOptions) {
+func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Context, entry *ChangeEntry, doc *Document, options ChangesOptions) error {
 
 	includeConflicts := options.Conflicts && entry.branched
 
-	revID := entry.Changes[0]["rev"]
+	revID := entry.ChangeVersionString(ctx)
 	if includeConflicts {
+		// should've been validated in the handler layer but be defensive
+		if options.VersionType == ChangesVersionTypeCV {
+			return fmt.Errorf("changes feed does not support showing in-conflict revisions when using version_type=cv")
+		}
 		doc.History.forEachLeaf(func(leaf *RevInfo) {
 			if leaf.ID != revID {
 				if !leaf.Deleted {
 					entry.Deleted = false
 				}
 				if !(options.ActiveOnly && leaf.Deleted) {
-					entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
+					entry.Changes = append(entry.Changes, ChangeByVersionType{"rev": leaf.ID})
 				}
 			}
 		})
 	}
 	if options.IncludeDocs {
 		var err error
-		entry.Doc, _, err = db.get1xRevFromDoc(ctx, doc, revID, false)
-		db.dbStats().Database().NumDocReadsRest.Add(1)
+		// TODO: CBG-4776 - fetch by CV with sane APIs
+		err = db.AddDocToChangeEntryUsingRevCache(ctx, entry, revID)
 		if err != nil {
-			base.WarnfCtx(ctx, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
+			base.WarnfCtx(ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
+			return err
 		}
+		db.dbStats().Database().NumDocReadsRest.Add(1)
 	}
+
+	return nil
 }
 
 // Parameters
@@ -300,7 +347,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 					continue
 				}
 
-				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
+				change := makeRevocationChangeEntry(ctx, logEntry, seqID, singleChannelCache.ChannelID(), options.VersionType)
 
 				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing revocation seq: %v in channel %s ", seqID, base.UD(singleChannelCache.ChannelID().Name))
 
@@ -459,7 +506,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 					TriggeredBy: options.Since.TriggeredBy,
 				}
 
-				change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
+				change := makeChangeEntry(ctx, logEntry, seqID, singleChannelCache.ChannelID(), options.VersionType)
 				lastSeq = logEntry.Sequence
 
 				// Don't include deletes or removals during initial channel backfill
@@ -494,20 +541,34 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 	return feed
 }
 
-func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) ChangeEntry {
+func makeChangeEntry(ctx context.Context, logEntry *LogEntry, seqID SequenceID, channel channels.ID, versionType ChangesVersionType) ChangeEntry {
 	change := ChangeEntry{
 		Seq:          seqID,
 		ID:           logEntry.DocID,
 		Deleted:      (logEntry.Flags & channels.Deleted) != 0,
-		Changes:      []ChangeRev{{"rev": logEntry.RevID}},
+		Changes:      []ChangeByVersionType{{ChangesVersionTypeRevTreeID: logEntry.RevID}},
 		branched:     (logEntry.Flags & channels.Branched) != 0,
 		principalDoc: logEntry.IsPrincipal,
 		collectionID: logEntry.CollectionID,
 	}
+
+	switch versionType {
+	case ChangesVersionTypeCV:
+		if logEntry.SourceID != "" {
+			change.Changes[0] = ChangeByVersionType{versionType: Version{SourceID: logEntry.SourceID, Value: logEntry.Version}.String()}
+		}
+	case ChangesVersionTypeRevTreeID:
+		fallthrough
+	default:
+		// already initialized with a 'rev' change entry
+	}
+
 	// populate CurrentVersion entry if log entry has sourceID and Version populated
 	// This allows current version to be nil in event of CV not being populated on log entry
 	// allowing omitempty to work as expected
 	if logEntry.SourceID != "" {
+		// TODO: CBG-4804: Remove this if we change BLIP generateBlipSyncChanges and tests to use versionType and read the value from the normal Changes array... no reason to store this info in two places.
+		// this also allows us to do a revtree ID fallback in cases where the CV is not available on an old rev, since the type is chosen inside when producing logentry and building the change row.
 		change.CurrentVersion = &Version{SourceID: logEntry.SourceID, Value: logEntry.Version}
 	}
 	if logEntry.Flags&channels.Removed != 0 {
@@ -517,8 +578,8 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) 
 	return change
 }
 
-func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) ChangeEntry {
-	entry := makeChangeEntry(logEntry, seqID, channel)
+func makeRevocationChangeEntry(ctx context.Context, logEntry *LogEntry, seqID SequenceID, channel channels.ID, versionType ChangesVersionType) ChangeEntry {
+	entry := makeChangeEntry(ctx, logEntry, seqID, channel, versionType)
 	entry.Revoked = true
 
 	return entry
@@ -534,7 +595,7 @@ func (ce *ChangeEntry) AuditReadEvent(ctx context.Context) {
 	}
 	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
 		base.AuditFieldDocID:      ce.ID,
-		base.AuditFieldDocVersion: ce.Changes[0]["rev"],
+		base.AuditFieldDocVersion: ce.ChangeVersionString(ctx),
 	})
 }
 
@@ -603,7 +664,7 @@ func (db *DatabaseCollectionWithUser) appendUserFeed(feeds []<-chan *ChangeEntry
 		entry := ChangeEntry{
 			Seq:          userSeq,
 			ID:           "_user/" + name,
-			Changes:      []ChangeRev{},
+			Changes:      []ChangeByVersionType{},
 			principalDoc: true,
 		}
 		userFeed := make(chan *ChangeEntry, 1)
@@ -799,7 +860,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				if useLateSequenceFeeds {
 					lateSequenceFeedHandler := lateSequenceFeeds[chanID]
 					if lateSequenceFeedHandler != nil {
-						latefeed, err := col.getLateFeed(options.ChangesCtx, lateSequenceFeedHandler, singleChannelCache)
+						latefeed, err := col.getLateFeed(options.ChangesCtx, lateSequenceFeedHandler, singleChannelCache, options.VersionType)
 						if err != nil {
 							base.WarnfCtx(ctx, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(chanName), lastSentLowSeq)
 							chanOpts.Since.LowSeq = lastSentLowSeq
@@ -1188,7 +1249,7 @@ func (db *DatabaseCollectionWithUser) newLateSequenceFeed(singleChannelCache Sin
 
 // Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.  Error indicates
 // previous position in late sequence feed isn't available, and caller should reset to low sequence.
-func (db *DatabaseCollectionWithUser) getLateFeed(ctx context.Context, feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache) (<-chan *ChangeEntry, error) {
+func (db *DatabaseCollectionWithUser) getLateFeed(ctx context.Context, feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache, versionType ChangesVersionType) (<-chan *ChangeEntry, error) {
 
 	if !singleChannelCache.SupportsLateFeed() {
 		return nil, errors.New("Cache doesn't support late feeds")
@@ -1227,7 +1288,7 @@ func (db *DatabaseCollectionWithUser) getLateFeed(ctx context.Context, feedHandl
 			seqID := SequenceID{
 				Seq: logEntry.Sequence,
 			}
-			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
+			change := makeChangeEntry(ctx, logEntry, seqID, singleChannelCache.ChannelID(), versionType)
 			select {
 			case <-ctx.Done():
 				return
@@ -1308,9 +1369,15 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 		return nil
 	}
 
-	changes := make([]ChangeRev, 1)
-	changes[0] = ChangeRev{"rev": populatedDoc.CurrentRev}
-	row.Changes = changes
+	switch options.VersionType {
+	case ChangesVersionTypeCV:
+		row.Changes = []ChangeByVersionType{{ChangesVersionTypeCV: populatedDoc.HLV.GetCurrentVersionString()}}
+	case "", ChangesVersionTypeRevTreeID:
+		row.Changes = []ChangeByVersionType{{ChangesVersionTypeRevTreeID: populatedDoc.CurrentRev}}
+	default:
+		base.AssertfCtx(ctx, "createChangeEntry called with an unsupported VersionType: %q", options.VersionType)
+	}
+
 	row.Deleted = populatedDoc.Deleted
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
@@ -1352,7 +1419,9 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 	row.Removed = base.SetFromArray(removedChannels)
 	if options.IncludeDocs || options.Conflicts {
-		db.AddDocInstanceToChangeEntry(ctx, row, populatedDoc, options)
+		if err := db.AddDocInstanceToChangeEntry(ctx, row, populatedDoc, options); err != nil {
+			base.WarnfCtx(ctx, "Unable to add doc instance to change entry for %s: %v - will return metadata only", base.UD(docid), err)
+		}
 	}
 
 	return row
@@ -1360,7 +1429,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 func (options ChangesOptions) String() string {
 	return fmt.Sprintf(
-		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, Revocations: %t, RequestPlusSeq: %d}`,
+		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, Revocations: %t, RequestPlusSeq: %d, VersionType: %q}`,
 		options.Since,
 		options.Limit,
 		options.Conflicts,
@@ -1372,6 +1441,7 @@ func (options ChangesOptions) String() string {
 		options.ActiveOnly,
 		options.Revocations,
 		options.RequestPlusSeq,
+		options.VersionType,
 	)
 }
 

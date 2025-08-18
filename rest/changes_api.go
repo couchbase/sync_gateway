@@ -185,6 +185,14 @@ func (h *handler) handleChanges() error {
 		options.ActiveOnly = h.getBoolQuery("active_only")
 		options.IncludeDocs = h.getBoolQuery("include_docs")
 		options.Revocations = h.getBoolQuery("revocations")
+		options.VersionType, err = db.ParseChangesVersionType(h.getQuery("version_type"))
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid version_type: %v", err)
+		}
+
+		if options.Conflicts && options.VersionType == db.ChangesVersionTypeCV {
+			return base.HTTPErrorf(http.StatusBadRequest, "Cannot use 'style=all_docs' with 'version_type=cv'")
+		}
 
 		useRequestPlus, _ := h.getOptBoolQuery("request_plus", h.db.Options.ChangesRequestPlus)
 		if useRequestPlus && feed != feedTypeContinuous {
@@ -602,6 +610,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		AcceptEncoding string        `json:"accept_encoding"`
 		ActiveOnly     bool          `json:"active_only"`  // Return active revisions only
 		RequestPlus    *bool         `json:"request_plus"` // Wait for sequence buffering to catch up to database seq value at time request was issued
+		VersionType    string        `json:"version_type"` // Version type to use for changes feed
 	}
 
 	// Initialize since clock and hasher ahead of unmarshalling sequence
@@ -642,6 +651,11 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		kMaxTimeoutMS,
 		true,
 	)
+
+	options.VersionType, err = db.ParseChangesVersionType(input.VersionType)
+	if err != nil {
+		return "", options, "", nil, nil, false, base.HTTPErrorf(http.StatusBadRequest, "Invalid version_type: %v", err)
+	}
 
 	compress = (input.AcceptEncoding == "gzip")
 
