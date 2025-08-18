@@ -3496,7 +3496,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 		const alice = "alice"
 		rt.CreateUser(alice, []string{"*"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
-			&BlipTesterClientOpts{Username: "alice"},
+			&BlipTesterClientOpts{Username: alice},
 		)
 		defer btc.Close()
 		var blipContextClosed atomic.Bool
