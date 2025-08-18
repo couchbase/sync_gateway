@@ -1373,7 +1373,7 @@ func NewBlipTesterFromSpecWithRT(rt *RestTester, spec *BlipTesterSpec) *BlipTest
 		blipTesterSpec = &BlipTesterSpec{}
 	}
 	if blipTesterSpec.syncFn != "" {
-		rt.TB().Errorf("Setting BlipTesterSpec.SyncFn is incompatible with passing a custom RestTester. Use SyncFn on RestTesterig")
+		rt.TB().Errorf("Setting BlipTesterSpec.SyncFn is incompatible with passing a custom RestTester. Use SyncFn on RestTester")
 	}
 	if blipTesterSpec.GuestEnabled {
 		rt.TB().Errorf("Setting BlipTesterSpec.GuestEnabled is incompatible with passing a custom RestTester. Use GuestEnabled on RestTester")
