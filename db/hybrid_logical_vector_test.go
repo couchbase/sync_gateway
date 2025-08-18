@@ -9,9 +9,7 @@
 package db
 
 import (
-	"encoding/base64"
 	"math/rand/v2"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -103,61 +101,61 @@ func TestInternalHLVFunctions(t *testing.T) {
 func TestConflictDetectionDominating(t *testing.T) {
 	testCases := []struct {
 		name           string
-		inputListHLVA  []string
-		inputListHLVB  []string
+		inputListHLVA  string
+		inputListHLVB  string
 		expectedResult bool
 	}{
 		{
 			name:           "Matching current source, newer version",
-			inputListHLVA:  []string{"cluster1@20", "cluster2@2"},
-			inputListHLVB:  []string{"cluster1@10", "cluster2@1"},
+			inputListHLVA:  "20@cluster1;2@cluster2",
+			inputListHLVB:  "10@cluster1;1@cluster2",
 			expectedResult: true,
 		}, {
 			name:           "Matching current source and version",
-			inputListHLVA:  []string{"cluster1@20", "cluster2@2"},
-			inputListHLVB:  []string{"cluster1@20", "cluster2@1"},
+			inputListHLVA:  "20@cluster1;2@cluster2",
+			inputListHLVB:  "20@cluster1;2@cluster2",
 			expectedResult: true,
 		},
 		{
 			name:           "B CV found in A's PV",
-			inputListHLVA:  []string{"cluster1@20", "cluster2@10"},
-			inputListHLVB:  []string{"cluster2@10", "cluster1@15"},
+			inputListHLVA:  "20@cluster1;10@cluster2",
+			inputListHLVB:  "10@cluster2;15@cluster1",
 			expectedResult: true,
 		},
 		{
 			name:           "B CV older than A's PV for same source",
-			inputListHLVA:  []string{"cluster1@20", "cluster2@10"},
-			inputListHLVB:  []string{"cluster2@10", "cluster1@15"},
+			inputListHLVA:  "20@cluster1;10@cluster2",
+			inputListHLVB:  "10@cluster2;15@cluster1",
 			expectedResult: true,
 		},
 		{
 			name:           "Unique sources in A",
-			inputListHLVA:  []string{"cluster1@20", "cluster2@15", "cluster3@3"},
-			inputListHLVB:  []string{"cluster2@10", "cluster1@10"},
+			inputListHLVA:  "20@cluster1;15@cluster2,3@cluster3",
+			inputListHLVB:  "10@cluster2;10@cluster1",
 			expectedResult: true,
 		},
 		{
 			name:           "Unique sources in B",
-			inputListHLVA:  []string{"cluster1@20"},
-			inputListHLVB:  []string{"cluster1@15", "cluster3@3"},
+			inputListHLVA:  "20@cluster1",
+			inputListHLVB:  "15@cluster1;3@cluster3",
 			expectedResult: true,
 		},
 		{
 			name:           "B has newer cv",
-			inputListHLVA:  []string{"cluster1@10"},
-			inputListHLVB:  []string{"cluster1@15"},
+			inputListHLVA:  "10@cluster1",
+			inputListHLVB:  "15@cluster1",
 			expectedResult: false,
 		},
 		{
 			name:           "B has newer cv than A pv",
-			inputListHLVA:  []string{"cluster2@20", "cluster1@10"},
-			inputListHLVB:  []string{"cluster1@15", "cluster2@20"},
+			inputListHLVA:  "20@cluster2;10@cluster1",
+			inputListHLVB:  "15@cluster1;20@cluster2",
 			expectedResult: false,
 		},
 		{
 			name:           "B's cv not found in A",
-			inputListHLVA:  []string{"cluster2@20", "cluster1@10"},
-			inputListHLVB:  []string{"cluster3@5"},
+			inputListHLVA:  "20@cluster2;10@cluster1",
+			inputListHLVB:  "5@cluster3",
 			expectedResult: false,
 		},
 	}
@@ -171,69 +169,58 @@ func TestConflictDetectionDominating(t *testing.T) {
 	}
 }
 
-// createHLVForTest is a helper function to create a HLV for use in a test. Takes a list of strings in the format of <sourceID@version> and assumes
-// first entry is current version. For merge version entries you must specify 'm_' as a prefix to sourceID NOTE: it also sets cvCAS to the current version
-func createHLVForTest(tb *testing.T, inputList []string) *HybridLogicalVector {
-	hlvOutput := NewHybridLogicalVector()
-
-	// first element will be current version and source pair
-	currentVersionPair := strings.Split(inputList[0], "@")
-	hlvOutput.SourceID = base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))
-	value, err := strconv.ParseUint(currentVersionPair[1], 10, 64)
-	require.NoError(tb, err)
-	hlvOutput.Version = value
-	hlvOutput.CurrentVersionCAS = value
-
-	// remove current version entry in list now we have parsed it into the HLV
-	inputList = inputList[1:]
-
-	for _, version := range inputList {
-		currentVersionPair = strings.Split(version, "@")
-		value, err = strconv.ParseUint(currentVersionPair[1], 10, 64)
-		require.NoError(tb, err)
-		if strings.HasPrefix(currentVersionPair[0], "m_") {
-			// add entry to merge version removing the leading prefix for sourceID
-			hlvOutput.MergeVersions[EncodeSource(currentVersionPair[0][2:])] = value
-		} else {
-			// if it's not got the prefix we assume it's a previous version entry
-			hlvOutput.PreviousVersions[EncodeSource(currentVersionPair[0])] = value
-		}
+// createHLVForTest is a helper function to create a HLV for use in a test. This uses the CBL wire format.
+func createHLVForTest(tb *testing.T, input string) *HybridLogicalVector {
+	if input == "" {
+		return NewHybridLogicalVector()
 	}
-	return hlvOutput
+	hlv, _, err := extractHLVFromBlipString(input)
+	require.NoError(tb, err)
+	return hlv
 }
 
-func TestAddNewerVersionsBetweenTwoVectorsWhenNotInConflict(t *testing.T) {
+func TestAddNewerVersions(t *testing.T) {
 	testCases := []struct {
-		name          string
-		localInput    []string
-		incomingInput []string
-		expected      []string
+		name        string
+		existingHLV string
+		incomingHLV string
+		finalHLV    string
 	}{
 		{
-			name:          "testcase1",
-			localInput:    []string{"abc@15"},
-			incomingInput: []string{"def@25", "abc@20"},
-			expected:      []string{"def@25", "abc@20"},
+			name:        "update cv and add pv",
+			existingHLV: "15@abc",
+			incomingHLV: "25@def;20@abc",
+			finalHLV:    "25@def;20@abc",
 		},
 		{
-			name:          "testcase2",
-			localInput:    []string{"abc@15", "def@30"},
-			incomingInput: []string{"def@35", "abc@15"},
-			expected:      []string{"def@35", "abc@15"},
+			name:        "update cv, move cv to pv",
+			existingHLV: "15@abc;30@def",
+			incomingHLV: "35@def;15@abc",
+			finalHLV:    "35@def;15@abc",
+		},
+		{
+			name:        "Add new MV",
+			existingHLV: "",
+			// this is an invalid HLV, with only a single entry in mv
+			incomingHLV: "1@b,1@a",
+			finalHLV:    "1@b,1@a",
+		},
+		{
+			name:        "existing mv, move to pv",
+			existingHLV: "3@c,2@b,1@a",
+			incomingHLV: "4@c",
+			finalHLV:    "4@c;2@b,1@a",
 		},
 	}
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			localHLV := createHLVForTest(t, test.localInput)
-			incomingHLV := createHLVForTest(t, test.incomingInput)
-			expectedHLV := createHLVForTest(t, test.expected)
+			localHLV := createHLVForTest(t, test.existingHLV)
+			incomingHLV := createHLVForTest(t, test.incomingHLV)
+			expectedHLV := createHLVForTest(t, test.finalHLV)
 
-			_ = localHLV.AddNewerVersions(incomingHLV)
-			// assert on expected values
-			assert.Equal(t, expectedHLV.SourceID, localHLV.SourceID)
-			assert.Equal(t, expectedHLV.Version, localHLV.Version)
-			assert.True(t, reflect.DeepEqual(expectedHLV.PreviousVersions, localHLV.PreviousVersions))
+			require.NoError(t, localHLV.AddNewerVersions(incomingHLV))
+			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %#v, actual HLV %#v", expectedHLV, localHLV)
 		})
 	}
 }
@@ -987,7 +974,7 @@ func TestVersionDeltaCalculation(t *testing.T) {
 	assert.Greater(t, deltas[0].Value, deltas[4].Value)
 
 	// create a test hlv
-	inputHLVA := []string{"cluster3@2"}
+	inputHLVA := "2@cluster3"
 	hlv := createHLVForTest(t, inputHLVA)
 	hlv.PreviousVersions = pvMap
 	expSrc := hlv.SourceID
@@ -1072,191 +1059,51 @@ func stringHexToUint(t testing.TB, value string) uint64 {
 	return intValue
 }
 
-func TestHLVAddNewerVersionsWithMV(t *testing.T) {
-	testCases := []struct {
-		name        string
-		existingHLV HybridLogicalVector
-		incomingHLV HybridLogicalVector
-		finalHLV    HybridLogicalVector
-	}{
-		{
-			name:        "Add new MV",
-			existingHLV: HybridLogicalVector{},
-			incomingHLV: HybridLogicalVector{
-				SourceID: "b",
-				Version:  1,
-				MergeVersions: map[string]uint64{
-					"a": 1,
-				},
-			},
-			finalHLV: HybridLogicalVector{
-				SourceID: "b",
-				Version:  1,
-				MergeVersions: map[string]uint64{
-					"a": 1,
-				},
-			},
-		},
-		{
-			name: "existing mv, move to pv",
-			existingHLV: HybridLogicalVector{
-				Version:  3,
-				SourceID: "c",
-				MergeVersions: map[string]uint64{
-					"a": 1,
-					"b": 2,
-				},
-			},
-			incomingHLV: HybridLogicalVector{
-				Version:  4,
-				SourceID: "c",
-			},
-			finalHLV: HybridLogicalVector{
-				Version:  4,
-				SourceID: "c",
-				PreviousVersions: map[string]uint64{
-					"a": 1,
-					"b": 2,
-				},
-			},
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			inputHLV := testCase.existingHLV // note this is destructive to input
-			require.NoError(t, inputHLV.AddNewerVersions(&testCase.incomingHLV))
-			require.Equal(t, testCase.finalHLV, inputHLV)
-		})
-	}
-}
-
 func TestInvalidateMV(t *testing.T) {
 	testCases := []struct {
 		name        string
-		existingHLV HybridLogicalVector
-		expectedHLV HybridLogicalVector
+		existingHLV string
+		expectedHLV string
 	}{
 		{
-			name: "cv",
-			existingHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-			},
-			expectedHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-			},
+			name:        "cv",
+			existingHLV: "2@a",
+			expectedHLV: "2@a",
 		},
 		{
-			name: "cv mv, unique source",
-			existingHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				MergeVersions: map[string]uint64{
-					"b": 2,
-					"c": 3,
-				},
-			},
-			expectedHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				PreviousVersions: map[string]uint64{
-					"b": 2,
-					"c": 3,
-				},
-			},
+			name:        "cv mv, unique source",
+			existingHLV: "2@a,2@b,3@c",
+			expectedHLV: "2@a;2@b,3@c",
 		},
 		{
-			name: "cv mv, duplicate source",
-			existingHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				MergeVersions: map[string]uint64{
-					"a": 1,
-					"b": 2,
-				},
-			},
-			expectedHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				PreviousVersions: map[string]uint64{
-					"b": 2,
-				},
-			},
+			name:        "cv mv, duplicate source",
+			existingHLV: "2@a,1@a,2@b",
+			expectedHLV: "2@a;2@b",
 		},
 		{
-			name: "cv pv",
-			existingHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				PreviousVersions: map[string]uint64{
-					"b": 1,
-					"c": 2,
-				},
-			},
-			expectedHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				PreviousVersions: map[string]uint64{
-					"b": 1,
-					"c": 2,
-				},
-			},
+			name:        "cv pv",
+			existingHLV: "2@a;1@b,2@c",
+			expectedHLV: "2@a;1@b,2@c",
 		},
 		{
-			name: "cv mv pv, unique sources",
-			existingHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				MergeVersions: map[string]uint64{
-					"b": 1,
-					"c": 2,
-				},
-				PreviousVersions: map[string]uint64{
-					"d": 1,
-					"e": 2,
-				},
-			},
-			expectedHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				PreviousVersions: map[string]uint64{
-					"b": 1,
-					"c": 2,
-					"d": 1,
-					"e": 2,
-				},
-			},
+			name:        "cv mv pv, unique sources",
+			existingHLV: "2@a,1@b,2@c;1@d,2@e",
+			expectedHLV: "2@a;1@b,2@c,1@d,2@e",
 		},
+		/* This test will not work since the HLV is invalid to start with (a source ID exists in both mv and pv)
 		{
-			name: "cv mv pv, duplicate sources",
-			existingHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				MergeVersions: map[string]uint64{
-					"a": 1,
-					"b": 2,
-				},
-				PreviousVersions: map[string]uint64{
-					"b": 1,
-					"d": 1,
-				},
-			},
-			expectedHLV: HybridLogicalVector{
-				SourceID: "a",
-				Version:  2,
-				PreviousVersions: map[string]uint64{
-					"b": 2,
-					"d": 1,
-				},
-			},
+			name:        "cv mv pv, duplicate sources",
+			existingHLV: "2@a,2@b,2@c;1@b,1@d", // this is an invalid HLV, since a source ID exists in mv and pv
+			expectedHLV: "2@a;1@b,2@c,1@d",
 		},
+		*/
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			inputHLV := testCase.existingHLV // note this is destructive to input
+			inputHLV := createHLVForTest(t, testCase.existingHLV)
 			inputHLV.InvalidateMV()
-			require.Equal(t, testCase.expectedHLV, inputHLV)
+			expectedHLV := createHLVForTest(t, testCase.expectedHLV)
+			require.True(t, expectedHLV.Equal(inputHLV), "Expected %#v but found %#v", expectedHLV, inputHLV)
 		})
 	}
 }
