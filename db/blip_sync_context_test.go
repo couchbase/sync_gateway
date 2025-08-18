@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestBlipSyncContextSetUseDeltas verifies all permutations of setUseDeltas()
@@ -97,6 +98,75 @@ func BenchmarkBlipSyncContextSetUseDeltas(b *testing.B) {
 				ctx.useDeltas = tt.startingCtxDeltas
 				ctx.sgCanUseDeltas = tt.sgCanUseDeltas
 				ctx.setUseDeltas(tt.clientCanUseDeltas)
+			}
+		})
+	}
+}
+
+func TestKnownRevs(t *testing.T) {
+	testCases := []struct {
+		name           string
+		knownRevs      []interface{}
+		expectedKnown  []string
+		isLegacyRev    bool
+		legacyProtocol bool
+		errorCase      bool
+	}{
+		{
+			name:          "no known revs",
+			knownRevs:     []interface{}{},
+			expectedKnown: []string{},
+		},
+		{
+			name:           "< 4 subprotocol no known revs",
+			knownRevs:      []interface{}{},
+			legacyProtocol: true,
+			expectedKnown:  []string{},
+		},
+		{
+			name:           "< 4 subprotocol: client has known rev",
+			knownRevs:      []interface{}{"1-abc"},
+			expectedKnown:  []string{"1-abc"},
+			legacyProtocol: true,
+		},
+		{
+			name:          ">= 4 subprotocol: client has known rev",
+			knownRevs:     []interface{}{"123@src", "1-abc"},
+			expectedKnown: []string{"123@src", "1-abc"},
+		},
+		{
+			name:          ">= 4 subprotocol: client has known rev and rev is legacy rev",
+			knownRevs:     []interface{}{"1-abc"},
+			expectedKnown: []string{"1-abc"},
+			isLegacyRev:   true,
+		},
+		{
+			name:      "invalid known revs",
+			knownRevs: []interface{}{"123@src1", "1-abc", "123@src2"},
+			errorCase: true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			testCtx := t.Context()
+			var bsc *BlipSyncContext
+			if tc.legacyProtocol {
+				bsc = &BlipSyncContext{
+					activeCBMobileSubprotocol: CBMobileReplicationV3,
+				}
+			} else {
+				bsc = &BlipSyncContext{
+					activeCBMobileSubprotocol: CBMobileReplicationV4,
+				}
+			}
+
+			_, changeLegacy, knownRevisions, err := bsc.getKnownRevs(testCtx, "someID", tc.knownRevs)
+			if !tc.errorCase {
+				require.NoError(t, err)
+				assert.Equal(t, tc.isLegacyRev, changeLegacy)
+				base.RequireKeysEqual(t, tc.expectedKnown, knownRevisions)
+			} else {
+				require.Error(t, err)
 			}
 		})
 	}

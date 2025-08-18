@@ -1495,6 +1495,32 @@ func TestGetChannelsAndAccess(t *testing.T) {
 	}
 }
 
+func TestKnownRevsForCheckChangeVersion(t *testing.T) {
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// have three revisions on db for the doc
+	revID, doc, err := collection.Put(ctx, t.Name(), Body{"some": "data"})
+	require.NoError(t, err)
+	for i := 0; i < 2; i++ {
+		revID, doc, err = collection.Put(ctx, t.Name(), Body{"some": "data", BodyRev: revID})
+		require.NoError(t, err)
+	}
+
+	// call CheckChangeVersion with fake VV and the docID from above
+	missing, possible := collection.CheckChangeVersion(ctx, t.Name(), "123@src")
+
+	// assert that the missing revision is the CV and known revID is current revIDS of the document
+	require.Len(t, missing, 1)
+	require.Len(t, possible, 2)
+	// db's CV and revID of the doc should be returned as known revs by CheckChangeVersion
+	assert.Equal(t, "123@src", missing[0])
+	assert.Equal(t, doc.HLV.GetCurrentVersionString(), possible[0])
+	assert.Equal(t, doc.CurrentRev, possible[1])
+}
+
 func TestPutStampClusterUUID(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("This test only works on Couchbase Server and with XATTRS enabled")
@@ -1773,7 +1799,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 		PreviousVersions: pv,
 	}
 
-	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil)
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil, false)
 	assertHTTPError(t, err, 409)
 	require.Nil(t, doc)
 	require.Nil(t, cv)
@@ -1783,7 +1809,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	// TODO: because currentRev isn't being updated, storeOldBodyInRevTreeAndUpdateCurrent isn't
 	//  updating the document body.   Need to review whether it makes sense to keep using
 	// storeOldBodyInRevTreeAndUpdateCurrent, or if this needs a larger overhaul to support VV
-	doc, cv, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil)
+	doc, cv, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil, false)
 	require.NoError(t, err)
 	assert.Equal(t, "test", cv.SourceID)
 	assert.Equal(t, incomingVersion, cv.Value)
@@ -1805,7 +1831,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 
 	// Attempt to push the same client update, validate server rejects as an already known version and cancels the update.
 	// This case doesn't return error, verify that SyncData hasn't been changed.
-	_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil)
+	_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil, false)
 	require.NoError(t, err)
 	syncData2, err := collection.GetDocSyncData(ctx, "doc1")
 	require.NoError(t, err)
@@ -1851,7 +1877,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	}
 
 	// assert that a conflict is correctly identified and the doc and cv are nil
-	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil)
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil, false)
 	assertHTTPError(t, err, 409)
 	require.Nil(t, doc)
 	require.Nil(t, cv)
@@ -1891,7 +1917,7 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 		PreviousVersions: pv,
 	}
 	// call PutExistingCurrentVersion with empty existing doc
-	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, &sgbucket.BucketDocument{}, nil)
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, &sgbucket.BucketDocument{}, nil, false)
 	require.NoError(t, err)
 	assert.NotNil(t, doc)
 	// assert on returned CV value
