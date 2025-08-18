@@ -381,7 +381,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 
 			deltaSrcRevID, legacyRev, knownRevs, err = bsc.getKnownRevs(ctx, docID, knownRevsArray)
 			if err != nil {
-				base.ErrorfCtx(ctx, "Invalid response to 'changes' message")
+				base.ErrorfCtx(ctx, "Invalid response to 'changes' message. Err: %v", err)
 				return nil
 			}
 
@@ -849,7 +849,7 @@ func (bsc *BlipSyncContext) sendRevTreeProperty() bool {
 }
 
 // getKnownRevs will return deltaSrcRev (if delta sync is enabled), whether the known rev array represents a legacy
-// document, the parsed known revs in a map and error if unknown format is received.
+// document without an HLV, the parsed known revs in a map and error if unknown format is received.
 func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, knownRevsArray []interface{}) (deltaSrcRev string, changeIsLegacyRev bool, knownRevs map[string]bool, err error) {
 	knownRevs = make(map[string]bool)
 	// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc for
@@ -858,9 +858,9 @@ func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, know
 		if revID, ok := knownRevsArray[0].(string); ok {
 			if bsc.useHLV() {
 				// extract cv from the known revs array
-				msgHLV, _, err := extractHLVFromBlipString(revID)
-				if err != nil {
-					base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication.", base.UD(docID))
+				msgHLV, _, deltaSrcErr := extractHLVFromBlipString(revID)
+				if deltaSrcErr != nil {
+					base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication. Err: %v KnownRev: %s", base.UD(docID), deltaSrcErr, revID)
 					deltaSrcRev = "" // will force falling back to full body replication below
 				} else {
 					deltaSrcRev = msgHLV.GetCurrentVersionString()
@@ -883,7 +883,7 @@ func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, know
 				// 	- the first element of known rev array was NOT a CV
 				if bsc.useHLV() {
 					if !cvInKnownRevs {
-						// if cv wasn't the first element in known revs array, this will be legacy doc
+						// if cv wasn't the first element in known revs array, assume all elements will be revtree ids.
 						changeIsLegacyRev = true
 					}
 				}
@@ -897,12 +897,14 @@ func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, know
 			// then we have extracted cv from it and can assign the cv string to known revs here
 			knownRevs[revID] = true
 		} else {
+			base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for doc: %s, rev string: %s", base.UD(docID), rev)
 			return deltaSrcRev, changeIsLegacyRev, knownRevs, errors.New("invalid known rev format")
 		}
 	}
 
 	if cvInKnownRevs && len(knownRevsArray) > 2 {
 		// invalid format received
+		base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for doc: %s, too many entries in array %v", base.UD(docID), knownRevsArray)
 		return deltaSrcRev, changeIsLegacyRev, knownRevs, errors.New("invalid known rev format")
 	}
 

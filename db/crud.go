@@ -1217,7 +1217,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 //   - existsingDoc: existing doc in bucket (if present)
 //   - revTreeHistory: list of revID's from the incoming docs history (including docs current rev).
 //   - alignRevTrees: if this is true then we will align the new write with the incoming docs rev tree. If this is
-//     false and len(revTreeHistory) > 0 then this meaans the lcoal version of this doc is legacy doc so this parameter
+//     false and len(revTreeHistory) > 0 then this means the local version of this doc does not have an HLV so this parameter
 //     will be used to check for conflicts.
 func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string, alignRevTrees bool) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
@@ -3183,7 +3183,7 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	if doc.HLV == nil {
 		// no hlv on local doc, mark as missing but send current rev as known rev (will be handled as legacy
 		// rev document on changes response handler)
-		base.DebugfCtx(ctx, base.KeyChanges, "Doc %s has no HLV, marking change version %s as missing", base.UD(docid), base.UD(rev))
+		base.TracefCtx(ctx, base.KeyChanges, "Doc %s has no HLV, marking change version %s as missing", base.UD(docid), base.UD(rev))
 		missing = append(missing, rev)
 		possible = append(possible, doc.CurrentRev)
 		return
@@ -3391,7 +3391,7 @@ func (doc *Document) alignRevTreeHistory(ctx context.Context, newDoc *Document, 
 	}
 
 	if parent != doc.CurrentRev {
-		base.DebugfCtx(ctx, base.KeyCRUD, "incoming rev tree history has different history than local doc %s, aligning local doc history with incoming rev tree history", base.UD(doc.ID))
+		base.DebugfCtx(ctx, base.KeyCRUD, "incoming rev tree history has different history than local doc %s, overwriting the revision history to match the incoming history", base.UD(doc.ID))
 		// clean local history and make way for incoming history to replace it
 		doc.History = make(RevTree)
 		// reset current rev index and parent given we are building a new rev tree now
