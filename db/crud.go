@@ -1298,6 +1298,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		revTreeConflictChecked := false
 		var parent string
 		var currentRevIndex int
+		var isConflict bool
 
 		// Conflict check here
 		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
@@ -1314,11 +1315,12 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 			}
 		} else {
-			if doc.HLV.isDominating(newDocHLV) {
+			isConflict, err = IsInConflict(ctx, doc.HLV, newDocHLV)
+			if err != nil && errors.Is(err, ErrNoNewVersionsToAdd) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
 				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 			}
-			if newDocHLV.isDominating(doc.HLV) {
+			if !isConflict {
 				// update hlv for all newer incoming source version pairs
 				addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
 				if addNewerVersionsErr != nil {
