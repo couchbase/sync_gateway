@@ -413,13 +413,10 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t,
+	bt := NewBlipTesterFromSpec(t,
 		BlipTesterSpec{
 			connectingUsername: "user1",
-			connectingPassword: "1234",
 		})
-	require.NoError(t, err)
 	defer bt.Close()
 
 	attachmentBody := "attach"
@@ -458,13 +455,9 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername:          "user1",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // All channels
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		GuestEnabled: true,
 	})
-	require.NoError(t, err)
 	defer bt.Close()
 
 	attachmentBody := "attach"

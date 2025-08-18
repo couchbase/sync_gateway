@@ -14,7 +14,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -410,9 +409,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.TestBucket.Bucket = rt.RestTesterServerContext.Database(ctx, rt.DatabaseConfig.Name).Bucket
 
 		if rt.DatabaseConfig.Guest == nil {
-			if err := rt.SetAdminParty(rt.GuestEnabled); err != nil {
-				rt.TB().Fatalf("Error from SetAdminParty %v", err)
-			}
+			rt.SetAdminParty(rt.GuestEnabled)
 		}
 	}
 
@@ -622,13 +619,12 @@ func (rt *RestTester) WaitForPendingChanges() {
 	}
 }
 
-func (rt *RestTester) SetAdminParty(partyTime bool) error {
+// SetAdminParty toggles the guest user between disabled and enabled.  If enabled, the guest user is given access to the UserStar channel on all collections.
+func (rt *RestTester) SetAdminParty(partyTime bool) {
 	ctx := rt.Context()
 	a := rt.GetDatabase().Authenticator(ctx)
 	guest, err := a.GetUser("")
-	if err != nil {
-		return err
-	}
+	require.NoError(rt.TB(), err)
 	guest.SetDisabled(!partyTime)
 	var chans channels.TimedSet
 	if partyTime {
@@ -639,12 +635,12 @@ func (rt *RestTester) SetAdminParty(partyTime bool) error {
 		guest.SetExplicitChannels(chans, 1)
 	} else {
 		for scopeName, scope := range a.Collections {
-			for collectionName, _ := range scope {
+			for collectionName := range scope {
 				guest.SetCollectionExplicitChannels(scopeName, collectionName, chans, 1)
 			}
 		}
 	}
-	return a.Save(guest)
+	require.NoError(rt.TB(), a.Save(guest))
 }
 
 func (rt *RestTester) Close() {
@@ -1087,21 +1083,22 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 	return response
 }
 
-func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
+// SetAdminChannels creates or updates a user with the specified channels.
+func (rt *RestTester) SetAdminChannels(username string, password string, keyspace string, channels ...string) {
 	dbName, scopeName, collectionName, err := ParseKeyspace(keyspace)
-	if err != nil {
-		return err
-	}
-	// Get the current user document
-	userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/"+username, "")
-	if userResponse.Code != 200 {
-		return fmt.Errorf("User %s not found", username)
-	}
-
+	require.NoError(rt.TB(), err)
 	var currentConfig auth.PrincipalConfig
-	if err := base.JSONUnmarshal(userResponse.Body.Bytes(), &currentConfig); err != nil {
-		return err
+	user, err := rt.GetDatabase().Authenticator(rt.Context()).GetUser(username)
+	require.NoError(rt.TB(), err)
+	newUser := user == nil
+	if !newUser {
+		userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/"+username, "")
+		if userResponse.Code != http.StatusNotFound {
+			RequireStatus(rt.TB(), userResponse, http.StatusOK)
+			require.NoError(rt.TB(), base.JSONUnmarshal(userResponse.Body.Bytes(), &currentConfig))
+		}
 	}
+	currentConfig.Password = &password
 
 	if scopeName == nil || collectionName == nil {
 		if channels != nil {
@@ -1112,22 +1109,22 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 	}
 	// Remove read only properties returned from the user api
 	for _, scope := range currentConfig.CollectionAccess {
-		if scope != nil {
-			for _, collectionAccess := range scope {
-				collectionAccess.Channels_ = nil
-				collectionAccess.JWTChannels_ = nil
-				collectionAccess.JWTLastUpdated = nil
-			}
+		for _, collectionAccess := range scope {
+			collectionAccess.Channels_ = nil
+			collectionAccess.JWTChannels_ = nil
+			collectionAccess.JWTLastUpdated = nil
 		}
 	}
 
-	newConfigBytes, _ := base.JSONMarshal(currentConfig)
+	newConfigBytes, err := base.JSONMarshal(currentConfig)
+	require.NoError(rt.TB(), err)
 
-	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
-	if userResponse.Code != 200 {
-		return fmt.Errorf("User update failed: %s", userResponse.Body.Bytes())
+	userResponse := rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
+	if newUser {
+		RequireStatus(rt.TB(), userResponse, http.StatusCreated)
+	} else {
+		RequireStatus(rt.TB(), userResponse, http.StatusOK)
 	}
-	return nil
 }
 
 // GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
@@ -1302,18 +1299,9 @@ type BlipTesterSpec struct {
 	// If an underlying RestTester is created, it will propagate this setting to the underlying RestTester.
 	GuestEnabled bool
 
-	// The Sync Gateway username and password to connect with.  If set, then you
-	// may want to disable "Admin Party" mode, which will allow guest user access.
-	// By default, the created user will have access to a single channel that matches their username.
-	// If you need to grant the user access to more channels, you can override this behavior with the
-	// connectingUserChannelGrants field
+	// The Sync Gateway username to connect with. This will always use RestTesterDefaultUserPassword to connect if username is set.
+	// If not set, then you may want to enabled Guest access.
 	connectingUsername string
-	connectingPassword string
-
-	// By default, the created user will have access to a single channel that matches their username.
-	// If you need to grant the user access to more channels, you can override this behavior by specifying
-	// the channels the user should have access in this string slice
-	connectingUserChannelGrants []string
 
 	// Allow tests to further customized a RestTester or re-use it across multiple BlipTesters if needed.
 	// If a RestTester is passed in, certain properties of the BlipTester such as GuestEnabled will be ignored, since
@@ -1388,21 +1376,22 @@ func getDefaultBlipTesterSpec() BlipTesterSpec {
 }
 
 // NewBlipTesterFromSpecWithRT creates a blip tester from an existing rest tester
-func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTester) (blipTester *BlipTester, err error) {
+func NewBlipTesterFromSpecWithRT(rt *RestTester, spec *BlipTesterSpec) *BlipTester {
 	blipTesterSpec := spec
 	if spec == nil {
 		blipTesterSpec = &BlipTesterSpec{}
 	}
 	if blipTesterSpec.syncFn != "" {
-		tb.Errorf("Setting BlipTesterSpec.SyncFn is incompatible with passing a custom RestTester. Use SyncFn on RestTester or DatabaseConfig")
+		rt.TB().Errorf("Setting BlipTesterSpec.SyncFn is incompatible with passing a custom RestTester. Use SyncFn on RestTester")
 	}
-	blipTester, err = createBlipTesterWithSpec(tb, *blipTesterSpec, rt)
-	if err != nil {
-		return nil, err
+	if blipTesterSpec.GuestEnabled {
+		rt.TB().Errorf("Setting BlipTesterSpec.GuestEnabled is incompatible with passing a custom RestTester. Use GuestEnabled on RestTester")
 	}
+	blipTester, err := createBlipTesterWithSpec(rt, *blipTesterSpec)
+	require.NoError(rt.TB(), err)
 	blipTester.avoidRestTesterClose = true
 
-	return blipTester, err
+	return blipTester
 }
 
 // NewBlipTesterDefaultCollection creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
@@ -1419,28 +1408,35 @@ func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) 
 		SyncFn:         spec.syncFn,
 	}
 	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
-	bt, err := createBlipTesterWithSpec(tb, spec, rt)
+	bt, err := createBlipTesterWithSpec(rt, spec)
 	require.NoError(tb, err)
 	return bt
 }
 
-// Create a BlipTester using the default spec
-func NewBlipTester(tb testing.TB) (*BlipTester, error) {
+// NewBlipTester creates a blip tester with an underlying Rest Tester in the default configuration.
+func NewBlipTester(tb testing.TB) *BlipTester {
 	return NewBlipTesterFromSpec(tb, getDefaultBlipTesterSpec())
 }
 
-func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
+// NewBlipTesterFromSpec creates a BlipTester using options. This will create a RestTester underneath the BlipTester.
+func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
 	rtConfig := RestTesterConfig{
 		AllowConflicts: spec.allowConflicts,
 		GuestEnabled:   spec.GuestEnabled,
 		SyncFn:         spec.syncFn,
 	}
 	rt := NewRestTester(tb, &rtConfig)
-	return createBlipTesterWithSpec(tb, spec, rt)
+	if spec.connectingUsername != "" {
+		rt.CreateUser(spec.connectingUsername, nil)
+	}
+	bt, err := createBlipTesterWithSpec(rt, spec)
+	require.NoError(tb, err)
+	return bt
 }
 
-// Create a BlipTester using the given spec
-func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester) (*BlipTester, error) {
+// createBlipTesterWithSpec creates a blip tester targeting a specific RestTester. Returns an error to allow for
+// testing connection error conditions. Use NewBlipTesterFromSpec for most tests.
+func createBlipTesterWithSpec(rt *RestTester, spec BlipTesterSpec) (*BlipTester, error) {
 	bt := &BlipTester{
 		restTester: rt,
 	}
@@ -1452,31 +1448,6 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server
 	publicHandler := bt.restTester.TestPublicHandler()
 
-	if len(spec.connectingUsername) > 0 {
-
-		// By default, the user will be granted access to a single channel equal to their username
-		adminChannels := []string{spec.connectingUsername}
-
-		// If the caller specified a list of channels to grant the user access to, then use that instead.
-		if len(spec.connectingUserChannelGrants) > 0 {
-			adminChannels = []string{} // empty it
-			adminChannels = append(adminChannels, spec.connectingUserChannelGrants...)
-		}
-
-		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, bt.restTester.GetSingleDataStore(), adminChannels)
-		if err != nil {
-			return nil, err
-		}
-		log.Printf("Creating user: %v", userDocBody)
-
-		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
-		_ = bt.restTester.SendAdminRequest(
-			"POST",
-			"/{{.db}}/_user/",
-			userDocBody,
-		)
-	}
-
 	// Create a _temporary_ test server bound to an actual port that is used to make the blip connection.
 	// This is needed because the mock-based approach fails with a "Connection not hijackable" error when
 	// trying to do the websocket upgrade.  Since it's only needed to setup the websocket, it can be closed
@@ -1487,9 +1458,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	// Construct URL to connect to blipsync target endpoint
 	destUrl := fmt.Sprintf("%s/%s/_blipsync", srv.URL, rt.GetDatabase().Name)
 	u, err := url.Parse(destUrl)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(bt.TB(), err)
 	u.Scheme = "ws"
 
 	// If protocols are not set use V3 as a V3 client would
@@ -1504,18 +1473,18 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	}
 	// Make BLIP/Websocket connection.  Not specifying cancellation context here as this is a
 	// client blip context that doesn't require cancellation-based close
-	_, bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", origin, protocols, nil)
+	_, bt.blipContext, err = db.NewSGBlipContextWithProtocols(rt.Context(), "", origin, protocols, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	// Ensure that errors get correctly surfaced in tests
 	bt.blipContext.FatalErrorHandler = func(err error) {
-		tb.Fatalf("BLIP fatal error: %v", err)
+		bt.TB().Fatalf("BLIP fatal error: %v", err)
 	}
 	bt.blipContext.HandlerPanicHandler = func(request, response *blip.Message, err interface{}) {
 		stack := debug.Stack()
-		tb.Fatalf("Panic while handling %s: %v\n%s", request.Profile(), err, string(stack))
+		bt.TB().Fatalf("Panic while handling %s: %v\n%s", request.Profile(), err, string(stack))
 	}
 
 	config := blip.DialOptions{
@@ -1524,11 +1493,11 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 
 	config.HTTPHeader = make(http.Header)
 	if len(spec.connectingUsername) > 0 {
-		config.HTTPHeader.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(spec.connectingUsername+":"+spec.connectingPassword)))
+		config.HTTPHeader.Add("Authorization", GetBasicAuthHeader(bt.TB(), spec.connectingUsername, RestTesterDefaultUserPassword))
 	}
 	if spec.origin != nil {
 		if spec.useHostOrigin {
-			require.Fail(tb, "setting both origin and useHostOrigin is not supported")
+			require.Fail(bt.TB(), "setting both origin and useHostOrigin is not supported")
 		}
 		config.HTTPHeader.Add("Origin", *spec.origin)
 	} else if spec.useHostOrigin {
@@ -1537,13 +1506,11 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 
 	bt.sender, err = bt.blipContext.DialConfig(&config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error dialing blip context: %w", err)
 	}
 
 	bt.activeSubprotocol, err = db.ParseSubprotocolString(bt.blipContext.ActiveSubprotocol())
-	if err != nil {
-		tb.Fatalf("Unable to parse subprotocol string: %v", err)
-	}
+	require.NoError(bt.TB(), err)
 
 	collections := bt.restTester.getCollectionsForBLIP()
 	if !spec.skipCollectionsInitialization && len(collections) > 0 {
@@ -1554,19 +1521,9 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 
 }
 
-func getUserBodyDoc(username, password string, collection sgbucket.DataStore, adminChans []string) (string, error) {
-	config := PrincipalConfigForWrite{}
-	if username != "" {
-		config.Name = &username
-	}
-	if password != "" {
-		config.Password = &password
-	}
-	marshalledConfig, err := addChannelsToPrincipal(config, collection, adminChans)
-	if err != nil {
-		return "", err
-	}
-	return string(marshalledConfig), nil
+// TB returns the current testing.TB
+func (bt *BlipTester) TB() testing.TB {
+	return bt.restTester.TB()
 }
 
 func (bt *BlipTester) initializeCollections(collections []string) {

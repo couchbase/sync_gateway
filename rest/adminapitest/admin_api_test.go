@@ -396,7 +396,7 @@ func TestFlush(t *testing.T) {
 
 	log.Printf("Flushing db...")
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
-	require.NoError(t, rt.SetAdminParty(true)) // needs to be re-enabled after flush since guest user got wiped
+	rt.SetAdminParty(true) // needs to be re-enabled after flush since guest user got wiped
 
 	// After the flush, the db exists but the documents are gone:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)

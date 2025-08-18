@@ -421,7 +421,7 @@ func TestCORSBlipSync(t *testing.T) {
 	}
 
 	rt.CreateDatabase("corsdb", dbConfig)
-	require.NoError(t, rt.SetAdminParty(true))
+	rt.SetAdminParty(true)
 	testCases := []struct {
 		name         string
 		origin       *string
@@ -446,7 +446,7 @@ func TestCORSBlipSync(t *testing.T) {
 
 			spec := getDefaultBlipTesterSpec()
 			spec.origin = test.origin
-			_, err := createBlipTesterWithSpec(t, spec, rt)
+			_, err := createBlipTesterWithSpec(rt, spec)
 			if test.errorMessage == "" {
 				require.NoError(t, err)
 			} else {
@@ -471,13 +471,13 @@ func TestCORSBlipSyncStar(t *testing.T) {
 		Origin: []string{"*"},
 	}
 	rt.CreateDatabase("corsdb", dbConfig)
-	require.NoError(t, rt.SetAdminParty(true))
+	rt.SetAdminParty(true)
 	urls := []string{"http://example.com", "http://example2.com", "https://example.com"}
 	for _, url := range urls {
 		rt.Run(url, func(t *testing.T) {
 			spec := getDefaultBlipTesterSpec()
 			spec.origin = &url
-			_, err := createBlipTesterWithSpec(t, spec, rt)
+			_, err := createBlipTesterWithSpec(rt, spec)
 			require.NoError(t, err)
 		})
 	}
@@ -500,14 +500,14 @@ func TestCORSBlipNoConfig(t *testing.T) {
 	}
 
 	rt.CreateDatabase("corsdb", dbConfig)
-	require.NoError(t, rt.SetAdminParty(true))
+	rt.SetAdminParty(true)
 
 	urls := []string{"http://example.com", "http://example2.com", "https://example.com"}
 	for _, url := range urls {
 		rt.Run(url, func(t *testing.T) {
 			spec := getDefaultBlipTesterSpec()
 			spec.origin = &url
-			_, err := createBlipTesterWithSpec(t, spec, rt)
+			_, err := createBlipTesterWithSpec(rt, spec)
 			require.Error(t, err)
 		})
 	}
@@ -518,7 +518,7 @@ func TestCORSBlipNoConfig(t *testing.T) {
 // requireBlipHandshakeEmptyCORS creates a new blip tester with no Origin header
 func requireBlipHandshakeEmptyCORS(rt *RestTester) {
 	spec := getDefaultBlipTesterSpec()
-	_, err := createBlipTesterWithSpec(rt.TB(), spec, rt)
+	_, err := createBlipTesterWithSpec(rt, spec)
 	require.NoError(rt.TB(), err)
 }
 
@@ -526,7 +526,7 @@ func requireBlipHandshakeEmptyCORS(rt *RestTester) {
 func requireBlipHandshakeMatchingHost(rt *RestTester) {
 	spec := getDefaultBlipTesterSpec()
 	spec.useHostOrigin = true
-	_, err := createBlipTesterWithSpec(rt.TB(), spec, rt)
+	_, err := createBlipTesterWithSpec(rt, spec)
 	require.NoError(rt.TB(), err)
 }
 

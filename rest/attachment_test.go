@@ -2438,10 +2438,9 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.AllowConflicts = base.Ptr(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-	require.NoError(t, rt.SetAdminParty(true))
+	rt.SetAdminParty(true)
 
-	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, nil)
 	defer bt.Close()
 
 	attachmentData := []byte("attachmentA")
@@ -2527,13 +2526,10 @@ func TestPutInvalidAttachment(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername:          "user1",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // All channels
+	const username = "user1"
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		connectingUsername: username,
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	for _, test := range tests {
@@ -2878,6 +2874,7 @@ func TestBlipPushRevWithAttachment(t *testing.T) {
 		rt := NewRestTesterPersistentConfig(t)
 		defer rt.Close()
 		const username = "bernard"
+		rt.CreateUser(username, nil)
 
 		opts := &BlipTesterClientOpts{Username: username, SupportedBLIPProtocols: SupportedBLIPProtocols}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
