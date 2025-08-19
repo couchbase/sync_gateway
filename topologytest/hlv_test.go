@@ -61,9 +61,9 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, doc
 }
 
 // waitForCVAndBody waits for a document to reach a specific cv on all peers.
-// This is used when asserting on the full HLV is impossible. If XDCR is running, then asserting on the full HLV for
-// non CBL peers is possible. However, conflict resolution on Couchbase Lite means that Couchbase Lite can contain
-// previous versions of a document.
+// This is used for scenarios where it's valid for the full HLV to not converge.  This includes cases where 
+// CBL conflict resolution results in additional history in the CBL version of the HLV that may not be pushed
+// to CBS (e.g. remote wins)
 //
 // See following example:
 //
