@@ -3611,3 +3611,43 @@ func TestBlipPullConflict(t *testing.T) {
 		require.True(t, bucketDoc.HLV.Equal(postConflictHLV), "Expected bucket doc HLV to match post-conflict HLV, got %#v, expected %#v", bucketDoc.HLV, postConflictHLV)
 	})
 }
+
+func TestBlipTesterMultipleClients(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest, base.KeySync, base.KeySyncMsg, base.KeyHTTP, base.KeyChanges, base.KeyCRUD)
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt1 := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+		defer rt1.Close()
+		rt2 := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+		defer rt2.Close()
+		const username = "alice"
+		rt1.CreateDatabase("db1", rt1.NewDbConfig())
+		rt2.CreateDatabase("db2", rt2.NewDbConfig())
+		rt1.CreateUser(username, []string{"*"})
+		rt2.CreateUser(username, []string{"*"})
+		opts := &BlipTesterClientOpts{Username: username, SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt1, opts)
+		defer btc.Close()
+
+		const (
+			rt1DocID = "rt1doc"
+			rt2DocID = "rt2doc"
+			btcDocID = "btcdoc"
+		)
+
+		rt1Version := rt1.PutDocDirectly(rt1DocID, JsonToMap(t, `{"foo":"bar"}`))
+		rt2Version := rt2.PutDocDirectly(rt2DocID, JsonToMap(t, `{"foo":"bar"}`))
+		btcVersion := btcRunner.AddRev(btc.id, btcDocID, EmptyDocVersion(), []byte(`{"foo":"bar"}`))
+
+		btcRunner.StartPull(btc.id)
+		btcRunner.StartPush(btc.id)
+		btcRunner.WaitForVersion(btc.id, rt1DocID, rt1Version)
+		rt1.WaitForVersion(btcDocID, btcVersion)
+
+		btcRunner.UpdateRT(rt2)
+		btcRunner.StartPull(btc.id)
+		btcRunner.StartPush(btc.id)
+		btcRunner.WaitForVersion(btc.id, rt2DocID, rt2Version)
+		rt2.WaitForVersion(btcDocID, btcVersion)
+	})
+}

@@ -1034,18 +1034,55 @@ func (btc *BlipTesterClient) TB() testing.TB {
 
 // Close shuts down all the clients and clears all messages stored.
 func (btc *BlipTesterClient) Close() {
-	btc.tearDownBlipClientReplications()
-	for _, collectionClient := range btc.collectionClients {
-		collectionClient.Close()
+	for client := range btc.clients() {
+		client.Close()
 	}
-	if btc.nonCollectionAwareClient != nil {
-		btc.nonCollectionAwareClient.Close()
+}
+
+func (btc *BlipTesterClient) clients() iter.Seq[*BlipTesterCollectionClient] {
+	return func(yield func(*BlipTesterCollectionClient) bool) {
+		if btc.nonCollectionAwareClient != nil {
+			if !yield(btc.nonCollectionAwareClient) {
+				return
+			}
+		}
+		for _, client := range btc.collectionClients {
+			if !yield(client) {
+				return
+			}
+		}
 	}
 }
 
 // TB returns testing.TB for the current test
 func (btcRunner *BlipTestClientRunner) TB() testing.TB {
 	return btcRunner.t
+}
+
+func (btcRunner *BlipTestClientRunner) collectionClients() iter.Seq[*BlipTesterCollectionClient] {
+	return func(yield func(*BlipTesterCollectionClient) bool) {
+		for _, btc := range btcRunner.clients {
+			for client := range btc.clients() {
+				if !yield(client) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (btcRunner *BlipTestClientRunner) UpdateRT(rt *RestTester) {
+	for client := range btcRunner.collectionClients() {
+		client.shutdown()
+		client.initializeClient()
+	}
+	for _, client := range btcRunner.clients {
+		client.rt = rt
+		client.pullReplication.bt.updateRT(rt)
+		client.pullReplication.initHandlers(client)
+		client.pushReplication.bt.updateRT(rt)
+		client.pushReplication.initHandlers(client)
+	}
 }
 
 func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIPProtocols []string)) {
@@ -1467,11 +1504,8 @@ func (btcc *BlipTesterCollectionClient) UnsubPullChanges() {
 
 // NewBlipTesterCollectionClient creates a collection specific client from a BlipTesterClient
 func NewBlipTesterCollectionClient(btc *BlipTesterClient) *BlipTesterCollectionClient {
-	ctx, ctxCancel := context.WithCancel(btc.rt.Context())
 	l := sync.RWMutex{}
 	c := &BlipTesterCollectionClient{
-		ctx:           ctx,
-		ctxCancel:     ctxCancel,
 		seqLock:       &l,
 		_seqStore:     make(map[clientSeq]*clientDoc),
 		_seqFromDocID: make(map[string]clientSeq),
@@ -1480,16 +1514,18 @@ func NewBlipTesterCollectionClient(btc *BlipTesterClient) *BlipTesterCollectionC
 		parent:        btc,
 		hlc:           btc.hlc,
 	}
+	c.initializeClient()
 	globalBlipTesterClients.add(btc.TB().Name())
 	return c
 }
 
+func (btcc *BlipTesterCollectionClient) initializeClient() {
+	btcc.ctx, btcc.ctxCancel = context.WithCancel(btcc.parent.rt.Context())
+}
+
 // Close will empty the stored docs and close the underlying replications.
 func (btcc *BlipTesterCollectionClient) Close() {
-	btcc.ctxCancel()
-
-	// wake up changes feeds to exit - don't need lock for sync.Cond
-	btcc._seqCond.Broadcast()
+	btcc.shutdown()
 
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
@@ -1501,6 +1537,15 @@ func (btcc *BlipTesterCollectionClient) Close() {
 	defer btcc.attachmentsLock.Unlock()
 	btcc._attachments = make(map[string][]byte, 0)
 	globalBlipTesterClients.remove(btcc.TB(), btcc.TB().Name())
+}
+
+func (btcc *BlipTesterCollectionClient) shutdown() {
+	btcc.ctxCancel()
+
+	// wake up changes feeds to exit - don't need lock for sync.Cond
+	btcc._seqCond.Broadcast()
+
+	require.NoError(btcc.TB(), WaitWithTimeout(&btcc.goroutineWg, 5*time.Second))
 }
 
 // sendMsg sends a blip message to the server and stores it on BlipTesterReplicator. The response is not read unless the caller calls msg.Response()

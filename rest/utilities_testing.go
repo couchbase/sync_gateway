@@ -647,6 +647,7 @@ func (rt *RestTester) Close() {
 	if rt.TB() == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
+	debug.PrintStack()
 	ctx := rt.Context() // capture ctx before closing rt
 	rt.closed = true
 	if rt.RestTesterServerContext != nil {
@@ -1351,6 +1352,9 @@ type BlipTester struct {
 	// Set when we receive a reply to a getCollections request. Used to verify that all messages after that contain a
 	// `collection` property.
 	useCollections bool
+
+	// Specification used t define a BlipTester
+	spec BlipTesterSpec
 }
 
 // Close the bliptester
@@ -1437,10 +1441,20 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
 // createBlipTesterWithSpec creates a blip tester targeting a specific RestTester. Returns an error to allow for
 // testing connection error conditions. Use NewBlipTesterFromSpec for most tests.
 func createBlipTesterWithSpec(rt *RestTester, spec BlipTesterSpec) (*BlipTester, error) {
-	bt := &BlipTester{
-		restTester: rt,
+	bt := &BlipTester{spec: spec}
+	err := bt.updateRT(rt)
+	if err != nil {
+		return nil, err
 	}
+	return bt, nil
+}
 
+func (bt *BlipTester) TB() testing.TB {
+	return bt.restTester.TB()
+}
+
+func (bt *BlipTester) updateRT(rt *RestTester) error {
+	bt.restTester = rt
 	if !rt.GetDatabase().OnlyDefaultCollection() {
 		bt.useCollections = true
 	}
@@ -1462,20 +1476,20 @@ func createBlipTesterWithSpec(rt *RestTester, spec BlipTesterSpec) (*BlipTester,
 	u.Scheme = "ws"
 
 	// If protocols are not set use V3 as a V3 client would
-	protocols := spec.blipProtocols
+	protocols := bt.spec.blipProtocols
 	if len(protocols) == 0 {
 		protocols = []string{db.CBMobileReplicationV3.SubprotocolString()}
 	}
 
 	origin, err := hostOnlyCORS(bt.restTester.GetDatabase().CORS.Origin)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// Make BLIP/Websocket connection.  Not specifying cancellation context here as this is a
 	// client blip context that doesn't require cancellation-based close
 	_, bt.blipContext, err = db.NewSGBlipContextWithProtocols(rt.Context(), "", origin, protocols, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Ensure that errors get correctly surfaced in tests
@@ -1492,38 +1506,33 @@ func createBlipTesterWithSpec(rt *RestTester, spec BlipTesterSpec) (*BlipTester,
 	}
 
 	config.HTTPHeader = make(http.Header)
-	if len(spec.connectingUsername) > 0 {
-		config.HTTPHeader.Add("Authorization", GetBasicAuthHeader(bt.TB(), spec.connectingUsername, RestTesterDefaultUserPassword))
+	if len(bt.spec.connectingUsername) > 0 {
+		config.HTTPHeader.Add("Authorization", GetBasicAuthHeader(bt.TB(), bt.spec.connectingUsername, RestTesterDefaultUserPassword))
 	}
-	if spec.origin != nil {
-		if spec.useHostOrigin {
+	if bt.spec.origin != nil {
+		if bt.spec.useHostOrigin {
 			require.Fail(bt.TB(), "setting both origin and useHostOrigin is not supported")
 		}
-		config.HTTPHeader.Add("Origin", *spec.origin)
-	} else if spec.useHostOrigin {
+		config.HTTPHeader.Add("Origin", *bt.spec.origin)
+	} else if bt.spec.useHostOrigin {
 		config.HTTPHeader.Add("Origin", "https://"+u.Host)
 	}
 
 	bt.sender, err = bt.blipContext.DialConfig(&config)
 	if err != nil {
-		return nil, fmt.Errorf("Error dialing blip context: %w", err)
+		return fmt.Errorf("Error dialing blip context: %w", err)
 	}
 
 	bt.activeSubprotocol, err = db.ParseSubprotocolString(bt.blipContext.ActiveSubprotocol())
 	require.NoError(bt.TB(), err)
 
 	collections := bt.restTester.getCollectionsForBLIP()
-	if !spec.skipCollectionsInitialization && len(collections) > 0 {
+	if !bt.spec.skipCollectionsInitialization && len(collections) > 0 {
 		bt.initializeCollections(collections)
 	}
 
-	return bt, nil
+	return nil
 
-}
-
-// TB returns the current testing.TB
-func (bt *BlipTester) TB() testing.TB {
-	return bt.restTester.TB()
 }
 
 func (bt *BlipTester) initializeCollections(collections []string) {
