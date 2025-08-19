@@ -707,7 +707,7 @@ type DatabaseStats struct {
 	NumDocsPostFilterPublicAllDocs *SgwIntStat `json:"num_docs_post_filter_public_all_docs"`
 	// NumDocsPreFilterPublicAllDocs is the total number of documents returned before filtering for /_all_docs on the public interface.
 	NumDocsPreFilterPublicAllDocs *SgwIntStat `json:"num_docs_pre_filter_public_all_docs"`
-	// TombstoneCount is the total nummber of tombstones received by Sync Gateway
+	// TombstoneCount is the total number of tombstones received by Sync Gateway
 	TombstoneCount *SgwIntStat `json:"tombstone_count"`
 }
 
@@ -1312,7 +1312,6 @@ func (s *SgwStats) ClearDBStats(name string) {
 	}
 
 	s.DbStats[name].unregisterQueryStats()
-
 	delete(s.DbStats, name)
 }
 
