@@ -1561,7 +1561,6 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 	if resp.Type() == blip.ErrorType &&
 		resp.Properties[BlipErrorDomain] == blip.BLIPErrorDomain &&
 		resp.Properties[BlipErrorCode] == "404" {
-		panic("here")
 		return errNoBlipHandler
 	}
 

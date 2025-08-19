@@ -647,7 +647,6 @@ func (rt *RestTester) Close() {
 	if rt.TB() == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
-	debug.PrintStack()
 	ctx := rt.Context() // capture ctx before closing rt
 	rt.closed = true
 	if rt.RestTesterServerContext != nil {
