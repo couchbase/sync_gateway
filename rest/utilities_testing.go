@@ -201,9 +201,8 @@ func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfi
 func (rt *RestTester) Bucket() base.Bucket {
 	if rt.TB() == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
-	} else if rt.closed {
-		panic("RestTester was closed!")
 	}
+	require.False(rt.TB(), rt.closed, "RestTester has already been closed, cannot access bucket")
 
 	if rt.TestBucket != nil {
 		return rt.TestBucket.Bucket

@@ -3621,8 +3621,9 @@ func TestBlipTesterMultipleClients(t *testing.T) {
 		rt2 := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 		defer rt2.Close()
 		const username = "alice"
-		rt1.CreateDatabase("db1", rt1.NewDbConfig())
-		rt2.CreateDatabase("db2", rt2.NewDbConfig())
+		protocolNumber := "blip_v" + SupportedBLIPProtocols[0][len(SupportedBLIPProtocols[0])-1:]
+		rt1.CreateDatabase("db1_"+protocolNumber, rt1.NewDbConfig())
+		rt2.CreateDatabase("db2_"+protocolNumber, rt2.NewDbConfig())
 		rt1.CreateUser(username, []string{"*"})
 		rt2.CreateUser(username, []string{"*"})
 		opts := &BlipTesterClientOpts{Username: username, SupportedBLIPProtocols: SupportedBLIPProtocols}
@@ -3643,11 +3644,17 @@ func TestBlipTesterMultipleClients(t *testing.T) {
 		btcRunner.StartPush(btc.id)
 		btcRunner.WaitForVersion(btc.id, rt1DocID, rt1Version)
 		rt1.WaitForVersion(btcDocID, btcVersion)
+		btcRunner.StopPush(btc.id)
+		btcRunner.UnsubPullChanges(btc.id)
 
+		base.WarnfCtx(base.TestCtx(t), "Updating rt")
+		base.WarnfCtx(base.TestCtx(t), "Got rt1 context %+v", rt1.Context())
+		base.WarnfCtx(base.TestCtx(t), "Got rt2 context %+v", rt1.Context())
 		btcRunner.UpdateRT(rt2)
 		btcRunner.StartPull(btc.id)
 		btcRunner.StartPush(btc.id)
 		btcRunner.WaitForVersion(btc.id, rt2DocID, rt2Version)
 		rt2.WaitForVersion(btcDocID, btcVersion)
+		base.WarnfCtx(base.TestCtx(t), "Finished test")
 	})
 }

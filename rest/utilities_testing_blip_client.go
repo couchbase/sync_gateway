@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -378,6 +379,8 @@ type BlipTesterCollectionClient struct {
 	pushRunning   base.AtomicBool
 	pushCtx       context.Context
 	pushCtxCancel context.CancelFunc
+
+	pullRunning atomic.Bool
 
 	collection    string
 	collectionIdx int
@@ -1073,14 +1076,19 @@ func (btcRunner *BlipTestClientRunner) collectionClients() iter.Seq[*BlipTesterC
 
 func (btcRunner *BlipTestClientRunner) UpdateRT(rt *RestTester) {
 	for client := range btcRunner.collectionClients() {
+		pushRunning := client.pushRunning.IsTrue()
+		base.WarnfCtx(rt.Context(), "UpdateRT pushRunning=%t pullRunning=%t", pushRunning, client.pullRunning.Load())
+		require.False(rt.TB(), client.pushRunning.IsTrue(), "push replication is still running for client %s", client.collection)
+		//require.False(rt.TB(), true, "push replication is still running for client %s", client.collection)
+		require.False(rt.TB(), client.pullRunning.Load(), "pull replication is still running for client %s", client.collection)
 		client.shutdown()
-		client.initializeClient()
+		client.initializeClient(rt.Context())
 	}
 	for _, client := range btcRunner.clients {
 		client.rt = rt
-		client.pullReplication.bt.updateRT(rt)
+		require.NoError(rt.TB(), client.pullReplication.bt.updateRT(rt), "failed to update pull replication RT for client=%s", client.id)
 		client.pullReplication.initHandlers(client)
-		client.pushReplication.bt.updateRT(rt)
+		require.NoError(rt.TB(), client.pushReplication.bt.updateRT(rt), "failed to update push replication RT for collect=%s", client.id)
 		client.pushReplication.initHandlers(client)
 	}
 }
@@ -1272,7 +1280,7 @@ func (e proposeChangeBatchEntry) GoString() string {
 	return fmt.Sprintf("proposeChangeBatchEntry{docID: %q, version:%v,revTreeIDHistory:%v,hlvHistory:%v,seq:%d,latestServerVersion:%v,isDelete: %t}", e.docID, e.version, e.revTreeIDHistory, e.hlvHistory, e.seq, e.latestServerVersion, e.isDelete)
 }
 
-// StartPull will begin a push replication with the given options between the client and server
+// StartPushWithOpts will begin a push replication with the given options between the client and server
 func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
 	require.True(btcc.TB(), btcc.pushRunning.CASRetry(false, true), "push replication already running")
 
@@ -1436,6 +1444,8 @@ type BlipTesterPullOptions struct {
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
 func (btcc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOptions) {
+	require.True(btcc.TB(), btcc.pullRunning.CompareAndSwap(false, true), "pull replication already running")
+	base.WarnfCtx(base.TestCtx(btcc.TB()), "client=%s pullRunning=%t", btcc.collection, btcc.pullRunning.Load())
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile(db.MessageSubChanges)
 	subChangesRequest.Properties[db.SubChangesContinuous] = fmt.Sprintf("%t", options.Continuous)
@@ -1500,6 +1510,8 @@ func (btcc *BlipTesterCollectionClient) UnsubPullChanges() {
 	body, err := unsubChangesRequest.Response().Body()
 	require.NoError(btcc.TB(), err)
 	require.Empty(btcc.TB(), body)
+	require.True(btcc.TB(), btcc.pullRunning.CompareAndSwap(true, false), "pull replication already running")
+	base.WarnfCtx(base.TestCtx(btcc.TB()), "client=%s pullRunning=%t", btcc.collection, btcc.pullRunning.Load())
 }
 
 // NewBlipTesterCollectionClient creates a collection specific client from a BlipTesterClient
@@ -1514,13 +1526,13 @@ func NewBlipTesterCollectionClient(btc *BlipTesterClient) *BlipTesterCollectionC
 		parent:        btc,
 		hlc:           btc.hlc,
 	}
-	c.initializeClient()
+	c.initializeClient(btc.rt.Context())
 	globalBlipTesterClients.add(btc.TB().Name())
 	return c
 }
 
-func (btcc *BlipTesterCollectionClient) initializeClient() {
-	btcc.ctx, btcc.ctxCancel = context.WithCancel(btcc.parent.rt.Context())
+func (btcc *BlipTesterCollectionClient) initializeClient(ctx context.Context) {
+	btcc.ctx, btcc.ctxCancel = context.WithCancel(ctx)
 }
 
 // Close will empty the stored docs and close the underlying replications.

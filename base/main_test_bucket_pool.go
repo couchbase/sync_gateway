@@ -339,7 +339,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 			return
 		}
 
-		tbp.Logf(ctx, "Teardown called - Closing %s test bucket", typeName)
+		tbp.Logf(ctx, "Teardown called - Closing and deleting %s test bucket %s", typeName, bucketName)
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
 		tbp.markBucketClosed(t, b)
@@ -607,7 +607,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 			defer wg.Done()
 			ctx := BucketNameCtx(ctx, bucketName)
 
-			tbp.Logf(ctx, "Creating new test bucket")
+			tbp.Logf(ctx, "Creating new test bucket %s", bucketName)
 			err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB, tbp.xdcrConflictResolutionStrategy)
 			if ctx.Err() != nil {
 				return
