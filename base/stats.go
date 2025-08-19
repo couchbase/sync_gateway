@@ -1939,6 +1939,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumPublicAllDocsRequests)
 	prometheus.Unregister(d.DatabaseStats.NumDocsPreFilterPublicAllDocs)
 	prometheus.Unregister(d.DatabaseStats.NumDocsPostFilterPublicAllDocs)
+	prometheus.Unregister(d.DatabaseStats.TombstoneCount)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {
