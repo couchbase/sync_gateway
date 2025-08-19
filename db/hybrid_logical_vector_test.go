@@ -124,7 +124,7 @@ func TestConflictDetectionDominating(t *testing.T) {
 		},
 		{
 			name:           "B CV older than A's PV for same source",
-			inputListHLVA:  "20@cluster1;10@cluster2",
+			inputListHLVA:  "20@cluster1;15@cluster2",
 			inputListHLVB:  "10@cluster2;15@cluster1",
 			expectedResult: true,
 		},
