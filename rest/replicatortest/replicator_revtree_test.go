@@ -110,13 +110,13 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 
 			if tc.replicationType == db.ActiveReplicatorTypePull {
 				for i := 0; i < 10; i++ {
-					version = rt2.UpdateDocDirectly(docID, version, rest.JsonToMap(t, `{"source":"rt2","channels":["alice"], "version": "%d"}`))
+					version = rt2.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i)))
 					docHistoryList = append(docHistoryList, version.RevTreeID)
 				}
 				rt2.WaitForPendingChanges()
 			} else {
 				for i := 0; i < 10; i++ {
-					version = rt1.UpdateDocDirectly(docID, version, rest.JsonToMap(t, `{"source":"rt1","channels":["alice"], "version": "%d"}`))
+					version = rt1.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i)))
 					docHistoryList = append(docHistoryList, version.RevTreeID)
 				}
 				rt1.WaitForPendingChanges()
@@ -259,7 +259,7 @@ func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 				rt2.WaitForPendingChanges()
 			} else {
 				for i := 0; i < 200; i++ {
-					version = rt1.UpdateDocDirectly(docID, version, rest.JsonToMap(t, `{"source":"rt1","channels":["alice"], "version": "%d"}`))
+					version = rt1.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i)))
 				}
 				rt1.WaitForPendingChanges()
 			}
