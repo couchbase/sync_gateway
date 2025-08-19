@@ -1876,7 +1876,7 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.TombstoneCount, err = NewIntStat(SubsystemDatabaseKey, "tombstone_count", StatUnitNoUnits, TombstoneCount, StatAddedVersion4dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.TombstoneCount, err = NewIntStat(SubsystemDatabaseKey, "tombstone_count", StatUnitNoUnits, TombstoneCountDesc, StatAddedVersion4dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}

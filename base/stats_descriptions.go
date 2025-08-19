@@ -344,7 +344,7 @@ const (
 
 	NumDocsPostFilterPublicAllDocsDesc = "The total number of documents returned on all public /_all_docs requests after filtering"
 
-	TombstoneCount = "The total number of tombstones processed by database"
+	TombstoneCountDesc = "The total number of tombstones processed by database"
 )
 
 // Delta Sync stats descriptions
