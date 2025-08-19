@@ -90,8 +90,7 @@ func TestMultiActorConflictDelete(t *testing.T) {
 //  1. create document on each peer with different contents
 //  2. start replications
 //  3. wait for documents to exist with hlv sources equal to the number of active peers and the document body is
-//     equivalent to the last write. The assertion is presently only on CV for Couchbase Lite peers, and full HLV
-//     for other peer types.
+//     equivalent to the last write.
 //  4. stop replications
 //  5. delete documents on all peers
 //  6. start replications

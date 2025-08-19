@@ -61,7 +61,7 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, doc
 }
 
 // waitForCVAndBody waits for a document to reach a specific cv on all peers.
-// This is used for scenarios where it's valid for the full HLV to not converge.  This includes cases where 
+// This is used for scenarios where it's valid for the full HLV to not converge. This includes cases where
 // CBL conflict resolution results in additional history in the CBL version of the HLV that may not be pushed
 // to CBS (e.g. remote wins)
 //
@@ -108,10 +108,16 @@ func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID st
 	}
 }
 
-// waitForConvergingTombstones waits for all peers to have a tombstone document for a given doc ID. A matching HLV import (
-// guaranteed for all Couchbase Server / Sync Gateway versions, but not CBL versions.
+// waitForConvergingTombstones waits for all peers to have a tombstone document for a given doc ID. This is the
+// equivalent function to waitForCVAndBody if the expected document is a tombstone.
 //
-// See following example:
+// Couchbase Server and Sync Gateway peers will have matching HLVs due XDCR conflict resolution always overwriting
+// HLVs. However, it is possible that XDCR will replicate a tombstone from one Couchbase Server to antoher Couchbase
+// Server and update its HLV. Since tombstones are not imported by Sync Gateway, this CV will not be replicated to
+// Couchbase Server.
+//
+// In this case, all peers will have a tombstone for this document, but no assertions can be made on Couchbase Lite
+// peers. See following example:
 //
 //	+- - - - - - -+      +- - - - - - -+
 //	'  cluster A  '      '  cluster B  '
@@ -148,7 +154,6 @@ func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionNam
 	t.Logf("waiting for converging tombstones")
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		nonCBLVersions := make(map[string]DocMetadata)
-		CBLVersions := make(map[string]DocMetadata)
 		for peerName, peer := range topology.SortedPeers() {
 			meta, body, exists := peer.GetDocumentIfExists(dsName, docID)
 			if !assert.True(c, exists, "doc %s does not exist on peer %s", docID, peer) {
@@ -157,10 +162,7 @@ func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionNam
 			if !assert.Nil(c, body, "expected tombstone for doc %s on peer %s", docID, peer) {
 				return
 			}
-			switch peer.Type() {
-			case PeerTypeCouchbaseLite:
-				CBLVersions[peerName] = meta
-			default:
+			if peer.Type() != PeerTypeCouchbaseLite {
 				nonCBLVersions[peerName] = meta
 			}
 		}
@@ -172,7 +174,6 @@ func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionNam
 			}
 			assertHLVEqual(c, dsName, docID, peer, version, nil, *nonCBLVersion, topology)
 		}
-		// Is there a way to do any assertion on the CBL tombstone versions?
 	}, totalWaitTime, pollInterval)
 }
 
