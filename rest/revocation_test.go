@@ -2205,15 +2205,14 @@ func TestRevocationMessage(t *testing.T) {
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		revocationTester, rt := InitScenario(t, nil)
 		defer rt.Close()
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "user",
-			ClientDeltas:           false,
-			SendRevocations:        true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:        "user",
+			ClientDeltas:    false,
+			SendRevocations: true,
 		})
 		defer btc.Close()
 
@@ -2314,15 +2313,14 @@ func TestRevocationNoRev(t *testing.T) {
 	const docID = "doc"
 	const waitMarkerID = "docmarker"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		revocationTester, rt := InitScenario(t, nil)
 		defer rt.Close()
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "user",
-			ClientDeltas:           false,
-			SendRevocations:        true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:        "user",
+			ClientDeltas:    false,
+			SendRevocations: true,
 		})
 		defer btc.Close()
 
@@ -2376,7 +2374,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 	const docID = "doc"
 	const waitMarkerID = "docmarker"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		var throw atomic.Bool
 		// Two callbacks to cover usage with CBS/Xattrs and without
 		revocationTester, rt := InitScenario(
@@ -2400,10 +2398,9 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		defer rt.Close()
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "user",
-			ClientDeltas:           false,
-			SendRevocations:        true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:        "user",
+			ClientDeltas:    false,
+			SendRevocations: true,
 		})
 		defer btc.Close()
 
@@ -2446,7 +2443,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			&RestTesterConfig{
 				GuestEnabled: false,
@@ -2470,9 +2467,8 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 
 		// 4. Try to sync
 		bt := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               "bilbo",
-			SendRevocations:        true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:        "bilbo",
+			SendRevocations: true,
 		})
 		defer bt.Close()
 

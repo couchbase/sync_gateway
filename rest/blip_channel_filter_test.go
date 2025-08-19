@@ -22,7 +22,7 @@ import (
 func TestChannelFilterRemovalFromChannel(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache, base.KeyCRUD, base.KeyHTTP)
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, _ []string) {
+	btcRunner.Run(func(t *testing.T) {
 		for _, sendDocWithChannelRemoval := range []bool{true, false} {
 			t.Run(fmt.Sprintf("sendDocWithChannelRemoval=%v", sendDocWithChannelRemoval), func(t *testing.T) {
 				rt := NewRestTester(t, &RestTesterConfig{

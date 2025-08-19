@@ -1997,7 +1997,7 @@ func TestSendReplacementRevision(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // requires cv in PUT rest response
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				rt := NewRestTester(t,
@@ -2029,10 +2029,9 @@ func TestSendReplacementRevision(t *testing.T) {
 				}
 
 				opts := &BlipTesterClientOpts{
-					Username:               alice,
-					SupportedBLIPProtocols: SupportedBLIPProtocols,
-					sendReplacementRevs:    test.clientSendReplacementRevs,
-					changesEntryCallback:   changesEntryCallbackFn,
+					Username:             alice,
+					sendReplacementRevs:  test.clientSendReplacementRevs,
+					changesEntryCallback: changesEntryCallbackFn,
 				}
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 				defer btc.Close()
@@ -2099,12 +2098,11 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 		client.ClientDeltas = true
 
@@ -2140,13 +2138,12 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4 replication only test
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		btcRunner.StartPull(client.id)
@@ -2192,12 +2189,11 @@ func TestBlipClientSendDelete(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		btcRunner.StartPush(client.id)
@@ -2221,12 +2217,11 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	const docID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		version := rt.PutDocDirectly(docID, db.Body{"test": true})
@@ -2252,12 +2247,11 @@ func TestBlipNorev(t *testing.T) {
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		norevMsg := db.NewNoRevMessage()
@@ -2304,17 +2298,16 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 		defer rt.Close()
 
 		const user = "user"
 		rt.CreateUser(user, []string{"A", "B"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               user,
-			ClientDeltas:           false,
-			SendRevocations:        true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:        user,
+			ClientDeltas:    false,
+			SendRevocations: true,
 		})
 		defer btc.Close()
 
@@ -2386,17 +2379,16 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 		defer rt.Close()
 
 		const user = "user"
 		rt.CreateUser(user, []string{"A", "B"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               user,
-			ClientDeltas:           false,
-			SendRevocations:        true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:        user,
+			ClientDeltas:    false,
+			SendRevocations: true,
 		})
 		defer btc.Close()
 
@@ -2669,7 +2661,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		// Setup
 		rt := NewRestTester(t,
 			&RestTesterConfig{
@@ -2677,8 +2669,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			})
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		// Track last sequence for next changes feed
@@ -2858,7 +2849,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 		},
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		for _, test := range testCases {
 			t.Run(fmt.Sprintf("%s", test.error), func(t *testing.T) {
 				docName := fmt.Sprintf("%s", test.error)
@@ -2872,8 +2863,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 				require.True(t, ok)
 
-				opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 				defer btc.Close()
 
 				// Change noRev handler so it's known when a noRev is received
@@ -2930,12 +2920,11 @@ func TestUnsubChanges(t *testing.T) {
 		doc2ID = "doc2ID"
 	)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 		// Confirm no error message or panic is returned in response
 		btcRunner.UnsubPullChanges(btc.id)
@@ -2985,7 +2974,7 @@ func TestRequestPlusPull(t *testing.T) {
 			}`,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 		database := rt.GetDatabase()
@@ -2993,8 +2982,7 @@ func TestRequestPlusPull(t *testing.T) {
 		const bernard = "bernard"
 		rt.CreateUser(bernard, nil)
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               bernard,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username: bernard,
 		})
 		defer client.Close()
 
@@ -3049,7 +3037,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 		database := rt.GetDatabase()
@@ -3057,8 +3045,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 		const bernard = "bernard"
 		rt.CreateUser(bernard, nil)
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               bernard,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username: bernard,
 		})
 		defer client.Close()
 
@@ -3113,14 +3100,13 @@ func TestBlipRefreshUser(t *testing.T) {
 	const docID = "doc1"
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
 		const username = "bernard"
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               username,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username: username,
 		})
 		defer btc.Close()
 
@@ -3163,7 +3149,7 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 	docID := "doc" + t.Name()
 	docID2 := "doc2" + t.Name()
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{
 			AutoImport: base.Ptr(false),
 			SyncFn:     channels.DocChannelsSyncFunction,
@@ -3175,8 +3161,7 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 		collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
-			Username:               bob,
+			Username: bob,
 		})
 		defer btc.Close()
 		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"some":"data", "channels":["ABC"]}`))
@@ -3222,7 +3207,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		syncFn := `function(doc) {
 						if (doc.invalid) {
 							throw("invalid document")
@@ -3314,8 +3299,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				rt.GetDatabase().FlushRevisionCacheForTest()
 
 				btc2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:               username,
-					SupportedBLIPProtocols: SupportedBLIPProtocols,
+					Username: username,
 				})
 				defer btc2.Close()
 
@@ -3334,7 +3318,7 @@ func TestBlipDatabaseClose(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTesterPersistentConfig(t)
 		defer rt.Close()
 		const alice = "alice"
@@ -3352,7 +3336,7 @@ func TestBlipDatabaseClose(t *testing.T) {
 
 		// put a doc, and make sure blip connection is established
 		markerDoc := "markerDoc"
-		markerDocVersion := rt.CreateTestDoc(markerDoc)
+		markerDocVersion := rt.PutDocDirectly(markerDoc, db.Body{"mark": "doc"})
 		rt.WaitForPendingChanges()
 		btcRunner.StartPull(btc.id)
 
@@ -3390,14 +3374,13 @@ func TestPutRevBlip(t *testing.T) {
 func TestBlipMergeVersions(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[RevtreeSubtestName] = true // requires hlv
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTesterPersistentConfig(t)
 		defer rt.Close()
 		const alice = "alice"
 		rt.CreateUser(alice, []string{"*"})
 		opts := &BlipTesterClientOpts{
-			Username:               alice,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username: alice,
 		}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
@@ -3474,7 +3457,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		var shouldChannelQueryError atomic.Bool
 		rt := NewRestTester(t, &RestTesterConfig{
 			LeakyBucketConfig: &base.LeakyBucketConfig{
@@ -3520,7 +3503,7 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 
 			btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4786 skipped pending work in this ticket
 
-			btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+			btcRunner.Run(func(t *testing.T) {
 				rt := NewRestTester(t, &RestTesterConfig{
 					PersistentConfig: true,
 				})
@@ -3540,7 +3523,7 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 
 				const alice = "alice"
 				rt.CreateUser(alice, nil)
-				opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, Username: "alice"}
+				opts := &BlipTesterClientOpts{Username: "alice"}
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 				defer btc.Close()
 
@@ -3559,7 +3542,7 @@ func TestBlipPullConflict(t *testing.T) {
 
 	btcRunner.SkipSubtest[RevtreeSubtestName] = true
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTesterPersistentConfig(t)
 		defer rt.Close()
 
@@ -3573,8 +3556,7 @@ func TestBlipPullConflict(t *testing.T) {
 		sgVersion := rt.PutDocDirectly(docID, db.Body{"actor": "sg"})
 
 		opts := &BlipTesterClientOpts{
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
-			Username:               alice,
+			Username: alice,
 		}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
