@@ -413,6 +413,9 @@ func (btcc *BlipTesterCollectionClient) GetDoc(docID string) ([]byte, *db.Hybrid
 	if latestRev == nil {
 		return nil, nil, nil
 	}
+	if latestRev.isDelete {
+		return nil, &latestRev.HLV, &latestRev.version
+	}
 	return latestRev.body, &latestRev.HLV, &latestRev.version
 }
 
@@ -491,13 +494,12 @@ func (btr *BlipTesterReplicator) Close() {
 }
 
 // initHandlers sets up the blip client side handles for each message type.
-func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
+func (btr *BlipTesterReplicator) initHandlers(ctx context.Context, btc *BlipTesterClient) {
 
 	if btr.replicationStats == nil {
 		btr.replicationStats = db.NewBlipSyncStats()
 	}
 
-	ctx := base.DatabaseLogCtx(base.TestCtx(btr.bt.restTester.TB()), btr.bt.restTester.GetDatabase().Name, nil)
 	btr.bt.blipContext.DefaultHandler = btr.defaultHandler()
 	handlers := map[string]func(*blip.Message){
 		db.MessageNoRev:           btr.handleNoRev(ctx, btc),
@@ -960,7 +962,8 @@ func (btcc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ve
 	rev.message = msg
 }
 
-func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) *BlipTesterReplicator {
+// newBlipTesterReplication creates a new BlipTesterReplicator with the given id and BlipTesterClient. Used to instantiate a push or pull replication for the client.
+func newBlipTesterReplication(ctx context.Context, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) *BlipTesterReplicator {
 	bt := NewBlipTesterFromSpecWithRT(btc.rt, &BlipTesterSpec{
 		connectingUsername:            btc.Username,
 		blipProtocols:                 btc.SupportedBLIPProtocols,
@@ -974,13 +977,13 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, s
 		messages: make(map[blip.MessageNumber]*blip.Message),
 	}
 
-	r.initHandlers(btc)
+	r.initHandlers(ctx, btc)
 
 	return r
 }
 
 // getCollectionsForBLIP returns collections configured by a single database instance on a restTester. If only default collection exists, it will skip returning it to test "legacy" blip mode.
-func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
+func getCollectionsForBLIP(rt *RestTester) []string {
 	dbc := rt.GetDatabase()
 	var collections []string
 	for _, collection := range dbc.CollectionByID {
@@ -995,6 +998,10 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 }
 
 func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
+	return btcRunner.NewBlipTesterClientOptsWithRTAndContext(rt.Context(), rt, opts)
+}
+
+func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRTAndContext(ctx context.Context, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
@@ -1017,7 +1024,7 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 		hlc:                  rosmar.NewHybridLogicalClock(0),
 	}
 	btcRunner.clients[client.id] = client
-	client.createBlipTesterReplications()
+	client.createBlipTesterReplications(ctx)
 
 	return client
 }
@@ -1072,21 +1079,21 @@ func (btc *BlipTesterClient) tearDownBlipClientReplications() {
 }
 
 // createBlipTesterReplications creates the push and pull replications for the client.
-func (btc *BlipTesterClient) createBlipTesterReplications() {
+func (btc *BlipTesterClient) createBlipTesterReplications(ctx context.Context) {
 	id, err := uuid.NewRandom()
 	require.NoError(btc.TB(), err)
 
-	btc.pushReplication = newBlipTesterReplication(btc.TB(), "push"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization)
-	btc.pullReplication = newBlipTesterReplication(btc.TB(), "pull"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization)
+	btc.pushReplication = newBlipTesterReplication(ctx, "push"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization)
+	btc.pullReplication = newBlipTesterReplication(ctx, "pull"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization)
 
-	collections := getCollectionsForBLIP(btc.TB(), btc.rt)
+	collections := getCollectionsForBLIP(btc.rt)
 	if !btc.BlipTesterClientOpts.SkipCollectionsInitialization && len(collections) > 0 {
 		btc.collectionClients = make([]*BlipTesterCollectionClient, len(collections))
 		for i, collection := range collections {
-			btc.initCollectionReplication(collection, i)
+			btc.initCollectionReplication(ctx, collection, i)
 		}
 	} else {
-		btc.nonCollectionAwareClient = NewBlipTesterCollectionClient(btc)
+		btc.nonCollectionAwareClient = NewBlipTesterCollectionClient(ctx, btc)
 	}
 
 	btc.pullReplication.bt.avoidRestTesterClose = true
@@ -1094,8 +1101,8 @@ func (btc *BlipTesterClient) createBlipTesterReplications() {
 }
 
 // initCollectionReplication initializes a BlipTesterCollectionClient for the given collection.
-func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) {
-	btcReplicator := NewBlipTesterCollectionClient(btc)
+func (btc *BlipTesterClient) initCollectionReplication(ctx context.Context, collection string, collectionIdx int) {
+	btcReplicator := NewBlipTesterCollectionClient(ctx, btc)
 	btcReplicator.collection = collection
 	btcReplicator.collectionIdx = collectionIdx
 	btc.collectionClients[collectionIdx] = btcReplicator
@@ -1466,8 +1473,8 @@ func (btcc *BlipTesterCollectionClient) UnsubPullChanges() {
 }
 
 // NewBlipTesterCollectionClient creates a collection specific client from a BlipTesterClient
-func NewBlipTesterCollectionClient(btc *BlipTesterClient) *BlipTesterCollectionClient {
-	ctx, ctxCancel := context.WithCancel(btc.rt.Context())
+func NewBlipTesterCollectionClient(ctx context.Context, btc *BlipTesterClient) *BlipTesterCollectionClient {
+	ctx, ctxCancel := context.WithCancel(ctx)
 	l := sync.RWMutex{}
 	c := &BlipTesterCollectionClient{
 		ctx:           ctx,
