@@ -707,6 +707,8 @@ type DatabaseStats struct {
 	NumDocsPostFilterPublicAllDocs *SgwIntStat `json:"num_docs_post_filter_public_all_docs"`
 	// NumDocsPreFilterPublicAllDocs is the total number of documents returned before filtering for /_all_docs on the public interface.
 	NumDocsPreFilterPublicAllDocs *SgwIntStat `json:"num_docs_pre_filter_public_all_docs"`
+	// TombstoneCount is the total nummber of tombstones received by Sync Gateway
+	TombstoneCount *SgwIntStat `json:"tombstone_count"`
 }
 
 // This wrapper ensures that an expvar.Map type can be marshalled into JSON. The expvar.Map has no method to go direct to
@@ -1312,15 +1314,12 @@ func (s *SgwStats) ClearDBStats(name string) {
 	s.DbStats[name].unregisterQueryStats()
 
 	delete(s.DbStats, name)
-
 }
 
 // Removes the per-database stats for this database by removing the database from the map
 func RemovePerDbStats(dbName string) {
-
 	// Clear out the stats for this db since they will no longer be updated.
 	SyncGatewayStats.ClearDBStats(dbName)
-
 }
 
 func (d *DbStats) initCacheStats() error {
@@ -1878,6 +1877,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.TombstoneCount, err = NewIntStat(SubsystemDatabaseKey, "tombstone_count", StatUnitNoUnits, TombstoneCount, StatAddedVersion4dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -2034,7 +2037,6 @@ func (d *DbStats) initSecurityStats() error {
 }
 
 func (d *DbStats) unregisterReplicationStats(replicationID string) {
-
 	if d.DbReplicatorStats[replicationID] == nil {
 		return
 	}
@@ -2333,7 +2335,6 @@ func (dbr *DbReplicatorStats) Reset() {
 	dbr.ExpectedSequenceLenPostCleanup.Set(0)
 	dbr.ProcessedSequenceLen.Set(0)
 	dbr.ProcessedSequenceLenPostCleanup.Set(0)
-
 }
 
 func (d *DbStats) Security() *SecurityStats {
