@@ -3601,12 +3601,11 @@ func TestTombstoneCount(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		btcRunner.StartPush(client.id)
