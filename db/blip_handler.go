@@ -852,6 +852,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 		changeIsVector := false
 		if versionVectorProtocol {
+			// TODO: CBG-4812 Use base.IsRevTreeID
 			changeIsVector = strings.Contains(rev, "@")
 		}
 		if versionVectorProtocol && changeIsVector {
@@ -1094,6 +1095,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
 	var legacyRevList []string
+	// TODO: CBG-4812 Use base.IsRevTreeID
 	changeIsVector := strings.Contains(rev, "@")
 	if !bh.useHLV() || !changeIsVector {
 		newDoc.RevID = rev

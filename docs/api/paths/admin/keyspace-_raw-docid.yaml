@@ -62,7 +62,7 @@ get:
                     nullable: true
                     additionalProperties: true
                   _vv:
-                    description: Version vector for the document.
+                    description: Version Vector for the document.
                     type: object
                     nullable: true
                     additionalProperties: true

@@ -137,11 +137,9 @@ func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID str
 func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata {
 	collection, ctx := p.getCollection(dsName)
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-	var revID string
-	if err == nil {
-		revID = doc.CurrentRev
-	}
-	_, doc, err = collection.DeleteDoc(ctx, docID, revID)
+	require.NoError(p.TB(), err)
+	require.NotNil(p.TB(), doc)
+	_, doc, err = collection.DeleteDoc(ctx, docID, doc.ExtractDocVersion())
 	require.NoError(p.TB(), err)
 	docMeta := DocMetadataFromDocument(doc)
 	p.TB().Logf("%s: Deleted document %s with %#+v", p, docID, docMeta)

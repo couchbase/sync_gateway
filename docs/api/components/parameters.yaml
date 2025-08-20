@@ -13,13 +13,13 @@ DB-config-If-Match:
   schema:
     type: string
   description: 'If set to a configuration''s Etag value, enables optimistic concurrency control for the request. Returns HTTP 412 if another update happened underneath this one.'
-If-Match:
+Document-If-Match:
   name: If-Match
   in: header
   required: false
   schema:
     type: string
-  description: The revision ID to target.
+  description: An optimistic concurrency control (OCC) value used to prevent conflicts. Use the value returned in the ETag response header of the GET request for the resource being updated, or the latest known Revision Tree ID or Current Version of the document.
 Include-channels:
   name: channels
   in: query
@@ -393,7 +393,7 @@ show_cv:
   required: false
   schema:
     type: boolean
-  description: Output the current version of the version vector in the response as property `_cv`.
+  description: Output the Current Version in the response as property `_cv`.
 startkey:
   name: startkey
   in: query

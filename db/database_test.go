@@ -731,7 +731,7 @@ func TestGetDeleted(t *testing.T) {
 	rev1id, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Put")
 
-	rev2id, _, err := collection.DeleteDoc(ctx, "doc1", rev1id)
+	rev2id, _, err := collection.DeleteDoc(ctx, "doc1", DocVersion{RevTreeID: rev1id})
 	assert.NoError(t, err, "DeleteDoc")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
@@ -1395,7 +1395,7 @@ func TestAllDocsOnly(t *testing.T) {
 	}
 
 	// Now delete one document and try again:
-	_, _, err = collection.DeleteDoc(ctx, ids[23].DocID, ids[23].RevID)
+	_, _, err = collection.DeleteDoc(ctx, ids[23].DocID, DocVersion{RevTreeID: ids[23].RevID})
 	assert.NoError(t, err, "Couldn't delete doc 23")
 
 	alldocs, err = allDocIDs(ctx, collection.DatabaseCollection)
@@ -1726,7 +1726,7 @@ func TestConflicts(t *testing.T) {
 	)
 
 	// Delete 2-b; verify this makes 2-a current:
-	rev3, _, err := collection.DeleteDoc(ctx, "doc", "2-b")
+	rev3, _, err := collection.DeleteDoc(ctx, "doc", DocVersion{RevTreeID: "2-b"})
 	assert.NoError(t, err, "delete 2-b")
 
 	rawBody, _, _ = collection.dataStore.GetRaw("doc")
@@ -3369,7 +3369,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		docID := fmt.Sprintf("doc%d", i)
 		rev, _, err := collection.Put(ctx, docID, Body{})
 		assert.NoError(t, err)
-		_, _, err = collection.DeleteDoc(ctx, docID, rev)
+		_, _, err = collection.DeleteDoc(ctx, docID, DocVersion{RevTreeID: rev})
 		assert.NoError(t, err)
 	}
 
@@ -3780,7 +3780,7 @@ func TestImportCompactPanic(t *testing.T) {
 	// Create a document, then delete it, to create a tombstone
 	rev, doc, err := collection.Put(ctx, "test", Body{})
 	require.NoError(t, err)
-	_, _, err = collection.DeleteDoc(ctx, doc.ID, rev)
+	_, _, err = collection.DeleteDoc(ctx, doc.ID, DocVersion{RevTreeID: rev})
 	require.NoError(t, err)
 	require.NoError(t, collection.WaitForPendingChanges(ctx))
 

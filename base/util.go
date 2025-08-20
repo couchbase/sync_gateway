@@ -1825,3 +1825,18 @@ func KeysPresent[K comparable, V any](m map[K]V, keys []K) []K {
 	}
 	return result
 }
+
+// IsRevTreeID checks if the string looks like a RevTree ID.
+func IsRevTreeID(s string) bool {
+	// If we scan forwards past each digit until we hit `-`, we know this is a RevTree ID.
+	for i, r := range s {
+		if r >= '0' && r <= '9' {
+			continue
+		}
+		if r == '-' && i > 0 {
+			return true
+		}
+		break
+	}
+	return false
+}

@@ -19,6 +19,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1483,4 +1484,61 @@ func (doc *Document) ExtractDocVersion() DocVersion {
 		RevTreeID: doc.CurrentRev,
 		CV:        *doc.HLV.ExtractCurrentVersionFromHLV(),
 	}
+}
+
+// DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
+type DocVersion struct {
+	RevTreeID string
+	CV        Version
+}
+
+// String implements fmt.Stringer
+func (v DocVersion) String() string {
+	return fmt.Sprintf("RevTreeID:%s,CV:%#v", v.RevTreeID, v.CV)
+}
+
+// GoString implements fmt.GoStringer
+func (v DocVersion) GoString() string {
+	return fmt.Sprintf("DocVersion{RevTreeID:%s,CV:%#v}", v.RevTreeID, v.CV)
+}
+
+// DocVersionRevTreeEqual compares two DocVersions based on their RevTreeID.
+func (v DocVersion) DocVersionRevTreeEqual(o DocVersion) bool {
+	if v.RevTreeID != o.RevTreeID {
+		return false
+	}
+	return true
+}
+
+// GetRev returns the revision ID for the DocVersion.
+func (v DocVersion) GetRev(useHLV bool) string {
+	if useHLV {
+		if v.CV.SourceID == "" {
+			return ""
+		}
+		return v.CV.String()
+	} else {
+		return v.RevTreeID
+	}
+}
+
+// RevIDGeneration returns the Rev ID generation for the current version
+func (v *DocVersion) RevIDGeneration() int {
+	if v == nil {
+		return 0
+	}
+	gen, err := strconv.ParseInt(strings.Split(v.RevTreeID, "-")[0], 10, 64)
+	if err != nil {
+		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevTreeID, err)
+		return 0
+	}
+	return int(gen)
+}
+
+// RevIDDigest returns the Rev ID digest for the current version
+func (v *DocVersion) RevIDDigest() string {
+	if v == nil {
+		return ""
+	}
+	return strings.Split(v.RevTreeID, "-")[1]
 }

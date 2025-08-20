@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,59 +20,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/require"
 )
-
-// DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
-type DocVersion struct {
-	RevTreeID string
-	CV        Version
-}
-
-func (v DocVersion) String() string {
-	return fmt.Sprintf("RevTreeID:%s,CV:%#v", v.RevTreeID, v.CV)
-}
-
-func (v DocVersion) GoString() string {
-	return fmt.Sprintf("DocVersion{RevTreeID:%s,CV:%#v}", v.RevTreeID, v.CV)
-}
-
-func (v DocVersion) DocVersionRevTreeEqual(o DocVersion) bool {
-	if v.RevTreeID != o.RevTreeID {
-		return false
-	}
-	return true
-}
-
-func (v DocVersion) GetRev(useHLV bool) string {
-	if useHLV {
-		if v.CV.SourceID == "" {
-			return ""
-		}
-		return v.CV.String()
-	} else {
-		return v.RevTreeID
-	}
-}
-
-// RevIDGeneration returns the Rev ID generation for the current version
-func (v *DocVersion) RevIDGeneration() int {
-	if v == nil {
-		return 0
-	}
-	gen, err := strconv.ParseInt(strings.Split(v.RevTreeID, "-")[0], 10, 64)
-	if err != nil {
-		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevTreeID, err)
-		return 0
-	}
-	return int(gen)
-}
-
-// RevIDDigest returns the Rev ID digest for the current version
-func (v *DocVersion) RevIDDigest() string {
-	if v == nil {
-		return ""
-	}
-	return strings.Split(v.RevTreeID, "-")[1]
-}
 
 // HLVAgent performs HLV updates directly (not via SG) for simulating/testing interaction with non-SG HLV agents
 type HLVAgent struct {

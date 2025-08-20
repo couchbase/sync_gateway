@@ -310,13 +310,13 @@ func (db *DatabaseCollectionWithUser) Get1xBody(ctx context.Context, docid strin
 }
 
 // Get Rev with all-or-none history based on specified 'history' flag
-func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, revid string, history bool, attachmentsSince []string) (Body, error) {
+func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, revOrCV string, history bool, attachmentsSince []string) (Body, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
 	}
 
-	return db.Get1xRevBodyWithHistory(ctx, docid, revid, Get1xRevBodyOptions{
+	return db.Get1xRevBodyWithHistory(ctx, docid, revOrCV, Get1xRevBodyOptions{
 		MaxHistory:       maxHistory,
 		HistoryFrom:      nil,
 		AttachmentsSince: attachmentsSince,
@@ -333,8 +333,8 @@ type Get1xRevBodyOptions struct {
 }
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revtreeid string, opts Get1xRevBodyOptions) (Body, error) {
-	rev, err := db.getRev(ctx, docid, revtreeid, opts.MaxHistory, opts.HistoryFrom)
+func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revOrCV string, opts Get1xRevBodyOptions) (Body, error) {
+	rev, err := db.getRev(ctx, docid, revOrCV, opts.MaxHistory, opts.HistoryFrom)
 	if err != nil {
 		return nil, err
 	}
@@ -1093,7 +1093,11 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	generation++
 	delete(body, BodyRev)
 
-	// Not extracting it yet because we need this property around to generate a rev ID
+	// remove CV before RevTreeID generation
+	matchCV, _ := body[BodyCV].(string)
+	delete(body, BodyCV)
+
+	// Not extracting it yet because we need this property around to generate a RevTreeID
 	deleted, _ := body[BodyDeleted].(bool)
 
 	expiry, err := body.ExtractExpiry()
@@ -1146,21 +1150,42 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		}
 
 		var conflictErr error
-		// Make sure matchRev matches an existing leaf revision:
-		if matchRev == "" {
-			matchRev = doc.CurrentRev
-			if matchRev != "" {
-				// PUT with no parent rev given, but there is an existing current revision.
-				// This is OK as long as the current one is deleted.
-				if !doc.History[matchRev].Deleted {
-					conflictErr = base.HTTPErrorf(http.StatusConflict, "Document exists")
-				} else {
-					generation, _ = ParseRevID(ctx, matchRev)
-					generation++
-				}
+
+		// OCC check of matchCV against CV on the doc
+		if matchCV != "" {
+			if matchCV == doc.HLV.GetCurrentVersionString() {
+				// set matchRev to the current revision ID and allow existing codepaths to perform RevTree-based update.
+				matchRev = doc.CurrentRev
+				// bump generation based on retrieved RevTree ID
+				generation, _ = ParseRevID(ctx, matchRev)
+				generation++
+			} else if doc.hasFlag(channels.Conflict | channels.Hidden) {
+				// Can't use CV as an OCC Value when a document is in conflict, or we're updating the non-winning leaf
+				// There's no way to get from a given old CV to a RevTreeID to perform the update correctly, since we don't maintain linear history for a given SourceID.
+				// Reject the request and force the user to resolve the conflict using RevTree IDs which does have linear history available.
+				conflictErr = base.HTTPErrorf(http.StatusBadRequest, "Cannot use CV to modify a document in conflict - resolve first with RevTree ID")
+			} else {
+				conflictErr = base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
-		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(ctx, doc, matchRev, deleted, false, nil) {
-			conflictErr = base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+		}
+
+		if conflictErr == nil {
+			// Make sure matchRev matches an existing leaf revision:
+			if matchRev == "" {
+				matchRev = doc.CurrentRev
+				if matchRev != "" {
+					// PUT with no parent rev given, but there is an existing current revision.
+					// This is OK as long as the current one is deleted.
+					if !doc.History[matchRev].Deleted {
+						conflictErr = base.HTTPErrorf(http.StatusConflict, "Document exists")
+					} else {
+						generation, _ = ParseRevID(ctx, matchRev)
+						generation++
+					}
+				}
+			} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(ctx, doc, matchRev, deleted, false, nil) {
+				conflictErr = base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			}
 		}
 
 		// Make up a new _rev, and add it to the history:
@@ -2893,7 +2918,8 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 
 // Creates a new document, assigning it a random doc ID.
 func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (docid string, rev string, doc *Document, err error) {
-	if body[BodyRev] != nil {
+	// This error isn't very accurate, you just _cannot_ use POST to update an existing document - even if it does exist. We don't even bother checking for existence.
+	if body[BodyRev] != nil || body[BodyCV] != nil {
 		return "", "", nil, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 	}
 
@@ -2914,8 +2940,13 @@ func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (doci
 }
 
 // Deletes a document, by adding a new revision whose _deleted property is true.
-func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, *Document, error) {
-	body := Body{BodyDeleted: true, BodyRev: revid}
+func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, docVersion DocVersion) (string, *Document, error) {
+	body := Body{BodyDeleted: true}
+	if !docVersion.CV.IsEmpty() {
+		body[BodyCV] = docVersion.CV.String()
+	} else {
+		body[BodyRev] = docVersion.RevTreeID
+	}
 	newRevID, doc, err := db.Put(ctx, docid, body)
 	return newRevID, doc, err
 }
@@ -3342,6 +3373,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	// previousRev may be revTreeID or version
 	var previousVersion Version
 	previousRevFormat := "version"
+	// TODO: CBG-4812 Use base.IsRevTreeID
 	if !strings.Contains(previousRev, "@") {
 		previousRevFormat = "revTreeID"
 	}

@@ -37,7 +37,7 @@ get:
 put:
   summary: Upsert a local document
   description: |-
-    This request creates or updates a local document. Updating a local document requires that the revision ID be put in the body under `_rev`.
+    This request creates or updates a local document. Updating a local document requires that the Revision Tree ID be put in the body under `_rev`.
 
     Local document IDs are given a `_local/` prefix. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by the client's replicator, as a place to store replication checkpoint data.
 
@@ -67,7 +67,7 @@ put:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '409':
-      description: A revision ID conflict would result from updating this document revision.
+      description: A conflict would result from updating this document revision.
   tags:
     - Document
   operationId: put_keyspace-_local-docid
@@ -84,7 +84,7 @@ delete:
   parameters:
     - name: rev
       in: query
-      description: The revision ID of the revision to delete.
+      description: The Revision Tree ID of the revision to delete.
       required: true
       schema:
         type: string
@@ -96,7 +96,7 @@ delete:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '409':
-      description: A revision ID conflict would result from deleting this document revision.
+      description: A conflict would result from deleting this document revision.
   tags:
     - Document
   operationId: delete_keyspace-_local-docid
