@@ -1523,7 +1523,7 @@ func (v DocVersion) GetRev(useHLV bool) string {
 }
 
 // RevIDGeneration returns the Rev ID generation for the current version
-func (v *DocVersion) RevIDGeneration() int {
+func (v *DocVersion) RevIDGeneration() int64 {
 	if v == nil {
 		return 0
 	}
@@ -1532,7 +1532,7 @@ func (v *DocVersion) RevIDGeneration() int {
 		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevTreeID, err)
 		return 0
 	}
-	return int(gen)
+	return gen
 }
 
 // RevIDDigest returns the Rev ID digest for the current version

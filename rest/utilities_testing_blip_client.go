@@ -1531,7 +1531,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *D
 		doc = newClientDocument(docID, 0, nil)
 	}
 
-	newGen := 1
+	var newGen int64 = 1
 	var hlv db.HybridLogicalVector
 	if parentVersion != nil {
 		// grab latest version for this doc and make sure we're doing an upsert on top of it to avoid branching revisions
@@ -1613,7 +1613,7 @@ func (btc *BlipTesterClient) GetDocVersion(docID string) DocVersion {
 	return DocVersion{RevTreeID: doc.CurrentRev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
-func (btcc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte) {
+func (btcc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int64) (outputBody []byte) {
 	if !bytes.Contains(inputBody, []byte(db.BodyAttachments)) {
 		return inputBody
 	}
