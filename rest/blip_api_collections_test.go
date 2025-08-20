@@ -30,12 +30,11 @@ func TestBlipGetCollections(t *testing.T) {
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTesterMultipleCollections(t, rtConfig, 1)
 		defer rt.Close()
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			SkipCollectionsInitialization: true,
-			SupportedBLIPProtocols:        SupportedBLIPProtocols,
 		})
 		defer btc.Close()
 
@@ -153,12 +152,11 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
@@ -185,12 +183,11 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		checkpointID1 := "checkpoint1"
@@ -249,12 +246,11 @@ func TestCollectionsReplication(t *testing.T) {
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		version := btc.rt.PutDocDirectly(docID, db.Body{})
@@ -272,12 +268,11 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		docName := "doc1"
@@ -311,12 +306,11 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		body := `{"foo":"bar"}`
