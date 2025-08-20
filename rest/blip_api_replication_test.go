@@ -38,14 +38,13 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 	docID := t.Name() + "_doc1"
 	docID2 := t.Name() + "_doc2"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
 		ctx := base.TestCtx(t)
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		btcRunner.StartPull(client.id)
@@ -104,13 +103,12 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	const docID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		btcRunner.StartPull(client.id)

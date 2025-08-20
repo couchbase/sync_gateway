@@ -146,7 +146,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
 		data, actual = p.getLatestDocVersion(dsName, docID)
-		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
+		if !assert.NotNil(c, actual, "Could not find docID:%+v on %s\nVersion %#v", docID, p, expected) {
 			return
 		}
 		assertHLVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
@@ -229,11 +229,11 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, alternatePassivePee
 	}
 	const username = "user"
 	sg.rt.CreateUser(username, []string{"*"})
+	replication.btcRunner.SetSubprotocols([]string{db.CBMobileReplicationV4.SubprotocolString()})
 	// intentionally do not use base.TestCtx to drop test name for readability
 	ctx := base.CorrelationIDLogCtx(sg.rt.TB().Context(), p.name)
 	replication.btc = replication.btcRunner.NewBlipTesterClientOptsWithRTAndContext(ctx, sg.rt, &rest.BlipTesterClientOpts{
-		Username:               "user",
-		SupportedBLIPProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()},
+		Username: "user",
 		AllowCreationWithoutBlipTesterClientRunner: true,
 		SourceID: p.SourceID(),
 	},
