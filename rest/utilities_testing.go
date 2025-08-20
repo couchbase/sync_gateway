@@ -1145,7 +1145,6 @@ func (rt *RestTester) GetRawDoc(key string) RawDocResponse {
 	response.DumpBody()
 	var rawResponse RawDocResponse
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
-	log.Printf("rawResponse: %#v", rawResponse)
 	return rawResponse
 }
 
