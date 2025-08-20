@@ -93,76 +93,96 @@ func TestInternalHLVFunctions(t *testing.T) {
 
 // TestConflictDetectionDominating:
 //   - Tests cases where one HLV's is said to be 'dominating' over another
-//   - Test case 1: where sourceID is the same between HLV's but HLV(A) has higher version CAS than HLV(B) thus A dominates
-//   - Test case 2: where sourceID is different and HLV(A) sourceID is present in HLV(B) PV and HLV(A) has dominating version
-//   - Test case 3: where sourceID is different and HLV(A) sourceID is present in HLV(B) MV and HLV(A) has dominating version
-//   - Test case 4: where sourceID is test case 2 but flipped to show the code checks for dominating versions both sides
 //   - Assert that all scenarios returns false from IsInConflict method, as we have a HLV that is dominating in each case
 func TestConflictDetectionDominating(t *testing.T) {
 	testCases := []struct {
 		name           string
-		inputListHLVA  string
-		inputListHLVB  string
+		HLVA           string
+		HLVB           string
 		expectedResult bool
 	}{
 		{
 			name:           "Matching current source, newer version",
-			inputListHLVA:  "20@cluster1;2@cluster2",
-			inputListHLVB:  "10@cluster1;1@cluster2",
+			HLVA:           "20@cluster1;2@cluster2",
+			HLVB:           "10@cluster1;1@cluster2",
 			expectedResult: true,
 		}, {
 			name:           "Matching current source and version",
-			inputListHLVA:  "20@cluster1;2@cluster2",
-			inputListHLVB:  "20@cluster1;2@cluster2",
+			HLVA:           "20@cluster1;2@cluster2",
+			HLVB:           "20@cluster1;2@cluster2",
 			expectedResult: true,
 		},
 		{
 			name:           "B CV found in A's PV",
-			inputListHLVA:  "20@cluster1;10@cluster2",
-			inputListHLVB:  "10@cluster2;15@cluster1",
+			HLVA:           "20@cluster1;10@cluster2",
+			HLVB:           "10@cluster2;15@cluster1",
 			expectedResult: true,
 		},
 		{
 			name:           "B CV older than A's PV for same source",
-			inputListHLVA:  "20@cluster1;15@cluster2",
-			inputListHLVB:  "10@cluster2;15@cluster1",
+			HLVA:           "20@cluster1;15@cluster2",
+			HLVB:           "10@cluster2;15@cluster1",
 			expectedResult: true,
 		},
 		{
 			name:           "Unique sources in A",
-			inputListHLVA:  "20@cluster1;15@cluster2,3@cluster3",
-			inputListHLVB:  "10@cluster2;10@cluster1",
+			HLVA:           "20@cluster1;15@cluster2,3@cluster3",
+			HLVB:           "10@cluster2;10@cluster1",
 			expectedResult: true,
 		},
 		{
 			name:           "Unique sources in B",
-			inputListHLVA:  "20@cluster1",
-			inputListHLVB:  "15@cluster1;3@cluster3",
+			HLVA:           "20@cluster1",
+			HLVB:           "15@cluster1;3@cluster3",
 			expectedResult: true,
 		},
 		{
 			name:           "B has newer cv",
-			inputListHLVA:  "10@cluster1",
-			inputListHLVB:  "15@cluster1",
+			HLVA:           "10@cluster1",
+			HLVB:           "15@cluster1",
 			expectedResult: false,
 		},
 		{
 			name:           "B has newer cv than A pv",
-			inputListHLVA:  "20@cluster2;10@cluster1",
-			inputListHLVB:  "15@cluster1;20@cluster2",
+			HLVA:           "20@cluster2;10@cluster1",
+			HLVB:           "15@cluster1;20@cluster2",
 			expectedResult: false,
 		},
 		{
 			name:           "B's cv not found in A",
-			inputListHLVA:  "20@cluster2;10@cluster1",
-			inputListHLVB:  "5@cluster3",
+			HLVA:           "20@cluster2;10@cluster1",
+			HLVB:           "5@cluster3",
+			expectedResult: false,
+		},
+		{
+			name:           "a.MV dominates B.CV",
+			HLVA:           "20@cluster1,20@cluster2,5@cluster3",
+			HLVB:           "10@cluster2",
+			expectedResult: true,
+		},
+		{
+			name:           "a.MV doesn't dominate B.CV",
+			HLVA:           "20@cluster1,5@cluster2,5@cluster3",
+			HLVB:           "10@cluster2",
+			expectedResult: true,
+		},
+		{
+			name:           "b.CV.source occurs in both a.CV and a.MV, dominates both",
+			HLVA:           "10@cluster1,10@cluster1,5@cluster2",
+			HLVB:           "15@cluster2",
+			expectedResult: true,
+		},
+		{
+			name:           "b.CV.source occurs in both a.CV and a.MV, dominates only a.MV",
+			HLVA:           "20@cluster1,5@cluster2,5@cluster3",
+			HLVB:           "15@cluster2",
 			expectedResult: false,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			hlvA := createHLVForTest(t, testCase.inputListHLVA)
-			hlvB := createHLVForTest(t, testCase.inputListHLVB)
+			hlvA := createHLVForTest(t, testCase.HLVA)
+			hlvB := createHLVForTest(t, testCase.HLVB)
 			require.True(t, hlvA.isDominating(hlvB) == testCase.expectedResult)
 
 		})
@@ -201,9 +221,8 @@ func TestHLVAddNewerVersions(t *testing.T) {
 		{
 			name:        "Add new MV",
 			existingHLV: "",
-			// this is an invalid HLV, with only a single entry in mv
-			incomingHLV: "1@b,1@a",
-			finalHLV:    "1@b,1@a",
+			incomingHLV: "1@b,1@a,2@c",
+			finalHLV:    "1@b,1@a,2@c",
 		},
 		{
 			name:        "existing mv, move to pv",
@@ -229,26 +248,21 @@ func TestHLVAddNewerVersions(t *testing.T) {
 			incomingHLV: "4@c,5@b,6@a",
 			finalHLV:    "4@c,5@b,6@a",
 		},
-		/* FIXME, this does not work yet.
+		// Invalid MV cleanup cases should preserve any conflicting versions from incoming HLV
 		{
-			name:        "incoming does not dominate pv",
-			existingHLV: "3@c;5@b,6@a",
-			incomingHLV: "4@c,1@b,2@a",
-			finalHLV:    "3@c;5@b,6@a",
+			// Invalid since MV should always have two values.
+			name:        "Add single value MV",
+			existingHLV: "",
+			incomingHLV: "1@b,1@a",
+			finalHLV:    "1@b,1@a",
 		},
-		*/
+		/* Test case doesn't work yet
 		{
+			// Invalid since there should not be able to be an incoming merge conflict where a different newer version exists.
 			name:        "incoming mv partially overlaps with pv",
-			existingHLV: "3@c;2@b,1@a",
-			incomingHLV: "4@c,2@b,6@a",
-			finalHLV:    "4@c,2@b,6@a",
-		},
-		/* FIXME: this doesn't work yet
-		{
-			name:        "incoming mv partially overlaps with pv, but incoming mv should be wiped out",
 			existingHLV: "3@c;2@b,6@a",
 			incomingHLV: "4@c,2@b,1@a",
-			finalHLV:    "4@c;2@b,6@a",
+			finalHLV:    "4@c,2@b,6@a",
 		},
 		*/
 	}
