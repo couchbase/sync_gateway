@@ -164,29 +164,33 @@ var TopologySpecifications = []TopologySpecification{
 				},
 			},
 			{
-				activePeer:  "cbl1",
-				passivePeer: "sg1",
+				activePeer:           "cbl1",
+				passivePeer:          "sg1",
+				alternatePassivePeer: "sg2",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPull,
 				},
 			},
 			{
-				activePeer:  "cbl1",
-				passivePeer: "sg1",
+				activePeer:           "cbl1",
+				passivePeer:          "sg1",
+				alternatePassivePeer: "sg2",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPush,
 				},
 			},
 			{
-				activePeer:  "cbl2",
-				passivePeer: "sg2",
+				activePeer:           "cbl2",
+				passivePeer:          "sg2",
+				alternatePassivePeer: "sg1",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPull,
 				},
 			},
 			{
-				activePeer:  "cbl2",
-				passivePeer: "sg2",
+				activePeer:           "cbl2",
+				passivePeer:          "sg2",
+				alternatePassivePeer: "sg1",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPush,
 				},
@@ -194,83 +198,86 @@ var TopologySpecifications = []TopologySpecification{
 		},
 	},
 	// topology 1.4 not present, no P2P supported yet
-	/*
-		{
-					Test topology 1.5
+	{
+		/*
+				Test topology 1.5
 
-					+ - - - - - - +      +- - - - - - -+
-					'  cluster A  '      '  cluster B  '
-					' +---------+ '      ' +---------+ '
-					' |  cbs1   | ' <--> ' |  cbs2   | '
-					' +---------+ '      ' +---------+ '
-					' +---------+ '      ' +---------+ '
-					' |   sg1   | '      ' |   sg2   | '
-					' +---------+ '      ' +---------+ '
-					+ - - - - - - +      +- - - - - - -+
-				   	      ^ 	         ^
-					      |                  |
-					      |                  |
-					      |                  |
-					      |     +------+     |
-					      +---> | cbl1 | <---+
-					            +------+
-	*/
-	/* This test doesn't work yet, CouchbaseLiteMockPeer doesn't support writing data to multiple Sync Gateway peers yet
-				description: "Sync Gateway -> Couchbase Server -> Couchbase Server",
-				peers: map[string]PeerOptions{
-					"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
-					"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2},
-					"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
-					"sg2":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID2},
-					"cbl1": {Type: PeerTypeCouchbaseLite},
+				+ - - - - - - +      +- - - - - - -+
+				'  cluster A  '      '  cluster B  '
+				' +---------+ '      ' +---------+ '
+				' |  cbs1   | ' <--> ' |  cbs2   | '
+				' +---------+ '      ' +---------+ '
+				' +---------+ '      ' +---------+ '
+				' |   sg1   | '      ' |   sg2   | '
+				' +---------+ '      ' +---------+ '
+				+ - - - - - - +      +- - - - - - -+
+			   	      ^ 	         ^
+				      |                  |
+				      |                  |
+				      |                  |
+				      |     +------+     |
+				      +---> | cbl1 | <---+
+				            +------+
+		*/
+		description: "2x CBL (swap)<->SG<->CBS XDCR 1.5",
+		peers: map[string]PeerOptions{
+			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
+			"cbs2": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID2},
+			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
+			"sg2":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID2},
+			"cbl1": {Type: PeerTypeCouchbaseLite},
+			"cbl2": {Type: PeerTypeCouchbaseLite},
+		},
+		replications: []PeerReplicationDefinition{
+			{
+				activePeer:  "cbs2",
+				passivePeer: "cbs1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
 				},
-				replications: []PeerReplicationDefinition{
-					{
-						activePeer:  "cbs2",
-						passivePeer: "cbs1",
-						config: PeerReplicationConfig{
-							direction: PeerReplicationDirectionPull,
-						},
-					},
-		{
-						activePeer:  "cbs2",
-						passivePeer: "cbs1",
-						config: PeerReplicationConfig{
-							direction: PeerReplicationDirectionPull,
-						},
-					},
+			},
+			{
+				activePeer:  "cbs2",
+				passivePeer: "cbs1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				},
+			},
 
-					{
-						activePeer:  "cbl1",
-						passivePeer: "sg1",
-						config: PeerReplicationConfig{
-							direction: PeerReplicationDirectionPull,
-						},
-					},
-					{
-						activePeer:  "cbl1",
-						passivePeer: "sg1",
-						config: PeerReplicationConfig{
-							direction: PeerReplicationDirectionPush,
-						},
-					},
-					{
-						activePeer:  "cbl1",
-						passivePeer: "sg2",
-						config: PeerReplicationConfig{
-							direction: PeerReplicationDirectionPull,
-						},
-					},
-					{
-						activePeer:  "cbl1",
-						passivePeer: "sg2",
-						config: PeerReplicationConfig{
-							direction: PeerReplicationDirectionPush,
-						},
-					},
+			{
+				activePeer:           "cbl1",
+				passivePeer:          "sg1",
+				alternatePassivePeer: "sg2",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
 				},
+			},
+			{
+				activePeer:           "cbl1",
+				passivePeer:          "sg1",
+				alternatePassivePeer: "sg2",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				},
+			},
+			{
+				activePeer:           "cbl2",
+				passivePeer:          "sg2",
+				alternatePassivePeer: "sg1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
+				},
+			},
+			{
+				activePeer:           "cbl2",
+				passivePeer:          "sg2",
+				alternatePassivePeer: "sg1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				},
+			},
+		},
 	},
-	*/
 }
 
 // simpleTopologySpecifications represents simplified topologies to make testing the integration test code easier.

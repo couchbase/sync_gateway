@@ -89,6 +89,15 @@ func (r *CouchbaseServerReplication) Stats() string {
 	return fmt.Sprintf("%+v", *stats)
 }
 
+func (r *CouchbaseServerReplication) HasAlternatePeer() bool {
+	// CouchbaseServerReplication does not have an alternate peer, it is always a single replication.
+	return false
+}
+
+func (r *CouchbaseServerReplication) SwapAlternatePeer() {
+	return
+}
+
 func (p *CouchbaseServerPeer) String() string {
 	return fmt.Sprintf("%s (bucket:%s,sourceid:%s)", p.name, p.bucket.GetName(), p.sourceID)
 }

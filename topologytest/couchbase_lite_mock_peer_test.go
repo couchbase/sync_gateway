@@ -226,8 +226,10 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 	}
 	const username = "user"
 	sg.rt.CreateUser(username, []string{"*"})
-	replication.btc = replication.btcRunner.NewBlipTesterClientOptsWithRT(sg.rt, &rest.BlipTesterClientOpts{
-		Username:               username,
+	// intentionally do not use base.TestCtx to drop test name for readability
+	ctx := base.CorrelationIDLogCtx(sg.rt.TB().Context(), p.name)
+	replication.btc = replication.btcRunner.NewBlipTesterClientOptsWithRTAndContext(ctx, sg.rt, &rest.BlipTesterClientOpts{
+		Username:               "user",
 		SupportedBLIPProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()},
 		AllowCreationWithoutBlipTesterClientRunner: true,
 		SourceID: p.SourceID(),
@@ -267,11 +269,12 @@ func (p *CouchbaseLiteMockPeer) GetBackingBucket() base.Bucket {
 
 // CouchbaseLiteMockReplication represents a replication between Couchbase Lite and Sync Gateway. This can be a push or pull replication.
 type CouchbaseLiteMockReplication struct {
-	activePeer  Peer
-	passivePeer Peer
-	btc         *rest.BlipTesterClient
-	btcRunner   *rest.BlipTestClientRunner
-	direction   PeerReplicationDirection
+	activePeer           Peer
+	passivePeer          Peer
+	alternatePassivePeer Peer
+	btc                  *rest.BlipTesterClient
+	btcRunner            *rest.BlipTestClientRunner
+	direction            PeerReplicationDirection
 }
 
 // ActivePeer returns the peer sending documents
@@ -295,6 +298,19 @@ func (r *CouchbaseLiteMockReplication) Start() {
 	default:
 		require.Fail(r.btc.TB(), fmt.Sprintf("unsupported replication direction %q", r.direction))
 	}
+}
+
+func (r *CouchbaseLiteMockReplication) HasAlternatePeer() bool {
+	return r.alternatePassivePeer != nil
+}
+
+func (r *CouchbaseLiteMockReplication) SwapAlternatePeer() {
+	r.passivePeer, r.alternatePassivePeer = r.alternatePassivePeer, r.passivePeer
+	sg, ok := r.passivePeer.(*SyncGatewayPeer)
+	if !ok {
+		require.Fail(r.btc.TB(), fmt.Sprintf("unsupported peer type %T for pull replication", r.passivePeer))
+	}
+	r.btcRunner.UpdateRT(sg.rt)
 }
 
 // Stop halts the replication. The replication can be restarted after it is stopped.

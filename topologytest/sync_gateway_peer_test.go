@@ -74,7 +74,11 @@ func (p *SyncGatewayPeer) GetDocumentIfExists(dsName sgbucket.DataStoreName, doc
 		return DocMetadata{}, nil, false
 	}
 	require.NoError(p.TB(), err)
-	return DocMetadataFromDocument(doc), base.Ptr(doc.Body(ctx)), true
+	meta = DocMetadataFromDocument(doc)
+	if doc.IsDeleted() {
+		return meta, nil, true
+	}
+	return meta, base.Ptr(doc.Body(ctx)), true
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.

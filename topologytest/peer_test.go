@@ -108,6 +108,12 @@ type PeerReplication interface {
 	Stop()
 	// Stats returns a string representation of the stats for the replication.
 	Stats() string
+	// HasAlternatePeer returns true if the replication has an alternate passive peer.
+	HasAlternatePeer() bool
+	// SwapAlternatePeer swaps existing peer to alternate peer. This will always do a swap, so calling this function in
+	// succession will swap back to the original configuration. The replication must be stopped before calling this
+	// function.
+	SwapAlternatePeer()
 }
 
 // Peers represents a set of peers. The peers are indexed by name.
@@ -207,6 +213,21 @@ func (r Replications) Stats() string {
 	return stats
 }
 
+func (r Replications) HasSwappablePeers() bool {
+	for _, replication := range r {
+		if replication.HasAlternatePeer() {
+			return true
+		}
+	}
+	return false
+}
+
+func (r Replications) Swap() {
+	for _, replication := range r {
+		replication.SwapAlternatePeer()
+	}
+}
+
 // Topology describes an instantiated set of peers and replications.
 type Topology struct {
 	peers           Peers
@@ -263,6 +284,17 @@ func (to Topology) StopReplications() {
 	to.replications.Stop()
 }
 
+func (to Topology) StopSwapRestartReplications() {
+	if !to.replications.HasSwappablePeers() {
+		return
+	}
+	to.replications.Stop()
+	for _, replication := range to.replications {
+		replication.SwapAlternatePeer()
+	}
+	to.replications.Start()
+}
+
 // PeerReplicationDirection represents the direction of a replication from the active peer.
 type PeerReplicationDirection int
 
@@ -281,9 +313,10 @@ type PeerReplicationConfig struct {
 
 // PeerReplicationDefinition defines a pair of peers and a configuration.
 type PeerReplicationDefinition struct {
-	activePeer  string
-	passivePeer string
-	config      PeerReplicationConfig
+	activePeer           string
+	passivePeer          string
+	alternatePassivePeer string // optional, used to switch peers within a PeerReplicationDefinition
+	config               PeerReplicationConfig
 }
 
 var _ Peer = &CouchbaseServerPeer{}
@@ -419,7 +452,7 @@ func createPeers(t *testing.T, peersOptions map[string]PeerOptions) Peers {
 
 // setupTests returns a map of peers and a list of replications. The peers will be closed and the buckets will be destroyed by t.Cleanup.
 func setupTests(t *testing.T, topology TopologySpecification) (base.ScopeAndCollectionName, Topology) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV, base.KeyCRUD, base.KeySync)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyVV, base.KeyCRUD, base.KeySync, base.KeySGTest)
 	peers := createPeers(t, topology.peers)
 	replications := createPeerReplications(t, peers, topology.replications)
 	return getSingleDsName(), Topology{peers: peers, replications: replications}

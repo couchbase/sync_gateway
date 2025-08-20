@@ -32,6 +32,7 @@ func TestMultiActorUpdate(t *testing.T) {
 						createVersion := createPeer.CreateDocument(collectionName, docID, body1)
 						waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
+						topology.StopSwapRestartReplications()
 						newBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "update"}`, updatePeerName, createPeerName, updatePeerName, topology.specDescription))
 						updateVersion := updatePeer.WriteDocument(collectionName, docID, newBody)
 
