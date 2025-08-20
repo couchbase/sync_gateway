@@ -740,7 +740,8 @@ func (h *handler) handlePostDoc() error {
 	return nil
 }
 
-func docVerisonFromOCCValue(occValue string, occValueType occVersionType) (docVersion db.DocVersion, err error) {
+// docVersionFromOCCValue converts an OCC value and type into a DocVersion struct.
+func docVersionFromOCCValue(occValue string, occValueType occVersionType) (docVersion db.DocVersion, err error) {
 	switch occValueType {
 	case VersionTypeRevTreeID:
 		docVersion.RevTreeID = occValue
@@ -772,7 +773,7 @@ func (h *handler) handleDeleteDoc() error {
 		return fmt.Errorf("couldn't get OCC value from request: %w", err)
 	}
 
-	docVersion, err := docVerisonFromOCCValue(occValue, occValueType)
+	docVersion, err := docVersionFromOCCValue(occValue, occValueType)
 	if err != nil {
 		return fmt.Errorf("couldn't build document version from OCC value: %w", err)
 	}
