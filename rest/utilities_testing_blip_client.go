@@ -1090,7 +1090,10 @@ func (btcRunner *BlipTestClientRunner) RunSubprotocolV2(test func(t *testing.T))
 	}
 	btcRunner.initialisedInsideRunnerCode = true
 	// reset to protect against someone creating a new client after Run() is run
-	defer func() { btcRunner.initialisedInsideRunnerCode = false }()
+	defer func() {
+		btcRunner.initialisedInsideRunnerCode = false
+		btcRunner.clients = make(map[uint32]*BlipTesterClient) // reset clients map
+	}()
 	btcRunner.t.Run(RevtreeSubtestName, func(t *testing.T) {
 		btcRunner.supportedSubprotocols = []string{db.CBMobileReplicationV2.SubprotocolString()}
 		test(t)
