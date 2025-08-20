@@ -342,7 +342,7 @@ rev:
   schema:
     type: string
   example: 2-5145e1086bb8d1d71a531e9f6b543c58
-  description: The document revision to target. If this is a CV value, ensure the query parameter is URL encoded (`+`->`%2B`, `@`->`%40`, etc.)
+  description: The document revision to target. This can be a RevTree ID or a CV (Current Version) ID. If this is a CV value, ensure the query parameter is URL encoded (`+`->`%2B`, `@`->`%40`, etc.)
 revs_from:
   name: revs_from
   in: query

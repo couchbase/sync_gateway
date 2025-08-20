@@ -78,7 +78,20 @@ func (rt *RestTester) TriggerOnDemandImport(docID string) {
 
 // GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
-	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevTreeID, "")
+	occValue := version.RevTreeID
+	if !version.CV.IsEmpty() {
+		occValue = version.CV.String()
+	}
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+occValue, "")
+	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
+	var body db.Body
+	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	return body
+}
+
+// GetDocByRev returns the doc body for the given docID and Rev. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDocByRev(docID, revTreeID string) db.Body {
+	rawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revTreeID), "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
@@ -141,11 +154,6 @@ func (rt *RestTester) DeleteDoc(docID string, version DocVersion) DocVersion {
 // isRespUseRevTreeIDInstead returns true if the response indicates that a RevTree ID should be used instead of a CV for modifying a document in conflict.
 func isRespUseRevTreeIDInstead(resp *TestResponse) bool {
 	return resp.Code == http.StatusBadRequest && strings.Contains(resp.BodyString(), "Cannot use CV to modify a document in conflict - resolve first with RevTree ID")
-}
-
-// DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
-func (rt *RestTester) DeleteDocRev(docID, revID string) {
-	rt.DeleteDoc(docID, DocVersion{RevTreeID: revID})
 }
 
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {

@@ -2135,6 +2135,9 @@ func TestAttachmentsMissing(t *testing.T) {
 
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
+	// strip CV from version - we don't store revision backups for old CVs like we do for RevIDs
+	version2.CV = db.Version{}
+
 	body := rt.GetDocVersion(docID, version2)
 	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]interface{})["hello.txt"].(map[string]interface{})["digest"])
 }
@@ -2157,6 +2160,9 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-b"), &version1, `{}`)
 
 	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// strip CV from version - we don't store revision backups for old CVs like we do for RevIDs
+	version2.CV = db.Version{}
 
 	body := rt.GetDocVersion(docID, version2)
 	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]interface{})["hello.txt"].(map[string]interface{})["digest"])

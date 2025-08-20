@@ -295,13 +295,13 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	return docOut, nil
 }
 
-// GetRev returns the revision for the given docID and revID, or the current active revision if revID is empty.
-func (db *DatabaseCollectionWithUser) GetRev(ctx context.Context, docID, revID string, history bool, attachmentsSince []string) (DocumentRevision, error) {
+// GetRev returns the revision for the given docID and revOrCV, or the current active revision if revOrCV is empty.
+func (db *DatabaseCollectionWithUser) GetRev(ctx context.Context, docID, revOrCV string, history bool, attachmentsSince []string) (DocumentRevision, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
 	}
-	return db.getRev(ctx, docID, revID, maxHistory, nil)
+	return db.getRev(ctx, docID, revOrCV, maxHistory, nil)
 }
 
 // Returns the body of the current revision of a document
@@ -2765,6 +2765,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 		doc.HLV.CurrentVersionCAS = casOut
 	}
 	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for delta generation purposes
+	// we don't need to store revision body backups without delta sync in 4.0, since all clients know how to use the sendReplacementRevs feature
 	backupRev := db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() != 0
 	if db.UseXattrs() && backupRev {
 		var newBodyWithAtts = doc._rawBody
