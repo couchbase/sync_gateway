@@ -27,14 +27,23 @@ import (
 // HTTP handler for a GET of a document
 func (h *handler) handleGetDoc() error {
 	docid := h.PathVar("docid")
-	revid := h.getQuery("rev")
+	rev := h.getQuery("rev") // Empty, RevTree ID, or CV
 	openRevs := h.getQuery("open_revs")
 	showExp := h.getBoolQuery("show_exp")
 	const showCV = true // Post-beta 4.0 _always_ returns CV - negligible impact to revtree-only clients and promotes CV as the preferred OCC value
 
 	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
-		return h.handleGetDocReplicator2(docid, revid)
+		return h.handleGetDocReplicator2(docid, rev)
 	}
+
+	// Extra validation of these options, since this combination isn't valid anyway. We want to prevent users from attempting to use CV with open_revs.
+	if openRevs != "" && rev != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "cannot specify both 'rev' and 'open_revs' query parameters")
+	}
+
+	// We'll treat empty rev as a RevTree ID, which only affects what the ETag looks like.
+	// If the user specifically asked for a CV, they'll get a CV ETag - but everything else can stay as RevTree ID for compatibility.
+	isRevTreeID := rev == "" || base.IsRevTreeID(rev)
 
 	// Check whether the caller wants a revision history, or attachment bodies, or both:
 	var revsLimit = 0
@@ -69,7 +78,7 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, db.Get1xRevBodyOptions{
+		value, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, rev, db.Get1xRevBodyOptions{
 			MaxHistory:       revsLimit,
 			HistoryFrom:      revsFrom,
 			AttachmentsSince: attachmentsSince,
@@ -94,8 +103,14 @@ func (h *handler) handleGetDoc() error {
 			}
 			return kNotFoundError
 		}
-		foundRev := value[db.BodyRev].(string)
-		h.setEtag(foundRev)
+
+		var etagValue string
+		if isRevTreeID {
+			etagValue = value[db.BodyRev].(string)
+		} else {
+			etagValue = value[db.BodyCV].(string)
+		}
+		h.setEtag(etagValue)
 
 		h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		hasBodies := attachmentsSince != nil && value[db.BodyAttachments] != nil
@@ -110,7 +125,7 @@ func (h *handler) handleGetDoc() error {
 		}
 		base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
 			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: foundRev,
+			base.AuditFieldDocVersion: etagValue,
 		})
 	} else {
 		var revids []string
@@ -195,12 +210,12 @@ func (h *handler) handleGetDoc() error {
 	return nil
 }
 
-func (h *handler) handleGetDocReplicator2(docid, revid string) error {
+func (h *handler) handleGetDocReplicator2(docid, revOrCV string) error {
 	if !base.IsEnterpriseEdition() {
 		return base.HTTPErrorf(http.StatusNotImplemented, "replicator2 endpoints are only supported in EE")
 	}
 
-	rev, err := h.collection.GetRev(h.ctx(), docid, revid, true, nil)
+	rev, err := h.collection.GetRev(h.ctx(), docid, revOrCV, true, nil)
 	if err != nil {
 		return err
 	}
