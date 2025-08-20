@@ -209,7 +209,7 @@ func (p *SyncGatewayPeer) IsSymmetricRedundant() bool {
 }
 
 // CreateReplication creates a replication instance. This is currently not supported for Sync Gateway peers. A future ISGR implementation will support this.
-func (p *SyncGatewayPeer) CreateReplication(_ Peer, _ PeerReplicationConfig) PeerReplication {
+func (p *SyncGatewayPeer) CreateReplication(_, _ Peer, _ PeerReplicationConfig) PeerReplication {
 	require.Fail(p.rt.TB(), "can not create a replication with Sync Gateway as an active peer")
 	return nil
 }

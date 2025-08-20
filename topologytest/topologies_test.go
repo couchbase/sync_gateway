@@ -164,33 +164,29 @@ var TopologySpecifications = []TopologySpecification{
 				},
 			},
 			{
-				activePeer:           "cbl1",
-				passivePeer:          "sg1",
-				alternatePassivePeer: "sg2",
+				activePeer:  "cbl1",
+				passivePeer: "sg1",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPull,
 				},
 			},
 			{
-				activePeer:           "cbl1",
-				passivePeer:          "sg1",
-				alternatePassivePeer: "sg2",
+				activePeer:  "cbl1",
+				passivePeer: "sg1",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPush,
 				},
 			},
 			{
-				activePeer:           "cbl2",
-				passivePeer:          "sg2",
-				alternatePassivePeer: "sg1",
+				activePeer:  "cbl2",
+				passivePeer: "sg2",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPull,
 				},
 			},
 			{
-				activePeer:           "cbl2",
-				passivePeer:          "sg2",
-				alternatePassivePeer: "sg1",
+				activePeer:  "cbl2",
+				passivePeer: "sg2",
 				config: PeerReplicationConfig{
 					direction: PeerReplicationDirectionPush,
 				},

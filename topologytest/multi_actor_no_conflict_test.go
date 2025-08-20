@@ -27,12 +27,13 @@ func TestMultiActorUpdate(t *testing.T) {
 			for createPeerName, createPeer := range topology.peers.ActivePeers() {
 				for updatePeerName, updatePeer := range topology.SortedPeers() {
 					topology.Run(t, "create="+createPeerName+",update="+updatePeerName, func(t *testing.T) {
+						defer topology.StopSwapRestartReplications()
 						docID := getDocID(t) + "_create=" + createPeerName + ",update=" + updatePeerName
 						body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, updatePeer, topology.specDescription))
 						createVersion := createPeer.CreateDocument(collectionName, docID, body1)
 						waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
-						topology.StopSwapRestartReplications()
+						//topology.StopSwapRestartReplications()
 						newBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "update"}`, updatePeerName, createPeerName, updatePeerName, topology.specDescription))
 						updateVersion := updatePeer.WriteDocument(collectionName, docID, newBody)
 

@@ -64,7 +64,7 @@ type Peer interface {
 	WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology)
 
 	// CreateReplication creates a replication instance
-	CreateReplication(Peer, PeerReplicationConfig) PeerReplication
+	CreateReplication(passivePeer Peer, alternatePassivePeer Peer, config PeerReplicationConfig) PeerReplication
 
 	// Close will shut down the peer and close any active replications on the peer.
 	Close()
@@ -216,16 +216,11 @@ func (r Replications) Stats() string {
 func (r Replications) HasSwappablePeers() bool {
 	for _, replication := range r {
 		if replication.HasAlternatePeer() {
+			fmt.Printf("TopologyTest: replication %s has alternate peer %s\n", replication, replication.PassivePeer())
 			return true
 		}
 	}
 	return false
-}
-
-func (r Replications) Swap() {
-	for _, replication := range r {
-		replication.SwapAlternatePeer()
-	}
 }
 
 // Topology describes an instantiated set of peers and replications.
@@ -411,7 +406,13 @@ func createPeerReplications(t *testing.T, peers map[string]Peer, configs []PeerR
 		require.True(t, ok, "active peer %s not found", config.activePeer)
 		passivePeer, ok := peers[config.passivePeer]
 		require.True(t, ok, "passive peer %s not found", config.passivePeer)
-		replications = append(replications, activePeer.CreateReplication(passivePeer, config.config))
+		var alternatePeer Peer
+		if config.alternatePassivePeer != "" {
+			alternatePeer, ok = peers[config.alternatePassivePeer]
+			require.True(t, ok, "alternate passive peer %s not found", config.alternatePassivePeer)
+			require.NotEqual(t, passivePeer, alternatePeer, "alternate peer must be different from passive peer")
+		}
+		replications = append(replications, activePeer.CreateReplication(passivePeer, alternatePeer, config.config))
 	}
 	return replications
 }
@@ -496,14 +497,14 @@ func TestPeerImplementation(t *testing.T) {
 			var replications Replications
 			// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
 			if peer.Type() == PeerTypeCouchbaseLite {
-				pullReplication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{
+				pullReplication := peer.CreateReplication(peers["sg"], nil, PeerReplicationConfig{
 					direction: PeerReplicationDirectionPull,
 				})
 				pullReplication.Start()
 				defer pullReplication.Stop()
 
 				replications = append(replications, pullReplication)
-				pushReplication := peer.CreateReplication(peers["sg"], PeerReplicationConfig{
+				pushReplication := peer.CreateReplication(peers["sg"], nil, PeerReplicationConfig{
 					direction: PeerReplicationDirectionPush,
 				})
 				pushReplication.Start()

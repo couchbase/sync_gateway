@@ -273,7 +273,8 @@ func (p *CouchbaseServerPeer) IsSymmetricRedundant() bool {
 }
 
 // CreateReplication creates an XDCR manager.
-func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, config PeerReplicationConfig) PeerReplication {
+func (p *CouchbaseServerPeer) CreateReplication(passivePeer Peer, alternatePassivePeer Peer, config PeerReplicationConfig) PeerReplication {
+	require.Nil(p.TB(), alternatePassivePeer, "alternatePassivePeer not supported yet for CouchbaseServerPeer")
 	switch config.direction {
 	case PeerReplicationDirectionPull:
 		_, ok := p.pullReplications[passivePeer]

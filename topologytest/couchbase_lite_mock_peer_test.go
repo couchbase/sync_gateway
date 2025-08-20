@@ -201,28 +201,31 @@ func (p *CouchbaseLiteMockPeer) IsSymmetricRedundant() bool {
 }
 
 // CreateReplication creates a replication instance
-func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicationConfig) PeerReplication {
+func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, alternatePassivePeer Peer, config PeerReplicationConfig) PeerReplication {
 	sg, ok := peer.(*SyncGatewayPeer)
 	if !ok {
 		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %T for pull replication", peer))
 	}
 
+	fmt.Printf("Alterate peer: %#+v\n", alternatePassivePeer)
 	// check for existing blip runner/client and use if present - avoids creating multiple clients for the same peer
 	if pbtc, ok := p.blipClients[sg.String()]; ok {
 		return &CouchbaseLiteMockReplication{
-			activePeer:  p,
-			passivePeer: peer,
-			btc:         pbtc.btc,
-			btcRunner:   pbtc.btcRunner,
-			direction:   config.direction,
+			activePeer:           p,
+			passivePeer:          peer,
+			alternatePassivePeer: alternatePassivePeer,
+			btc:                  pbtc.btc,
+			btcRunner:            pbtc.btcRunner,
+			direction:            config.direction,
 		}
 	}
 
 	replication := &CouchbaseLiteMockReplication{
-		activePeer:  p,
-		passivePeer: peer,
-		btcRunner:   rest.NewBlipTesterClientRunner(sg.rt.TB().(*testing.T)),
-		direction:   config.direction,
+		activePeer:           p,
+		passivePeer:          peer,
+		alternatePassivePeer: alternatePassivePeer,
+		btcRunner:            rest.NewBlipTesterClientRunner(sg.rt.TB().(*testing.T)),
+		direction:            config.direction,
 	}
 	const username = "user"
 	sg.rt.CreateUser(username, []string{"*"})
@@ -301,6 +304,7 @@ func (r *CouchbaseLiteMockReplication) Start() {
 }
 
 func (r *CouchbaseLiteMockReplication) HasAlternatePeer() bool {
+	fmt.Printf("CouchbaseLiteMockReplication.HasAlternatePeer: %#+v\n", r.alternatePassivePeer)
 	return r.alternatePassivePeer != nil
 }
 
