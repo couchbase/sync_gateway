@@ -3593,3 +3593,36 @@ func TestBlipPullConflict(t *testing.T) {
 		require.True(t, bucketDoc.HLV.Equal(postConflictHLV), "Expected bucket doc HLV to match post-conflict HLV, got %#v, expected %#v", bucketDoc.HLV, postConflictHLV)
 	})
 }
+
+func TestTombstoneCount(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rtConfig := RestTesterConfig{
+		GuestEnabled: true,
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		const docID1 = "doc1"
+		docVersion := btcRunner.AddRev(client.id, docID1, EmptyDocVersion(), []byte(`{"key": "val"}`))
+		rt.WaitForVersion(docID1, docVersion)
+
+		deleteVersion := btcRunner.DeleteDoc(client.id, docID1, &docVersion)
+		rt.WaitForTombstone(docID1, deleteVersion)
+		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DatabaseStats.TombstoneCount.Value())
+
+		const docID2 = "doc2"
+		version := rt.CreateTestDoc(docID2)
+		rt.DeleteDoc(docID2, version)
+		assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.TombstoneCount.Value())
+	})
+
+}

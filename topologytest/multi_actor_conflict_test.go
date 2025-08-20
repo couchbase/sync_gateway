@@ -9,80 +9,52 @@
 package topologytest
 
 import (
-	"strings"
 	"testing"
 )
 
 // TestMultiActorConflictCreate
-// 1. create document on each peer with different contents
-// 2. start replications
-// 3. wait for documents to exist with hlv sources equal to the number of active peers
+//  1. create document on each peer with different contents
+//  2. start replications
+//  3. wait for documents to exist with a matching CV for Couchbase Lite peers, and a full HLV match for non Couchbase
+//     Lite peers. The body should match.
 func TestMultiActorConflictCreate(t *testing.T) {
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, collectionName, docID, topology)
+			docVersion := createConflictingDocs(collectionName, docID, topology)
 			topology.StartReplications()
-			// Can not assert on full HLV here. CV should converge, but CBL actors can have PV that does not match that of the other peers.
-			//        + - - - - - - +      +- - - - - - -+
-			//        '  cluster A  '      '  cluster B  '
-			//        ' +---------+ '      ' +---------+ '
-			//        ' |  cbs1   | ' <--> ' |  cbs2   | '
-			//        ' +---------+ '      ' +---------+ '
-			//        ' +---------+ '      ' +---------+ '
-			//        ' |   sg1   | '      ' |   sg2   | '
-			//        ' +---------+ '      ' +---------+ '
-			//        + - - - - - - +      +- - - - - - -+
-			//              ^                     ^
-			//              |                     |
-			//              |                     |
-			//              v                     v
-			//          +---------+          +---------+
-			//          |   cbl1  |          |   cbl2  |
-			//          +---------+          +---------+
-			// Couchbase Server, since conflict resolution in XDCR will overwrite the HLV.
-			// 1. sg1 creates unique document cv: 1@rosmar1
-			// 2. sg2 creates unique document cv: 2@rosmar2
-			// 3. cbl1 pulls 1@rosmar1
-			// 4. cbl2 pull 2@rosmar2
-			// 5. cbs1 pulls 2@rosmar2, overwriting cv:1@rosmar1
-			// 6. cbl1 pulls 2@rosmar2, creating cv: 2@rosmar2, pv:1@rosmar1 overwriting
-			// Final state:
-			//    - cv:2@rosmar2 on cbs1, cbs2, cbl2
-			//    - cv:2@rosmar2, pv:1@rosmar1 on cbl1
 			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 		})
 	}
 }
 
 // TestMultiActorConflictUpdate
-// 1. create document on each peer with different contents
-// 2. start replications
-// 3. wait for documents to exist with hlv sources equal to the number of active peers
-// 4. stop replications
-// 5. update documents on all peers
-// 6. start replications
-// 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
+//  1. create document on each peer with different contents
+//  2. start replications
+//  3. wait for documents to exist with a matching CV for Couchbase Lite peers, and a full HLV match for non Couchbase
+//     Lite peers. The body should match.
+//  4. stop replications
+//  5. update documents on all peers, with unique body contents.
+//  6. start replications
+//  7. wait for documents to exist with a matching CV for Couchbase Lite peers, and a full HLV match for non Couchbase
+//     Lite peers. The body should match.
 func TestMultiActorConflictUpdate(t *testing.T) {
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
-		if strings.Contains(topologySpec.description, "CBL") {
-			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
-		}
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, collectionName, docID, topology)
+			docVersion := createConflictingDocs(collectionName, docID, topology)
 
 			topology.StartReplications()
-			waitForVersionAndBody(t, collectionName, docID, docVersion, topology)
+			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 
 			topology.StopReplications()
 
-			docVersion = updateConflictingDocs(t, collectionName, docID, topology)
+			docVersion = updateConflictingDocs(collectionName, docID, topology)
 			topology.StartReplications()
-			waitForVersionAndBody(t, collectionName, docID, docVersion, topology)
+			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 		})
 	}
 }
@@ -97,64 +69,62 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 // 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
 func TestMultiActorConflictDelete(t *testing.T) {
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
-		if strings.Contains(topologySpec.description, "CBL") {
-			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
-		}
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, collectionName, docID, topology)
+			docVersion := createConflictingDocs(collectionName, docID, topology)
 
 			topology.StartReplications()
-			waitForVersionAndBody(t, collectionName, docID, docVersion, topology)
+			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 
 			topology.StopReplications()
-			lastWrite := deleteConflictDocs(t, collectionName, docID, topology)
+			deleteConflictDocs(collectionName, docID, topology)
 
 			topology.StartReplications()
-			waitForTombstoneVersion(t, collectionName, docID, lastWrite, topology)
+			waitForConvergingTombstones(t, collectionName, docID, topology)
 		})
 	}
 }
 
 // TestMultiActorConflictResurrect
-// 1. create document on each peer with different contents
-// 2. start replications
-// 3. wait for documents to exist with hlv sources equal to the number of active peers and the document body is equivalent to the last write
-// 4. stop replications
-// 5. delete documents on all peers
-// 6. start replications
-// 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
-// 8. stop replications
-// 9. resurrect documents on all peers with unique contents
-// 10. start replications
-// 11. assert that the documents are resurrected on all peers and have hlv sources equal to the number of active peers and the document body is equivalent to the last write
+//  1. create document on each peer with different contents
+//  2. start replications
+//  3. wait for documents to exist with hlv sources equal to the number of active peers and the document body is
+//     equivalent to the last write.
+//  4. stop replications
+//  5. delete documents on all peers
+//  6. start replications
+//  7. assert that the documents are deleted on all peers and that there is a converging tombstone. In this case,
+//     there is no assertion other than deletion for Couchbase Lite peers, but there is a full HLV assertion for other
+//     peer types.
+//  8. stop replications
+//  9. resurrect documents on all peers with unique contents
+//  10. start replications
+//  11. assert that the documents are resurrected on all peers and have matching hlvs for non Couchbase Lite peers and
+//     matching CV for Couchbase Lite peers.
 func TestMultiActorConflictResurrect(t *testing.T) {
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
-		if strings.Contains(topologySpec.description, "CBL") {
-			t.Skip("CBL actor can generate conflicts and push replication fails with conflict for doc in blip tester CBL-4267")
-		}
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(t, collectionName, docID, topology)
+			docVersion := createConflictingDocs(collectionName, docID, topology)
 
 			topology.StartReplications()
-			waitForVersionAndBody(t, collectionName, docID, docVersion, topology)
+			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 
 			topology.StopReplications()
-			lastWrite := deleteConflictDocs(t, collectionName, docID, topology)
+			deleteConflictDocs(collectionName, docID, topology)
 
 			topology.StartReplications()
 
-			waitForTombstoneVersion(t, collectionName, docID, lastWrite, topology)
+			waitForConvergingTombstones(t, collectionName, docID, topology)
 			topology.StopReplications()
 
-			lastWriteVersion := updateConflictingDocs(t, collectionName, docID, topology)
+			resurrectVersion := updateConflictingDocs(collectionName, docID, topology)
 			topology.StartReplications()
 
-			waitForVersionAndBody(t, collectionName, docID, lastWriteVersion, topology)
+			waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
 		})
 	}
 }

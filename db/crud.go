@@ -2624,6 +2624,9 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	if inConflict {
 		db.dbStats().Database().ConflictWriteCount.Add(1)
 	}
+	if doc.IsDeleted() {
+		db.dbStats().Database().TombstoneCount.Add(1)
+	}
 
 	if doc.History[newRevID] != nil {
 		// Store the new revision in the cache
