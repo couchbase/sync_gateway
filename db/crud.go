@@ -1380,7 +1380,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 						base.InfofCtx(ctx, base.KeyCRUD, "Failed to resolve HLV conflict for doc %s, error: %v", base.UD(doc.ID), err)
 						return nil, nil, false, nil, err
 					}
-					conflictResolved = true  // mark that we resolved the conflict so we don't overwrite the HLV MV below
+					conflictResolved = true // mark that we resolved the conflict so we don't overwrite the HLV MV below
 					// overwrite the existing HLV with the new one
 					doc.HLV = newHLV
 				}

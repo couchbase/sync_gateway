@@ -892,11 +892,11 @@ func remoteWinsConflictResolutionForHLV(ctx context.Context, docID string, local
 
 // addNewerVersionTmp Its temporary function until AddNewerVersions work is done. It adds any newer versions to the winning
 // HLV from the non-winning HLV. It does the following steps:
-// 	- Moving the non-winning CV to pv
-// 	- Preserves winning MV unless non-winning MV has a sourceID in common with winning MV and has a higher version in which
-// 	case MV is invalidated and moved to PV
-// 	- Adds any newer PV entries from non-winning HLV to winning HLV PV a
-//	- Adds any non-winning MV entries to winning HLV PV
+//   - Moving the non-winning CV to pv
+//   - Preserves winning MV unless non-winning MV has a sourceID in common with winning MV and has a higher version in which
+//     case MV is invalidated and moved to PV
+//   - Adds any newer PV entries from non-winning HLV to winning HLV PV a
+//   - Adds any non-winning MV entries to winning HLV PV
 func (hlv *HybridLogicalVector) addNewerVersionTmp(nonWinningVector *HybridLogicalVector) {
 
 	// add non winning vector cv to pv if version is newer
