@@ -27,7 +27,7 @@ get:
         Etag:
           schema:
             type: string
-          description: The document revision ID if only returning 1 revision.
+          description: An optimistic concurrency control (OCC) value used to prevent conflicts in a subsequent update. This value can be a RevTree ID or a CV (Current Version) ID, depending on the version type requested.
       content:
         application/json:
           schema:
