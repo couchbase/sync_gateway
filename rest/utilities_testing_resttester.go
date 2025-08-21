@@ -105,7 +105,7 @@ func (rt *RestTester) UpdateDocRev(docID, revID string, body string) string {
 	return version.RevTreeID
 }
 
-// UpdateDoc updates a document at a specific version and returns the new version.
+// UpdateDoc updates a document at a specific version and returns the new version. Uses CV for REST API if present in DocVersion, otherwise fall back to RevTreeID.
 func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) DocVersion {
 	occValue := version.RevTreeID
 	if !version.CV.IsEmpty() {
@@ -122,7 +122,7 @@ func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) D
 	return DocVersionFromPutResponse(rt.TB(), resp)
 }
 
-// DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
+// DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist. Uses CV for REST API if present in DocVersion, otherwise fall back to RevTreeID.
 func (rt *RestTester) DeleteDoc(docID string, version DocVersion) DocVersion {
 	occValue := version.RevTreeID
 	if !version.CV.IsEmpty() {

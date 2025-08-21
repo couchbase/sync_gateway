@@ -362,6 +362,14 @@ func (h *handler) getOCCValue(optionalBody db.Body) (occValue string, occValueTy
 			occValueType = VersionTypeRevTreeID
 			skipBodyMatchValidation = true
 		}
+	} else {
+		// empty occValue - treat as a create operation without any parent
+		return "", VersionTypeRevTreeID, nil
+	}
+
+	// defensive measure against falling out of above without a type set
+	if occValueType == VersionTypeUnknown {
+		return "", 0, base.HTTPErrorf(http.StatusBadRequest, "Invalid version type for OCC value: %q", occValue)
 	}
 
 	// ensure the value provided matches exactly the one that may also be supplied in the body
@@ -410,8 +418,12 @@ func (h *handler) handlePutAttachment() error {
 	body, err := h.collection.Get1xRevBody(h.ctx(), docid, occValue, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
+			bodyKey, err := bodyKeyForOCCVersionType(occValueType)
+			if err != nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "Invalid OCC version type: %v", err)
+			}
 			// couchdb creates empty body on attachment PUT for non-existent doc id
-			body = db.Body{bodyKeyForOCCVersionType(occValueType): occValue}
+			body = db.Body{bodyKey: occValue}
 		} else if err != nil {
 			return err
 		}
@@ -504,8 +516,9 @@ func (h *handler) handleDeleteAttachment() error {
 type occVersionType uint8
 
 const (
-	VersionTypeRevTreeID occVersionType = iota // Revision Tree ID (RevTreeID / RevID)
-	VersionTypeCV                              // HLV/Version Vector CV
+	VersionTypeUnknown   occVersionType = iota
+	VersionTypeRevTreeID                // Revision Tree ID (RevTreeID / RevID)
+	VersionTypeCV                       // HLV/Version Vector CV
 )
 
 // guessOCCVersionTypeFromValue returns the type of document version based on the string value. Either a RevTree ID or a CV.
@@ -513,19 +526,21 @@ func guessOCCVersionTypeFromValue(s string) occVersionType {
 	if base.IsRevTreeID(s) {
 		return VersionTypeRevTreeID
 	}
-	// anything else we'll assume is a CV
-	// we _could_ check for a well-formatted CV, but given the usage for OCC, we only need an exact string match
-	return VersionTypeCV
+	if _, err := db.ParseVersion(s); err == nil {
+		return VersionTypeCV
+	}
+	return VersionTypeUnknown
 }
 
-func bodyKeyForOCCVersionType(versionType occVersionType) string {
+func bodyKeyForOCCVersionType(versionType occVersionType) (string, error) {
 	switch versionType {
 	case VersionTypeRevTreeID:
-		return db.BodyRev
+		return db.BodyRev, nil
 	case VersionTypeCV:
-		return db.BodyCV
+		return db.BodyCV, nil
+	default:
+		return "", fmt.Errorf("unknown occVersionType %d", versionType)
 	}
-	return ""
 }
 
 // HTTP handler for a PUT of a document
@@ -583,7 +598,11 @@ func (h *handler) handlePutDoc() error {
 		}
 
 		// set OCC version body value for Put
-		body[bodyKeyForOCCVersionType(occValueType)] = occValue
+		bodyKey, err := bodyKeyForOCCVersionType(occValueType)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid OCC version type: %v", err)
+		}
+		body[bodyKey] = occValue
 
 		newRev, doc, err = h.collection.Put(h.ctx(), docid, body)
 		if err != nil {
@@ -750,6 +769,8 @@ func docVersionFromOCCValue(occValue string, occValueType occVersionType) (docVe
 		if err != nil {
 			return DocVersion{}, base.HTTPErrorf(http.StatusBadRequest, "Invalid CV: %v", err)
 		}
+	default:
+		return DocVersion{}, base.HTTPErrorf(http.StatusBadRequest, "Unknown OCC version type: %d", occValueType)
 	}
 	return docVersion, nil
 }

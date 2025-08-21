@@ -1142,7 +1142,6 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 func (rt *RestTester) GetRawDoc(key string) RawDocResponse {
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
 	require.Equal(rt.TB(), http.StatusOK, response.Code, "Error getting raw document %s", response.Body.String())
-	response.DumpBody()
 	var rawResponse RawDocResponse
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
 	return rawResponse
