@@ -253,7 +253,7 @@ func TestCollectionsReplication(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
-		version := btc.rt.PutDocDirectly(docID, db.Body{})
+		version := btc.rt.PutDoc(docID, `{}`)
 
 		btc.rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)
@@ -279,7 +279,7 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 		body := `{"foo":"bar"}`
 		versions := make([]DocVersion, 0, len(btc.rt.GetKeyspaces()))
 		for _, collection := range btc.rt.GetDbCollections() {
-			docVersion := rt.PutDocDirectlyInCollection(collection, docName, db.Body{"foo": "bar"})
+			docVersion := rt.PutDocInCollection(collection.Name, docName, `{"foo": "bar"}`)
 			versions = append(versions, docVersion)
 		}
 		btc.rt.WaitForPendingChanges()
@@ -326,7 +326,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 			blipName := btc.rt.getCollectionsForBLIP()[i]
 			for j := 0; j < docCount; j++ {
 				docName := fmt.Sprintf("doc%d", j)
-				version := rt.PutDocDirectlyInCollection(collection, docName, db.Body{"foo": "bar"})
+				version := rt.PutDocInCollection(collection.Name, docName, `{"foo": "bar"}`)
 
 				collectionVersions[blipName] = append(collectionVersions[blipName], version)
 				collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
