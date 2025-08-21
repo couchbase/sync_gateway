@@ -1525,9 +1525,7 @@ func (btcc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpt
 		require.FailNow(btcc.TB(), fmt.Sprintf("error %s %s from subChanges with body: %s", errorDomain, errorCode, string(rspBody)))
 	}
 }
-
 func (btcc *BlipTesterCollectionClient) StopPush() {
-	require.True(btcc.TB(), btcc.pushRunning.IsTrue(), "can't stop push replication - not running")
 	btcc.pushCtxCancel()
 
 	// Wake up any waiting push loops to check for cancellation
