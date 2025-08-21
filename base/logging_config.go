@@ -44,7 +44,7 @@ const (
 	consoleLoggerCollateFlushTimeout = 1 * time.Millisecond
 	fileLoggerCollateFlushTimeout    = 10 * time.Millisecond
 
-	rotatedLogDeletionInterval = time.Hour // not configurable
+	rotatedLogDeletionInterval = time.Minute // not configurable
 
 	logFilePermission = 0644 // rw-r--r--
 )
