@@ -344,6 +344,12 @@ func (h *handler) getOCCValue(optionalBody db.Body) (occValue string, occValueTy
 	// we grab occValue from either query param, Etag header, or request body (in that order)
 	if revQuery := h.getQuery("rev"); revQuery != "" {
 		occValue = revQuery
+		// try to detect occ Values that are not URL Query escaped
+		//   - `+` which can appear in base64 strings is converted to a space when not escaped properly
+		// other characters are difficult to correctly detect, since the value is already unescaped
+		if strings.ContainsAny(occValue, " ") {
+			return "", 0, base.HTTPErrorf(http.StatusBadRequest, "Bad rev query parameter: %q - ensure this query parameter value is URL Encoded", occValue)
+		}
 		occValueType = guessOCCVersionTypeFromValue(occValue)
 	} else if ifMatch, err := h.getEtag("If-Match"); err != nil {
 		return "", 0, err
