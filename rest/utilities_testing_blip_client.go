@@ -603,7 +603,8 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 						knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
 						continue
 					} else if localHLV.DominatesSource(changesVersion) {
-						base.DebugfCtx(ctx, base.KeySGTest, "Skipping changes for incoming doc %q with rev %d@%s as we already have a newer version %#+v", docID, changesVersion.Value, changesVersion.SourceID, localHLV)
+						base.DebugfCtx(ctx, base.KeySGTest, "Skipping changes for incoming doc %q with for version %#v as we already have a newer version %#v",
+							docID, changesVersion, localHLV)
 						knownRevs[i] = nil // Send back null to signal we don't need this change
 					} else {
 						require.NotEmpty(btr.TB(), localHLV.GetCurrentVersionString())
