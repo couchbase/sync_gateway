@@ -91,10 +91,10 @@ func TestInternalHLVFunctions(t *testing.T) {
 	require.Equal(t, hlv.PreviousVersions, expectedPV)
 }
 
-// TestConflictDetectionDominating:
-//   - Tests cases where one HLV's is said to be 'dominating' over another
+// TestHLVIsDominating:
+//   - Tests cases where one HLV is said to be 'dominating' over another
 //   - Assert that all scenarios returns false from IsInConflict method, as we have a HLV that is dominating in each case
-func TestConflictDetectionDominating(t *testing.T) {
+func TestHLVIsDominating(t *testing.T) {
 	testCases := []struct {
 		name           string
 		HLVA           string
@@ -164,18 +164,18 @@ func TestConflictDetectionDominating(t *testing.T) {
 			name:           "a.MV doesn't dominate B.CV",
 			HLVA:           "20@cluster1,5@cluster2,5@cluster3",
 			HLVB:           "10@cluster2",
-			expectedResult: true,
+			expectedResult: false,
 		},
 		{
 			name:           "b.CV.source occurs in both a.CV and a.MV, dominates both",
-			HLVA:           "10@cluster1,10@cluster1,5@cluster2",
-			HLVB:           "15@cluster2",
+			HLVA:           "2@cluster1,1@cluster1,3@cluster2",
+			HLVB:           "4@cluster1",
 			expectedResult: true,
 		},
 		{
 			name:           "b.CV.source occurs in both a.CV and a.MV, dominates only a.MV",
-			HLVA:           "20@cluster1,5@cluster2,5@cluster3",
-			HLVB:           "15@cluster2",
+			HLVA:           "4@cluster1,1@cluster1,2@cluster2",
+			HLVB:           "3@cluster1",
 			expectedResult: false,
 		},
 	}
