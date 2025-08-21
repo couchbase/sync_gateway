@@ -1,1 +1,0 @@
-{"server":"couchbases://localhost","certpath":"/home/tcolvin/repos/sync_gateway/integration-test/certs/sg.pem","keypath":"/home/tcolvin/repos/sync_gateway/integration-test/certs/sg.key","cacertpath":"/home/tcolvin/repos/sync_gateway/integration-test/certs/ca.pem"}
