@@ -42,12 +42,11 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPush(btc.id)
@@ -129,11 +128,11 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 	doc4ID := t.Name() + "_doc4"
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, ClientDeltas: true}
+		opts := &BlipTesterClientOpts{ClientDeltas: true}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
@@ -230,12 +229,11 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btc.ClientDeltas = true
@@ -297,12 +295,11 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	const doc1ID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		client.ClientDeltas = true
@@ -392,7 +389,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	const docID = "doc1"
 	var deltaSentCount int64
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			rtConfig)
 		defer rt.Close()
@@ -400,8 +397,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 			deltaSentCount = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 		}
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		client.ClientDeltas = true
@@ -469,7 +465,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for rev tree replication, CBG-3748
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
@@ -480,8 +476,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 		deltaSentCount := rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		// reject deltas built ontop of rev 1
@@ -543,10 +538,9 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // test requires v2 subprotocol
 	const docID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.RunSubprotocolV2(func(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
@@ -554,9 +548,8 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		const alice = "alice"
 		rt.CreateUser(alice, []string{"public"})
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               alice,
-			ClientDeltas:           true,
-			SupportedBLIPProtocols: []string{db.CBMobileReplicationV2.SubprotocolString()},
+			Username:     alice,
+			ClientDeltas: true,
 		})
 		defer client.Close()
 
@@ -614,7 +607,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	var deltasRequestedStart int64
 	var deltasSentStart int64
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			rtConfig)
 		defer rt.Close()
@@ -629,9 +622,8 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		}
 
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               alice,
-			ClientDeltas:           true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:     alice,
+			ClientDeltas: true,
 		})
 		defer client.Close()
 
@@ -706,7 +698,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	const docID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			rtConfig)
 		defer rt.Close()
@@ -731,16 +723,14 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 			deltasSentStart = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 		}
 		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               user1,
-			ClientDeltas:           true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:     user1,
+			ClientDeltas: true,
 		})
 		defer client1.Close()
 
 		client2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:               user2,
-			ClientDeltas:           true,
-			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:     user2,
+			ClientDeltas: true,
 		})
 		defer client2.Close()
 
@@ -852,13 +842,12 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		client.ClientDeltas = true
@@ -872,7 +861,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// Perform a one-shot pull as client 2 to pull down the first revision
-		client2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client2.Close()
 
 		client2.ClientDeltas = true
@@ -959,14 +948,13 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	const docID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
 		collection, _ := rt.GetSingleTestDatabaseCollection()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 		client.ClientDeltas = true
 		sgCanUseDeltas := base.IsEnterpriseEdition() && client.UseHLV()
@@ -1090,14 +1078,13 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	const docID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
 		collection, _ := rt.GetSingleTestDatabaseCollection()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
 		client.ClientDeltas = false
@@ -1143,7 +1130,7 @@ func TestBlipDeltaNoAccessPush(t *testing.T) {
 	)
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {}`, PersistentConfig: true})
 		defer rt.Close()
 		dbConfig := rt.NewDbConfig()
@@ -1151,7 +1138,7 @@ func TestBlipDeltaNoAccessPush(t *testing.T) {
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 		rt.CreateUser(username, nil)
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, Username: username, ClientDeltas: true}
+		opts := &BlipTesterClientOpts{Username: username, ClientDeltas: true}
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client.Close()
 
