@@ -101,7 +101,7 @@ get:
           - cv
         x-enumDescriptions:
           rev: 'Revision Tree IDs. For example: 1-293a80ce8f4874724732f27d35b3959a13cd96e0'
-          cv: 'HLV Current Version. For example: 1854e4e557cc0000@zTWkmBiYZgNQo7BHVZrB/Q'
+          cv: 'Current Version. For example: 1854e4e557cc0000@zTWkmBiYZgNQo7BHVZrB/Q'
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed

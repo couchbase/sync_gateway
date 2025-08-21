@@ -290,3 +290,31 @@ func readMultiPartBody(t *testing.T, response *TestResponse) []string {
 	}
 	return output
 }
+
+func TestCVUnescapedRevQueryParam(t *testing.T) {
+	tests := []struct {
+		revValue    string
+		expectError bool
+	}{
+		{revValue: "1-abc"}, // Normal Rev ID (doesn't need escaping)
+		{revValue: "185dd4a2b4490000%404EZjEgl1AKEj8qh%2BvXS7OQ"},                // CV escaped
+		{revValue: "185dd4a2b4490000@4EZjEgl1AKEj8qh+vXS7OQ", expectError: true}, // CV unescaped
+	}
+
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	for _, test := range tests {
+		t.Run(test.revValue, func(t *testing.T) {
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/testdoc?rev="+test.revValue, `{"foo":"bar"}`)
+			if test.expectError {
+				RequireStatus(t, resp, http.StatusBadRequest)
+				assert.Contains(t, resp.BodyString(), "Bad rev query parameter")
+			} else {
+				// this is "successful" since there isn't a doc that exists with that rev but the request made it through
+				RequireStatus(t, resp, http.StatusConflict)
+				assert.Contains(t, resp.BodyString(), `Document revision conflict`)
+			}
+		})
+	}
+}

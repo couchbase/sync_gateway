@@ -40,7 +40,7 @@ get:
                 description: The revision ID of the document.
                 type: string
               _cv:
-                description: The current version of version vector of the document.
+                description: The Current Version of the document.
                 type: string
             additionalProperties: true
           example:
@@ -78,7 +78,7 @@ put:
     - $ref: ../../components/parameters.yaml#/replicator2
     - $ref: ../../components/parameters.yaml#/new_edits
     - $ref: ../../components/parameters.yaml#/rev
-    - $ref: ../../components/parameters.yaml#/If-Match
+    - $ref: ../../components/parameters.yaml#/Document-If-Match
   requestBody:
     content:
       application/json:
@@ -115,7 +115,7 @@ delete:
     A revision ID either in the header or on the query parameters is required.
   parameters:
     - $ref: ../../components/parameters.yaml#/rev
-    - $ref: ../../components/parameters.yaml#/If-Match
+    - $ref: ../../components/parameters.yaml#/Document-If-Match
   responses:
     '200':
       $ref: ../../components/responses.yaml#/New-revision

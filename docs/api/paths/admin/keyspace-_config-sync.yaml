@@ -87,7 +87,7 @@ delete:
 
     * Sync Gateway Architect
   parameters:
-    - $ref: ../../components/parameters.yaml#/If-Match
+    - $ref: ../../components/parameters.yaml#/Document-If-Match
   responses:
     '200':
       description: Successfully reset the sync function

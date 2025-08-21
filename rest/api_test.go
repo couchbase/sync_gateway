@@ -21,6 +21,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -3243,4 +3244,49 @@ func TestHLVUpdateOnRevReplicatorPut(t *testing.T) {
 	assert.Equal(t, rt.GetDatabase().EncodedSourceID, syncData.HLV.SourceID)
 	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
 	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+}
+
+func TestDocCRUDWithCV(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	const docID = "doc1"
+	createVersion := rt.PutDoc(docID, `{"create":true}`)
+
+	getDocVersion, _ := rt.GetDoc(docID)
+	require.Equal(t, createVersion, getDocVersion)
+
+	revIDGen := func(v DocVersion) int {
+		gen, _ := db.ParseRevID(base.TestCtx(t), v.RevTreeID)
+		return gen
+	}
+
+	updateVersion := rt.UpdateDoc(docID, createVersion, `{"update":true}`)
+	require.NotEqual(t, createVersion, updateVersion)
+	assert.Greaterf(t, updateVersion.CV.Value, createVersion.CV.Value, "Expected CV Value to be bumped on update")
+	assert.Greaterf(t, revIDGen(updateVersion), revIDGen(createVersion), "Expected revision generation to be bumped on update")
+
+	getDocVersion, _ = rt.GetDoc(docID)
+	require.Equal(t, updateVersion, getDocVersion)
+
+	// fetch by CV (using the first create version to test cache retrieval)
+	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(createVersion.CV.String())), "")
+	RequireStatus(t, resp, http.StatusOK)
+	assert.NotContains(t, resp.BodyString(), `"update":true`)
+	assert.Contains(t, resp.BodyString(), `"create":true`)
+	assert.Contains(t, resp.BodyString(), `"_cv":"`+createVersion.CV.String()+`"`)
+	assert.Contains(t, resp.BodyString(), `"_rev":"`+createVersion.RevTreeID+`"`)
+
+	// fetch by CV - updated version
+	resp = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(updateVersion.CV.String())), "")
+	RequireStatus(t, resp, http.StatusOK)
+	assert.NotContains(t, resp.BodyString(), `"create":true`)
+	assert.Contains(t, resp.BodyString(), `"update":true`)
+	assert.Contains(t, resp.BodyString(), `"_cv":"`+updateVersion.CV.String()+`"`)
+	assert.Contains(t, resp.BodyString(), `"_rev":"`+updateVersion.RevTreeID+`"`)
+
+	deleteVersion := rt.DeleteDoc(docID, updateVersion)
+	require.NotEqual(t, updateVersion, deleteVersion)
+	assert.Greaterf(t, deleteVersion.CV.Value, updateVersion.CV.Value, "Expected CV Value to be bumped on delete")
+	assert.Greaterf(t, revIDGen(deleteVersion), revIDGen(updateVersion), "Expected revision generation to be bumped on delete")
 }

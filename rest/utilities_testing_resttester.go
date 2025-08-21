@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -104,20 +105,42 @@ func (rt *RestTester) UpdateDocRev(docID, revID string, body string) string {
 	return version.RevTreeID
 }
 
-// UpdateDoc updates a document at a specific version and returns the new version.
+// UpdateDoc updates a document at a specific version and returns the new version. Uses CV for REST API if present in DocVersion, otherwise fall back to RevTreeID.
 func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) DocVersion {
-	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevTreeID)
-	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
-	RequireStatus(rt.TB(), rawResponse, http.StatusCreated)
-	return DocVersionFromPutResponse(rt.TB(), rawResponse)
+	occValue := version.RevTreeID
+	if !version.CV.IsEmpty() {
+		occValue = version.CV.String()
+	}
+	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, url.QueryEscape(occValue))
+	resp := rt.SendAdminRequest(http.MethodPut, resource, body)
+	if isRespUseRevTreeIDInstead(resp) {
+		// trying to update a document in-conflict with a CV - try again with RevTreeID
+		// this is a pretty narrow edge-case and one that customers would deal with in the same way (get the document out of conflict using RevTreeID before using CV)
+		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevTreeID), body)
+	}
+	RequireStatus(rt.TB(), resp, http.StatusCreated)
+	return DocVersionFromPutResponse(rt.TB(), resp)
 }
 
-// DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
-func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) DocVersion {
-	resp := rt.SendAdminRequest(http.MethodDelete,
-		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevTreeID), "")
+// DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist. Uses CV for REST API if present in DocVersion, otherwise fall back to RevTreeID.
+func (rt *RestTester) DeleteDoc(docID string, version DocVersion) DocVersion {
+	occValue := version.RevTreeID
+	if !version.CV.IsEmpty() {
+		occValue = version.CV.String()
+	}
+	resp := rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, url.QueryEscape(occValue)), "")
+	if isRespUseRevTreeIDInstead(resp) {
+		// trying to update a document in-conflict with a CV - try again with RevTreeID
+		// this is a pretty narrow edge-case and one that customers would deal with in the same way (get the document out of conflict using RevTreeID before using CV)
+		resp = rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevTreeID), "")
+	}
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 	return DocVersionFromPutResponse(rt.TB(), resp)
+}
+
+// isRespUseRevTreeIDInstead returns true if the response indicates that a RevTree ID should be used instead of a CV for modifying a document in conflict.
+func isRespUseRevTreeIDInstead(resp *TestResponse) bool {
+	return resp.Code == http.StatusBadRequest && strings.Contains(resp.BodyString(), "Cannot use CV to modify a document in conflict - resolve first with RevTree ID")
 }
 
 // DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
@@ -471,8 +494,7 @@ func (rt *RestTester) UpdateDocDirectly(docID string, version DocVersion, body d
 
 func (rt *RestTester) DeleteDocDirectly(docID string, version DocVersion) DocVersion {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	// TODO: CBG-4426 - DeleteDocDirectly does not support CV
-	rev, doc, err := collection.DeleteDoc(ctx, docID, version.RevTreeID)
+	rev, doc, err := collection.DeleteDoc(ctx, docID, version)
 	require.NoError(rt.TB(), err)
 	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }

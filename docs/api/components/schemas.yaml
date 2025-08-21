@@ -494,7 +494,7 @@ Document:
           description: Prefix number for the latest revision.
           type: number
         ids:
-          description: 'Array of valid revision IDs, in reverse order (latest first).'
+          description: 'Array of valid Revision Tree IDs, in reverse order (latest first).'
           type: array
           items:
             type: string
@@ -522,7 +522,10 @@ New-revision:
       description: Whether the request completed successfully.
       type: boolean
     rev:
-      description: The revision of the document.
+      description: The Revision Tree ID of the document.
+      type: string
+    cv:
+      description: The CV of the document.
       type: string
   required:
     - id
@@ -558,9 +561,9 @@ Changes-feed:
                 - type: object
                   properties:
                     cv:
-                      description: The HLV Current Version associated with the change. This value requires the `version_type` preference set to `cv` and this document revision being written through SG 4.0+
+                      description: The Current Version associated with the change. This value requires the `version_type` preference set to `cv` and this document revision being written through SG 4.0+
                       type: string
-                  title: HLV Current Version
+                  title: Current Version
             uniqueItems: true
       uniqueItems: true
     last_seq:
@@ -708,7 +711,7 @@ Replication:
         default: |-
           In priority order, this will cause
             - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
-            - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
+            - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest Revision Tree ID will win.
         localWins: This will result in local revisions always being the winner in any conflict.
         remoteWins: This will result in remote revisions always being the winner in any conflict.
         custom: This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter.

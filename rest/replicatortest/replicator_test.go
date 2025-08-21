@@ -4324,7 +4324,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			// Validate results on the remote (rt2)
 			rt2Since := remoteDoc.Sequence
-			if test.expectedVersion.DocVersionRevTreeEqual(test.remoteVersion) {
+			if test.expectedVersion.RevTreeID == test.remoteVersion.RevTreeID {
 				// no changes should have been pushed back up to rt2, because this rev won.
 				rt2Since = 0
 			}

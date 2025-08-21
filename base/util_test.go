@@ -1854,3 +1854,29 @@ func TestKeysPresent(t *testing.T) {
 		})
 	}
 }
+
+func TestIsRevTreeID(t *testing.T) {
+	tests := []struct {
+		value    string
+		expected bool
+	}{
+		{"1-abc", true},
+		{"1-abc123", true},
+		{"1-abc123def456", true},
+		{"1-abc123def456ghi789", true},
+		{"1-abc123def456ghi789jkl012", true},
+		{"123-abc123", true},
+		{"1234567890-a", true},
+		{"0-a", true},
+		{"1", false},
+		{"abc", false},
+		{"a-abc", false},
+		{"-abc", false},
+		{"1a@bc", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			assert.Equalf(t, tt.expected, IsRevTreeID(tt.value), "IsRevTreeID(%v)", tt.value)
+		})
+	}
+}

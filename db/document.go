@@ -1484,3 +1484,38 @@ func (doc *Document) ExtractDocVersion() DocVersion {
 		CV:        *doc.HLV.ExtractCurrentVersionFromHLV(),
 	}
 }
+
+// DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
+// Users should access the properties via the CV and RevTreeID methods, to ensure there's a check that the specific version type is not empty.
+type DocVersion struct {
+	RevTreeID string
+	CV        Version
+}
+
+// String implements fmt.Stringer
+func (v DocVersion) String() string {
+	return fmt.Sprintf("RevTreeID:%s,CV:%#v", v.RevTreeID, v.CV)
+}
+
+// GoString implements fmt.GoStringer
+func (v DocVersion) GoString() string {
+	return fmt.Sprintf("DocVersion{RevTreeID:%s,CV:%#v}", v.RevTreeID, v.CV)
+}
+
+// GetRevTreeID returns the Revision Tree ID of the document version, and a bool indicating whether it is present.
+func (v DocVersion) GetRevTreeID() (string, bool) {
+	return v.RevTreeID, v.RevTreeID != ""
+}
+
+// GetCV returns the Current Version of the document, and a bool indicating whether it is present.
+func (v DocVersion) GetCV() (Version, bool) {
+	return v.CV, !v.CV.IsEmpty()
+}
+
+// Body1xKVPair returns the key and value to use in a 1.x-style document body for the given DocVersion.
+func (d DocVersion) Body1xKVPair() (bodyVersionKey, bodyVersionStr string) {
+	if cv, ok := d.GetCV(); ok {
+		return BodyCV, cv.String()
+	}
+	return BodyRev, d.RevTreeID
+}

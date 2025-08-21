@@ -1138,6 +1138,15 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	return rawResponse.Xattrs.Sync.Sequence
 }
 
+// GetRawDoc returns the raw document response for a given document ID using the _raw endpoint.
+func (rt *RestTester) GetRawDoc(key string) RawDocResponse {
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
+	require.Equal(rt.TB(), http.StatusOK, response.Code, "Error getting raw document %s", response.Body.String())
+	var rawResponse RawDocResponse
+	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
+	return rawResponse
+}
+
 // ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
 // cluster to pick up the changes
 func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
@@ -2395,16 +2404,22 @@ func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
 	return DocVersion{RevTreeID: fakeRev}
 }
 
-// DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
+// DocVersionFromPutResponse returns a DocVersion from the given response, or fails the given test if a version was not returned.
 func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion {
 	var r struct {
 		DocID *string `json:"id"`
 		RevID *string `json:"rev"`
+		CV    *string `json:"cv"`
 	}
-	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
-	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
-	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return DocVersion{RevTreeID: *r.RevID}
+	respBody := response.BodyString()
+	require.NoErrorf(t, json.Unmarshal(response.BodyBytes(), &r), "error unmarshalling response body: %s", respBody)
+	require.NotNilf(t, r.RevID, "expecting non-nil 'rev' from response: %s", respBody)
+	require.NotNilf(t, r.CV, "expecting non-nil 'cv' from response: %s", respBody)
+	require.NotEqualf(t, "", *r.RevID, "expecting non-empty 'rev' from response: %s", respBody)
+	require.NotEqualf(t, "", *r.CV, "expecting non-empty 'cv' from response: %s", respBody)
+	cv, err := db.ParseVersion(*r.CV)
+	require.NoErrorf(t, err, "error parsing CV %q: %v", *r.CV, err)
+	return DocVersion{RevTreeID: *r.RevID, CV: cv}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {

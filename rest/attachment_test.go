@@ -727,7 +727,8 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	// Modify Doc
-	parentRevList := [3]string{"foo3", "foo2", version.RevIDDigest()}
+	_, versionDigest := db.ParseRevID(base.TestCtx(t), version.RevTreeID)
+	parentRevList := [3]string{"foo3", "foo2", versionDigest}
 	body["_rev"] = "3-foo3"
 	body["rev"] = "3-foo3"
 	body["_revisions"].(map[string]interface{})["ids"] = parentRevList
@@ -794,16 +795,17 @@ func TestConflictingBranchAttachments(t *testing.T) {
 
 	// Create a document
 	version := rt.CreateTestDoc("doc1")
+	_, versionDigest := db.ParseRevID(base.TestCtx(t), version.RevTreeID)
 
 	// //Create diverging tree
 
-	reqBodyRev2 := `{"_rev": "2-two", "_revisions": {"ids": ["two", "` + version.RevIDDigest() + `"], "start": 2}}`
+	reqBodyRev2 := `{"_rev": "2-two", "_revisions": {"ids": ["two", "` + versionDigest + `"], "start": 2}}`
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", reqBodyRev2)
 	RequireStatus(t, response, http.StatusCreated)
 
 	docVersion2 := DocVersionFromPutResponse(t, response)
 
-	reqBodyRev2a := `{"_rev": "2-two", "_revisions": {"ids": ["twoa", "` + version.RevIDDigest() + `"], "start": 2}}`
+	reqBodyRev2a := `{"_rev": "2-two", "_revisions": {"ids": ["twoa", "` + versionDigest + `"], "start": 2}}`
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", reqBodyRev2a)
 	RequireStatus(t, response, http.StatusCreated)
 	docVersion2a := DocVersionFromPutResponse(t, response)

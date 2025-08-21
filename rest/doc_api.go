@@ -331,6 +331,72 @@ func (h *handler) handleGetAttachment() error {
 
 }
 
+// getOCCValue retrieves the optimistic concurrency control value for a document (Revision ID or CV) from several possible sources:
+// - Query parameter "rev"
+// - If-Match header
+// - Body field "_rev" or "_cv" (if the body is provided in the request)
+// It also validates that the provided OCC value exactly matches the corresponding body field if it exists in multiple places.
+func (h *handler) getOCCValue(optionalBody db.Body) (occValue string, occValueType occVersionType, err error) {
+	// skipBodyMatchValidation can skip the validation of the occValue inside the body, since in some cases we're pulling that value out of the body anyway.
+	var skipBodyMatchValidation bool
+
+	// occValue is the optimistic concurrency control value, which can be either the current rev ID or CV - used to prevent lost updates.
+	// we grab occValue from either query param, Etag header, or request body (in that order)
+	if revQuery := h.getQuery("rev"); revQuery != "" {
+		occValue = revQuery
+		// try to detect occ Values that are not URL Query escaped
+		//   - `+` which can appear in base64 strings is converted to a space when not escaped properly
+		// other characters are difficult to correctly detect, since the value is already unescaped
+		if strings.ContainsAny(occValue, " ") {
+			return "", 0, base.HTTPErrorf(http.StatusBadRequest, "Bad rev query parameter: %q - ensure this query parameter value is URL Encoded", occValue)
+		}
+		occValueType = guessOCCVersionTypeFromValue(occValue)
+	} else if ifMatch, err := h.getEtag("If-Match"); err != nil {
+		return "", 0, err
+	} else if ifMatch != "" {
+		occValue = ifMatch
+		occValueType = guessOCCVersionTypeFromValue(occValue)
+	} else if bodyCV, ok := optionalBody[db.BodyCV]; ok {
+		if bodyCVStr, ok := bodyCV.(string); ok {
+			occValue = bodyCVStr
+			occValueType = VersionTypeCV
+			skipBodyMatchValidation = true
+		}
+	} else if bodyRev, ok := optionalBody[db.BodyRev]; ok {
+		if bodyRevStr, ok := bodyRev.(string); ok {
+			occValue = bodyRevStr
+			occValueType = VersionTypeRevTreeID
+			skipBodyMatchValidation = true
+		}
+	} else {
+		// empty occValue - treat as a create operation without any parent
+		return "", VersionTypeRevTreeID, nil
+	}
+
+	// defensive measure against falling out of above without a type set
+	if occValueType == VersionTypeUnknown {
+		return "", 0, base.HTTPErrorf(http.StatusBadRequest, "Invalid version type for OCC value: %q", occValue)
+	}
+
+	// ensure the value provided matches exactly the one that may also be supplied in the body
+	if !skipBodyMatchValidation {
+		switch occValueType {
+		case VersionTypeRevTreeID:
+			if optionalBody[db.BodyRev] != nil && occValue != optionalBody[db.BodyRev] {
+				return "", 0, base.HTTPErrorf(http.StatusBadRequest, "Revision IDs provided do not match")
+			}
+		case VersionTypeCV:
+			if optionalBody[db.BodyCV] != nil && occValue != optionalBody[db.BodyCV] {
+				return "", 0, base.HTTPErrorf(http.StatusBadRequest, "CVs provided do not match")
+			}
+		default:
+			return "", 0, base.HTTPErrorf(http.StatusBadRequest, "Unknown version type provided: %q", occValue)
+		}
+	}
+
+	return occValue, occValueType, nil
+}
+
 // HTTP handler for a PUT of an attachment
 func (h *handler) handlePutAttachment() error {
 
@@ -344,30 +410,31 @@ func (h *handler) handlePutAttachment() error {
 	if attachmentContentType == "" {
 		attachmentContentType = "application/octet-stream"
 	}
-	revid := h.getQuery("rev")
-	if revid == "" {
-		var err error
-		revid, err = h.getEtag("If-Match")
-		if err != nil {
-			return err
-		}
+
+	occValue, occValueType, err := h.getOCCValue(nil)
+	if err != nil {
+		return err
 	}
+
 	attachmentData, err := h.readBody()
 	if err != nil {
 		return err
 	}
 
-	body, err := h.collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	body, err := h.collection.Get1xRevBody(h.ctx(), docid, occValue, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
-			// couchdb creates empty body on attachment PUT
-			// for non-existent doc id
-			body = db.Body{db.BodyRev: revid}
+			bodyKey, err := bodyKeyForOCCVersionType(occValueType)
+			if err != nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "Invalid OCC version type: %v", err)
+			}
+			// couchdb creates empty body on attachment PUT for non-existent doc id
+			body = db.Body{bodyKey: occValue}
 		} else if err != nil {
 			return err
 		}
 	} else if body != nil {
-		if revid == "" {
+		if occValue == "" {
 			// If a revid is not specified and an active revision was found,
 			// return a conflict now, rather than letting db.Put do it further down...
 			return base.HTTPErrorf(http.StatusConflict, "Cannot modify attachments without a specific rev ID")
@@ -389,13 +456,13 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.collection.Put(h.ctx(), docid, body)
+	newRev, doc, err := h.collection.Put(h.ctx(), docid, body)
 	if err != nil {
 		return err
 	}
 	h.setEtag(newRev)
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`","cv":"`+doc.HLV.GetCurrentVersionString()+`"}`))
 	return nil
 }
 
@@ -406,16 +473,13 @@ func (h *handler) handleDeleteAttachment() error {
 
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
-	revid := h.getQuery("rev")
-	if revid == "" {
-		var err error
-		revid, err = h.getEtag("If-Match")
-		if err != nil {
-			return err
-		}
+
+	occValue, _, err := h.getOCCValue(nil)
+	if err != nil {
+		return err
 	}
 
-	body, err := h.collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	body, err := h.collection.Get1xRevBody(h.ctx(), docid, occValue, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// Check here if error is relating to incorrect revid, if so return 409 code else return 404 code
@@ -428,7 +492,7 @@ func (h *handler) handleDeleteAttachment() error {
 			return err
 		}
 	} else if body != nil {
-		if revid == "" {
+		if occValue == "" {
 			// If a revid is not specified and an active revision was found,
 			// return a conflict now, rather than letting db.Put do it further down...
 			return base.HTTPErrorf(http.StatusConflict, "Cannot modify attachments without a specific rev ID")
@@ -444,14 +508,45 @@ func (h *handler) handleDeleteAttachment() error {
 	delete(attachments, attachmentName)
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.collection.Put(h.ctx(), docid, body)
+	newRev, doc, err := h.collection.Put(h.ctx(), docid, body)
 	if err != nil {
 		return err
 	}
 	h.setEtag(newRev)
 
-	h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`","cv":"`+doc.HLV.GetCurrentVersionString()+`"}`))
 	return nil
+}
+
+// occVersionType is a type used to represent the type of document version in optimistic concurrency control (OCC). Can be Revision Tree ID or a CV.
+type occVersionType uint8
+
+const (
+	VersionTypeUnknown   occVersionType = iota
+	VersionTypeRevTreeID                // Revision Tree ID (RevTreeID / RevID)
+	VersionTypeCV                       // HLV/Version Vector CV
+)
+
+// guessOCCVersionTypeFromValue returns the type of document version based on the string value. Either a RevTree ID or a CV.
+func guessOCCVersionTypeFromValue(s string) occVersionType {
+	if base.IsRevTreeID(s) {
+		return VersionTypeRevTreeID
+	}
+	if _, err := db.ParseVersion(s); err == nil {
+		return VersionTypeCV
+	}
+	return VersionTypeUnknown
+}
+
+func bodyKeyForOCCVersionType(versionType occVersionType) (string, error) {
+	switch versionType {
+	case VersionTypeRevTreeID:
+		return db.BodyRev, nil
+	case VersionTypeCV:
+		return db.BodyCV, nil
+	default:
+		return "", fmt.Errorf("unknown occVersionType %d", versionType)
+	}
 }
 
 // HTTP handler for a PUT of a document
@@ -500,15 +595,20 @@ func (h *handler) handlePutDoc() error {
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
-		bodyRev := body[db.BodyRev]
-		if oldRev := h.getQuery("rev"); oldRev != "" {
-			body[db.BodyRev] = oldRev
-		} else if ifMatch, _ := h.getEtag("If-Match"); ifMatch != "" {
-			body[db.BodyRev] = ifMatch
+
+		// occValue is the optimistic concurrency control value, which can be either the current rev ID or CV - used to prevent lost updates.
+		// we grab occValue from either query param, Etag header, or request body (in that order)
+		occValue, occValueType, err := h.getOCCValue(body)
+		if err != nil {
+			return err
 		}
-		if bodyRev != nil && bodyRev != body[db.BodyRev] {
-			return base.HTTPErrorf(http.StatusBadRequest, "Revision IDs provided do not match")
+
+		// set OCC version body value for Put
+		bodyKey, err := bodyKeyForOCCVersionType(occValueType)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid OCC version type: %v", err)
 		}
+		body[bodyKey] = occValue
 
 		newRev, doc, err = h.collection.Put(h.ctx(), docid, body)
 		if err != nil {
@@ -516,7 +616,7 @@ func (h *handler) handlePutDoc() error {
 		}
 		h.setEtag(newRev)
 	} else {
-		// Replicator-style PUT with new_edits=false:
+		// Replicator-style PUT (allow new revisions/conflicts to be pushed) with new_edits=false:
 		revisions := db.ParseRevisions(h.ctx(), body)
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
@@ -527,13 +627,25 @@ func (h *handler) handlePutDoc() error {
 		}
 	}
 
+	respBody := []byte(`{"id":` + base.ConvertToJSONString(docid) + `,"ok":true,"rev":"` + newRev + `"}`)
+
+	// if this was an idempotent update that didn't need to write an update, returned doc is nil, and we can't pull CV out of what we have available here.
+	// Accept this as an edge case that we don't need to support for CVs (this can only happen if the request is using new_edits=false, which is not the case for most clients, and definitely none that use CV)
+	if doc != nil {
+		respBody, err = base.InjectJSONProperties(respBody, base.KVPair{Key: "cv", Val: doc.HLV.GetCurrentVersionString()})
+		if err != nil {
+			base.AssertfCtx(h.ctx(), "couldn't inject CV into response body: %v", err)
+			// safe to continue
+		}
+	}
+
 	if doc != nil && roundTrip {
 		if err := h.collection.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
 			return err
 		}
 	}
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	h.writeRawJSONStatus(http.StatusCreated, respBody)
 	return nil
 }
 
@@ -648,8 +760,25 @@ func (h *handler) handlePostDoc() error {
 
 	h.setHeader("Location", docid)
 	h.setEtag(newRev)
-	h.writeRawJSON([]byte(`{"id":"` + docid + `","ok":true,"rev":"` + newRev + `"}`))
+
+	h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`","cv":"`+doc.HLV.GetCurrentVersionString()+`"}`))
 	return nil
+}
+
+// docVersionFromOCCValue converts an OCC value and type into a DocVersion struct.
+func docVersionFromOCCValue(occValue string, occValueType occVersionType) (docVersion db.DocVersion, err error) {
+	switch occValueType {
+	case VersionTypeRevTreeID:
+		docVersion.RevTreeID = occValue
+	case VersionTypeCV:
+		docVersion.CV, err = db.ParseVersion(occValue)
+		if err != nil {
+			return DocVersion{}, base.HTTPErrorf(http.StatusBadRequest, "Invalid CV: %v", err)
+		}
+	default:
+		return DocVersion{}, base.HTTPErrorf(http.StatusBadRequest, "Unknown OCC version type: %d", occValueType)
+	}
+	return docVersion, nil
 }
 
 // HTTP handler for a DELETE of a document
@@ -663,19 +792,35 @@ func (h *handler) handleDeleteDoc() error {
 	}
 
 	docid := h.PathVar("docid")
-	revid := h.getQuery("rev")
-	if revid == "" {
-		var err error
-		revid, err = h.getEtag("If-Match")
+
+	// occValue is the optimistic concurrency control value, which can be either the current rev ID or CV - used to prevent lost updates.
+	// we grab occValue from either query param, Etag header, or request body (in that order)
+	occValue, occValueType, err := h.getOCCValue(nil)
+	if err != nil {
+		return fmt.Errorf("couldn't get OCC value from request: %w", err)
+	}
+
+	docVersion, err := docVersionFromOCCValue(occValue, occValueType)
+	if err != nil {
+		return fmt.Errorf("couldn't build document version from OCC value: %w", err)
+	}
+
+	newRev, doc, err := h.collection.DeleteDoc(h.ctx(), docid, docVersion)
+	if err != nil {
+		return err
+	}
+
+	respBody := []byte(`{"id":` + base.ConvertToJSONString(docid) + `,"ok":true,"rev":"` + newRev + `"}`)
+	if doc != nil {
+		respBody, err = base.InjectJSONProperties(respBody, base.KVPair{Key: "cv", Val: doc.HLV.GetCurrentVersionString()})
 		if err != nil {
-			return err
+			base.AssertfCtx(h.ctx(), "Failed to inject JSON properties: %v", err)
+			// safe to continue - we'll just have no deleted in response
 		}
 	}
-	newRev, _, err := h.collection.DeleteDoc(h.ctx(), docid, revid)
-	if err == nil {
-		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
-	}
-	return err
+
+	h.writeRawJSONStatus(http.StatusOK, respBody)
+	return nil
 }
 
 // ////// LOCAL DOCS:

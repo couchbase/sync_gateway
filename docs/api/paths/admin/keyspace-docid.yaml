@@ -43,7 +43,7 @@ get:
                 description: The ID of the document.
                 type: string
               _rev:
-                description: The revision ID of the document.
+                description: The Revision Tree ID of the document.
                 type: string
             additionalProperties: true
           example:
@@ -69,7 +69,7 @@ get:
 put:
   summary: Upsert a document
   description: |-
-    This will upsert a document meaning if it does not exist, then it will be created. Otherwise a new revision will be made for the existing document. A revision ID must be provided if targetting an existing document.
+    This will upsert a document, meaning if it does not exist then it will be created. Otherwise a new revision will be made for the existing document. A previous known version must be provided if targeting an existing document to prevent conflicts.
 
     A document ID must be specified for this endpoint. To let Sync Gateway generate the ID, use the `POST /{db}/` endpoint.
 
@@ -85,7 +85,7 @@ put:
     - $ref: ../../components/parameters.yaml#/replicator2
     - $ref: ../../components/parameters.yaml#/new_edits
     - $ref: ../../components/parameters.yaml#/rev
-    - $ref: ../../components/parameters.yaml#/If-Match
+    - $ref: ../../components/parameters.yaml#/Document-If-Match
   requestBody:
     content:
       application/json:
@@ -126,7 +126,7 @@ delete:
     * Sync Gateway Application
   parameters:
     - $ref: ../../components/parameters.yaml#/rev
-    - $ref: ../../components/parameters.yaml#/If-Match
+    - $ref: ../../components/parameters.yaml#/Document-If-Match
   responses:
     '200':
       $ref: ../../components/responses.yaml#/New-revision

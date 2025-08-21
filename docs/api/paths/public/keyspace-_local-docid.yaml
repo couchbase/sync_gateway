@@ -57,7 +57,7 @@ put:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '409':
-      description: A revision ID conflict would result from updating this document revision.
+      description: A conflict would result from updating this document revision.
   tags:
     - Document
   operationId: put_keyspace-_local-docid
