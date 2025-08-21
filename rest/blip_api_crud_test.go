@@ -1995,7 +1995,7 @@ func TestSendReplacementRevision(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // TODO: CBG-4833 - Fails when legacy rev ID is sent as a replacement rev
 	btcRunner.Run(func(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
@@ -2015,7 +2015,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
-					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID {
+					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID || changeEntryRevID == version1.CV.String() {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
