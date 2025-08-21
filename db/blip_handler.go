@@ -1141,10 +1141,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
 		var deltaSrcRev DocumentRevision
-		if bh.useHLV() {
+		if bh.useHLV() && !base.IsRevTreeID(deltaSrcRevID) {
 			deltaSrcVersion, parseErr := ParseVersion(deltaSrcRevID)
 			if parseErr != nil {
-				return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to parse version for delta source for doc %s, error: %v", base.UD(docID), err)
+				return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to parse version for delta source for doc %s, error: %v", base.UD(docID), parseErr)
 			}
 			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &deltaSrcVersion, false)
 		} else {
