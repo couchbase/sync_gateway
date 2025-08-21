@@ -13,14 +13,16 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
 )
 
 func TestChannelFilterRemovalFromChannel(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache, base.KeyCRUD, base.KeyHTTP)
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, _ []string) {
+	btcRunner.Run(func(t *testing.T) {
 		for _, sendDocWithChannelRemoval := range []bool{true, false} {
 			t.Run(fmt.Sprintf("sendDocWithChannelRemoval=%v", sendDocWithChannelRemoval), func(t *testing.T) {
 				rt := NewRestTester(t, &RestTesterConfig{
@@ -34,12 +36,16 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 					BlipSendDocsWithChannelRemoval: sendDocWithChannelRemoval,
 				}
 				rt.CreateDatabase("db", dbConfig)
-				rt.CreateUser("alice", []string{"*"})
-				rt.CreateUser("bob", []string{"A"})
+
+				const (
+					alice = "alice"
+					bob   = "bob"
+				)
+				rt.CreateUser(alice, []string{"*"})
+				rt.CreateUser(bob, []string{"A"})
 
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:        "alice",
-					Channels:        []string{"A"},
+					Username:        alice,
 					SendRevocations: false,
 				})
 				defer btc.Close()

@@ -2251,12 +2251,11 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 	const (
 		doc1ID = "doc1"
 	)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPull(btc.id)
@@ -2303,12 +2302,11 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		doc2ID = "doc2"
 	)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPull(btc.id)
@@ -2358,12 +2356,11 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	const doc1ID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPull(btc.id)
@@ -2396,12 +2393,11 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 		// Create rev 1 with the hello.txt attachment
 		const docID = "doc"
@@ -2438,10 +2434,9 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.AllowConflicts = base.Ptr(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-	require.NoError(t, rt.SetAdminParty(true))
+	rt.SetAdminParty(true)
 
-	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterFromSpecWithRT(rt, nil)
 	defer bt.Close()
 
 	attachmentData := []byte("attachmentA")
@@ -2527,13 +2522,10 @@ func TestPutInvalidAttachment(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername:          "user1",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // All channels
+	const username = "user1"
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		connectingUsername: username,
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	for _, test := range tests {
@@ -2580,12 +2572,11 @@ func TestCBLRevposHandling(t *testing.T) {
 		doc2ID = "doc2"
 	)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		startingBody := db.Body{"foo": "bar"}
@@ -2873,13 +2864,13 @@ func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 func TestBlipPushRevWithAttachment(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		// Setup
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTesterPersistentConfig(t)
 		defer rt.Close()
 		const username = "bernard"
+		rt.CreateUser(username, nil)
 
-		opts := &BlipTesterClientOpts{Username: username, SupportedBLIPProtocols: SupportedBLIPProtocols}
+		opts := &BlipTesterClientOpts{Username: username}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 

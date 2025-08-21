@@ -34,8 +34,7 @@ func waitForStatGreaterThan(t *testing.T, getStatFunc func() int64, expected int
 }
 
 func TestBlipStatsBasic(t *testing.T) {
-	bt, err := NewBlipTester(t)
-	require.NoError(t, err)
+	bt := NewBlipTester(t)
 	defer bt.Close()
 
 	// make sure requests have not incremented stats.
@@ -59,8 +58,7 @@ func TestBlipStatsBasic(t *testing.T) {
 }
 
 func TestBlipStatsFastReport(t *testing.T) {
-	bt, err := NewBlipTester(t)
-	require.NoError(t, err)
+	bt := NewBlipTester(t)
 	defer bt.Close()
 	sendRequest := func() {
 		rq := bt.newRequest()

@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,14 +61,123 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, doc
 }
 
 // waitForCVAndBody waits for a document to reach a specific cv on all peers.
+// This is used for scenarios where it's valid for the full HLV to not converge. This includes cases where
+// CBL conflict resolution results in additional history in the CBL version of the HLV that may not be pushed
+// to CBS (e.g. remote wins)
+//
+// See following example:
+//
+//	+- - - - - - -+      +- - - - - - -+
+//	'  cluster A  '      '  cluster B  '
+//	' +---------+ '      ' +---------+ '
+//	' |  cbs1   | ' <--> ' |  cbs2   | '
+//	' +---------+ '      ' +---------+ '
+//	' +---------+ '      ' +---------+ '
+//	' |   sg1   | '      ' |   sg2   | '
+//	' +---------+ '      ' +---------+ '
+//	+- - - - -- - +      +- - - - - - -+
+//	    ^                     ^
+//	    |                     |
+//	    |                     |
+//	    v                     v
+//	+---------+          +---------+
+//	|   cbl1  |          |   cbl2  |
+//	+---------+          +---------+
+//
+// Couchbase Server, since conflict resolution in XDCR will overwrite the HLV.
+// 1. sg1 creates unique document cv: 1@rosmar1
+// 2. sg2 creates unique document cv: 2@rosmar2
+// 3. cbl1 pulls 1@rosmar1
+// 4. cbl2 pull 2@rosmar2
+// 5. cbs1 pulls 2@rosmar2, overwriting cv:1@rosmar1
+// 6. cbl1 pulls 2@rosmar2, creating cv: 2@rosmar2, pv:1@rosmar1 overwriting
+// Final state:
+//   - cv:2@rosmar2 on cbs1, cbs2, cbl2
+//   - cv:2@rosmar2, pv:1@rosmar1 on cbl1
 func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
 	t.Logf("waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
 	for _, peer := range topology.SortedPeers() {
 		t.Logf("waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
-		body := peer.WaitForCV(dsName, docID, expectedVersion.docMeta, topology)
+		var body db.Body
+		if peer.Type() == PeerTypeCouchbaseLite {
+			body = peer.WaitForCV(dsName, docID, expectedVersion.docMeta, topology)
+		} else {
+			body = peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta, topology)
+		}
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
 }
+
+// waitForConvergingTombstones waits for all peers to have a tombstone document for a given doc ID. This is the
+// equivalent function to waitForCVAndBody if the expected document is a tombstone.
+//
+// Couchbase Server and Sync Gateway peers will have matching HLVs due XDCR conflict resolution always overwriting
+// HLVs. However, it is possible that XDCR will replicate a tombstone from one Couchbase Server to antoher Couchbase
+// Server and update its HLV. Since tombstones are not imported by Sync Gateway, this CV will not be replicated to
+// Couchbase Server.
+//
+// In this case, all peers will have a tombstone for this document, but no assertions can be made on Couchbase Lite
+// peers. See following example:
+//
+//	+- - - - - - -+      +- - - - - - -+
+//	'  cluster A  '      '  cluster B  '
+//	' +---------+ '      ' +---------+ '
+//	' |  cbs1   | ' <--> ' |  cbs2   | '
+//	' +---------+ '      ' +---------+ '
+//	' +---------+ '      ' +---------+ '
+//	' |   sg1   | '      ' |   sg2   | '
+//	' +---------+ '      ' +---------+ '
+//	+- - - - - - -+      +- - - - - - -+
+//	    ^                     ^
+//	    |                     |
+//	    |                     |
+//	    v                     v
+//	+---------+          +---------+
+//	|   cbl1  |          |   cbl2  |
+//	+---------+          +---------+
+//
+// There is a converging document + HLV on all peers.
+//  1. cbl1 deletes document cv: 5@cbl1
+//  2. cbl2 deletes document cv: 6@cbl2
+//  3. sg1 deletes document cv: 7@rosmar1
+//  4. sg2 deletes document cv: 8@rosmar2
+//  5. cbl2 pulls from sg2, creates 8@rosmar2;6@cbl2
+//  6. cbl1 pulls from sg1, creates 7@rosmar1;5@cbl1
+//  7. cbs1 pulls from cbs2, creating cv:8@rosmar2. This version isn't imported, so doesn't get recognized as needing
+//     to replicate to Couchbase Lite.
+//
+// Final state:
+//   - CBS1, CBS2: 8@rosmar2
+//   - CBL1: 7@rosmar1;5@cbl1
+//   - CBL2: 8@rosmar2;6@cbl2
+func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) {
+	t.Logf("waiting for converging tombstones")
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		nonCBLVersions := make(map[string]DocMetadata)
+		for peerName, peer := range topology.SortedPeers() {
+			meta, body, exists := peer.GetDocumentIfExists(dsName, docID)
+			if !assert.True(c, exists, "doc %s does not exist on peer %s", docID, peer) {
+				return
+			}
+			if !assert.Nil(c, body, "expected tombstone for doc %s on peer %s", docID, peer) {
+				return
+			}
+			if peer.Type() != PeerTypeCouchbaseLite {
+				nonCBLVersions[peerName] = meta
+			}
+		}
+		var nonCBLVersion *DocMetadata
+		for peer, version := range nonCBLVersions {
+			if nonCBLVersion == nil {
+				nonCBLVersion = &version
+				continue
+			}
+			assertHLVEqual(c, dsName, docID, peer, version, nil, *nonCBLVersion, topology)
+		}
+	}, totalWaitTime, pollInterval)
+}
+
+// waitForTombstoneVersion waits for a tombstone document with a particular HLV to be present on all peers.
 func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
 	t.Logf("waiting for tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
 	for _, peer := range topology.SortedPeers() {
@@ -78,16 +188,11 @@ func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, d
 
 // createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents, then
 // returns the last peer to have a doc created on it
-func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
+func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
-		if peer.Type() == PeerTypeCouchbaseLite {
-			// FIXME: Skipping Couchbase Lite tests for multi actor conflicts, CBG-4434
-			continue
-		}
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topology.specDescription)
 		docVersion := peer.CreateDocument(dsName, docID, []byte(docBody))
-		t.Logf("%s - createVersion: %#v", peerName, docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
 	index := len(documentVersion) - 1
@@ -98,12 +203,11 @@ func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, doc
 
 // updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations, then
 // returns the last peer to have a doc updated on it.
-func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
+func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topology.specDescription)
 		docVersion := peer.WriteDocument(dsName, docID, []byte(docBody))
-		t.Logf("updateVersion: %#v", docVersion.docMeta)
 		documentVersion = append(documentVersion, docVersion)
 	}
 	index := len(documentVersion) - 1
@@ -114,11 +218,10 @@ func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, doc
 
 // deleteConflictDocs will delete a doc on each peer of the same doc ID to create conflicting document deletions, then
 // returns the last peer to have a doc deleted on it
-func deleteConflictDocs(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
+func deleteConflictDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		deleteVersion := peer.DeleteDocument(dsName, docID)
-		t.Logf("deleteVersion: %#v", deleteVersion)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
 	}
 	index := len(documentVersion) - 1

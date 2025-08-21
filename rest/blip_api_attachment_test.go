@@ -45,17 +45,13 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Doesn't require HLV - attachment v2 protocol test
 	const docID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.RunSubprotocolV2(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{}
-		opts.SupportedBLIPProtocols = []string{db.CBMobileReplicationV2.SubprotocolString()}
-
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPull(btc.id)
@@ -119,12 +115,11 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Doesn't require HLV - attachment v2 protocol test
 	const docID = "doc1"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPull(btc.id)
@@ -187,15 +182,12 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 	)
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Doesn't require HLV - attachment v2 protocol test
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.RunSubprotocolV2(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			SupportedBLIPProtocols: []string{db.CBMobileReplicationV2.SubprotocolString()},
-		})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPull(btc.id)
@@ -245,15 +237,12 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 	)
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Doesn't require HLV - attachment v2 protocol test
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.RunSubprotocolV2(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			SupportedBLIPProtocols: []string{db.CBMobileReplicationV2.SubprotocolString()},
-		})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPush(btc.id)
@@ -284,13 +273,12 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		docID := t.Name()
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, SourceID: "abc"}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPush(btc.id)
@@ -348,12 +336,11 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // There is no such thing as branching ancestors in version vectors
 
 	const docID = "doc1"
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, SourceID: "abc"}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 		btcRunner.StartPull(btc.id)
 
@@ -413,13 +400,10 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t,
+	bt := NewBlipTesterFromSpec(t,
 		BlipTesterSpec{
 			connectingUsername: "user1",
-			connectingPassword: "1234",
 		})
-	require.NoError(t, err)
 	defer bt.Close()
 
 	attachmentBody := "attach"
@@ -458,13 +442,9 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername:          "user1",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // All channels
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		GuestEnabled: true,
 	})
-	require.NoError(t, err)
 	defer bt.Close()
 
 	attachmentBody := "attach"
@@ -516,13 +496,12 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
 		docID := "doc"
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client1.Close()
 
 		btcRunner.StartPull(client1.id)
@@ -567,12 +546,11 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires legacy attachment upgrade to HLV (CBG-3806)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client1.Close()
 		// Create document in the bucket with a legacy attachment
 		docID := "doc"
@@ -616,12 +594,11 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires legacy attachment upgrade to HLV (CBG-3806)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client1.Close()
 
 		// Create document in the bucket with a legacy attachment.  Properties here align with rawDocWithAttachmentAndSyncMeta
@@ -693,12 +670,11 @@ func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
 	doc3ID := t.Name() + "doc3"
 	doc4ID := t.Name() + "doc4"
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		btcRunner.StartPush(btc.id)

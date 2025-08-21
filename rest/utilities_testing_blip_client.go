@@ -61,12 +61,10 @@ func (c BlipTesterClientConflictResolverType) IsValid() bool {
 type BlipTesterClientOpts struct {
 	ClientDeltas                  bool // Support deltas on the client side
 	Username                      string
-	Channels                      []string
 	SendRevocations               bool
-	SupportedBLIPProtocols        []string
 	SkipCollectionsInitialization bool
 
-	AllowCreationWithoutBlipTesterClientRunner bool // Allow the client to be created outside of a BlipTesterClientRunner.Run() subtest
+	AllowCreationWithoutBlipTesterClientRunner bool // Allow the client to be created outside of a BlipTesterClientRunner.Run subtest
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
 
@@ -95,10 +93,11 @@ const defaultBlipTesterClientRevsLimit = 20
 type BlipTesterClient struct {
 	BlipTesterClientOpts
 
-	id              uint32 // unique ID for the client
-	rt              *RestTester
-	pullReplication *BlipTesterReplicator // SG -> CBL replications
-	pushReplication *BlipTesterReplicator // CBL -> SG replications
+	supportedSubprotocols []string // subprotocols supported by this client, e.g. db.CBMobileReplicationV2
+	id                    uint32   // unique ID for the client
+	rt                    *RestTester
+	pullReplication       *BlipTesterReplicator // SG -> CBL replications
+	pushReplication       *BlipTesterReplicator // CBL -> SG replications
 
 	collectionClients        []*BlipTesterCollectionClient
 	nonCollectionAwareClient *BlipTesterCollectionClient
@@ -296,7 +295,7 @@ func (cd *clientDoc) _proposeChangesEntryForDoc() *proposeChangeBatchEntry {
 		}
 		revTreeIDHistory = append(revTreeIDHistory, cd._revisionsBySeq[seq].version.RevTreeID)
 	}
-	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, hlvHistory: latestRev.HLV, latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
+	return &proposeChangeBatchEntry{docID: cd.id, version: latestRev.version, revTreeIDHistory: revTreeIDHistory, hlvHistory: *latestRev.HLV.Copy(), latestServerVersion: cd._latestServerVersion, seq: cd._latestSeq, isDelete: latestRev.isDelete}
 }
 
 // _getLatestHLVCopy returns a copy of the HLV. If there is no document, return an empty HLV.
@@ -414,6 +413,9 @@ func (btcc *BlipTesterCollectionClient) GetDoc(docID string) ([]byte, *db.Hybrid
 	if latestRev == nil {
 		return nil, nil, nil
 	}
+	if latestRev.isDelete {
+		return nil, &latestRev.HLV, &latestRev.version
+	}
 	return latestRev.body, &latestRev.HLV, &latestRev.version
 }
 
@@ -461,6 +463,7 @@ type BlipTestClientRunner struct {
 	t                           *testing.T
 	initialisedInsideRunnerCode bool            // flag to check that the BlipTesterClient is being initialised in the correct area (inside the Run() method)
 	SkipSubtest                 map[string]bool // map of sub tests on the blip tester runner to skip
+	supportedSubprotocols       []string        // subprotocols supported by all clients created by this runner
 }
 
 // BlipTesterReplicator is a BlipTester which stores a map of messages keyed by Serial Number
@@ -483,6 +486,11 @@ func NewBlipTesterClientRunner(t *testing.T) *BlipTestClientRunner {
 	}
 }
 
+// SetSubprotocols forces all BlipTesterClient to run with specific subprotocols. Use BlipTestClientRunner.Run to run tests.
+func (btcRunner *BlipTestClientRunner) SetSubprotocols(subprotocols []string) {
+	btcRunner.supportedSubprotocols = subprotocols
+}
+
 // Close shuts down all the clients and clears all messages stored.
 func (btr *BlipTesterReplicator) Close() {
 	btr.bt.Close()
@@ -492,13 +500,12 @@ func (btr *BlipTesterReplicator) Close() {
 }
 
 // initHandlers sets up the blip client side handles for each message type.
-func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
+func (btr *BlipTesterReplicator) initHandlers(ctx context.Context, btc *BlipTesterClient) {
 
 	if btr.replicationStats == nil {
 		btr.replicationStats = db.NewBlipSyncStats()
 	}
 
-	ctx := base.DatabaseLogCtx(base.TestCtx(btr.bt.restTester.TB()), btr.bt.restTester.GetDatabase().Name, nil)
 	btr.bt.blipContext.DefaultHandler = btr.defaultHandler()
 	handlers := map[string]func(*blip.Message){
 		db.MessageNoRev:           btr.handleNoRev(ctx, btc),
@@ -961,16 +968,14 @@ func (btcc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ve
 	rev.message = msg
 }
 
-func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) *BlipTesterReplicator {
-	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
-		connectingPassword:            RestTesterDefaultUserPassword,
+// newBlipTesterReplication creates a new BlipTesterReplicator with the given id and BlipTesterClient. Used to instantiate a push or pull replication for the client.
+func newBlipTesterReplication(ctx context.Context, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) *BlipTesterReplicator {
+	bt := NewBlipTesterFromSpecWithRT(btc.rt, &BlipTesterSpec{
 		connectingUsername:            btc.Username,
-		connectingUserChannelGrants:   btc.Channels,
-		blipProtocols:                 btc.SupportedBLIPProtocols,
+		blipProtocols:                 btc.supportedSubprotocols,
 		skipCollectionsInitialization: skipCollectionsInitialization,
 		origin:                        btc.origin,
-	}, btc.rt)
-	require.NoError(tb, err)
+	})
 
 	r := &BlipTesterReplicator{
 		id:       id,
@@ -978,13 +983,13 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, s
 		messages: make(map[blip.MessageNumber]*blip.Message),
 	}
 
-	r.initHandlers(btc)
+	r.initHandlers(ctx, btc)
 
 	return r
 }
 
 // getCollectionsForBLIP returns collections configured by a single database instance on a restTester. If only default collection exists, it will skip returning it to test "legacy" blip mode.
-func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
+func getCollectionsForBLIP(rt *RestTester) []string {
 	dbc := rt.GetDatabase()
 	var collections []string
 	for _, collection := range dbc.CollectionByID {
@@ -999,6 +1004,10 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 }
 
 func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
+	return btcRunner.NewBlipTesterClientOptsWithRTAndContext(rt.Context(), rt, opts)
+}
+
+func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRTAndContext(ctx context.Context, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
@@ -1015,13 +1024,14 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 		opts.ConflictResolver = ConflictResolverLastWriteWins
 	}
 	client = &BlipTesterClient{
-		BlipTesterClientOpts: *opts,
-		rt:                   rt,
-		id:                   id.ID(),
-		hlc:                  rosmar.NewHybridLogicalClock(0),
+		BlipTesterClientOpts:  *opts,
+		rt:                    rt,
+		id:                    id.ID(),
+		hlc:                   rosmar.NewHybridLogicalClock(0),
+		supportedSubprotocols: btcRunner.supportedSubprotocols,
 	}
 	btcRunner.clients[client.id] = client
-	client.createBlipTesterReplications()
+	client.createBlipTesterReplications(ctx)
 
 	return client
 }
@@ -1052,21 +1062,49 @@ func (btcRunner *BlipTestClientRunner) TB() testing.TB {
 	return btcRunner.t
 }
 
-func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIPProtocols []string)) {
+// Run runs the tests in two modes: one with revtree subprotocol enabled and one with version vector subprotocol enabled.
+func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T)) {
+	if btcRunner.initialisedInsideRunnerCode {
+		require.FailNow(btcRunner.TB(), "must not initialise BlipTesterClient inside Run() method")
+	}
 	btcRunner.initialisedInsideRunnerCode = true
 	// reset to protect against someone creating a new client after Run() is run
-	defer func() { btcRunner.initialisedInsideRunnerCode = false }()
+	defer func() {
+		btcRunner.initialisedInsideRunnerCode = false
+		btcRunner.clients = make(map[uint32]*BlipTesterClient) // reset clients map
+	}()
 	if !btcRunner.SkipSubtest[RevtreeSubtestName] {
 		btcRunner.t.Run(RevtreeSubtestName, func(t *testing.T) {
-			test(t, []string{db.CBMobileReplicationV3.SubprotocolString()})
+			btcRunner.supportedSubprotocols = []string{db.CBMobileReplicationV3.SubprotocolString()}
+			test(t)
 		})
 	}
+	btcRunner.clients = make(map[uint32]*BlipTesterClient) // reset clients map to avoid confusion in the next subtest
+
 	if !btcRunner.SkipSubtest[VersionVectorSubtestName] {
 		btcRunner.t.Run(VersionVectorSubtestName, func(t *testing.T) {
 			// bump sub protocol version here
-			test(t, []string{db.CBMobileReplicationV4.SubprotocolString()})
+			btcRunner.supportedSubprotocols = []string{db.CBMobileReplicationV4.SubprotocolString()}
+			test(t)
 		})
 	}
+}
+
+// RunSubprotocolV2 runs the test with the subprotocol v2 enabled. This is used for testing the revtree subprotocol. Prefer BlipTestClientRunner.Run() for general tests.
+func (btcRunner *BlipTestClientRunner) RunSubprotocolV2(test func(t *testing.T)) {
+	if btcRunner.initialisedInsideRunnerCode {
+		require.FailNow(btcRunner.TB(), "must not initialise BlipTesterClient inside Run() method")
+	}
+	btcRunner.initialisedInsideRunnerCode = true
+	// reset to protect against someone creating a new client after Run() is run
+	defer func() {
+		btcRunner.initialisedInsideRunnerCode = false
+		btcRunner.clients = make(map[uint32]*BlipTesterClient) // reset clients map
+	}()
+	btcRunner.t.Run(RevtreeSubtestName, func(t *testing.T) {
+		btcRunner.supportedSubprotocols = []string{db.CBMobileReplicationV2.SubprotocolString()}
+		test(t)
+	})
 }
 
 // tearDownBlipClientReplications closes the push and pull replications for the client.
@@ -1076,21 +1114,21 @@ func (btc *BlipTesterClient) tearDownBlipClientReplications() {
 }
 
 // createBlipTesterReplications creates the push and pull replications for the client.
-func (btc *BlipTesterClient) createBlipTesterReplications() {
+func (btc *BlipTesterClient) createBlipTesterReplications(ctx context.Context) {
 	id, err := uuid.NewRandom()
 	require.NoError(btc.TB(), err)
 
-	btc.pushReplication = newBlipTesterReplication(btc.TB(), "push"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization)
-	btc.pullReplication = newBlipTesterReplication(btc.TB(), "pull"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization)
+	btc.pushReplication = newBlipTesterReplication(ctx, "push"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization)
+	btc.pullReplication = newBlipTesterReplication(ctx, "pull"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization)
 
-	collections := getCollectionsForBLIP(btc.TB(), btc.rt)
+	collections := getCollectionsForBLIP(btc.rt)
 	if !btc.BlipTesterClientOpts.SkipCollectionsInitialization && len(collections) > 0 {
 		btc.collectionClients = make([]*BlipTesterCollectionClient, len(collections))
 		for i, collection := range collections {
-			btc.initCollectionReplication(collection, i)
+			btc.initCollectionReplication(ctx, collection, i)
 		}
 	} else {
-		btc.nonCollectionAwareClient = NewBlipTesterCollectionClient(btc)
+		btc.nonCollectionAwareClient = NewBlipTesterCollectionClient(ctx, btc)
 	}
 
 	btc.pullReplication.bt.avoidRestTesterClose = true
@@ -1098,8 +1136,8 @@ func (btc *BlipTesterClient) createBlipTesterReplications() {
 }
 
 // initCollectionReplication initializes a BlipTesterCollectionClient for the given collection.
-func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) {
-	btcReplicator := NewBlipTesterCollectionClient(btc)
+func (btc *BlipTesterClient) initCollectionReplication(ctx context.Context, collection string, collectionIdx int) {
+	btcReplicator := NewBlipTesterCollectionClient(ctx, btc)
 	btcReplicator.collection = collection
 	btcReplicator.collectionIdx = collectionIdx
 	btc.collectionClients[collectionIdx] = btcReplicator
@@ -1470,8 +1508,8 @@ func (btcc *BlipTesterCollectionClient) UnsubPullChanges() {
 }
 
 // NewBlipTesterCollectionClient creates a collection specific client from a BlipTesterClient
-func NewBlipTesterCollectionClient(btc *BlipTesterClient) *BlipTesterCollectionClient {
-	ctx, ctxCancel := context.WithCancel(btc.rt.Context())
+func NewBlipTesterCollectionClient(ctx context.Context, btc *BlipTesterClient) *BlipTesterCollectionClient {
+	ctx, ctxCancel := context.WithCancel(ctx)
 	l := sync.RWMutex{}
 	c := &BlipTesterCollectionClient{
 		ctx:           ctx,
@@ -1678,7 +1716,7 @@ func (btcc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocV
 }
 
 func (btc *BlipTesterClient) UseHLV() bool {
-	for _, protocol := range btc.SupportedBLIPProtocols {
+	for _, protocol := range btc.supportedSubprotocols {
 		subProtocol, err := db.ParseSubprotocolString(protocol)
 		require.NoError(btc.rt.TB(), err)
 		if subProtocol >= db.CBMobileReplicationV4 {
@@ -1689,7 +1727,7 @@ func (btc *BlipTesterClient) UseHLV() bool {
 }
 
 func (btc *BlipTesterClient) AssertOnBlipHistory(t *testing.T, msg *blip.Message, docVersion DocVersion) {
-	subProtocol, err := db.ParseSubprotocolString(btc.SupportedBLIPProtocols[0])
+	subProtocol, err := db.ParseSubprotocolString(btc.supportedSubprotocols[0])
 	require.NoError(t, err)
 	if subProtocol >= db.CBMobileReplicationV4 { // history could be empty a lot of the time in HLV messages as updates from the same source won't populate previous versions
 		if msg.Properties[db.RevMessageHistory] != "" {
@@ -1891,7 +1929,7 @@ func (btcRunner *BlipTestClientRunner) WaitForVersion(clientID uint32, docID str
 	return btcRunner.SingleCollection(clientID).WaitForVersion(docID, docVersion)
 }
 
-// WaitForBlipRevMessage blocks until any blip message with a given docID has been stored by the client, and returns the message when found. If document is not not found after 10 seconds, test will fail.
+// WaitForDoc until any blip message with a given docID has been stored by the client, and returns the message when found. If document is not not found after 10 seconds, test will fail.
 func (btcRunner *BlipTestClientRunner) WaitForDoc(clientID uint32, docID string) []byte {
 	return btcRunner.SingleCollection(clientID).WaitForDoc(docID)
 }
@@ -2081,7 +2119,7 @@ func (btcc *BlipTesterCollectionClient) getAllRevisions(docID string) []DocVersi
 }
 
 func (btc *BlipTesterClient) AssertDeltaSrcProperty(t *testing.T, msg *blip.Message, docVersion DocVersion) {
-	subProtocol, err := db.ParseSubprotocolString(btc.SupportedBLIPProtocols[0])
+	subProtocol, err := db.ParseSubprotocolString(btc.supportedSubprotocols[0])
 	require.NoError(t, err)
 	rev := docVersion.GetRev(subProtocol >= db.CBMobileReplicationV4)
 	assert.Equal(t, rev, msg.Properties[db.RevMessageDeltaSrc])
