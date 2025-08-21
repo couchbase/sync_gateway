@@ -111,7 +111,7 @@ func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) D
 	if !version.CV.IsEmpty() {
 		occValue = version.CV.String()
 	}
-	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, occValue)
+	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, url.QueryEscape(occValue))
 	resp := rt.SendAdminRequest(http.MethodPut, resource, body)
 	if isRespUseRevTreeIDInstead(resp) {
 		// trying to update a document in-conflict with a CV - try again with RevTreeID
@@ -128,7 +128,7 @@ func (rt *RestTester) DeleteDoc(docID string, version DocVersion) DocVersion {
 	if !version.CV.IsEmpty() {
 		occValue = version.CV.String()
 	}
-	resp := rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, occValue), "")
+	resp := rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, url.QueryEscape(occValue)), "")
 	if isRespUseRevTreeIDInstead(resp) {
 		// trying to update a document in-conflict with a CV - try again with RevTreeID
 		// this is a pretty narrow edge-case and one that customers would deal with in the same way (get the document out of conflict using RevTreeID before using CV)
