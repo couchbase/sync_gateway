@@ -933,8 +933,6 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // TestBlipDeltaSyncPush tests that a simple push replication handles deltas in EE,
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
-
-	t.Skip("TODO: CBG-4832 - Failing because of broken legacy rev ID as deltaSrc logic in processRev")
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySGTest, base.KeySyncMsg, base.KeySync)
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
