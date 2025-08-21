@@ -180,7 +180,7 @@ func TestGetDocWithCV(t *testing.T) {
 	defer rt.Close()
 
 	docID := "doc1"
-	docVersion := rt.PutDocDirectly(docID, db.Body{"foo": "bar"})
+	docVersion := rt.PutDoc(docID, `{"foo": "bar"}`)
 	testCases := []struct {
 		name      string
 		url       string
@@ -231,8 +231,8 @@ func TestBulkGetWithCV(t *testing.T) {
 
 	doc1ID := "doc1"
 	doc2ID := "doc2"
-	doc1Version := rt.PutDocDirectly(doc1ID, db.Body{"foo": "bar"})
-	doc2Version := rt.PutDocDirectly(doc2ID, db.Body{"foo": "baz"})
+	doc1Version := rt.PutDoc(doc1ID, `{"foo": "bar"}`)
+	doc2Version := rt.PutDoc(doc2ID, `{"foo": "baz"}`)
 	testCases := []struct {
 		name   string
 		url    string

@@ -2222,7 +2222,7 @@ func TestRevocationMessage(t *testing.T) {
 
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
-		version := rt.PutDocDirectly("doc", db.Body{"channels": "A"})
+		version := rt.PutDoc("doc", `{"channels": "A"}`)
 
 		// Start pull
 		rt.WaitForPendingChanges()
@@ -2235,10 +2235,10 @@ func TestRevocationMessage(t *testing.T) {
 		revocationTester.removeRole("user", "foo")
 
 		const doc1ID = "doc1"
-		version = rt.PutDocDirectly(doc1ID, db.Body{"channels": "!"})
+		version = rt.PutDoc(doc1ID, `{"channels": "!"}`)
 
 		revocationTester.fillToSeq(10)
-		version = rt.UpdateDocDirectly(doc1ID, version, db.Body{})
+		version = rt.UpdateDoc(doc1ID, version, `{}`)
 
 		// Start a pull since 5 to receive revocation and removal
 		rt.WaitForPendingChanges()
@@ -2331,7 +2331,7 @@ func TestRevocationNoRev(t *testing.T) {
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
 
-		version := rt.PutDocDirectly(docID, db.Body{"channels": "A"})
+		version := rt.PutDoc(docID, `{"channels": "A"}`)
 		rt.WaitForPendingChanges()
 		firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
@@ -2344,9 +2344,9 @@ func TestRevocationNoRev(t *testing.T) {
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
 
-		_ = rt.UpdateDocDirectly(docID, version, db.Body{"channels": "A", "val": "mutate"})
+		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
-		waitMarkerVersion := rt.PutDocDirectly(waitMarkerID, db.Body{"channels": "!"})
+		waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
 		rt.WaitForPendingChanges()
 
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
@@ -2410,7 +2410,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
-		version := rt.PutDocDirectly(docID, db.Body{"channels": "A"})
+		version := rt.PutDoc(docID, `{"channels": "A"}`)
 
 		// OneShot pull to grab doc
 		rt.WaitForPendingChanges()
@@ -2424,9 +2424,9 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
 
-		_ = rt.UpdateDocDirectly(docID, version, db.Body{"channels": "A", "val": "mutate"})
+		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
-		waitMarkerVersion := rt.PutDocDirectly(waitMarkerID, db.Body{"channels": "!"})
+		waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
 		rt.WaitForPendingChanges()
 
 		rt.WaitForPendingChanges()

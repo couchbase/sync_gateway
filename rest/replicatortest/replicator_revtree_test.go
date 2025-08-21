@@ -61,11 +61,11 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 			docID := "doc1_" + tc.name
 			var version rest.DocVersion
 			if tc.replicationType == db.ActiveReplicatorTypePull {
-				version = rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","channels":["alice"]}`))
+				version = rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 				docHistoryList = append(docHistoryList, version.RevTreeID)
 				rt2.WaitForPendingChanges()
 			} else {
-				version = rt1.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt1","channels":["alice"]}`))
+				version = rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 				docHistoryList = append(docHistoryList, version.RevTreeID)
 				rt1.WaitForPendingChanges()
 			}
@@ -110,13 +110,13 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 
 			if tc.replicationType == db.ActiveReplicatorTypePull {
 				for i := 0; i < 10; i++ {
-					version = rt2.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i)))
+					version = rt2.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
 					docHistoryList = append(docHistoryList, version.RevTreeID)
 				}
 				rt2.WaitForPendingChanges()
 			} else {
 				for i := 0; i < 10; i++ {
-					version = rt1.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i)))
+					version = rt1.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 					docHistoryList = append(docHistoryList, version.RevTreeID)
 				}
 				rt1.WaitForPendingChanges()
@@ -204,10 +204,10 @@ func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 			docID := "doc1"
 			var version rest.DocVersion
 			if tc.replicationType == db.ActiveReplicatorTypePull {
-				version = rt2.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt1","channels":["alice"]}`))
+				version = rt2.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 				rt2.WaitForPendingChanges()
 			} else {
-				version = rt1.PutDocDirectly(docID, rest.JsonToMap(t, `{"source":"rt2","channels":["alice"]}`))
+				version = rt1.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 				rt1.WaitForPendingChanges()
 			}
 
@@ -254,12 +254,12 @@ func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 			// update doc hundreds of times to create a large diff in rev tree versions
 			if tc.replicationType == db.ActiveReplicatorTypePull {
 				for i := 0; i < 200; i++ {
-					version = rt2.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i)))
+					version = rt2.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
 				}
 				rt2.WaitForPendingChanges()
 			} else {
 				for i := 0; i < 200; i++ {
-					version = rt1.UpdateDocDirectly(docID, version, rest.JsonToMap(t, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i)))
+					version = rt1.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 				}
 				rt1.WaitForPendingChanges()
 			}

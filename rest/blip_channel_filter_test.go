@@ -52,7 +52,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 
 				client := btcRunner.SingleCollection(btc.id)
 				const docID = "doc1"
-				version1 := rt.PutDocDirectly("doc1", JsonToMap(t, `{"channels":["A"]}`))
+				version1 := rt.PutDoc("doc1", `{"channels":["A"]}`)
 				rt.WaitForPendingChanges()
 
 				response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=0&channels=A&include_docs=true", "", "alice")
@@ -73,9 +73,9 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 				btcRunner.WaitForVersion(btc.id, docID, version1)
 
 				// remove channel A from doc1
-				version2 := rt.UpdateDocDirectly(docID, version1, JsonToMap(t, `{"channels":["B"]}`))
+				version2 := rt.UpdateDoc(docID, version1, `{"channels":["B"]}`)
 				markerDocID := "marker"
-				markerDocVersion := rt.PutDocDirectly(markerDocID, JsonToMap(t, `{"channels":["A"]}`))
+				markerDocVersion := rt.PutDoc(markerDocID, `{"channels":["A"]}`)
 				rt.WaitForPendingChanges()
 
 				// alice will see doc1 rev2 with body

@@ -2871,7 +2871,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 	version1, _ := rt.GetDoc(docID)
 
 	// update the above doc, this should push CV to PV and adds a new CV
-	version2 := rt.UpdateDocDirectly(docID, version1, db.Body{"new": "update!"})
+	version2 := rt.UpdateDoc(docID, version1, `{"new": "update!"}`)
 	newDoc, _, err := collection.GetDocWithXattrs(ctx, existingHLVKey, db.DocUnmarshalAll)
 	require.NoError(t, err)
 	casV2 := newDoc.Cas

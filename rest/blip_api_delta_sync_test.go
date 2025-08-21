@@ -244,7 +244,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 		// put doc directly needs to be here
-		version1 := rt.PutDocDirectly(docID, JsonToMap(t, bodyText))
+		version1 := rt.PutDoc(docID, bodyText)
 		data := btcRunner.WaitForVersion(btc.id, docID, version1)
 		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		require.JSONEq(t, bodyTextExpected, string(data))
@@ -306,13 +306,13 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDocDirectly(doc1ID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
+		version := rt.PutDoc(doc1ID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data := btcRunner.WaitForVersion(client.id, doc1ID, version)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2-10000d5ec533b29b117e60274b1e3653 on SG with the first attachment
-		version2 := rt.UpdateDocDirectly(doc1ID, version, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`))
+		version2 := rt.UpdateDoc(doc1ID, version, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 
 		data = btcRunner.WaitForVersion(client.id, doc1ID, version2)
 		require.Equal(t, db.AttachmentMap{
@@ -404,13 +404,13 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
+		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-		version2 := rt.UpdateDocDirectly(docID, version, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 1234567890123}]}`))
+		version2 := rt.UpdateDoc(docID, version, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 1234567890123}]}`)
 
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":1234567890123}]}`, string(data))
@@ -472,7 +472,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 		docID := "doc1"
 		// create doc1 rev 1
-		docVersion1 := rt.PutDocDirectly(docID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
+		docVersion1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		deltaSentCount := rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
@@ -492,7 +492,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2
-		docVersion2 := rt.UpdateDocDirectly(docID, docVersion1, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 1234567890123}]}`))
+		docVersion2 := rt.UpdateDoc(docID, docVersion1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 1234567890123}]}`)
 
 		data = btcRunner.WaitForVersion(client.id, docID, docVersion2)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":1234567890123}]}`, string(data))
@@ -556,14 +556,14 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-1513b53e2738671e634d9dd111f48de0
-		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`))
+		version := rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Contains(t, string(data), `"channels":["public"]`)
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// create doc1 rev 2-ff91e11bc1fd12bbb4815a06571859a9
-		version = rt.UpdateDocDirectly(docID, version, JsonToMap(t, `{"channels": ["private"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`))
+		version = rt.UpdateDoc(docID, version, `{"channels": ["private"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
 
 		data = btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"_removed":true}`, string(data))
@@ -631,13 +631,13 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 
 		const docID = "doc1"
 		// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
-		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`))
+		version := rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Contains(t, string(data), `"channels":["public"]`)
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
-		version = rt.DeleteDocDirectly(docID, version)
+		version = rt.DeleteDoc(docID, version)
 
 		data = btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
@@ -737,7 +737,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		btcRunner.StartPull(client1.id)
 
 		// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
-		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`))
+		version := rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 
 		data := btcRunner.WaitForVersion(client1.id, docID, version)
 		assert.Contains(t, string(data), `"channels":["public"]`)
@@ -750,7 +750,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
-		version = rt.DeleteDocDirectly(docID, version)
+		version = rt.DeleteDoc(docID, version)
 
 		data = btcRunner.WaitForVersion(client1.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
@@ -855,7 +855,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version1 := rt.PutDocDirectly(docID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
+		version1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data := btcRunner.WaitForVersion(client.id, docID, version1)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
@@ -870,7 +870,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-		version2 := rt.UpdateDocDirectly(docID, version1, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`))
+		version2 := rt.UpdateDoc(docID, version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`)
 
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(data))
@@ -934,7 +934,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
 
-	t.Skip("TODO: CBG-4426 - DeleteDocDirectly does not support CV")
+	t.Skip("TODO: CBG-4832 - Failing because of broken legacy rev ID as deltaSrc logic in processRev")
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySGTest, base.KeySyncMsg, base.KeySync)
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
@@ -962,7 +962,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		btcRunner.StartPull(client.id)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
+		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
@@ -1007,7 +1007,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
 
 		// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
-		deletedVersion := rt.DeleteDocDirectly(docID, newRev)
+		deletedVersion := rt.DeleteDoc(docID, newRev)
 
 		data = btcRunner.WaitForVersion(client.id, docID, deletedVersion)
 		assert.Equal(t, `{}`, string(data))
@@ -1092,10 +1092,8 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		btcRunner.StartPush(client.id)
 
 		rawBody := `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`
-		var body db.Body
-		require.NoError(t, base.JSONUnmarshal([]byte(rawBody), &body))
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version1 := rt.PutDocDirectly(docID, body)
+		version1 := rt.PutDoc(docID, rawBody)
 
 		data := btcRunner.WaitForVersion(client.id, docID, version1)
 		assert.Equal(t, rawBody, string(data))

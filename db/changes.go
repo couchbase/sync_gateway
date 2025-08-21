@@ -209,7 +209,6 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 	}
 	if options.IncludeDocs {
 		var err error
-		// TODO: CBG-4776 - fetch by CV with sane APIs
 		err = db.AddDocToChangeEntryUsingRevCache(ctx, entry, revID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)

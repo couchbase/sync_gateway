@@ -1809,11 +1809,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	revid = prunedRevId
 	var cvs []string
 	for i := 0; i < 5; i++ {
-		body := db.Body{
-			"type":     "pruned",
-			"channels": []string{"gamma"},
-		}
-		docVersion := rt.UpdateDocDirectly("doc_pruned", db.DocVersion{RevTreeID: revid}, body)
+		docVersion := rt.UpdateDoc("doc_pruned", db.DocVersion{RevTreeID: revid}, `{"type": "pruned", "channels":["gamma"]}`)
 		revid = docVersion.RevTreeID
 		cvs = append(cvs, docVersion.CV.String())
 	}
