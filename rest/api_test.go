@@ -21,6 +21,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -3269,18 +3270,16 @@ func TestDocCRUDWithCV(t *testing.T) {
 	require.Equal(t, updateVersion, getDocVersion)
 
 	// fetch by CV (using the first create version to test cache retrieval)
-	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, createVersion.CV.String()), "")
+	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(createVersion.CV.String())), "")
 	RequireStatus(t, resp, http.StatusOK)
-	resp.DumpBody()
 	assert.NotContains(t, resp.BodyString(), `"update":true`)
 	assert.Contains(t, resp.BodyString(), `"create":true`)
 	assert.Contains(t, resp.BodyString(), `"_cv":"`+createVersion.CV.String()+`"`)
 	assert.Contains(t, resp.BodyString(), `"_rev":"`+createVersion.RevTreeID+`"`)
 
 	// fetch by CV - updated version
-	resp = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, updateVersion.CV.String()), "")
+	resp = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(updateVersion.CV.String())), "")
 	RequireStatus(t, resp, http.StatusOK)
-	resp.DumpBody()
 	assert.NotContains(t, resp.BodyString(), `"create":true`)
 	assert.Contains(t, resp.BodyString(), `"update":true`)
 	assert.Contains(t, resp.BodyString(), `"_cv":"`+updateVersion.CV.String()+`"`)
