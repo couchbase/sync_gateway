@@ -3597,18 +3597,17 @@ func TestBlipPullConflict(t *testing.T) {
 func TestBlipTesterMultipleClients(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest, base.KeySync, base.KeySyncMsg, base.KeyHTTP, base.KeyChanges, base.KeyCRUD)
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 		rt1 := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 		defer rt1.Close()
 		rt2 := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 		defer rt2.Close()
 		const username = "alice"
-		protocolNumber := "blip_v" + SupportedBLIPProtocols[0][len(SupportedBLIPProtocols[0])-1:]
-		rt1.CreateDatabase("db1_"+protocolNumber, rt1.NewDbConfig())
-		rt2.CreateDatabase("db2_"+protocolNumber, rt2.NewDbConfig())
+		rt1.CreateDatabase("db1", rt1.NewDbConfig())
+		rt2.CreateDatabase("db2", rt2.NewDbConfig())
 		rt1.CreateUser(username, []string{"*"})
 		rt2.CreateUser(username, []string{"*"})
-		opts := &BlipTesterClientOpts{Username: username, SupportedBLIPProtocols: SupportedBLIPProtocols}
+		opts := &BlipTesterClientOpts{Username: username}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt1, opts)
 		defer btc.Close()
 
