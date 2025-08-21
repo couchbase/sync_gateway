@@ -9,6 +9,7 @@
 package db
 
 import (
+	"math"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -1553,4 +1554,193 @@ func TestHLVUpdateFromIncomingNewCV(t *testing.T) {
 			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %s, actual HLV %s", test.finalHLV, hlvAsBlipString(t, localHLV))
 		})
 	}
+}
+
+func TestAddNewerVersionsTMP(t *testing.T) {
+	testCases := []struct {
+		name          string
+		newHLV        string // new hlv init in step 1 of local/remote wins
+		nonWinningHLV string // is local/remote hlv
+		expectedHLV   string
+	}{
+		{
+			name:          "MV has entry higher than non winning HLV",
+			newHLV:        "10@abc,8@def,9@efg;1@foo",
+			nonWinningHLV: "10@abc,8@def,2@efg;1@foo,2@bar",
+			expectedHLV:   "10@abc,8@def,9@efg;1@foo,2@bar",
+		},
+		{
+			name:          "winning MV has entry lower than incoming HLV",
+			newHLV:        "20@abc,2@def,3@efg;1@foo",
+			nonWinningHLV: "20@abc,10@def,9@efg;2@foo,4@bar",
+			expectedHLV:   "20@abc;10@def,9@efg,2@foo,4@bar",
+		},
+		{
+			name:          "No common elems in MV",
+			newHLV:        "20@abc,10@def,11@efg;5@foo",
+			nonWinningHLV: "20@abc,9@xyz,8@lmn;2@foo,4@bar",
+			expectedHLV:   "20@abc,10@def,11@efg;9@xyz,8@lmn,5@foo,4@bar",
+		},
+		{
+			name:          "newHLV had MV and non winning HLV does not",
+			newHLV:        "20@abc,10@def,11@efg;5@foo",
+			nonWinningHLV: "20@abc;9@xyz,8@lmn,2@foo,4@bar",
+			expectedHLV:   "20@abc,10@def,11@efg;9@xyz,8@lmn,5@foo,4@bar",
+		},
+		{
+			name:          "non winning HLV has MV and newHLV does not",
+			newHLV:        "20@abc;9@xyz,8@lmn,2@foo,4@bar",
+			nonWinningHLV: "20@abc,10@def,11@efg;5@foo",
+			expectedHLV:   "20@abc;10@def,11@efg,9@xyz,8@lmn,5@foo,4@bar",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			localHLV, _, err := extractHLVFromBlipString(tc.newHLV)
+			require.NoError(t, err)
+			incomingHLV, _, err := extractHLVFromBlipString(tc.nonWinningHLV)
+			require.NoError(t, err)
+
+			localHLV.addNewerVersionTmp(incomingHLV)
+
+			expectedHLV, _, err := extractHLVFromBlipString(tc.expectedHLV)
+			require.NoError(t, err)
+
+			require.Equal(t, expectedHLV, localHLV)
+		})
+	}
+}
+
+func TestLocalWinsConflictResolutionForHLV(t *testing.T) {
+	testCases := []struct {
+		name        string
+		localHLV    string
+		remoteHLV   string
+		expectedHLV string
+	}{
+		{
+			name:        "local doc has MV remote does not",
+			localHLV:    "20@abc,10@def,11@efg;5@foo",
+			remoteHLV:   "10@xyz;8@foo,9@bar",
+			expectedHLV: "20@abc,10@def,11@efg;10@xyz,8@foo,9@bar",
+		},
+		{
+			name:        "local doc has no MV and remote does",
+			localHLV:    "20@abc;5@foo",
+			remoteHLV:   "11@xyz,10@def,11@efg;7@foo",
+			expectedHLV: "20@abc;10@def,11@xyz,11@efg,7@foo",
+		},
+		{
+			name:        "local hlv has MV entry less than remote hlv",
+			localHLV:    "10@abc,1@def,3@efg;1@foo",
+			remoteHLV:   "2@xyz,8@def,9@efg;1@foo",
+			expectedHLV: "10@abc;8@def,9@efg,1@foo,2@xyz",
+		},
+		{
+			name:        "local hlv has MV entry greater than remote hlv",
+			localHLV:    "10@abc,10@def,11@efg;1@foo",
+			remoteHLV:   "2@xyz,8@def,9@efg;1@bar",
+			expectedHLV: "10@abc,10@def,11@efg;1@bar,1@foo,2@xyz",
+		},
+		{
+			name:        "both local and remote have mv and no common sources",
+			localHLV:    "10@abc,10@def,11@efg;1@foo",
+			remoteHLV:   "2@xyz,8@lmn,9@pqr;1@bar",
+			expectedHLV: "10@abc,10@def,11@efg;2@xyz,8@lmn,9@pqr,1@bar,1@foo",
+		},
+		{
+			name:        "local hlv has cv less than remote hlv",
+			localHLV:    "10@abc;1@foo",
+			remoteHLV:   "20@xyz;2@bar",
+			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,10@abc,20@xyz;1@foo,2@bar",
+		},
+		{
+			name:        "local hlv has cv greater than remote hlv",
+			localHLV:    "20@abc;1@foo",
+			remoteHLV:   "10@xyz;2@bar",
+			expectedHLV: "20@abc;1@foo,10@xyz,2@bar",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			localHLV, _, err := extractHLVFromBlipString(tc.localHLV)
+			require.NoError(t, err)
+			remoteHLV, _, err := extractHLVFromBlipString(tc.remoteHLV)
+			require.NoError(t, err)
+
+			localWinsHLV, err := localWinsConflictResolutionForHLV(t.Context(), localHLV, remoteHLV, "testDoc", "testSource")
+			require.NoError(t, err)
+
+			expectedHLV, _, err := extractHLVFromBlipString(tc.expectedHLV)
+			require.NoError(t, err)
+			if expectedHLV.Version == math.MaxUint64 {
+				expectedHLV.CurrentVersionCAS = math.MaxUint64
+			}
+
+			require.Equal(t, expectedHLV, localWinsHLV)
+		})
+	}
+}
+
+func TestRemoteWinsConflictResolutionForHLV(t *testing.T) {
+	testCases := []struct {
+		name        string
+		localHLV    string
+		remoteHLV   string
+		expectedHLV string
+	}{
+		{
+			name:        "remote hlv has mv and local does not",
+			localHLV:    "10@abc;1@foo",
+			remoteHLV:   "20@xyz,10@def,11@efg;5@bar",
+			expectedHLV: "20@xyz,10@def,11@efg;1@foo,5@bar,10@abc",
+		},
+		{
+			name:        "remote hlv has no mv and local does",
+			localHLV:    "20@abc,10@def,11@efg;5@foo",
+			remoteHLV:   "10@xyz;8@bar,9@baz",
+			expectedHLV: "10@xyz;10@def,11@efg,8@bar,9@baz,5@foo,20@abc",
+		},
+		{
+			name:        "remote hlv has mv entry less than local hlv",
+			localHLV:    "10@abc,8@def,9@efg;1@foo",
+			remoteHLV:   "2@xyz,1@def,3@efg;1@bar",
+			expectedHLV: "2@xyz;8@def,9@efg,1@foo,1@bar,10@abc",
+		},
+		{
+			name:        "remote hlv has mv entry greater than local hlv",
+			localHLV:    "10@abc,4@def,5@efg;1@foo",
+			remoteHLV:   "2@xyz,8@def,9@efg;1@bar,2@foo",
+			expectedHLV: "2@xyz,8@def,9@efg;10@abc,1@bar,2@foo",
+		},
+		{
+			name:        "remote hlv has mv and no common sources with local",
+			localHLV:    "10@abc,10@def,11@efg;1@foo",
+			remoteHLV:   "2@xyz,8@lmn,9@pqr;1@bar",
+			expectedHLV: "2@xyz,8@lmn,9@pqr;10@abc,10@def,11@efg,1@bar,1@foo",
+		},
+		{
+			name:        "remote and local have no mv",
+			localHLV:    "10@abc;1@foo",
+			remoteHLV:   "20@xyz;2@bar",
+			expectedHLV: "20@xyz;1@foo,2@bar,10@abc",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			localHLV, _, err := extractHLVFromBlipString(tc.localHLV)
+			require.NoError(t, err)
+			remoteHLV, _, err := extractHLVFromBlipString(tc.remoteHLV)
+			require.NoError(t, err)
+
+			remoteWinsHLV, err := remoteWinsConflictResolutionForHLV(t.Context(), "testDoc", localHLV, remoteHLV)
+			require.NoError(t, err)
+
+			expectedHLV, _, err := extractHLVFromBlipString(tc.expectedHLV)
+			require.NoError(t, err)
+
+			require.Equal(t, expectedHLV, remoteWinsHLV)
+		})
+	}
+
 }

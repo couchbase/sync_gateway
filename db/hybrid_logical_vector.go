@@ -821,3 +821,126 @@ func (hlv *HybridLogicalVector) MergeWithIncomingHLV(newCV Version, incomingHLV 
 	hlv.UpdateHistory(incomingHLV)
 	return nil
 }
+
+// DefaultLWWConflictResolutionType will resolve a conflict based of its CV value, returning the document with the
+// highest CV value for a LWW conflict resolution.
+func DefaultLWWConflictResolutionType(ctx context.Context, conflict Conflict) (Body, error) {
+	if conflict.LocalHLV == nil || conflict.RemoteHLV == nil {
+		return nil, errors.New("local or incoming document is nil for resolveConflict")
+	}
+	// resolve conflict in favor of remote document, remote wins case
+	if conflict.RemoteHLV.Version > conflict.LocalHLV.Version {
+		// remote document wins
+		return conflict.RemoteDocument, nil
+	}
+	return conflict.LocalDocument, nil
+}
+
+// localWinsConflictResolutionForHLV will alter the HLV for a local wins conflict resolution. Preserving local MV
+// unless incoming MV has a src common with local MV and has a higher version, in which case local MV is invalidated and moved to PV.
+// In the eventuality that local CV is <= to incoming CV, a new CV will be created with this db's sourceID
+func localWinsConflictResolutionForHLV(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector, docID, sourceID string) (*HybridLogicalVector, error) {
+	if localHLV == nil || incomingHLV == nil {
+		return nil, errors.New("local or incoming hlv is nil for resolveConflict")
+	}
+
+	newHLV := localHLV.Copy()
+
+	defer func() {
+		base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of local wins, resulting HLV: %v", base.UD(docID), newHLV)
+	}()
+
+	if localHLV.Version > incomingHLV.Version {
+		// no need to generate new CV value
+		newHLV.addNewerVersionTmp(incomingHLV)
+		return newHLV, nil
+	}
+
+	// here local CV version is <= to incoming CV version, thus we need to create a new CV with this db's sourceID then
+	// move any mv to pv
+	base.DebugfCtx(ctx, base.KeyVV, "new cv needed for doc %s in local wins conflict resolution, local hlv: %v, incoming hlv: %v", base.UD(docID), localHLV, incomingHLV)
+	newHLV.SourceID = sourceID
+	newHLV.Version = expandMacroCASValueUint64 // set new version to the macro expansion value
+	newHLV.CurrentVersionCAS = expandMacroCASValueUint64
+
+	newHLV.addNewerVersionsToPV(newHLV.MergeVersions) // add any newer merge version to pv
+	newHLV.MergeVersions = make(HLVVersions)
+	// now add local and incoming docs CV's to the new local HLV merge versions
+	newHLV.MergeVersions[localHLV.SourceID] = localHLV.Version       // add local cv to mv
+	newHLV.MergeVersions[incomingHLV.SourceID] = incomingHLV.Version // add incoming cv to mv
+
+	// now add any newer versions in pv from incoming doc to local docs pv
+	newHLV.addNewerVersionsToPV(incomingHLV.PreviousVersions)
+
+	return newHLV, nil
+}
+
+// remoteWinsConflictResolutionForHLV will alter the HLV for a remote wins conflict resolution. Preserving incoming MV
+// unless local MV has a src common with incoming MV and has a higher version, in which case incoming MV is invalidated and moved to PV.
+func remoteWinsConflictResolutionForHLV(ctx context.Context, docID string, localHLV, incomingHLV *HybridLogicalVector) (*HybridLogicalVector, error) {
+	if localHLV == nil || incomingHLV == nil {
+		return nil, errors.New("local or incoming hlv is nil for resolveConflict")
+	}
+
+	newHLV := incomingHLV.Copy()
+
+	newHLV.addNewerVersionTmp(localHLV)
+
+	base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of remote wins, resulting HLV: %v", base.UD(docID), newHLV)
+	return newHLV, nil
+}
+
+// addNewerVersionTmp Its temporary function until AddNewerVersions work is done. It adds any newer versions to the winning
+// HLV from the non-winning HLV. It does the following steps:
+// 	- Moving the non-winning CV to pv
+// 	- Preserves winning MV unless non-winning MV has a sourceID in common with winning MV and has a higher version in which
+// 	case MV is invalidated and moved to PV
+// 	- Adds any newer PV entries from non-winning HLV to winning HLV PV a
+//	- Adds any non-winning MV entries to winning HLV PV
+func (hlv *HybridLogicalVector) addNewerVersionTmp(nonWinningVector *HybridLogicalVector) {
+
+	// add non winning vector cv to pv if version is newer
+	versionForNonWinningCv := hlv.PreviousVersions[nonWinningVector.SourceID]
+	if versionForNonWinningCv == 0 || versionForNonWinningCv < nonWinningVector.Version {
+		hlv.SetPreviousVersion(nonWinningVector.SourceID, nonWinningVector.Version)
+	}
+
+	// if incoming hlv in this function has greater value for any common sourceID for merge versions, local merge
+	// version no longer valid and we should move to PV
+	for mergeSource, mergeValue := range nonWinningVector.MergeVersions {
+		if winningHLVMergeVal, ok := hlv.MergeVersions[mergeSource]; ok {
+			if winningHLVMergeVal < mergeValue {
+				hlv.addNewerVersionsToPV(hlv.MergeVersions)
+				hlv.MergeVersions = nil // clear merge versions
+			}
+		}
+	}
+
+	// add any newer PV entries from nonWinningVector to local HLV
+	hlv.addNewerVersionsToPV(nonWinningVector.PreviousVersions)
+
+	// add any incoming hlv merge versions to local HLV pv
+	hlv.addNewerVersionsToPV(nonWinningVector.MergeVersions)
+
+	// ensure no duplicates of cv or mv in pv
+	delete(hlv.PreviousVersions, hlv.SourceID)
+	for source := range hlv.MergeVersions {
+		delete(hlv.PreviousVersions, source)
+	}
+}
+
+// addNewerVersionsToPV is helper function to add any newer versions from incoming map to the local HLV PV. If a src
+// exists in local map and incoming map, the higher version is retained, if src only exists in incoming map, its added to local PV.
+func (hlv *HybridLogicalVector) addNewerVersionsToPV(inComingMap HLVVersions) {
+	// add any newer PV entries from incomingVector to local HLV
+	for sourceID, incomingValue := range inComingMap {
+		if hlv.PreviousVersions[sourceID] == 0 {
+			hlv.SetPreviousVersion(sourceID, incomingValue)
+		} else {
+			// if we get here then there is entry for this source in PV so we must check if its newer or not
+			if hlv.PreviousVersions[sourceID] < incomingValue {
+				hlv.SetPreviousVersion(sourceID, incomingValue)
+			}
+		}
+	}
+}

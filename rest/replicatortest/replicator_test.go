@@ -6176,7 +6176,6 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
-	t.Skip("CBG-4778: needs rework for version vectors")
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	defaultConflictResolverWithTombstoneTests := []struct {
@@ -6244,10 +6243,11 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: activeRT.GetDatabase(),
 				},
-				Continuous:           true,
-				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				CollectionsEnabled:   !activeRT.GetDatabase().OnlyDefaultCollection(),
+				Continuous:             true,
+				ConflictResolverFunc:   defaultConflictResolver,
+				ReplicationStatsMap:    dbReplicatorStats(t),
+				CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+				SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()}, // only relevant for v3 and below replications
 			}
 
 			docID := "doc"
@@ -6302,7 +6302,6 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	t.Skip("CBG-4778: needs rework for version vectors")
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name            string   // A unique name to identify the unit test.
@@ -6370,10 +6369,11 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				Continuous:           true,
-				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:             true,
+				ConflictResolverFunc:   defaultConflictResolver,
+				ReplicationStatsMap:    dbReplicatorStats(t),
+				CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+				SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()}, // only relevant for v3 and below replications
 			}
 
 			// Create the first revision of the document on rt2.
@@ -6429,7 +6429,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (non-default conflict resolver)")
 	}
-	t.Skip("CBG-4778: Needs conflict resolution done for ISGR, also needs rev tree property done")
+	t.Skip("CBG-4830: Needs work to run in < 4 or in both 4 and >= 4 protocol")
 
 	type revisionState struct {
 		generation       int
@@ -6695,7 +6695,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 }
 func TestReplicatorConflictAttachment(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	t.Skip("CBG-4778: Needs conflict resolution done for ISGR, also needs rev tree property done")
+	t.Skip("CBG-4830: Needs work to run in < 4 or in both 4 and >= 4 protocol")
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("requires enterprise edition")
 	}

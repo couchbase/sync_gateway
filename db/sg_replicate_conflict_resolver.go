@@ -51,10 +51,13 @@ const (
 
 // Conflict is the input to all conflict resolvers.  LocalDocument and RemoteDocument
 // are expected to be document bodies with metadata injected into the body following
-// the same approach used for doc and oldDoc in the Sync Function
+// the same approach used for doc and oldDoc in the Sync Function. LocalHLV and RemoteHLV
+// will be the documents HLVs, these are needed for HLV ready conflict resolution.
 type Conflict struct {
 	LocalDocument  Body `json:"LocalDocument"`
 	RemoteDocument Body `json:"RemoteDocument"`
+	LocalHLV       *HybridLogicalVector
+	RemoteHLV      *HybridLogicalVector
 }
 
 // Definition of the ConflictResolverFunc API.  Winner may be one of
@@ -137,6 +140,38 @@ func (c *ConflictResolver) Resolve(ctx context.Context, conflict Conflict) (winn
 	return winner, ConflictResolutionMerge, err
 }
 
+// ResolveForHLV is a wrapper for ConflictResolverFunc that evaluates whether conflict resolution resulted in localWins,
+// remoteWins, or merge, specifically for HLV-aware conflict resolution.
+func (c *ConflictResolver) ResolveForHLV(ctx context.Context, conflict Conflict) (winner Body, resolutionType ConflictResolutionType, err error) {
+
+	winner, err = c.crf(ctx, conflict)
+	if err != nil {
+		return winner, "", err
+	}
+
+	winningRev, ok := winner[BodyCV]
+	if !ok {
+		c.stats.ConflictResultMergeCount.Add(1)
+		return winner, ConflictResolutionMerge, nil
+	}
+
+	localRev, ok := conflict.LocalDocument[BodyCV]
+	if ok && localRev == winningRev {
+		c.stats.ConflictResultLocalCount.Add(1)
+		return winner, ConflictResolutionLocal, nil
+	}
+
+	remoteRev, ok := conflict.RemoteDocument[BodyCV]
+	if ok && remoteRev == winningRev {
+		c.stats.ConflictResultRemoteCount.Add(1)
+		return winner, ConflictResolutionRemote, nil
+	}
+
+	base.InfofCtx(ctx, base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
+	c.stats.ConflictResultMergeCount.Add(1)
+	return winner, ConflictResolutionMerge, err
+}
+
 // DefaultConflictResolver uses the same logic as revTree.WinningRevision,
 // with the exception that a deleted revision is picked as the winner:
 // the revision whose (deleted, generation, hash) tuple compares the highest.
@@ -178,6 +213,21 @@ func NewConflictResolverFunc(ctx context.Context, resolverType ConflictResolverT
 		return RemoteWinsConflictResolver, nil
 	case ConflictResolverDefault:
 		return DefaultConflictResolver, nil
+	case ConflictResolverCustom:
+		return NewCustomConflictResolver(ctx, customResolverSource, customResolverTimeout)
+	default:
+		return nil, fmt.Errorf("Unknown Conflict Resolver type: %s", resolverType)
+	}
+}
+
+func NewConflictResolverFuncForHLV(ctx context.Context, resolverType ConflictResolverType, customResolverSource string, customResolverTimeout time.Duration) (ConflictResolverFunc, error) {
+	switch resolverType {
+	case ConflictResolverLocalWins:
+		return LocalWinsConflictResolver, nil
+	case ConflictResolverRemoteWins:
+		return RemoteWinsConflictResolver, nil
+	case ConflictResolverDefault:
+		return DefaultLWWConflictResolutionType, nil
 	case ConflictResolverCustom:
 		return NewCustomConflictResolver(ctx, customResolverSource, customResolverTimeout)
 	default:

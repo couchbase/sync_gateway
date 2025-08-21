@@ -609,14 +609,18 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	}
 	rc.Direction = config.Direction
 
-	// Set conflict resolver for pull replications
+	// Set conflict resolver for pull replications. Currently, at this point we don't know if the replication will
+	// be sub-protocol version 4 or < 4 so we must set both conflict resolver functions. In addition, we must have
+	// both available for the possibility of replicating a document that exists both side fo the replication already
+	// but both are legacy pre upgrades docs without HLV.
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
 			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
-
+			rc.ConflictResolverFuncForHLV, err = NewConflictResolverFuncForHLV(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
 		} else {
 			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
 			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
+			rc.ConflictResolverFuncForHLV, err = NewConflictResolverFuncForHLV(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
 		}
 		if err != nil {
 			return nil, err
