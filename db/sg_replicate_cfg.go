@@ -616,14 +616,23 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
 			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
+			if err != nil {
+				return nil, err
+			}
 			rc.ConflictResolverFuncForHLV, err = NewConflictResolverFuncForHLV(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
+			if err != nil {
+				return nil, err
+			}
 			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
 			rc.ConflictResolverFuncForHLV, err = NewConflictResolverFuncForHLV(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
-		}
-		if err != nil {
-			return nil, err
+			if err != nil {
+				return nil, err
+			}
 		}
 		rc.ConflictResolutionType = config.ConflictResolutionType
 	}
