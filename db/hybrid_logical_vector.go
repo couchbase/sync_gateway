@@ -502,7 +502,7 @@ func extractHLVFromBlipString(versionVectorStr string) (*HybridLogicalVector, []
 		return nil, nil, err
 	}
 	if legacyRevs != nil {
-		return nil, nil, fmt.Errorf("invalid hlv in changes message received, legacys revID found in cv: %q", vectorFields[0])
+		return nil, nil, fmt.Errorf("invalid hlv in changes message received, legacy revID found in cv: %q", vectorFields[0])
 	}
 	for i, v := range cvmvList {
 		switch i {
