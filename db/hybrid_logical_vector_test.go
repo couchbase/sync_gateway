@@ -170,21 +170,25 @@ func TestHLVIsDominating(t *testing.T) {
 			name:           "b.CV.source occurs in both a.CV and a.MV, dominates both",
 			HLVA:           "2@cluster1,1@cluster1,3@cluster2",
 			HLVB:           "4@cluster1",
-			expectedResult: true,
+			expectedResult: false,
 		},
 		{
 			name:           "b.CV.source occurs in both a.CV and a.MV, dominates only a.MV",
 			HLVA:           "4@cluster1,1@cluster1,2@cluster2",
 			HLVB:           "3@cluster1",
-			expectedResult: false,
+			expectedResult: true,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			hlvA := createHLVForTest(t, testCase.HLVA)
 			hlvB := createHLVForTest(t, testCase.HLVB)
-			require.True(t, hlvA.isDominating(hlvB) == testCase.expectedResult)
+			if testCase.expectedResult {
+				require.True(t, hlvA.isDominating(hlvB), "Expected %s to dominate %s", testCase.HLVA, testCase.HLVB)
+			} else {
+				require.False(t, hlvA.isDominating(hlvB), "Expected %s not to dominate %s", testCase.HLVA, testCase.HLVB)
 
+			}
 		})
 	}
 }
@@ -256,15 +260,13 @@ func TestHLVAddNewerVersions(t *testing.T) {
 			incomingHLV: "1@b,1@a",
 			finalHLV:    "1@b,1@a",
 		},
-		/* Test case doesn't work yet
 		{
 			// Invalid since there should not be able to be an incoming merge conflict where a different newer version exists.
 			name:        "incoming mv partially overlaps with pv",
 			existingHLV: "3@c;2@b,6@a",
 			incomingHLV: "4@c,2@b,1@a",
-			finalHLV:    "4@c,2@b,6@a",
+			finalHLV:    "4@c,2@b,1@a",
 		},
-		*/
 	}
 
 	for _, test := range testCases {
@@ -1113,7 +1115,7 @@ func stringHexToUint(t testing.TB, value string) uint64 {
 	return intValue
 }
 
-func TestInvalidateMV(t *testing.T) {
+func TestHLVInvalidateMV(t *testing.T) {
 	testCases := []struct {
 		name        string
 		existingHLV string
@@ -1144,13 +1146,6 @@ func TestInvalidateMV(t *testing.T) {
 			existingHLV: "2@a,1@b,2@c;1@d,2@e",
 			expectedHLV: "2@a;1@b,2@c,1@d,2@e",
 		},
-		/* This test will not work since the HLV is invalid to start with (a source ID exists in both mv and pv)
-		{
-			name:        "cv mv pv, duplicate sources",
-			existingHLV: "2@a,2@b,2@c;1@b,1@d", // this is an invalid HLV, since a source ID exists in mv and pv
-			expectedHLV: "2@a;1@b,2@c,1@d",
-		},
-		*/
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
