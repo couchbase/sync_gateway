@@ -82,7 +82,7 @@ func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
 	if !version.CV.IsEmpty() {
 		occValue = version.CV.String()
 	}
-	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+occValue, "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+url.QueryEscape(occValue), "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
