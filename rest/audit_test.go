@@ -1221,7 +1221,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 func TestAuditChangesFeedStart(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 
 		rt := createAuditLoggingRestTester(t)
 		defer rt.Close()
@@ -1238,8 +1238,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		const (
@@ -1573,7 +1572,7 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 
 func TestAuditBlipCRUD(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+	btcRunner.Run(func(t *testing.T) {
 
 		rt := createAuditLoggingRestTester(t)
 		defer rt.Close()
@@ -1593,8 +1592,7 @@ func TestAuditBlipCRUD(t *testing.T) {
 
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
 		testCases := []struct {
