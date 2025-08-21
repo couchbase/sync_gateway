@@ -267,7 +267,6 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 	// grab local doc body and assert it is as expected
 	actualBody, err := rt1Doc.BodyBytes(rt1ctx)
 	require.NoError(t, err)
-	fmt.Println(string(actualBody), "expected:", string(expectedConflictResBody))
 	assert.Equal(t, expectedConflictResBody, actualBody)
 }
 
