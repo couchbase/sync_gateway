@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -238,4 +239,28 @@ func RequireCVEqual(t *testing.T, hlv *HybridLogicalVector, expectedCV string) {
 	require.NoError(t, err)
 	require.Equal(t, EncodeSource(testVersion.SourceID), hlv.SourceID)
 	require.Equal(t, testVersion.Value, hlv.Version)
+}
+
+// AlterHLVForTest will alter the HLV of an existing document in the bucket, setting it to the provided HLV. Used for
+// testing purposes to set up specific HLV scenarios.
+func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore, key string, hlv *HybridLogicalVector, docBody map[string]interface{}) uint64 {
+	cas, err := dataStore.Get(key, nil)
+	require.NoError(t, err)
+
+	hlv.CurrentVersionCAS = math.MaxUint64 // macro expand this
+
+	vvDataBytes := base.MustJSONMarshal(t, hlv)
+	xattrData := map[string][]byte{
+		base.VvXattrName: vvDataBytes,
+	}
+
+	bodyBytes := base.MustJSONMarshal(t, docBody)
+
+	mutateInOpts := &sgbucket.MutateInOptions{
+		MacroExpansion: hlv.computeMacroExpansions(),
+	}
+
+	cas, err = dataStore.WriteWithXattrs(ctx, key, 0, cas, bodyBytes, xattrData, nil, mutateInOpts)
+	require.NoError(t, err)
+	return cas
 }
