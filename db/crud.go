@@ -2941,12 +2941,8 @@ func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (doci
 
 // Deletes a document, by adding a new revision whose _deleted property is true.
 func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, docVersion DocVersion) (string, *Document, error) {
-	body := Body{BodyDeleted: true}
-	if !docVersion.CV.IsEmpty() {
-		body[BodyCV] = docVersion.CV.String()
-	} else {
-		body[BodyRev] = docVersion.RevTreeID
-	}
+	versionKey, versionStr := docVersion.Body1xKVPair()
+	body := Body{BodyDeleted: true, versionKey: versionStr}
 	newRevID, doc, err := db.Put(ctx, docid, body)
 	return newRevID, doc, err
 }

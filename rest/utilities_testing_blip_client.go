@@ -1531,7 +1531,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *D
 		doc = newClientDocument(docID, 0, nil)
 	}
 
-	var newGen int64 = 1
+	var newGen int = 1
 	var hlv db.HybridLogicalVector
 	if parentVersion != nil {
 		// grab latest version for this doc and make sure we're doing an upsert on top of it to avoid branching revisions
@@ -1541,7 +1541,8 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, parentVersion *D
 		if btcc.UseHLV() {
 			hlv = latestRev.HLV
 		} else {
-			newGen = parentVersion.RevIDGeneration() + 1
+			parentGen, _ := db.ParseRevID(btcc.ctx, parentVersion.RevTreeID)
+			newGen = parentGen + 1
 		}
 	}
 
@@ -1613,7 +1614,7 @@ func (btc *BlipTesterClient) GetDocVersion(docID string) DocVersion {
 	return DocVersion{RevTreeID: doc.CurrentRev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
-func (btcc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int64) (outputBody []byte) {
+func (btcc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte) {
 	if !bytes.Contains(inputBody, []byte(db.BodyAttachments)) {
 		return inputBody
 	}
@@ -2083,11 +2084,14 @@ func (btcc *BlipTesterCollectionClient) getAllRevisions(docID string) []DocVersi
 	return versions
 }
 
-func (btc *BlipTesterClient) AssertDeltaSrcProperty(t *testing.T, msg *blip.Message, docVersion DocVersion) {
+func (btc *BlipTesterClient) AssertDeltaSrcProperty(t *testing.T, msg *blip.Message, expectedVersion DocVersion) {
 	subProtocol, err := db.ParseSubprotocolString(btc.SupportedBLIPProtocols[0])
 	require.NoError(t, err)
-	rev := docVersion.GetRev(subProtocol >= db.CBMobileReplicationV4)
-	assert.Equal(t, rev, msg.Properties[db.RevMessageDeltaSrc])
+	expectedDeltaSrcRev := expectedVersion.RevTreeID
+	if subProtocol >= db.CBMobileReplicationV4 {
+		expectedDeltaSrcRev = expectedVersion.CV.String()
+	}
+	assert.Equal(t, expectedDeltaSrcRev, msg.Properties[db.RevMessageDeltaSrc])
 }
 
 // getHLVFromRevMessage extracts the full HLV from a rev message. This will fail the test if the message does not contain a valid HLV.

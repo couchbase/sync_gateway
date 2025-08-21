@@ -3255,10 +3255,15 @@ func TestDocCRUDWithCV(t *testing.T) {
 	getDocVersion, _ := rt.GetDoc(docID)
 	require.Equal(t, createVersion, getDocVersion)
 
+	revIDGen := func(v DocVersion) int {
+		gen, _ := db.ParseRevID(base.TestCtx(t), v.RevTreeID)
+		return gen
+	}
+
 	updateVersion := rt.UpdateDoc(docID, createVersion, `{"update":true}`)
 	require.NotEqual(t, createVersion, updateVersion)
 	assert.Greaterf(t, updateVersion.CV.Value, createVersion.CV.Value, "Expected CV Value to be bumped on update")
-	assert.Greaterf(t, updateVersion.RevIDGeneration(), createVersion.RevIDGeneration(), "Expected revision generation to be bumped on update")
+	assert.Greaterf(t, revIDGen(updateVersion), revIDGen(createVersion), "Expected revision generation to be bumped on update")
 
 	getDocVersion, _ = rt.GetDoc(docID)
 	require.Equal(t, updateVersion, getDocVersion)
@@ -3284,5 +3289,5 @@ func TestDocCRUDWithCV(t *testing.T) {
 	deleteVersion := rt.DeleteDoc(docID, updateVersion)
 	require.NotEqual(t, updateVersion, deleteVersion)
 	assert.Greaterf(t, deleteVersion.CV.Value, updateVersion.CV.Value, "Expected CV Value to be bumped on delete")
-	assert.Greaterf(t, deleteVersion.RevIDGeneration(), updateVersion.RevIDGeneration(), "Expected revision generation to be bumped on delete")
+	assert.Greaterf(t, revIDGen(deleteVersion), revIDGen(updateVersion), "Expected revision generation to be bumped on delete")
 }

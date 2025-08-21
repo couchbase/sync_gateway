@@ -19,7 +19,6 @@ import (
 	"math"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1487,6 +1486,7 @@ func (doc *Document) ExtractDocVersion() DocVersion {
 }
 
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
+// Users should access the properties via the CV and RevTreeID methods, to ensure there's a check that the specific version type is not empty.
 type DocVersion struct {
 	RevTreeID string
 	CV        Version
@@ -1502,43 +1502,20 @@ func (v DocVersion) GoString() string {
 	return fmt.Sprintf("DocVersion{RevTreeID:%s,CV:%#v}", v.RevTreeID, v.CV)
 }
 
-// DocVersionRevTreeEqual compares two DocVersions based on their RevTreeID.
-func (v DocVersion) DocVersionRevTreeEqual(o DocVersion) bool {
-	if v.RevTreeID != o.RevTreeID {
-		return false
-	}
-	return true
+// GetRevTreeID returns the Revision Tree ID of the document version, and a bool indicating whether it is present.
+func (v DocVersion) GetRevTreeID() (string, bool) {
+	return v.RevTreeID, v.RevTreeID != ""
 }
 
-// GetRev returns the revision ID for the DocVersion.
-func (v DocVersion) GetRev(useHLV bool) string {
-	if useHLV {
-		if v.CV.SourceID == "" {
-			return ""
-		}
-		return v.CV.String()
-	} else {
-		return v.RevTreeID
-	}
+// GetCV returns the Current Version of the document, and a bool indicating whether it is present.
+func (v DocVersion) GetCV() (Version, bool) {
+	return v.CV, !v.CV.IsEmpty()
 }
 
-// RevIDGeneration returns the Rev ID generation for the current version
-func (v *DocVersion) RevIDGeneration() int64 {
-	if v == nil {
-		return 0
+// Body1xKVPair returns the key and value to use in a 1.x-style document body for the given DocVersion.
+func (d DocVersion) Body1xKVPair() (bodyVersionKey, bodyVersionStr string) {
+	if cv, ok := d.GetCV(); ok {
+		return BodyCV, cv.String()
 	}
-	gen, err := strconv.ParseInt(strings.Split(v.RevTreeID, "-")[0], 10, 64)
-	if err != nil {
-		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevTreeID, err)
-		return 0
-	}
-	return gen
-}
-
-// RevIDDigest returns the Rev ID digest for the current version
-func (v *DocVersion) RevIDDigest() string {
-	if v == nil {
-		return ""
-	}
-	return strings.Split(v.RevTreeID, "-")[1]
+	return BodyRev, d.RevTreeID
 }
