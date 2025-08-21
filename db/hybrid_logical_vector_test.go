@@ -1559,8 +1559,8 @@ func TestHLVUpdateFromIncomingNewCV(t *testing.T) {
 func TestAddNewerVersionsTMP(t *testing.T) {
 	testCases := []struct {
 		name          string
-		newHLV        string // new hlv init in step 1 of local/remote wins
-		nonWinningHLV string // is local/remote hlv
+		newHLV        string
+		nonWinningHLV string
 		expectedHLV   string
 	}{
 		{
