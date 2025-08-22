@@ -1995,8 +1995,7 @@ func TestSendReplacementRevision(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // requires cv in PUT rest response
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // TODO: CBG-4833 - Fails when legacy rev ID is sent as a replacement rev
 	btcRunner.Run(func(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
@@ -2016,7 +2015,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
-					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID {
+					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID || changeEntryRevID == version1.CV.String() {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
@@ -3205,7 +3204,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 	btcRunner.Run(func(t *testing.T) {
 		syncFn := `function(doc) {
 						if (doc.invalid) {
@@ -3500,7 +3498,7 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 		t.Run(fmt.Sprintf("allowConflicts=%t", allowConflicts), func(t *testing.T) {
 			btcRunner := NewBlipTesterClientRunner(t)
 
-			btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4786 skipped pending work in this ticket
+			btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4786 CBG-4787 skipped pending work in this ticket
 
 			btcRunner.Run(func(t *testing.T) {
 				rt := NewRestTester(t, &RestTesterConfig{

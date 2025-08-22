@@ -1220,7 +1220,6 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 
 func TestAuditChangesFeedStart(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 	btcRunner.Run(func(t *testing.T) {
 
 		rt := createAuditLoggingRestTester(t)
