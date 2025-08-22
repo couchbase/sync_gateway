@@ -266,7 +266,6 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 }
 
 func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
-	t.Skip("CBG-4428: Is this scenario still valid for version vectors?")
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -274,17 +273,16 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T) {
-		docID := t.Name()
+		docID := "docID"
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
-		btcRunner.StartPush(btc.id)
-
 		docVersion := btcRunner.AddRev(btc.id, docID, nil, []byte(`{"greetings":[{"hi": "alice"}]}`))
 		docVersion = btcRunner.AddRev(btc.id, docID, &docVersion, []byte(`{"greetings":[{"hi": "bob"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`))
+		btcRunner.StartPush(btc.id)
 
 		// Wait for the documents to be replicated at SG
 		rt.WaitForVersion(docID, docVersion)
@@ -293,7 +291,16 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
 		require.NoError(t, err)
 
+		// Since two revisions are created before replication, there is
+		// expected divergent behavior with revtrees and HLV. In the case of HLV,
+		// there will only be a single revision (1-abc, 2@cbl1) that
+		// encompasses the history.
 		attachmentRevPos, _ := db.ParseRevID(ctx, doc.CurrentRev)
+		if btc.UseHLV() {
+			require.Equal(t, 1, attachmentRevPos)
+		} else {
+			require.Equal(t, 2, attachmentRevPos)
+		}
 
 		// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
 		// sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2
@@ -307,26 +314,30 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		require.NoError(t, err)
 
 		body := doc.Body(ctx)
-		greetings := body["greetings"].([]interface{})
-		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]interface{}{"hi": "dave"}, greetings[0])
+		require.JSONEq(t, `{"greetings":[{"hi": "dave"}]}`, string(base.MustJSONMarshal(t, body)))
 
-		assert.Len(t, doc.Attachments, 1)
-		hello, ok := doc.Attachments()["hello.txt"].(map[string]interface{})
-		require.True(t, ok)
-		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, float64(11), hello["length"])
-
-		// revpos should mach the generation of the original revision
-		assert.Equal(t, float64(attachmentRevPos), hello["revpos"])
-		assert.True(t, hello["stub"].(bool))
+		require.Equal(t, db.AttachmentsMeta{
+			"hello.txt": map[string]any{
+				"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				"length": float64(11),
+				"revpos": float64(attachmentRevPos),
+				"stub":   true,
+				"ver":    float64(2),
+			},
+		}, doc.Attachments())
 
 		// Check the number of sendProveAttachment/sendGetAttachment calls.
 		require.NotNil(t, btc.pushReplication.replicationStats)
 		assert.Equal(t, int64(1), btc.pushReplication.replicationStats.GetAttachment.Value())
-		assert.Equal(t, int64(0), btc.pushReplication.replicationStats.ProveAttachment.Value())
+		if btc.UseHLV() {
+			assert.Equal(t, int64(1), btc.pushReplication.replicationStats.ProveAttachment.Value())
+		} else {
+			assert.Equal(t, int64(0), btc.pushReplication.replicationStats.ProveAttachment.Value())
+		}
+
 	})
 }
+
 func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
