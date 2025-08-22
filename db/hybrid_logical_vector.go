@@ -228,7 +228,7 @@ func (hlv *HybridLogicalVector) GetCurrentVersion() (string, uint64) {
 	return hlv.SourceID, hlv.Version
 }
 
-// GetCurrentVersion returns the current version in transport format
+// GetCurrentVersionString returns the current version in transport format
 func (hlv *HybridLogicalVector) GetCurrentVersionString() string {
 	if hlv == nil || hlv.SourceID == "" {
 		return ""
@@ -240,7 +240,7 @@ func (hlv *HybridLogicalVector) GetCurrentVersionString() string {
 	return version.String()
 }
 
-// IsVersionKnown checks to see whether the HLV already contains a Version for the provided
+// DominatesSource checks to see whether the HLV already contains a Version for the provided
 // source with a matching or newer value
 func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 	existingValueForSource, found := hlv.GetValue(version.SourceID)
