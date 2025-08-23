@@ -106,7 +106,7 @@ func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID str
 		// allow upsert rev
 		existingDoc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		if err == nil {
-			bodyMap[db.BodyRev] = existingDoc.CurrentRev
+			bodyMap[db.BodyRev] = existingDoc.GetRevTreeID()
 		}
 		_, doc, err = collection.Put(ctx, docID, bodyMap)
 		if err != nil {

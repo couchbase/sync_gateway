@@ -62,7 +62,7 @@ func (v DocMetadata) hlvEqual(hlv *db.HybridLogicalVector) bool {
 func DocMetadataFromDocument(doc *db.Document) DocMetadata {
 	return DocMetadata{
 		DocID:     doc.ID,
-		RevTreeID: doc.CurrentRev,
+		RevTreeID: doc.GetRevTreeID(),
 		Mou:       doc.MetadataOnlyUpdate,
 		Cas:       doc.Cas,
 		HLV:       doc.HLV,

@@ -131,14 +131,14 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		}
 
 		a.docsProcessed.Add(1)
-		syncData, _, _, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
+		doc, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] error unmarshaling document %s: %v, stopping attachment migration.", migrationLoggingID, base.UD(docID), err)
 			a.docsFailed.Add(1)
 			return false
 		}
 
-		if syncData == nil || syncData.AttachmentsPre4dot0 == nil {
+		if doc.SyncData == nil || doc.SyncData.AttachmentsPre4dot0 == nil {
 			// no attachments to migrate
 			return true
 		}
@@ -148,7 +148,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 			DatabaseCollection: collection,
 		}
 		// xattr migration to take place
-		err = collWithUser.MigrateAttachmentMetadata(collCtx, docID, event.Cas, syncData)
+		err = collWithUser.MigrateAttachmentMetadata(collCtx, docID, event.Cas, doc.SyncData)
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] error migrating document attachment metadata for doc: %s: %v", migrationLoggingID, base.UD(docID), err)
 			a.docsFailed.Add(1)

@@ -202,10 +202,10 @@ func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 		}
 		assert.NotEqual(c, int64(0), doc.TombstonedAt)
 		if deleteVersion.RevTreeID != "" {
-			assert.Equal(c, deleteVersion.RevTreeID, doc.SyncData.CurrentRev)
+			assert.Equal(c, deleteVersion.RevTreeID, doc.SyncData.GetRevTreeID())
 		}
 		if !deleteVersion.CV.IsEmpty() {
-			assert.Equal(c, deleteVersion.CV.String(), doc.SyncData.HLV.GetCurrentVersionString())
+			assert.Equal(c, deleteVersion.CV.String(), doc.HLV.GetCurrentVersionString())
 		}
 	}, time.Second*10, time.Millisecond*100)
 }
@@ -519,10 +519,10 @@ type RawDocXattrs struct {
 
 // RawDocXattrsWellKnown contains well known fields - see RawDocXattrsOthers for those not known until runtime.
 type RawDocXattrsWellKnown struct {
-	Sync       db.SyncDataJSON `json:"_sync"`
-	GlobalSync map[string]any  `json:"_globalSync"`
-	VV         map[string]any  `json:"_vv"`
-	MOU        map[string]any  `json:"_mou"`
+	Sync       db.SyncData    `json:"_sync"`
+	GlobalSync map[string]any `json:"_globalSync"`
+	VV         map[string]any `json:"_vv"`
+	MOU        map[string]any `json:"_mou"`
 }
 
 // RawDocXattrsOthers contains fields that can only be known at runtime (e.g. user xattr names)

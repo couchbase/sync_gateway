@@ -267,7 +267,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 	}
 
 	// Retrieve from or add to rev cache
-	value := rc.getValue(ctx, docID, bucketDoc.CurrentRev, collectionID, true)
+	value := rc.getValue(ctx, docID, bucketDoc.GetRevTreeID(), collectionID, true)
 
 	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStores[collectionID], bucketDoc)
 	rc.statsRecorderFunc(statEvent)

@@ -748,7 +748,7 @@ func TestGetDeleted(t *testing.T) {
 	// Get the raw doc and make sure the sync data has the current revision
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Err getting doc")
-	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
+	assert.Equal(t, rev2id, doc.SyncData.GetRevTreeID())
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
 	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
@@ -1914,7 +1914,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, putErr, "tombstone 2-a")
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	assert.Equal(t, "2-b", doc.CurrentRev)
+	assert.Equal(t, "2-b", doc.GetRevTreeID())
 
 	// Attempt to add a tombstone rev w/ the previous tombstone as parent
 	body[BodyRev] = tombstoneRev
@@ -1929,7 +1929,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, putErr, "tombstone 2-b")
 	doc, err = collection.GetDocument(ctx, "doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	assert.Equal(t, "2-a", doc.CurrentRev)
+	assert.Equal(t, "2-a", doc.GetRevTreeID())
 
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	db.RevsLimit = uint32(1)
@@ -1939,7 +1939,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, putErr, "tombstone 2-a w/ revslimit=1")
 	doc, err = collection.GetDocument(ctx, "doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	assert.Equal(t, "2-b", doc.CurrentRev)
+	assert.Equal(t, "2-b", doc.GetRevTreeID())
 
 	log.Printf("tombstoned conflicts: %+v", doc)
 
@@ -1992,7 +1992,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 3-a (tombstone)")
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	assert.Equal(t, "2-b", doc.CurrentRev)
+	assert.Equal(t, "2-b", doc.GetRevTreeID())
 
 	// Tombstone the winning branch of a conflicted document
 	body[BodyDeleted] = true
@@ -2000,7 +2000,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 3-b (tombstone)")
 	doc, err = collection.GetDocument(ctx, "doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	assert.Equal(t, "2-a", doc.CurrentRev)
+	assert.Equal(t, "2-a", doc.GetRevTreeID())
 
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	body[BodyDeleted] = true
@@ -2009,7 +2009,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 3-a (tombstone)")
 	doc, err = collection.GetDocument(ctx, "doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	assert.Equal(t, "2-b", doc.CurrentRev)
+	assert.Equal(t, "2-b", doc.GetRevTreeID())
 
 	log.Printf("tombstoned conflicts: %+v", doc)
 }
@@ -2287,7 +2287,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	// Test retrieval gets rev2
 	doc, err = collection.GetDocument(ctx, docid, DocUnmarshalAll)
 	require.NotNil(t, doc)
-	assert.Equal(t, rev2id, doc.CurrentRev)
+	assert.Equal(t, rev2id, doc.GetRevTreeID())
 	assert.Equal(t, "value", doc.Body(ctx)["_special"])
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
 }
@@ -2605,12 +2605,12 @@ func TestChannelQuery(t *testing.T) {
 		{
 			testName:    "star channel",
 			channelName: "*",
-			expectedRev: rev3.GetRevAndVersion(),
+			expectedRev: rev3.RevAndVersion,
 		},
 		{
 			testName:    "named channel",
 			channelName: "ABC",
-			expectedRev: rev2.GetRevAndVersion(),
+			expectedRev: rev2.RevAndVersion,
 		},
 	}
 
@@ -2630,6 +2630,7 @@ func TestChannelQuery(t *testing.T) {
 			removedDocEntry := entries[1]
 			require.Equal(t, removedDocID, removedDocEntry.DocID)
 
+			log.Printf("expectedRev: %#v", testCase.expectedRev)
 			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
 			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
 			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
@@ -2686,13 +2687,13 @@ func TestChannelQueryRevocation(t *testing.T) {
 		{
 			testName:    "removal by SGW write",
 			channelName: "ABC",
-			expectedRev: rev2.GetRevAndVersion(),
+			expectedRev: rev2.RevAndVersion,
 		},
 		/*
 			{
 				testName:    "removal by CBL write",
 				channelName: "DEF",
-				expectedRev: rev3.GetRevAndVersion(),
+				expectedRev: rev3.RevAndVersion,
 			},
 		*/
 	}
@@ -2745,7 +2746,7 @@ func TestConcurrentImport(t *testing.T) {
 			doc, err := collection.GetDocument(ctx, "directWrite", DocUnmarshalAll)
 			assert.True(t, doc != nil)
 			assert.NoError(t, err, "Document retrieval error")
-			assert.Equal(t, "1-36fa688dc2a2c39a952ddce46ab53d12", doc.SyncData.CurrentRev)
+			assert.Equal(t, "1-36fa688dc2a2c39a952ddce46ab53d12", doc.SyncData.GetRevTreeID())
 		}()
 	}
 	wg.Wait()
@@ -3080,7 +3081,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc after adding 3-b")
-	assert.Equal(t, "4-a", doc.CurrentRev)
+	assert.Equal(t, "4-a", doc.GetRevTreeID())
 }
 
 // Multiple clients are attempting to push the same tombstone of the winning revision for a branched document
@@ -3125,7 +3126,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc before tombstone")
-	assert.Equal(t, "3-a", doc.CurrentRev)
+	assert.Equal(t, "3-a", doc.GetRevTreeID())
 
 	enableCallback = true
 
@@ -3135,7 +3136,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 
 	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	assert.Equal(t, "2-b", doc.CurrentRev)
+	assert.Equal(t, "2-b", doc.GetRevTreeID())
 }
 
 // Multiple clients are attempting to push conflicting non-winning revisions; multiple clients pushing different
@@ -3192,7 +3193,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc after adding 3-b")
-	assert.Equal(t, "4-a", doc.CurrentRev)
+	assert.Equal(t, "4-a", doc.GetRevTreeID())
 
 	rev, err := collection.GetRev(ctx, "doc1", "3-b1", false, nil)
 	assert.NoError(t, err, "Retrieve revision 3-b1")
@@ -3347,7 +3348,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
 
 	assert.Nil(t, doc)
-	assert.Equal(t, "1-2cac91faf7b3f5e5fd56ff377bdb5466", xattr.CurrentRev)
+	assert.Equal(t, "1-2cac91faf7b3f5e5fd56ff377bdb5466", xattr.GetRevTreeID())
 	assert.Equal(t, uint64(2), xattr.Sequence)
 }
 

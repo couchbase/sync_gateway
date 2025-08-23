@@ -1501,8 +1501,8 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 		require.Contains(t, xattrs, base.SyncXattrName)
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
-		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
-		assert.Truef(t, strings.HasPrefix(syncData.CurrentRev, "1-"), "Expecting rev 1 for imported doc %v", docID)
+		assert.NotEqualf(t, "", syncData.GetRevTreeID(), "Expecting non-empty rev ID for imported doc %v", docID)
+		assert.Truef(t, strings.HasPrefix(syncData.GetRevTreeID(), "1-"), "Expecting rev 1 for imported doc %v", docID)
 
 		var docNumber string
 		if i == 0 {
@@ -1511,7 +1511,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 			docNumber = "0." + strings.Repeat("0", i)
 		}
 		assert.Contains(t, string(docBody), `"key":`+docNumber)
-		t.Logf("Got doc %s: %s with revID: %v", docID, string(docBody), syncData.CurrentRev)
+		t.Logf("Got doc %s: %s with revID: %v", docID, string(docBody), syncData.GetRevTreeID())
 	}
 
 }
@@ -1565,8 +1565,8 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 		require.Contains(t, xattrs, base.SyncXattrName)
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
-		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
-		assert.Truef(t, strings.HasPrefix(syncData.CurrentRev, "1-"), "Expecting rev 1 for imported doc %v", docID)
+		assert.NotEqualf(t, "", syncData.GetRevTreeID(), "Expecting non-empty rev ID for imported doc %v", docID)
+		assert.Truef(t, strings.HasPrefix(syncData.GetRevTreeID(), "1-"), "Expecting rev 1 for imported doc %v", docID)
 
 		var docNumber string
 		if i == 0 {
@@ -1575,7 +1575,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 			docNumber = "0E-" + strconv.Itoa(i)
 		}
 		assert.Contains(t, string(docBody), `"key":`+docNumber)
-		t.Logf("Got doc %s: %s with revID: %v", docID, string(docBody), syncData.CurrentRev)
+		t.Logf("Got doc %s: %s with revID: %v", docID, string(docBody), syncData.GetRevTreeID())
 	}
 
 }
@@ -1812,9 +1812,9 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 	require.Contains(t, xattrs, base.SyncXattrName)
 	var syncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
-	assert.True(t, syncData.CurrentRev != "")
-	generation, _ := db.ParseRevID(base.TestCtx(t), syncData.CurrentRev)
-	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.CurrentRev)
+	require.NotEmpty(t, syncData.GetRevTreeID())
+	generation, _ := db.ParseRevID(base.TestCtx(t), syncData.GetRevTreeID())
+	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.GetRevTreeID())
 	assert.Equal(t, expectedRevGeneration, generation)
 }
 

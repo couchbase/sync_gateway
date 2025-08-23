@@ -1644,9 +1644,9 @@ func (btc *BlipTesterClient) GetDocVersion(docID string) DocVersion {
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalSync)
 	require.NoError(btc.rt.TB(), err)
 	if !btc.UseHLV() || doc.HLV == nil {
-		return DocVersion{RevTreeID: doc.CurrentRev}
+		return DocVersion{RevTreeID: doc.GetRevTreeID()}
 	}
-	return DocVersion{RevTreeID: doc.CurrentRev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+	return DocVersion{RevTreeID: doc.GetRevTreeID(), CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 func (btcc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte) {

@@ -295,7 +295,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		// expected divergent behavior with revtrees and HLV. In the case of HLV,
 		// there will only be a single revision (1-abc, 2@cbl1) that
 		// encompasses the history.
-		attachmentRevPos, _ := db.ParseRevID(ctx, doc.CurrentRev)
+		attachmentRevPos, _ := db.ParseRevID(ctx, doc.GetRevTreeID())
 		if btc.UseHLV() {
 			require.Equal(t, 1, attachmentRevPos)
 		} else {

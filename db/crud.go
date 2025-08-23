@@ -225,43 +225,16 @@ func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, d
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency
 // reasons. Unlike GetDocSyncData it does not check for on-demand import; this means it does not
 // need to read the doc body from the bucket.
-func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid string, level DocumentUnmarshalLevel) (syncData SyncData, err error) {
-	if db.UseXattrs() {
-		var xattrs map[string][]byte
-		var cas uint64
-		xattrs, cas, err = db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName, base.VvXattrName})
-		if err == nil {
-			var doc *Document
-			doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, level)
-			if err == nil {
-				syncData = doc.SyncData
-			}
-		}
-	} else {
-		if level == DocUnmarshalAll || level == DocUnmarshalSync || level == DocUnmarshalHistory {
-			syncData.History = make(RevTree)
-		}
-		docRoot := documentRoot{
-			SyncData: &syncData,
-		}
-		var rawDocBytes []byte
-		if rawDocBytes, _, err = db.dataStore.GetRaw(docid); err == nil {
-			if err = base.JSONUnmarshal(rawDocBytes, &docRoot); err == nil {
-				// (unmarshaling populates `syncData` since `docRoot` points to it.)
-				if !syncData.HasValidSyncData() {
-					base.InfofCtx(ctx, base.KeyCRUD, "No valid sync data in doc %q; checking for xattrs", base.UD(docid))
-					if upgradeDoc, _ := db.checkForUpgrade(ctx, docid, level); upgradeDoc != nil {
-						// No valid sync data in doc, but doc has been upgraded to use xattrs
-						syncData = upgradeDoc.SyncData
-					} else {
-						base.WarnfCtx(ctx, "No valid sync data nor xattrs in doc %q", base.UD(docid))
-						err = base.HTTPErrorf(404, "Not imported")
-					}
-				}
-			}
-		}
+func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid string, level DocumentUnmarshalLevel) (*SyncData, *HybridLogicalVector, error) {
+	xattrs, cas, err := db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName, base.VvXattrName})
+	if err != nil {
+		return nil, nil, err
 	}
-	return
+	doc, err := db.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, level)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &doc.SyncData, doc.HLV, nil
 }
 
 // OnDemandImportForGet. Attempts to import the doc based on the provided id, contents and cas. ImportDocRaw does cas retry handling
@@ -662,7 +635,7 @@ func (db *DatabaseCollectionWithUser) Get1xRevAndChannels(ctx context.Context, d
 	sequence = doc.Sequence
 	flags = doc.Flags
 	if revID == "" {
-		gotRevID = doc.CurrentRev
+		gotRevID = doc.GetRevTreeID()
 	} else {
 		gotRevID = revID
 	}
@@ -676,7 +649,7 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 		return nil // A nil User means access control is disabled
 	}
 	if revid == "" {
-		revid = doc.CurrentRev
+		revid = doc.GetRevTreeID()
 	}
 	if rev := doc.History[revid]; rev != nil {
 		// Authenticate against specific revision:
@@ -705,7 +678,7 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 	}
 
 	// optimistically grab the doc body and to store as a pre-unmarshalled version, as well as anticipating no inline attachments.
-	if doc.CurrentRev == revid {
+	if doc.GetRevTreeID() == revid {
 		attachments = doc.Attachments()
 	}
 
@@ -835,7 +808,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 		}
 	} else {
 		if revid == "" {
-			revid = doc.CurrentRev
+			revid = doc.GetRevTreeID()
 			if doc.History[revid].Deleted == true {
 				return nil, false, ErrDeleted
 			}
@@ -942,7 +915,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	db.backupRevisionJSON(ctx, doc.ID, doc.HLV.GetCurrentVersionString(), json)
 
 	// Nil out the ancestor rev's body in the document struct:
-	if ancestorRevId == doc.CurrentRev {
+	if ancestorRevId == doc.GetRevTreeID() {
 		doc.RemoveBody()
 	} else {
 		doc.removeRevisionBody(ctx, ancestorRevId)
@@ -1018,7 +991,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 			newVVEntry := Version{}
 			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
 			newVVEntry.Value = d.Cas
-			err := d.SyncData.HLV.AddVersion(newVVEntry)
+			err := d.HLV.AddVersion(newVVEntry)
 			if err != nil {
 				return nil, err
 			}
@@ -1032,13 +1005,14 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		newVVEntry := Version{}
 		newVVEntry.SourceID = db.dbCtx.EncodedSourceID
 		newVVEntry.Value = expandMacroCASValueUint64
-		err := d.SyncData.HLV.AddVersion(newVVEntry)
+		err := d.HLV.AddVersion(newVVEntry)
 		if err != nil {
 			return nil, err
 		}
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
 	}
+	d.SyncData.SetCV(d.HLV)
 	return d, nil
 }
 
@@ -1155,7 +1129,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		if matchCV != "" {
 			if matchCV == doc.HLV.GetCurrentVersionString() {
 				// set matchRev to the current revision ID and allow existing codepaths to perform RevTree-based update.
-				matchRev = doc.CurrentRev
+				matchRev = doc.GetRevTreeID()
 				// bump generation based on retrieved RevTree ID
 				generation, _ = ParseRevID(ctx, matchRev)
 				generation++
@@ -1172,7 +1146,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		if conflictErr == nil {
 			// Make sure matchRev matches an existing leaf revision:
 			if matchRev == "" {
-				matchRev = doc.CurrentRev
+				matchRev = doc.GetRevTreeID()
 				if matchRev != "" {
 					// PUT with no parent rev given, but there is an existing current revision.
 					// This is OK as long as the current one is deleted.
@@ -1267,7 +1241,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		if unmarshalErr != nil {
 			return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Error unmarshaling existing doc")
 		}
-		matchRev = doc.CurrentRev
+		matchRev = doc.GetRevTreeID()
 	}
 	generation, _ := ParseRevID(ctx, matchRev)
 	if generation < 0 {
@@ -1305,7 +1279,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		var prevGeneration int
 		var newGeneration int
 		if len(revTreeHistory) == 0 {
-			previousRevTreeID = doc.CurrentRev
+			previousRevTreeID = doc.GetRevTreeID()
 			prevGeneration, _ = ParseRevID(ctx, previousRevTreeID)
 			newGeneration = prevGeneration + 1
 		} else {
@@ -1354,7 +1328,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				// the new document has a dominating hlv, so we can ignore any legacy rev revtree information on the incoming document
 				revTreeConflictChecked = true
 				if !alignRevTrees {
-					previousRevTreeID = doc.CurrentRev
+					previousRevTreeID = doc.GetRevTreeID()
 				} else {
 					// align rev tree here for ISGR replications
 					err = doc.alignRevTreeHistory(ctx, newDoc, revTreeHistory)
@@ -1619,7 +1593,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 				// If no body is given, use doc in bucket as doc with no old doc
 				oldDoc._body = nil
 			}
-			doc._body[BodyRev] = oldDoc.SyncData.CurrentRev
+			doc._body[BodyRev] = oldDoc.SyncData.GetRevTreeID()
 		} else {
 			return nil, err, nil
 		}
@@ -1718,7 +1692,7 @@ func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, local
 
 	// Local doc (localDoc) is persisted in the bucket unlike the incoming remote doc (remoteDoc).
 	// Internal properties of the localDoc can be accessed from syc metadata.
-	localRevID := localDoc.SyncData.CurrentRev
+	localRevID := localDoc.SyncData.GetRevTreeID()
 	localAttachments := localDoc.Attachments()
 	localExpiry := localDoc.SyncData.Expiry
 
@@ -1781,7 +1755,7 @@ func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, local
 func (db *DatabaseCollectionWithUser) resolveDocRemoteWins(ctx context.Context, localDoc *Document, conflict Conflict) (resolvedRevID string, err error) {
 
 	// Tombstone the local revision
-	localRevID := localDoc.CurrentRev
+	localRevID := localDoc.GetRevTreeID()
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(ctx, localDoc, localRevID)
 	if err != nil {
 		return "", tombstoneErr
@@ -1821,7 +1795,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 		// and need to ensure the remote branch is the winning branch. To do that, we inject entries into the remote
 		// branch's history until it's generation is longer than the local branch.
 		remoteDoc.Deleted = localDoc.Deleted
-		localGeneration, _ := ParseRevID(ctx, localDoc.CurrentRev)
+		localGeneration, _ := ParseRevID(ctx, localDoc.GetRevTreeID())
 
 		requiredAdditionalRevs := localGeneration - remoteGeneration
 		injectedRevBody := []byte("{}")
@@ -1849,7 +1823,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 	// to have their revpos updated when we rewrite the rev as a child of the remote branch.
 	if remoteDoc.Attachments() != nil {
 		// Identify generation of common ancestor and new rev
-		commonAncestorRevID := localDoc.SyncData.History.findAncestorFromSet(localDoc.CurrentRev, docHistory)
+		commonAncestorRevID := localDoc.SyncData.History.findAncestorFromSet(localDoc.GetRevTreeID(), docHistory)
 		commonAncestorGen := 0
 		if commonAncestorRevID != "" {
 			commonAncestorGen, _ = ParseRevID(ctx, commonAncestorRevID)
@@ -1861,7 +1835,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 		for _, value := range remoteDoc.Attachments() {
 			attachmentMeta, ok := value.(map[string]interface{})
 			if !ok {
-				base.WarnfCtx(ctx, "Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.CurrentRev, value)
+				base.WarnfCtx(ctx, "Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.GetRevTreeID(), value)
 				continue
 			}
 			revpos, _ := base.ToInt64(attachmentMeta["revpos"])
@@ -1874,7 +1848,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 	remoteDoc._rawBody = docBodyBytes
 
 	// Tombstone the local revision
-	localRevID := localDoc.CurrentRev
+	localRevID := localDoc.GetRevTreeID()
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(ctx, localDoc, localRevID)
 	if tombstoneErr != nil {
 		return "", nil, tombstoneErr
@@ -1901,7 +1875,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 	}
 
 	// Tombstone the local revision
-	localRevID := localDoc.CurrentRev
+	localRevID := localDoc.GetRevTreeID()
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(ctx, localDoc, localRevID)
 	if tombstoneErr != nil {
 		return "", nil, tombstoneErr
@@ -1929,8 +1903,8 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 // tombstoneRevision updates the document's revision tree to add a tombstone revision as a child of the specified revID
 func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Context, doc *Document, revID string) (tombstoneRevID string, err error) {
 
-	if doc.CurrentRev != revID {
-		return "", fmt.Errorf("Attempted to tombstone active revision for doc (%s), but provided rev (%s) doesn't match current rev(%s)", base.UD(doc.ID), revID, doc.CurrentRev)
+	if doc.GetRevTreeID() != revID {
+		return "", fmt.Errorf("Attempted to tombstone active revision for doc (%s), but provided rev (%s) doesn't match current rev(%s)", base.UD(doc.ID), revID, doc.GetRevTreeID())
 	}
 
 	// Don't tombstone an already deleted revision, return the incoming revID instead.
@@ -1963,9 +1937,9 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 }
 
 func (doc *Document) updateWinningRevAndSetDocFlags(ctx context.Context) {
-	var branched, inConflict bool
-	doc.CurrentRev, branched, inConflict = doc.History.winningRevision(ctx)
-	doc.setFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
+	revtreeID, branched, inConflict := doc.History.winningRevision(ctx)
+	doc.SetRevTreeID(revtreeID)
+	doc.setFlag(channels.Deleted, doc.History[revtreeID].Deleted)
 	doc.setFlag(channels.Conflict, inConflict)
 	doc.setFlag(channels.Branched, branched)
 	if doc.hasFlag(channels.Deleted) {
@@ -1976,7 +1950,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags(ctx context.Context) {
 }
 
 func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, doc *Document, prevCurrentRev string, newRevID string, newDoc *Document, newDocHasAttachments bool) {
-	if doc.HasBody() && doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
+	if doc.HasBody() && doc.GetRevTreeID() != prevCurrentRev && prevCurrentRev != "" {
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes(ctx)
 		if marshalErr != nil {
@@ -2030,14 +2004,14 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	doc.SetAttachments(newDoc.Attachments())
 	doc.MetadataOnlyUpdate = newDoc.MetadataOnlyUpdate
 
-	if doc.CurrentRev == newRevID {
+	if doc.GetRevTreeID() == newRevID {
 		doc.NewestRev = ""
 		doc.setFlag(channels.Hidden, false)
 	} else {
 		doc.NewestRev = newRevID
 		doc.setFlag(channels.Hidden, true)
-		if doc.CurrentRev != prevCurrentRev {
-			doc.promoteNonWinningRevisionBody(ctx, doc.CurrentRev, db.RevisionBodyLoader)
+		if doc.GetRevTreeID() != prevCurrentRev {
+			doc.promoteNonWinningRevisionBody(ctx, doc.GetRevTreeID(), db.RevisionBodyLoader)
 			// If the update resulted in promoting a previous non-winning revision body to winning, this isn't a metadata only update.
 			doc.MetadataOnlyUpdate = nil
 		}
@@ -2086,7 +2060,7 @@ func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Docume
 func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.Context, doc *Document, metaMap map[string]interface{}, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
-	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.CurrentRev)
+	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.GetRevTreeID())
 	if err != nil {
 		return
 	}
@@ -2099,15 +2073,15 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 
 	if curBody != nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
-			base.UD(doc.ID), newRevID, doc.CurrentRev)
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.CurrentRev)
+			base.UD(doc.ID), newRevID, doc.GetRevTreeID())
+		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.GetRevTreeID())
 		if err != nil {
 			return
 		}
 	} else {
 		// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
 		base.WarnfCtx(ctx, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
-			"on it (err=%v)", base.UD(doc.ID), doc.CurrentRev, err)
+			"on it (err=%v)", base.UD(doc.ID), doc.GetRevTreeID(), err)
 		channelSet = nil
 		access = nil
 		roles = nil
@@ -2169,7 +2143,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 				return unusedSequences, err
 			}
 			if releasedSequenceCount > unusedSequenceWarningThreshold {
-				base.WarnfCtx(ctx, "Doc %s / %s had an existing sequence %d that is higher than the next db sequence value %d, resulting in the release of %d unused sequences. This may indicate documents being migrated between databases by an external process.", base.UD(doc.ID), doc.CurrentRev, doc.Sequence, firstAllocatedSequence, releasedSequenceCount)
+				base.WarnfCtx(ctx, "Doc %s / %s had an existing sequence %d that is higher than the next db sequence value %d, resulting in the release of %d unused sequences. This may indicate documents being migrated between databases by an external process.", base.UD(doc.ID), doc.GetRevTreeID(), doc.Sequence, firstAllocatedSequence, releasedSequenceCount)
 			}
 
 		}
@@ -2266,7 +2240,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	//   (c) the current rev is a tombstone, and the new rev is a non-tombstone disconnected branch
 
 	// case a: If the parent is the current rev, it's not a conflict.
-	if parentRevID == doc.CurrentRev || doc.CurrentRev == "" {
+	if parentRevID == doc.GetRevTreeID() || doc.GetRevTreeID() == "" {
 		return false
 	}
 
@@ -2344,7 +2318,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	prevCurrentRev := doc.CurrentRev
+	prevCurrentRev := doc.GetRevTreeID()
 	doc.updateWinningRevAndSetDocFlags(ctx)
 	newDocHasAttachments := len(newAttachments) > 0
 	col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
@@ -2400,12 +2374,12 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	if doc.CurrentRev != prevCurrentRev || createNewRevIDSkipped {
+	if doc.GetRevTreeID() != prevCurrentRev || createNewRevIDSkipped {
 		// Most of the time this update will change the doc's current rev. (The exception is
 		// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
 		// need to update the doc's top-level Channels and Access properties to correspond
 		// to the current rev's state.
-		if newRevID != doc.CurrentRev {
+		if newRevID != doc.GetRevTreeID() {
 			channelSet, access, roles, syncExpiry, oldBodyJSON, err = col.recalculateSyncFnForActiveRev(ctx, doc, metaMap, newRevID)
 			if err != nil {
 				return
@@ -2424,7 +2398,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	}
 
 	// Prune old revision history to limit the number of revisions:
-	if pruned := doc.pruneRevisions(ctx, col.revsLimit(), doc.CurrentRev); pruned > 0 {
+	if pruned := doc.pruneRevisions(ctx, col.revsLimit(), doc.GetRevTreeID()); pruned > 0 {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(doc.ID), pruned)
 	}
 
@@ -2488,7 +2462,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 
-			prevCurrentRev = doc.CurrentRev
+			prevCurrentRev = doc.GetRevTreeID()
 
 			// Check whether Sync Data originated in body
 			currentSyncXattr := currentXattrs[base.SyncXattrName]
@@ -2514,14 +2488,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
-			currentRevFromHistory, ok := doc.History[doc.CurrentRev]
+			currentRevFromHistory, ok := doc.History[doc.GetRevTreeID()]
 			if !ok {
-				err = base.RedactErrorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", doc.CurrentRev, base.UD(doc))
+				err = base.RedactErrorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", doc.GetRevTreeID(), base.UD(doc))
 				return
 			}
 
 			// update the mutate in options based on the above logic
-			updatedDoc.Spec = doc.SyncData.HLV.computeMacroExpansions()
+			updatedDoc.Spec = doc.HLV.computeMacroExpansions()
 
 			updatedDoc.Spec = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
 
@@ -2577,10 +2551,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Prior to saving doc, remove the revision in cache
 			if createNewRevIDSkipped {
-				db.revisionCache.RemoveRevOnly(ctx, doc.ID, doc.CurrentRev)
+				db.revisionCache.RemoveRevOnly(ctx, doc.ID, doc.GetRevTreeID())
 			}
 
-			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
+			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.GetRevTreeID())
 			return updatedDoc, err
 		})
 		if err != nil {
@@ -2693,7 +2667,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			if err != nil {
 				base.WarnfCtx(ctx, "Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {
-				winningRevChange := prevCurrentRev != doc.CurrentRev
+				winningRevChange := prevCurrentRev != doc.GetRevTreeID()
 				err = db.eventMgr().RaiseDocumentChangeEvent(ctx, webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
 				if err != nil {
 					base.DebugfCtx(ctx, base.KeyCRUD, "Error raising document change event: %v", err)
@@ -2764,6 +2738,8 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 	if doc.HLV.CurrentVersionCAS == expandMacroCASValueUint64 {
 		doc.HLV.CurrentVersionCAS = casOut
 	}
+	doc.SyncData.SetCV(doc.HLV)
+
 	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for delta generation purposes
 	// we don't need to store revision body backups without delta sync in 4.0, since all clients know how to use the sendReplacementRevs feature
 	backupRev := db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() != 0
@@ -2776,7 +2752,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 				Val: doc.Attachments(),
 			})
 			if err != nil {
-				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), doc.CurrentRev, doc.HLV.GetCurrentVersionString(), err)
+				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), doc.GetRevTreeID(), doc.HLV.GetCurrentVersionString(), err)
 				return doc
 			}
 		}
@@ -3061,7 +3037,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			}
 
 		} else {
-			base.WarnfCtx(ctx, "Sync fn exception: %+v; doc %q / %q", err, base.UD(doc.ID), base.MD(doc.CurrentRev))
+			base.WarnfCtx(ctx, "Sync fn exception: %+v; doc %q / %q", err, base.UD(doc.ID), base.MD(doc.GetRevTreeID()))
 			if errors.Is(err, sgbucket.ErrJSTimeout) {
 				err = base.HTTPErrorf(500, "JS sync function timed out")
 			} else {
@@ -3221,7 +3197,7 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 		return // Users can't upload design docs, so ignore them
 	}
 
-	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalSync)
+	syncData, hlv, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalSync)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && !base.IsXattrNotFoundError(err) {
 			base.WarnfCtx(ctx, "Error fetching doc %s during changes handling: %v", base.UD(docid), err)
@@ -3229,12 +3205,12 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 		missing = append(missing, rev)
 		return
 	}
-	if doc.HLV == nil {
+	if hlv == nil {
 		// no hlv on local doc, mark as missing but send current rev as known rev (will be handled as legacy
 		// rev document on changes response handler)
 		base.TracefCtx(ctx, base.KeyChanges, "Doc %s has no HLV, marking change version %s as missing", base.UD(docid), base.UD(rev))
 		missing = append(missing, rev)
-		possible = append(possible, doc.CurrentRev)
+		possible = append(possible, syncData.GetRevTreeID())
 		return
 	}
 	// parse in coming version, if it's not known to local doc hlv then it is marked as missing, if it is and is a newer version
@@ -3246,7 +3222,7 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 		return
 	}
 	// CBG-4792: enhance here for conflict check - return conflict rev similar to propose changes here link ticket
-	if doc.HLV.DominatesSource(cvValue) {
+	if hlv.DominatesSource(cvValue) {
 		// incoming version is dominated by local doc hlv, so it is not missing
 		return
 	}
@@ -3254,8 +3230,8 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	// return the local current rev as known rev, this will mean if you have rev 1,2,3 and remote has rev 1,2,3,4,5 then
 	// remote should only send rev 4,5 in rev tree property on the subsequent rev message for this document, we also need to
 	// send cv as first element for delta sync purposes
-	possible = append(possible, doc.HLV.GetCurrentVersionString())
-	possible = append(possible, doc.CurrentRev)
+	possible = append(possible, hlv.GetCurrentVersionString())
+	possible = append(possible, syncData.GetRevTreeID())
 
 	missing = append(missing, rev)
 	return
@@ -3270,7 +3246,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 		return // Users can't upload design docs, so ignore them
 	}
 
-	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalHistory)
+	doc, _, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalHistory)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && !base.IsXattrNotFoundError(err) {
 			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
@@ -3332,7 +3308,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	if parentRevID == "" {
 		level = DocUnmarshalHistory // doc.History only needed in this case (see below)
 	}
-	doc, err := db.GetDocSyncDataNoImport(ctx, docid, level)
+	doc, _, err := db.GetDocSyncDataNoImport(ctx, docid, level)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && !base.IsXattrNotFoundError(err) {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
@@ -3340,18 +3316,18 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 		}
 		// Doc doesn't exist locally; adding it is OK (even if it has a history)
 		return ProposedRev_OK_IsNew, ""
-	} else if doc.CurrentRev == revid {
+	} else if doc.GetRevTreeID() == revid {
 		// Proposed rev already exists here:
 		return ProposedRev_Exists, ""
-	} else if doc.CurrentRev == parentRevID {
+	} else if doc.GetRevTreeID() == parentRevID {
 		// Proposed rev's parent is my current revision; OK to add:
 		return ProposedRev_OK, ""
-	} else if parentRevID == "" && doc.History[doc.CurrentRev].Deleted {
+	} else if parentRevID == "" && doc.History[doc.GetRevTreeID()].Deleted {
 		// Proposed rev has no parent and doc is currently deleted; OK to add:
 		return ProposedRev_OK, ""
 	} else {
 		// Parent revision mismatch, so this is a conflict:
-		return ProposedRev_Conflict, doc.CurrentRev
+		return ProposedRev_Conflict, doc.GetRevTreeID()
 	}
 }
 
@@ -3384,9 +3360,9 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	}
 
 	localDocCV := Version{}
-	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalNoHistory)
-	if doc.HLV != nil {
-		localDocCV.SourceID, localDocCV.Value = doc.HLV.GetCurrentVersion()
+	doc, hlv, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalNoHistory)
+	if hlv != nil {
+		localDocCV.SourceID, localDocCV.Value = hlv.GetCurrentVersion()
 	}
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && !errors.Is(err, base.ErrXattrNotFound) {
@@ -3395,13 +3371,13 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		}
 		// New document not found on server
 		return ProposedRev_OK_IsNew, ""
-	} else if previousRevFormat == "revTreeID" && doc.CurrentRev == previousRev {
+	} else if previousRevFormat == "revTreeID" && doc.GetRevTreeID() == previousRev {
 		// Non-conflicting update, client's previous legacy revTreeID is server's currentRev
 		return ProposedRev_OK, ""
 	} else if previousRevFormat == "version" && localDocCV == previousVersion {
 		// Non-conflicting update, client's previous version is server's CV
 		return ProposedRev_OK, ""
-	} else if doc.HLV.DominatesSource(proposedVersion) {
+	} else if hlv.DominatesSource(proposedVersion) {
 		// SGW already has this version
 		return ProposedRev_Exists, ""
 	} else if localDocCV.SourceID == proposedVersion.SourceID && localDocCV.Value < proposedVersion.Value {
@@ -3440,7 +3416,7 @@ func (doc *Document) alignRevTreeHistory(ctx context.Context, newDoc *Document, 
 		}
 	}
 
-	if parent != doc.CurrentRev {
+	if parent != doc.GetRevTreeID() {
 		base.DebugfCtx(ctx, base.KeyCRUD, "incoming rev tree history has different history than local doc %s, overwriting the revision history to match the incoming history", base.UD(doc.ID))
 		// clean local history and make way for incoming history to replace it
 		doc.History = make(RevTree)
@@ -3453,7 +3429,7 @@ func (doc *Document) alignRevTreeHistory(ctx context.Context, newDoc *Document, 
 	if err != nil {
 		return err
 	}
-	doc.CurrentRev = newRev
+	doc.SetRevTreeID(newRev)
 	return nil
 }
 

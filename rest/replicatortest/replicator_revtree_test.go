@@ -148,7 +148,7 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 				rt1Doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 				require.NoError(t, err)
-				assert.Equal(t, version.RevTreeID, rt1Doc.CurrentRev)
+				assert.Equal(t, version.RevTreeID, rt1Doc.GetRevTreeID())
 				assert.Len(t, rt1Doc.History.GetLeaves(), 1)
 				assert.Len(t, rt1Doc.History, 11) // 1 base + 10 updates
 				rest.RequireDocVersionEqual(t, version, rt1Doc.ExtractDocVersion())
@@ -157,7 +157,7 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 				rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
 				rt2Doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 				require.NoError(t, err)
-				assert.Equal(t, version.RevTreeID, rt2Doc.CurrentRev)
+				assert.Equal(t, version.RevTreeID, rt2Doc.GetRevTreeID())
 				assert.Len(t, rt2Doc.History.GetLeaves(), 1)
 				assert.Len(t, rt2Doc.History, 11) // 1 base + 10 updates
 				rest.RequireDocVersionEqual(t, version, rt2Doc.ExtractDocVersion())

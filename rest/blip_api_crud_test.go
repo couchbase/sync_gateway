@@ -2160,7 +2160,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 
 		// create doc version of the above doc write
 		version1 := DocVersion{
-			RevTreeID: bucketDoc.CurrentRev,
+			RevTreeID: bucketDoc.GetRevTreeID(),
 			CV: db.Version{
 				SourceID: hlvHelper.Source,
 				Value:    cas,

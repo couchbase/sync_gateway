@@ -1518,7 +1518,7 @@ func TestKnownRevsForCheckChangeVersion(t *testing.T) {
 	// db's CV and revID of the doc should be returned as known revs by CheckChangeVersion
 	assert.Equal(t, "123@src", missing[0])
 	assert.Equal(t, doc.HLV.GetCurrentVersionString(), possible[0])
-	assert.Equal(t, doc.CurrentRev, possible[1])
+	assert.Equal(t, doc.GetRevTreeID(), possible[1])
 }
 
 func TestPutStampClusterUUID(t *testing.T) {
@@ -1761,14 +1761,14 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on HLV on that above PUT
-	syncData, err := collection.GetDocSyncData(ctx, "doc1")
+	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// store the cas version allocated to the above doc creation for creation of incoming HLV later in test
-	originalDocVersion := syncData.HLV.Version
+	originalDocVersion := doc.HLV.Version
 
 	// PUT an update to the above doc
 	body = Body{"key1": "value11"}
@@ -1777,10 +1777,11 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	require.NoError(t, err)
 
 	// grab the new version for the above update to assert against later in test
-	syncData, err = collection.GetDocSyncData(ctx, "doc1")
-	assert.NoError(t, err)
-	docUpdateVersion := syncData.HLV.Version
+	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
+	require.NoError(t, err)
+	docUpdateVersion := doc.HLV.Version
 	docUpdateVersionInt := docUpdateVersion
+	currentSourceID := doc.HLV.SourceID
 
 	// construct a mock doc update coming over a replicator
 	body = Body{"key1": "value2"}
@@ -1789,7 +1790,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	// Simulate a conflicting doc update happening from a client that
 	// has only replicated the initial version of the document
 	pv := make(HLVVersions)
-	pv[syncData.HLV.SourceID] = originalDocVersion
+	pv[currentSourceID] = originalDocVersion
 
 	// create a version larger than the allocated version above
 	incomingVersion := docUpdateVersionInt + 10
@@ -1805,7 +1806,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	require.Nil(t, cv)
 
 	// Update the client's HLV to include the latest SGW version.
-	incomingHLV.PreviousVersions[syncData.HLV.SourceID] = docUpdateVersion
+	incomingHLV.PreviousVersions[currentSourceID] = docUpdateVersion
 	// TODO: because currentRev isn't being updated, storeOldBodyInRevTreeAndUpdateCurrent isn't
 	//  updating the document body.   Need to review whether it makes sense to keep using
 	// storeOldBodyInRevTreeAndUpdateCurrent, or if this needs a larger overhaul to support VV
@@ -1818,16 +1819,16 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	// assert on the sync data from the above update to the doc
 	// CV should be equal to CV of update on client but the cvCAS should be updated with the new update and
 	// PV should contain the old CV pair
-	syncData, err = collection.GetDocSyncData(ctx, "doc1")
+	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "test", syncData.HLV.SourceID)
-	assert.Equal(t, incomingVersion, syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, "test", doc.HLV.SourceID)
+	assert.Equal(t, incomingVersion, doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 	// update the pv map so we can assert we have correct pv map in HLV
 	pv[bucketUUID] = docUpdateVersion
-	assert.True(t, reflect.DeepEqual(syncData.HLV.PreviousVersions, pv))
-	assert.Equal(t, "3-60b024c44c283b369116c2c2570e8088", syncData.CurrentRev)
+	assert.True(t, reflect.DeepEqual(doc.HLV.PreviousVersions, pv))
+	assert.Equal(t, "3-60b024c44c283b369116c2c2570e8088", doc.SyncData.GetRevTreeID())
 
 	// Attempt to push the same client update, validate server rejects as an already known version and cancels the update.
 	// This case doesn't return error, verify that SyncData hasn't been changed.
@@ -1835,8 +1836,8 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	require.NoError(t, err)
 	syncData2, err := collection.GetDocSyncData(ctx, "doc1")
 	require.NoError(t, err)
-	require.Equal(t, syncData.TimeSaved, syncData2.TimeSaved)
-	require.Equal(t, syncData.CurrentRev, syncData2.CurrentRev)
+	require.Equal(t, doc.SyncData.TimeSaved, syncData2.TimeSaved)
+	require.Equal(t, doc.SyncData.GetRevTreeID(), syncData2.GetRevTreeID())
 
 }
 
@@ -1862,11 +1863,11 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on the HLV values after the above creation of the doc
-	syncData, err := collection.GetDocSyncData(ctx, "doc1")
-	assert.NoError(t, err)
-	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
+	require.NoError(t, err)
+	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// create a new doc update to simulate a doc update arriving over replicator from, client
 	body = Body{"key1": "value2"}
@@ -1883,11 +1884,11 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	require.Nil(t, cv)
 
 	// assert persisted doc hlv hasn't been updated
-	syncData, err = collection.GetDocSyncData(ctx, "doc1")
+	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 }
 
 // TestPutExistingCurrentVersionWithNoExistingDoc:
@@ -1928,14 +1929,14 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	// assert on the sync data from the above update to the doc
 	// CV should be equal to CV of update on client but the cvCAS should be updated with the new update and
 	// PV should contain the old CV pair
-	syncData, err := collection.GetDocSyncData(ctx, "doc2")
+	doc, err = collection.GetDocument(ctx, "doc2", DocUnmarshalSync)
 	assert.NoError(t, err)
-	assert.Equal(t, "test", syncData.HLV.SourceID)
-	assert.Equal(t, incomingVersion, syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, "test", doc.HLV.SourceID)
+	assert.Equal(t, incomingVersion, doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 	// update the pv map so we can assert we have correct pv map in HLV
-	assert.True(t, reflect.DeepEqual(syncData.HLV.PreviousVersions, pv))
-	assert.Equal(t, "1-3a208ea66e84121b528f05b5457d1134", syncData.CurrentRev)
+	assert.True(t, reflect.DeepEqual(doc.HLV.PreviousVersions, pv))
+	assert.Equal(t, "1-3a208ea66e84121b528f05b5457d1134", doc.SyncData.GetRevTreeID())
 }
 
 // TestGetCVWithDocResidentInCache:

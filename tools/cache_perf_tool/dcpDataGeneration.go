@@ -245,8 +245,10 @@ func (dcp *dcpDataGen) mutateSyncData(sgwSeqno uint64, chanCount int, casValue u
 	}
 
 	syncData := db.SyncData{
-		Sequence:        sgwSeqno,
-		CurrentRev:      "1-abc",
+		Sequence: sgwSeqno,
+		RevAndVersion: channels.RevAndVersion{
+			RevTreeID: "1-abc",
+		},
 		History:         revTree,
 		Channels:        chanMap,
 		ChannelSet:      chanSet,
@@ -300,8 +302,10 @@ func (dcp *dcpDataGen) mutateWithDedupe(seqs []uint64, chanCount int, casValue u
 	currRev := fmt.Sprintf("%d-abc", len(seqs))
 
 	syncData := db.SyncData{
-		Sequence:        currSeq,
-		CurrentRev:      currRev,
+		Sequence: currSeq,
+		RevAndVersion: channels.RevAndVersion{
+			RevTreeID: currRev,
+		},
 		History:         revTree,
 		Channels:        chanMap,
 		ChannelSet:      chanSet,

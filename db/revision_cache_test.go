@@ -45,9 +45,9 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 	doc._body = Body{
 		"testing": true,
 	}
-	doc.CurrentRev = "1-abc"
+	doc.SetRevTreeID("1-abc")
 	doc.History = RevTree{
-		doc.CurrentRev: {
+		doc.GetRevTreeID(): {
 			Channels: base.SetOf("*"),
 		},
 	}
@@ -70,7 +70,7 @@ func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid
 	b := Body{
 		"testing":     true,
 		BodyId:        doc.ID,
-		BodyRev:       doc.CurrentRev,
+		BodyRev:       doc.GetRevTreeID(),
 		BodyRevisions: Revisions{RevisionsStart: 1},
 	}
 	bodyBytes, err := base.JSONMarshal(b)
@@ -83,7 +83,7 @@ func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document,
 	b := Body{
 		"testing":         true,
 		BodyId:            doc.ID,
-		BodyRev:           doc.CurrentRev,
+		BodyRev:           doc.GetRevTreeID(),
 		"current_version": &Version{Value: doc.HLV.Version, SourceID: doc.HLV.SourceID},
 	}
 	if err := doc.HasCurrentVersion(ctx, cv); err != nil {
@@ -1793,7 +1793,7 @@ func createThenRemoveFromRevCache(t *testing.T, ctx context.Context, docID strin
 
 	db.revisionCache.RemoveWithRev(ctx, docID, revIDDoc, collection.GetCollectionID())
 	docVersion := DocVersion{
-		RevTreeID: doc.CurrentRev,
+		RevTreeID: doc.GetRevTreeID(),
 	}
 	if doc.HLV != nil {
 		docVersion.CV = *doc.HLV.ExtractCurrentVersionFromHLV()
@@ -2236,7 +2236,7 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 	require.True(t, exists)
 
 	// rev2 is not in cache but is on server
-	_, exists = collection.revisionCache.Peek(ctx, docID, doc.CurrentRev)
+	_, exists = collection.revisionCache.Peek(ctx, docID, doc.GetRevTreeID())
 	require.False(t, exists)
 }
 

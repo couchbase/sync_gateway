@@ -1372,7 +1372,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	case ChangesVersionTypeCV:
 		row.Changes = []ChangeByVersionType{{ChangesVersionTypeCV: populatedDoc.HLV.GetCurrentVersionString()}}
 	case "", ChangesVersionTypeRevTreeID:
-		row.Changes = []ChangeByVersionType{{ChangesVersionTypeRevTreeID: populatedDoc.CurrentRev}}
+		row.Changes = []ChangeByVersionType{{ChangesVersionTypeRevTreeID: populatedDoc.GetRevTreeID()}}
 	default:
 		base.AssertfCtx(ctx, "createChangeEntry called with an unsupported VersionType: %q", options.VersionType)
 	}

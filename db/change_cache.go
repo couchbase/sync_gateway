@@ -377,7 +377,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	syncData, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
+	doc, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
@@ -389,13 +389,14 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
+	syncData := doc.SyncData
 	// If using xattrs and this isn't an SG write, we shouldn't attempt to cache.
-	rawUserXattr := rawXattrs[collection.userXattrKey()]
+	rawUserXattr := doc.Xattrs[collection.userXattrKey()]
 	if collection.UseXattrs() {
 		if syncData == nil {
 			return
 		}
-		isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
+		isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, doc.Body, rawUserXattr)
 		if !isSGWrite {
 			return
 		}
@@ -447,7 +448,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			changedChannels := c.processEntry(ctx, change)
 			changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
 		}
-		base.DebugfCtx(ctx, base.KeyCache, "Received unused sequences in unused_sequences property for (%q / %q): %v", base.UD(docID), syncData.CurrentRev, syncData.UnusedSequences)
+		base.DebugfCtx(ctx, base.KeyCache, "Received unused sequences in unused_sequences property for (%q / %q): %v", base.UD(docID), syncData.GetRevTreeID(), syncData.UnusedSequences)
 	}
 
 	// If the recent sequence history includes any sequences earlier than the current sequence, and
@@ -497,27 +498,27 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			}
 		}
 		if len(seqsCached) > 0 {
-			base.DebugfCtx(ctx, base.KeyCache, "Received deduplicated seqs in recent_sequences property for (%q / %q): %v", base.UD(docID), syncData.CurrentRev, seqsCached)
+			base.DebugfCtx(ctx, base.KeyCache, "Received deduplicated seqs in recent_sequences property for (%q / %q): %v", base.UD(docID), syncData.GetRevTreeID(), seqsCached)
 		}
 	}
 
 	// Now add the entry for the new doc revision:
 	if len(rawUserXattr) > 0 {
-		collection.revisionCache.RemoveRevOnly(ctx, docID, syncData.CurrentRev)
+		collection.revisionCache.RemoveRevOnly(ctx, docID, syncData.GetRevTreeID())
 	}
 
 	change := &LogEntry{
 		Sequence:     syncData.Sequence,
 		DocID:        docID,
-		RevID:        syncData.CurrentRev,
+		RevID:        syncData.GetRevTreeID(),
 		Flags:        syncData.Flags,
 		TimeReceived: timeReceived,
 		Channels:     syncData.Channels,
 		CollectionID: event.CollectionID,
 	}
-	if syncData.HLV != nil {
-		change.SourceID = syncData.HLV.SourceID
-		change.Version = syncData.HLV.Version
+	if doc.HLV != nil {
+		change.SourceID = doc.HLV.SourceID
+		change.Version = doc.HLV.Version
 	}
 
 	millisecondLatency := int(feedLatency / time.Millisecond)

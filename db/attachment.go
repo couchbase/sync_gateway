@@ -186,7 +186,7 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 	}
 
 	// No non-pruned ancestor is available
-	if commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory); commonAncestor != "" {
+	if commonAncestor := doc.History.findAncestorFromSet(doc.GetRevTreeID(), docHistory); commonAncestor != "" {
 		parentAttachments := make(map[string]interface{})
 		commonAncestorGen := int64(genOfRevID(ctx, commonAncestor))
 		for name, activeAttachment := range GetBodyAttachments(doc.Body(ctx)) {
