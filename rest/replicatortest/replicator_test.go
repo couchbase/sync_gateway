@@ -2397,11 +2397,23 @@ func TestReconnectReplicator(t *testing.T) {
 func TestReplicatorReconnectTimeout(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)
-	passiveRT := rest.NewRestTester(t, nil)
+	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "passivert",
+			},
+		},
+	})
 	defer passiveRT.Close()
 
 	const username = "alice"
-	activeRT := rest.NewRestTester(t, nil)
+	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "activert",
+			},
+		},
+	})
 	defer activeRT.Close()
 	id, err := base.GenerateRandomID()
 	require.NoError(t, err)
@@ -2443,8 +2455,8 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 		state, errMsg := ar.State(activeRT.Context())
 		assert.Equal(c, db.ReplicationStateError, state)
 		assert.Equal(c, expectedErrMsg, errMsg)
+		assert.Equal(c, int64(2), ar.Push.GetStats().NumReconnectsAborted.Value())
 	}, time.Second*10, time.Millisecond*100)
-	require.Equal(t, int64(2), ar.Push.GetStats().NumReconnectsAborted.Value())
 	require.GreaterOrEqual(t, ar.Push.GetStats().NumConnectAttempts.Value(), firstNumConnectAttempts+1)
 }
 
