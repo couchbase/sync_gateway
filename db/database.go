@@ -1664,7 +1664,7 @@ func (c *DatabaseCollection) releaseSequences(ctx context.Context, sequences []u
 func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool, unusedSequences []uint64) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, highSeq uint64, updatedUnusedSequences []uint64, err error) {
 	docid := doc.ID
 	forceUpdate := false
-	if !doc.HasValidSyncData() {
+	if doc.SyncData.IsEmpty() {
 		// This is a document not known to the sync gateway. Ignore it:
 		return nil, false, nil, doc.Sequence, unusedSequences, base.ErrUpdateCancel
 	}

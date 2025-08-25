@@ -138,7 +138,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 			return false
 		}
 
-		if syncData == nil || syncData.AttachmentsPre4dot0 == nil {
+		if syncData.IsEmpty() || syncData.AttachmentsPre4dot0 == nil {
 			// no attachments to migrate
 			return true
 		}
