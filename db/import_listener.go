@@ -190,18 +190,21 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		return
 	}
 
-	// check if sync data is valid
-	if syncData != nil && !syncData.HasValidSyncDataForImport() {
+	// do not import tombstones that have no _sync data
+	if syncData.IsEmpty() && event.Opcode == sgbucket.FeedOpDeletion {
+		return
+	}
+
+	// check if sync data is valid if _sync xattr exists
+	if !syncData.IsEmpty() && !syncData.HasValidSyncDataForImport() {
 		base.WarnfCtx(ctx, "Invalid sync data for doc %s - not importing.", base.UD(event.Key))
 		il.importStats.ImportErrorCount.Add(1)
 		return
 	}
 
 	var isSGWrite bool
-	var crc32Match bool
-	if syncData == nil && event.Opcode == sgbucket.FeedOpDeletion {
-		return
-	} else if syncData != nil {
+	if syncData != nil {
+		var crc32Match bool
 		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, rawBody, rawXattrs[collection.userXattrKey()])
 		if crc32Match {
 			il.dbStats.Crc32MatchCount.Add(1)
@@ -210,7 +213,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 
 	docID := string(event.Key)
 	// If syncData is nil, or if this was not an SG write, attempt to import
-	if syncData == nil || !isSGWrite {
+	if syncData.IsEmpty() || !isSGWrite {
 		isDelete := event.Opcode == sgbucket.FeedOpDeletion
 		if isDelete {
 			rawBody = nil

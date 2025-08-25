@@ -391,28 +391,12 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 
 	// If using xattrs and this isn't an SG write, we shouldn't attempt to cache.
 	rawUserXattr := rawXattrs[collection.userXattrKey()]
-	if collection.UseXattrs() {
-		if syncData == nil {
-			return
-		}
-		isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
-		if !isSGWrite {
-			return
-		}
+	if syncData.IsEmpty() {
+		return
 	}
-
-	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
-	// before ignoring the mutation.
-	if !collection.UseXattrs() && !syncData.HasValidSyncData() {
-		migratedDoc, _ := collection.checkForUpgrade(ctx, docID, DocUnmarshalNoHistory)
-		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
-			base.InfofCtx(ctx, base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
-			syncData = &migratedDoc.SyncData
-		} else {
-			base.InfofCtx(ctx, base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
-			collection.dbStats().Cache().NonMobileIgnoredCount.Add(1)
-			return
-		}
+	isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
+	if !isSGWrite {
+		return
 	}
 
 	if syncData.Sequence <= c.initialSequence {

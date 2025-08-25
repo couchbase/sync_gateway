@@ -121,6 +121,12 @@ type SyncData struct {
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
 }
 
+// IsEmpty returns true if the SyncData structure is empty. An empty SyncData structure can have a non
+// HLV attribute, representing the unmarshaling of a document with a _vv xattr but no _sync xattr.
+func (sd *SyncData) IsEmpty() bool {
+	return sd == nil || sd.Sequence == 0
+}
+
 // determine set of current channels based on removal entries.
 func (sd *SyncData) getCurrentChannels() base.Set {
 	ch := base.SetOf()
@@ -532,9 +538,6 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			return nil, nil, nil, err
 		}
 
-		// If the sync xattr is present, use that to build SyncData
-		syncXattr, ok := xattrValues[base.SyncXattrName]
-
 		if vvXattr, ok := xattrValues[base.VvXattrName]; ok {
 			err = base.JSONUnmarshal(vvXattr, &hlv)
 			if err != nil {
@@ -542,6 +545,8 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			}
 		}
 
+		// If the sync xattr is present, use that to build SyncData
+		syncXattr, ok := xattrValues[base.SyncXattrName]
 		if ok && len(syncXattr) > 0 {
 			result = &SyncData{}
 			if needHistory {
@@ -594,18 +599,20 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], nil, cas, DocUnmarshalAll)
 }
 
+// HasValidSyncData returns true if the document has populated SyncData values. HLV is not considered.
 func (doc *SyncData) HasValidSyncData() bool {
-
 	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0)
 	validHistory := doc != nil && len(doc.History) > 0 && doc.History[doc.CurrentRev] != nil
 	return valid && validHistory
 }
 
+// HasValidSyncDataForImport returns true if the document is valid for import.
 func (doc *SyncData) HasValidSyncDataForImport() bool {
-	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0)
-	validHistory := doc != nil && len(doc.History) > 0 && doc.History[doc.CurrentRev] != nil
-	syncValid := valid && validHistory
-	if !syncValid && doc != nil && doc.HLV != nil {
+	if doc == nil {
+		return false
+	}
+	syncValid := doc.HasValidSyncData()
+	if !syncValid && doc.HasValidHLV() {
 		// If HLV is present, we can consider the sync data valid for import given we can have doc with _vv
 		// but no sync data over the import feed
 		return true
@@ -613,6 +620,7 @@ func (doc *SyncData) HasValidSyncDataForImport() bool {
 	return syncValid
 }
 
+// HasValidHLV returns true if the document has a CV.
 func (doc *SyncData) HasValidHLV() bool {
 	return doc.HLV != nil && doc.HLV.SourceID != "" && doc.HLV.Version != 0
 }
@@ -1483,6 +1491,15 @@ func (doc *Document) ExtractDocVersion() DocVersion {
 		RevTreeID: doc.CurrentRev,
 		CV:        *doc.HLV.ExtractCurrentVersionFromHLV(),
 	}
+}
+
+// HasConflict returns true if the incoming HLV is in conflict with the document's current HLV. Returns an error
+// if this can not be determined.
+func (doc *Document) HasConflict(ctx context.Context, incoming *HybridLogicalVector) (bool, error) {
+	if doc.SyncData.IsEmpty() {
+		return false, nil
+	}
+	return IsInConflict(ctx, doc.HLV, incoming)
 }
 
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.

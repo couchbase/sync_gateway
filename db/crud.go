@@ -72,65 +72,38 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 	if key == "" {
 		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
-	if c.UseXattrs() {
-		doc, rawBucketDoc, err = c.GetDocWithXattrs(ctx, key, unmarshalLevel)
-		if err != nil {
-			return nil, nil, err
-		}
-		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
-		if crc32Match {
-			c.dbStats().Database().Crc32MatchCount.Add(1)
-		}
-
-		// If existing doc wasn't an SG Write, import the doc.
-		if !isSgWrite {
-			// reload to get revseqno for on-demand import
-			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
-			if err != nil {
-				return nil, nil, err
-			}
-			isSgWrite, _, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
-			if !isSgWrite {
-				var importErr error
-				doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
-				if importErr != nil {
-					return nil, nil, importErr
-				}
-				// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
-				if doc == nil {
-					return nil, nil, base.ErrNotFound
-				}
-			}
-		}
-		if !doc.HasValidSyncData() {
-			return nil, nil, base.HTTPErrorf(404, "Not imported")
-		}
-	} else {
-		rawDoc, cas, getErr := c.dataStore.GetRaw(key)
-		if getErr != nil {
-			return nil, nil, getErr
-		}
-
-		doc, err = unmarshalDocument(key, rawDoc)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if !doc.HasValidSyncData() {
-			// Check whether doc has been upgraded to use xattrs
-			upgradeDoc, _ := c.checkForUpgrade(ctx, docid, unmarshalLevel)
-			if upgradeDoc == nil {
-				return nil, nil, base.HTTPErrorf(404, "Not imported")
-			}
-			doc = upgradeDoc
-		}
-
-		rawBucketDoc = &sgbucket.BucketDocument{
-			Body: rawDoc,
-			Cas:  cas,
-		}
+	doc, rawBucketDoc, err = c.GetDocWithXattrs(ctx, key, unmarshalLevel)
+	if err != nil {
+		return nil, nil, err
+	}
+	isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
+	if crc32Match {
+		c.dbStats().Database().Crc32MatchCount.Add(1)
 	}
 
+	// If existing doc wasn't an SG Write, import the doc.
+	if !isSgWrite {
+		// reload to get revseqno for on-demand import
+		doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
+		if err != nil {
+			return nil, nil, err
+		}
+		isSgWrite, _, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
+		if !isSgWrite {
+			var importErr error
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
+			if importErr != nil {
+				return nil, nil, importErr
+			}
+			// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
+			if doc == nil {
+				return nil, nil, base.ErrNotFound
+			}
+		}
+	}
+	if !doc.HasValidSyncData() {
+		return nil, nil, base.HTTPErrorf(404, "Not imported")
+	}
 	return doc, rawBucketDoc, nil
 }
 
@@ -226,39 +199,14 @@ func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, d
 // reasons. Unlike GetDocSyncData it does not check for on-demand import; this means it does not
 // need to read the doc body from the bucket.
 func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid string, level DocumentUnmarshalLevel) (syncData SyncData, err error) {
-	if db.UseXattrs() {
-		var xattrs map[string][]byte
-		var cas uint64
-		xattrs, cas, err = db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName, base.VvXattrName})
+	var xattrs map[string][]byte
+	var cas uint64
+	xattrs, cas, err = db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName, base.VvXattrName})
+	if err == nil {
+		var doc *Document
+		doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, level)
 		if err == nil {
-			var doc *Document
-			doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, level)
-			if err == nil {
-				syncData = doc.SyncData
-			}
-		}
-	} else {
-		if level == DocUnmarshalAll || level == DocUnmarshalSync || level == DocUnmarshalHistory {
-			syncData.History = make(RevTree)
-		}
-		docRoot := documentRoot{
-			SyncData: &syncData,
-		}
-		var rawDocBytes []byte
-		if rawDocBytes, _, err = db.dataStore.GetRaw(docid); err == nil {
-			if err = base.JSONUnmarshal(rawDocBytes, &docRoot); err == nil {
-				// (unmarshaling populates `syncData` since `docRoot` points to it.)
-				if !syncData.HasValidSyncData() {
-					base.InfofCtx(ctx, base.KeyCRUD, "No valid sync data in doc %q; checking for xattrs", base.UD(docid))
-					if upgradeDoc, _ := db.checkForUpgrade(ctx, docid, level); upgradeDoc != nil {
-						// No valid sync data in doc, but doc has been upgraded to use xattrs
-						syncData = upgradeDoc.SyncData
-					} else {
-						base.WarnfCtx(ctx, "No valid sync data nor xattrs in doc %q", base.UD(docid))
-						err = base.HTTPErrorf(404, "Not imported")
-					}
-				}
-			}
+			syncData = doc.SyncData
 		}
 	}
 	return
@@ -1340,7 +1288,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 			}
 		} else {
-			isConflict, err = IsInConflict(ctx, doc.HLV, newDocHLV)
+			isConflict, err = doc.HasConflict(ctx, newDocHLV)
 			if err != nil && errors.Is(err, ErrNoNewVersionsToAdd) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
 				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
@@ -2948,7 +2896,7 @@ func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid strin
 	return newRevID, doc, err
 }
 
-// Purges a document from the bucket (no tombstone)
+// Purge removes a document from the bucket (no tombstone).
 func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, needsAudit bool) error {
 	doc, rawBucketDoc, err := db.GetDocumentWithRaw(ctx, key, DocUnmarshalAll)
 	if err != nil {
@@ -3202,20 +3150,6 @@ func (c *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.
 	return roleChannelSet, nil
 }
 
-// Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
-func (c *DatabaseCollection) checkForUpgrade(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
-	// If we are using xattrs or Couchbase Server doesn't support them, an upgrade isn't going to be in progress
-	if c.UseXattrs() || !c.dataStore.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
-		return nil, nil
-	}
-
-	doc, rawDocument, err := c.GetDocWithXattrs(ctx, key, unmarshalLevel)
-	if err != nil || doc == nil || !doc.HasValidSyncData() {
-		return nil, nil
-	}
-	return doc, rawDocument
-}
-
 func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, docid, rev string) (missing, possible []string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
@@ -3389,7 +3323,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		localDocCV.SourceID, localDocCV.Value = doc.HLV.GetCurrentVersion()
 	}
 	if err != nil {
-		if !base.IsDocNotFoundError(err) && !errors.Is(err, base.ErrXattrNotFound) {
+		if !base.IsDocNotFoundError(err) && !base.IsXattrNotFoundError(err) {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error, ""
 		}
