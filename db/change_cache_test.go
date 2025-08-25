@@ -3136,7 +3136,7 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		db.UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(1), db.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
-		assert.True(t, db.BroadcastSlowMode.Load())
+		assert.True(c, db.BroadcastSlowMode.Load())
 	}, time.Second*10, time.Millisecond*100)
 
 }
