@@ -697,7 +697,7 @@ func TestVVMultiActor(t *testing.T) {
 	// Update document on source bucket.  Verifies that local source is moved from pv to cv, target source from cv to pv.
 	fromCAS2, err := fromDs.WriteCas(docID, 0, toCAS2, []byte(`{"ver":4}`), 0)
 	require.NoError(t, err)
-	requireWaitForXDCRDocsWritten(t, xdcrTarget, 2)
+	requireWaitForXDCRDocsWritten(t, xdcrSource, 2)
 
 	// Verify HLV on target
 	// expected HLV:
