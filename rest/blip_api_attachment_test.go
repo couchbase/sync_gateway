@@ -302,10 +302,12 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 			require.Equal(t, 2, attachmentRevPos)
 		}
 
+		btcRunner.StopPush(btc.id)
 		// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
 		// sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2
 		docVersion = btcRunner.AddRev(btc.id, docID, &docVersion, []byte(`{"greetings":[{"hi": "charlie"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`))
 		docVersion = btcRunner.AddRev(btc.id, docID, &docVersion, []byte(`{"greetings":[{"hi": "dave"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`))
+		btcRunner.StartPush(btc.id)
 
 		// Wait for the document to be replicated at SG
 		rt.WaitForVersion(docID, docVersion)
