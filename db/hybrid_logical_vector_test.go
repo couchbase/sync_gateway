@@ -276,7 +276,7 @@ func TestHLVAddNewerVersions(t *testing.T) {
 			expectedHLV := createHLVForTest(t, test.finalHLV)
 
 			require.NoError(t, localHLV.AddNewerVersions(incomingHLV))
-			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %#v, actual HLV %#v", expectedHLV, localHLV)
+			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %s, actual HLV %s", test.finalHLV, hlvAsBlipString(t, localHLV))
 		})
 	}
 }
@@ -1312,33 +1312,112 @@ func TestAddVersion(t *testing.T) {
 
 func TestIsInConflict(t *testing.T) {
 	testCases := []struct {
-		name               string
-		localHLV           string
-		incomingHLV        string
-		expectedInConflict bool
-		expectedError      bool
+		name        string
+		localHLV    string
+		incomingHLV string
+		conflict    HLVConflictStatus
 	}{
 		{
-			name:          "CV equal",
-			localHLV:      "111@abc;123@def",
-			incomingHLV:   "111@abc;123@ghi",
-			expectedError: true,
+			name:        "CV equal",
+			localHLV:    "111@abc;123@def",
+			incomingHLV: "111@abc;123@ghi",
+			conflict:    HLVNoConflictRevAlreadyPresent,
 		},
 		{
 			name:        "no conflict case",
 			localHLV:    "111@abc;123@def",
 			incomingHLV: "112@abc;123@ghi",
+			conflict:    HLVNoConflict,
 		},
 		{
-			name:          "local revision is newer",
-			localHLV:      "111@abc;123@def",
-			incomingHLV:   "100@abc;123@ghi",
-			expectedError: true,
+			name:        "local revision is newer",
+			localHLV:    "111@abc;123@def",
+			incomingHLV: "100@abc;123@ghi",
+			conflict:    HLVNoConflictRevAlreadyPresent,
 		},
 		{
 			name:        "merge versions match",
 			localHLV:    "130@abc,123@def,100@ghi;50@jkl",
 			incomingHLV: "150@mno,123@def,100@ghi;50@jkl",
+			conflict:    HLVNoConflict,
+		},
+		{
+			name:        "cv conflict",
+			localHLV:    "1@abc",
+			incomingHLV: "1@def",
+			conflict:    HLVConflict,
+		},
+		{
+			name:        "Matching current source, newer version",
+			localHLV:    "20@cluster1;2@cluster2",
+			incomingHLV: "10@cluster1;1@cluster2",
+			conflict:    HLVNoConflictRevAlreadyPresent,
+		},
+		{
+			name:        "Matching current source and version",
+			localHLV:    "20@cluster1;2@cluster2",
+			incomingHLV: "20@cluster1;2@cluster2",
+			conflict:    HLVNoConflictRevAlreadyPresent,
+		},
+		{
+			name:        "B CV found in A's PV",
+			localHLV:    "20@cluster1;10@cluster2",
+			incomingHLV: "10@cluster2;15@cluster1",
+			conflict:    HLVNoConflictRevAlreadyPresent,
+		},
+		{
+			name:        "B CV older than A's PV for same source",
+			localHLV:    "20@cluster1;15@cluster2",
+			incomingHLV: "10@cluster2;15@cluster1",
+			conflict:    HLVNoConflictRevAlreadyPresent,
+		},
+		{
+			name:        "Unique sources in A",
+			localHLV:    "20@cluster1;15@cluster2,3@cluster3",
+			incomingHLV: "10@cluster2;10@cluster1",
+			conflict:    HLVNoConflictRevAlreadyPresent,
+		},
+		{
+			name:        "Unique sources in B",
+			localHLV:    "20@cluster1",
+			incomingHLV: "15@cluster1;3@cluster3",
+			conflict:    HLVNoConflictRevAlreadyPresent,
+		},
+		{
+			name:        "B has newer cv than A pv",
+			localHLV:    "20@cluster2;10@cluster1",
+			incomingHLV: "15@cluster1;20@cluster2",
+			conflict:    HLVNoConflict,
+		},
+		{
+			name:        "B's cv not found in A",
+			localHLV:    "20@cluster2;10@cluster1",
+			incomingHLV: "5@cluster3",
+			conflict:    HLVConflict,
+		},
+		{
+			name:        "a.MV dominates B.CV",
+			localHLV:    "20@cluster1,20@cluster2,5@cluster3",
+			incomingHLV: "10@cluster2",
+			conflict:    HLVNoConflictRevAlreadyPresent,
+		},
+		{
+			name:        "a.MV doesn't dominate B.CV",
+			localHLV:    "20@cluster1,5@cluster2,5@cluster3",
+			incomingHLV: "10@cluster2",
+			conflict:    HLVConflict, // conflict since mv doesn't match
+		},
+		{
+			name:        "b.CV.source occurs in both a.CV and a.MV, dominates both",
+			localHLV:    "2@cluster1,1@cluster1,3@cluster2",
+			incomingHLV: "4@cluster1",
+			conflict:    HLVNoConflict,
+		},
+		{
+			name:        "b.CV.source occurs in both a.CV and a.MV, dominates only a.MV",
+			localHLV:    "4@cluster1,1@cluster1,2@cluster2",
+			incomingHLV: "3@cluster1",
+			conflict:    HLVNoConflictRevAlreadyPresent,
 		},
 	}
 	for _, tc := range testCases {
@@ -1348,13 +1427,208 @@ func TestIsInConflict(t *testing.T) {
 			incomingHLV, _, err := extractHLVFromBlipString(tc.incomingHLV)
 			require.NoError(t, err)
 
-			inConflict, err := IsInConflict(t.Context(), localHLV, incomingHLV)
-			if tc.expectedError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tc.expectedInConflict, inConflict)
+			require.Equal(t, tc.conflict, IsInConflict(t.Context(), localHLV, incomingHLV))
+		})
+	}
+}
+
+func TestHLVUpddateFromIncomingRemoteWins(t *testing.T) {
+	testCases := []struct {
+		name        string
+		existingHLV string
+		incomingHLV string
+		finalHLV    string
+	}{
+		{
+			name:        "update cv and add pv",
+			existingHLV: "15@abc",
+			incomingHLV: "25@def;20@abc",
+			finalHLV:    "25@def;20@abc",
+		},
+		{
+			name:        "update cv, move cv to pv",
+			existingHLV: "15@abc;30@def",
+			incomingHLV: "35@def;15@abc",
+			finalHLV:    "35@def;15@abc",
+		},
+		{
+			name:        "Add new MV",
+			existingHLV: "",
+			incomingHLV: "1@b,1@a,2@c",
+			finalHLV:    "1@b,1@a,2@c",
+		},
+		{
+			name:        "existing mv, move to pv",
+			existingHLV: "3@c,2@b,1@a",
+			incomingHLV: "4@c",
+			finalHLV:    "4@c;2@b,1@a",
+		},
+		{
+			name:        "incoming pv overwrite mv, equal values",
+			existingHLV: "3@c,2@b,1@a",
+			incomingHLV: "4@c;2@b,1@a",
+			finalHLV:    "4@c;2@b,1@a",
+		},
+		{
+			name:        "incoming mv overwrite pv, equal values",
+			existingHLV: "3@c;2@b,1@a",
+			incomingHLV: "4@c,2@b,1@a",
+			finalHLV:    "4@c,2@b,1@a",
+		},
+		{
+			name:        "incoming mv overwrite pv, greater values",
+			existingHLV: "3@c;2@b,1@a",
+			incomingHLV: "4@c,5@b,6@a",
+			finalHLV:    "4@c,5@b,6@a",
+		},
+		// Invalid MV cleanup cases should preserve any conflicting versions from incoming HLV
+		{
+			// Invalid since MV should always have two values.
+			name:        "Add single value MV",
+			existingHLV: "",
+			incomingHLV: "1@b,1@a",
+			finalHLV:    "1@b,1@a",
+		},
+		{
+			// Invalid since there should not be able to be an incoming merge conflict where a different newer version exists.
+			name:        "incoming mv partially overlaps with pv",
+			existingHLV: "3@c;2@b,6@a",
+			incomingHLV: "4@c,2@b,1@a",
+			finalHLV:    "4@c,2@b,1@a",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			localHLV := createHLVForTest(t, test.existingHLV)
+			incomingHLV := createHLVForTest(t, test.incomingHLV)
+			expectedHLV := createHLVForTest(t, test.finalHLV)
+
+			require.NoError(t, localHLV.UpdateFromIncomingRemoteWins(incomingHLV))
+			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %s, actual HLV %s", test.finalHLV, hlvAsBlipString(t, localHLV))
+		})
+	}
+}
+
+func TestHLVUpdateFromIncomingNewCV(t *testing.T) {
+	testCases := []struct {
+		name        string
+		existingHLV string
+		incomingHLV string
+		newCV       Version
+		finalHLV    string
+	}{
+		{
+			name:        "simple merge",
+			existingHLV: "1@a",
+			incomingHLV: "2@b",
+			newCV:       Version{SourceID: "c", Value: 3},
+			finalHLV:    "3@c,2@b,1@a",
+		},
+		{
+			name:        "existing mv",
+			existingHLV: "1@a,3@d,4@e",
+			incomingHLV: "2@b",
+			newCV:       Version{SourceID: "c", Value: 5},
+			finalHLV:    "5@c,2@b,1@a;4@e,3@d",
+		},
+		{
+			name:        "existing pv",
+			existingHLV: "1@a;3@d,4@e",
+			incomingHLV: "2@b",
+			newCV:       Version{SourceID: "c", Value: 5},
+			finalHLV:    "5@c,2@b,1@a;4@e,3@d",
+		},
+		{
+			name:        "incoming mv",
+			existingHLV: "1@a",
+			incomingHLV: "4@b,3@d,2@e",
+			newCV:       Version{SourceID: "c", Value: 5},
+			finalHLV:    "5@c,4@b,1@a;3@d,2@e",
+		},
+		{
+			name:        "incoming pv",
+			existingHLV: "1@a",
+			incomingHLV: "2@b;4@d,3@e",
+			newCV:       Version{SourceID: "c", Value: 5},
+			finalHLV:    "5@c,2@b,1@a;4@d,3@e",
+		},
+		{
+			name:        "both mv",
+			existingHLV: "1@a,3@d,4@e",
+			incomingHLV: "6@b,5@f,2@g",
+			newCV:       Version{SourceID: "c", Value: 7},
+			finalHLV:    "7@c,6@b,1@a;5@f,4@e,3@d,2@g",
+		},
+		{
+			name:        "both pv",
+			existingHLV: "1@a;3@d,4@e",
+			incomingHLV: "2@b;6@f,5@g",
+			newCV:       Version{SourceID: "c", Value: 7},
+			finalHLV:    "7@c,2@b,1@a;6@f,5@g,4@e,3@d",
+		},
+		{
+			name:        "existing mv and incoming pv",
+			existingHLV: "1@a,3@d,4@e",
+			incomingHLV: "2@b;6@f,5@g",
+			newCV:       Version{SourceID: "c", Value: 7},
+			finalHLV:    "7@c,2@b,1@a;6@f,5@g,4@e,3@d",
+		},
+		{
+			name:        "existing pv and incoming mv",
+			existingHLV: "1@a;3@d,4@e",
+			incomingHLV: "6@b,5@f,2@g",
+			newCV:       Version{SourceID: "c", Value: 7},
+			finalHLV:    "7@c,6@b,1@a;5@f,4@e,3@d,2@g",
+		},
+		{
+			name:        "existing mv,pv, incoming mv",
+			existingHLV: "1@a,3@d,4@e;8@h,7@g",
+			incomingHLV: "6@b,5@f,2@c",
+			newCV:       Version{SourceID: "i", Value: 9},
+			finalHLV:    "9@i,6@b,1@a;8@h,7@g,5@f,4@e,3@d,2@c",
+		},
+		{
+			name:        "existing mv,pv, incoming pv",
+			existingHLV: "1@a,3@d,4@e;8@h,7@g",
+			incomingHLV: "6@b;5@f,2@c",
+			newCV:       Version{SourceID: "i", Value: 9},
+			finalHLV:    "9@i,6@b,1@a;8@h,7@g,5@f,4@e,3@d,2@c",
+		},
+		{
+			name:        "existing mv,pv, incoming mv,pv",
+			existingHLV: "1@a,3@d,4@e;8@h,7@g",
+			incomingHLV: "6@b,5@f,2@c;9@i,10@j",
+			newCV:       Version{SourceID: "k", Value: 11},
+			// note newCV is b@k because SourceID is always encoded
+			finalHLV: "b@k,6@b,1@a;10@j,9@i,8@h,7@g,5@f,4@e,3@d,2@c",
+		},
+		{
+			name:        "existing mv duplicates value with existing cv",
+			existingHLV: "3@a,2@b,1@a",
+			incomingHLV: "4@d",
+			newCV:       Version{SourceID: "e", Value: 5},
+			finalHLV:    "5@e,4@d,3@a;2@b",
+		},
+		{
+			name:        "incoming mv duplicates value with incoming cv",
+			existingHLV: "1@a",
+			incomingHLV: "4@c,3@b,2@c",
+			newCV:       Version{SourceID: "d", Value: 5},
+			finalHLV:    "5@d,4@c,1@a;3@b",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			localHLV := createHLVForTest(t, test.existingHLV)
+			incomingHLV := createHLVForTest(t, test.incomingHLV)
+			expectedHLV := createHLVForTest(t, test.finalHLV)
+
+			require.Equal(t, HLVConflict, IsInConflict(t.Context(), localHLV, incomingHLV))
+
+			require.NoError(t, localHLV.UpdateFromIncomingWithNewCV(test.newCV, incomingHLV))
+			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %s, actual HLV %s", test.finalHLV, hlvAsBlipString(t, localHLV))
 		})
 	}
 }

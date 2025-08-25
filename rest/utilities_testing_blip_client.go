@@ -321,18 +321,17 @@ func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVec
 
 	localHLV := latestRev.HLV
 	incomingCV := incomingHLV.ExtractCurrentVersionFromHLV()
-	localCV := localHLV.ExtractCurrentVersionFromHLV()
-	// safety check - ensure SG is not sending a rev that we already had - ensures changes feed messaging is working correctly to prevent
-	// this check is also performed in the function below but we should keep this here for extra context on FailNow call
-	if localCV.Equal(*incomingCV) {
-		require.FailNow(t, fmt.Sprintf("incoming CV %#+v is equal to local revision %#+v - this should've been filtered via changes response before ending up as a rev. This is only true if there is a single replication occurring, two simultaneous replications (e.g. P2P) could cause this. If there are multiple replications, modify code.", incomingCV, latestRev))
-	}
 
-	inConflict, err := db.IsInConflict(t.Context(), &localHLV, incomingHLV)
-	if err != nil {
+	conflictStatus := db.IsInConflict(t.Context(), &localHLV, incomingHLV)
+	switch conflictStatus {
+	case db.HLVNoConflict:
+		return false
+	case db.HLVConflict:
+		return true
+	case db.HLVNoConflictRevAlreadyPresent:
 		require.FailNow(t, fmt.Sprintf("incoming CV %#+v has lower version than the local revision %#+v - this should've been filtered via changes response before ending up as a rev. blip tester would reply that to Sync Gateway that it doesn't need this revision", incomingCV, localHLV))
 	}
-	return inConflict
+	return false
 }
 
 func (btcc *BlipTesterCollectionClient) _resolveConflict(incomingHLV *db.HybridLogicalVector, incomingBody []byte, localDoc *clientDocRev) (body []byte, hlv db.HybridLogicalVector) {
@@ -349,22 +348,14 @@ func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.Hybr
 	updatedHLV := latestLocalRev.HLV.Copy()
 	// resolve conflict in favor of remote document
 	if incomingHLV.Version > latestLocalHLV.Version {
-		require.NoError(btcc.TB(), updatedHLV.AddNewerVersions(incomingHLV))
+		require.NoError(btcc.TB(), updatedHLV.UpdateFromIncomingRemoteWins(incomingHLV))
 		return incomingBody, *updatedHLV
 	}
-	// move all versions from remote HLV to local HLV, this might not be correct since it will invalidate the new mv. AddNewerVersions will update the CV as well.
-	require.NoError(btcc.TB(), updatedHLV.AddNewerVersions(incomingHLV))
-	// manually reconstruct the HLV
-	// - remove the any pv that contain the merge sourceIDs
-	// - add the merge sourceIDs with the incoming version and local version
-	// - update the new CV
-	delete(updatedHLV.PreviousVersions, incomingHLV.SourceID)
-	delete(updatedHLV.PreviousVersions, btcc.parent.SourceID)
-	delete(updatedHLV.PreviousVersions, latestLocalHLV.SourceID)
-	updatedHLV.SetMergeVersion(incomingHLV.SourceID, incomingHLV.Version)
-	updatedHLV.SetMergeVersion(latestLocalHLV.SourceID, latestLocalHLV.Version)
-	updatedHLV.SourceID = btcc.parent.SourceID
-	updatedHLV.Version = uint64(btcc.hlc.Now())
+	newCV := db.Version{
+		SourceID: btcc.parent.SourceID,
+		Value:    uint64(btcc.hlc.Now()),
+	}
+	require.NoError(btcc.TB(), updatedHLV.UpdateFromIncomingWithNewCV(newCV, incomingHLV))
 	return latestLocalRev.body, *updatedHLV
 }
 
