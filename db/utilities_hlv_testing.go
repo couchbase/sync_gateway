@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -113,7 +114,7 @@ func (h *HLVAgent) SourceID() string {
 	return h.Source
 }
 
-// encodeTestHistory converts a simplified version history of the form "1@abc,2@def;3@ghi" to use hex-encoded versions and
+// EncodeTestHistory converts a simplified version history of the form "1@abc,2@def;3@ghi" to use hex-encoded versions and
 // base64 encoded sources
 func EncodeTestHistory(historyString string) (encodedString string) {
 	// possible versionSets:
@@ -178,10 +179,26 @@ func ParseTestHistory(t *testing.T, historyString string) (pv HLVVersions, mv HL
 	return pv, mv
 }
 
-// Requires that the CV for the provided HLV matches the expected CV (sent in simplified test format)
+// RequireCVEqual fails tests if provided HLV does not have expected CV (sent in blip wire format)
 func RequireCVEqual(t *testing.T, hlv *HybridLogicalVector, expectedCV string) {
 	testVersion, err := ParseVersion(expectedCV)
 	require.NoError(t, err)
 	require.Equal(t, EncodeSource(testVersion.SourceID), hlv.SourceID)
 	require.Equal(t, testVersion.Value, hlv.Version)
+}
+
+// hlvAsBlipString returns the full HLV as a string in the format seen over Blip
+func hlvAsBlipString(_ testing.TB, hlv *HybridLogicalVector) string {
+	s := &strings.Builder{}
+	s.WriteString(hlv.GetCurrentVersionString())
+	history := hlv.toHistoryForHLV(HLVVersions.sorted)
+	if history != "" {
+		if len(hlv.MergeVersions) > 0 {
+			fmt.Fprintf(s, ",")
+		} else if len(hlv.PreviousVersions) > 0 {
+			fmt.Fprintf(s, ";")
+		}
+		s.WriteString(history)
+	}
+	return s.String()
 }

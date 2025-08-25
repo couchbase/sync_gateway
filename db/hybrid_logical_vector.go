@@ -13,7 +13,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +25,33 @@ import (
 )
 
 type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
+
+// sorted will iterate through the map returning entries in a stable sorted order. Used by testing to make it easier
+// to compare output strings. This has a performance cost so should not be used in production code paths.
+func (hv HLVVersions) sorted() iter.Seq2[string, uint64] {
+	reverse := make(map[uint64][]string, len(hv))
+	for k, v := range hv {
+		reverse[v] = append(reverse[v], k)
+	}
+	sortedVers := slices.Sorted(maps.Keys(reverse))
+	slices.Reverse(sortedVers)
+	return func(yield func(k string, v uint64) bool) {
+		for _, ver := range sortedVers {
+			sourceIDs := reverse[ver]
+			slices.Sort(sourceIDs)
+			for _, sourceID := range sourceIDs {
+				if !yield(sourceID, ver) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// unsorted is a passthrough iterator for default map iteration
+func (hv HLVVersions) unsorted() iter.Seq2[string, uint64] {
+	return maps.All(hv)
+}
 
 // Version is representative of a single entry in a HybridLogicalVector.
 type Version struct {
@@ -431,15 +460,20 @@ func (hlv *HybridLogicalVector) IsVersionKnown(otherVersion Version) bool {
 	return value >= otherVersion.Value
 }
 
-// toHistoryForHLV formats blip History property for V4 replication and above
+// ToHistoryForHLV formats blip History property for V4 replication and above
 func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
+	return hlv.toHistoryForHLV(HLVVersions.unsorted)
+}
+
+// toHistoryForHLV formats HLV property for blip history.
+func (hlv *HybridLogicalVector) toHistoryForHLV(sortFunc func(HLVVersions) iter.Seq2[string, uint64]) string {
 	// take pv and mv from hlv if defined and add to history
 	var s strings.Builder
 	// Merge versions must be defined first if they exist
 	if hlv.MergeVersions != nil {
 		// We need to keep track of where we are in the map, so we don't add a trailing ',' to end of string
 		itemNo := 1
-		for key, value := range hlv.MergeVersions {
+		for key, value := range sortFunc(hlv.MergeVersions) {
 			vrs := Version{SourceID: key, Value: value}
 			s.WriteString(vrs.String())
 			if itemNo < len(hlv.MergeVersions) {
@@ -454,7 +488,7 @@ func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 	if hlv.PreviousVersions != nil {
 		// We need to keep track of where we are in the map, so we don't add a trailing ',' to end of string
 		itemNo := 1
-		for key, value := range hlv.PreviousVersions {
+		for key, value := range sortFunc(hlv.PreviousVersions) {
 			vrs := Version{SourceID: key, Value: value}
 			s.WriteString(vrs.String())
 			if itemNo < len(hlv.PreviousVersions) {
@@ -652,6 +686,17 @@ func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 	return base.JSONMarshal(&bucketHLV)
 }
 
+// EqualCV compares the current version of each HLV and returns true if they are equal.
+func (hlv *HybridLogicalVector) EqualCV(other *HybridLogicalVector) bool {
+	if hlv.SourceID != other.SourceID {
+		return false
+	}
+	if hlv.Version != other.Version {
+		return false
+	}
+	return true
+}
+
 func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 	type BucketVector struct {
 		CurrentVersionCAS string    `json:"cvCas,omitempty"`
@@ -692,6 +737,19 @@ func (hlv HybridLogicalVector) GoString() string {
 	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%#+v, MergeVersions:%#+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
 }
 
+// HLVConflictStatus returns whether two HLVs are in conflict or not
+type HLVConflictStatus int16
+
+const (
+	// HLVNoConflict indicates the two HLVs are not in conflict.
+	HLVNoConflict HLVConflictStatus = iota + 1
+	// HLVConflict indicates the two HLVs are in conflict.
+	HLVConflict
+	// HLVNoConflictRevAlreadyPresent indicates the two HLVs are not in conflict, but the incoming HLV does not have any
+	// newer versions to add to the local HLV
+	HLVNoConflictRevAlreadyPresent
+)
+
 // ErrNoNewVersionsToAdd will be thrown when there are no new versions from incoming HLV to be added to HLV that is local
 var ErrNoNewVersionsToAdd = errors.New("no new versions to add to HLV")
 
@@ -699,16 +757,15 @@ var ErrNoNewVersionsToAdd = errors.New("no new versions to add to HLV")
 // or not and will error for the following cases:
 //   - Local HLV dominates incoming HLV (meaning local version is a newer version that the incoming one)
 //   - Local CV matches incoming CV, so no new versions to add
-func IsInConflict(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector) (bool, error) {
+func IsInConflict(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector) HLVConflictStatus {
 	incomingCV := incomingHLV.ExtractCurrentVersionFromHLV()
 	localCV := localHLV.ExtractCurrentVersionFromHLV()
 
 	// check if incoming CV and local CV are the same. This is needed here given that if both CV's are the same the
 	// below check to check local revision is newer than incoming revision will pass given the check and will add the
 	// incoming versions even if CVs are the same
-	if localCV.Equal(*incomingCV) {
-		base.TracefCtx(ctx, base.KeyVV, "incoming CV %#+v is equal to local revision %#+v", incomingCV, localCV)
-		return false, ErrNoNewVersionsToAdd
+	if localHLV.EqualCV(incomingHLV) {
+		return HLVNoConflictRevAlreadyPresent
 	}
 
 	// standard no conflict case. In the simple case, this happens when:
@@ -717,7 +774,7 @@ func IsInConflict(ctx context.Context, localHLV, incomingHLV *HybridLogicalVecto
 	//  - Client A writes document 2@srcA
 	//	- Client B pulls document 2@srcA from Client A
 	if incomingHLV.DominatesSource(*localCV) {
-		return false, nil
+		return HLVNoConflict
 	}
 
 	// local revision is newer than incoming revision. Common case:
@@ -728,14 +785,43 @@ func IsInConflict(ctx context.Context, localHLV, incomingHLV *HybridLogicalVecto
 	// NOTE: without P2P replication, this should not be the case and we would not get this revision, since Client A
 	// would respond to a Client B changes message that Client A does not need this revision
 	if localHLV.DominatesSource(*incomingCV) {
-		return false, ErrNoNewVersionsToAdd
+		return HLVNoConflictRevAlreadyPresent
 	}
 	// Check if conflict has been previously resolved.
 	// - If merge versions are empty, then it has not be resolved.
 	// - If merge versions do not match, then it has not been resolved.
 	if len(incomingHLV.MergeVersions) != 0 && len(localHLV.MergeVersions) != 0 && maps.Equal(incomingHLV.MergeVersions, localHLV.MergeVersions) {
-		base.DebugfCtx(ctx, base.KeyVV, "merge versions match between local HLV %#v and incoming HLV %#v, conflict previously resolved", localHLV, incomingCV)
-		return false, nil
+		return HLVNoConflict
 	}
-	return true, nil
+	return HLVConflict
+}
+
+// UpdateFromIncomingRemoteWins will take an incoming HLV and add any newer versions from incoming HLV
+// update the CV to become that of the incomingHLV.
+func (hlv *HybridLogicalVector) UpdateFromIncomingRemoteWins(incomingHLV *HybridLogicalVector) error {
+	return hlv.AddNewerVersions(incomingHLV)
+}
+
+// UpdateFromIncomingWithNewCV will take an incoming HLV and add any newer versions from incoming HLV to become PV.
+// The new CV will be set and the previous CVs from both HLVs will become merge versions.
+func (hlv *HybridLogicalVector) UpdateFromIncomingWithNewCV(newCV Version, incomingHLV *HybridLogicalVector) error {
+	previousSourceID, previousVersion := hlv.GetCurrentVersion()
+	// move all versions from remote HLV to local HLV, this might not be correct since it will invalidate the new mv. AddNewerVersions will update the CV as well.
+	err := hlv.AddNewerVersions(incomingHLV)
+	if err != nil {
+		return err
+	}
+	hlv.InvalidateMV()
+	// manually reconstruct the HLV
+	// - remove the any pv that contain the merge sourceIDs
+	// - add the merge sourceIDs with the incoming version and local version
+	// - update the new CV
+	delete(hlv.PreviousVersions, incomingHLV.SourceID)
+	delete(hlv.PreviousVersions, newCV.SourceID)
+	delete(hlv.PreviousVersions, previousSourceID)
+	hlv.SetMergeVersion(incomingHLV.SourceID, incomingHLV.Version)
+	hlv.SetMergeVersion(previousSourceID, previousVersion)
+	hlv.SourceID = newCV.SourceID
+	hlv.Version = newCV.Value
+	return nil
 }
