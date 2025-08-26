@@ -13,12 +13,14 @@ package db
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,6 +85,176 @@ func (h *HLVAgent) UpdateWithHLV(ctx context.Context, key string, inputCas uint6
 	cas, err := h.datastore.WriteWithXattrs(ctx, key, 0, inputCas, docBody, xattrData, nil, mutateInOpts)
 	require.NoError(h.t, err)
 	return cas
+}
+
+// CreateDocNoHLV is a test only function to create a document without an HLV
+func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t *testing.T, ctx context.Context, docid string, body Body) (newRevID string, doc *Document) {
+	delete(body, BodyId)
+
+	// Get the revision ID to match, and the new generation number:
+	matchRev, _ := body[BodyRev].(string)
+	generation, _ := ParseRevID(ctx, matchRev)
+	if generation < 0 {
+		require.FailNow(t, "Invalid revision ID")
+	}
+	generation++
+	delete(body, BodyRev)
+
+	// remove CV before RevTreeID generation
+	matchCV, _ := body[BodyCV].(string)
+	delete(body, BodyCV)
+
+	// Not extracting it yet because we need this property around to generate a RevTreeID
+	deleted, _ := body[BodyDeleted].(bool)
+
+	expiry, err := body.ExtractExpiry()
+	require.NoError(t, err)
+
+	// Create newDoc which will be used to pass around Body
+	newDoc := &Document{
+		ID: docid,
+	}
+
+	// Pull out attachments
+	newDoc.SetAttachments(GetBodyAttachments(body))
+	delete(body, BodyAttachments)
+
+	delete(body, BodyRevisions)
+
+	err = validateAPIDocUpdate(body)
+	require.NoError(t, err)
+
+	docUpdateEvent := NoHLVUpdateForTest
+	allowImport := db.UseXattrs()
+	updateRevCache := true
+
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, docUpdateEvent, nil, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+		var isSgWrite bool
+		var crc32Match bool
+
+		// Is this doc an sgWrite?
+		if doc != nil {
+			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
+			if crc32Match {
+				db.dbStats().Database().Crc32MatchCount.Add(1)
+			}
+		}
+
+		// (Be careful: this block can be invoked multiple times if there are races!)
+		// If the existing doc isn't an SG write, import prior to updating
+		if doc != nil && !isSgWrite && db.UseXattrs() {
+			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, deleted)
+			if err != nil {
+				if db.ForceAPIForbiddenErrors() {
+					base.InfofCtx(ctx, base.KeyCRUD, "Importing doc %q prior to write caused error", base.UD(newDoc.ID))
+					return nil, nil, false, nil, ErrForbidden
+				}
+				return nil, nil, false, nil, err
+			}
+		}
+
+		var conflictErr error
+
+		// OCC check of matchCV against CV on the doc
+		if matchCV != "" {
+			if matchCV == doc.HLV.GetCurrentVersionString() {
+				// set matchRev to the current revision ID and allow existing codepaths to perform RevTree-based update.
+				matchRev = doc.CurrentRev
+				// bump generation based on retrieved RevTree ID
+				generation, _ = ParseRevID(ctx, matchRev)
+				generation++
+			} else if doc.hasFlag(channels.Conflict | channels.Hidden) {
+				// Can't use CV as an OCC Value when a document is in conflict, or we're updating the non-winning leaf
+				// There's no way to get from a given old CV to a RevTreeID to perform the update correctly, since we don't maintain linear history for a given SourceID.
+				// Reject the request and force the user to resolve the conflict using RevTree IDs which does have linear history available.
+				conflictErr = base.HTTPErrorf(http.StatusBadRequest, "Cannot use CV to modify a document in conflict - resolve first with RevTree ID")
+			} else {
+				conflictErr = base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			}
+		}
+
+		if conflictErr == nil {
+			// Make sure matchRev matches an existing leaf revision:
+			if matchRev == "" {
+				matchRev = doc.CurrentRev
+				if matchRev != "" {
+					// PUT with no parent rev given, but there is an existing current revision.
+					// This is OK as long as the current one is deleted.
+					if !doc.History[matchRev].Deleted {
+						conflictErr = base.HTTPErrorf(http.StatusConflict, "Document exists")
+					} else {
+						generation, _ = ParseRevID(ctx, matchRev)
+						generation++
+					}
+				}
+			} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(ctx, doc, matchRev, deleted, false, nil) {
+				conflictErr = base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			}
+		}
+
+		// Make up a new _rev, and add it to the history:
+		bodyWithoutInternalProps, wasStripped := stripInternalProperties(body)
+		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
+		if err != nil {
+			return nil, nil, false, nil, err
+		}
+
+		// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
+		_, isDeleted := body[BodyDeleted]
+		if isDeleted {
+			delete(body, BodyDeleted)
+		}
+
+		// and now we can finally update the newDoc body to be without any special properties
+		newDoc.UpdateBody(body)
+
+		// If no special properties were stripped and document wasn't deleted, the canonical bytes represent the current
+		// body.  In this scenario, store canonical bytes as newDoc._rawBody
+		if !wasStripped && !isDeleted {
+			newDoc._rawBody = canonicalBytesForRevID
+		}
+
+		// Handle telling the user if there is a conflict
+		if conflictErr != nil {
+			if db.ForceAPIForbiddenErrors() {
+				// Make sure the user has permission to modify the document before confirming doc existence
+				mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
+				if err != nil {
+					base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
+					return nil, nil, false, nil, ErrForbidden
+				}
+
+				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
+				if err != nil {
+					base.DebugfCtx(ctx, base.KeyCRUD, "Could not modify doc %q due to %s and sync func rejection: %v", base.UD(doc.ID), conflictErr, err)
+					return nil, nil, false, nil, ErrForbidden
+				}
+			}
+			return nil, nil, false, nil, conflictErr
+		}
+
+		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
+		// be done before calling CreateRevID (the ID is based on the digest of the body.)
+		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.Attachments(), generation, matchRev, nil)
+		if err != nil {
+			return nil, nil, false, nil, err
+		}
+
+		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
+
+		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+			base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
+			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
+		}
+
+		newDoc.RevID = newRev
+		newDoc.Deleted = deleted
+
+		return newDoc, newAttachments, false, nil, nil
+	})
+	require.NoError(t, err, "error from updateAndReturnDoc")
+
+	return newRevID, doc
 }
 
 // EncodeTestVersion converts a simplified string version of the form 1@abc to a hex-encoded version and base64 encoded

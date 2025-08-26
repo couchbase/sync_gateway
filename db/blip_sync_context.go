@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -379,10 +380,12 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			//	element must always be a CV here which will be used for delta sync if enabled. The subsequent revID
 			//	will be used to determine what revIDs will need to be included in the revTree property for ISGR
 
-			deltaSrcRevID, legacyRev, knownRevs, err = bsc.getKnownRevs(ctx, docID, knownRevsArray)
-			if err != nil {
-				base.ErrorfCtx(ctx, "Invalid response to 'changes' message. Err: %v", err)
-				return nil
+			if len(knownRevsArray) > 0 {
+				deltaSrcRevID, legacyRev, knownRevs, err = bsc.getKnownRevs(ctx, docID, knownRevsArray)
+				if err != nil {
+					base.ErrorfCtx(ctx, "Invalid response to 'changes' message. Err: %v", err)
+					return nil
+				}
 			}
 
 			var err error
@@ -654,11 +657,15 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int, legacyRev bool) error {
+func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int, remoteIsLegacyRev bool) error {
 
 	var originalErr error
 	var docRev DocumentRevision
-	if !bsc.useHLV() {
+	var localIsLegacyRev bool
+	if !strings.Contains(revID, "@") {
+		localIsLegacyRev = true
+	}
+	if !bsc.useHLV() || localIsLegacyRev {
 		docRev, originalErr = handleChangesResponseCollection.GetRev(ctx, docID, revID, true, nil)
 	} else {
 		// extract CV string rev representation
@@ -754,7 +761,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	}
 
 	var revTreeHistoryProperty []string
-	if legacyRev {
+	if remoteIsLegacyRev && !localIsLegacyRev {
 		// append current revID and rest of rev tree after hlv history
 		revTreeHistory := toHistory(docRev.History, knownRevs, maxHistory)
 		history = append(history, docRev.RevID)
