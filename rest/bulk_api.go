@@ -435,10 +435,10 @@ func (h *handler) handleBulkGet() error {
 
 			doc := item.(map[string]interface{})
 			docid, _ := doc["id"].(string)
-			revid := ""
+			revOrCV := ""
 			revok := true
 			if doc["rev"] != nil {
-				revid, revok = doc["rev"].(string)
+				revOrCV, revok = doc["rev"].(string)
 			}
 			if docid == "" || !revok {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID in _bulk_get")
@@ -474,7 +474,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, db.Get1xRevBodyOptions{
+				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revOrCV, db.Get1xRevBodyOptions{
 					MaxHistory:       docRevsLimit,
 					HistoryFrom:      revsFrom,
 					AttachmentsSince: attsSince,
@@ -488,15 +488,15 @@ func (h *handler) handleBulkGet() error {
 				status, reason := base.ErrorAsHTTPStatus(err)
 				errStr := base.CouchHTTPErrorName(status)
 				body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
-				if revid != "" {
-					body["rev"] = revid
+				if revOrCV != "" {
+					body["rev"] = revOrCV
 				}
 			}
 
 			_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), body, err != nil, canCompressParts, writer)
 			base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
 				base.AuditFieldDocID:      docid,
-				base.AuditFieldDocVersion: revid,
+				base.AuditFieldDocVersion: revOrCV,
 			})
 			if includeAttachments {
 				if atts, ok := body[db.BodyAttachments]; ok && atts != nil {
@@ -507,7 +507,7 @@ func (h *handler) handleBulkGet() error {
 					for attachment := range attsMap {
 						base.Audit(h.ctx(), base.AuditIDAttachmentRead, base.AuditFields{
 							base.AuditFieldDocID:        docid,
-							base.AuditFieldDocVersion:   revid,
+							base.AuditFieldDocVersion:   revOrCV,
 							base.AuditFieldAttachmentID: attachment,
 						})
 					}
