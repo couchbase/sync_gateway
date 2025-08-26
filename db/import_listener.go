@@ -179,7 +179,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 }
 
 func (il *importListener) ImportFeedEvent(ctx context.Context, collection *DatabaseCollectionWithUser, event sgbucket.FeedEvent) {
-	doc, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
+	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
@@ -190,19 +190,19 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		return
 	}
 
-	if doc.SyncData == nil && event.Opcode == sgbucket.FeedOpDeletion {
+	if syncData == nil && event.Opcode == sgbucket.FeedOpDeletion {
 		return
 	}
 
 	var isSGWrite bool
 	var crc32Match bool
-	if doc.SyncData != nil {
-		if !doc.HasValidSyncDataForImport() {
+	if syncData != nil {
+		if !syncData.HasValidSyncData() {
 			base.WarnfCtx(ctx, "Invalid sync data for doc %s - not importing.", base.UD(event.Key))
 			il.importStats.ImportErrorCount.Add(1)
 			return
 		}
-		isSGWrite, crc32Match, _ = doc.SyncData.IsSGWrite(event.Cas, doc.Body, doc.Xattrs[collection.userXattrKey()])
+		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, doc.Body, doc.Xattrs[collection.userXattrKey()])
 		if crc32Match {
 			il.dbStats.Crc32MatchCount.Add(1)
 		}
@@ -210,7 +210,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 
 	docID := string(event.Key)
 	// If syncData is nil, or if this was not an SG write, attempt to import
-	if doc.SyncData == nil || !isSGWrite {
+	if syncData == nil || !isSGWrite {
 		isDelete := event.Opcode == sgbucket.FeedOpDeletion
 		if isDelete {
 			doc.Body = nil
@@ -240,10 +240,10 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 				base.DebugfCtx(ctx, base.KeyImport, "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
 			}
 		}
-	} else if doc.SyncData != nil && doc.SyncData.AttachmentsPre4dot0 != nil {
+	} else if syncData != nil && syncData.AttachmentsPre4dot0 != nil {
 		base.DebugfCtx(ctx, base.KeyImport, "Attachment metadata found in sync data for doc with id %s, migrating attachment metadata", base.UD(docID))
 		// we have attachments to migrate
-		err := collection.MigrateAttachmentMetadata(ctx, docID, event.Cas, doc.SyncData)
+		err := collection.MigrateAttachmentMetadata(ctx, docID, event.Cas, syncData)
 		if err != nil {
 			base.WarnfCtx(ctx, "error migrating attachment metadata from sync data to global sync for doc %s. Error: %v", base.UD(docID), err)
 		}

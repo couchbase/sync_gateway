@@ -377,7 +377,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	doc, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
+	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
@@ -389,7 +389,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
-	syncData := doc.SyncData
 	// If using xattrs and this isn't an SG write, we shouldn't attempt to cache.
 	rawUserXattr := doc.Xattrs[collection.userXattrKey()]
 	if collection.UseXattrs() {
@@ -516,9 +515,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		Channels:     syncData.Channels,
 		CollectionID: event.CollectionID,
 	}
-	if doc.HLV != nil {
-		change.SourceID = doc.HLV.SourceID
-		change.Version = doc.HLV.Version
+	if len(doc.Xattrs[base.VvXattrName]) > 0 {
+		change.SourceID = syncData.RevAndVersion.CurrentSource
+		change.Version = base.HexCasToUint64(syncData.RevAndVersion.CurrentVersion)
 	}
 
 	millisecondLatency := int(feedLatency / time.Millisecond)

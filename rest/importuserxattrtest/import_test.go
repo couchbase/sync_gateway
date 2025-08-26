@@ -412,10 +412,10 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	}
 	value := sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	rawDoc, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	rawDoc, syncData, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
 	assert.Equal(t, syncXattr, string(rawDoc.Xattrs[base.SyncXattrName]))
-	assert.Equal(t, uint64(200), rawDoc.SyncData.Sequence)
+	assert.Equal(t, uint64(200), syncData.Sequence)
 	assert.Equal(t, channelName, string(rawDoc.Xattrs[userXattrKey]))
 	assert.Equal(t, body, rawDoc.Body)
 
@@ -425,9 +425,9 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	}
 	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	rawDoc, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	rawDoc, syncData, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
-	assert.Nil(t, rawDoc.SyncData)
+	assert.Nil(t, syncData)
 	assert.Nil(t, rawDoc.Xattrs[base.SyncXattrName])
 	assert.Equal(t, channelName, string(rawDoc.Xattrs[userXattrKey]))
 	assert.Equal(t, body, rawDoc.Body)
@@ -436,9 +436,9 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	xattrs = []sgbucket.Xattr{}
 	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	rawDoc, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	rawDoc, syncData, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
-	assert.Nil(t, rawDoc.SyncData)
+	assert.Nil(t, syncData)
 	assert.Nil(t, rawDoc.Xattrs[base.SyncXattrName])
 	assert.Nil(t, rawDoc.Xattrs[userXattrKey])
 	assert.Equal(t, body, rawDoc.Body)

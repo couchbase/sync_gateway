@@ -88,22 +88,23 @@ func (m *MetadataOnlyUpdate) PreviousCAS() uint64 {
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	NewestRev           string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags               uint8               `json:"flags,omitempty"`
-	Sequence            uint64              `json:"sequence,omitempty"`
-	UnusedSequences     []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences     []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	Channels            channels.ChannelMap `json:"channels,omitempty"`
-	Access              UserAccessMap       `json:"access,omitempty"`
-	RoleAccess          UserAccessMap       `json:"role_access,omitempty"`
-	Expiry              *time.Time          `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas                 string              `json:"cas"`                               // String representation of a cas value, populated via macro expansion
-	Crc32c              string              `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
-	Crc32cUserXattr     string              `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
-	TombstonedAt        int64               `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
-	AttachmentsPre4dot0 AttachmentsMeta     `json:"attachments,omitempty"`             // Location of _attachments metadata for pre-4.0 attachments, stored in _sync xattr or _sync inline. In 4.0 and later, attachments are in _globalSync._attachments_meta
-	ChannelSet          []ChannelSetEntry   `json:"channel_set"`
-	ChannelSetHistory   []ChannelSetEntry   `json:"channel_set_history"`
+	RevAndVersion       channels.RevAndVersion `json:"rev"`               // Current revision and HLV version
+	NewestRev           string                 `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags               uint8                  `json:"flags,omitempty"`
+	Sequence            uint64                 `json:"sequence,omitempty"`
+	UnusedSequences     []uint64               `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences     []uint64               `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	Channels            channels.ChannelMap    `json:"channels,omitempty"`
+	Access              UserAccessMap          `json:"access,omitempty"`
+	RoleAccess          UserAccessMap          `json:"role_access,omitempty"`
+	Expiry              *time.Time             `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas                 string                 `json:"cas"`                               // String representation of a cas value, populated via macro expansion
+	Crc32c              string                 `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr     string                 `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
+	TombstonedAt        int64                  `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
+	AttachmentsPre4dot0 AttachmentsMeta        `json:"attachments,omitempty"`             // Location of _attachments metadata for pre-4.0 attachments, stored in _sync xattr or _sync inline. In 4.0 and later, attachments are in _globalSync._attachments_meta
+	ChannelSet          []ChannelSetEntry      `json:"channel_set"`
+	ChannelSetHistory   []ChannelSetEntry      `json:"channel_set_history"`
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -117,8 +118,6 @@ type SyncData struct {
 
 	addedRevisionBodies     []string          // revIDs of non-winning revision bodies that have been added (and so require persistence)
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
-
-	RevAndVersion channels.RevAndVersion `json:"rev"` // Current revision and HLV version
 }
 
 func (sd *SyncData) SetRevTreeID(revTreeID string) {
@@ -532,9 +531,10 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 // Returns the raw body, in case it's needed for import.
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
-func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (*RawDocument, error) {
-	rawDoc := &RawDocument{}
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (*sgbucket.BucketDocument, *SyncData, error) {
+	rawDoc := &sgbucket.BucketDocument{}
 
+	var syncData *SyncData
 	// If xattr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
 	// Note that there could be a non-sync xattr present
 	if dataType&base.MemcachedDataTypeXattr != 0 {
@@ -545,29 +545,21 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 		var err error
 		rawDoc.Body, rawDoc.Xattrs, err = sgbucket.DecodeValueWithXattrs(xattrKeys, data)
 		if err != nil {
-			return nil, err
-		}
-
-		if vvXattr, ok := rawDoc.Xattrs[base.VvXattrName]; ok {
-			err = base.JSONUnmarshal(vvXattr, &rawDoc.HLV)
-			if err != nil {
-				return nil, fmt.Errorf("error unmarshalling HLV: %w", err)
-			}
+			return nil, nil, err
 		}
 
 		// If the sync xattr is present, use that to build SyncData
 		syncXattr, ok := rawDoc.Xattrs[base.SyncXattrName]
-
 		if ok && len(syncXattr) > 0 {
-			rawDoc.SyncData = &SyncData{}
+			syncData = &SyncData{}
 			if needHistory {
-				rawDoc.SyncData.History = make(RevTree)
+				syncData.History = make(RevTree)
 			}
-			err = base.JSONUnmarshal(syncXattr, rawDoc.SyncData)
+			err = base.JSONUnmarshal(syncXattr, syncData)
 			if err != nil {
-				return nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
+				return nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
 			}
-			return rawDoc, nil
+			return rawDoc, syncData, nil
 		}
 
 	} else {
@@ -578,13 +570,13 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
 	if len(rawDoc.Body) != 0 {
 		var err error
-		rawDoc.SyncData, err = UnmarshalDocumentSyncData(rawDoc.Body, needHistory)
+		syncData, err = UnmarshalDocumentSyncData(rawDoc.Body, needHistory)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
-	return rawDoc, nil
+	return rawDoc, syncData, nil
 }
 
 func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {

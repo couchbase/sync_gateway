@@ -493,14 +493,14 @@ func TestDCPDecodeValue(t *testing.T) {
 				require.Nil(t, xattrs)
 			}
 			// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-			rawDoc, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
+			rawDoc, syncData, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
 			require.ErrorIs(t, err, test.expectedErr)
 			if test.expectedErr != nil {
 				require.Nil(t, rawDoc)
 				return
 			}
 			if test.expectedSyncXattr != nil {
-				require.NotNil(t, rawDoc.SyncData)
+				require.NotNil(t, syncData)
 				require.Equal(t, test.expectedSyncXattr, rawDoc.Xattrs[base.SyncXattrName])
 			}
 			require.Equal(t, test.expectedBody, rawDoc.Body)
@@ -520,9 +520,9 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	require.Empty(t, xattrs)
 
 	// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-	rawDoc, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
+	rawDoc, syncData, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
 	require.NoError(t, err) // body will be nil, no xattrs are found
-	require.Nil(t, rawDoc.SyncData)
+	require.Nil(t, syncData)
 	require.Equal(t, emptyBody, rawDoc.Body)
 	require.Empty(t, rawDoc.Xattrs)
 
