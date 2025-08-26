@@ -1423,6 +1423,15 @@ func (doc *Document) ExtractDocVersion() DocVersion {
 	}
 }
 
+func (doc *Document) IsInConflict(ctx context.Context, incomingHLV *HybridLogicalVector) (bool, error) {
+	// If there is no SyncData, then the document can not be in conflict.
+	if doc.SyncData.Sequence == 0 {
+		return false, nil
+
+	}
+	return IsInConflict(ctx, doc.HLV, incomingHLV)
+}
+
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 // Users should access the properties via the CV and RevTreeID methods, to ensure there's a check that the specific version type is not empty.
 type DocVersion struct {

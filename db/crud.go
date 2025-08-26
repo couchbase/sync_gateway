@@ -1318,7 +1318,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 			}
 		} else {
-			isConflict, err = IsInConflict(ctx, doc.HLV, newDocHLV)
+			isConflict, err = doc.IsInConflict(ctx, newDocHLV)
 			if err != nil && errors.Is(err, ErrNoNewVersionsToAdd) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
 				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
