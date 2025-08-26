@@ -72,7 +72,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 	if key == "" {
 		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
-	doc, rawBucketDoc, err = c.GetDocWithXattrs(ctx, key, unmarshalLevel)
+	doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -83,22 +83,14 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 
 	// If existing doc wasn't an SG Write, import the doc.
 	if !isSgWrite {
-		// reload to get revseqno for on-demand import
-		doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
-		if err != nil {
-			return nil, nil, err
+		var importErr error
+		doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
+		if importErr != nil {
+			return nil, nil, importErr
 		}
-		isSgWrite, _, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
-		if !isSgWrite {
-			var importErr error
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
-			if importErr != nil {
-				return nil, nil, importErr
-			}
-			// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
-			if doc == nil {
-				return nil, nil, base.ErrNotFound
-			}
+		// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
+		if doc == nil {
+			return nil, nil, base.ErrNotFound
 		}
 	}
 	if !doc.HasValidSyncData() {
