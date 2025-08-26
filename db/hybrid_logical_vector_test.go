@@ -1504,7 +1504,7 @@ func TestHLVUpddateFromIncomingRemoteWins(t *testing.T) {
 			incomingHLV := createHLVForTest(t, test.incomingHLV)
 			expectedHLV := createHLVForTest(t, test.finalHLV)
 
-			require.NoError(t, localHLV.UpdateFromIncomingRemoteWins(incomingHLV))
+			localHLV.UpdateWithIncomingHLV(incomingHLV)
 			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %s, actual HLV %s", test.finalHLV, hlvAsBlipString(t, localHLV))
 		})
 	}
@@ -1627,7 +1627,7 @@ func TestHLVUpdateFromIncomingNewCV(t *testing.T) {
 
 			require.Equal(t, HLVConflict, IsInConflict(t.Context(), localHLV, incomingHLV))
 
-			require.NoError(t, localHLV.UpdateFromIncomingWithNewCV(test.newCV, incomingHLV))
+			localHLV.MergeWithIncomingHLV(test.newCV, incomingHLV)
 			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %s, actual HLV %s", test.finalHLV, hlvAsBlipString(t, localHLV))
 		})
 	}

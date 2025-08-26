@@ -348,14 +348,14 @@ func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.Hybr
 	updatedHLV := latestLocalRev.HLV.Copy()
 	// resolve conflict in favor of remote document
 	if incomingHLV.Version > latestLocalHLV.Version {
-		require.NoError(btcc.TB(), updatedHLV.UpdateFromIncomingRemoteWins(incomingHLV))
+		updatedHLV.UpdateWithIncomingHLV(incomingHLV)
 		return incomingBody, *updatedHLV
 	}
 	newCV := db.Version{
 		SourceID: btcc.parent.SourceID,
 		Value:    uint64(btcc.hlc.Now()),
 	}
-	require.NoError(btcc.TB(), updatedHLV.UpdateFromIncomingWithNewCV(newCV, incomingHLV))
+	updatedHLV.MergeWithIncomingHLV(newCV, incomingHLV)
 	return latestLocalRev.body, *updatedHLV
 }
 

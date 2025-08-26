@@ -1328,7 +1328,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
 		if doc.HLV == nil {
 			doc.HLV = NewHybridLogicalVector()
-			err := doc.HLV.UpdateFromIncomingRemoteWins(newDocHLV)
+			doc.HLV.UpdateWithIncomingHLV(newDocHLV)
 			if err != nil {
 				return nil, nil, false, nil, err
 			}
@@ -1350,7 +1350,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 				}
 				// update hlv for all newer incoming source version pairs
-				err := doc.HLV.UpdateFromIncomingRemoteWins(newDocHLV)
+				doc.HLV.UpdateWithIncomingHLV(newDocHLV)
 				if err != nil {
 					return nil, nil, false, nil, err
 				}
@@ -1379,7 +1379,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 						return nil, nil, false, nil, err
 					}
 					revTreeConflictChecked = true
-					err = doc.HLV.UpdateFromIncomingRemoteWins(newDocHLV)
+					doc.HLV.UpdateWithIncomingHLV(newDocHLV)
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
