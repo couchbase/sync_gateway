@@ -355,7 +355,7 @@ func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.Hybr
 		SourceID: btcc.parent.SourceID,
 		Value:    uint64(btcc.hlc.Now()),
 	}
-	updatedHLV.MergeWithIncomingHLV(newCV, incomingHLV)
+	require.NoError(btcc.TB(), updatedHLV.MergeWithIncomingHLV(newCV, incomingHLV))
 	return latestLocalRev.body, *updatedHLV
 }
 

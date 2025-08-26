@@ -810,11 +810,14 @@ func (hlv *HybridLogicalVector) UpdateWithIncomingHLV(incomingHLV *HybridLogical
 //  1. The new CV will be set
 //  2. The previous CVs from both HLVs will become merge versions.
 //  3. Any history from the incoming HLV not already present on hlv will be added to hlv's PV.
-func (hlv *HybridLogicalVector) MergeWithIncomingHLV(newCV Version, incomingHLV *HybridLogicalVector) {
+func (hlv *HybridLogicalVector) MergeWithIncomingHLV(newCV Version, incomingHLV *HybridLogicalVector) error {
 	previousSourceID, previousVersion := hlv.GetCurrentVersion()
-	hlv.AddVersion(newCV)
+	err := hlv.AddVersion(newCV)
+	if err != nil {
+		return err
+	}
 	hlv.AddMergeVersion(incomingHLV.SourceID, incomingHLV.Version)
 	hlv.AddMergeVersion(previousSourceID, previousVersion)
 	hlv.UpdateHistory(incomingHLV)
-
+	return nil
 }
