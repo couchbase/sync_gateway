@@ -3458,7 +3458,7 @@ func (doc *Document) addNewerRevisionsToRevTreeHistory(newDoc *Document, current
 const (
 	xattrMacroCas               = "cas"          // SyncData.Cas
 	xattrMacroValueCrc32c       = "value_crc32c" // SyncData.Crc32c
-	xattrMacroCurrentRevVersion = "rev.ver"      // SyncDataJSON.RevAndVersion.CurrentVersion
+	xattrMacroCurrentRevVersion = "rev.ver"      // SyncData.RevAndVersion.CurrentVersion
 	versionVectorVrsMacro       = "ver"          // PersistedHybridLogicalVector.Version
 	versionVectorCVCASMacro     = "cvCas"        // PersistedHybridLogicalVector.CurrentVersionCAS
 
