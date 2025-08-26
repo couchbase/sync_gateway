@@ -1766,7 +1766,7 @@ func TestPutRevV4(t *testing.T) {
 	}, *doc.HLV)
 
 	// 4. Update the document again with a non-conflicting revision from a different source, and additional sources in history (previous cv moved to pv, and pv expanded)
-	updatedHistory = "1@b, 2@a, 4@c, 1@d, 1@e"
+	updatedHistory = "1@b, 2@a, 4@c, 1@d"
 	sent, _, resp, err = bt.SendRev(docID, "1@e", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
 	assert.True(t, sent)
 	require.NoError(t, err)

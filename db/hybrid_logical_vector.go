@@ -11,7 +11,6 @@ package db
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -348,75 +347,25 @@ func (hlv *HybridLogicalVector) isDominating(otherVector *HybridLogicalVector) b
 	return hlv.DominatesSource(Version{otherVector.SourceID, otherVector.Version})
 }
 
-// GetVersion returns the latest decoded CAS value in the HLV for a given sourceID
+// GetValue returns the latest decoded version value in the HLV for a given sourceID and whether the sourceID
+// is present in the HLV.
 func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 	if sourceID == "" {
 		return 0, false
 	}
-	var latestVersion uint64
 	if sourceID == hlv.SourceID {
-		latestVersion = hlv.Version
+		return hlv.Version, true
 	}
-	if pvEntry, ok := hlv.PreviousVersions[sourceID]; ok {
-		entry := pvEntry
-		if entry > latestVersion {
-			latestVersion = entry
-		}
-	}
-	if mvEntry, ok := hlv.MergeVersions[sourceID]; ok {
-		entry := mvEntry
-		if entry > latestVersion {
-			latestVersion = entry
-		}
-	}
-	// if we have 0 cas value, there is no entry for this source ID in the HLV
-	if latestVersion == 0 {
-		return latestVersion, false
-	}
-	return latestVersion, true
-}
-
-// AddNewerVersions will take a hlv and add any newer source/version pairs found across CV and PV found in the other HLV taken as parameter
-// when both HLV
-func (hlv *HybridLogicalVector) AddNewerVersions(otherVector *HybridLogicalVector) error {
-
-	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
-	// version than local HLVs CV pair
-	otherVectorCV := Version{SourceID: otherVector.SourceID, Value: otherVector.Version}
-	err := hlv.AddVersion(otherVectorCV)
-	if err != nil {
-		return err
+	mvEntry, ok := hlv.MergeVersions[sourceID]
+	if ok {
+		return mvEntry, true
 	}
 
-	// Copy incoming merge versions (previously existing merge versions will have been moved to pv by AddVersion)
-	for i, v := range otherVector.MergeVersions {
-		hlv.SetMergeVersion(i, v)
+	pvEntry, ok := hlv.PreviousVersions[sourceID]
+	if ok {
+		return pvEntry, true
 	}
-
-	if len(otherVector.PreviousVersions) != 0 {
-		// Iterate through incoming vector previous versions, update with the version from other vector
-		// for source if the local version for that source is lower
-		for i, v := range otherVector.PreviousVersions {
-			if hlv.PreviousVersions[i] == 0 {
-				hlv.SetPreviousVersion(i, v)
-			} else {
-				// if we get here then there is entry for this source in PV so we must check if its newer or not
-				otherHLVPVValue := v
-				localHLVPVValue := hlv.PreviousVersions[i]
-				if localHLVPVValue < otherHLVPVValue {
-					hlv.SetPreviousVersion(i, v)
-				}
-			}
-		}
-	}
-	// ensure no duplicates of cv, mv in pv
-	delete(hlv.PreviousVersions, hlv.SourceID)
-
-	for source := range hlv.MergeVersions {
-		delete(hlv.PreviousVersions, source)
-	}
-
-	return nil
+	return 0, false
 }
 
 // computeMacroExpansions returns the mutate in spec needed for the document update based off the outcome in updateHLV
@@ -760,9 +709,6 @@ const (
 	HLVNoConflictRevAlreadyPresent
 )
 
-// ErrNoNewVersionsToAdd will be thrown when there are no new versions from incoming HLV to be added to HLV that is local
-var ErrNoNewVersionsToAdd = errors.New("no new versions to add to HLV")
-
 // IsInConflict is used to identify if two HLV's are in conflict or not. Will return boolean to indicate if in conflict
 // or not and will error for the following cases:
 //   - Local HLV dominates incoming HLV (meaning local version is a newer version that the incoming one)
@@ -852,12 +798,12 @@ func (hlv *HybridLogicalVector) AddVersionToPV(sourceID string, version uint64) 
 
 }
 
-// UpdateWithIncomingHLV will update hlv to the incoming HLV preserving any history on hlv that is not present on the incoming HLV
+// UpdateWithIncomingHLV will update hlv to the incoming HLV preserving any history on hlv that is not present on the
+// incoming HLV. This will modify the
+// incomingHLV to match hlv, for efficiency.
 func (hlv *HybridLogicalVector) UpdateWithIncomingHLV(incomingHLV *HybridLogicalVector) {
-
 	incomingHLV.UpdateHistory(hlv)
 	*hlv = *incomingHLV
-	return
 }
 
 // MergeWithIncomingHLV will merge HLV with an incoming HLV.
@@ -865,13 +811,10 @@ func (hlv *HybridLogicalVector) UpdateWithIncomingHLV(incomingHLV *HybridLogical
 //  2. The previous CVs from both HLVs will become merge versions.
 //  3. Any history from the incoming HLV not already present on hlv will be added to hlv's PV.
 func (hlv *HybridLogicalVector) MergeWithIncomingHLV(newCV Version, incomingHLV *HybridLogicalVector) {
-
 	previousSourceID, previousVersion := hlv.GetCurrentVersion()
-
 	hlv.AddVersion(newCV)
 	hlv.AddMergeVersion(incomingHLV.SourceID, incomingHLV.Version)
 	hlv.AddMergeVersion(previousSourceID, previousVersion)
 	hlv.UpdateHistory(incomingHLV)
-	return
 
 }

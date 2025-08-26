@@ -2057,7 +2057,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 		base.DebugfCtx(ctx, base.KeySGTest, "No conflict")
 		if btcc.UseHLV() {
 			// Add the incoming HLV to the local HLV, regardless of winner
-			require.NoError(btcc.TB(), updatedHLV.AddNewerVersions(opts.incomingHLV))
+			updatedHLV.UpdateWithIncomingHLV(opts.incomingHLV)
 		}
 	}
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
