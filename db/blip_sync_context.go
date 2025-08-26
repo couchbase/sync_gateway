@@ -662,6 +662,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	var originalErr error
 	var docRev DocumentRevision
 	var localIsLegacyRev bool
+	// some of this legacy rev handing is due to change pending CBG-4784
 	if !strings.Contains(revID, "@") {
 		localIsLegacyRev = true
 	}
@@ -752,7 +753,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		bsc.replicationStats.SendReplacementRevCount.Add(1)
 	}
 	var history []string
-	if !bsc.useHLV() {
+	if !bsc.useHLV() || localIsLegacyRev {
 		history = toHistory(docRev.History, knownRevs, maxHistory)
 	} else {
 		if docRev.hlvHistory != "" {
