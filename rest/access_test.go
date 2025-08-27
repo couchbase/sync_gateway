@@ -1157,15 +1157,6 @@ func TestAllDocsCV(t *testing.T) {
 			output: fmt.Sprintf(`{
 				"total_rows": 1,
 				"update_seq": 1,
-				"rows": [{"key": "%s", "id": "%s", "value": {"rev": "%s"}}]
-			}`, docID, docID, docVersion.RevTreeID),
-		},
-		{
-			name: "cvs=true",
-			url:  "/{{.keyspace}}/_all_docs?show_cv=true",
-			output: fmt.Sprintf(`{
-				"total_rows": 1,
-				"update_seq": 1,
 				"rows": [{"key": "%s", "id": "%s", "value": {"rev": "%s", "cv": "%s"}}]
 			}`, docID, docID, docVersion.RevTreeID, docVersion.CV.String()),
 		},

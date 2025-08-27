@@ -73,7 +73,6 @@ func (h *handler) handleAllDocs() error {
 	includeChannels := h.getBoolQuery("channels")
 	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
-	includeCVs := h.getBoolQuery("show_cv")
 	includeSeqs := h.getBoolQuery("update_seq")
 
 	// Get the doc IDs if this is a POST request:
@@ -190,14 +189,12 @@ func (h *handler) handleAllDocs() error {
 		row.Value = &value
 		row.ID = doc.DocID
 		value.Rev = doc.RevID
+		row.Value.CV = doc.CV
 		if includeSeqs {
 			row.UpdateSeq = doc.Sequence
 		}
 		if includeChannels {
 			row.Value.Channels = channels
-		}
-		if includeCVs {
-			row.Value.CV = doc.CV
 		}
 		return row
 	}
