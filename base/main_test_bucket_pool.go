@@ -79,6 +79,8 @@ type TestBucketPool struct {
 	cluster                *tbpCluster
 	bucketReadierQueue     chan tbpBucketName
 	bucketReadierWaitGroup *sync.WaitGroup
+	// bucketCreationDoneChan is closed when all buckets have been created and run through bucketInitFunc
+	bucketCreationDoneChan chan struct{}
 	ctxCancelFunc          context.CancelFunc
 
 	bucketInitFunc TBPBucketInitFunc
@@ -115,6 +117,9 @@ type TestBucketPool struct {
 
 	// xdcrConflictResolutionStrategy defines the conflict resolution strategy to use for XDCR, defined at bucket creation time.
 	xdcrConflictResolutionStrategy XDCRConflictResolutionStrategy
+
+	// needsBucketTeardown indicates whether the test bucket pool needs to be torn down after tests are run.
+	needsBucketTeardown bool
 }
 
 type TestBucketPoolOptions struct {
@@ -124,6 +129,7 @@ type TestBucketPoolOptions struct {
 	ParallelBucketInit      bool
 	NumCollectionsPerBucket int      // setting this value in main_test.go will override the default
 	TeardownFuncs           []func() // functions to be run after Main is completed but before standard teardown functions run
+	NeedsBucketTeardown     bool     // whether the test bucket pool needs to be torn down after tests are run, used for goroutine dump
 }
 
 // XDCRConflictResolutionStrategy defines the conflict resolution strategy to use for XDCR, defined at bucket creation time.
@@ -133,10 +139,6 @@ const (
 	XDCRConflictResolutionStrategyLWW XDCRConflictResolutionStrategy = "lww"
 	XDCRConflictResolutionStrategyMWW XDCRConflictResolutionStrategy = "mww"
 )
-
-func NewTestBucketPool(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
-	return NewTestBucketPoolWithOptions(ctx, bucketReadierFunc, bucketInitFunc, TestBucketPoolOptions{})
-}
 
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
 func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc, options TestBucketPoolOptions) *TestBucketPool {
@@ -189,6 +191,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		readyBucketPool:                make(chan Bucket, numBuckets),
 		bucketReadierQueue:             make(chan tbpBucketName, numBuckets),
 		bucketReadierWaitGroup:         &sync.WaitGroup{},
+		bucketCreationDoneChan:         make(chan struct{}),
 		ctxCancelFunc:                  ctxCancelFunc,
 		preserveBuckets:                preserveBuckets,
 		bucketInitFunc:                 bucketInitFunc,
@@ -205,11 +208,13 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 			Password:      TestClusterPassword(),
 			TLSSkipVerify: TestTLSSkipVerify(),
 		},
+		needsBucketTeardown: options.NeedsBucketTeardown,
 	}
 
 	// We can safely skip setup if using existing buckets or rosmar buckets, since they can be opened on demand.
 	if !tbp.integrationMode {
 		tbp.stats.TotalBucketInitCount.Add(int32(numBuckets))
+		close(tbp.bucketCreationDoneChan)
 		return &tbp
 	}
 
@@ -459,20 +464,37 @@ func (tbp *TestBucketPool) Close(ctx context.Context) {
 		// noop
 		return
 	}
+	defer tbp.printStats()
 
+	if !tbp.needsBucketTeardown {
+		return
+	}
+	tbp.Logf(ctx, "Closing TestBucketPool and closing all buckets")
 	// Cancel async workers
 	if tbp.ctxCancelFunc != nil {
 		tbp.ctxCancelFunc()
+		tbp.Logf(ctx, "Waiting for bucket readier to finish")
 		tbp.bucketReadierWaitGroup.Wait()
+		tbp.Logf(ctx, "Waiting for bucket creation to finish")
+		<-tbp.bucketCreationDoneChan
+		tbp.Logf(ctx, "Bucket creation finished")
 	}
 
 	if tbp.cluster != nil {
+	bucketLoop:
+		for _ = range tbp.numBuckets {
+			select {
+			case bucket := <-tbp.readyBucketPool:
+				tbp.Logf(ctx, "Closing bucket %s", bucket.GetName())
+				bucket.Close(ctx)
+			default:
+				break bucketLoop
+			}
+		}
 		if err := tbp.cluster.close(); err != nil {
 			tbp.Logf(ctx, "Couldn't close cluster connection: %v", err)
 		}
 	}
-
-	tbp.printStats()
 }
 
 // removeOldTestBuckets removes all buckets starting with testBucketNamePrefix
@@ -590,6 +612,7 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 // createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
 func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc, parallelBucketInit bool) {
 
+	defer close(tbp.bucketCreationDoneChan)
 	start := time.Now()
 	wg := sync.WaitGroup{}
 	wg.Add(numBuckets)
@@ -643,6 +666,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 				return false, nil, nil
 			}, CreateSleeperFunc(5, 1000))
 			if ctx.Err() != nil {
+				bucket.Close(ctx)
 				return
 			} else if err != nil {
 				tbp.Fatalf(ctx, "Couldn't init %s, got error: %v - Aborting", itemName, err)
@@ -762,6 +786,12 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	teardownFuncs = append(teardownFuncs, options.TeardownFuncs...)
 	SkipPrometheusStatsRegistration = true
 
+	dumpGoroutines, _ := strconv.ParseBool(os.Getenv(TestEnvGoroutineDump))
+	// dumpGoroutins requires bucket teardown to be run on exit, but if NeedsBucketTeardown for some other reason, we don't want to override it.
+	if !options.NeedsBucketTeardown {
+		options.NeedsBucketTeardown = dumpGoroutines
+	}
+
 	GTestBucketPool = NewTestBucketPoolWithOptions(ctx, bucketReadierFunc, bucketInitFunc, options)
 	teardownFuncs = append(teardownFuncs, func() { GTestBucketPool.Close(ctx) })
 
@@ -771,8 +801,9 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 		}
 	})
 	// must be the last teardown function added to the list to correctly detect leaked goroutines
-	teardownFuncs = append(teardownFuncs, SetUpTestGoroutineDump(m))
-
+	if dumpGoroutines {
+		teardownFuncs = append(teardownFuncs, SetUpTestGoroutineDump(m))
+	}
 	if options.RequireXDCR && GTestBucketPool.cluster != nil && !GTestBucketPool.cluster.ee {
 		SkipTestMain(m, "Test requires XDCR, but Couchbase Server is not Enterprise edition")
 	}
