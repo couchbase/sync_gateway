@@ -13,9 +13,11 @@ package rest
 import (
 	"fmt"
 	"io"
+	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -230,31 +232,74 @@ func TestBulkGetWithCV(t *testing.T) {
 	defer rt.Close()
 
 	doc1ID := "doc1"
-	doc2ID := "doc2"
 	doc1Version := rt.PutDoc(doc1ID, `{"foo": "bar"}`)
+	doc1Version = rt.UpdateDoc(doc1ID, doc1Version, `{"foo": "bar", "updates": 1}`)
+	doc1Version = rt.UpdateDoc(doc1ID, doc1Version, `{"foo": "bar", "updated": 2}`)
+	doc1Version = rt.UpdateDoc(doc1ID, doc1Version, `{"foo": "bar", "updated": 3}`)
+	doc1RevTreeGen, _ := db.ParseRevID(base.TestCtx(t), doc1Version.RevTreeID)
+	doc1Raw := rt.GetRawDoc(doc1ID)
+	// build newest to oldest list of revtree digests (required for validating _revisions response)
+	var doc1HistoryDigests = make([]string, 0, doc1RevTreeGen)
+	for _, v := range slices.Backward(slices.Sorted(maps.Keys(doc1Raw.Xattrs.Sync.History))) {
+		_, digest := db.ParseRevID(base.TestCtx(t), v)
+		doc1HistoryDigests = append(doc1HistoryDigests, digest)
+	}
+
+	doc2ID := "doc2"
 	doc2Version := rt.PutDoc(doc2ID, `{"foo": "baz"}`)
+	doc2RevTreeGen, doc2RevTreeDigest := db.ParseRevID(base.TestCtx(t), doc2Version.RevTreeID)
+
 	testCases := []struct {
-		name   string
-		url    string
-		input  string
-		output []string
+		name     string
+		url      string
+		showRevs bool
+		input    string
+		output   []string
 	}{
 		{
-			name:  "get doc multipart",
+			name:  "get multipart",
 			url:   "/{{.keyspace}}/_bulk_get",
 			input: fmt.Sprintf(`{"docs":[{"id":"%s"},{"id":"%s"}]}`, doc1ID, doc2ID),
 			output: []string{
-				fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar"}`, doc1ID, doc1Version.RevTreeID),
-				fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"baz"}`, doc2ID, doc2Version.RevTreeID),
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar","updated":3}`, doc1ID, doc1Version.RevTreeID, doc1Version.CV.String()),
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"baz"}`, doc2ID, doc2Version.RevTreeID, doc2Version.CV.String()),
 			},
 		},
 		{
-			name:  "get doc multipart",
-			url:   "/{{.keyspace}}/_bulk_get?show_cv=true",
-			input: fmt.Sprintf(`{"docs":[{"id":"%s"},{"id":"%s"}]}`, doc1ID, doc2ID),
+			name:  "get by rev",
+			url:   "/{{.keyspace}}/_bulk_get",
+			input: fmt.Sprintf(`{"docs":[{"id":"%s","rev":"%s"},{"id":"%s","rev":"%s"}]}`, doc1ID, doc1Version.RevTreeID, doc2ID, doc2Version.RevTreeID),
 			output: []string{
-				fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"bar", "_cv": "%s"}`, doc1ID, doc1Version.RevTreeID, doc1Version.CV),
-				fmt.Sprintf(`{"_id":"%s","_rev":"%s","foo":"baz", "_cv": "%s"}`, doc2ID, doc2Version.RevTreeID, doc2Version.CV),
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar","updated":3}`, doc1ID, doc1Version.RevTreeID, doc1Version.CV.String()),
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"baz"}`, doc2ID, doc2Version.RevTreeID, doc2Version.CV.String()),
+			},
+		},
+		{
+			name:  "get by cv",
+			url:   "/{{.keyspace}}/_bulk_get",
+			input: fmt.Sprintf(`{"docs":[{"id":"%s","rev":"%s"},{"id":"%s","rev":"%s"}]}`, doc1ID, doc1Version.CV.String(), doc2ID, doc2Version.CV.String()),
+			output: []string{
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar","updated":3}`, doc1ID, doc1Version.RevTreeID, doc1Version.CV.String()),
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"baz"}`, doc2ID, doc2Version.RevTreeID, doc2Version.CV.String()),
+			},
+		},
+		{
+			name:     "get by cv show_revs",
+			url:      "/{{.keyspace}}/_bulk_get?revs=true",
+			showRevs: true,
+			input:    fmt.Sprintf(`{"docs":[{"id":"%s","rev":"%s"},{"id":"%s","rev":"%s"}]}`, doc1ID, doc1Version.CV.String(), doc2ID, doc2Version.CV.String()),
+			output: []string{
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"bar","updated":3,"_revisions":{"start":%d,"ids":["%s"]}}`, doc1ID, doc1Version.RevTreeID, doc1Version.CV.String(), doc1RevTreeGen, strings.Join(doc1HistoryDigests, `","`)),
+				fmt.Sprintf(`{"_id":"%s","_rev":"%s","_cv":"%s","foo":"baz","_revisions":{"start":%d,"ids":["%s"]}}`, doc2ID, doc2Version.RevTreeID, doc2Version.CV.String(), doc2RevTreeGen, doc2RevTreeDigest),
+			},
+		},
+		{
+			name:  "get by cv non existent",
+			url:   "/{{.keyspace}}/_bulk_get",
+			input: fmt.Sprintf(`{"docs":[{"id":"%s","rev":"%s"},{"id":"%s","rev":"%s"}]}`, doc1ID, "notvalid@1234", doc2ID, "123-notvalid"),
+			output: []string{
+				fmt.Sprintf(`{"id":"%s","rev":"notvalid@1234","error":"not_found","reason":"missing","status":404}`, doc1ID),
+				fmt.Sprintf(`{"id":"%s","rev":"123-notvalid","error":"not_found","reason":"missing","status":404}`, doc2ID),
 			},
 		},
 	}

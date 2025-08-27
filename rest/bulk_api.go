@@ -397,7 +397,6 @@ func (h *handler) handleBulkGet() error {
 
 	includeAttachments := h.getBoolQuery("attachments")
 	showExp := h.getBoolQuery("show_exp")
-	showCV := h.getBoolQuery("show_cv")
 
 	showRevs := h.getBoolQuery("revs")
 	globalRevsLimit := int(h.getIntQuery("revs_limit", math.MaxInt32))
@@ -479,7 +478,7 @@ func (h *handler) handleBulkGet() error {
 					HistoryFrom:      revsFrom,
 					AttachmentsSince: attsSince,
 					ShowExp:          showExp,
-					ShowCV:           showCV,
+					ShowCV:           true,
 				})
 			}
 
