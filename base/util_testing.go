@@ -390,10 +390,6 @@ func CreateProperty(size int) (result string) {
 func SetUpTestGoroutineDump(m *testing.M) (teardownFn func()) {
 	const numExpected = 1
 
-	if ok, _ := strconv.ParseBool(os.Getenv(TestEnvGoroutineDump)); !ok {
-		return func() {}
-	}
-
 	timestamp := time.Now().Unix()
 	filename := fmt.Sprintf("test-pprof-%s-%d.pb.gz", "goroutine", timestamp)
 	// create the file upfront so we know we're able to write to it before we run tests
