@@ -16,10 +16,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"runtime/debug"
-	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -520,8 +518,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 				}
-				// if V3 and below populate change row with rev id, else populate with CV. If CV not available
-				// (pre upgraded doc) then rev will be sent
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item)
 					pendingChanges = append(pendingChanges, changeRow)
@@ -562,9 +558,14 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion Change
 	var changeRow []interface{}
 
 	// change map should only have one entry
-	revs := slices.Collect(maps.Values(changeVersion))
-	if len(revs) > 1 {
+	if len(changeVersion) > 1 {
 		base.AssertfCtx(bh.loggingCtx, "more changes in list than expected on change entry: %v", change.ID)
+	}
+	var rev string
+	if revID, ok := changeVersion[ChangesVersionTypeRevTreeID]; ok {
+		rev = revID
+	} else {
+		rev = changeVersion[ChangesVersionTypeCV]
 	}
 
 	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 {
@@ -579,13 +580,13 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion Change
 			deletedFlags |= changesDeletedFlagRemoved
 		}
 
-		changeRow = []interface{}{change.Seq, change.ID, revs[0], deletedFlags}
+		changeRow = []interface{}{change.Seq, change.ID, rev, deletedFlags}
 		if deletedFlags == 0 {
 			changeRow = changeRow[0:3]
 		}
 
 	} else {
-		changeRow = []interface{}{change.Seq, change.ID, revs[0], change.Deleted}
+		changeRow = []interface{}{change.Seq, change.ID, rev, change.Deleted}
 		if !change.Deleted {
 			changeRow = changeRow[0:3]
 		}
