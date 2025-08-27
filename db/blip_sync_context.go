@@ -660,7 +660,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	var docRev DocumentRevision
 	var localIsLegacyRev bool
 	// some of this legacy rev handling is due to change pending CBG-4784
-	if !base.IsRevTreeID(revID) {
+	if base.IsRevTreeID(revID) {
 		localIsLegacyRev = true
 	}
 	if !bsc.useHLV() || localIsLegacyRev {
