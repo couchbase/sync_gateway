@@ -380,12 +380,10 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			//	element must always be a CV here which will be used for delta sync if enabled. The subsequent revID
 			//	will be used to determine what revIDs will need to be included in the revTree property for ISGR
 
-			if len(knownRevsArray) > 0 {
-				deltaSrcRevID, legacyRev, knownRevs, err = bsc.getKnownRevs(ctx, docID, knownRevsArray)
-				if err != nil {
-					base.ErrorfCtx(ctx, "Invalid response to 'changes' message. Err: %v", err)
-					return nil
-				}
+			deltaSrcRevID, legacyRev, knownRevs, err = bsc.getKnownRevs(ctx, docID, knownRevsArray)
+			if err != nil {
+				base.ErrorfCtx(ctx, "Invalid response to 'changes' message. Err: %v", err)
+				return nil
 			}
 
 			var err error
@@ -662,7 +660,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	var originalErr error
 	var docRev DocumentRevision
 	var localIsLegacyRev bool
-	// some of this legacy rev handing is due to change pending CBG-4784
+	// some of this legacy rev handling is due to change pending CBG-4784
 	if !strings.Contains(revID, "@") {
 		localIsLegacyRev = true
 	}
