@@ -1371,12 +1371,6 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
-	//if populatedDoc.HLV != nil {
-	//	cv := Version{}
-	//	cv.SourceID, cv.Value = populatedDoc.HLV.GetCurrentVersion()
-	//	row.CurrentVersion = &cv
-	//}
-
 	var removedChannels []string
 
 	userCanSeeDocChannel := false
