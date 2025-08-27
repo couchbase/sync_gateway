@@ -86,7 +86,7 @@ func TestActiveReplicatorPullLegacyRev(t *testing.T) {
 		RevTreeID: legacyRev,
 		CV: db.Version{
 			SourceID: rt1.GetDatabase().EncodedSourceID,
-			Value: doc.Cas,
+			Value:    doc.Cas,
 		},
 	}
 	rest.RequireDocVersionEqual(t, expVersion, doc.ExtractDocVersion())
@@ -95,4 +95,3 @@ func TestActiveReplicatorPullLegacyRev(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "rt2", body["source"])
 }
-
