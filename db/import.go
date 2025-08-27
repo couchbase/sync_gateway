@@ -96,6 +96,12 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 			if err == nil && existingDoc.MetadataOnlyUpdate != nil && db.useMou() {
 				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.MetadataOnlyUpdate)
 			}
+			if existingDoc.HLV != nil {
+				existingBucketDoc.Xattrs[base.VvXattrName], err = base.JSONMarshal(existingDoc.HLV)
+				if err != nil {
+					return nil, fmt.Errorf("could not remarshal HLV: %w", err)
+				}
+			}
 		} else {
 			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.VvXattrName], existingBucketDoc.Xattrs[base.MouXattrName], existingBucketDoc.Xattrs[base.GlobalXattrName], err = existingDoc.MarshalWithXattrs()
 		}
@@ -219,7 +225,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
-		if isDelete && doc.CurrentRev == "" {
+		if isDelete && doc.GetRevTreeID() == "" {
 			base.DebugfCtx(ctx, base.KeyImport, "Import not required for delete mutation with no existing SG xattr (SG purge): %s", base.UD(newDoc.ID))
 			return nil, nil, false, updatedExpiry, base.ErrImportCancelled
 		}
@@ -286,7 +292,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		// the import was triggered by a user xattr mutation and therefore should not generate a new revision.
 		if shouldGenerateNewRev {
 			// The active rev is the parent for an import
-			parentRev := doc.CurrentRev
+			parentRev := doc.GetRevTreeID()
 			generation, _ := ParseRevID(ctx, parentRev)
 			generation++
 			newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
@@ -303,14 +309,14 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If the previous revision body is available in the rev cache,
 			// make a temporary copy in the bucket for other nodes/clusters
-			if db.backupOldRev() && doc.CurrentRev != "" {
-				backupErr := db.backupPreImportRevision(ctx, newDoc.ID, doc.CurrentRev)
+			if db.backupOldRev() && doc.GetRevTreeID() != "" {
+				backupErr := db.backupPreImportRevision(ctx, newDoc.ID, doc.GetRevTreeID())
 				if backupErr != nil {
 					base.InfofCtx(ctx, base.KeyImport, "Optimistic backup of previous revision failed due to %s", backupErr)
 				}
 			}
 		} else {
-			newDoc.RevID = doc.CurrentRev
+			newDoc.RevID = doc.GetRevTreeID()
 		}
 
 		// During import, oldDoc (doc.Body) is nil (since it's not guaranteed to be available)

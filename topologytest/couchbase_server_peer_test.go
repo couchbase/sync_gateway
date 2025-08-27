@@ -363,7 +363,7 @@ func getDocVersion(docID string, peer Peer, cas uint64, xattrs map[string][]byte
 	if ok {
 		var syncData *db.SyncData
 		require.NoError(peer.TB(), json.Unmarshal(sync, &syncData))
-		docVersion.RevTreeID = syncData.CurrentRev
+		docVersion.RevTreeID = syncData.GetRevTreeID()
 	}
 	return docVersion
 }

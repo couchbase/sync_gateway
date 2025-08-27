@@ -412,12 +412,12 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	}
 	value := sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	syncData, rawBody, rawXattrs, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	rawDoc, syncData, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
-	assert.Equal(t, syncXattr, string(rawXattrs[base.SyncXattrName]))
+	assert.Equal(t, syncXattr, string(rawDoc.Xattrs[base.SyncXattrName]))
 	assert.Equal(t, uint64(200), syncData.Sequence)
-	assert.Equal(t, channelName, string(rawXattrs[userXattrKey]))
-	assert.Equal(t, body, rawBody)
+	assert.Equal(t, channelName, string(rawDoc.Xattrs[userXattrKey]))
+	assert.Equal(t, body, rawDoc.Body)
 
 	// construct data into dcp format with just user xattr defined
 	xattrs = []sgbucket.Xattr{
@@ -425,21 +425,21 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	}
 	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	syncData, rawBody, rawXattrs, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	rawDoc, syncData, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
 	assert.Nil(t, syncData)
-	assert.Nil(t, rawXattrs[base.SyncXattrName])
-	assert.Equal(t, channelName, string(rawXattrs[userXattrKey]))
-	assert.Equal(t, body, rawBody)
+	assert.Nil(t, rawDoc.Xattrs[base.SyncXattrName])
+	assert.Equal(t, channelName, string(rawDoc.Xattrs[userXattrKey]))
+	assert.Equal(t, body, rawDoc.Body)
 
 	// construct data into dcp format with no xattr defined
 	xattrs = []sgbucket.Xattr{}
 	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	syncData, rawBody, rawXattrs, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	rawDoc, syncData, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
 	assert.Nil(t, syncData)
-	assert.Nil(t, rawXattrs[base.SyncXattrName])
-	assert.Nil(t, rawXattrs[userXattrKey])
-	assert.Equal(t, body, rawBody)
+	assert.Nil(t, rawDoc.Xattrs[base.SyncXattrName])
+	assert.Nil(t, rawDoc.Xattrs[userXattrKey])
+	assert.Equal(t, body, rawDoc.Body)
 }

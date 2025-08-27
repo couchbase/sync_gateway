@@ -60,10 +60,10 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	docRev, err := collection.GetRevisionCacheForTest().GetWithRev(ctx, docKey, syncData.CurrentRev, false)
+	docRev, err := collection.GetRevisionCacheForTest().GetWithRev(ctx, docKey, syncData.GetRevTreeID(), false)
 	assert.NoError(t, err)
 	assert.Len(t, docRev.Channels.ToArray(), 0)
-	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
+	assert.Equal(t, syncData.GetRevTreeID(), docRev.RevID)
 
 	// Write xattr to trigger import of user xattr
 	_, err = dataStore.UpdateXattrs(rt.Context(), docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
@@ -82,11 +82,11 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	require.Contains(t, xattrs, base.SyncXattrName)
 	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
-	docRev2, err := collection.GetRevisionCacheForTest().GetWithRev(ctx, docKey, syncData.CurrentRev, false)
+	docRev2, err := collection.GetRevisionCacheForTest().GetWithRev(ctx, docKey, syncData.GetRevTreeID(), false)
 	assert.NoError(t, err)
-	assert.Equal(t, syncData2.CurrentRev, docRev2.RevID)
+	assert.Equal(t, syncData2.GetRevTreeID(), docRev2.RevID)
 
-	assert.Equal(t, syncData.CurrentRev, syncData2.CurrentRev)
+	assert.Equal(t, syncData.GetRevTreeID(), syncData2.GetRevTreeID())
 	assert.True(t, syncData2.Sequence > syncData.Sequence)
 	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
 	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
@@ -106,5 +106,5 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	require.Contains(t, xattrs, base.SyncXattrName)
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData3))
 
-	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
+	assert.NotEqual(t, syncData2.GetRevTreeID(), syncData3.GetRevTreeID())
 }

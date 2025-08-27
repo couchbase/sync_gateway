@@ -1653,7 +1653,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	require.Contains(t, xattrs, base.SyncXattrName)
 	var retrievedSyncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedSyncData))
-	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedSyncData.CurrentRev)
+	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedSyncData.GetRevTreeID())
 
 }
 
@@ -2916,34 +2916,34 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	collection, _ := rt.GetSingleTestDatabaseCollection()
-	syncData, err := collection.GetDocSyncData(base.TestCtx(t), "doc1")
+	doc, err := collection.GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalSync)
 	assert.NoError(t, err)
 
-	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// Put a new revision of this doc and assert that the version vector SourceID and Version is updated
-	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, `{"key1": "value1"}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+doc.SyncData.GetRevTreeID(), `{"key1": "value1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc1")
+	doc, err = collection.GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalSync)
 	assert.NoError(t, err)
 
-	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// Delete doc and assert that the version vector SourceID and Version is updated
-	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, "")
+	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+doc.SyncData.GetRevTreeID(), "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc1")
+	doc, err = collection.GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalSync)
 	assert.NoError(t, err)
 
-	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 }
 
 // TestHLVOnPutWithImportRejection:
@@ -2967,25 +2967,25 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"type": "mobile"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	collection, _ := rt.GetSingleTestDatabaseCollection()
-	syncData, err := collection.GetDocSyncData(base.TestCtx(t), "doc1")
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	doc, err := collection.GetDocument(ctx, "doc1", db.DocUnmarshalSync)
 	assert.NoError(t, err)
 
-	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// Put a doc that will be rejected by the import filter on the attempt to perform on demand import for write
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type": "not-mobile"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// assert that the hlv is correctly updated and in tact after the import was cancelled on the doc
-	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc2")
-	assert.NoError(t, err)
+	doc, err = collection.GetDocument(ctx, "doc2", db.DocUnmarshalSync)
+	require.NoError(t, err)
 
-	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {
@@ -3238,12 +3238,12 @@ func TestHLVUpdateOnRevReplicatorPut(t *testing.T) {
 	_ = rt.PutNewEditsFalse(docID, newVersion, EmptyDocVersion(), `{"some":"body"}`)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	syncData, err := collection.GetDocSyncData(ctx, docID)
+	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalSync)
 	require.NoError(t, err)
 
-	assert.Equal(t, rt.GetDatabase().EncodedSourceID, syncData.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.Version)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, rt.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 }
 
 func TestDocCRUDWithCV(t *testing.T) {

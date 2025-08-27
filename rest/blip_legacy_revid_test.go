@@ -672,7 +672,7 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 		history := request.Properties["history"]
 		historyList := strings.Split(history, ",")
 		assert.Len(t, historyList, 3)
-		assert.Equal(t, newDoc.CurrentRev, historyList[1])
+		assert.Equal(t, newDoc.GetRevTreeID(), historyList[1])
 		assert.Equal(t, docVersion.RevTreeID, historyList[2])
 		assert.Equal(t, docVersion.CV.String(), historyList[0])
 	}
@@ -761,7 +761,7 @@ func TestCBLHasPreUpgradeMutationThatHasNotBeenReplicated(t *testing.T) {
 	// assert a cv was assigned
 	assert.NotEqual(t, "", bucketDoc.HLV.GetCurrentVersionString())
 	assert.NotNil(t, bucketDoc.History[rev1ID])
-	assert.Equal(t, "2-abc", bucketDoc.CurrentRev)
+	assert.Equal(t, "2-abc", bucketDoc.GetRevTreeID())
 }
 
 // TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows:
@@ -797,7 +797,7 @@ func TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows(t *testing.T) {
 	// assert that the bucket doc is as expected
 	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.Equal(t, rev2ID, bucketDoc.CurrentRev)
+	assert.Equal(t, rev2ID, bucketDoc.GetRevTreeID())
 	assert.NotNil(t, bucketDoc.History[rev1ID])
 	assert.NotNil(t, bucketDoc.History[rev2ID])
 }
@@ -834,7 +834,7 @@ func TestPushOfPostUpgradeMutationThatHasCommonAncestorToSGWVersion(t *testing.T
 
 	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.NotEqual(t, rev2ID, bucketDoc.CurrentRev)
+	assert.NotEqual(t, rev2ID, bucketDoc.GetRevTreeID())
 	assert.NotNil(t, bucketDoc.History[rev1ID])
 	assert.NotNil(t, bucketDoc.History[rev2ID])
 	assert.Equal(t, "100@CBL1", bucketDoc.HLV.GetCurrentVersionString())
@@ -877,7 +877,7 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPreUpgradeSGWMutation(t *
 	// assert that the bucket doc is as expected
 	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.Equal(t, rev3ID, bucketDoc.CurrentRev)
+	assert.Equal(t, rev3ID, bucketDoc.GetRevTreeID())
 	assert.NotNil(t, bucketDoc.History[rev1ID])
 	assert.NotNil(t, bucketDoc.History[rev2ID])
 }
@@ -914,7 +914,7 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPostUpgradeSGWMutation(t 
 	// assert that the bucket doc is as expected
 	bucketDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.Equal(t, rev3ID, bucketDoc.CurrentRev)
+	assert.Equal(t, rev3ID, bucketDoc.GetRevTreeID())
 	assert.NotNil(t, bucketDoc.History[rev1ID])
 	assert.NotNil(t, bucketDoc.History[rev2ID])
 }
@@ -966,7 +966,7 @@ func TestConflictBetweenPostUpgradeCBLMutationAndPostUpgradeSGWMutation(t *testi
 	// assert that the bucket doc is as expected
 	bucketDoc, _, err = collection.GetDocWithXattrs(ctx, docID2, db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.Equal(t, rev1ID, bucketDoc.CurrentRev)
+	assert.Equal(t, rev1ID, bucketDoc.GetRevTreeID())
 	assert.Equal(t, docVersion.CV.String(), bucketDoc.HLV.GetCurrentVersionString())
 }
 

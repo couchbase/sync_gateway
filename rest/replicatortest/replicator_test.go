@@ -2828,7 +2828,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			ctx := base.TestCtx(t)
-			revGen, _ := db.ParseRevID(ctx, doc.SyncData.CurrentRev)
+			revGen, _ := db.ParseRevID(ctx, doc.SyncData.GetRevTreeID())
 
 			assert.Equal(t, 3, revGen)
 			assert.Equal(t, "merged", doc.Body(ctx)["source"].(string))

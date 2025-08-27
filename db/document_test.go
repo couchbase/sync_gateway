@@ -19,6 +19,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -260,31 +261,31 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 
 	vrsCAS := uint64(123456)
 	// assert on doc version vector values
-	assert.Equal(t, vrsCAS, doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, vrsCAS, doc.SyncData.HLV.Version)
-	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
-	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
-	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+	assert.Equal(t, vrsCAS, doc.HLV.CurrentVersionCAS)
+	assert.Equal(t, vrsCAS, doc.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
 	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalAll)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, vrsCAS, doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, vrsCAS, doc.SyncData.HLV.Version)
-	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
-	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
-	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+	assert.Equal(t, vrsCAS, doc.HLV.CurrentVersionCAS)
+	assert.Equal(t, vrsCAS, doc.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
 	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, nil, nil, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, vrsCAS, doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, vrsCAS, doc.SyncData.HLV.Version)
-	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
-	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
-	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+	assert.Equal(t, vrsCAS, doc.HLV.CurrentVersionCAS)
+	assert.Equal(t, vrsCAS, doc.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 }
 
 const doc_meta_vv_corrupt = `{"cvCas":"0x40e2010000000000","src":"cb06dc003846116d9b66d2ab23887a96","ver":"0x40e2010000000000",
@@ -343,14 +344,12 @@ func TestRevAndVersion(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.testName, func(t *testing.T) {
 			syncData := &SyncData{
-				CurrentRev: test.revTreeID,
-				Sequence:   expectedSequence,
-			}
-			if test.source != "" {
-				syncData.HLV = &HybridLogicalVector{
-					SourceID: test.source,
-					Version:  base.HexCasToUint64(test.version),
-				}
+				RevAndVersion: channels.RevAndVersion{
+					RevTreeID:      test.revTreeID,
+					CurrentSource:  test.source,
+					CurrentVersion: test.version,
+				},
+				Sequence: expectedSequence,
 			}
 			// SyncData test
 			marshalledSyncData, err := base.JSONMarshal(syncData)
@@ -359,9 +358,9 @@ func TestRevAndVersion(t *testing.T) {
 
 			// Document test
 			document := NewDocument("docID")
-			document.SyncData.CurrentRev = test.revTreeID
+			document.SetRevTreeID(test.revTreeID)
 			document.SyncData.Sequence = expectedSequence
-			document.SyncData.HLV = &HybridLogicalVector{
+			document.HLV = &HybridLogicalVector{
 				SourceID: test.source,
 				Version:  base.HexCasToUint64(test.version),
 			}
@@ -372,7 +371,7 @@ func TestRevAndVersion(t *testing.T) {
 			newDocument := NewDocument("docID")
 			err = newDocument.UnmarshalWithXattrs(ctx, marshalledDoc, marshalledXattr, marshalledVvXattr, nil, nil, DocUnmarshalAll)
 			require.NoError(t, err)
-			require.Equal(t, test.revTreeID, newDocument.CurrentRev)
+			require.Equal(t, test.revTreeID, newDocument.GetRevTreeID())
 			require.Equal(t, expectedSequence, newDocument.Sequence)
 			if test.source != "" {
 				require.NotNil(t, newDocument.HLV)
@@ -494,15 +493,17 @@ func TestDCPDecodeValue(t *testing.T) {
 				require.Nil(t, xattrs)
 			}
 			// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-			result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
+			rawDoc, syncData, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
 			require.ErrorIs(t, err, test.expectedErr)
-			if test.expectedSyncXattr != nil {
-				require.NotNil(t, result)
-				require.Equal(t, test.expectedSyncXattr, rawXattrs[base.SyncXattrName])
-			} else {
-				require.Nil(t, result)
+			if test.expectedErr != nil {
+				require.Nil(t, rawDoc)
+				return
 			}
-			require.Equal(t, test.expectedBody, rawBody)
+			if test.expectedSyncXattr != nil {
+				require.NotNil(t, syncData)
+				require.Equal(t, test.expectedSyncXattr, rawDoc.Xattrs[base.SyncXattrName])
+			}
+			require.Equal(t, test.expectedBody, rawDoc.Body)
 		})
 	}
 }
@@ -519,11 +520,11 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	require.Empty(t, xattrs)
 
 	// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-	result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
+	rawDoc, syncData, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
 	require.NoError(t, err) // body will be nil, no xattrs are found
-	require.Nil(t, result)
-	require.Equal(t, emptyBody, rawBody)
-	require.Empty(t, rawXattrs)
+	require.Nil(t, syncData)
+	require.Equal(t, emptyBody, rawDoc.Body)
+	require.Empty(t, rawDoc.Xattrs)
 
 }
 
@@ -730,7 +731,7 @@ func TestAlignRevTreeHistory(t *testing.T) {
 			// setup local rev tree for doc
 			var parent string
 			doc := NewDocument("doc")
-			doc.CurrentRev = tc.currentRev
+			doc.SetRevTreeID(tc.currentRev)
 			for i := range tc.localRevTree {
 				err := doc.History.addRevision("doc", RevInfo{
 					ID:     tc.localRevTree[i],

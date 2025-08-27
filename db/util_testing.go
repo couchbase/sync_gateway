@@ -746,11 +746,13 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 	}
 
 	syncData := &SyncData{
-		CurrentRev: rev,
-		Sequence:   sequence,
-		Channels:   chanMap,
-		TimeSaved:  time.Now(),
-		History:    revTree,
+		RevAndVersion: channels.RevAndVersion{
+			RevTreeID: rev,
+		},
+		Sequence:  sequence,
+		Channels:  chanMap,
+		TimeSaved: time.Now(),
+		History:   revTree,
 	}
 	body := fmt.Sprintf(`{"key": "%s"}`, key)
 	if base.TestUseXattrs() {

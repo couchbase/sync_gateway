@@ -593,7 +593,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	err = collection.WaitForPendingChanges(base.TestCtx(t))
 	require.NoError(t, err)
 
-	syncData, err := collection.GetDocSyncData(ctx, "doc1")
+	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	require.NoError(t, err)
 
 	// get entry of above doc from channel cache
@@ -603,8 +603,8 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 
 	// assert that the source and version has been populated with the channel cache entry for the doc
 	assert.Equal(t, "doc1", entries[0].DocID)
-	assert.Equal(t, base.HexCasToUint64(syncData.Cas), entries[0].Version)
+	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), entries[0].Version)
 	assert.Equal(t, bucketUUID, entries[0].SourceID)
-	assert.Equal(t, syncData.HLV.SourceID, entries[0].SourceID)
-	assert.Equal(t, syncData.HLV.Version, entries[0].Version)
+	assert.Equal(t, doc.HLV.SourceID, entries[0].SourceID)
+	assert.Equal(t, doc.HLV.Version, entries[0].Version)
 }

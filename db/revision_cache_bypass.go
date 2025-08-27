@@ -91,11 +91,11 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 	}
 
 	docRev = DocumentRevision{
-		RevID: doc.CurrentRev,
+		RevID: doc.GetRevTreeID(),
 	}
 
 	var hlv *HybridLogicalVector
-	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.CurrentRev)
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.GetRevTreeID())
 	if err != nil {
 		return DocumentRevision{}, err
 	}

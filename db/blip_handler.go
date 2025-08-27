@@ -1240,7 +1240,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 					// as we will already have any attachments on the common ancestor so don't need to ask for them.
 					// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
 					if currentBucketDoc != nil {
-						commonAncestor := currentBucketDoc.History.findAncestorFromSet(currentBucketDoc.CurrentRev, history)
+						commonAncestor := currentBucketDoc.History.findAncestorFromSet(currentBucketDoc.GetRevTreeID(), history)
 						minRevpos, _ = ParseRevID(bh.loggingCtx, commonAncestor)
 						minRevpos++
 					} else {

@@ -659,9 +659,9 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 	require.Contains(t, xattrs, base.SyncXattrName)
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
-	require.True(t, syncData.CurrentRev != "")
-	generation, _ := ParseRevID(base.TestCtx(t), syncData.CurrentRev)
-	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.CurrentRev)
+	require.NotEmpty(t, syncData.GetRevTreeID())
+	generation, _ := ParseRevID(base.TestCtx(t), syncData.GetRevTreeID())
+	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.GetRevTreeID())
 	assert.True(t, generation == expectedRevGeneration)
 }
 
@@ -793,7 +793,7 @@ func TestImportNonZeroStart(t *testing.T) {
 
 	doc, err := collection.GetDocument(ctx, doc1, DocUnmarshalAll)
 	require.NoError(t, err)
-	require.Equal(t, revID1, doc.SyncData.CurrentRev)
+	require.Equal(t, revID1, doc.SyncData.GetRevTreeID())
 }
 
 // TestImportFeedInvalidInlineSyncMetadata tests avoiding an import error if the metadata is unmarshable
@@ -1118,7 +1118,7 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 	require.NotNil(t, syncData)
 	require.NotNil(t, mou)
 	require.NotZero(t, syncData.Sequence, "Sequence should not be zero for imported doc")
-	previousRev := syncData.CurrentRev
+	previousRev := syncData.GetRevTreeID()
 
 	// verify mou contents
 	require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)

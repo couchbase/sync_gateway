@@ -1696,7 +1696,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		}
 		rev.Channels = channels
 
-		if rev.ID == doc.CurrentRev {
+		if rev.ID == doc.GetRevTreeID() {
 			if regenerateSequences {
 				updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
 				if err != nil {
@@ -1810,7 +1810,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	if err == nil {
 		base.Audit(ctx, base.AuditIDDocumentResync, base.AuditFields{
 			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: updatedDoc.CurrentRev,
+			base.AuditFieldDocVersion: updatedDoc.GetRevTreeID(),
 		})
 	}
 	return updatedHighSeq, unusedSequences, err
