@@ -997,7 +997,7 @@ func GetChangeEntryCV(t *testing.T, entry *ChangeEntry) Version {
 		require.NoError(t, err)
 		return changeVersion
 	} else {
-		require.FailNow(t, "no CV found for change entry %s", entry)
+		require.FailNow(t, "no CV found for change entry")
 	}
 	return Version{}
 }
