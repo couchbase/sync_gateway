@@ -1423,10 +1423,11 @@ func (doc *Document) ExtractDocVersion() DocVersion {
 	}
 }
 
-func (doc *Document) IsInConflict(ctx context.Context, incomingHLV *HybridLogicalVector) (bool, error) {
+// IsInConflict is true if the incoming HLV is in conflict with the current document.
+func (doc *Document) IsInConflict(ctx context.Context, incomingHLV *HybridLogicalVector) HLVConflictStatus {
 	// If there is no SyncData, then the document can not be in conflict.
 	if doc.SyncData.Sequence == 0 {
-		return false, nil
+		return HLVNoConflict
 
 	}
 	return IsInConflict(ctx, doc.HLV, incomingHLV)
