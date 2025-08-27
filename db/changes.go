@@ -81,19 +81,19 @@ func (ce *ChangeEntry) ChangeVersionString(ctx context.Context) string {
 // A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq            SequenceID            `json:"seq"`
-	ID             string                `json:"id"`
-	Deleted        bool                  `json:"deleted,omitempty"`
-	Removed        base.Set              `json:"removed,omitempty"`
-	Doc            json.RawMessage       `json:"doc,omitempty"`
-	Changes        []ChangeByVersionType `json:"changes"`
-	Err            error                 `json:"err,omitempty"` // Used to notify feed consumer of errors
-	allRemoved     bool                  // Flag to track whether an entry is a removal in all channels visible to the user.
-	branched       bool
-	backfill       backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
-	principalDoc   bool         // Used to indicate _user/_role docs
-	Revoked        bool         `json:"revoked,omitempty"`
-	collectionID   uint32
+	Seq          SequenceID            `json:"seq"`
+	ID           string                `json:"id"`
+	Deleted      bool                  `json:"deleted,omitempty"`
+	Removed      base.Set              `json:"removed,omitempty"`
+	Doc          json.RawMessage       `json:"doc,omitempty"`
+	Changes      []ChangeByVersionType `json:"changes"`
+	Err          error                 `json:"err,omitempty"` // Used to notify feed consumer of errors
+	allRemoved   bool                  // Flag to track whether an entry is a removal in all channels visible to the user.
+	branched     bool
+	backfill     backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
+	principalDoc bool         // Used to indicate _user/_role docs
+	Revoked      bool         `json:"revoked,omitempty"`
+	collectionID uint32
 }
 
 const (
