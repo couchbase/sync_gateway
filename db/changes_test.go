@@ -302,7 +302,9 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	collection.user, _ = authenticator.GetUser("alice")
 
 	// Make channel active
-	_, err = db.channelCache.GetChanges(ctx, channels.NewID("A", collectionID), getChangesOptionsWithZeroSeq(t))
+	changesOpts := getChangesOptionsWithZeroSeq(t)
+	changesOpts.VersionType = ChangesVersionTypeCV
+	_, err = db.channelCache.GetChanges(ctx, channels.NewID("A", collectionID), changesOpts)
 	require.NoError(t, err)
 
 	_, doc, err := collection.Put(ctx, "doc1", Body{"channels": []string{"A"}})
@@ -310,12 +312,13 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 
 	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
 
-	changes := getChanges(t, collection, base.SetOf("A"), getChangesOptionsWithZeroSeq(t))
+	changes := getChanges(t, collection, base.SetOf("A"), changesOpts)
 	require.NoError(t, err)
 
+	docVersion := GetChangeEntryCV(t, changes[0])
 	assert.Equal(t, doc.ID, changes[0].ID)
-	assert.Equal(t, bucketUUID, changes[0].CurrentVersion.SourceID)
-	assert.Equal(t, doc.Cas, changes[0].CurrentVersion.Value)
+	assert.Equal(t, bucketUUID, docVersion.SourceID)
+	assert.Equal(t, doc.Cas, docVersion.Value)
 }
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {

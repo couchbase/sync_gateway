@@ -988,3 +988,16 @@ func GetAttachmentsFromInlineBody(t *testing.T, responseBody []byte) AttachmentM
 func GetAttachmentsFrom1xBody(t *testing.T, body Body) AttachmentMap {
 	return GetAttachmentsFromInlineBody(t, base.MustJSONMarshal(t, body))
 }
+
+func GetChangeEntryCV(t *testing.T, entry *ChangeEntry) Version {
+	require.NotNil(t, entry.Changes)
+
+	if changeCV, ok := entry.Changes[0][ChangesVersionTypeCV]; ok {
+		changeVersion, err := ParseVersion(changeCV)
+		require.NoError(t, err)
+		return changeVersion
+	} else {
+		require.FailNow(t, "no CV found for change entry %s", entry)
+	}
+	return Version{}
+}

@@ -94,7 +94,6 @@ type ChangeEntry struct {
 	principalDoc   bool         // Used to indicate _user/_role docs
 	Revoked        bool         `json:"revoked,omitempty"`
 	collectionID   uint32
-	CurrentVersion *Version `json:"-"` // the current version of the change entry.  (Not marshalled, pending REST support for cv)
 }
 
 const (
@@ -560,15 +559,6 @@ func makeChangeEntry(ctx context.Context, logEntry *LogEntry, seqID SequenceID, 
 		fallthrough
 	default:
 		// already initialized with a 'rev' change entry
-	}
-
-	// populate CurrentVersion entry if log entry has sourceID and Version populated
-	// This allows current version to be nil in event of CV not being populated on log entry
-	// allowing omitempty to work as expected
-	if logEntry.SourceID != "" {
-		// TODO: CBG-4804: Remove this if we change BLIP generateBlipSyncChanges and tests to use versionType and read the value from the normal Changes array... no reason to store this info in two places.
-		// this also allows us to do a revtree ID fallback in cases where the CV is not available on an old rev, since the type is chosen inside when producing logentry and building the change row.
-		change.CurrentVersion = &Version{SourceID: logEntry.SourceID, Value: logEntry.Version}
 	}
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = base.SetOf(channel.Name)
@@ -1381,11 +1371,11 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
-	if populatedDoc.HLV != nil {
-		cv := Version{}
-		cv.SourceID, cv.Value = populatedDoc.HLV.GetCurrentVersion()
-		row.CurrentVersion = &cv
-	}
+	//if populatedDoc.HLV != nil {
+	//	cv := Version{}
+	//	cv.SourceID, cv.Value = populatedDoc.HLV.GetCurrentVersion()
+	//	row.CurrentVersion = &cv
+	//}
 
 	var removedChannels []string
 

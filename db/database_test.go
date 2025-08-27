@@ -1638,7 +1638,6 @@ func TestConflicts(t *testing.T) {
 	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	bucketUUID := db.EncodedSourceID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -1708,20 +1707,18 @@ func TestConflicts(t *testing.T) {
 	// Verify the _changes feed:
 	options := ChangesOptions{
 		Conflicts:  true,
-		ChangesCtx: base.TestCtx(t),
+		ChangesCtx: t.Context(),
 	}
 
 	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
-	source, version := collection.GetDocumentCurrentVersion(t, "doc")
 
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
-		Seq:            SequenceID{Seq: 3},
-		ID:             "doc",
-		Changes:        []ChangeByVersionType{{"rev": "2-b"}, {"rev": "2-a"}},
-		branched:       true,
-		collectionID:   collectionID,
-		CurrentVersion: &Version{SourceID: source, Value: version},
+		Seq:          SequenceID{Seq: 3},
+		ID:           "doc",
+		Changes:      []ChangeByVersionType{{ChangesVersionTypeRevTreeID: "2-b"}, {ChangesVersionTypeRevTreeID: "2-a"}},
+		branched:     true,
+		collectionID: collectionID,
 	}, changes[0],
 	)
 
@@ -1751,12 +1748,11 @@ func TestConflicts(t *testing.T) {
 	changes = getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
-		Seq:            SequenceID{Seq: 4},
-		ID:             "doc",
-		Changes:        []ChangeByVersionType{{"rev": "2-a"}, {"rev": rev3}},
-		branched:       true,
-		collectionID:   collectionID,
-		CurrentVersion: &Version{SourceID: bucketUUID, Value: doc.Cas},
+		Seq:          SequenceID{Seq: 4},
+		ID:           "doc",
+		Changes:      []ChangeByVersionType{{ChangesVersionTypeRevTreeID: "2-a"}, {ChangesVersionTypeRevTreeID: rev3}},
+		branched:     true,
+		collectionID: collectionID,
 	}, changes[0])
 
 }
