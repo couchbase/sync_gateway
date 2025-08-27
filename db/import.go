@@ -96,6 +96,12 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 			if err == nil && existingDoc.MetadataOnlyUpdate != nil && db.useMou() {
 				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.MetadataOnlyUpdate)
 			}
+			if existingDoc.HLV != nil {
+				existingBucketDoc.Xattrs[base.VvXattrName], err = base.JSONMarshal(existingDoc.HLV)
+				if err != nil {
+					return nil, fmt.Errorf("could not remarshal HLV: %w", err)
+				}
+			}
 		} else {
 			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.VvXattrName], existingBucketDoc.Xattrs[base.MouXattrName], existingBucketDoc.Xattrs[base.GlobalXattrName], err = existingDoc.MarshalWithXattrs()
 		}
