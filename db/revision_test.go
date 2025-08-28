@@ -182,7 +182,7 @@ func TestStripSpecialProperties(t *testing.T) {
 		},
 		{
 			name:              "Strip internal special props",
-			input:             Body{"_test": 0, "test": 0, "_rev": 0, "_exp": 0},
+			input:             Body{"_test": 0, "test": 0, "_rev": 0, "_cv": 0, "_exp": 0},
 			stripInternalOnly: true,
 			stripped:          true,
 			newBodyIfStripped: &Body{"_test": 0, "test": 0},

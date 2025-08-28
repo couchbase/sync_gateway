@@ -24,13 +24,17 @@ import (
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
+// BodyDeleted and related constants define special document body keys used for internal Sync Gateway metadata associated with a specific document.
+// They are usually present in the REST API, or sometimes inside the doc body during transport between API layers inside Sync Gateway.
+//
+// Note: Any new additions here should consider whether they should be added to stripSpecialProperties.
 const (
-	BodyDeleted        = "_deleted"
-	BodyRev            = "_rev"
-	BodyCV             = "_cv"
-	BodyId             = "_id"
-	BodyRevisions      = "_revisions"
-	BodyAttachments    = "_attachments"
+	BodyDeleted        = "_deleted"     // BodyDeleted can be true to represent a tombstoned document.
+	BodyRev            = "_rev"         // BodyRev is the RevTree ID.
+	BodyCV             = "_cv"          // BodyCV is the Current Version.
+	BodyId             = "_id"          // BodyId is the document ID.
+	BodyRevisions      = "_revisions"   // BodyRevisions is RevTree history.
+	BodyAttachments    = "_attachments" // BodyAttachments holds attachments metadata.
 	BodyPurged         = "_purged"
 	BodyExpiry         = "_exp"
 	BodyRemoved        = "_removed"
@@ -431,6 +435,7 @@ func stripSpecialProperties(b Body, internalOnly bool) (sb Body, foundSpecialPro
 				base.SyncPropertyName,
 				BodyId,
 				BodyRev,
+				BodyCV,
 				BodyRevisions,
 				BodyExpiry,
 				BodyPurged,
