@@ -74,7 +74,9 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, db.BackgroundProcessStateCompleted, migrationStatus.State)
 	assert.Equal(t, int64(5), migrationStatus.DocsChanged)
-	assert.Equal(t, int64(10), migrationStatus.DocsProcessed)
+	// With GSI test bucket pool, a past document might sneak in in the case it was:
+	// mutated & deleted but did not pass the snapshot boundary.
+	assert.GreaterOrEqual(t, migrationStatus.DocsProcessed, int64(10))
 	assert.Empty(t, migrationStatus.LastErrorMessage)
 }
 
