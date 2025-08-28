@@ -148,6 +148,7 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 				require.Len(t, rt1Doc.HLV.MergeVersions, 2)
 				assert.Equal(t, rt1Version.CV.Value, rt1Doc.HLV.MergeVersions[rt1Version.CV.SourceID])
 				assert.Equal(t, nonWinningRevPreConflict.CV.Value, rt1Doc.HLV.MergeVersions[nonWinningRevPreConflict.CV.SourceID])
+				require.Len(t, rt1Doc.HLV.PreviousVersions, 0)
 			}
 			// grab local doc body and assert it is as expected
 			actualBody, err := rt1Doc.BodyBytes(rt1ctx)
@@ -233,7 +234,6 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 		localWinsCaseDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 		require.NoError(t, err)
 		expectedWinner = rt1Version
-		//expectedWinner.CV.Value = localWinsCaseDoc.Cas
 		expectedConflictResBody, err = localWinsCaseDoc.BodyBytes(rt2ctx)
 		require.NoError(t, err)
 		nonWinningRevPreConflict = version
@@ -272,6 +272,7 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 		require.Len(t, rt1Doc.HLV.MergeVersions, 2)
 		assert.Equal(t, rt1Version.CV.Value, rt1Doc.HLV.MergeVersions[rt1Version.CV.SourceID])
 		assert.Equal(t, nonWinningRevPreConflict.CV.Value, rt1Doc.HLV.MergeVersions[nonWinningRevPreConflict.CV.SourceID])
+		require.Len(t, rt1Doc.HLV.PreviousVersions, 0)
 	}
 	// grab local doc body and assert it is as expected
 	actualBody, err := rt1Doc.BodyBytes(rt1ctx)
@@ -494,7 +495,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 				MergeVersions:    make(db.HLVVersions),
 				PreviousVersions: testCase.expectedPV,
 			}
-			// add current CV's opt expected MV
+			// add current CV's to expected MV
 			expectedHLV.MergeVersions[rt1.GetDatabase().EncodedSourceID] = localCas
 			expectedHLV.MergeVersions[rt2.GetDatabase().EncodedSourceID] = remoteCas
 
@@ -527,6 +528,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 				assert.Equal(t, val, rt1Doc.HLV.PreviousVersions[key], "Expected key or value is missing in previous versions")
 			}
 			// assert on mv
+			require.Len(t, rt1Doc.HLV.MergeVersions, len(expectedHLV.MergeVersions))
 			for key, val := range expectedHLV.MergeVersions {
 				assert.Equal(t, val, rt1Doc.HLV.MergeVersions[key], "Expected key or value is missing in merge versions")
 			}
