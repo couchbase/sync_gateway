@@ -213,6 +213,7 @@ type CollectionConfig struct {
 type DeltaSyncConfig struct {
 	Enabled          *bool   `json:"enabled,omitempty"`             // Whether delta sync is enabled (requires EE)
 	RevMaxAgeSeconds *uint32 `json:"rev_max_age_seconds,omitempty"` // The number of seconds deltas for old revs are available for
+	StoreLegacyRevs  *bool   `json:"store_legacy_revs,omitempty"`   // Whether to store additional data to allow legacy RevTree ID support for delta sync
 }
 
 type DbConfigMap map[string]*DbConfig
