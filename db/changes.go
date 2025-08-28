@@ -1603,10 +1603,10 @@ loop:
 	return feedErr, forceClose
 }
 
-// GetChangeEntryVersion will return revID version or CV version based on the ChangesVersionType populated in the map
-func (c ChangeByVersionType) GetChangeEntryVersion() (version string) {
+// GetChangeRowRev will return a rev - either a CV if available, or a RevTree ID from the ChangeByVersionType
+func (c ChangeByVersionType) GetChangeRowRev() (version string, versionType ChangesVersionType) {
 	if cv, ok := c[ChangesVersionTypeCV]; ok {
-		return cv
+		return cv, ChangesVersionTypeCV
 	}
-	return c[ChangesVersionTypeRevTreeID]
+	return c[ChangesVersionTypeRevTreeID], ChangesVersionTypeRevTreeID
 }

@@ -561,7 +561,7 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion Change
 	if len(changeVersion) > 1 {
 		base.AssertfCtx(bh.loggingCtx, "more changes in list than expected on change entry: %v", change.ID)
 	}
-	rev := changeVersion.GetChangeEntryVersion()
+	rev, _ := changeVersion.GetChangeRowRev()
 
 	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 {
 		deletedFlags := changesDeletedFlag(0)
