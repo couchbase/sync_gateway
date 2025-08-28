@@ -66,9 +66,13 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-	version, err := db.ParseVersion(body[db.BodyCV].(string))
-	require.NoError(rt.TB(), err)
-	return DocVersion{RevTreeID: body[db.BodyRev].(string), CV: version}, body
+	// Not _all_ documents get CV - `/_local` (aka special) docs for example, only use a `_rev` OCC value - and not even a RevTree for full history.
+	if bodyCV, hasCV := body[db.BodyCV].(string); hasCV {
+		version, err := db.ParseVersion(bodyCV)
+		require.NoError(rt.TB(), err)
+		return DocVersion{RevTreeID: body[db.BodyRev].(string), CV: version}, body
+	}
+	return DocVersion{RevTreeID: body[db.BodyRev].(string)}, body
 }
 
 // TriggerOnDemandImport will use the REST API to trigger on an demand import via GET. This function intentionally does not check error codes in case the document does not exist or is invalid to be imported.

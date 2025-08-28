@@ -573,21 +573,20 @@ func (h *handler) handleBulkDocs() error {
 	for _, item := range docs {
 		doc := item.(map[string]interface{})
 		docid, _ := doc[db.BodyId].(string)
-		var err error
-		var revid string
+		var docErr error
+		var newDoc *db.Document
 		if newEdits {
 			if docid != "" {
-				revid, _, err = h.collection.Put(h.ctx(), docid, doc)
+				_, newDoc, docErr = h.collection.Put(h.ctx(), docid, doc)
 			} else {
-				docid, revid, _, err = h.collection.Post(h.ctx(), doc)
+				_, _, newDoc, docErr = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
 			revisions := db.ParseRevisions(h.ctx(), doc)
 			if revisions == nil {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
+				docErr = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
-				revid = revisions[0]
-				_, _, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false, db.ExistingVersionWithUpdateToHLV)
+				newDoc, _, docErr = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false, db.ExistingVersionWithUpdateToHLV)
 			}
 		}
 
@@ -595,15 +594,15 @@ func (h *handler) handleBulkDocs() error {
 		if docid != "" {
 			status["id"] = docid
 		}
-		if err != nil {
-			code, msg := base.ErrorAsHTTPStatus(err)
+		if docErr != nil {
+			code, msg := base.ErrorAsHTTPStatus(docErr)
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
-			err = nil // wrote it to output already; not going to return it
+			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, docErr)
 		} else {
-			status["rev"] = revid
+			status["rev"] = newDoc.CurrentRev
+			status["cv"] = newDoc.HLV.GetCurrentVersionString()
 		}
 		result = append(result, status)
 	}
@@ -616,15 +615,15 @@ func (h *handler) handleBulkDocs() error {
 		offset := len(db.LocalDocPrefix)
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, isNewDoc, err := h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
+		revid, isNewDoc, docErr := h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
-		if err != nil {
-			code, msg := base.ErrorAsHTTPStatus(err)
+		if docErr != nil {
+			code, msg := base.ErrorAsHTTPStatus(docErr)
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
+			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, docErr)
 		} else {
 			status["rev"] = revid
 			auditEventForDocumentUpsert(h.ctx(), docid, revid, isNewDoc)
