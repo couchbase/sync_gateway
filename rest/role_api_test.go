@@ -63,6 +63,7 @@ func TestRolePurge(t *testing.T) {
 	resp = rt.SendAdminRequest("GET", "/db/_role/role", ``)
 	RequireStatus(t, resp, http.StatusNotFound)
 }
+
 func TestRoleAPI(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
@@ -111,6 +112,7 @@ func TestRoleAPI(t *testing.T) {
 	RequireStatus(t, response, 200)
 	assert.Equal(t, `["hipster","testdeleted"]`, response.Body.String())
 }
+
 func TestFunkyRoleNames(t *testing.T) {
 	cases := []struct {
 		Name     string
@@ -169,8 +171,10 @@ func TestFunkyRoleNames(t *testing.T) {
 		})
 	}
 }
-func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
+// TestBulkDocsChangeToRoleAccess verifies that access() grants to a role from one
+// document in a single /_bulk_docs request apply to subsequent docs in the same batch.
+func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAccess)
 
 	rtConfig := RestTesterConfig{SyncFn: `
@@ -221,12 +225,19 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Len(t, docs, 2)
-	assert.Equal(t, map[string]interface{}{"rev": "1-17424d2a21bf113768dfdbcd344741ac", "id": "bulk1"}, docs[0])
+	require.Len(t, docs, 2)
+	first, ok := docs[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "bulk1", first["id"])
+	assert.Equal(t, "1-17424d2a21bf113768dfdbcd344741ac", first["rev"])
 
-	assert.Equal(t, map[string]interface{}{"rev": "1-f120ccb33c0a6ef43ef202ade28f98ef", "id": "bulk2"}, docs[1])
+	second, ok := docs[1].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "bulk2", second["id"])
+	assert.Equal(t, "1-f120ccb33c0a6ef43ef202ade28f98ef", second["rev"])
 
 }
+
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
@@ -281,6 +292,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	// goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	// goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
 }
+
 func TestRoleAccessChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)

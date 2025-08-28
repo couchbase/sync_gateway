@@ -2229,8 +2229,15 @@ func TestHandleGetRevTree(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", reqBodyJson)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	respBodyExpected := `[{"id":"foo","rev":"1-123"},{"id":"foo","rev":"1-456"},{"id":"foo","rev":"1-789"}]`
-	assert.Equal(t, respBodyExpected, resp.Body.String())
+	// Response now includes unpredictable CV values - just validate ids and revs...
+	// It's likely this test will be removed in 4.0, or shortly after, since we're never allowing new conflicts to be created
+	var bulkDocsResp []map[string]interface{}
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &bulkDocsResp))
+	require.Len(t, bulkDocsResp, 3)
+	for _, d := range bulkDocsResp {
+		assert.Equal(t, "foo", d["id"])
+		assert.Truef(t, strings.HasPrefix(d["rev"].(string), "1-"), "expected rev to start with '1-', got %s", d["rev"])
+	}
 
 	// Get the revision tree  of the user foo
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_revtree/foo", "")

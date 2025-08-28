@@ -502,14 +502,14 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
 
 	rtConfig := RestTesterConfig{SyncFn: `
-function(doc) {
-	if(doc.type == "setaccess") {
-		channel(doc.channel);
-		access(doc.owner, doc.channel);
-	} else {
-		requireAccess(doc.channel);
-	}
-}`}
+		function(doc) {
+			if(doc.type == "setaccess") {
+				channel(doc.channel);
+				access(doc.owner, doc.channel);
+			} else {
+				requireAccess(doc.channel);
+			}
+		}`}
 	rt := NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 

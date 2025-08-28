@@ -975,6 +975,8 @@ func TestBulkGetEmptyDocs(t *testing.T) {
 	RequireStatus(t, response, 400)
 }
 
+// TestBulkDocsNoEdits verifies that POSTing /_bulk_docs with new_edits=false stores
+// the provided revisions verbatim, and subsequent posts append the given history without generating new rev IDs.
 func TestBulkDocsNoEdits(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -990,9 +992,15 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	require.Len(t, docs, 2)
-	assert.Equal(t, map[string]interface{}{"rev": "12-abc", "id": "bdne1"}, docs[0])
+	first, ok := docs[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "bdne1", first["id"])
+	assert.Equal(t, "12-abc", first["rev"])
 
-	assert.Equal(t, map[string]interface{}{"rev": "34-def", "id": "bdne2"}, docs[1])
+	second, ok := docs[1].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "bdne2", second["id"])
+	assert.Equal(t, "34-def", second["rev"])
 
 	// Now update the first doc with two new revisions:
 	input = `{"new_edits":false, "docs": [
@@ -1003,7 +1011,10 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	RequireStatus(t, response, 201)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	require.Len(t, docs, 1)
-	assert.Equal(t, map[string]interface{}{"rev": "14-jkl", "id": "bdne1"}, docs[0])
+	updated, ok := docs[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "bdne1", updated["id"])
+	assert.Equal(t, "14-jkl", updated["rev"])
 
 }
 
