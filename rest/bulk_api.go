@@ -579,7 +579,7 @@ func (h *handler) handleBulkDocs() error {
 			if docid != "" {
 				_, newDoc, docErr = h.collection.Put(h.ctx(), docid, doc)
 			} else {
-				_, _, newDoc, docErr = h.collection.Post(h.ctx(), doc)
+				docid, _, newDoc, docErr = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
 			revisions := db.ParseRevisions(h.ctx(), doc)
@@ -601,8 +601,8 @@ func (h *handler) handleBulkDocs() error {
 			status["reason"] = msg
 			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, docErr)
 		} else {
-			status["rev"] = newDoc.CurrentRev
-			status["cv"] = newDoc.HLV.GetCurrentVersionString()
+			status["rev"] = newDoc.GetRevTreeID()
+			status["cv"] = newDoc.RevAndVersion.CV()
 		}
 		result = append(result, status)
 	}

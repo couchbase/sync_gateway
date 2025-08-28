@@ -536,7 +536,6 @@ func TestBulkDocsIDGeneration(t *testing.T) {
 	RequireStatus(t, response, 201)
 	var docs []map[string]string
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	log.Printf("response: %s", response.Body.Bytes())
 	RequireStatus(t, response, 201)
 	assert.Len(t, docs, 2)
 	assert.Equal(t, "1-50133ddd8e49efad34ad9ecae4cb9907", docs[0]["rev"])
@@ -990,7 +989,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	RequireStatus(t, response, 201)
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Len(t, docs, 2)
+	require.Len(t, docs, 2)
 	assert.Equal(t, map[string]interface{}{"rev": "12-abc", "id": "bdne1"}, docs[0])
 
 	assert.Equal(t, map[string]interface{}{"rev": "34-def", "id": "bdne2"}, docs[1])
@@ -1003,7 +1002,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Len(t, docs, 1)
+	require.Len(t, docs, 1)
 	assert.Equal(t, map[string]interface{}{"rev": "14-jkl", "id": "bdne1"}, docs[0])
 
 }
