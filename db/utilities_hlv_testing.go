@@ -160,7 +160,7 @@ func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t *testing.T, ctx context.C
 		if matchCV != "" {
 			if matchCV == doc.HLV.GetCurrentVersionString() {
 				// set matchRev to the current revision ID and allow existing codepaths to perform RevTree-based update.
-				matchRev = doc.CurrentRev
+				matchRev = doc.GetRevTreeID()
 				// bump generation based on retrieved RevTree ID
 				generation, _ = ParseRevID(ctx, matchRev)
 				generation++
@@ -177,7 +177,7 @@ func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t *testing.T, ctx context.C
 		if conflictErr == nil {
 			// Make sure matchRev matches an existing leaf revision:
 			if matchRev == "" {
-				matchRev = doc.CurrentRev
+				matchRev = doc.GetRevTreeID()
 				if matchRev != "" {
 					// PUT with no parent rev given, but there is an existing current revision.
 					// This is OK as long as the current one is deleted.
