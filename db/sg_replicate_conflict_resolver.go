@@ -104,7 +104,6 @@ type ConflictResolver struct {
 type ConflictResolvers struct {
 	revTreeConflictResolver *ConflictResolver
 	hlvConflictResolver     *ConflictResolver
-	stats                   *ConflictResolverStats
 }
 
 func (c *ConflictResolvers) IsEmpty() bool {
