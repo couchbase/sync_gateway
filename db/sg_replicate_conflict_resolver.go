@@ -100,6 +100,17 @@ type ConflictResolver struct {
 	stats *ConflictResolverStats
 }
 
+// ConflictResolvers is a container for both revTree and HLV conflict resolvers
+type ConflictResolvers struct {
+	revTreeConflictResolver *ConflictResolver
+	hlvConflictResolver     *ConflictResolver
+	stats                   *ConflictResolverStats
+}
+
+func (c *ConflictResolvers) IsEmpty() bool {
+	return c == nil || (c.revTreeConflictResolver == nil && c.hlvConflictResolver == nil)
+}
+
 func NewConflictResolver(crf ConflictResolverFunc, statsContainer *base.DbReplicatorStats) *ConflictResolver {
 	resolver := &ConflictResolver{
 		crf:   crf,

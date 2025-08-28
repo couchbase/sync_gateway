@@ -1238,7 +1238,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 //   - alignRevTrees: if this is true then we will align the new write with the incoming docs rev tree. If this is
 //     false and len(revTreeHistory) > 0 then this means the local version of this doc does not have an HLV so this parameter
 //     will be used to check for conflicts.
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string, alignRevTrees bool, conflictResolver *ConflictResolver) (doc *Document, cv *Version, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string, alignRevTrees bool, conflictResolver ConflictResolvers) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
 		doc, unmarshalErr := db.unmarshalDocumentWithXattrs(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs, existingDoc.Cas, DocUnmarshalRev)
@@ -1368,13 +1368,13 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					previousRevTreeID = doc.GetRevTreeID()
 					newGeneration = prevGeneration + 1
 					base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), newDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
-					if conflictResolver == nil {
+					if conflictResolver.hlvConflictResolver == nil {
 						// cancel rest of update, HLV is in conflict and no resolver is present
 						return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 					}
 					// resolve conflict
 					var newHLV *HybridLogicalVector
-					newHLV, err = db.resolveHLVConflict(ctx, doc, newDoc, conflictResolver)
+					newHLV, err = db.resolveHLVConflict(ctx, doc, newDoc, conflictResolver.hlvConflictResolver)
 					if err != nil {
 						base.InfofCtx(ctx, base.KeyCRUD, "Failed to resolve HLV conflict for doc %s, error: %v", base.UD(doc.ID), err)
 						return nil, nil, false, nil, err
@@ -1722,7 +1722,7 @@ func buildResolverBody(localDoc, incomingDoc *Document) (Body, Body, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	remoteDocBody[BodyRev] = incomingDoc.SyncData.GetRevTreeID()
+	remoteDocBody[BodyRev] = incomingDoc.RevID
 	remoteDocBody[BodyId] = incomingDoc.ID
 	remoteDocBody[BodyAttachments] = remoteAttachments
 	remoteDocBody[BodyDeleted] = incomingDoc.Deleted

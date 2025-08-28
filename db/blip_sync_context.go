@@ -112,7 +112,7 @@ type BlipSyncContext struct {
 	userName                    string            // Avoid contention on db.user during userChangeWaiter user lookup
 	replicationStats            *BlipSyncStats    // Replication stats
 	purgeOnRemoval              bool              // Purges the document when we pull a _removed:true revision.
-	conflictResolver            *ConflictResolver // Conflict resolver for active replications
+	conflictResolver            ConflictResolvers // Conflict resolver(s) for active replications, we possibly have two if running in version 4 replication mode for use when legacy revs are present
 	changesPendingResponseCount int64             // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions

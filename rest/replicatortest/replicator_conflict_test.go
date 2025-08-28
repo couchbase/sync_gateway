@@ -69,11 +69,11 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				ConflictResolverFunc: resolverFunc,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
-				Continuous:           false,
+				ChangesBatchSize:           200,
+				ReplicationStatsMap:        dbReplicatorStats(t),
+				ConflictResolverFuncForHLV: resolverFunc,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:                 false,
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -190,11 +190,11 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		ChangesBatchSize:     200,
-		ReplicationStatsMap:  dbReplicatorStats(t),
-		ConflictResolverFunc: resolverFunc,
-		CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
-		Continuous:           false,
+		ChangesBatchSize:           200,
+		ReplicationStatsMap:        dbReplicatorStats(t),
+		ConflictResolverFuncForHLV: resolverFunc,
+		CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+		Continuous:                 false,
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
@@ -426,11 +426,11 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				ConflictResolverFunc: resolverFunc,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
-				Continuous:           false,
+				ChangesBatchSize:           200,
+				ReplicationStatsMap:        dbReplicatorStats(t),
+				ConflictResolverFuncForHLV: resolverFunc,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:                 false,
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -706,11 +706,11 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				ConflictResolverFunc: resolverFunc,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
-				Continuous:           false,
+				ChangesBatchSize:           200,
+				ReplicationStatsMap:        dbReplicatorStats(t),
+				ConflictResolverFuncForHLV: resolverFunc,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:                 false,
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -926,11 +926,11 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				ConflictResolverFunc: resolverFunc,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
-				Continuous:           false,
+				ChangesBatchSize:           200,
+				ReplicationStatsMap:        dbReplicatorStats(t),
+				ConflictResolverFuncForHLV: resolverFunc,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:                 false,
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -1101,11 +1101,11 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				ConflictResolverFunc: resolverFunc,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
-				Continuous:           false,
+				ChangesBatchSize:           200,
+				ReplicationStatsMap:        dbReplicatorStats(t),
+				ConflictResolverFuncForHLV: resolverFunc,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:                 false,
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -1216,11 +1216,11 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				ConflictResolverFunc: resolverFunc,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
-				Continuous:           false,
+				ChangesBatchSize:           200,
+				ReplicationStatsMap:        dbReplicatorStats(t),
+				ConflictResolverFuncForHLV: resolverFunc,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:                 false,
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
