@@ -444,6 +444,13 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 
 	base.InfofCtx(bh.loggingCtx, base.KeySync, "Sending changes since %v", opts.since)
 
+	var changeType ChangesVersionType
+	if bh.useHLV() {
+		changeType = ChangesVersionTypeCV
+	} else {
+		changeType = ChangesVersionTypeRevTreeID
+	}
+
 	options := ChangesOptions{
 		Since:          opts.since,
 		Conflicts:      false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
@@ -453,6 +460,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		clientType:     opts.clientType,
 		ChangesCtx:     opts.changesCtx,
 		RequestPlusSeq: opts.requestPlusSeq,
+		VersionType:    changeType,
 	}
 
 	channelSet := opts.channels
@@ -510,14 +518,8 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 				}
-				// if V3 and below populate change row with rev id
-				if bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
-					for _, item := range change.Changes {
-						changeRow := bh.buildChangesRow(change, item["rev"])
-						pendingChanges = append(pendingChanges, changeRow)
-					}
-				} else {
-					changeRow := bh.buildChangesRow(change, change.CurrentVersion.String())
+				for _, item := range change.Changes {
+					changeRow := bh.buildChangesRow(change, item)
 					pendingChanges = append(pendingChanges, changeRow)
 				}
 
@@ -552,8 +554,14 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	return (err == nil && !forceClose), err
 }
 
-func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []interface{} {
+func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion ChangeByVersionType) []interface{} {
 	var changeRow []interface{}
+
+	// change map should only have one entry
+	if len(changeVersion) > 1 {
+		base.AssertfCtx(bh.loggingCtx, "more changes in list than expected on change entry: %v", change.ID)
+	}
+	rev := changeVersion.GetChangeEntryVersion()
 
 	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 {
 		deletedFlags := changesDeletedFlag(0)
@@ -567,13 +575,13 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []inte
 			deletedFlags |= changesDeletedFlagRemoved
 		}
 
-		changeRow = []interface{}{change.Seq, change.ID, revID, deletedFlags}
+		changeRow = []interface{}{change.Seq, change.ID, rev, deletedFlags}
 		if deletedFlags == 0 {
 			changeRow = changeRow[0:3]
 		}
 
 	} else {
-		changeRow = []interface{}{change.Seq, change.ID, revID, change.Deleted}
+		changeRow = []interface{}{change.Seq, change.ID, rev, change.Deleted}
 		if !change.Deleted {
 			changeRow = changeRow[0:3]
 		}

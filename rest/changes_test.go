@@ -394,7 +394,6 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 }
 
 func TestCVPopulationOnChangesViaAPI(t *testing.T) {
-	t.Skip("Disabled until REST support for version is added")
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
@@ -410,20 +409,20 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+	require.NoError(t, collection.WaitForPendingChanges(t.Context()))
 
-	changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?version_type=cv", "", true)
 
 	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalCAS)
 	require.NoError(t, err)
 
+	entryCV := db.GetChangeEntryCV(t, &changes.Results[0])
 	assert.Equal(t, "doc1", changes.Results[0].ID)
-	assert.Equal(t, bucketUUID, changes.Results[0].CurrentVersion.SourceID)
-	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Value)
+	assert.Equal(t, bucketUUID, entryCV.SourceID)
+	assert.Equal(t, fetchedDoc.Cas, entryCV.Value)
 }
 
 func TestCVPopulationOnDocIDChanges(t *testing.T) {
-	t.Skip("Disabled until REST support for version is added")
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
@@ -441,14 +440,15 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 
 	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
 
-	changes := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?filter=_doc_ids&doc_ids=%s`, DocID), "", true)
+	changes := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=%s`, DocID), "", true)
 
 	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalCAS)
 	require.NoError(t, err)
 
+	entryCV := db.GetChangeEntryCV(t, &changes.Results[0])
 	assert.Equal(t, "doc1", changes.Results[0].ID)
-	assert.Equal(t, bucketUUID, changes.Results[0].CurrentVersion.SourceID)
-	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Value)
+	assert.Equal(t, bucketUUID, entryCV.SourceID)
+	assert.Equal(t, fetchedDoc.Cas, entryCV.Value)
 }
 
 // TestChangesVersionType tests the /_changes REST endpoint with different version_type parameters for each possible underlying feed type and HTTP method.

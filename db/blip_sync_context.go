@@ -654,11 +654,16 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int, legacyRev bool) error {
+func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int, remoteIsLegacyRev bool) error {
 
 	var originalErr error
 	var docRev DocumentRevision
-	if !bsc.useHLV() {
+	var localIsLegacyRev bool
+	// some of this legacy rev handling is due to change pending CBG-4784
+	if base.IsRevTreeID(revID) {
+		localIsLegacyRev = true
+	}
+	if !bsc.useHLV() || localIsLegacyRev {
 		docRev, originalErr = handleChangesResponseCollection.GetRev(ctx, docID, revID, true, nil)
 	} else {
 		// extract CV string rev representation
@@ -745,7 +750,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		bsc.replicationStats.SendReplacementRevCount.Add(1)
 	}
 	var history []string
-	if !bsc.useHLV() {
+	if !bsc.useHLV() || localIsLegacyRev {
 		history = toHistory(docRev.History, knownRevs, maxHistory)
 	} else {
 		if docRev.hlvHistory != "" {
@@ -754,7 +759,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	}
 
 	var revTreeHistoryProperty []string
-	if legacyRev {
+	if remoteIsLegacyRev && !localIsLegacyRev {
 		// append current revID and rest of rev tree after hlv history
 		revTreeHistory := toHistory(docRev.History, knownRevs, maxHistory)
 		history = append(history, docRev.RevID)

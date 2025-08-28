@@ -54,6 +54,7 @@ const (
 	NewVersion
 	ExistingVersion
 	ExistingVersionWithUpdateToHLV
+	NoHLVUpdateForTest
 )
 
 type DocUpdateType uint32
