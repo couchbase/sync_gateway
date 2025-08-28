@@ -52,7 +52,7 @@ const (
 // Conflict is the input to all conflict resolvers.  LocalDocument and RemoteDocument
 // are expected to be document bodies with metadata injected into the body following
 // the same approach used for doc and oldDoc in the Sync Function. LocalHLV and RemoteHLV
-// will be the documents HLVs, these are needed for HLV ready conflict resolution.
+// will be the documents HLVs.
 type Conflict struct {
 	LocalDocument  Body `json:"LocalDocument"`
 	RemoteDocument Body `json:"RemoteDocument"`
@@ -167,9 +167,9 @@ func (c *ConflictResolver) ResolveForHLV(ctx context.Context, conflict Conflict)
 		return winner, ConflictResolutionRemote, nil
 	}
 
-	base.InfofCtx(ctx, base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
+	base.WarnfCtx(ctx, "Conflict resolver returned non-empty cv (%s) not matching local (%s) or remote (%s).", winningRev, localRev, remoteRev)
 	c.stats.ConflictResultMergeCount.Add(1)
-	return winner, ConflictResolutionMerge, err
+	return winner, "", errors.New("conflict resolver returned non-empty cv not matching local or remote")
 }
 
 // DefaultConflictResolver uses the same logic as revTree.WinningRevision,

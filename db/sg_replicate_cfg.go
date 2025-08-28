@@ -615,23 +615,25 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	// but both are legacy pre upgrades docs without HLV.
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
-			if err != nil {
-				return nil, err
+			var newConflictResErr error
+			rc.ConflictResolverFunc, newConflictResErr = NewConflictResolverFunc(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
+			if newConflictResErr != nil {
+				return nil, newConflictResErr
 			}
-			rc.ConflictResolverFuncForHLV, err = NewConflictResolverFuncForHLV(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
-			if err != nil {
-				return nil, err
+			rc.ConflictResolverFuncForHLV, newConflictResErr = NewConflictResolverFuncForHLV(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
+			if newConflictResErr != nil {
+				return nil, newConflictResErr
 			}
 		} else {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
-			if err != nil {
-				return nil, err
+			var newConflictResErr error
+			rc.ConflictResolverFunc, newConflictResErr = NewConflictResolverFunc(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
+			if newConflictResErr != nil {
+				return nil, newConflictResErr
 			}
 			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
-			rc.ConflictResolverFuncForHLV, err = NewConflictResolverFuncForHLV(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
-			if err != nil {
-				return nil, err
+			rc.ConflictResolverFuncForHLV, newConflictResErr = NewConflictResolverFuncForHLV(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
+			if newConflictResErr != nil {
+				return nil, newConflictResErr
 			}
 		}
 		rc.ConflictResolutionType = config.ConflictResolutionType
