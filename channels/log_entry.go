@@ -168,6 +168,9 @@ func (rv *RevAndVersion) UnmarshalJSON(data []byte) error {
 
 // CV returns ver@src in big endian format 1@cbl for CBL format.
 func (rv RevAndVersion) CV() string {
+	if rv.CurrentSource == "" || rv.CurrentVersion == "" {
+		return ""
+	}
 	// this should match db.Version.String()
 	return strconv.FormatUint(base.HexCasToUint64(rv.CurrentVersion), 16) + "@" + rv.CurrentSource
 }

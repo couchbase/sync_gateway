@@ -434,12 +434,13 @@ func TestBulkDocs(t *testing.T) {
 			bulk2Version, _ := rt.GetDoc(bulk2DocID)
 			bulk3Version, _ := rt.GetDoc(bulk3LocalDocID)
 
-			var docs []interface{}
+			var docs []any
 			require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-			require.Len(t, docs, 3)
-			assert.Equal(t, map[string]interface{}{"rev": bulk1Version.RevTreeID, "cv": bulk1Version.CV.String(), "id": bulk1DocID}, docs[0])
-			assert.Equal(t, map[string]interface{}{"rev": bulk2Version.RevTreeID, "cv": bulk2Version.CV.String(), "id": bulk2DocID}, docs[1])
-			assert.Equal(t, map[string]interface{}{"rev": bulk3Version.RevTreeID, "id": bulk3LocalDocID}, docs[2])
+			assert.Equal(t, []any{
+				map[string]any{"rev": bulk1Version.RevTreeID, "cv": bulk1Version.CV.String(), "id": bulk1DocID},
+				map[string]any{"rev": bulk2Version.RevTreeID, "cv": bulk2Version.CV.String(), "id": bulk2DocID},
+				map[string]any{"rev": bulk3Version.RevTreeID, "id": bulk3LocalDocID},
+			}, docs)
 
 			// check stored docs
 			response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", bulk1DocID), "")
@@ -493,11 +494,13 @@ func TestBulkDocs(t *testing.T) {
 			bulk2Version, _ = rt.GetDoc(bulk2DocID)
 			bulk3Version, _ = rt.GetDoc(bulk3LocalDocID)
 
+			docs = nil
 			require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-			require.Len(t, docs, 3)
-			assert.Equal(t, map[string]interface{}{"rev": bulk1Version.RevTreeID, "cv": bulk1Version.CV.String(), "id": bulk1DocID}, docs[0])
-			assert.Equal(t, map[string]interface{}{"rev": bulk2Version.RevTreeID, "cv": bulk2Version.CV.String(), "id": bulk2DocID}, docs[1])
-			assert.Equal(t, map[string]interface{}{"rev": bulk3Version.RevTreeID, "id": bulk3LocalDocID}, docs[2])
+			assert.Equal(t, []any{
+				map[string]any{"rev": bulk1Version.RevTreeID, "cv": bulk1Version.CV.String(), "id": bulk1DocID},
+				map[string]any{"rev": bulk2Version.RevTreeID, "cv": bulk2Version.CV.String(), "id": bulk2DocID},
+				map[string]any{"rev": bulk3Version.RevTreeID, "id": bulk3LocalDocID},
+			}, docs)
 
 			// check for stored updates
 			response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", bulk1DocID), "")
@@ -975,6 +978,28 @@ func TestBulkGetEmptyDocs(t *testing.T) {
 	RequireStatus(t, response, 400)
 }
 
+// TestBulkDocsLegacyRevNoop verifies that POSTing /_bulk_docs with an existing legacy RevTree ID is a no-op and that CV is not set on the response.
+func TestBulkDocsLegacyRevNoop(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// create legacy rev (without CV)
+	dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	revId, _ := dbc.CreateDocNoHLV(t, ctx, "legacydoc", db.Body{"foo": "bar"})
+	revIDGen, revIDDigest := db.ParseRevID(ctx, revId)
+
+	// now POST it back to _bulk_docs - should be a no-op
+	input := fmt.Sprintf(`{"new_edits":false,"docs": [{"_id": "legacydoc", "_rev": "%s", "_revisions":{"start": %d, "ids":["%s"]}, "foo": "bar"}]}`, revId, revIDGen, revIDDigest)
+	response := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", input)
+	RequireStatus(t, response, http.StatusCreated)
+	var docs []any
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
+	assert.Equal(t, []any{
+		// no CV present since we didn't actually update the doc
+		map[string]any{"rev": revId, "id": "legacydoc"},
+	}, docs)
+}
+
 // TestBulkDocsNoEdits verifies that POSTing /_bulk_docs with new_edits=false stores
 // the provided revisions verbatim, and subsequent posts append the given history without generating new rev IDs.
 func TestBulkDocsNoEdits(t *testing.T) {
@@ -989,15 +1014,15 @@ func TestBulkDocsNoEdits(t *testing.T) {
               ]}`
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
-	var docs []interface{}
+	var docs []any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	require.Len(t, docs, 2)
-	first, ok := docs[0].(map[string]interface{})
+	first, ok := docs[0].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "bdne1", first["id"])
 	assert.Equal(t, "12-abc", first["rev"])
 
-	second, ok := docs[1].(map[string]interface{})
+	second, ok := docs[1].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "bdne2", second["id"])
 	assert.Equal(t, "34-def", second["rev"])
@@ -1011,7 +1036,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	RequireStatus(t, response, 201)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	require.Len(t, docs, 1)
-	updated, ok := docs[0].(map[string]interface{})
+	updated, ok := docs[0].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "bdne1", updated["id"])
 	assert.Equal(t, "14-jkl", updated["rev"])

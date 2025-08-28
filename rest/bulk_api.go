@@ -574,19 +574,20 @@ func (h *handler) handleBulkDocs() error {
 		doc := item.(map[string]interface{})
 		docid, _ := doc[db.BodyId].(string)
 		var docErr error
+		var revid string
 		var newDoc *db.Document
 		if newEdits {
 			if docid != "" {
-				_, newDoc, docErr = h.collection.Put(h.ctx(), docid, doc)
+				revid, newDoc, docErr = h.collection.Put(h.ctx(), docid, doc)
 			} else {
-				docid, _, newDoc, docErr = h.collection.Post(h.ctx(), doc)
+				docid, revid, newDoc, docErr = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
 			revisions := db.ParseRevisions(h.ctx(), doc)
 			if revisions == nil {
 				docErr = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
-				newDoc, _, docErr = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false, db.ExistingVersionWithUpdateToHLV)
+				newDoc, revid, docErr = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false, db.ExistingVersionWithUpdateToHLV)
 			}
 		}
 
@@ -600,9 +601,12 @@ func (h *handler) handleBulkDocs() error {
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
 			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, docErr)
-		} else {
+		} else if newDoc != nil {
+			// updated the document so we have a new Rev ID and CV to return
 			status["rev"] = newDoc.GetRevTreeID()
-			status["cv"] = newDoc.RevAndVersion.CV()
+			status["cv"] = newDoc.CV()
+		} else {
+			status["rev"] = revid
 		}
 		result = append(result, status)
 	}
