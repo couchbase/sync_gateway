@@ -1212,6 +1212,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	deltaSyncOptions := db.DeltaSyncOptions{
 		Enabled:          db.DefaultDeltaSyncEnabled,
 		RevMaxAgeSeconds: db.DefaultDeltaSyncRevMaxAge,
+		StoreLegacyRevs:  db.DefaultStoreLegacyRevs,
 	}
 
 	if config.DeltaSync != nil {
@@ -1226,6 +1227,10 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 				return db.DatabaseContextOptions{}, fmt.Errorf("delta_sync.rev_max_age_seconds: %d must not be less than the configured old_rev_expiry_seconds: %d", *revMaxAge, oldRevExpirySeconds)
 			}
 			deltaSyncOptions.RevMaxAgeSeconds = *revMaxAge
+		}
+
+		if storeLegacyRevs := config.DeltaSync.StoreLegacyRevs; storeLegacyRevs != nil {
+			deltaSyncOptions.StoreLegacyRevs = *storeLegacyRevs
 		}
 	}
 	base.InfofCtx(ctx, base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
