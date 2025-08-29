@@ -1972,6 +1972,9 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 	}
 
 	_, updatedHistory, err = db.resolveDocMerge(ctx, localDoc, remoteDoc, docHistory, mergedBody)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	newHLV := localDoc.HLV.Copy()
 
