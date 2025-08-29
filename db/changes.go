@@ -1358,9 +1358,16 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 		return nil
 	}
 
-	switch options.VersionType {
+	versionRequested := options.VersionType
+	cvString := populatedDoc.HLV.GetCurrentVersionString()
+	if cvString == "" {
+		// Document has no HLV - force to rev-tree ID
+		versionRequested = ChangesVersionTypeRevTreeID
+	}
+
+	switch versionRequested {
 	case ChangesVersionTypeCV:
-		row.Changes = []ChangeByVersionType{{ChangesVersionTypeCV: populatedDoc.HLV.GetCurrentVersionString()}}
+		row.Changes = []ChangeByVersionType{{ChangesVersionTypeCV: cvString}}
 	case "", ChangesVersionTypeRevTreeID:
 		row.Changes = []ChangeByVersionType{{ChangesVersionTypeRevTreeID: populatedDoc.GetRevTreeID()}}
 	default:

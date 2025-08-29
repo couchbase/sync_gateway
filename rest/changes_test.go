@@ -587,6 +587,43 @@ func TestChangesVersionType(t *testing.T) {
 	}
 }
 
+func TestDocIDChangesVersionCVWithLegacyRev(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	docID1 := "doc1"
+	docID2 := "doc2"
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	// create doc with legacy revID
+	_, _ = collection.CreateDocNoHLV(t, ctx, docID1, db.Body{"foo": "bar"})
+	// create doc normally, this will have a CV allocated
+	rt.PutDoc(docID2, `{"bar":"foo"}`)
+	rt.WaitForPendingChanges()
+
+	// issue docID changes feed
+	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf(`/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=["doc1","doc2"]&include_docs=true`), "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	var changesResults ChangesResults
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &changesResults))
+	require.Len(t, changesResults.Results, 2)
+	for _, changeEntry := range changesResults.Results {
+		require.Len(t, changeEntry.Changes, 1) // ensure only one version type is present
+		for _, change := range changeEntry.Changes {
+			if changeEntry.ID == docID1 {
+				// doc1 was created with a legacy revID, so should have a revID version type
+				_, ok := change[db.ChangesVersionTypeRevTreeID]
+				assert.Truef(t, ok, "Expected version type %s, got %v", db.ChangesVersionTypeRevTreeID, change)
+			} else {
+				// doc2 was created normally so should have a CV version type
+				_, ok := change[db.ChangesVersionTypeCV]
+				assert.Truef(t, ok, "Expected version type %s, got %v", db.ChangesVersionTypeCV, change)
+			}
+		}
+	}
+}
+
 func TestChangesFeedCVWithOldRevOnlyData(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
