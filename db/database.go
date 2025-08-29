@@ -76,6 +76,7 @@ const (
 var (
 	DefaultDeltaSyncEnabled   = false
 	DefaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24) // 24 hours in seconds
+	DefaultStoreLegacyRevs    = true                 // for 4.0, this is opt-out - we can switch to opt-in at a later date
 )
 
 var (
@@ -240,6 +241,7 @@ type UserViewsOptions struct {
 type DeltaSyncOptions struct {
 	Enabled          bool   // Whether delta sync is enabled (EE only)
 	RevMaxAgeSeconds uint32 // The number of seconds deltas for old revs are available for
+	StoreLegacyRevs  bool   // Whether to store additional data to allow legacy RevTree ID support for delta sync
 }
 
 type APIEndpoints struct {

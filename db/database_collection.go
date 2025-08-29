@@ -196,6 +196,11 @@ func (c *DatabaseCollection) deltaSyncRevMaxAgeSeconds() uint32 {
 	return c.dbCtx.Options.DeltaSyncOptions.RevMaxAgeSeconds
 }
 
+// deltaSyncStoreLegacyRevs returns true if legacy revtree IDs are stored to be used as a delta src. This is controlled at database level.
+func (c *DatabaseCollection) deltaSyncStoreLegacyRevs() bool {
+	return c.dbCtx.Options.DeltaSyncOptions.StoreLegacyRevs
+}
+
 // eventMgr manages nofication events. This is controlled at database level.
 func (c *DatabaseCollection) eventMgr() *EventManager {
 	return c.dbCtx.EventMgr
