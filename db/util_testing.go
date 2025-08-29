@@ -884,7 +884,7 @@ func (c *DatabaseCollectionWithUser) UpsertTestDocWithVersion(ctx context.Contex
 		}
 	}
 
-	doc, _, _, err := c.PutExistingCurrentVersion(ctx, newDoc, newDocHLV, currentBucketDoc, nil, false)
+	doc, _, _, err := c.PutExistingCurrentVersion(ctx, newDoc, newDocHLV, currentBucketDoc, nil, false, ConflictResolvers{})
 	require.NoError(t, err)
 	return doc
 }

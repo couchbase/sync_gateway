@@ -609,17 +609,32 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	}
 	rc.Direction = config.Direction
 
-	// Set conflict resolver for pull replications
+	// Set conflict resolver for pull replications. Currently, at this point we don't know if the replication will
+	// be sub-protocol version 4 or < 4 so we must set both conflict resolver functions. In addition, we must have
+	// both available for the possibility of replicating a document that exists both side fo the replication already
+	// but both are legacy pre upgrades docs without HLV.
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
-
+			var newConflictResErr error
+			rc.ConflictResolverFunc, newConflictResErr = NewConflictResolverFunc(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
+			if newConflictResErr != nil {
+				return nil, newConflictResErr
+			}
+			rc.ConflictResolverFuncForHLV, newConflictResErr = NewConflictResolverFuncForHLV(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
+			if newConflictResErr != nil {
+				return nil, newConflictResErr
+			}
 		} else {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
+			var newConflictResErr error
+			rc.ConflictResolverFunc, newConflictResErr = NewConflictResolverFunc(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
+			if newConflictResErr != nil {
+				return nil, newConflictResErr
+			}
 			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
-		}
-		if err != nil {
-			return nil, err
+			rc.ConflictResolverFuncForHLV, newConflictResErr = NewConflictResolverFuncForHLV(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
+			if newConflictResErr != nil {
+				return nil, newConflictResErr
+			}
 		}
 		rc.ConflictResolutionType = config.ConflictResolutionType
 	}

@@ -1348,11 +1348,11 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
-	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
+	forceAllowConflictingTombstone := newDoc.Deleted && (!bh.conflictResolver.IsEmpty() || bh.clientType == BLIPClientTypeSGR2)
 	if bh.useHLV() && changeIsVector {
-		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList, isBlipRevTreeProperty)
-	} else if bh.conflictResolver != nil {
-		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
+		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList, isBlipRevTreeProperty, bh.conflictResolver)
+	} else if bh.conflictResolver.revTreeConflictResolver != nil {
+		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver.revTreeConflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	} else {
 		_, _, err = bh.collection.PutExistingRev(bh.loggingCtx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	}

@@ -196,6 +196,11 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	}, 10*time.Second, 50*time.Millisecond)
 }
 
+func (rt *RestTester) WaitForVersionRevIDOnly(docID string, version DocVersion) {
+	version.CV = db.Version{} // empty cv so WaitForVersion only asserts on revID
+	rt.WaitForVersion(docID, version)
+}
+
 // WaitForTombstone waits for a the document version to exist and be tombstoned. If the document is not found, the test will fail.
 func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -212,6 +217,11 @@ func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 			assert.Equal(c, deleteVersion.CV.String(), doc.HLV.GetCurrentVersionString())
 		}
 	}, time.Second*10, time.Millisecond*100)
+}
+
+func (rt *RestTester) WaitForTombstoneRevIDOnly(docID string, deleteVersion DocVersion) {
+	deleteVersion.CV = db.Version{}
+	rt.WaitForTombstone(docID, deleteVersion)
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {

@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -820,4 +821,60 @@ func (hlv *HybridLogicalVector) MergeWithIncomingHLV(newCV Version, incomingHLV 
 	hlv.AddMergeVersion(previousSourceID, previousVersion)
 	hlv.UpdateHistory(incomingHLV)
 	return nil
+}
+
+// DefaultLWWConflictResolutionType will resolve a conflict based of its CV value, returning the document with the
+// highest CV value for a LWW conflict resolution.
+func DefaultLWWConflictResolutionType(ctx context.Context, conflict Conflict) (Body, error) {
+	if conflict.LocalHLV == nil || conflict.RemoteHLV == nil {
+		return nil, errors.New("local or incoming document is nil for resolveConflict")
+	}
+	// resolve conflict in favor of remote document, remote wins case
+	if conflict.RemoteHLV.Version > conflict.LocalHLV.Version {
+		// remote document wins
+		return conflict.RemoteDocument, nil
+	}
+	return conflict.LocalDocument, nil
+}
+
+// localWinsConflictResolutionForHLV will alter the HLV for a local wins conflict resolution. Preserving local MV
+// unless incoming MV has a src common with local MV and has a higher version, in which case local MV is invalidated and moved to PV.
+// In the eventuality that local CV is <= to incoming CV, a new CV will be created with this db's sourceID
+func localWinsConflictResolutionForHLV(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector, docID, sourceID string) (*HybridLogicalVector, error) {
+	if localHLV == nil || incomingHLV == nil {
+		return nil, errors.New("local or incoming hlv is nil for resolveConflict")
+	}
+
+	newHLV := localHLV.Copy()
+
+	// resolving for local wins
+	base.DebugfCtx(ctx, base.KeyVV, "resolving doc %s for local wins, local hlv: %v, incoming hlv: %v", base.UD(docID), localHLV, incomingHLV)
+	newCV := Version{
+		SourceID: sourceID,
+		Value:    expandMacroCASValueUint64,
+	}
+	err := newHLV.MergeWithIncomingHLV(newCV, incomingHLV)
+	if err != nil {
+		return nil, err
+	}
+
+	base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of local wins, resulting HLV: %v", base.UD(docID), newHLV)
+
+	return newHLV, nil
+}
+
+// remoteWinsConflictResolutionForHLV will alter the HLV for a remote wins conflict resolution. Preserving incoming MV
+// unless local MV has a src common with incoming MV and has a higher version, in which case incoming MV is invalidated and moved to PV.
+func remoteWinsConflictResolutionForHLV(ctx context.Context, docID string, localHLV, incomingHLV *HybridLogicalVector) (*HybridLogicalVector, error) {
+	if localHLV == nil || incomingHLV == nil {
+		return nil, errors.New("local or incoming hlv is nil for resolveConflict")
+	}
+
+	newHLV := localHLV.Copy()
+
+	// resolve for remote wins
+	newHLV.UpdateWithIncomingHLV(incomingHLV)
+
+	base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of remote wins, resulting HLV: %v", base.UD(docID), newHLV)
+	return newHLV, nil
 }

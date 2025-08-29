@@ -6171,12 +6171,12 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 
+	// CBG-4799: tests wil be refactored to allow for easier switch between rev tree and version vector
 	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
-	t.Skip("CBG-4778: needs rework for version vectors")
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	defaultConflictResolverWithTombstoneTests := []struct {
@@ -6244,10 +6244,11 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: activeRT.GetDatabase(),
 				},
-				Continuous:           true,
-				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				CollectionsEnabled:   !activeRT.GetDatabase().OnlyDefaultCollection(),
+				Continuous:             true,
+				ConflictResolverFunc:   defaultConflictResolver,
+				ReplicationStatsMap:    dbReplicatorStats(t),
+				CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+				SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()}, // only relevant for v3 and below replications
 			}
 
 			docID := "doc"
@@ -6261,23 +6262,25 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
 			// Wait for the original document revision written to activeRT to arrive at passiveRT.
-			passiveRT.WaitForVersion(docID, activeRTVersionCreated)
+			passiveRT.WaitForVersionRevIDOnly(docID, activeRTVersionCreated) // < v4 replication only sends revID
 
 			// Stop replication.
 			require.NoError(t, ar.Stop(), "Error stopping replication")
 
 			// Update the document on activeRT to build a revision history.
+			activeRTVersionCreated.CV = db.Version{} // need to clear cv to update with revID not CV
 			activeRTVersionUpdated := updateDoc(activeRT, docID, activeRTVersionCreated, "bar")
 
 			// Tombstone the document on activeRT to mark the tip of the revision history for deletion.
 			tombstoneVersion := activeRT.DeleteDoc(docID, activeRTVersionUpdated)
 
-			activeRT.WaitForTombstone(docID, tombstoneVersion)
+			activeRT.WaitForTombstoneRevIDOnly(docID, tombstoneVersion) // < v4 replication only sends revID
 
 			// Update the document on passiveRT with the specified body values.
 			passiveRTVersion := activeRTVersionCreated
 			for _, bodyValue := range test.remoteBodyValues {
 				passiveRTVersion = updateDoc(passiveRT, docID, passiveRTVersion, bodyValue)
+				passiveRTVersion.CV = db.Version{} // need to clear cv to update with revID not CV
 			}
 
 			// Start replication.
@@ -6286,8 +6289,8 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			// the winning revision to be written to both activeRT and passiveRT buckets. Check whether the
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
 			expectedVersion := rest.NewDocVersionFromFakeRev(test.expectedRevID)
-			activeRT.WaitForTombstone(docID, expectedVersion)
-			passiveRT.WaitForTombstone(docID, expectedVersion)
+			activeRT.WaitForTombstoneRevIDOnly(docID, expectedVersion)
+			passiveRT.WaitForTombstoneRevIDOnly(docID, expectedVersion)
 		})
 	}
 }
@@ -6296,13 +6299,13 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 
+	// CBG-4799: tests wil be refactored to allow for easier switch between rev tree and version vector
 	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	t.Skip("CBG-4778: needs rework for version vectors")
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name            string   // A unique name to identify the unit test.
@@ -6370,10 +6373,11 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				Continuous:           true,
-				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  dbReplicatorStats(t),
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:             true,
+				ConflictResolverFunc:   defaultConflictResolver,
+				ReplicationStatsMap:    dbReplicatorStats(t),
+				CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+				SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()}, // only relevant for v3 and below replications
 			}
 
 			// Create the first revision of the document on rt2.
@@ -6386,24 +6390,27 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			require.NoError(t, ar.Start(ctx1), "Error starting replication")
 			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
-			rt1.WaitForVersion(docID, rt2VersionCreated)
+			rt1.WaitForVersionRevIDOnly(docID, rt2VersionCreated)
 
 			// Stop replication.
 			require.NoError(t, ar.Stop(), "Error stopping replication")
 
 			// Update the document on rt2 to build a revision history.
+			rt2VersionCreated.CV = db.Version{} // need to clear cv to update with revID not CV
 			rt2VersionUpdated := updateDoc(rt2, docID, rt2VersionCreated, "bar")
 
 			// Tombstone the document on rt2 to mark the tip of the revision history for deletion.
+			rt2VersionUpdated.CV = db.Version{} // need to clear cv to update with revID not CV
 			tombstoneVersion := rt2.DeleteDoc(docID, rt2VersionUpdated)
 
 			// Ensure that the tombstone revision is written to rt2 bucket with an empty body.
-			rt2.WaitForTombstone(docID, tombstoneVersion)
+			rt2.WaitForTombstoneRevIDOnly(docID, tombstoneVersion)
 
 			// Update the document on rt1 with the specified body values.
 			rt1Version := rt2VersionCreated
 			for _, bodyValue := range test.localBodyValues {
 				rt1Version = updateDoc(rt1, docID, rt1Version, bodyValue)
+				rt1Version.CV = db.Version{} // need to clear cv to update with revID not CV
 			}
 
 			// Start replication.
@@ -6414,8 +6421,8 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
 
 			expectedVersion := rest.NewDocVersionFromFakeRev(test.expectedRevID)
-			rt1.WaitForTombstone(docID, expectedVersion)
-			rt2.WaitForTombstone(docID, expectedVersion)
+			rt1.WaitForTombstoneRevIDOnly(docID, expectedVersion)
+			rt2.WaitForTombstoneRevIDOnly(docID, expectedVersion)
 		})
 	}
 }
@@ -6429,7 +6436,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (non-default conflict resolver)")
 	}
-	t.Skip("CBG-4778: Needs conflict resolution done for ISGR, also needs rev tree property done")
+	t.Skip("CBG-4830: Needs work to run in < 4 or in both 4 and >= 4 protocol")
 
 	type revisionState struct {
 		generation       int
@@ -6695,7 +6702,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 }
 func TestReplicatorConflictAttachment(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	t.Skip("CBG-4778: Needs conflict resolution done for ISGR, also needs rev tree property done")
+	t.Skip("CBG-4830: Needs work to run in < 4 or in both 4 and >= 4 protocol")
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("requires enterprise edition")
 	}

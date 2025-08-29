@@ -2723,7 +2723,6 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 func TestProcessRevIncrementsStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	t.Skip("CBG-4791 - rev tree generated on active is different from passive, this will be mitigated by CBG-4791")
 
 	activeRT, remoteRT, remoteURLString, teardown := SetupSGRPeers(t)
 	defer teardown()

@@ -41,8 +41,16 @@ func (apr *ActivePullReplicator) _connect() error {
 		return err
 	}
 
+	// setup conflict resolver functions for both revTree documents and HLV documents, we
+	// need this in the eventually that a replication is pulling a doc that is a legacy doc both locally
+	// and on the remote side. Here we fall back to revTree conflict resolver.
 	if apr.config.ConflictResolverFunc != nil {
-		apr.blipSyncContext.conflictResolver = NewConflictResolver(apr.config.ConflictResolverFunc, apr.config.ReplicationStatsMap)
+		apr.blipSyncContext.conflictResolver.revTreeConflictResolver = NewConflictResolver(apr.config.ConflictResolverFunc, apr.config.ReplicationStatsMap)
+	}
+	if apr.blipSyncContext.useHLV() {
+		if apr.config.ConflictResolverFuncForHLV != nil {
+			apr.blipSyncContext.conflictResolver.hlvConflictResolver = NewConflictResolver(apr.config.ConflictResolverFuncForHLV, apr.config.ReplicationStatsMap)
+		}
 	}
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 

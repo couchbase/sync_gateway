@@ -70,8 +70,10 @@ type ActiveReplicatorConfig struct {
 	ActiveDB *Database
 	// WebsocketPingInterval is the time between websocket heartbeats sent by the active replicator.
 	WebsocketPingInterval time.Duration
-	// Conflict resolver
+	// Conflict resolver for rev tree conflicts.  If nil, the default conflict resolver will be used.
 	ConflictResolverFunc ConflictResolverFunc
+	// ConflictResolverFuncForHLV for hlv clients to resolve conflicts. If nil, the default conflict resolver will be used.
+	ConflictResolverFuncForHLV ConflictResolverFunc
 	// Conflict resolution type.  Required for Equals comparison only
 	ConflictResolutionType ConflictResolverType
 	// Conflict resolver source, for custom conflict resolver.  Required for Equals comparison only
