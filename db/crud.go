@@ -2015,7 +2015,7 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes(ctx)
 	if err == nil {
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds())
+		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds())
 	}
 	doc.RemoveBody()
 
@@ -2843,7 +2843,11 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 			}
 		}
 		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
+		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
+		// Optionally store a lookup document to find the CV-based revHash by legacy RevTree ID
+		if db.deltaSyncStoreLegacyRevs() {
+			_ = db.setOldRevisionJSONPtr(ctx, doc, db.deltaSyncRevMaxAgeSeconds())
+		}
 	}
 	return doc
 }
