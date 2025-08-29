@@ -32,7 +32,6 @@ services:
       - 18097:18097
       - 19102:19102
     volumes:
-      - "${DOCKER_CBS_ROOT_DIR:-.}/cbs:/root"
       - "${WORKSPACE_ROOT:-.}:/workspace"
   couchbase-replica1:
     container_name: couchbase-replica1
