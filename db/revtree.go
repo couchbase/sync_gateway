@@ -401,7 +401,7 @@ func (tree RevTree) getRevisionBody(revid string, loader RevLoaderFunc) ([]byte,
 	// as if the transient backup had expired. We are not attempting to repair the rev tree, as reclaiming storage
 	// is a much lower priority than avoiding write errors, and want to avoid introducing additional conflict scenarios.
 	// The invalid rev tree bodies will eventually be pruned through normal revision tree pruning.
-	if len(info.Body) > 0 && info.Body[0] == nonJSONPrefix {
+	if len(info.Body) > 0 && nonJSONPrefix(info.Body[0]) == nonJSONPrefixKindRevBody {
 		return nil, false
 	}
 	return info.Body, true
