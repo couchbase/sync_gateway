@@ -73,7 +73,6 @@ func (h *handler) handleAllDocs() error {
 	includeChannels := h.getBoolQuery("channels")
 	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
-	includeCVs := h.getBoolQuery("show_cv")
 	includeSeqs := h.getBoolQuery("update_seq")
 
 	// Get the doc IDs if this is a POST request:
@@ -190,14 +189,12 @@ func (h *handler) handleAllDocs() error {
 		row.Value = &value
 		row.ID = doc.DocID
 		value.Rev = doc.RevID
+		row.Value.CV = doc.CV
 		if includeSeqs {
 			row.UpdateSeq = doc.Sequence
 		}
 		if includeChannels {
 			row.Value.Channels = channels
-		}
-		if includeCVs {
-			row.Value.CV = doc.CV
 		}
 		return row
 	}
@@ -397,7 +394,6 @@ func (h *handler) handleBulkGet() error {
 
 	includeAttachments := h.getBoolQuery("attachments")
 	showExp := h.getBoolQuery("show_exp")
-	showCV := h.getBoolQuery("show_cv")
 
 	showRevs := h.getBoolQuery("revs")
 	globalRevsLimit := int(h.getIntQuery("revs_limit", math.MaxInt32))
@@ -435,10 +431,10 @@ func (h *handler) handleBulkGet() error {
 
 			doc := item.(map[string]interface{})
 			docid, _ := doc["id"].(string)
-			revid := ""
+			revOrCV := ""
 			revok := true
 			if doc["rev"] != nil {
-				revid, revok = doc["rev"].(string)
+				revOrCV, revok = doc["rev"].(string)
 			}
 			if docid == "" || !revok {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID in _bulk_get")
@@ -474,12 +470,12 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, db.Get1xRevBodyOptions{
+				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revOrCV, db.Get1xRevBodyOptions{
 					MaxHistory:       docRevsLimit,
 					HistoryFrom:      revsFrom,
 					AttachmentsSince: attsSince,
 					ShowExp:          showExp,
-					ShowCV:           showCV,
+					ShowCV:           true,
 				})
 			}
 
@@ -488,15 +484,15 @@ func (h *handler) handleBulkGet() error {
 				status, reason := base.ErrorAsHTTPStatus(err)
 				errStr := base.CouchHTTPErrorName(status)
 				body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
-				if revid != "" {
-					body["rev"] = revid
+				if revOrCV != "" {
+					body["rev"] = revOrCV
 				}
 			}
 
 			_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), body, err != nil, canCompressParts, writer)
 			base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
 				base.AuditFieldDocID:      docid,
-				base.AuditFieldDocVersion: revid,
+				base.AuditFieldDocVersion: revOrCV,
 			})
 			if includeAttachments {
 				if atts, ok := body[db.BodyAttachments]; ok && atts != nil {
@@ -507,7 +503,7 @@ func (h *handler) handleBulkGet() error {
 					for attachment := range attsMap {
 						base.Audit(h.ctx(), base.AuditIDAttachmentRead, base.AuditFields{
 							base.AuditFieldDocID:        docid,
-							base.AuditFieldDocVersion:   revid,
+							base.AuditFieldDocVersion:   revOrCV,
 							base.AuditFieldAttachmentID: attachment,
 						})
 					}
@@ -577,21 +573,21 @@ func (h *handler) handleBulkDocs() error {
 	for _, item := range docs {
 		doc := item.(map[string]interface{})
 		docid, _ := doc[db.BodyId].(string)
-		var err error
+		var docErr error
 		var revid string
+		var newDoc *db.Document
 		if newEdits {
 			if docid != "" {
-				revid, _, err = h.collection.Put(h.ctx(), docid, doc)
+				revid, newDoc, docErr = h.collection.Put(h.ctx(), docid, doc)
 			} else {
-				docid, revid, _, err = h.collection.Post(h.ctx(), doc)
+				docid, revid, newDoc, docErr = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
 			revisions := db.ParseRevisions(h.ctx(), doc)
 			if revisions == nil {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
+				docErr = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
-				revid = revisions[0]
-				_, _, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false, db.ExistingVersionWithUpdateToHLV)
+				newDoc, revid, docErr = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false, db.ExistingVersionWithUpdateToHLV)
 			}
 		}
 
@@ -599,13 +595,16 @@ func (h *handler) handleBulkDocs() error {
 		if docid != "" {
 			status["id"] = docid
 		}
-		if err != nil {
-			code, msg := base.ErrorAsHTTPStatus(err)
+		if docErr != nil {
+			code, msg := base.ErrorAsHTTPStatus(docErr)
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
-			err = nil // wrote it to output already; not going to return it
+			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, docErr)
+		} else if newDoc != nil {
+			// updated the document so we have a new Rev ID and CV to return
+			status["rev"] = newDoc.GetRevTreeID()
+			status["cv"] = newDoc.CV()
 		} else {
 			status["rev"] = revid
 		}
@@ -620,15 +619,15 @@ func (h *handler) handleBulkDocs() error {
 		offset := len(db.LocalDocPrefix)
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, isNewDoc, err := h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
+		revid, isNewDoc, docErr := h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
-		if err != nil {
-			code, msg := base.ErrorAsHTTPStatus(err)
+		if docErr != nil {
+			code, msg := base.ErrorAsHTTPStatus(docErr)
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
+			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, docErr)
 		} else {
 			status["rev"] = revid
 			auditEventForDocumentUpsert(h.ctx(), docid, revid, isNewDoc)

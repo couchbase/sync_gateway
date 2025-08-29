@@ -402,48 +402,132 @@ func assertGatewayStatus(t *testing.T, response *TestResponse, expected int) {
 }
 
 func TestBulkDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
+	tests := []struct {
+		occKey string
+	}{
+		{occKey: db.BodyRev},
+		{occKey: db.BodyCV},
+	}
 
-	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}, {"_id": "_local/bulk3", "n": 3}]}`
-	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
-	RequireStatus(t, response, 201)
+	for _, test := range tests {
+		t.Run(test.occKey, func(t *testing.T) {
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
 
-	var docs []interface{}
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Len(t, docs, 3)
-	assert.Equal(t, map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"}, docs[0])
+			const bulk1DocID = "bulk1"
+			const bulk2DocID = "bulk2"
+			const bulk3LocalDocID = "_local/bulk3"
 
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/bulk1", "")
-	RequireStatus(t, response, 200)
-	var respBody db.Body
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
-	assert.Equal(t, "bulk1", respBody[db.BodyId])
-	assert.Equal(t, "1-50133ddd8e49efad34ad9ecae4cb9907", respBody[db.BodyRev])
-	assert.Equal(t, float64(1), respBody["n"])
-	assert.Equal(t, map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"}, docs[1])
-	assert.Equal(t, map[string]interface{}{"rev": "0-1", "id": "_local/bulk3"}, docs[2])
+			// insert all
 
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/bulk3", "")
-	RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
-	assert.Equal(t, "_local/bulk3", respBody[db.BodyId])
-	assert.Equal(t, "0-1", respBody[db.BodyRev])
-	assert.Equal(t, float64(3), respBody["n"])
+			input := fmt.Sprintf(
+				`{"docs": [{%q:%q, %q:%d}, {%q:%q, %q:%d}, {%q:%q, %q:%d}]}`,
+				db.BodyId, bulk1DocID, "n", 1,
+				db.BodyId, bulk2DocID, "n", 2,
+				db.BodyId, bulk3LocalDocID, "n", 3,
+			)
+			response := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", input)
+			RequireStatus(t, response, http.StatusCreated)
 
-	// update all documents
-	input = `{"docs": [{"_id": "bulk1", "_rev" : "1-50133ddd8e49efad34ad9ecae4cb9907", "n": 10}, {"_id": "bulk2", "_rev":"1-035168c88bd4b80fb098a8da72f881ce", "n": 20}, {"_id": "_local/bulk3","_rev":"0-1","n": 30}]}`
-	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Len(t, docs, 3)
-	assert.Equal(t, map[string]interface{}{"rev": "2-7e384b16e63ee3218349ee568f156d6f", "id": "bulk1"}, docs[0])
+			// get persisted versions
+			bulk1Version, _ := rt.GetDoc(bulk1DocID)
+			bulk2Version, _ := rt.GetDoc(bulk2DocID)
+			bulk3Version, _ := rt.GetDoc(bulk3LocalDocID)
 
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/bulk3", "")
-	RequireStatus(t, response, 200)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
-	assert.Equal(t, "_local/bulk3", respBody[db.BodyId])
-	assert.Equal(t, "0-2", respBody[db.BodyRev])
-	assert.Equal(t, float64(30), respBody["n"])
+			var docs []any
+			require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
+			assert.Equal(t, []any{
+				map[string]any{"rev": bulk1Version.RevTreeID, "cv": bulk1Version.CV.String(), "id": bulk1DocID},
+				map[string]any{"rev": bulk2Version.RevTreeID, "cv": bulk2Version.CV.String(), "id": bulk2DocID},
+				map[string]any{"rev": bulk3Version.RevTreeID, "id": bulk3LocalDocID},
+			}, docs)
+
+			// check stored docs
+			response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", bulk1DocID), "")
+			RequireStatus(t, response, http.StatusOK)
+			assert.JSONEq(t, fmt.Sprintf(`{%q:%q, %q:%q, %q:%q, %q:%d}`,
+				db.BodyId, bulk1DocID,
+				db.BodyRev, bulk1Version.RevTreeID,
+				db.BodyCV, bulk1Version.CV,
+				"n", 1,
+			), response.BodyString())
+			response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", bulk2DocID), "")
+			RequireStatus(t, response, http.StatusOK)
+			assert.JSONEq(t, fmt.Sprintf(`{%q:%q, %q:%q, %q:%q, %q:%d}`,
+				db.BodyId, bulk2DocID,
+				db.BodyRev, bulk2Version.RevTreeID,
+				db.BodyCV, bulk2Version.CV,
+				"n", 2,
+			), response.BodyString())
+			response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", bulk3LocalDocID), "")
+			RequireStatus(t, response, http.StatusOK)
+			assert.JSONEq(t, fmt.Sprintf(`{%q:%q, %q:%q, %q:%d}`,
+				db.BodyId, bulk3LocalDocID,
+				db.BodyRev, bulk3Version.RevTreeID,
+				"n", 3,
+			), response.BodyString())
+
+			// Update all documents
+			switch test.occKey {
+			case db.BodyCV:
+				input = fmt.Sprintf(
+					`{"docs": [{%q:%q, %q:%q, %q:%d}, {%q:%q, %q:%q, %q:%d}, {%q:%q, %q:%q, %q:%d}]}`,
+					db.BodyId, bulk1DocID, db.BodyCV, bulk1Version.CV, "n", 10,
+					db.BodyId, bulk2DocID, db.BodyCV, bulk2Version.CV, "n", 20,
+					db.BodyId, bulk3LocalDocID, db.BodyRev, bulk3Version.RevTreeID, "n", 30, //  local docs don't have a CV so we can only use the returned rev as the OCC value for update
+				)
+			case db.BodyRev:
+				input = fmt.Sprintf(
+					`{"docs": [{%q:%q, %q:%q, %q:%d}, {%q:%q, %q:%q, %q:%d}, {%q:%q, %q:%q, %q:%d}]}`,
+					db.BodyId, bulk1DocID, db.BodyRev, bulk1Version.RevTreeID, "n", 10,
+					db.BodyId, bulk2DocID, db.BodyRev, bulk2Version.RevTreeID, "n", 20,
+					db.BodyId, bulk3LocalDocID, db.BodyRev, bulk3Version.RevTreeID, "n", 30,
+				)
+			default:
+				t.Fatalf("Unexpected occKey: %q", test.occKey)
+			}
+			response = rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", input)
+			RequireStatus(t, response, http.StatusCreated)
+
+			// refresh versions
+			bulk1Version, _ = rt.GetDoc(bulk1DocID)
+			bulk2Version, _ = rt.GetDoc(bulk2DocID)
+			bulk3Version, _ = rt.GetDoc(bulk3LocalDocID)
+
+			docs = nil
+			require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
+			assert.Equal(t, []any{
+				map[string]any{"rev": bulk1Version.RevTreeID, "cv": bulk1Version.CV.String(), "id": bulk1DocID},
+				map[string]any{"rev": bulk2Version.RevTreeID, "cv": bulk2Version.CV.String(), "id": bulk2DocID},
+				map[string]any{"rev": bulk3Version.RevTreeID, "id": bulk3LocalDocID},
+			}, docs)
+
+			// check for stored updates
+			response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", bulk1DocID), "")
+			RequireStatus(t, response, http.StatusOK)
+			assert.JSONEq(t, fmt.Sprintf(`{%q:%q, %q:%q, %q:%q, %q:%d}`,
+				db.BodyId, bulk1DocID,
+				db.BodyRev, bulk1Version.RevTreeID,
+				db.BodyCV, bulk1Version.CV,
+				"n", 10,
+			), response.BodyString())
+			response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", bulk2DocID), "")
+			RequireStatus(t, response, http.StatusOK)
+			assert.JSONEq(t, fmt.Sprintf(`{%q:%q, %q:%q, %q:%q, %q:%d}`,
+				db.BodyId, bulk2DocID,
+				db.BodyRev, bulk2Version.RevTreeID,
+				db.BodyCV, bulk2Version.CV,
+				"n", 20,
+			), response.BodyString())
+			response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", bulk3LocalDocID), "")
+			RequireStatus(t, response, http.StatusOK)
+			assert.JSONEq(t, fmt.Sprintf(`{%q:%q, %q:%q, %q:%d}`,
+				db.BodyId, bulk3LocalDocID,
+				db.BodyRev, bulk3Version.RevTreeID,
+				"n", 30,
+			), response.BodyString())
+		})
+	}
 }
 
 func TestBulkDocsIDGeneration(t *testing.T) {
@@ -455,7 +539,6 @@ func TestBulkDocsIDGeneration(t *testing.T) {
 	RequireStatus(t, response, 201)
 	var docs []map[string]string
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	log.Printf("response: %s", response.Body.Bytes())
 	RequireStatus(t, response, 201)
 	assert.Len(t, docs, 2)
 	assert.Equal(t, "1-50133ddd8e49efad34ad9ecae4cb9907", docs[0]["rev"])
@@ -895,6 +978,30 @@ func TestBulkGetEmptyDocs(t *testing.T) {
 	RequireStatus(t, response, 400)
 }
 
+// TestBulkDocsLegacyRevNoop verifies that POSTing /_bulk_docs with an existing legacy RevTree ID is a no-op and that CV is not set on the response.
+func TestBulkDocsLegacyRevNoop(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// create legacy rev (without CV)
+	dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	revId, _ := dbc.CreateDocNoHLV(t, ctx, "legacydoc", db.Body{"foo": "bar"})
+	revIDGen, revIDDigest := db.ParseRevID(ctx, revId)
+
+	// now POST it back to _bulk_docs - should be a no-op
+	input := fmt.Sprintf(`{"new_edits":false,"docs": [{"_id": "legacydoc", "_rev": "%s", "_revisions":{"start": %d, "ids":["%s"]}, "foo": "bar"}]}`, revId, revIDGen, revIDDigest)
+	response := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", input)
+	RequireStatus(t, response, http.StatusCreated)
+	var docs []any
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
+	assert.Equal(t, []any{
+		// no CV present since we didn't actually update the doc
+		map[string]any{"rev": revId, "id": "legacydoc"},
+	}, docs)
+}
+
+// TestBulkDocsNoEdits verifies that POSTing /_bulk_docs with new_edits=false stores
+// the provided revisions verbatim, and subsequent posts append the given history without generating new rev IDs.
 func TestBulkDocsNoEdits(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -907,12 +1014,18 @@ func TestBulkDocsNoEdits(t *testing.T) {
               ]}`
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
-	var docs []interface{}
+	var docs []any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Len(t, docs, 2)
-	assert.Equal(t, map[string]interface{}{"rev": "12-abc", "id": "bdne1"}, docs[0])
+	require.Len(t, docs, 2)
+	first, ok := docs[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "bdne1", first["id"])
+	assert.Equal(t, "12-abc", first["rev"])
 
-	assert.Equal(t, map[string]interface{}{"rev": "34-def", "id": "bdne2"}, docs[1])
+	second, ok := docs[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "bdne2", second["id"])
+	assert.Equal(t, "34-def", second["rev"])
 
 	// Now update the first doc with two new revisions:
 	input = `{"new_edits":false, "docs": [
@@ -922,8 +1035,11 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Len(t, docs, 1)
-	assert.Equal(t, map[string]interface{}{"rev": "14-jkl", "id": "bdne1"}, docs[0])
+	require.Len(t, docs, 1)
+	updated, ok := docs[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "bdne1", updated["id"])
+	assert.Equal(t, "14-jkl", updated["rev"])
 
 }
 

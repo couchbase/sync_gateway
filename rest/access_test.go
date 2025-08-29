@@ -496,11 +496,20 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 		})
 	}
 }
-func TestBulkDocsChangeToAccess(t *testing.T) {
 
+// TestBulkDocsChangeToAccess verifies that access() grants from one doc in a single bulk_docs request apply to subsequent docs in the same batch.
+func TestBulkDocsChangeToAccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
+	rtConfig := RestTesterConfig{SyncFn: `
+		function(doc) {
+			if(doc.type == "setaccess") {
+				channel(doc.channel);
+				access(doc.owner, doc.channel);
+			} else {
+				requireAccess(doc.channel);
+			}
+		}`}
 	rt := NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 
@@ -518,17 +527,18 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 	assert.NoError(t, a.Save(user))
 
 	input := `{"docs": [{"_id": "bulk1", "type" : "setaccess", "owner":"user1" , "channel":"chan1"}, {"_id": "bulk2" , "channel":"chan1"}]}`
-
 	response := rt.SendUserRequest("POST", "/db/_bulk_docs", input, "user1")
 	RequireStatus(t, response, 201)
 
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Len(t, docs, 2)
-	assert.Equal(t, map[string]interface{}{"rev": "1-afbcffa8a4641a0f4dd94d3fc9593e74", "id": "bulk1"}, docs[0])
-
-	assert.Equal(t, map[string]interface{}{"rev": "1-4d79588b9fe9c38faae61f0c1b9471c0", "id": "bulk2"}, docs[1])
-
+	require.Len(t, docs, 2)
+	assert.NotContains(t, response.BodyString(), `missing channel access`)
+	assert.NotContains(t, response.BodyString(), `"status":403"`)
+	assert.Contains(t, response.BodyString(), `"id":"bulk1"`)
+	assert.Contains(t, response.BodyString(), `"rev":"1-afbcffa8a4641a0f4dd94d3fc9593e74"`)
+	assert.Contains(t, response.BodyString(), `"id":"bulk2"`)
+	assert.Contains(t, response.BodyString(), `"rev":"1-4d79588b9fe9c38faae61f0c1b9471c0"`)
 }
 
 // Test _all_docs API call under different security scenarios
@@ -1154,15 +1164,6 @@ func TestAllDocsCV(t *testing.T) {
 		{
 			name: "no query string",
 			url:  "/{{.keyspace}}/_all_docs",
-			output: fmt.Sprintf(`{
-				"total_rows": 1,
-				"update_seq": 1,
-				"rows": [{"key": "%s", "id": "%s", "value": {"rev": "%s"}}]
-			}`, docID, docID, docVersion.RevTreeID),
-		},
-		{
-			name: "cvs=true",
-			url:  "/{{.keyspace}}/_all_docs?show_cv=true",
 			output: fmt.Sprintf(`{
 				"total_rows": 1,
 				"update_seq": 1,

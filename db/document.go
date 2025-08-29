@@ -131,6 +131,13 @@ func (sd *SyncData) GetRevTreeID() string {
 	return sd.RevAndVersion.RevTreeID
 }
 
+func (sd *SyncData) CV() string {
+	if sd == nil {
+		return ""
+	}
+	return sd.RevAndVersion.CV()
+}
+
 // determine set of current channels based on removal entries.
 func (sd *SyncData) getCurrentChannels() base.Set {
 	ch := base.SetOf()

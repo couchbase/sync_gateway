@@ -688,7 +688,7 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 type AllDocsViewQueryRow struct {
 	Key   string
 	Value struct {
-		RevID    channels.RevAndVersion `json:"r"`
+		Rev      channels.RevAndVersion `json:"r"`
 		Sequence uint64                 `json:"s"`
 		Channels []string               `json:"c"`
 	}
@@ -696,7 +696,7 @@ type AllDocsViewQueryRow struct {
 
 type AllDocsIndexQueryRow struct {
 	Id       string
-	RevID    channels.RevAndVersion `json:"r"`
+	Rev      channels.RevAndVersion `json:"r"`
 	Sequence uint64                 `json:"s"`
 	Channels channels.ChannelMap    `json:"c"`
 }
