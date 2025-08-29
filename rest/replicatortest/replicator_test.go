@@ -2807,12 +2807,16 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.localConflictingRevBody)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
+			rt1DocConflictVersion, _ := rt1.GetDoc(docID)
+
 			changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			lastSeq = changesResults.Last_Seq.String()
 
 			resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.remoteConflictingRevBody)
 			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			rt2DocConflictVersion, _ := rt2.GetDoc(docID)
 
 			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/repl1?action=start", "")
 			rest.RequireStatus(t, resp, http.StatusOK)
@@ -2831,6 +2835,17 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			assert.Equal(t, 3, revGen)
 			assert.Equal(t, "merged", doc.Body(ctx)["source"].(string))
+
+			// assert on hlv
+			require.Len(t, doc.HLV.MergeVersions, 2)
+			val1, ok := doc.HLV.MergeVersions[rt1DocConflictVersion.CV.SourceID]
+			require.True(t, ok)
+			assert.Equal(t, rt1DocConflictVersion.CV.Value, val1)
+			val2, ok := doc.HLV.MergeVersions[rt2DocConflictVersion.CV.SourceID]
+			require.True(t, ok)
+			assert.Equal(t, rt2DocConflictVersion.CV.Value, val2)
+			assert.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
+			assert.Equal(t, doc.Cas, doc.HLV.Version)
 
 			assert.Nil(t, doc.Body(ctx)[db.BodyAttachments], "_attachments property should not be in resolved doc body")
 
@@ -3911,7 +3926,6 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflict(t *testing.T) {
 	base.LongRunningTest(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	t.Skip("CBG-4791: test need rev tree reconciliation changes")
 
 	// scenarios
@@ -4026,9 +4040,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Create revision on rt1 (local)
 			rt1version := rt1.PutNewEditsFalse(docID, test.localVersion, rest.EmptyDocVersion(), test.localRevisionBody)
 			rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1version)
-
-			vrs, _ := rt1.GetDoc(docID)
-			fmt.Println(vrs)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
