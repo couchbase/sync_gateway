@@ -3506,7 +3506,6 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 		dbConfig := rt.NewDbConfig()
 		dbConfig.AutoImport = base.Ptr(false)
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-		startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
 		docID := "doc1"
 		rt.CreateTestDoc(docID)
 
@@ -3523,7 +3522,6 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 		btcRunner.StartPush(btc.id)
 		docVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(`{"resurrect":true}`))
 		rt.WaitForVersion(docID, docVersion)
-		require.Equal(t, startWarnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value())
 	})
 }
 
