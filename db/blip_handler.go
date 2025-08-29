@@ -914,7 +914,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
-	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID, bsc.useHLV())
+	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID)
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
