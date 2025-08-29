@@ -2645,7 +2645,7 @@ func TestCBLRevposHandling(t *testing.T) {
 func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) DocVersion {
 	// Write attachment directly to the datastore.
 	dataStore := rt.GetSingleDataStore()
-	_, err := dataStore.Add(attKey, 0, attBody)
+	_, err := dataStore.AddRaw(attKey, 0, attBody)
 	require.NoError(t, err)
 
 	body := db.Body{}
