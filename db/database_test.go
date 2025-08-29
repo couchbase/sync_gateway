@@ -1057,6 +1057,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 				require.NoError(t, err, "Error purging old revision JSON")
 			} else {
 				err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
+				_ = err
 				// TODO: CBG-4840 - Requires restoration of RevTree ID-based old revision storage
 				//require.NoError(t, err, "Error purging old revision JSON")
 			}
