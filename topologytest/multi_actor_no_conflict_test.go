@@ -24,8 +24,8 @@ func TestMultiActorUpdate(t *testing.T) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 			topology.StartReplications()
-			for createPeerName, createPeer := range topology.peers.ActivePeers() {
-				for updatePeerName, updatePeer := range topology.SortedPeers() {
+			for createPeerName, createPeer := range topology.ActivePeers() {
+				for updatePeerName, updatePeer := range topology.ActivePeers() {
 					topology.Run(t, "create="+createPeerName+",update="+updatePeerName, func(t *testing.T) {
 						docID := getDocID(t) + "_create=" + createPeerName + ",update=" + updatePeerName
 						body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, updatePeer, topology.specDescription))
@@ -55,7 +55,7 @@ func TestMultiActorDelete(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 			topology.StartReplications()
 			for createPeerName, createPeer := range topology.ActivePeers() {
-				for deletePeerName, deletePeer := range topology.SortedPeers() {
+				for deletePeerName, deletePeer := range topology.ActivePeers() {
 					topology.Run(t, "create="+createPeerName+",delete="+deletePeerName, func(t *testing.T) {
 						docID := getDocID(t) + "_create=" + createPeerName + ",update=" + deletePeerName
 						body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, deletePeer, topology.specDescription))
@@ -85,8 +85,8 @@ func TestMultiActorResurrect(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 			topology.StartReplications()
 			for createPeerName, createPeer := range topology.ActivePeers() {
-				for deletePeerName, deletePeer := range topology.SortedPeers() {
-					for resurrectPeerName, resurrectPeer := range topology.SortedPeers() {
+				for deletePeerName, deletePeer := range topology.ActivePeers() {
+					for resurrectPeerName, resurrectPeer := range topology.ActivePeers() {
 						topology.Run(t, fmt.Sprintf("create=%s,delete=%s,resurrect=%s", createPeerName, deletePeerName, resurrectPeerName), func(t *testing.T) {
 							docID := getDocID(t) + "_create=" + createPeerName + ",delete=" + deletePeerName + ",resurrect=" + resurrectPeerName
 							body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, deletePeer, resurrectPeer, topologySpec.description))

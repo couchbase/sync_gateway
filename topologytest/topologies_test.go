@@ -60,6 +60,48 @@ var TopologySpecifications = []TopologySpecification{
 	},
 	{
 		/*
+			+ - - - - - - +
+			' +---------+ '
+			' |  cbs1   | '
+			' +---------+ '
+			' +---------+ '
+			' |   sg1   | '
+			' +---------+ '
+			+ - - - - - - +
+			      ^
+			      |
+			      |
+			      v
+			  +---------+
+			  |cbl1 (v3)|
+			  +---------+
+		*/
+		description: "CBLV3<->SG<->CBS 1.1",
+		peers: map[string]PeerOptions{
+			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
+			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
+			"cbl1": {Type: PeerTypeCouchbaseLiteV3},
+		},
+		replications: []PeerReplicationDefinition{
+			{
+				activePeer:  "cbl1",
+				passivePeer: "sg1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
+				},
+			},
+			{
+				activePeer:  "cbl1",
+				passivePeer: "sg1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				},
+			},
+		},
+	},
+
+	{
+		/*
 			Test topology 1.2
 
 			+ - - - - - - +      +- - - - - - -+

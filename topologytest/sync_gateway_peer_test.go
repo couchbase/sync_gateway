@@ -161,7 +161,11 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 		// Only assert on CV since RevTreeID might not be present if this was a Couchbase Server write
 		bodyBytes, err := doc.BodyBytes(ctx)
 		assert.NoError(c, err)
-		assertHLVEqual(c, dsName, docID, p.name, version, bodyBytes, expected, topology)
+		if expected.HasHLV() {
+			assertHLVEqual(c, dsName, docID, p.name, version, bodyBytes, expected, topology)
+		} else {
+			assertRevTreeIDEqual(c, dsName, docID, p.name, version, bodyBytes, expected, topology)
+		}
 	}, totalWaitTime, pollInterval)
 	return doc.Body(ctx)
 }

@@ -233,12 +233,25 @@ func (to Topology) GetDocState(t assert.TestingT, dsName sgbucket.DataStoreName,
 
 // ActivePeers returns a list of unique peers in the topology. If there is an identical symmetric peer, do not return it.
 func (to Topology) ActivePeers() iter.Seq2[string, Peer] {
+	if to.CompareRevTreeOnly() {
+		return to.peers.NonImportSortedPeers()
+	}
 	return to.peers.ActivePeers()
 }
 
 // SortedPeers returns a sorted list of peers by name, for deterministic output.
 func (to Topology) SortedPeers() iter.Seq2[string, Peer] {
 	return to.peers.SortedPeers()
+}
+
+// CompareRevTreeOnly is true for a given topology when comparing only revtree is correct.
+func (to Topology) CompareRevTreeOnly() bool {
+	for _, peer := range to.peers.ActivePeers() {
+		if peer.Type() == PeerTypeCouchbaseLiteV3 {
+			return true
+		}
+	}
+	return false
 }
 
 // Run is equivalent to testing.T.Run() but updates the underlying TB to the new testing.T
@@ -305,12 +318,29 @@ type PeerType int
 
 const (
 	// PeerTypeCouchbaseServer represents a Couchbase Server peer. This can be backed by rosmar or couchbase server (controlled by SG_TEST_BACKING_STORE).
-	PeerTypeCouchbaseServer PeerType = iota
+	PeerTypeCouchbaseServer PeerType = iota + 1
 	// PeerTypeCouchbaseLite represents a Couchbase Lite peer. This is currently backed in memory but will be backed by in memory structure that will send and receive blip messages. Future expansion to real Couchbase Lite peer in CBG-4260.
 	PeerTypeCouchbaseLite
+	// PeerTypeCouchbaseLiteV3 represents a Couchbase Lite peer. This is currently backed in memory but will be backed by in memory structure that will send and receive blip messages. Future expansion to real Couchbase Lite peer in CBG-4260.
+	PeerTypeCouchbaseLiteV3
 	// PeerTypeSyncGateway represents a Sync Gateway peer backed by a RestTester.
 	PeerTypeSyncGateway
 )
+
+func (pt PeerType) String() string {
+	switch pt {
+	case PeerTypeCouchbaseServer:
+		return "Couchbase Server Peer"
+	case PeerTypeCouchbaseLite:
+		return "Couchbase Lite Peer"
+	case PeerTypeCouchbaseLiteV3:
+		return "Couchbase Lite V3 Peer"
+	case PeerTypeSyncGateway:
+		return "Sync Gateway Peer"
+	default:
+		return fmt.Sprintf("Unknown Peer Type %d", pt)
+	}
+}
 
 // PeerBucketID represents a specific bucket for a test. This allows multiple Sync Gateway instances to point to the same bucket, or a different buckets. There is no significance to the numbering of the buckets. We can use as many buckets as the MainTestBucketPool allows.
 type PeerBucketID int
@@ -349,7 +379,7 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 		}
 		p.UpdateTB(t)
 		return p
-	case PeerTypeCouchbaseLite:
+	case PeerTypeCouchbaseLite, PeerTypeCouchbaseLiteV3:
 		require.Equal(t, PeerBucketNoBackingBucket, opts.BucketID, "bucket should not be specified for Couchbase Lite peer %+v", opts)
 		_, ok := buckets[opts.BucketID]
 		require.False(t, ok, "bucket should not be specified for Couchbase Lite peer")
@@ -357,6 +387,7 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 			name:               name,
 			blipClients:        make(map[string]*PeerBlipTesterClient),
 			symmetricRedundant: opts.Symmetric,
+			peerType:           opts.Type,
 		}
 		p.UpdateTB(t)
 		return p
@@ -365,7 +396,7 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 		require.True(t, ok, "bucket not found for bucket ID %d", opts.BucketID)
 		return newSyncGatewayPeer(t, name, bucket, opts.Symmetric)
 	default:
-		require.Fail(t, fmt.Sprintf("unsupported peer type %T", opts.Type))
+		require.Fail(t, fmt.Sprintf("unsupported peer type %s", opts.Type))
 	}
 	return nil
 }
