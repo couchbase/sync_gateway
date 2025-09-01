@@ -106,6 +106,8 @@ func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, do
 		docVersion = client.AddRev(docID, rest.EmptyDocVersion(), body)
 	case PeerTypeCouchbaseLite:
 		docVersion, hlv = client.AddHLVRev(docID, rest.EmptyDocVersion(), body)
+	default:
+		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %s for creating document", p.Type()))
 	}
 	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
 	p.TB().Logf("%s: Created document %s with %#v", p, docID, docMetadata)
