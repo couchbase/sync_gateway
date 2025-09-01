@@ -1249,7 +1249,13 @@ func (e proposeChangeBatchEntry) MarshalJSON() ([]byte, error) {
 	if e.useHLV() {
 		// Until CBG-4461 is implemented the second value in the array is the full HLV.
 		if e.historyStr() != "" {
-			rev += ";" + e.historyStr()
+			// if mv present, this will already contain a ;
+			// else add one
+			if strings.Contains(e.historyStr(), ";") {
+				rev += "," + e.historyStr()
+			} else {
+				rev += ";" + e.historyStr()
+			}
 		}
 	}
 	fmt.Fprintf(output, `["%s","%s"`, e.docID, rev)
