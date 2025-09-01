@@ -365,28 +365,38 @@ func genOfRevID(ctx context.Context, revid string) int {
 	return generation
 }
 
-// Splits a revision ID into generation number and hex digest.
-func ParseRevID(ctx context.Context, revid string) (int, string) {
-	if revid == "" {
+// ParseRevID splits a revision ID into generation number and hex digest. Logs a warning and returns -1, "" if the revID is invalid.
+func ParseRevID(ctx context.Context, revID string) (int, string) {
+	if revID == "" {
 		return 0, ""
+	}
+	generation, digest, err := parseRevID(revID)
+	if err != nil {
+		base.WarnfCtx(ctx, "%s", err)
+		return -1, ""
+	}
+	return generation, digest
+}
+
+// parseRevID splits a revision ID into generation number and hex digest. Returns an error if the revID is invalid.
+func parseRevID(revid string) (int, string, error) {
+	if revid == "" {
+		return 0, "", errors.New("empty revID passed to parseRevID")
 	}
 
 	idx := strings.Index(revid, "-")
 	if idx == -1 {
-		base.WarnfCtx(ctx, "parseRevID found no separator in rev %q", revid)
-		return -1, ""
+		return -1, "", fmt.Errorf("parseRevID found no separator in rev %q", revid)
 	}
 
 	gen, err := strconv.Atoi(revid[:idx])
 	if err != nil {
-		base.WarnfCtx(ctx, "parseRevID unexpected generation in rev %q: %s", revid, err)
-		return -1, ""
+		return -1, "", fmt.Errorf("parseRevID unexpected generation in rev %q: %s", revid, err)
 	} else if gen < 1 {
-		base.WarnfCtx(ctx, "parseRevID unexpected generation in rev %q", revid)
-		return -1, ""
+		return -1, "", fmt.Errorf("parseRevID unexpected generation in rev %q", revid)
 	}
 
-	return gen, revid[idx+1:]
+	return gen, revid[idx+1:], nil
 }
 
 // compareRevIDs compares the two rev IDs and returns:

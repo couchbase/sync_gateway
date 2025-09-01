@@ -244,7 +244,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 //   - Assert that the new doc is created and given a new source version pair
 //   - Send a new rev that SGW hasn;t yet seen unsolicited and assert that the doc is added correctly and given a source version pair
 func TestProcessLegacyRev(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
 
 	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		allowConflicts: false,
@@ -253,7 +253,7 @@ func TestProcessLegacyRev(t *testing.T) {
 	})
 	defer bt.Close()
 	rt := bt.restTester
-	collection, _ := rt.GetSingleTestDatabaseCollection()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	// add doc to SGW
 	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
@@ -270,10 +270,19 @@ func TestProcessLegacyRev(t *testing.T) {
 	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?rev=2-bcd", "")
 	RequireStatus(t, resp, 200)
 
+	encoded2bcd, err := db.LegacyRevToRevTreeEncodedVersion("2-bcd")
+	require.NoError(t, err)
 	// assert this legacy doc has been given source version pair
-	docSource, docVrs := collection.GetDocumentCurrentVersion(t, "doc1")
-	assert.Equal(t, docVersion.CV.SourceID, docSource)
-	assert.NotEqual(t, docVersion.CV.Value, docVrs)
+	doc1, err := collection.GetDocument(ctx, "doc1", db.DocUnmarshalSync)
+	require.NoError(t, err)
+	require.Equal(t, *doc1.HLV, db.HybridLogicalVector{
+		SourceID:          encoded2bcd.SourceID,
+		Version:           encoded2bcd.Value,
+		CurrentVersionCAS: doc1.Cas,
+		PreviousVersions: db.HLVVersions{
+			docVersion.CV.SourceID: docVersion.CV.Value,
+		},
+	})
 
 	// try new rev to process
 	_, _, _, err = bt.SendRev(
@@ -289,10 +298,17 @@ func TestProcessLegacyRev(t *testing.T) {
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/foo?rev=1-abc", "")
 	RequireStatus(t, resp, 200)
 
-	// assert this legacy doc has been given source version pair
-	docSource, docVrs = collection.GetDocumentCurrentVersion(t, "doc1")
-	assert.NotEqual(t, "", docSource)
-	assert.NotEqual(t, uint64(0), docVrs)
+	encoded1abc, err := db.LegacyRevToRevTreeEncodedVersion("1-abc")
+	require.NoError(t, err)
+
+	foo, err := collection.GetDocument(ctx, "foo", db.DocUnmarshalSync)
+	require.NoError(t, err)
+
+	require.Equal(t, *foo.HLV, db.HybridLogicalVector{
+		SourceID:          encoded1abc.SourceID,
+		Version:           encoded1abc.Value,
+		CurrentVersionCAS: foo.Cas,
+	})
 }
 
 // TestProcessRevWithLegacyHistory:
@@ -1003,4 +1019,44 @@ func TestLegacyRevNotInConflict(t *testing.T) {
 	assert.NotNil(t, bucketDoc.History[rev1ID])
 	assert.Equal(t, docVersion.CV.Value, bucketDoc.HLV.PreviousVersions[docVersion.CV.SourceID])
 
+}
+
+func TestLegacyRevBlipTesterClient(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest, base.KeyCRUD, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCRUD)
+	rtConfig := RestTesterConfig{GuestEnabled: true}
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4 replication only test
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		const cblDoc = "cblDoc"
+		cblDocVersion1 := btcRunner.AddRevTreeRev(client.id, cblDoc, EmptyDocVersion(), []byte(`{"action": "create"}`))
+		rt.WaitForVersion(cblDoc, cblDocVersion1)
+
+		cblDocVersion2 := btcRunner.AddRev(client.id, cblDoc, &cblDocVersion1, []byte(`{"action": "update"}`))
+		rt.WaitForVersion(cblDoc, cblDocVersion2)
+
+		const sgDoc = "sgDoc"
+		dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+		revTreeID1, _ := dbc.CreateDocNoHLV(t, ctx, sgDoc, db.Body{"action": "create"})
+		sgDocVersion1 := DocVersion{RevTreeID: revTreeID1}
+		btcRunner.StartPull(client.id)
+		btcRunner.WaitForVersion(client.id, sgDoc, sgDocVersion1)
+
+		// _rev: revTreeID1 to allow updating using CreateDocNoHLV
+		revtreeID2, _ := dbc.CreateDocNoHLV(t, ctx, sgDoc, db.Body{"_rev": revTreeID1, "action": "update"})
+		sgDocVersion2 := DocVersion{RevTreeID: revtreeID2}
+		btcRunner.WaitForVersion(client.id, sgDoc, sgDocVersion2)
+
+		sgVersion3 := btcRunner.AddRev(client.id, sgDoc, &sgDocVersion2, []byte(`{"action": "cbl update"}`))
+		require.NotNil(t, sgVersion3)
+		rt.WaitForVersion(sgDoc, sgVersion3)
+	})
 }

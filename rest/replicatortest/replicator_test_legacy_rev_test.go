@@ -82,12 +82,11 @@ func TestActiveReplicatorPullLegacyRev(t *testing.T) {
 	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
+	encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(legacyRev)
+	require.NoError(t, err)
 	expVersion := rest.DocVersion{
 		RevTreeID: legacyRev,
-		CV: db.Version{
-			SourceID: rt1.GetDatabase().EncodedSourceID,
-			Value:    doc.Cas,
-		},
+		CV:        encodedCV,
 	}
 	rest.RequireDocVersionEqual(t, expVersion, doc.ExtractDocVersion())
 

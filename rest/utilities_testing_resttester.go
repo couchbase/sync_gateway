@@ -190,9 +190,13 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		if version.RevTreeID != "" {
 			assert.Equal(c, version.RevTreeID, body.ExtractRev())
 		}
-		if !version.CV.IsEmpty() {
-			assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
+		if version.CV.IsEmpty() {
+			return
 		}
+		if !assert.Contains(c, body, db.BodyCV) {
+			return
+		}
+		assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
 	}, 10*time.Second, 50*time.Millisecond)
 }
 
