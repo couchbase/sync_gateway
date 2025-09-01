@@ -318,7 +318,7 @@ type PeerType int
 
 const (
 	// PeerTypeCouchbaseServer represents a Couchbase Server peer. This can be backed by rosmar or couchbase server (controlled by SG_TEST_BACKING_STORE).
-	PeerTypeCouchbaseServer PeerType = iota + 1
+	PeerTypeCouchbaseServer PeerType = iota
 	// PeerTypeCouchbaseLite represents a Couchbase Lite peer. This is currently backed in memory but will be backed by in memory structure that will send and receive blip messages. Future expansion to real Couchbase Lite peer in CBG-4260.
 	PeerTypeCouchbaseLite
 	// PeerTypeCouchbaseLiteV3 represents a Couchbase Lite peer. This is currently backed in memory but will be backed by in memory structure that will send and receive blip messages. Future expansion to real Couchbase Lite peer in CBG-4260.

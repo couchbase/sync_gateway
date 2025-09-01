@@ -131,6 +131,8 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 		docVersion = client.AddRev(docID, parentVersion, body)
 	case PeerTypeCouchbaseLite:
 		docVersion, hlv = client.AddHLVRev(docID, parentVersion, body)
+	default:
+		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %s for writing document", p.Type()))
 	}
 	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
 	p.TB().Logf("%s: Wrote document %s with %#+v", p, docID, docMetadata)
@@ -213,7 +215,8 @@ func (p *CouchbaseLiteMockPeer) Close() {
 	}
 }
 
-// Type returns PeerTypeCouchbaseLite if CouchbaseLite V4 or PeerTypeCouchbaseLiteV3 if representing a 3.x client.
+// Type returns PeerTypeCouchbaseLite if representing a Couchbase Lite 4.x client or PeerTypeCouchbaseLiteV3
+// if representing a 3.x client.
 func (p *CouchbaseLiteMockPeer) Type() PeerType {
 	return p.peerType
 }
