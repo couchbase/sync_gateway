@@ -108,7 +108,7 @@ func assertCVEqual(t assert.TestingT, dsName sgbucket.DataStoreName, docID strin
 	assert.Equal(t, expected.CV(t), version.CV(t), "Actual HLV's CV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v\nActual Body: %s\n%s", docID, p, expected, version, body, topology.GetDocState(t, dsName, docID))
 }
 
-// assertRevTreeIDEqual asserts that CV of the version is equal to the expected CV.
+// assertRevTreeIDEqual asserts that revtree ID of the version is equal to the expected CV.
 func assertRevTreeIDEqual(t assert.TestingT, dsName sgbucket.DataStoreName, docID string, p string, version DocMetadata, body []byte, expected DocMetadata, topology Topology) {
 	assert.Equal(t, expected.RevTreeID, version.RevTreeID, "Actual revtree id does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v\nActual Body: %s\n%s", docID, p, expected, version, body, topology.GetDocState(t, dsName, docID))
 }
