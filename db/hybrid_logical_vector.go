@@ -171,6 +171,9 @@ func ParseVersion(versionString string) (version Version, err error) {
 
 // String returns a version/sourceID pair in CBL string format. This does not match the format serialized on CBS, which will be in 0x0 format.
 func (v Version) String() string {
+	if v.IsEmpty() {
+		return ""
+	}
 	return strconv.FormatUint(v.Value, 16) + "@" + v.SourceID
 }
 

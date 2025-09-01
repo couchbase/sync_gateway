@@ -310,7 +310,7 @@ func (rev *DocumentRevision) Mutable1xBody(ctx context.Context, db *DatabaseColl
 		b[BodyExpiry] = rev.Expiry.Format(time.RFC3339)
 	}
 
-	if showCV && rev.CV != nil {
+	if showCV && rev.CV != nil && !rev.CV.IsEmpty() {
 		b[BodyCV] = rev.CV.String()
 	}
 
