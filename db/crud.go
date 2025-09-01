@@ -978,7 +978,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		d.HLV = &HybridLogicalVector{}
 		base.DebugfCtx(ctx, base.KeyVV, "No existing HLV for doc %s", base.UD(d.ID))
 	} else {
-		base.DebugfCtx(ctx, base.KeyVV, "Existing HLV for doc %s before modification %+v", base.UD(d.ID), d.HLV)
+		base.DebugfCtx(ctx, base.KeyVV, "Existing HLV for doc %s before modification %#v", base.UD(d.ID), d.HLV)
 	}
 	switch docUpdateEvent {
 	case ExistingVersion:
@@ -1000,9 +1000,9 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 				return nil, err
 			}
 			d.HLV.CurrentVersionCAS = d.Cas
-			base.DebugfCtx(ctx, base.KeyVV, "Adding new version to HLV due to import for doc %s, updated HLV %+v", base.UD(d.ID), d.HLV)
+			base.DebugfCtx(ctx, base.KeyVV, "Adding new version to HLV due to import for doc %s, updated HLV %#v", base.UD(d.ID), d.HLV)
 		} else {
-			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV due to _mou.cas == doc.cas for doc %s, extant HLV %+v", base.UD(d.ID), d.HLV)
+			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV due to _mou.cas == doc.cas for doc %s, extant HLV %#v", base.UD(d.ID), d.HLV)
 		}
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
@@ -3474,7 +3474,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		// with a version that's greater than or equal to the server's cv), then we can accept the proposed version.
 		proposedHLV, _, err := extractHLVFromBlipString(proposedHLVString)
 		if err != nil {
-			base.InfofCtx(ctx, base.KeyCRUD, "CheckProposedVersion for doc %s unable to extract proposedHLV from rev message, will be treated as conflict: %v", base.UD(docid), err)
+			base.WarnfCtx(ctx, "CheckProposedVersion for doc %s unable to extract proposedHLV from rev message, will be treated as conflict: %v", base.UD(docid), err)
 		} else if proposedHLV.DominatesSource(localDocCV) {
 			base.DebugfCtx(ctx, base.KeyCRUD, "CheckProposedVersion returning OK for doc %s because incoming HLV dominates cv", base.UD(docid))
 			return ProposedRev_OK, ""

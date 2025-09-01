@@ -2052,7 +2052,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	require.NotNil(btcc.TB(), updatedHLV, "updatedHLV should not be nil for docID %q", docID)
 	if doc._hasConflict(btcc.TB(), opts.incomingHLV) {
 		newBody, updatedHLV = btcc._resolveConflict(opts.incomingHLV, opts.body, doc._latestRev(btcc.TB()))
-		base.DebugfCtx(ctx, base.KeySGTest, "Resolved conflict for docID %q, incomingHLV:%v, existingHLV:%v, updatedHLV:%v", docID, opts.incomingHLV, doc._latestRev(btcc.TB()).HLV, updatedHLV)
+		base.DebugfCtx(ctx, base.KeySGTest, "Resolved conflict for docID %q, incomingHLV:%#v, existingHLV:%#v, updatedHLV:%#v", docID, opts.incomingHLV, doc._latestRev(btcc.TB()).HLV, updatedHLV)
 	} else {
 		base.DebugfCtx(ctx, base.KeySGTest, "No conflict")
 		if btcc.UseHLV() {
