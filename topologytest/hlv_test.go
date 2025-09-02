@@ -172,7 +172,11 @@ func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionNam
 				nonCBLVersion = &version
 				continue
 			}
-			assertHLVEqual(c, dsName, docID, peer, version, nil, *nonCBLVersion, topology)
+			if topology.CompareRevTreeOnly() {
+				assertRevTreeIDEqual(c, dsName, docID, peer, version, nil, *nonCBLVersion, topology)
+			} else {
+				assertHLVEqual(c, dsName, docID, peer, version, nil, *nonCBLVersion, topology)
+			}
 		}
 	}, totalWaitTime, pollInterval)
 }

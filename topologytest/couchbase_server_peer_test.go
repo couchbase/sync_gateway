@@ -216,7 +216,11 @@ func (p *CouchbaseServerPeer) waitForDocVersion(dsName sgbucket.DataStoreName, d
 			return
 		}
 		version = getDocVersion(docID, p, cas, xattrs)
-		assertHLVEqual(c, dsName, docID, p.name, version, docBytes, expected, topology)
+		if expected.HasHLV() {
+			assertHLVEqual(c, dsName, docID, p.name, version, docBytes, expected, topology)
+		} else {
+			assertRevTreeIDEqual(c, dsName, docID, p.name, version, docBytes, expected, topology)
+		}
 	}, totalWaitTime, pollInterval)
 	return docBytes
 }

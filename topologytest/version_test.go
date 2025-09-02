@@ -29,6 +29,15 @@ type DocMetadata struct {
 	ImplicitHLV *db.HybridLogicalVector // ImplicitHLV is the version of the document, if there was no HLV
 }
 
+// HasHLV returns true if the version has an HLV. This will always return true on Couchbase Server or Sync Gateway
+// peers since they can construct an implicit HLV from the CAS.
+func (v DocMetadata) HasHLV() bool {
+	if v.HLV != nil && v.HLV.GetCurrentVersionString() != "" {
+		return true
+	}
+	return v.ImplicitHLV != nil && v.ImplicitHLV.GetCurrentVersionString() != ""
+}
+
 // CV returns the current version of the document.
 func (v DocMetadata) CV(t assert.TestingT) db.Version {
 	if v.ImplicitHLV != nil {
@@ -97,4 +106,9 @@ func assertHLVEqual(t assert.TestingT, dsName sgbucket.DataStoreName, docID stri
 // assertCV asserts that CV of the version is equal to the expected CV.
 func assertCVEqual(t assert.TestingT, dsName sgbucket.DataStoreName, docID string, p string, version DocMetadata, body []byte, expected DocMetadata, topology Topology) {
 	assert.Equal(t, expected.CV(t), version.CV(t), "Actual HLV's CV does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v\nActual Body: %s\n%s", docID, p, expected, version, body, topology.GetDocState(t, dsName, docID))
+}
+
+// assertRevTreeIDEqual asserts that revtree ID of the version is equal to the expected CV.
+func assertRevTreeIDEqual(t assert.TestingT, dsName sgbucket.DataStoreName, docID string, p string, version DocMetadata, body []byte, expected DocMetadata, topology Topology) {
+	assert.Equal(t, expected.RevTreeID, version.RevTreeID, "Actual revtree id does not match expected on %s for peer %s.  Expected: %#v, Actual: %#v\nActual Body: %s\n%s", docID, p, expected, version, body, topology.GetDocState(t, dsName, docID))
 }

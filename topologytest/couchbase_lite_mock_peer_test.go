@@ -43,6 +43,7 @@ type CouchbaseLiteMockPeer struct {
 	blipClients        map[string]*PeerBlipTesterClient
 	name               string
 	symmetricRedundant bool // there is another peer that is symmetric to this one
+	peerType           PeerType
 }
 
 func (p *CouchbaseLiteMockPeer) String() string {
@@ -98,7 +99,16 @@ func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
-	docVersion, hlv := client.AddHLVRev(docID, rest.EmptyDocVersion(), body)
+	var docVersion db.DocVersion
+	var hlv *db.HybridLogicalVector
+	switch p.Type() {
+	case PeerTypeCouchbaseLiteV3:
+		docVersion = client.AddRev(docID, rest.EmptyDocVersion(), body)
+	case PeerTypeCouchbaseLite:
+		docVersion, hlv = client.AddHLVRev(docID, rest.EmptyDocVersion(), body)
+	default:
+		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %s for creating document", p.Type()))
+	}
 	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
 	p.TB().Logf("%s: Created document %s with %#v", p, docID, docMetadata)
 	return BodyAndVersion{
@@ -114,9 +124,18 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 	_, parentMeta := p.getLatestDocVersion(dsName, docID)
 	parentVersion := rest.EmptyDocVersion()
 	if parentMeta != nil {
-		parentVersion = &db.DocVersion{CV: parentMeta.CV(p.TB())}
+		parentVersion = &db.DocVersion{CV: parentMeta.CV(p.TB()), RevTreeID: parentMeta.RevTreeID}
 	}
-	docVersion, hlv := client.AddHLVRev(docID, parentVersion, body)
+	var docVersion db.DocVersion
+	var hlv *db.HybridLogicalVector
+	switch p.Type() {
+	case PeerTypeCouchbaseLiteV3:
+		docVersion = client.AddRev(docID, parentVersion, body)
+	case PeerTypeCouchbaseLite:
+		docVersion, hlv = client.AddHLVRev(docID, parentVersion, body)
+	default:
+		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %s for writing document", p.Type()))
+	}
 	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
 	p.TB().Logf("%s: Wrote document %s with %#+v", p, docID, docMetadata)
 	return BodyAndVersion{
@@ -132,7 +151,7 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, do
 	_, parentMeta := p.getLatestDocVersion(dsName, docID)
 	parentVersion := rest.EmptyDocVersion()
 	if parentMeta != nil {
-		parentVersion = &db.DocVersion{CV: parentMeta.CV(p.TB())}
+		parentVersion = &db.DocVersion{CV: parentMeta.CV(p.TB()), RevTreeID: parentMeta.RevTreeID}
 	}
 	docVersion, hlv := client.Delete(docID, parentVersion)
 	docMeta := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
@@ -142,6 +161,7 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, do
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
+	compareHLV := !topology.CompareRevTreeOnly()
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
@@ -149,7 +169,11 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
 			return
 		}
-		assertHLVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
+		if compareHLV {
+			assertHLVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
+		} else {
+			assertRevTreeIDEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
+		}
 	}, totalWaitTime, pollInterval)
 	var body db.Body
 	require.NoError(p.TB(), base.JSONUnmarshal(data, &body))
@@ -176,6 +200,9 @@ func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID s
 func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) {
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	expectedVersion := db.DocVersion{CV: expected.CV(p.TB())}
+	if p.Type() == PeerTypeCouchbaseLiteV3 {
+		expectedVersion = db.DocVersion{RevTreeID: expected.RevTreeID}
+	}
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		isTombstone, err := client.IsVersionTombstone(docID, expectedVersion)
 		require.NoError(c, err)
@@ -190,9 +217,10 @@ func (p *CouchbaseLiteMockPeer) Close() {
 	}
 }
 
-// Type returns PeerTypeCouchbaseLite.
+// Type returns PeerTypeCouchbaseLite if representing a Couchbase Lite 4.x client or PeerTypeCouchbaseLiteV3
+// if representing a 3.x client.
 func (p *CouchbaseLiteMockPeer) Type() PeerType {
-	return PeerTypeCouchbaseLite
+	return p.peerType
 }
 
 // IsSymmetricRedundant returns true if there is another peer set up that is identical to this one, and this peer doesn't need to participate in unique actions.
@@ -226,8 +254,14 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 	}
 	const username = "user"
 	sg.rt.CreateUser(username, []string{"*"})
-	replication.btcRunner.SetSubprotocols([]string{db.CBMobileReplicationV4.SubprotocolString()})
-	// intentionally do not use base.TestCtx to drop test name for readability
+	switch p.Type() {
+	case PeerTypeCouchbaseLite:
+		replication.btcRunner.SetSubprotocols([]string{db.CBMobileReplicationV4.SubprotocolString()})
+	case PeerTypeCouchbaseLiteV3:
+		replication.btcRunner.SetSubprotocols([]string{db.CBMobileReplicationV3.SubprotocolString()})
+	default:
+		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %v for pull replication", p.Type()))
+	}
 	ctx := base.CorrelationIDLogCtx(sg.rt.TB().Context(), p.name)
 	replication.btc = replication.btcRunner.NewBlipTesterClientOptsWithRTAndContext(ctx, sg.rt, &rest.BlipTesterClientOpts{
 		Username: "user",
