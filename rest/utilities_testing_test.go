@@ -335,7 +335,8 @@ func TestRequest(t *testing.T) {
 }
 
 func TestUtilitiesProposeChangesBatch(t *testing.T) {
-	// remove test when CBG-4461, this tests existing CBL behavior but not necessarily desired behavior
+	// Currently proposeChanges sends the full history to match the Couchbase Lite 4.0.0 implementation. When CBL
+	// implements CBL-4433 and only sends CV, it would be OK to remove this test.
 	testCases := []struct {
 		name  string
 		entry proposeChangeBatchEntry
