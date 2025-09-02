@@ -95,7 +95,7 @@ func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
 
 // GetDocByRev returns the doc body for the given docID and Rev. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocByRev(docID, revTreeID string) db.Body {
-	rawResponse := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revTreeID), "")
+	rawResponse := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, revTreeID), "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
@@ -104,14 +104,14 @@ func (rt *RestTester) GetDocByRev(docID, revTreeID string) db.Body {
 
 // CreateTestDoc creates a document with an arbitrary body.
 func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
-	response := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
+	response := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s", docid), `{"prop":true}`)
 	RequireStatus(rt.TB(), response, 201)
 	return DocVersionFromPutResponse(rt.TB(), response)
 }
 
 // PutDoc will upsert the document with a given contents.
 func (rt *RestTester) PutDoc(docID, body string) DocVersion {
-	rawResponse := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
+	rawResponse := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s", docID), body)
 	RequireStatus(rt.TB(), rawResponse, 201)
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
 }
