@@ -178,7 +178,6 @@ func (c *ConflictResolver) ResolveForHLV(ctx context.Context, conflict Conflict)
 	}
 
 	base.WarnfCtx(ctx, "Conflict resolver returned non-empty cv (%s) not matching local (%s) or remote (%s).", winningRev, localRev, remoteRev)
-	c.stats.ConflictResultMergeCount.Add(1)
 	return winner, "", errors.New("conflict resolver returned non-empty cv not matching local or remote")
 }
 

@@ -978,7 +978,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		d.HLV = &HybridLogicalVector{}
 		base.DebugfCtx(ctx, base.KeyVV, "No existing HLV for doc %s", base.UD(d.ID))
 	} else {
-		base.DebugfCtx(ctx, base.KeyVV, "Existing HLV for doc %s before modification %+v", base.UD(d.ID), d.HLV)
+		base.DebugfCtx(ctx, base.KeyVV, "Existing HLV for doc %s before modification %#v", base.UD(d.ID), d.HLV)
 	}
 	switch docUpdateEvent {
 	case ExistingVersion:
@@ -1000,9 +1000,9 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 				return nil, err
 			}
 			d.HLV.CurrentVersionCAS = d.Cas
-			base.DebugfCtx(ctx, base.KeyVV, "Adding new version to HLV due to import for doc %s, updated HLV %+v", base.UD(d.ID), d.HLV)
+			base.DebugfCtx(ctx, base.KeyVV, "Adding new version to HLV due to import for doc %s, updated HLV %#v", base.UD(d.ID), d.HLV)
 		} else {
-			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV due to _mou.cas == doc.cas for doc %s, extant HLV %+v", base.UD(d.ID), d.HLV)
+			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV due to _mou.cas == doc.cas for doc %s, extant HLV %#v", base.UD(d.ID), d.HLV)
 		}
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
@@ -1749,7 +1749,7 @@ func (db *DatabaseCollectionWithUser) resolveHLVConflict(ctx context.Context, lo
 		RemoteHLV:      incomingDoc.HLV,
 	}
 
-	_, resolutionType, resolveFuncError := resolver.ResolveForHLV(ctx, conflict)
+	resolvedBody, resolutionType, resolveFuncError := resolver.ResolveForHLV(ctx, conflict)
 	if resolveFuncError != nil {
 		base.InfofCtx(ctx, base.KeyReplicate, "Error when running conflict resolution for doc %s: %v", base.UD(localDoc.ID), resolveFuncError)
 		return nil, resolveFuncError
@@ -1765,8 +1765,9 @@ func (db *DatabaseCollectionWithUser) resolveHLVConflict(ctx context.Context, lo
 		newHLV, resolvedError = remoteWinsConflictResolutionForHLV(ctx, incomingDoc.ID, localDoc.HLV, incomingDoc.HLV)
 		return newHLV, resolvedError
 	case ConflictResolutionMerge:
-		// not yet implemented (custom conflict resolution CBG-4779)
-		return nil, fmt.Errorf("Conflict resolution type %v not implemented for HLV", resolutionType)
+		// doc history not used yet CBG-4791 will fix this
+		newHLV, _, resolvedError = db.resolveDocMergeHLV(ctx, localDoc, incomingDoc, nil, resolvedBody)
+		return newHLV, resolvedError
 	default:
 		return nil, fmt.Errorf("Unexpected conflict resolution type: %v", resolutionType)
 	}
@@ -1806,7 +1807,7 @@ func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, local
 		resolvedRevID, resolveError = db.resolveDocRemoteWins(ctx, localDoc, conflict)
 		return resolvedRevID, nil, resolveError
 	case ConflictResolutionMerge:
-		resolvedRevID, updatedHistory, resolveError = db.resolveDocMerge(ctx, localDoc, remoteDoc, conflict, docHistory, resolvedBody)
+		resolvedRevID, updatedHistory, resolveError = db.resolveDocMerge(ctx, localDoc, remoteDoc, docHistory, resolvedBody)
 		return resolvedRevID, updatedHistory, resolveError
 	default:
 		return "", nil, fmt.Errorf("Unexpected conflict resolution type: %v", resolutionType)
@@ -1927,7 +1928,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 //   - Tombstones the local revision
 //   - Modifies the incoming document body to the merged body
 //   - Modifies the incoming history to prepend the merged revid (retaining the previous remote revID as its parent)
-func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string, mergedBody Body) (resolvedRevID string, updatedHistory []string, err error) {
+func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, localDoc *Document, remoteDoc *Document, docHistory []string, mergedBody Body) (resolvedRevID string, updatedHistory []string, err error) {
 
 	// Move attachments from the merged body to the incoming DocAttachments for normal processing.
 	bodyAtts, ok := mergedBody[BodyAttachments]
@@ -1965,9 +1966,37 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 	return mergedRevID, docHistory, nil
 }
 
+func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, localDoc, remoteDoc *Document, docHistory []string, mergedBody Body) (hlv *HybridLogicalVector, updatedHistory []string, err error) {
+	if localDoc.HLV == nil || remoteDoc.HLV == nil {
+		return nil, nil, errors.New("local or incoming hlv is nil for resolveConflict")
+	}
+
+	_, updatedHistory, err = db.resolveDocMerge(ctx, localDoc, remoteDoc, docHistory, mergedBody)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	newHLV := localDoc.HLV.Copy()
+
+	// resolving for local wins
+	base.DebugfCtx(ctx, base.KeyVV, "resolving doc %s with merge, local hlv: %v, incoming hlv: %v", base.UD(localDoc.ID), localDoc.HLV, remoteDoc.HLV)
+	newCV := Version{
+		SourceID: db.dbCtx.EncodedSourceID,
+		Value:    expandMacroCASValueUint64,
+	}
+	err = newHLV.MergeWithIncomingHLV(newCV, remoteDoc.HLV)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	base.DebugfCtx(ctx, base.KeyVV, "successfully merged doc doc %s, resulting HLV: %v", base.UD(localDoc.ID), newHLV)
+	return newHLV, updatedHistory, nil
+}
+
 // resolveLocalWinsHLV will update remote doc's body and attachments to match the local doc, and return a new HLV for local wins
 func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, localDoc, remoteDoc *Document) (*HybridLogicalVector, error) {
 
+	// todo: CBG-4791 - use doc history to ensure rev tree is updated correctly
 	docBodyBytes, err := localDoc.BodyBytes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to retrieve local document body while resolving conflict: %w", err)
@@ -3474,7 +3503,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		// with a version that's greater than or equal to the server's cv), then we can accept the proposed version.
 		proposedHLV, _, err := extractHLVFromBlipString(proposedHLVString)
 		if err != nil {
-			base.InfofCtx(ctx, base.KeyCRUD, "CheckProposedVersion for doc %s unable to extract proposedHLV from rev message, will be treated as conflict: %v", base.UD(docid), err)
+			base.WarnfCtx(ctx, "CheckProposedVersion for doc %s unable to extract proposedHLV from rev message, will be treated as conflict: %v", base.UD(docid), err)
 		} else if proposedHLV.DominatesSource(localDocCV) {
 			base.DebugfCtx(ctx, base.KeyCRUD, "CheckProposedVersion returning OK for doc %s because incoming HLV dominates cv", base.UD(docid))
 			return ProposedRev_OK, ""

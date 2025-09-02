@@ -1278,3 +1278,256 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 		})
 	}
 }
+
+func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	// Passive
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "passivedb",
+			},
+		},
+	})
+	defer rt2.Close()
+	username := "alice"
+	rt2.CreateUser(username, []string{"*"})
+
+	// Active
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "activedb",
+			},
+		},
+	})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	rt1Collection, rt1Ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
+	rt2Collection, rt2Ctx := rt2.GetSingleTestDatabaseCollectionWithUser()
+
+	docID := t.Name()
+	newDoc := db.CreateTestDocument(docID, "", rest.JsonToMap(t, `{"some": "data"}`), false, 0)
+	incomingHLV := &db.HybridLogicalVector{
+		SourceID: "abc",
+		Version:  1234,
+	}
+	// add local version
+	_, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+	require.NoError(t, err)
+
+	newDoc = db.CreateTestDocument(docID, "", rest.JsonToMap(t, `{"some": "data"}`), false, 0)
+	incomingHLV = &db.HybridLogicalVector{
+		SourceID: "def",
+		Version:  1234,
+	}
+	_, _, _, err = rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+	require.NoError(t, err)
+
+	resolver := `function(conflict) {var mergedDoc = new Object(); 
+										mergedDoc._cv = "@";
+										return mergedDoc;}` // invalid - setting cv to something that doesn't match either doc
+	customConflictResolver, err := db.NewCustomConflictResolver(ctx1, resolver, rt1.GetDatabase().Options.JavascriptTimeout)
+	require.NoError(t, err)
+
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: userDBURL(rt2, username),
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:           200,
+		ReplicationStatsMap:        dbReplicatorStats(t),
+		ConflictResolverFunc:       customConflictResolver,
+		ConflictResolverFuncForHLV: customConflictResolver,
+		CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+		Continuous:                 true,
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, ar.Stop()) }()
+
+	// Start the replicator
+	require.NoError(t, ar.Start(ctx1))
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		status := ar.GetStatus(ctx1)
+		assert.Equal(c, 1, int(status.PullReplicationStatus.RejectedLocal))
+	}, 10*time.Second, 100*time.Millisecond)
+}
+
+func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	testCases := []struct {
+		name                    string
+		localBody               string
+		remoteBody              string
+		expectedBody            string
+		conflictResolver        string
+		expectedDocPushResolved bool
+		mergeVersionsExpected   bool
+		newCVGenerated          bool
+	}{
+		{
+			name:                  "remote wins call",
+			conflictResolver:      `function(conflict) {return conflict.RemoteDocument;}`,
+			localBody:             `{"source": "local"}`,
+			expectedBody:          `{"source": "remote"}`,
+			remoteBody:            `{"source": "remote"}`,
+			mergeVersionsExpected: false,
+			newCVGenerated:        false,
+		},
+		{
+			name:                    "local wins call",
+			conflictResolver:        `function(conflict) {return conflict.LocalDocument;}`,
+			localBody:               `{"source": "local"}`,
+			expectedBody:            `{"source": "local"}`,
+			remoteBody:              `{"source": "remote"}`,
+			expectedDocPushResolved: true,
+			mergeVersionsExpected:   true,
+			newCVGenerated:          true,
+		},
+		{
+			name: "merge",
+			conflictResolver: `function(conflict) {
+							var mergedDoc = new Object();
+							mergedDoc.source = "merged";
+							return mergedDoc;
+						}`,
+			localBody:               `{"source": "local"}`,
+			expectedBody:            `{"source": "merged"}`,
+			remoteBody:              `{"source": "remote"}`,
+			expectedDocPushResolved: true,
+			mergeVersionsExpected:   true,
+			newCVGenerated:          true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// Passive
+			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					},
+				},
+			})
+			defer rt2.Close()
+			username := "alice"
+			rt2.CreateUser(username, []string{"*"})
+
+			// Active
+			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "activedb",
+					},
+				},
+			})
+			defer rt1.Close()
+			ctx1 := rt1.Context()
+
+			rt1Collection, rt1Ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
+			rt2Collection, rt2Ctx := rt2.GetSingleTestDatabaseCollectionWithUser()
+
+			docID := "doc1_" + testCase.name
+			newDoc := db.CreateTestDocument(docID, "", rest.JsonToMap(t, testCase.localBody), false, 0)
+			incomingHLV := &db.HybridLogicalVector{
+				SourceID: "abc",
+				Version:  1234,
+			}
+			// add local version
+			localDoc, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+			require.NoError(t, err)
+
+			newDoc = db.CreateTestDocument(docID, "", rest.JsonToMap(t, testCase.remoteBody), false, 0)
+			incomingHLV = &db.HybridLogicalVector{
+				SourceID: "def",
+				Version:  1234,
+			}
+			_, _, _, err = rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+			require.NoError(t, err)
+
+			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, testCase.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
+			require.NoError(t, err)
+
+			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: userDBURL(rt2, username),
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				ChangesBatchSize:           200,
+				ReplicationStatsMap:        dbReplicatorStats(t),
+				ConflictResolverFunc:       customConflictResolver,
+				ConflictResolverFuncForHLV: customConflictResolver,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				Continuous:                 true,
+			})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, ar.Stop()) }()
+
+			// Start the replicator
+			require.NoError(t, ar.Start(ctx1))
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status := ar.GetStatus(ctx1)
+				assert.Equal(c, 1, int(status.PullReplicationStatus.DocsRead))
+				assert.Equal(c, 1, int(status.PushReplicationStatus.DocWriteConflict))
+				if testCase.expectedDocPushResolved {
+					assert.Equal(c, 1, int(status.PushReplicationStatus.DocsWritten))
+				}
+			}, 10*time.Second, 100*time.Millisecond)
+
+			changesResults := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", localDoc.Sequence), "", true)
+			changesResults.RequireDocIDs(t, []string{docID})
+
+			resolvedDoc, err := rt1Collection.GetDocument(rt1Ctx, docID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			// assert on HLV result
+			if testCase.newCVGenerated {
+				assert.Equal(t, rt1.GetDatabase().EncodedSourceID, resolvedDoc.HLV.SourceID)
+				assert.Equal(t, resolvedDoc.Cas, resolvedDoc.HLV.Version)
+				if testCase.mergeVersionsExpected {
+					assert.Len(t, resolvedDoc.HLV.MergeVersions, 2)
+					assert.Equal(t, uint64(1234), resolvedDoc.HLV.MergeVersions["abc"])
+					assert.Equal(t, uint64(1234), resolvedDoc.HLV.MergeVersions["def"])
+				} else {
+					// pv will be populated
+					assert.Equal(t, uint64(1234), resolvedDoc.HLV.MergeVersions["abc"])
+					assert.Equal(t, uint64(1234), resolvedDoc.HLV.MergeVersions["def"])
+				}
+			} else {
+				// must be remote wins
+				assert.Equal(t, "def", resolvedDoc.HLV.SourceID)
+				assert.Equal(t, uint64(1234), resolvedDoc.HLV.Version)
+				assert.Len(t, resolvedDoc.HLV.MergeVersions, 0)
+				assert.Equal(t, uint64(1234), resolvedDoc.HLV.PreviousVersions["abc"])
+			}
+			requireBodyEqual(t, testCase.expectedBody, resolvedDoc)
+
+			if testCase.expectedDocPushResolved {
+				resolvedDocBodyLocal, err := resolvedDoc.BodyBytes(rt1Ctx)
+				require.NoError(t, err)
+				resolvedDocRemote, err := rt2Collection.GetDocument(rt2Ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+
+				resolvedDocBodyRemote, err := resolvedDocRemote.BodyBytes(rt2Ctx)
+				require.NoError(t, err)
+				assert.Equal(t, resolvedDocBodyLocal, resolvedDocBodyRemote)
+			}
+
+			// todo: assert on rev tree here - CBG-4791
+
+		})
+	}
+}
