@@ -53,6 +53,22 @@ func (hv HLVVersions) unsorted() iter.Seq2[string, uint64] {
 	return maps.All(hv)
 }
 
+// GoString returns a string converting values to decimal.
+func (hv HLVVersions) GoString() string {
+	var sb strings.Builder
+	sb.WriteString("HLVVersions{")
+	i := 0
+	for k, v := range hv {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(fmt.Sprintf("%q: %d", k, v))
+		i++
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
 // Version is representative of a single entry in a HybridLogicalVector.
 type Version struct {
 	// SourceID is an ID representing the source of the value (e.g. Couchbase Lite ID)
@@ -697,7 +713,7 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 }
 
 func (hlv HybridLogicalVector) GoString() string {
-	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%#+v, MergeVersions:%#+v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
+	return fmt.Sprintf("HybridLogicalVector{CurrentVersionCAS:%d, SourceID:%s, Version:%d, PreviousVersions:%#v, MergeVersions:%#v}", hlv.CurrentVersionCAS, hlv.SourceID, hlv.Version, hlv.PreviousVersions, hlv.MergeVersions)
 }
 
 // HLVConflictStatus returns whether two HLVs are in conflict or not
