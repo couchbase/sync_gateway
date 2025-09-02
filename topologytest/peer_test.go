@@ -28,7 +28,7 @@ import (
 )
 
 // totalWaitTime is the time to wait for a document on a peer. This time is low for rosmar and high for Couchbase Server.
-var totalWaitTime = 3 * time.Second
+var totalWaitTime = 8 * time.Second
 
 // pollInterval is the time to poll to see if a document is updated on a peer
 var pollInterval = 1 * time.Millisecond
