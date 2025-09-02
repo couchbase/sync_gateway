@@ -819,7 +819,7 @@ func (db *DatabaseContext) InitChannel(ctx context.Context, t *testing.T, chanNa
 	return err
 }
 
-func createTestDocument(docID string, revID string, body Body, deleted bool, expiry uint32) (newDoc *Document) {
+func CreateTestDocument(docID string, revID string, body Body, deleted bool, expiry uint32) (newDoc *Document) {
 	newDoc = &Document{
 		ID:        docID,
 		Deleted:   deleted,

@@ -2658,7 +2658,6 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 //   - Starts the replicator to trigger conflict resolution to merge both attachments in the conflict.
 func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
-	t.Skip("CBG-4779: test uses custom conflict resolution")
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Test uses EE-only features for custom conflict resolution")
 	}
@@ -2808,12 +2807,16 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.localConflictingRevBody)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
+			rt1DocConflictVersion, _ := rt1.GetDoc(docID)
+
 			changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			lastSeq = changesResults.Last_Seq.String()
 
 			resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.remoteConflictingRevBody)
 			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			rt2DocConflictVersion, _ := rt2.GetDoc(docID)
 
 			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/repl1?action=start", "")
 			rest.RequireStatus(t, resp, http.StatusOK)
@@ -2832,6 +2835,17 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			assert.Equal(t, 3, revGen)
 			assert.Equal(t, "merged", doc.Body(ctx)["source"].(string))
+
+			// assert on hlv
+			require.Len(t, doc.HLV.MergeVersions, 2)
+			val1, ok := doc.HLV.MergeVersions[rt1DocConflictVersion.CV.SourceID]
+			require.True(t, ok)
+			assert.Equal(t, rt1DocConflictVersion.CV.Value, val1)
+			val2, ok := doc.HLV.MergeVersions[rt2DocConflictVersion.CV.SourceID]
+			require.True(t, ok)
+			assert.Equal(t, rt2DocConflictVersion.CV.Value, val2)
+			assert.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
+			assert.Equal(t, doc.Cas, doc.HLV.Version)
 
 			assert.Nil(t, doc.Body(ctx)[db.BodyAttachments], "_attachments property should not be in resolved doc body")
 
@@ -3912,7 +3926,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflict(t *testing.T) {
 	base.LongRunningTest(t)
-	t.Skip("CBG-4779: test uses custom conflict resolution")
+	t.Skip("CBG-4791: test need rev tree reconciliation changes")
 
 	// scenarios
 	conflictResolutionTests := []struct {
@@ -4041,11 +4055,12 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ConflictResolverFunc: customConflictResolver,
-				Continuous:           true,
-				ReplicationStatsMap:  replicationStats,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
+				ChangesBatchSize:           200,
+				ConflictResolverFunc:       customConflictResolver,
+				ConflictResolverFuncForHLV: customConflictResolver,
+				Continuous:                 true,
+				ReplicationStatsMap:        replicationStats,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -4128,7 +4143,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 	base.LongRunningTest(t)
-	t.Skip("CBG-4779: test uses custom conflict resolution")
+	t.Skip("CBG-4791: need rev tree reconciliation changes")
 
 	// scenarios
 	conflictResolutionTests := []struct {
@@ -4267,11 +4282,12 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ConflictResolverFunc: customConflictResolver,
-				Continuous:           true,
-				ReplicationStatsMap:  dbstats,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
+				ChangesBatchSize:           200,
+				ConflictResolverFunc:       customConflictResolver,
+				ConflictResolverFuncForHLV: customConflictResolver,
+				Continuous:                 true,
+				ReplicationStatsMap:        dbstats,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -5674,7 +5690,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 	base.LongRunningTest(t)
-	t.Skip("CBG-4779: test uses custom conflict resolution")
+	t.Skip("CBG-4791: requires rev tree reconciliation")
 
 	createVersion := func(generation int, parentRevID string, body db.Body) rest.DocVersion {
 		rev, err := db.CreateRevID(generation, parentRevID, body)
@@ -5887,11 +5903,12 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize:     200,
-				ConflictResolverFunc: customConflictResolver,
-				Continuous:           true,
-				ReplicationStatsMap:  replicationStats,
-				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
+				ChangesBatchSize:           200,
+				ConflictResolverFunc:       customConflictResolver,
+				ConflictResolverFuncForHLV: customConflictResolver,
+				Continuous:                 true,
+				ReplicationStatsMap:        replicationStats,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -6802,7 +6819,6 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	base.RequireNumTestBuckets(t, 2)
-	t.Skip("CBG-4779: tets uses custom conflict resolution")
 	// Passive
 	rt2 := rest.NewRestTester(t, nil)
 	defer rt2.Close()
@@ -6833,11 +6849,12 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:             false,
-		ReplicationStatsMap:    dbstats,
-		ConflictResolutionType: db.ConflictResolverCustom,
-		ConflictResolverFunc:   customConflictResolver,
-		CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+		Continuous:                 false,
+		ReplicationStatsMap:        dbstats,
+		ConflictResolutionType:     db.ConflictResolverCustom,
+		ConflictResolverFunc:       customConflictResolver,
+		ConflictResolverFuncForHLV: customConflictResolver,
+		CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
 
