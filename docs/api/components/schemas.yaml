@@ -1193,13 +1193,6 @@ Database:
             This defaults to 24 hours (in seconds).
           type: number
           default: 86400
-    store_legacy_revtree_data:
-      description: |-
-        Controls whether Sync Gateway stores additional legacy revision tree pointer data to support 3.x/early 4.x clients that still use RevTree IDs (for example when used as delta sources).
-
-        Disable this when you are confident all clients use newer CV-based revisions and no longer require legacy RevTree ID lookups.
-      type: boolean
-      default: true
     disable_password_auth:
       description: Whether to disable username/password authentication and only allow OIDC and guest access.
       type: boolean
@@ -1641,6 +1634,13 @@ Database:
       description: 'The amount of milliseconds a N1QL query should run before logging a warning. '
       type: number
       default: 500
+    store_legacy_revtree_data:
+      description: |-
+        Controls whether Sync Gateway stores additional legacy revision tree pointer data to support 3.x/early 4.x clients that still use RevTree IDs (for example when used as delta sources).
+
+        Disable this when you are confident all clients use newer CV-based revisions and no longer require legacy RevTree ID lookups.
+      type: boolean
+      default: true
     suspendable:
       description: |-
         Set to true to allow the database to be suspended.
