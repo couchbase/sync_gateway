@@ -333,3 +333,69 @@ func TestRequest(t *testing.T) {
 		_ = Request(http.MethodGet, "%", "")
 	})
 }
+
+func TestUtilitiesProposeChangesBatch(t *testing.T) {
+	// Currently proposeChanges sends the full history to match the Couchbase Lite 4.0.0 implementation. When CBL
+	// implements CBL-4433 and only sends CV, it would be OK to remove this test.
+	testCases := []struct {
+		name  string
+		entry proposeChangeBatchEntry
+		// expected can be one of multiple valid values, since the order of the HLV versions is not guaranteed
+		expected []string
+	}{
+		{
+			name: "cv,mv",
+			entry: proposeChangeBatchEntry{
+				docID: "doc1",
+				version: DocVersion{
+					CV: db.Version{SourceID: "cbl1", Value: 2},
+				},
+				hlvHistory: db.HybridLogicalVector{
+					Version:  2,
+					SourceID: "cbl1",
+					MergeVersions: db.HLVVersions{
+						"rosmar1": 1,
+						"rosmar2": 2,
+					},
+				},
+				latestServerVersion: DocVersion{
+					CV: db.Version{SourceID: "rosmar1", Value: 1},
+				},
+			},
+			expected: []string{
+				`["doc1","2@cbl1,2@rosmar2,1@rosmar1;","1@rosmar1"]`,
+				`["doc1","2@cbl1,1@rosmar1,2@rosmar2;","1@rosmar1"]`,
+			},
+		},
+		{
+			name: "cv,pv",
+			entry: proposeChangeBatchEntry{
+				docID: "doc1",
+				version: DocVersion{
+					CV: db.Version{SourceID: "cbl1", Value: 4},
+				},
+				hlvHistory: db.HybridLogicalVector{
+					Version:  4,
+					SourceID: "cbl1",
+					PreviousVersions: db.HLVVersions{
+						"rosmar1": 3,
+						"rosmar2": 2,
+					},
+				},
+				latestServerVersion: DocVersion{
+					CV: db.Version{SourceID: "rosmar1", Value: 1},
+				},
+			},
+			expected: []string{
+				`["doc1","4@cbl1;2@rosmar2,3@rosmar1","1@rosmar1"]`,
+				`["doc1","4@cbl1;3@rosmar1,2@rosmar2","1@rosmar1"]`,
+			},
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			output := string(base.MustJSONMarshal(t, test.entry))
+			require.Contains(t, test.expected, output)
+		})
+	}
+}

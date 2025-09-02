@@ -591,7 +591,7 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 						knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
 						continue
 					} else if localHLV.DominatesSource(changesVersion) {
-						base.DebugfCtx(ctx, base.KeySGTest, "Skipping changes for incoming doc %q with rev %d@%s as we already have a newer version %#+v", docID, changesVersion.Value, changesVersion.SourceID, localHLV)
+						base.DebugfCtx(ctx, base.KeySGTest, "Skipping changes for incoming doc %q with rev %s as we already have a newer version %#v", docID, changesVersion, localHLV)
 						knownRevs[i] = nil // Send back null to signal we don't need this change
 					} else {
 						require.NotEmpty(btr.TB(), localHLV.GetCurrentVersionString())
@@ -1247,9 +1247,17 @@ func (e proposeChangeBatchEntry) MarshalJSON() ([]byte, error) {
 	output := &bytes.Buffer{}
 	rev := e.Rev()
 	if e.useHLV() {
-		// Until CBG-4461 is implemented the second value in the array is the full HLV.
-		if e.historyStr() != "" {
-			rev += ";" + e.historyStr()
+		history := e.historyStr()
+		// In Couchbase Lite 4.0.0, the full history is sent. CBL-4461 is a future optimization for Couchbase Lite to
+		// send only CV. When this is implemented by CBL, modifying the default blip testing behavior is OK.
+		if history != "" {
+			// if mv present, this will already contain a ;
+			// else add one
+			if strings.Contains(history, ";") {
+				rev += "," + history
+			} else {
+				rev += ";" + history
+			}
 		}
 	}
 	fmt.Fprintf(output, `["%s","%s"`, e.docID, rev)

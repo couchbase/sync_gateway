@@ -636,6 +636,20 @@ func getHLVTestCases(t testing.TB) []extractHLVFromBlipMsgBMarkCases {
 			},
 		},
 		{
+			name:      "cv,mv,mv;",
+			hlvString: "25@def, 22@def, 21@eff;",
+			expectedHLV: HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           stringHexToUint(t, "25"),
+				SourceID:          "def",
+				MergeVersions: map[string]uint64{
+					"def": stringHexToUint(t, "22"),
+					"eff": stringHexToUint(t, "21"),
+				},
+			},
+		},
+
+		{
 			name:      "cv, mv and pv, leading spaces",                                                                                                                                                           // with spaces
 			hlvString: "25@def, 22@def, 21@eff, 500@x, 501@xx, 4000@xxx, 700@y, 701@yy, 702@yyy; 20@abc, 18@hij, 3@x2, 4@xx2, 5@xxx2, 6@xxxx, 7@xxxxx, 3@y2, 4@yy2, 5@yyy2, 6@yyyy, 7@yyyyy, 2@xy, 3@xyy, 4@xxy", // 15 pv 8 mv
 			expectedHLV: HybridLogicalVector{
