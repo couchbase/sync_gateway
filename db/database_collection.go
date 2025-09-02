@@ -196,8 +196,8 @@ func (c *DatabaseCollection) deltaSyncRevMaxAgeSeconds() uint32 {
 	return c.dbCtx.Options.DeltaSyncOptions.RevMaxAgeSeconds
 }
 
-// deltaSyncStoreLegacyRevs returns true if legacy revtree IDs are stored to be used as a delta src. This is controlled at database level.
-func (c *DatabaseCollection) deltaSyncStoreLegacyRevs() bool {
+// storeLegacyRevTreeData returns true if legacy revision tree pointer data is stored. This is controlled at the database level.
+func (c *DatabaseCollection) storeLegacyRevTreeData() bool {
 	return c.dbCtx.Options.DeltaSyncOptions.StoreLegacyRevs
 }
 

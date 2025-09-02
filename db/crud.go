@@ -2846,7 +2846,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
 		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
 		// Optionally store a lookup document to find the CV-based revHash by legacy RevTree ID
-		if db.deltaSyncStoreLegacyRevs() {
+		if db.storeLegacyRevTreeData() {
 			_ = db.setOldRevisionJSONPtr(ctx, doc, db.deltaSyncRevMaxAgeSeconds())
 		}
 	}

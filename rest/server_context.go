@@ -1229,9 +1229,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			deltaSyncOptions.RevMaxAgeSeconds = *revMaxAge
 		}
 
-		if storeLegacyRevs := config.DeltaSync.StoreLegacyRevs; storeLegacyRevs != nil {
-			deltaSyncOptions.StoreLegacyRevs = *storeLegacyRevs
-		}
+	}
+
+	// Database-level legacy revtree storage toggle (renamed from delta_sync.store_legacy_revs)
+	if storeLegacy := config.StoreLegacyRevTreeData; storeLegacy != nil {
+		deltaSyncOptions.StoreLegacyRevs = *storeLegacy
 	}
 	base.InfofCtx(ctx, base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
 

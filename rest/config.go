@@ -179,6 +179,7 @@ type DbConfig struct {
 	BucketOpTimeoutMs                *uint32                          `json:"bucket_op_timeout_ms,omitempty"`                 // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	SlowQueryWarningThresholdMs      *uint32                          `json:"slow_query_warning_threshold,omitempty"`         // Log warnings if N1QL queries take this many ms
 	DeltaSync                        *DeltaSyncConfig                 `json:"delta_sync,omitempty"`                           // Config for delta sync
+	StoreLegacyRevTreeData           *bool                            `json:"store_legacy_revtree_data,omitempty"`            // Whether to store legacy revision tree pointer data to support older clients using RevTree IDs
 	CompactIntervalDays              *float32                         `json:"compact_interval_days,omitempty"`                // Interval between scheduled compaction runs (in days) - 0 means don't run
 	SGReplicateEnabled               *bool                            `json:"sgreplicate_enabled,omitempty"`                  // When false, node will not be assigned replications
 	SGReplicateWebsocketPingInterval *int                             `json:"sgreplicate_websocket_heartbeat_secs,omitempty"` // If set, uses this duration as a custom heartbeat interval for websocket ping frames
@@ -213,7 +214,6 @@ type CollectionConfig struct {
 type DeltaSyncConfig struct {
 	Enabled          *bool   `json:"enabled,omitempty"`             // Whether delta sync is enabled (requires EE)
 	RevMaxAgeSeconds *uint32 `json:"rev_max_age_seconds,omitempty"` // The number of seconds deltas for old revs are available for
-	StoreLegacyRevs  *bool   `json:"store_legacy_revs,omitempty"`   // Whether to store additional data to allow legacy RevTree ID support for delta sync
 }
 
 type DbConfigMap map[string]*DbConfig
