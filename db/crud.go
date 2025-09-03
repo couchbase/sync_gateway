@@ -2657,7 +2657,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				}
 			}
 			if docUpdateEvent == NoHLVUpdateForTest {
-				// If this is a test update where we don't want to update the HLV
+				// If this is a test update where we don't want to update the HLV, we should remote VV xattr here
+				// this will simulate a pre upgraded document being cerated in the bucket
 				delete(updatedDoc.Xattrs, base.VvXattrName)
 			}
 
