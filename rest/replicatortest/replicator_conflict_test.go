@@ -43,6 +43,11 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 			// Passive
 			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					},
+				},
 			})
 			defer rt2.Close()
 			username := "alice"
@@ -51,6 +56,11 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 			// Active
 			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "activedb",
+					},
+				},
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -183,6 +193,11 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 	// Passive
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "passivedb",
+			},
+		},
 	})
 	defer rt2.Close()
 	username := "alice"
@@ -191,6 +206,11 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 	// Active
 	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "activedb",
+			},
+		},
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -439,6 +459,11 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 			// Passive
 			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					},
+				},
 			})
 			defer rt2.Close()
 			username := "alice"
@@ -447,6 +472,11 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 			// Active
 			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "activedb",
+					},
+				},
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -738,6 +768,11 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 			// Passive
 			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					},
+				},
 			})
 			defer rt2.Close()
 			username := "alice"
@@ -746,6 +781,11 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 			// Active
 			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "activedb",
+					},
+				},
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -972,6 +1012,11 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 			// Passive
 			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					},
+				},
 			})
 			defer rt2.Close()
 			username := "alice"
@@ -980,6 +1025,11 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 			// Active
 			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "activedb",
+					},
+				},
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -1179,6 +1229,11 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 			// Passive
 			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					},
+				},
 			})
 			defer rt2.Close()
 			username := "alice"
@@ -1187,6 +1242,11 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 			// Active
 			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "activedb",
+					},
+				},
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -1325,6 +1385,11 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 			// Passive
 			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					},
+				},
 			})
 			defer rt2.Close()
 			username := "alice"
@@ -1333,6 +1398,11 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 			// Active
 			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "activedb",
+					},
+				},
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
