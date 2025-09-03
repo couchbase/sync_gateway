@@ -1436,7 +1436,7 @@ func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID stri
 		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentMetadataRead {
 			continue
 		}
-		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
 		countFound++
 	}
 	require.Equal(rt.TB(), count, countFound)
@@ -1451,7 +1451,7 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentRead {
 			continue
 		}
-		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
 		docVersionsFound = append(docVersionsFound, event[base.AuditFieldDocVersion].(string))
 	}
 	require.Len(rt.TB(), docVersions, len(docVersionsFound), "expected exactly %d document read events, got %d", len(docVersions), len(docVersionsFound))
@@ -1467,7 +1467,7 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
 			continue
 		}
-		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
 		require.Equal(rt.TB(), docVersionStr, event[base.AuditFieldDocVersion].(string))
 		require.Equal(rt.TB(), attachmentName, event[base.AuditFieldAttachmentID])
 		countFound++
@@ -1484,7 +1484,7 @@ func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, 
 		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
 			continue
 		}
-		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
 		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
 		countFound++
 	}
@@ -1878,7 +1878,7 @@ func TestDatabaseAuditChanges(t *testing.T) {
 				for _, event := range events {
 					eventID := base.AuditID(event[base.AuditFieldID].(float64))
 					if eventID == expectedEventID {
-						require.Equal(rt.TB(), event[base.AuditFieldDatabase], "db")
+						require.Equal(rt.TB(), "db", event[base.AuditFieldDatabase])
 						if testCase.expectedEnabledEventList != nil {
 							require.Equal(rt.TB(), testCase.expectedEnabledEventList, event[base.AuditFieldEnabledEvents])
 						}
