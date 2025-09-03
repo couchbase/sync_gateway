@@ -1134,14 +1134,6 @@ func (btc *BlipTesterClient) initCollectionReplication(ctx context.Context, coll
 	btc.collectionClients[collectionIdx] = btcReplicator
 }
 
-// waitForReplicationMessage waits for a replication message with the given serial number.
-func (btc *BlipTesterClient) waitForReplicationMessage(collection *db.DatabaseCollection, serialNumber blip.MessageNumber) *blip.Message {
-	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
-		return btc.pushReplication.WaitForMessage(serialNumber)
-	}
-	return btc.pushReplication.WaitForMessage(serialNumber + 1)
-}
-
 // getMostRecentChangesMessage returns the most recent non nil changes message received from the pull replication. This represents the latest set of changes.
 func (btc *BlipTesterClient) getMostRecentChangesMessage() *blip.Message {
 	var highestMsgSeq uint32
@@ -1276,7 +1268,7 @@ func (e proposeChangeBatchEntry) GoString() string {
 	return fmt.Sprintf("proposeChangeBatchEntry{docID: %q, version:%v,revTreeIDHistory:%v,hlvHistory:%v,seq:%d,latestServerVersion:%v,isDelete: %t}", e.docID, e.version, e.revTreeIDHistory, e.hlvHistory, e.seq, e.latestServerVersion, e.isDelete)
 }
 
-// StartPull will begin a push replication with the given options between the client and server
+// StartPushWithOpts will begin a push replication with the given options between the client and server
 func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
 	require.True(btcc.TB(), btcc.pushRunning.CASRetry(false, true), "push replication already running")
 
@@ -1423,7 +1415,7 @@ func (btcc *BlipTesterCollectionClient) StartPull() {
 	btcc.StartPullSince(BlipTesterPullOptions{Continuous: true, Since: "0"})
 }
 
-// StartOneShotPull will begin a one-shot pull replication since 0 and continuous=false between the client and server
+// StartOneshotPull will begin a one-shot pull replication since 0 and continuous=false between the client and server
 func (btcc *BlipTesterCollectionClient) StartOneshotPull() {
 	btcc.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0"})
 }
@@ -1861,13 +1853,35 @@ func (btr *BlipTesterReplicator) GetAllMessagesSummary() string {
 	return output.String()
 }
 
-// WaitForMessage blocks until the given message serial number has been stored by the replicator, and returns the message when found. The test will fail if message is not found after 10 seconds.
-func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message) {
+// WaitForBlipRevMessage blocks until the given doc ID and rev ID has been stored by the replicator, and returns the message when found. If message body is not found after 10 seconds, test will fail.
+// Consider usage of BlipTesterCollectionClient.WaitForBlipRevMessage if you do not need to verify a specific push or pull message.
+func (btr *BlipTesterReplicator) WaitForBlipRevMessage(docID string, version DocVersion) (msg *blip.Message) {
 	require.EventuallyWithT(btr.TB(), func(c *assert.CollectT) {
-		var ok bool
-		msg, ok = btr.GetMessage(serialNumber)
-		assert.True(c, ok)
-	}, 10*time.Second, 5*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message: %v", serialNumber)
+		// make copy of map, since the replicator could be writing to it while we're iterating
+		for _, m := range btr.GetMessages() {
+			if m.Profile() != db.MessageRev {
+				continue
+			}
+			if m.Properties[db.RevMessageID] != docID {
+				continue
+			}
+			revID := m.Properties[db.RevMessageRev]
+			if version.RevTreeID != "" {
+				if assert.Equal(c, version.RevTreeID, revID) {
+					msg = m
+					break
+				}
+				continue
+			}
+			assert.False(c, version.CV.IsEmpty(), "version.CV and version.RevTree are empty for docID: %s, revID: %s", docID, revID)
+			if assert.Equal(c, version.CV.String(), revID) {
+				msg = m
+				break
+			}
+		}
+		assert.NotNil(c, msg, "Could not find docID:%s version:%#v", docID, version)
+	}, 10*time.Second, 5*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message: docID:%s version:%#v", docID, version)
+	require.NotNil(btr.TB(), msg, "Could not find docID:%s version:%#v", docID, version)
 	return msg
 }
 
@@ -1877,14 +1891,18 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messages[msg.SerialNumber()] = msg
 }
 
-// WaitForBlipRevMessage blocks until the given doc ID and rev ID has been stored by the client, and returns the message when found. If not found after 10 seconds, test will fail.
+// WaitForBlipRevMessage will return the blip message associated with a specified doc version after the revision
+// is stored locally for the BlipTesterCollectionClient. This will find a pull rev message correctly, but may not
+// find the relevant push replication rev message.
+// See btc.pushReplication.WaitForBlipRevMessage.
+// If the message is not found after 10 seconds, the test will fail.
 func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (msg *blip.Message) {
 	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
 		var ok bool
 		msg, ok = btc.GetBlipRevMessage(docID, docVersion)
 		assert.True(c, ok, "Could not find docID:%+v, Version: %+v", docID, docVersion)
 	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for BLIP message docID: %v, Version: %v", docID, docVersion)
-	require.NotNil(btc.TB(), msg)
+	require.NotNil(btc.TB(), msg, "msg is nil for docID:%+v, version: %+v", docID, docVersion)
 	return msg
 }
 
@@ -1937,6 +1955,11 @@ func (btcRunner *BlipTestClientRunner) WaitForDoc(clientID uint32, docID string)
 // WaitForBlipRevMessage blocks until the given doc ID and rev ID has been stored by the client, and returns the message when found. If document is not found after 10 seconds, test will fail.
 func (btcRunner *BlipTestClientRunner) WaitForBlipRevMessage(clientID uint32, docID string, version DocVersion) *blip.Message {
 	return btcRunner.SingleCollection(clientID).WaitForBlipRevMessage(docID, version)
+}
+
+// GetBlipRevMessage returns the rev message that wrote the given docID/DocVersion on the client.
+func (btcRunner *BlipTestClientRunner) GetBlipRevMessage(clientID uint32, docID string, version DocVersion) (msg *blip.Message, found bool) {
+	return btcRunner.SingleCollection(clientID).GetBlipRevMessage(docID, version)
 }
 
 func (btcRunner *BlipTestClientRunner) StartOneshotPull(clientID uint32) {
