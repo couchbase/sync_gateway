@@ -177,7 +177,7 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 				assert.Equal(t, nonWinningRevPreConflict.CV.Value, rt1Doc.HLV.MergeVersions[nonWinningRevPreConflict.CV.SourceID])
 				require.Len(t, rt1Doc.HLV.PreviousVersions, 0)
 
-				// check tombstoned leaf parent is the current rev of remote doc
+				// check tombstoned leaf previous local active rev and active rev is above generated rev ID
 				docHistoryLeaves := rt1Doc.History.GetLeaves()
 				require.Len(t, docHistoryLeaves, 2)
 				rest.AssertRevTreeAfterHLVConflictResolution(t, rt1Doc, localWinsVersion.RevTreeID, rt1Version.RevTreeID)
@@ -1335,7 +1335,7 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 				base.RequireKeysEqual(t, []string{"hello.txt", "world.txt"}, attMeta)
 
 				expectedBodyBytes := base.MustJSONMarshal(t, remoteDocBodyPreConflict)
-				require.JSONEq(t, string(expectedBodyBytes), string(actualBody), "Doc body does not match expected for local wins")
+				require.JSONEq(t, string(expectedBodyBytes), string(actualBody), "Doc body does not match expected for remote wins")
 			} else {
 				// local wins, so we expect the local attachment to be present
 				// local wins:
