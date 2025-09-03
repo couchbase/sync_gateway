@@ -3431,11 +3431,11 @@ func TestAllowConflictsConfig(t *testing.T) {
 
 }
 
-// TestDBWithAllowConflictsInvalid verifies that the database configuration does not allow
+// TestDBWithAllowConflicts verifies that the database configuration does not allow
 // the `AllowConflicts` property to be set to true. This test ensures that a config loaded
 // will add the database to invalid configs. The config will be fixed when a database is
 // created without `allow_conflicts`
-func TestDBWithAllowConflictsInvalid(t *testing.T) {
+func TestDBWithAllowConflicts(t *testing.T) {
 
 	ctx := t.Context()
 
@@ -3474,7 +3474,5 @@ func TestDBWithAllowConflictsInvalid(t *testing.T) {
 	rt.CreateDatabase(dbName, dbConfig)
 	resp = rt.SendAdminRequest(http.MethodGet, allDBsURL, "")
 	RequireStatus(t, resp, http.StatusOK)
-	dbs := resp.Body.String()
-	base.InfofCtx(ctx, base.KeySGTest, "response body: %s", dbs)
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 }
