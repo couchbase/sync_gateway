@@ -1391,7 +1391,7 @@ func (btcc *BlipTesterCollectionClient) sendRevisions(ctx context.Context, chang
 	require.NoError(btcc.TB(), err)
 	var response []int
 	err = base.JSONUnmarshal(rspBody, &response)
-	require.NoError(btcc.TB(), err)
+	require.NoError(btcc.TB(), err, "error unmarshalling proposeChanges response body: %v from %s", err, string(rspBody))
 	for i, change := range changesBatch {
 		var status int
 		if i >= len(response) {
