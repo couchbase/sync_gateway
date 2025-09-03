@@ -1255,7 +1255,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 //   - alignRevTrees: if this is true then we will align the new write with the incoming docs rev tree. If this is
 //     false and len(revTreeHistory) > 0 then this means the local version of this doc does not have an HLV so this parameter
 //     will be used to check for conflicts.
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string, alignRevTrees bool, conflictResolver ConflictResolvers) (doc *Document, cv *Version, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV *HybridLogicalVector, existingDoc *sgbucket.BucketDocument, revTreeHistory []string, alignRevTrees bool, conflictResolver ConflictResolvers, forceAllowConflictingTombstone bool) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
 		doc, unmarshalErr := db.unmarshalDocumentWithXattrs(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs, existingDoc.Cas, DocUnmarshalRev)
@@ -1334,75 +1334,90 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 			}
 		} else {
-			conflictStatus := doc.IsInConflict(ctx, newDocHLV)
-			switch conflictStatus {
-			case HLVNoConflictRevAlreadyPresent:
-				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
-				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
-			case HLVNoConflict:
-				if doc.HLV.EqualCV(newDocHLV) {
+			// We only bypass conflict resolution for incoming tombstones if the local doc is also a tombstone
+			allowConflictingTombstone := forceAllowConflictingTombstone && doc.IsDeleted()
+			if !allowConflictingTombstone {
+				conflictStatus := doc.IsInConflict(ctx, newDocHLV)
+				switch conflictStatus {
+				case HLVNoConflictRevAlreadyPresent:
 					base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
 					return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
-				}
-				// update hlv for all newer incoming source version pairs
-				doc.HLV.UpdateWithIncomingHLV(newDocHLV)
-				if err != nil {
-					return nil, nil, false, nil, err
-				}
-				// the new document has a dominating hlv, so we can ignore any legacy rev revtree information on the incoming document
-				revTreeConflictChecked = true
-				if !alignRevTrees {
-					previousRevTreeID = doc.GetRevTreeID()
-				} else {
-					// align rev tree here for ISGR replications
-					err = doc.alignRevTreeHistoryForHLVWrite(ctx, db, newDoc, revTreeHistory)
-					if err != nil {
-						return nil, nil, false, nil, err
+				case HLVNoConflict:
+					if doc.HLV.EqualCV(newDocHLV) {
+						base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(newDoc.ID), doc.HLV, newDocHLV)
+						return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 					}
-				}
-			case HLVConflict:
-				// if the legacy rev list is from ISGR property, we should not do a conflict check
-				if len(revTreeHistory) > 0 && !alignRevTrees {
-					// TODO: CBG-4828 - conflict resolution for legacy rev documents
-					// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
-					parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
-					if err != nil {
-						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s, and conflict found in rev tree history", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
-						return nil, nil, false, nil, err
-					}
-					_, err = doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
-					if err != nil {
-						return nil, nil, false, nil, err
-					}
-					revTreeConflictChecked = true
+					// update hlv for all newer incoming source version pairs
 					doc.HLV.UpdateWithIncomingHLV(newDocHLV)
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
-				} else {
+					// the new document has a dominating hlv, so we can ignore any legacy rev revtree information on the incoming document
 					revTreeConflictChecked = true
-					base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), newDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
-					if conflictResolver.hlvConflictResolver == nil {
-						// cancel rest of update, HLV is in conflict and no resolver is present
-						return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+					if !alignRevTrees {
+						previousRevTreeID = doc.GetRevTreeID()
+					} else {
+						// align rev tree here for ISGR replications
+						err = doc.alignRevTreeHistoryForHLVWrite(ctx, db, newDoc, revTreeHistory)
+						if err != nil {
+							return nil, nil, false, nil, err
+						}
 					}
-					// resolve conflict
-					newHLV, updatedHistory, err := db.resolveHLVConflict(ctx, doc, newDoc, conflictResolver.hlvConflictResolver, revTreeHistory)
-					if err != nil {
-						base.InfofCtx(ctx, base.KeyCRUD, "Failed to resolve HLV conflict for doc %s, error: %v", base.UD(doc.ID), err)
-						return nil, nil, false, nil, err
+				case HLVConflict:
+					// if the legacy rev list is from ISGR property, we should not do a conflict check
+					if len(revTreeHistory) > 0 && !alignRevTrees {
+						// TODO: CBG-4828 - conflict resolution for legacy rev documents
+						// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
+						parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
+						if err != nil {
+							base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s, and conflict found in rev tree history", base.UD(doc.ID), newDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
+							return nil, nil, false, nil, err
+						}
+						_, err = doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
+						if err != nil {
+							return nil, nil, false, nil, err
+						}
+						revTreeConflictChecked = true
+						doc.HLV.UpdateWithIncomingHLV(newDocHLV)
+						if err != nil {
+							return nil, nil, false, nil, err
+						}
+					} else {
+						revTreeConflictChecked = true
+						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), newDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
+						if conflictResolver.hlvConflictResolver == nil {
+							// cancel rest of update, HLV is in conflict and no resolver is present
+							return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+						}
+						// resolve conflict
+						newHLV, updatedHistory, err := db.resolveHLVConflict(ctx, doc, newDoc, conflictResolver.hlvConflictResolver, revTreeHistory)
+						if err != nil {
+							base.InfofCtx(ctx, base.KeyCRUD, "Failed to resolve HLV conflict for doc %s, error: %v", base.UD(doc.ID), err)
+							return nil, nil, false, nil, err
+						}
+						if len(updatedHistory) > 0 {
+							revTreeHistory = updatedHistory
+							previousRevTreeID = revTreeHistory[0]
+						}
+						currentRevIndex, parent = doc.findWhereRevBranchesFromHistory(revTreeHistory)
+						_, addNewRevErr := doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
+						if addNewRevErr != nil {
+							return nil, nil, false, nil, addNewRevErr
+						}
+						// overwrite the existing HLV with the new one
+						doc.HLV = newHLV
 					}
-					if len(updatedHistory) > 0 {
-						revTreeHistory = updatedHistory
-						previousRevTreeID = revTreeHistory[0]
-					}
-					currentRevIndex, parent = doc.findWhereRevBranchesFromHistory(revTreeHistory)
-					_, addNewRevErr := doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
-					if addNewRevErr != nil {
-						return nil, nil, false, nil, addNewRevErr
-					}
-					// overwrite the existing HLV with the new one
-					doc.HLV = newHLV
+				}
+			} else {
+				// allow conflicting tombstone, just update HLV and add any new revs from history
+				doc.HLV.UpdateWithIncomingHLV(newDocHLV)
+				if err != nil {
+					return nil, nil, false, nil, err
+				}
+				currentRevIndex, parent = doc.findWhereRevBranchesFromHistory(revTreeHistory)
+				_, addNewRevErr := doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
+				if addNewRevErr != nil {
+					return nil, nil, false, nil, addNewRevErr
 				}
 			}
 		}

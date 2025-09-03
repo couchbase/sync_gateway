@@ -864,7 +864,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 				"channels": []string{"alice"},
 			}
 			localCas := db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
-			lcoalDocVersionPreConflict, _ := rt1.GetDoc(docID) // ensure doc is imported
+			localDocVersionPreConflict, _ := rt1.GetDoc(docID) // ensure doc is imported
 			base.RequireWaitForStat(t, func() int64 {
 				return rt1.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
 			}, 1)
@@ -909,7 +909,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 			assert.Equal(t, remoteDocVersionPreConflict.RevTreeID, rt1Doc.GetRevTreeID())
 			docHistoryLeaves := rt1Doc.History.GetLeaves()
 			require.Len(t, docHistoryLeaves, 2)
-			rest.AssertRevTreeAfterHLVConflictResolution(t, rt1Doc, remoteDocVersionPreConflict.RevTreeID, lcoalDocVersionPreConflict.RevTreeID)
+			rest.AssertRevTreeAfterHLVConflictResolution(t, rt1Doc, remoteDocVersionPreConflict.RevTreeID, localDocVersionPreConflict.RevTreeID)
 
 			assert.Len(t, rt1Doc.HLV.PreviousVersions, len(expectedHLV.PreviousVersions))
 			for key, val := range testCase.expectedPV {
@@ -1483,10 +1483,9 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 				docHistoryLeaves := rt1Doc.History.GetLeaves()
 				require.Len(t, docHistoryLeaves, 2)
 				// both branches should be tombstones
-				for _, revItem := range rt1Doc.History {
-					if revItem.ID != docHistoryLeaves[0] || revItem.ID != docHistoryLeaves[1] {
-						continue
-					}
+				for _, revID := range docHistoryLeaves {
+					revItem, ok := rt1Doc.History[revID]
+					require.True(t, ok)
 					assert.True(t, revItem.Deleted)
 				}
 			} else {
@@ -1503,10 +1502,10 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 				rt1Version.CV.Value = rt1Doc.Cas // local wins writes a new CV
 				rest.RequireDocVersionEqual(t, rt1Version, rt1Doc.ExtractDocVersion())
 
-				for _, revItem := range rt1Doc.History {
-					if revItem.ID != docHistoryLeaves[0] || revItem.ID != docHistoryLeaves[1] {
-						continue
-					}
+				// both branches should be tombstones
+				for _, revID := range docHistoryLeaves {
+					revItem, ok := rt1Doc.History[revID]
+					require.True(t, ok)
 					assert.True(t, revItem.Deleted)
 				}
 			}
@@ -1553,7 +1552,7 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 		Version:  1234,
 	}
 	// add local version
-	_, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+	_, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{}, false)
 	require.NoError(t, err)
 
 	newDoc = db.CreateTestDocument(docID, "", rest.JsonToMap(t, `{"some": "data"}`), false, 0)
@@ -1561,7 +1560,7 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 		SourceID: "def",
 		Version:  1234,
 	}
-	_, _, _, err = rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+	_, _, _, err = rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{}, false)
 	require.NoError(t, err)
 
 	resolver := `function(conflict) {var mergedDoc = new Object(); 
@@ -1681,7 +1680,7 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				Version:  1234,
 			}
 			// add local version
-			localDoc, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+			localDoc, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{}, false)
 			require.NoError(t, err)
 
 			newDoc = db.CreateTestDocument(docID, "", rest.JsonToMap(t, testCase.remoteBody), false, 0)
@@ -1689,7 +1688,7 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				SourceID: "def",
 				Version:  1234,
 			}
-			remoteDoc, _, _, err := rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+			remoteDoc, _, _, err := rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{}, false)
 			require.NoError(t, err)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, testCase.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
@@ -1940,171 +1939,225 @@ func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisions(t *testing
 	}
 }
 
-func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisionsAndBothAreTombstoned(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyVV, base.KeyCRUD, base.KeySync, base.KeyReplicate, base.KeyChanges, base.KeyImport)
+func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLocalIsTombstoned(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	base.RequireNumTestBuckets(t, 2)
-
-	testCases := []struct {
-		name                 string
-		conflictResolverType db.ConflictResolverType
-	}{
-		{
-			name:                 "remote wins",
-			conflictResolverType: db.ConflictResolverRemoteWins,
+	// Passive
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "passivedb",
+			},
 		},
-		{
-			name:                 "local wins",
-			conflictResolverType: db.ConflictResolverLocalWins,
+	})
+	defer rt2.Close()
+	username := "alice"
+	rt2.CreateUser(username, []string{username})
+
+	// Active
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "activedb",
+			},
 		},
+	})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	docID := "doc1_"
+	rt2Version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+	rt2.WaitForPendingChanges()
+
+	// create conflicting update on rt1 and create more revisions than remote
+	rt1Version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+	rt1.WaitForPendingChanges()
+	for i := 0; i < 10; i++ {
+		rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			// Passive
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				SyncFn: channels.DocChannelsSyncFunction,
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						Name: "passivedb",
-					},
-				},
-			})
-			defer rt2.Close()
-			username := "alice"
-			rt2.CreateUser(username, []string{username})
+	// delete local version
+	rt1Version = rt1.DeleteDoc(docID, rt1Version)
+	rt1.WaitForPendingChanges()
 
-			// Active
-			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				SyncFn: channels.DocChannelsSyncFunction,
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						Name: "activedb",
-					},
-				},
-			})
-			defer rt1.Close()
-			ctx1 := rt1.Context()
+	resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverLocalWins, "", rt1.GetDatabase().Options.JavascriptTimeout)
+	require.NoError(t, err)
 
-			docID := "doc1_"
-			version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
-			rt2.WaitForPendingChanges()
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: userDBURL(rt2, username),
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:           200,
+		ReplicationStatsMap:        dbReplicatorStats(t),
+		ConflictResolverFuncForHLV: resolverFunc,
+		CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+		Continuous:                 false,
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
-			resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, testCase.conflictResolverType, "", rt1.GetDatabase().Options.JavascriptTimeout)
-			require.NoError(t, err)
+	// grab last seq allocated for since param
+	rt1Collection, rt1ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
+	since, err := rt1Collection.LastSequence(rt1ctx)
+	require.NoError(t, err)
 
-			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-				ID:          t.Name(),
-				Direction:   db.ActiveReplicatorTypePull,
-				RemoteDBURL: userDBURL(rt2, username),
-				ActiveDB: &db.Database{
-					DatabaseContext: rt1.GetDatabase(),
-				},
-				ChangesBatchSize:           200,
-				ReplicationStatsMap:        dbReplicatorStats(t),
-				ConflictResolverFuncForHLV: resolverFunc,
-				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
-				Continuous:                 false,
-			})
-			require.NoError(t, err)
-			defer func() { assert.NoError(t, ar.Stop()) }()
+	// Start the replicator
+	require.NoError(t, ar.Start(ctx1))
 
-			// Start the replicator
-			require.NoError(t, ar.Start(ctx1))
+	// wait for the document originally written to rt1 to arrive at rt2
+	changesResults := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", since), "", true)
+	changesResults.RequireDocIDs(t, []string{docID})
 
-			// wait for the document originally written to rt1 to arrive at rt2
-			changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-			changesResults.RequireDocIDs(t, []string{docID})
-			rt1Version, _ := rt1.GetDoc(docID)
-			rest.RequireDocVersionEqual(t, version, rt1Version)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
+	}, time.Second*20, time.Millisecond*100)
 
-			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
-			}, time.Second*20, time.Millisecond*100)
+	rt1Doc, err := rt1Collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
 
-			if testCase.conflictResolverType == db.ConflictResolverRemoteWins {
-				// update doc on remote (tombstone) to ensure it we have something to replicate
-				// update doc locally many times to create more revisions than remote
-				for i := 0; i < 10; i++ {
-					rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
-				}
-				// delete both
-				rt1Version = rt1.DeleteDoc(docID, rt1Version)
-				version = rt2.DeleteDoc(docID, version)
-			} else {
-				// update doc on local loads of times to make local wins have to inject new revs to catch up to remote
-				for i := 0; i < 10; i++ {
-					rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
-				}
-				// delete both docs
-				version = rt2.DeleteDoc(docID, version)
-				rt1Version = rt1.DeleteDoc(docID, rt1Version)
-			}
-			rt2.WaitForPendingChanges()
-			rt1.WaitForPendingChanges()
-
-			// grab last seq allocated for since param
-			rt1Collection, rt1ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
-			since, err := rt1Collection.LastSequence(rt1ctx)
-			require.NoError(t, err)
-
-			// Start the replicator
-			require.NoError(t, ar.Start(ctx1))
-
-			changesResults = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", since), "", true)
-			changesResults.RequireDocIDs(t, []string{docID})
-
-			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
-			}, time.Second*20, time.Millisecond*100)
-
-			rt1Doc, err := rt1Collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-			require.NoError(t, err)
-
-			if testCase.conflictResolverType == db.ConflictResolverRemoteWins {
-				// remote wins:
-				//	- tombstones local active revision
-				// 	- winning rev would be active remote rev but here this rev has generation 2- and local has 12- so local revID gets promoted
-				//	given both are tombstones
-				version.RevTreeID = rt1Version.RevTreeID
-				rest.RequireDocVersionEqual(t, version, rt1Doc.ExtractDocVersion())
-				docHistoryLeaves := rt1Doc.History.GetLeaves()
-				require.Len(t, docHistoryLeaves, 2)
-				for _, revItem := range rt1Doc.History {
-					if revItem.ID != docHistoryLeaves[0] || revItem.ID != docHistoryLeaves[1] {
-						continue
-					}
-					assert.True(t, revItem.Deleted)
-				}
-			} else {
-				// local wins:
-				//	- tombstones local active revision
-				//  - winning rev is written as child of remote winning rev
-				// 	- remote rev is behind in terms of rev tree so local wins will inject revs to catch up and then write new winning rev
-				remoteGeneration, _ := db.ParseRevID(ctx1, version.RevTreeID)
-				// we will create 10 additional revs to inject into remote  doc's history to catch up with local rev tree
-				previousRevID := version.RevTreeID
-				for i := 0; i < 10; i++ {
-					remoteGeneration++
-					previousRevID = db.CreateRevIDWithBytes(remoteGeneration, previousRevID, []byte("{}"))
-				}
-				newRevID := db.CreateRevIDWithBytes(remoteGeneration+1, previousRevID, []byte("{}"))
-				require.NoError(t, err)
-				docHistoryLeaves := rt1Doc.History.GetLeaves()
-				require.Len(t, docHistoryLeaves, 2)
-				for _, revItem := range rt1Doc.History {
-					if revItem.ID != docHistoryLeaves[0] || revItem.ID != docHistoryLeaves[1] {
-						continue
-					}
-					assert.True(t, revItem.Deleted)
-				}
-
-				rt1Version.CV.Value = rt1Doc.Cas // local wins writes a new CV
-				rt1Version.RevTreeID = newRevID
-				rest.RequireDocVersionEqual(t, rt1Version, rt1Doc.ExtractDocVersion())
-			}
-
-			actualBody, err := rt1Doc.BodyBytes(rt1ctx)
-			require.NoError(t, err)
-			require.JSONEq(t, `{}`, string(actualBody))
-		})
+	// local wins:
+	//	- tombstones local active revision
+	//  - winning rev is written as child of remote winning rev
+	// 	- remote rev is behind in terms of rev tree so local wins will inject revs to catch up and then write new winning rev
+	remoteGeneration, _ := db.ParseRevID(ctx1, rt2Version.RevTreeID)
+	localGeneration, _ := db.ParseRevID(ctx1, rt1Version.RevTreeID)
+	requiredAdditionalRevs := localGeneration - remoteGeneration
+	// we will create 10 additional revs to inject into remote  doc's history to catch up with local rev tree
+	previousRevID := rt2Version.RevTreeID
+	generatedRevs := make([]string, 0, 0)
+	for i := 0; i < requiredAdditionalRevs; i++ {
+		remoteGeneration++
+		previousRevID = db.CreateRevIDWithBytes(remoteGeneration, previousRevID, []byte("{}"))
+		generatedRevs = append(generatedRevs, previousRevID)
 	}
+	newRevID := db.CreateRevIDWithBytes(remoteGeneration+1, previousRevID, []byte("{}"))
+	require.NoError(t, err)
+	docHistoryLeaves := rt1Doc.History.GetLeaves()
+	require.Len(t, docHistoryLeaves, 2)
+	for _, revID := range generatedRevs {
+		_, ok := rt1Doc.History[revID]
+		require.True(t, ok, "expected to find generated rev %s in doc history", revID)
+	}
+	for _, revID := range docHistoryLeaves {
+		_, ok := rt1Doc.History[revID]
+		require.True(t, ok, "expected to find leaf rev %s in doc history", revID)
+		assert.True(t, rt1Doc.History[revID].Deleted)
+	}
+
+	rt1Version.CV.Value = rt1Doc.Cas // local wins writes a new CV
+	rt1Version.RevTreeID = newRevID
+	rest.RequireDocVersionEqual(t, rt1Version, rt1Doc.ExtractDocVersion())
+
+	actualBody, err := rt1Doc.BodyBytes(rt1ctx)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(actualBody))
+}
+
+func TestActiveReplicatorHLVConflictWithBothLocalAndRemoteTombstones(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.RequireNumTestBuckets(t, 2)
+	// Passive
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "passivedb",
+			},
+		},
+	})
+	defer rt2.Close()
+	username := "alice"
+	rt2.CreateUser(username, []string{username})
+
+	// Active
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "activedb",
+			},
+		},
+	})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	docRevIDVersions := make(map[string]struct{})
+
+	docID := "doc1_"
+	rt2Version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+	rt2.WaitForPendingChanges()
+	docRevIDVersions[rt2Version.RevTreeID] = struct{}{}
+
+	rt1Version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+	rt1.WaitForPendingChanges()
+	docRevIDVersions[rt1Version.RevTreeID] = struct{}{}
+
+	// delete both docs
+	rt1Version = rt1.DeleteDoc(docID, rt1Version)
+	rt2Version = rt2.DeleteDoc(docID, rt2Version)
+	rt2.WaitForPendingChanges()
+	rt1.WaitForPendingChanges()
+	docRevIDVersions[rt1Version.RevTreeID] = struct{}{}
+	docRevIDVersions[rt2Version.RevTreeID] = struct{}{}
+
+	resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
+	require.NoError(t, err)
+
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: userDBURL(rt2, username),
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:           200,
+		ReplicationStatsMap:        dbReplicatorStats(t),
+		ConflictResolverFuncForHLV: resolverFunc,
+		CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+		Continuous:                 false,
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Stop()) }()
+
+	rt1Collection, rt1ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
+	since, err := rt1Collection.LastSequence(rt1ctx)
+	require.NoError(t, err)
+
+	// Start the replicator
+	require.NoError(t, ar.Start(ctx1))
+
+	// wait for the document originally written to rt1 to arrive at rt2
+	changesResults := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", since), "", true)
+	changesResults.RequireDocIDs(t, []string{docID})
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
+	}, time.Second*20, time.Millisecond*100)
+
+	// assert on local revision rev tree + CV
+	rt1Doc, err := rt1Collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	rest.RequireDocVersionEqual(t, rt2Version, rt1Doc.ExtractDocVersion())
+	assert.True(t, rt1Doc.IsDeleted())
+
+	// assert that both branches are tombstones
+	docHistoryLeaves := rt1Doc.History.GetLeaves()
+	require.Len(t, docHistoryLeaves, 2)
+	for _, revID := range docHistoryLeaves {
+		assert.True(t, rt1Doc.History[revID].Deleted)
+	}
+	// assert that all 4 revisions created above are in history
+	require.Len(t, rt1Doc.History, 4)
+	for _, revItem := range rt1Doc.History {
+		_, ok := docRevIDVersions[revItem.ID]
+		assert.True(t, ok)
+	}
+
+	actualBody, err := rt1Doc.BodyBytes(rt1ctx)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(actualBody))
 }

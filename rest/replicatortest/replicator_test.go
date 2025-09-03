@@ -3942,7 +3942,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 		skipActiveLeafAssertion   bool
 		skipBodyAssertion         bool
 		newCVGenerated            bool
-		SupportedSubProtocol      string // potentially temporary until clarity on conflicting tombstones
 	}{
 		{
 			name:                   "remoteWins",
@@ -3954,7 +3953,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:      `{"source": "remote"}`,
 			expectedLocalVersion:   rest.NewDocVersionFromFakeRev("1-b"),
 			expectedResolutionType: db.ConflictResolutionRemote,
-			SupportedSubProtocol:   db.CBMobileReplicationV4.SubprotocolString(),
 		},
 		{
 			name:               "merge",
@@ -3971,7 +3969,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalVersion:   rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`))), // rev for merged body, with parent 1-b
 			expectedResolutionType: db.ConflictResolutionMerge,
 			newCVGenerated:         true,
-			SupportedSubProtocol:   db.CBMobileReplicationV4.SubprotocolString(),
 		},
 		{
 			name:                   "localWins",
@@ -3984,7 +3981,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalVersion:   rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 1-b
 			expectedResolutionType: db.ConflictResolutionLocal,
 			newCVGenerated:         true,
-			SupportedSubProtocol:   db.CBMobileReplicationV4.SubprotocolString(),
 		},
 		{
 			name:                    "twoTombstonesRemoteWin",
@@ -3997,7 +3993,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalVersion:    rest.NewDocVersionFromFakeRev("1-b"),
 			skipActiveLeafAssertion: true,
 			skipBodyAssertion:       base.TestUseXattrs(),
-			SupportedSubProtocol:    db.CBMobileReplicationV3.SubprotocolString(),
 		},
 		{
 			name:                    "twoTombstonesLocalWin",
@@ -4010,7 +4005,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalVersion:    rest.NewDocVersionFromFakeRev("1-b"),
 			skipActiveLeafAssertion: true,
 			skipBodyAssertion:       base.TestUseXattrs(),
-			SupportedSubProtocol:    db.CBMobileReplicationV3.SubprotocolString(),
 		},
 	}
 
@@ -4081,7 +4075,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				Continuous:                 true,
 				ReplicationStatsMap:        replicationStats,
 				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
-				SupportedBLIPProtocols:     []string{test.SupportedSubProtocol},
 			})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
@@ -4122,17 +4115,13 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			actualVersion := doc.ExtractDocVersion()
-			if test.SupportedSubProtocol == db.CBMobileReplicationV4.SubprotocolString() {
-				if test.newCVGenerated {
-					test.expectedLocalVersion.CV = db.Version{
-						SourceID: rt1.GetDatabase().EncodedSourceID,
-						Value:    doc.Cas,
-					}
-				} else {
-					test.expectedLocalVersion.CV = rt2Version.CV
+			if test.newCVGenerated {
+				test.expectedLocalVersion.CV = db.Version{
+					SourceID: rt1.GetDatabase().EncodedSourceID,
+					Value:    doc.Cas,
 				}
 			} else {
-				actualVersion.CV = db.Version{}
+				test.expectedLocalVersion.CV = rt2Version.CV
 			}
 			rest.RequireDocVersionEqual(t, test.expectedLocalVersion, actualVersion)
 
