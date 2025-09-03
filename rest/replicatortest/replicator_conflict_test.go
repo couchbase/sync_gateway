@@ -2028,7 +2028,7 @@ func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLo
 	requiredAdditionalRevs := localGeneration - remoteGeneration
 	// we will create 10 additional revs to inject into remote  doc's history to catch up with local rev tree
 	previousRevID := rt2Version.RevTreeID
-	generatedRevs := make([]string, 0, 0)
+	generatedRevs := make([]string, 0)
 	for i := 0; i < requiredAdditionalRevs; i++ {
 		remoteGeneration++
 		previousRevID = db.CreateRevIDWithBytes(remoteGeneration, previousRevID, []byte("{}"))
