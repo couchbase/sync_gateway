@@ -238,6 +238,15 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.NoError(t, err, "No error while trying to get the existing database name")
 	assert.Equal(t, rosmar.InMemoryURL, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
+
+	dbConfig = DbConfig{
+		Name:           "imdb1",
+		AllowConflicts: base.Ptr(true),
+		BucketConfig:        BucketConfig{Server: &server, Bucket: &bucketName},
+	}
+	_, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
+
+	assert.Error(t, err)
 }
 
 func TestStatsLoggerStopped(t *testing.T) {

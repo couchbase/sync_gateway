@@ -3406,3 +3406,75 @@ func TestDocCRUDWithCV(t *testing.T) {
 	assert.Greaterf(t, deleteVersion.CV.Value, updateVersion.CV.Value, "Expected CV Value to be bumped on delete")
 	assert.Greaterf(t, revIDGen(deleteVersion), revIDGen(updateVersion), "Expected revision generation to be bumped on delete")
 }
+
+// TestAllowConflictsConfig verifies that the database configuration does not allow
+// the `allow_conflicts` property to be set to true.
+// `allow_conflicts` is no longer supported in SGW 4.0
+func TestAllowConflictsConfig(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	const (
+		dbName  = "db1"
+		errResp = "allow_conflicts cannot be set to true"
+	)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.AllowConflicts = base.Ptr(true)
+
+	resp := rt.CreateDatabase(dbName, dbConfig)
+
+	RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), errResp)
+
+}
+
+// TestDBWithAllowConflictsInvalid verifies that the database configuration does not allow
+// the `AllowConflicts` property to be set to true. This test ensures that a config loaded
+// will add the database to invalid configs. The config will be fixed when a database is
+// created without `allow_conflicts`
+func TestDBWithAllowConflictsInvalid(t *testing.T) {
+
+	ctx := t.Context()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbName := "db"
+	allDBsURL := "/_all_dbs?verbose=true"
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = dbName
+
+	rt.CreateDatabase(dbName, dbConfig)
+
+	// Send an admin request to retrieve all databases and verify the response.
+	resp := rt.SendAdminRequest(http.MethodGet, allDBsURL, "")
+	RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
+	bucketName := rt.GetDatabase().Bucket.GetName()
+
+	// Attempt to set the `AllowConflicts` property to true in the database configuration.
+	rt.RestTesterServerContext.dbConfigs[dbName].DatabaseConfig.DbConfig.AllowConflicts = base.Ptr(true)
+
+	// Reload the database configuration and verify that an error is returned.
+	_, err := rt.RestTesterServerContext.ReloadDatabase(ctx, dbName, false)
+	require.Error(t, err)
+
+	// Verify that the database is now in an offline state with the appropriate error message.
+	resp = rt.SendAdminRequest(http.MethodGet, allDBsURL, "")
+	RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Offline","database_error":{"error_message":"Allow conflicts is set to true","error_code":9}}]`, dbName, bucketName), resp.Body.String())
+
+	// Recreate the database with the original configuration and verify it is online.
+	rt.CreateDatabase(dbName, dbConfig)
+	resp = rt.SendAdminRequest(http.MethodGet, allDBsURL, "")
+	RequireStatus(t, resp, http.StatusOK)
+	dbs := resp.Body.String()
+	base.InfofCtx(ctx, base.KeySGTest, "response body: %s", dbs)
+	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
+}

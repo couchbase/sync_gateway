@@ -1133,6 +1133,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		multiError = multiError.Append(fmt.Errorf("user_xattr_key can only be a maximum of 15 characters"))
 	}
 
+	if dbConfig.AllowConflicts != nil && *dbConfig.AllowConflicts {
+		multiError = multiError.Append(fmt.Errorf("allow_conflicts cannot be set to true"))
+	}
+
 	return multiError.ErrorOrNil()
 }
 
