@@ -644,8 +644,8 @@ func EncodeValueStr(value string) (string, error) {
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 	type BucketVector struct {
 		CurrentVersionCAS string    `json:"cvCas,omitempty"`
-		SourceID          string    `json:"src"`
-		Version           string    `json:"ver"`
+		SourceID          string    `json:"src,omitempty"`
+		Version           string    `json:"ver,omitempty"`
 		PV                *[]string `json:"pv,omitempty"`
 		MV                *[]string `json:"mv,omitempty"`
 	}
@@ -657,8 +657,10 @@ func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 		cvCas = base.CasToString(hlv.CurrentVersionCAS)
 		bucketHLV.CurrentVersionCAS = cvCas
 	}
-	vrsCas = base.CasToString(hlv.Version)
-	bucketHLV.Version = vrsCas
+	if hlv.Version != 0 {
+		vrsCas = base.CasToString(hlv.Version)
+		bucketHLV.Version = vrsCas
+	}
 	bucketHLV.SourceID = hlv.SourceID
 
 	pvPersistedFormat := VersionsToDeltas(hlv.PreviousVersions)

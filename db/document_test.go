@@ -676,11 +676,13 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 
 func TestAlignRevTreeHistory(t *testing.T) {
 	testCases := []struct {
-		name            string
-		currentRev      string
-		localRevTree    []string
-		incomingRevTree []string
-		expectedRevTree []string
+		name              string
+		currentRev        string
+		expectedActive    string
+		expectedTombstone string
+		localRevTree      []string
+		incomingRevTree   []string
+		expectedRevTree   []string
 	}{
 		{
 			name:            "common history between the two",
@@ -688,27 +690,37 @@ func TestAlignRevTreeHistory(t *testing.T) {
 			localRevTree:    []string{"2-abc", "1-abc"},
 			incomingRevTree: []string{"5-abc", "4-abc", "3-abc", "2-abc", "1-abc"},
 			expectedRevTree: []string{"5-abc", "4-abc", "3-abc", "2-abc", "1-abc"},
+			expectedActive:  "5-abc",
 		},
 		{
 			name:            "gap in histories, incoming larger",
 			currentRev:      "3-abc",
 			localRevTree:    []string{"1-abc", "2-abc", "3-abc"},
 			incomingRevTree: []string{"12-abc", "10-abc", "11-abc"},
-			expectedRevTree: []string{"12-abc", "10-abc", "11-abc"},
+			// rev 4- is new rev created for tombstone here, 12-abc is the active rev
+			expectedRevTree:   []string{"12-abc", "10-abc", "11-abc", "4-cc0337d9d38c8e5fc930ae3deda62bf8", "3-abc", "2-abc", "1-abc"},
+			expectedActive:    "12-abc",
+			expectedTombstone: "4-cc0337d9d38c8e5fc930ae3deda62bf8",
 		},
 		{
 			name:            "gap in histories, local larger",
-			currentRev:      "3-abc",
+			currentRev:      "12-abc",
 			localRevTree:    []string{"12-abc", "11-abc", "10-abc"},
 			incomingRevTree: []string{"3-abc", "2-abc", "1-abc"},
-			expectedRevTree: []string{"3-abc", "2-abc", "1-abc"},
+			expectedRevTree: []string{"3-abc", "2-abc", "1-abc", "13-8db1e1e49db43d4c2fff25a6a4815c92", "12-abc", "11-abc", "10-abc"},
+			// rev 13- is new rev created for tombstone here, 3-abc is the active rev
+			expectedActive:    "3-abc",
+			expectedTombstone: "13-8db1e1e49db43d4c2fff25a6a4815c92",
 		},
 		{
 			name:            "no common history, one generation above",
 			currentRev:      "3-abc",
 			localRevTree:    []string{"3-abc", "2-abc", "1-abc"},
 			incomingRevTree: []string{"5-abc", "4-abc"},
-			expectedRevTree: []string{"5-abc", "4-abc"},
+			expectedRevTree: []string{"5-abc", "4-abc", "4-cc0337d9d38c8e5fc930ae3deda62bf8", "3-abc", "2-abc", "1-abc"},
+			// active rev will be 5-abc with 4-cc0337d9d38c8e5fc930ae3deda62bf8 as tombstone
+			expectedActive:    "5-abc",
+			expectedTombstone: "4-cc0337d9d38c8e5fc930ae3deda62bf8",
 		},
 		{
 			name:            "one common rev between the two",
@@ -716,18 +728,26 @@ func TestAlignRevTreeHistory(t *testing.T) {
 			localRevTree:    []string{"4-abc", "3-abc", "2-abc", "1-abc"},
 			incomingRevTree: []string{"5-abc", "4-abc"},
 			expectedRevTree: []string{"5-abc", "4-abc", "3-abc", "2-abc", "1-abc"},
+			// no tombstone, active rev will be 5-abc
+			expectedActive: "5-abc",
 		},
 		{
 			name:            "same number of rev but diff in history",
 			currentRev:      "4-abc",
 			localRevTree:    []string{"4-abc", "3-abc", "2-abc", "1-abc"},
 			incomingRevTree: []string{"4-def", "3-def", "2-abc", "1-abc"},
-			expectedRevTree: []string{"4-def", "3-def", "2-abc", "1-abc"},
+			expectedRevTree: []string{"4-def", "3-def", "2-abc", "1-abc", "5-a198a2e285b919a2b5539b031dd07bde", "4-abc", "3-abc"},
+			// active rev will be 4-def with 5-a198a2e285b919a2b5539b031dd07bde as tombstone
+			expectedActive:    "4-def",
+			expectedTombstone: "5-a198a2e285b919a2b5539b031dd07bde",
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := t.Context()
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
 			// setup local rev tree for doc
 			var parent string
 			doc := NewDocument("doc")
@@ -741,9 +761,14 @@ func TestAlignRevTreeHistory(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			err := doc.alignRevTreeHistory(ctx, doc, tc.incomingRevTree)
+			err := doc.alignRevTreeHistoryForHLVWrite(ctx, collection, doc, tc.incomingRevTree)
 			require.NoError(t, err)
 			base.RequireKeysEqual(t, tc.expectedRevTree, doc.History)
+
+			assert.Equal(t, tc.expectedActive, doc.GetRevTreeID())
+			if tc.expectedTombstone != "" {
+				assert.True(t, doc.History[tc.expectedTombstone].Deleted)
+			}
 		})
 	}
 }

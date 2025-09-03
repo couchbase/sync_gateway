@@ -1123,6 +1123,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if ok {
 			legacyRevList = append(legacyRevList, strings.Split(revTree, ",")...)
 			isBlipRevTreeProperty = true
+			if len(legacyRevList) > 0 {
+				newDoc.RevID = legacyRevList[0]
+			}
 		}
 	}
 

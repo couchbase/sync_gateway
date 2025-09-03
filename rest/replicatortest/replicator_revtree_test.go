@@ -167,6 +167,125 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 	}
 }
 
+func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)
+
+	// Passive
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "passivedb",
+			},
+		},
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
+	defer rt2.Close()
+	username := "alice"
+	rt2.CreateUser(username, []string{username})
+
+	// Active
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Name: "active",
+			},
+		},
+	})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+	docID := t.Name()
+
+	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
+
+	rt2Version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+	rt2.WaitForPendingChanges()
+
+	resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverRemoteWins, "", rt1.GetDatabase().Options.JavascriptTimeout)
+	require.NoError(t, err)
+
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: userDBURL(rt2, username),
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:           200,
+		ConflictResolverFuncForHLV: resolverFunc,
+		ReplicationStatsMap:        dbReplicatorStats(t),
+		CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+		Continuous:                 false,
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Stop()) }()
+
+	require.NoError(t, ar.Start(ctx1))
+
+	changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+	changesResults.RequireDocIDs(t, []string{docID})
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
+	}, time.Second*20, time.Millisecond*100)
+
+	// verify doc arrives as expected
+	rt1InitDocVersion, _ := rt1.GetDoc(docID)
+	rest.RequireDocVersionEqual(t, rt2Version, rt1InitDocVersion)
+
+	// update doc on rt2 + rt1 to create diff in rev tree history
+	for i := 0; i < 2; i++ {
+		rt2Version = rt2.UpdateDoc(docID, rt2Version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
+	}
+	rt2.WaitForPendingChanges()
+	rt1Version := rt1InitDocVersion
+	lastUpdateNum := 0
+	for i := 0; i < 2; i++ {
+		rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
+		lastUpdateNum = i
+	}
+	alterBody := rest.JsonToMap(t, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, lastUpdateNum))
+	// alter HLV on local to not conflict with remote
+	db.AlterHLVForTest(t, rt1ctx, rt1.GetSingleDataStore(), docID, &db.HybridLogicalVector{SourceID: rt1InitDocVersion.CV.SourceID, Version: rt1InitDocVersion.CV.Value}, alterBody)
+	preRevTreeAlignmentCurrRev, _ := rt1.GetDoc(docID) // ensure imported
+	rt1.WaitForPendingChanges()
+
+	lastSequence, err := rt1collection.LastSequence(rt1ctx)
+	require.NoError(t, err)
+
+	// start pull again, will conflict for hlv but resolve for remote wins and assert that the rev tree
+	require.NoError(t, ar.Start(ctx1))
+
+	changesResults = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", lastSequence), "", true)
+	changesResults.RequireDocIDs(t, []string{docID})
+
+	docRT1, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+
+	rest.RequireDocVersionEqual(t, rt2Version, docRT1.ExtractDocVersion())
+	// assert that local doc has tombstones branch
+	docHistoryLeaves := docRT1.History.GetLeaves()
+	require.Len(t, docHistoryLeaves, 2)
+
+	for _, v := range docHistoryLeaves {
+		if revItem := docRT1.History[v]; revItem.Deleted {
+			assert.Equal(t, preRevTreeAlignmentCurrRev.RevTreeID, revItem.Parent)
+		} else {
+			assert.Equal(t, rt2Version.RevTreeID, v)
+		}
+	}
+
+	// add new rev and assert rev tree is updated correctly, i.e. non tombstoned branch is written to
+	rt1Version = rt1.UpdateDoc(docID, rt2Version, `{"source":"rt1","channels":["alice"], "version": "last"}`)
+	rt1.WaitForPendingChanges()
+	docRT1, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	docHistoryLeaves = docRT1.History.GetLeaves()
+	require.Len(t, docHistoryLeaves, 2)
+	rest.AssertRevTreeAfterHLVConflictResolution(t, docRT1, rt1Version.RevTreeID, preRevTreeAlignmentCurrRev.RevTreeID)
+}
+
 func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)

@@ -1328,7 +1328,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				return nil, nil, false, nil, err
 			}
 			if alignRevTrees {
-				err := doc.alignRevTreeHistory(ctx, newDoc, revTreeHistory)
+				err := doc.alignRevTreeHistoryForHLVWrite(ctx, db, newDoc, revTreeHistory)
 				if err != nil {
 					return nil, nil, false, nil, err
 				}
@@ -1355,7 +1355,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					previousRevTreeID = doc.GetRevTreeID()
 				} else {
 					// align rev tree here for ISGR replications
-					err = doc.alignRevTreeHistory(ctx, newDoc, revTreeHistory)
+					err = doc.alignRevTreeHistoryForHLVWrite(ctx, db, newDoc, revTreeHistory)
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
@@ -1363,6 +1363,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			case HLVConflict:
 				// if the legacy rev list is from ISGR property, we should not do a conflict check
 				if len(revTreeHistory) > 0 && !alignRevTrees {
+					// TODO: CBG-4828 - conflict resolution for legacy rev documents
 					// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
 					parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, revTreeHistory, doc, newDoc.Deleted)
 					if err != nil {
@@ -1379,22 +1380,26 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 						return nil, nil, false, nil, err
 					}
 				} else {
-					// temp remove history alignment here, pending CBG-4791
-					alignRevTrees = false
 					revTreeConflictChecked = true
-					previousRevTreeID = doc.GetRevTreeID()
-					newGeneration = prevGeneration + 1
 					base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), newDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
 					if conflictResolver.hlvConflictResolver == nil {
 						// cancel rest of update, HLV is in conflict and no resolver is present
 						return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 					}
 					// resolve conflict
-					var newHLV *HybridLogicalVector
-					newHLV, err = db.resolveHLVConflict(ctx, doc, newDoc, conflictResolver.hlvConflictResolver)
+					newHLV, updatedHistory, err := db.resolveHLVConflict(ctx, doc, newDoc, conflictResolver.hlvConflictResolver, revTreeHistory)
 					if err != nil {
 						base.InfofCtx(ctx, base.KeyCRUD, "Failed to resolve HLV conflict for doc %s, error: %v", base.UD(doc.ID), err)
 						return nil, nil, false, nil, err
+					}
+					if len(updatedHistory) > 0 {
+						revTreeHistory = updatedHistory
+						previousRevTreeID = revTreeHistory[0]
+					}
+					currentRevIndex, parent = doc.findWhereRevBranchesFromHistory(revTreeHistory)
+					_, addNewRevErr := doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
+					if addNewRevErr != nil {
+						return nil, nil, false, nil, addNewRevErr
 					}
 					// overwrite the existing HLV with the new one
 					doc.HLV = newHLV
@@ -1769,15 +1774,15 @@ func buildResolverBody(localDoc, incomingDoc *Document) (Body, Body, error) {
 	return localDocBody, remoteDocBody, nil
 }
 
-func (db *DatabaseCollectionWithUser) resolveHLVConflict(ctx context.Context, localDoc, incomingDoc *Document, resolver *ConflictResolver) (*HybridLogicalVector, error) {
+func (db *DatabaseCollectionWithUser) resolveHLVConflict(ctx context.Context, localDoc, incomingDoc *Document, resolver *ConflictResolver, revTreeHistory []string) (*HybridLogicalVector, []string, error) {
 	if resolver == nil {
-		return nil, errors.New("Conflict resolution function is nil for resolveConflict")
+		return nil, nil, errors.New("Conflict resolution function is nil for resolveConflict")
 	}
 
 	localDocBody, remoteDocBody, err := buildResolverBody(localDoc, incomingDoc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyReplicate, "Error when building local and remote documents for conflict resolution for doc %s: %v", base.UD(localDoc.ID), err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	conflict := Conflict{
@@ -1790,24 +1795,25 @@ func (db *DatabaseCollectionWithUser) resolveHLVConflict(ctx context.Context, lo
 	resolvedBody, resolutionType, resolveFuncError := resolver.ResolveForHLV(ctx, conflict)
 	if resolveFuncError != nil {
 		base.InfofCtx(ctx, base.KeyReplicate, "Error when running conflict resolution for doc %s: %v", base.UD(localDoc.ID), resolveFuncError)
-		return nil, resolveFuncError
+		return nil, nil, resolveFuncError
 	}
 
 	var resolvedError error
 	var newHLV *HybridLogicalVector
+	var updatedHistory []string
 	switch resolutionType {
 	case ConflictResolutionLocal:
-		newHLV, resolvedError = db.resolveLocalWinsHLV(ctx, localDoc, incomingDoc)
-		return newHLV, resolvedError
+		newHLV, updatedHistory, resolvedError = db.resolveLocalWinsHLV(ctx, localDoc, incomingDoc, revTreeHistory)
+		return newHLV, updatedHistory, resolvedError
 	case ConflictResolutionRemote:
-		newHLV, resolvedError = remoteWinsConflictResolutionForHLV(ctx, incomingDoc.ID, localDoc.HLV, incomingDoc.HLV)
-		return newHLV, resolvedError
+		newHLV, resolvedError = db.resolveRemoteWinsHLV(ctx, localDoc, incomingDoc)
+		return newHLV, nil, resolvedError
 	case ConflictResolutionMerge:
 		// doc history not used yet CBG-4791 will fix this
 		newHLV, _, resolvedError = db.resolveDocMergeHLV(ctx, localDoc, incomingDoc, nil, resolvedBody)
 		return newHLV, resolvedError
 	default:
-		return nil, fmt.Errorf("Unexpected conflict resolution type: %v", resolutionType)
+		return nil, nil, fmt.Errorf("Unexpected conflict resolution type: %v", resolutionType)
 	}
 }
 
@@ -1861,7 +1867,7 @@ func (db *DatabaseCollectionWithUser) resolveDocRemoteWins(ctx context.Context, 
 	// Tombstone the local revision
 	localRevID := localDoc.GetRevTreeID()
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(ctx, localDoc, localRevID)
-	if err != nil {
+	if tombstoneErr != nil {
 		return "", tombstoneErr
 	}
 	remoteRevID := conflict.RemoteDocument.ExtractRev()
@@ -1869,24 +1875,9 @@ func (db *DatabaseCollectionWithUser) resolveDocRemoteWins(ctx context.Context, 
 	return remoteRevID, nil
 }
 
-// resolveDocLocalWins makes the following updates to the revision tree:
-//   - Adds the remote revision to the rev tree
-//   - Makes a copy of the local revision as a child of the remote revision
-//   - Tombstones the (original) local revision
-//
-// TODO: This is CBL 2.x handling, and is compatible with the current version of the replicator, but
-//
-//	results in additional replication work for clients that have previously replicated the local
-//	revision.  This will be addressed post-Hydrogen with version vector work, but additional analysis
-//	of options for Hydrogen should be completed.
-func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string) (resolvedRevID string, updatedHistory []string, err error) {
-
-	// Clone the local revision as a child of the remote revision
-	docBodyBytes, err := localDoc.BodyBytes(ctx)
-	if err != nil {
-		return "", nil, fmt.Errorf("Unable to retrieve local document body while resolving conflict: %w", err)
-	}
-
+// localWinsConflictResolutionRevTreeHandling handles the revision tree updates required for local wins conflict
+// resolution. This is used for both legacy conflict resolution and HLV conflict resolution
+func localWinsConflictResolutionRevTreeHandling(ctx context.Context, localDoc, remoteDoc *Document, docBodyBytes []byte, docHistory []string) (string, []string) {
 	remoteRevID := remoteDoc.RevID
 	remoteGeneration, _ := ParseRevID(ctx, remoteRevID)
 	var newRevID string
@@ -1912,13 +1903,15 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 		}
 		newRevID = CreateRevIDWithBytes(injectedGeneration+1, docHistory[0], docBodyBytes)
 	}
+	return newRevID, docHistory
+}
 
-	// Update the history for the incoming doc to prepend the cloned revID
-	docHistory = append([]string{newRevID}, docHistory...)
-	remoteDoc.RevID = newRevID
-
+// localWinsConflictResolutionDocumentHandling handles the document updates required for local wins conflict resolution.
+// This is used for both legacy conflict resolution and HLV conflict resolution.
+func localWinsConflictResolutionDocumentHandling(ctx context.Context, localDoc, remoteDoc *Document, docHistory []string, docBodyBytes []byte, newRevID string) {
 	// Set the incoming document's rev, body, deleted flag and attachment to the cloned local revision.
 	// Note: not setting expiry, as syncData.expiry is reference only and isn't guaranteed to match the bucket doc expiry
+
 	remoteDoc.RemoveBody()
 	remoteDoc.Deleted = localDoc.IsDeleted()
 	remoteDoc.SetAttachments(localDoc.Attachments().ShallowCopy())
@@ -1950,6 +1943,34 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 	}
 
 	remoteDoc._rawBody = docBodyBytes
+}
+
+// resolveDocLocalWins makes the following updates to the revision tree:
+//   - Adds the remote revision to the rev tree
+//   - Makes a copy of the local revision as a child of the remote revision
+//   - Tombstones the (original) local revision
+//
+// TODO: This is CBL 2.x handling, and is compatible with the current version of the replicator, but
+//
+//	results in additional replication work for clients that have previously replicated the local
+//	revision.  This will be addressed post-Hydrogen with version vector work, but additional analysis
+//	of options for Hydrogen should be completed.
+func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string) (resolvedRevID string, updatedHistory []string, err error) {
+
+	// Clone the local revision as a child of the remote revision
+	docBodyBytes, err := localDoc.BodyBytes(ctx)
+	if err != nil {
+		return "", nil, fmt.Errorf("Unable to retrieve local document body while resolving conflict: %w", err)
+	}
+
+	var newRevID string
+	newRevID, docHistory = localWinsConflictResolutionRevTreeHandling(ctx, localDoc, remoteDoc, docBodyBytes, docHistory)
+
+	// Update the history for the incoming doc to prepend the cloned revID
+	docHistory = append([]string{newRevID}, docHistory...)
+	remoteDoc.RevID = newRevID
+
+	localWinsConflictResolutionDocumentHandling(ctx, localDoc, remoteDoc, docHistory, docBodyBytes, newRevID)
 
 	// Tombstone the local revision
 	localRevID := localDoc.GetRevTreeID()
@@ -2004,6 +2025,24 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 	return mergedRevID, docHistory, nil
 }
 
+// resolveRemoteWinsHLV will tombstone local active revision and return a new HLV for remote wins
+func (db *DatabaseCollectionWithUser) resolveRemoteWinsHLV(ctx context.Context, localDoc *Document, remoteDoc *Document) (*HybridLogicalVector, error) {
+	// Tombstone the local revision
+	localRevID := localDoc.GetRevTreeID()
+	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(ctx, localDoc, localRevID)
+	if tombstoneErr != nil {
+		return nil, tombstoneErr
+	}
+	remoteRevID := remoteDoc.RevID
+
+	newHLV, err := remoteWinsConflictResolutionForHLV(ctx, remoteDoc.ID, localDoc.HLV, remoteDoc.HLV)
+	if err != nil {
+		return nil, err
+	}
+	base.DebugfCtx(ctx, base.KeyReplicate, "Resolved HLV conflict for doc %s as remoteWins - remote rev is %s, previous local rev %s tombstoned by %s", base.UD(localDoc.ID), remoteRevID, localRevID, tombstoneRevID)
+	return newHLV, nil
+}
+
 func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, localDoc, remoteDoc *Document, docHistory []string, mergedBody Body) (hlv *HybridLogicalVector, updatedHistory []string, err error) {
 	if localDoc.HLV == nil || remoteDoc.HLV == nil {
 		return nil, nil, errors.New("local or incoming hlv is nil for resolveConflict")
@@ -2032,25 +2071,37 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 }
 
 // resolveLocalWinsHLV will update remote doc's body and attachments to match the local doc, and return a new HLV for local wins
-func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, localDoc, remoteDoc *Document) (*HybridLogicalVector, error) {
+func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, localDoc, remoteDoc *Document, revTreeHistory []string) (*HybridLogicalVector, []string, error) {
 
 	// todo: CBG-4791 - use doc history to ensure rev tree is updated correctly
 	docBodyBytes, err := localDoc.BodyBytes(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to retrieve local document body while resolving conflict: %w", err)
+		return nil, nil, fmt.Errorf("Unable to retrieve local document body while resolving conflict: %w", err)
 	}
+
+	var newRevID string
+	newRevID, revTreeHistory = localWinsConflictResolutionRevTreeHandling(ctx, localDoc, remoteDoc, docBodyBytes, revTreeHistory)
+
+	// Update the history for the incoming doc to prepend the cloned revID
+	revTreeHistory = append([]string{newRevID}, revTreeHistory...)
+	remoteDoc.RevID = newRevID
 
 	newHLV, err := localWinsConflictResolutionForHLV(ctx, localDoc.HLV, remoteDoc.HLV, localDoc.ID, db.dbCtx.EncodedSourceID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	remoteDoc.RemoveBody()
-	remoteDoc.Deleted = localDoc.IsDeleted()
-	remoteDoc.SetAttachments(localDoc.Attachments().ShallowCopy())
+	localWinsConflictResolutionDocumentHandling(ctx, localDoc, remoteDoc, revTreeHistory, docBodyBytes, newRevID)
 
-	remoteDoc._rawBody = docBodyBytes
-	return newHLV, nil
+	// Tombstone the local revision
+	localRevID := localDoc.GetRevTreeID()
+	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(ctx, localDoc, localRevID)
+	if tombstoneErr != nil {
+		return nil, nil, tombstoneErr
+	}
+
+	base.DebugfCtx(ctx, base.KeyReplicate, "Resolved HLV conflict for doc %s as localWins - local rev %s moved to %s, and tombstoned with %s", base.UD(localDoc.ID), localRevID, newRevID, tombstoneRevID)
+	return newHLV, revTreeHistory, nil
 }
 
 // tombstoneRevision updates the document's revision tree to add a tombstone revision as a child of the specified revID
@@ -3563,27 +3614,34 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	}
 }
 
-// alignRevTreeHistory will take incoming rev tree list and add any newer revisions to the local document. If there is
-// history between the incoming rev tree and local rev tree differs then the local docs rev tree will be overwritten to
-// the incoming rev tree.
-func (doc *Document) alignRevTreeHistory(ctx context.Context, newDoc *Document, revTreeHistory []string) error {
-	currentRevIndex := len(revTreeHistory)
+// findWhereRevBranchesFromHistory wil take incoming rev tree history and find where it branches from the local document history
+func (doc *Document) findWhereRevBranchesFromHistory(docHistory []string) (int, string) {
+	currentRevIndex := len(docHistory)
 	parent := ""
-	for i, revid := range revTreeHistory {
+	for i, revid := range docHistory {
 		if doc.History.contains(revid) {
 			currentRevIndex = i
 			parent = revid
 			break
 		}
 	}
+	return currentRevIndex, parent
+}
 
-	if parent != doc.GetRevTreeID() {
-		base.DebugfCtx(ctx, base.KeyCRUD, "incoming rev tree history has different history than local doc %s, overwriting the revision history to match the incoming history", base.UD(doc.ID))
-		// clean local history and make way for incoming history to replace it
-		doc.History = make(RevTree)
-		// reset current rev index and parent given we are building a new rev tree now
-		currentRevIndex = len(revTreeHistory)
-		parent = ""
+// alignRevTreeHistoryForHLVWrite will take incoming rev tree list and add any newer revisions to the local document. If there is
+// history between the incoming rev tree and local rev tree differs then the local docs current rev will be tombstones and
+// incoming history will be active rev. This function is to only be used for non conflicting HLV writes
+func (doc *Document) alignRevTreeHistoryForHLVWrite(ctx context.Context, db *DatabaseCollectionWithUser, newDoc *Document, revTreeHistory []string) error {
+	currentRevIndex, parent := doc.findWhereRevBranchesFromHistory(revTreeHistory)
+
+	localRevID := doc.GetRevTreeID()
+	if parent != localRevID {
+		base.DebugfCtx(ctx, base.KeyCRUD, "incoming rev tree history has different history than local doc %s, tombstoning local active branch and writing incoming tree", base.UD(doc.ID))
+
+		_, err := db.tombstoneActiveRevision(ctx, doc, localRevID)
+		if err != nil {
+			return err
+		}
 	}
 
 	newRev, err := doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
