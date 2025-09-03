@@ -324,13 +324,8 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 			},
 		}, db.GetAttachmentsFromInlineBody(t, data))
 
-		// message #3 is the getAttachment message that is sent in-between rev processing
-		msg := client.pullReplication.WaitForMessage(3)
-		assert.NotEqual(t, blip.ErrorType, msg.Type(), "Expected non-error blip message type")
-
 		// Check EE is delta, and CE is full-body replication
-		// msg, ok = client.pullReplication.WaitForMessage(5)
-		msg = btcRunner.WaitForBlipRevMessage(client.id, doc1ID, version2)
+		msg := btcRunner.WaitForBlipRevMessage(client.id, doc1ID, version2)
 		// Delta sync only works for Version vectors, CBG-3748 (backwards compatibility for revID)
 		sgCanUseDeltas := base.IsEnterpriseEdition() && client.UseHLV()
 		if sgCanUseDeltas {
@@ -448,7 +443,6 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 // TestBlipDeltaSyncPullResend tests that a simple pull replication that uses a delta a client rejects will resend the revision in full.
 func TestBlipDeltaSyncPullResend(t *testing.T) {
-
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Enterprise-only test for delta sync")
 	}
@@ -497,24 +491,54 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, docVersion2)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":1234567890123}]}`, string(data))
 
-		msg := client.pullReplication.WaitForMessage(5)
-		t.Logf("allMessages: %s\n", client.pullReplication.GetAllMessagesSummary())
+		// Find the two rev messages. Since there will be two rev messages associated with this version, can not use
+		// WaitForBlipRevMessage or GetBlipRevMessage.
+		// The ordering of messages stored by blip client is not 100% guaranteed, so find the
+		// messages by type and sort by serial number.
+		// 1. rev with deltaSrc (rejected)
+		// 2. rev without deltaSrc (accepted)
+		expectedDocVersion2RevID := docVersion2.RevTreeID
+		if client.UseHLV() {
+			expectedDocVersion2RevID = docVersion2.CV.String()
+		}
+		var revMsgs []*blip.Message
+		for _, msg := range client.pullReplication.GetMessages() {
+			if msg.Profile() != db.RevMessageRev {
+				continue
+			}
+			if msg.Properties[db.RevMessageID] != docID {
+				continue
+			}
+			if msg.Properties[db.RevMessageRev] != expectedDocVersion2RevID {
+				continue
+			}
+			revMsgs = append(revMsgs, msg)
+		}
+		require.Len(t, revMsgs, 2, client.pullReplication.GetAllMessagesSummary())
+		var serialNumber []blip.MessageNumber
+		for _, msg := range revMsgs {
+			serialNumber = append(serialNumber, msg.SerialNumber())
+		}
+		revMsg1 := revMsgs[0]
+		revMsg2 := revMsgs[1]
+		if serialNumber[0] > serialNumber[1] {
+			revMsg1 = revMsgs[1]
+			revMsg2 = revMsgs[0]
+		}
 
 		// Check the request was initially sent with the correct deltaSrc property
-		client.AssertDeltaSrcProperty(t, msg, docVersion1)
+		client.AssertDeltaSrcProperty(t, revMsg1, docVersion1)
 
 		// Check the request body was the actual delta
-		msgBody, err := msg.Body()
+		msgBody, err := revMsg1.Body()
 		assert.NoError(t, err)
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":1234567890123}]}}`, string(msgBody))
 		assert.Equal(t, deltaSentCount+1, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
 
-		msg = btcRunner.WaitForBlipRevMessage(client.id, docID, docVersion2)
-
 		// Check the resent request was NOT sent with a deltaSrc property
-		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
+		assert.Equal(t, "", revMsg2.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was NOT the delta
-		msgBody, err = msg.Body()
+		msgBody, err = revMsg2.Body()
 		assert.NoError(t, err)
 		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":1234567890123}]}}`, string(msgBody))
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":1234567890123}]}`, string(msgBody))
@@ -568,8 +592,10 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"_removed":true}`, string(data))
 
-		msg := client.pullReplication.WaitForMessage(5)
+		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version)
+		require.True(t, ok)
 		msgBody, err := msg.Body()
+
 		assert.NoError(t, err)
 		assert.Equal(t, `{"_removed":true}`, string(msgBody))
 	})
@@ -642,7 +668,9 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
 
-		msg := client.pullReplication.WaitForMessage(5)
+		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version)
+		require.True(t, ok)
+
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		assert.Equal(t, `{}`, string(msgBody))
@@ -758,17 +786,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 		if !assert.Equal(t, db.MessageRev, msg.Profile()) {
 			t.Logf("unexpected profile for message %v in %v",
-				msg.SerialNumber(), client1.pullReplication.GetMessages())
+				msg.SerialNumber(), client1.pullReplication.GetAllMessagesSummary())
 		}
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		if !assert.Equal(t, `{}`, string(msgBody)) {
 			t.Logf("unexpected body for message %v in %v",
-				msg.SerialNumber(), client1.pullReplication.GetMessages())
+				msg.SerialNumber(), client1.pullReplication.GetAllMessagesSummary())
 		}
 		if !assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted]) {
 			t.Logf("unexpected deleted property for message %v in %v",
-				msg.SerialNumber(), client1.pullReplication.GetMessages())
+				msg.SerialNumber(), client1.pullReplication.GetAllMessagesSummary())
 		}
 
 		// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
@@ -779,17 +807,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 		if !assert.Equal(t, db.MessageRev, msg.Profile()) {
 			t.Logf("unexpected profile for message %v in %v",
-				msg.SerialNumber(), client2.pullReplication.GetMessages())
+				msg.SerialNumber(), client2.pullReplication.GetAllMessagesSummary())
 		}
 		msgBody, err = msg.Body()
 		assert.NoError(t, err)
 		if !assert.Equal(t, `{}`, string(msgBody)) {
 			t.Logf("unexpected body for message %v in %v",
-				msg.SerialNumber(), client2.pullReplication.GetMessages())
+				msg.SerialNumber(), client2.pullReplication.GetAllMessagesSummary())
 		}
 		if !assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted]) {
 			t.Logf("unexpected deleted property for message %v in %v",
-				msg.SerialNumber(), client2.pullReplication.GetMessages())
+				msg.SerialNumber(), client2.pullReplication.GetAllMessagesSummary())
 		}
 
 		var deltaCacheHitsEnd int64
@@ -950,7 +978,6 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
-		collection, _ := rt.GetSingleTestDatabaseCollection()
 
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
@@ -969,7 +996,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		btcRunner.StartPushWithOpts(client.id, BlipTesterPushOptions{Continuous: false})
 
 		// Check EE is delta, and CE is full-body replication
-		msg := client.waitForReplicationMessage(collection, 2)
+		msg := client.pushReplication.WaitForBlipRevMessage(docID, newRev)
 
 		if base.IsEnterpriseEdition() && sgCanUseDeltas {
 			// Check the request was sent with the correct deltaSrc property
@@ -1080,7 +1107,6 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
-		collection, _ := rt.GetSingleTestDatabaseCollection()
 
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
@@ -1100,7 +1126,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		version2 := btcRunner.AddRev(client.id, docID, &version1, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 		// MSG1: proposeChanges
 		// MSG2: rev
-		msg := client.waitForReplicationMessage(collection, 2)
+		msg := client.pushReplication.WaitForBlipRevMessage(docID, version2)
 		require.Equal(t, db.MessageRev, msg.Profile())
 
 		// wait for the reply, indicating the message was written

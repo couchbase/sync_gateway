@@ -2120,7 +2120,8 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"hello":"alice"}`, string(data))
 
-		msg := client.pullReplication.WaitForMessage(5)
+		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version2)
+		require.True(t, ok)
 		client.AssertOnBlipHistory(t, msg, version1)
 	})
 }
@@ -2175,8 +2176,9 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		data := btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"hello":"world!"}`, string(data))
 
-		// assert that history in blip properties is correct
-		msg := client.pullReplication.WaitForMessage(5)
+		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version2)
+		require.True(t, ok)
+
 		client.AssertOnBlipHistory(t, msg, version1)
 	})
 }
@@ -3411,14 +3413,8 @@ func TestBlipMergeVersions(t *testing.T) {
 		btcRunner.StartPull(btc.id)
 		btcRunner.WaitForDoc(btc.id, docID)
 
-		// CBL -> SG: subChanges
-		// SG -> CBL: changes
-		// CBL -> SG: rev
-		messages := btc.pullReplication.GetMessages()
-		require.Len(t, messages, 3)
-		revMsg, ok := btc.pullReplication.GetMessage(3)
-		require.True(t, ok)
-		require.Equal(t, db.MessageRev, revMsg.Profile())
+		revMsg := btcRunner.WaitForBlipRevMessage(btc.id, docID, DocVersion{CV: db.Version{SourceID: "CBL1", Value: 3}})
+
 		require.Equal(t, "3@CBL1", revMsg.Properties[db.RevMessageRev])
 		// mv is not ordered so either string is valid
 		require.Contains(t, []string{"2@DEF,2@GHI;", "2@GHI,2@DEF;"}, revMsg.Properties[db.RevMessageHistory])
