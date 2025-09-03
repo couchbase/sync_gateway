@@ -1016,6 +1016,9 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		}
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+	case NoHLVUpdateForTest:
+		// no hlv update event for testing purposes only (used to simulate pre upgraded write)
+		return d, nil
 	}
 	d.SyncData.SetCV(d.HLV)
 	return d, nil
@@ -2652,6 +2655,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				if currentXattrs[base.GlobalXattrName] != nil && !isNewDocCreation {
 					updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.GlobalXattrName)
 				}
+			}
+			if docUpdateEvent == NoHLVUpdateForTest {
+				// If this is a test update where we don't want to update the HLV
+				delete(updatedDoc.Xattrs, base.VvXattrName)
 			}
 
 			// Warn when sync data is larger than a configured threshold
