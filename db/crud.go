@@ -2718,7 +2718,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	if !isImport {
 		auditFields := base.AuditFields{
 			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: doc.VersionString(),
+			base.AuditFieldDocVersion: doc.CVOrRevTreeID(),
 		}
 		if doc.IsDeleted() {
 			base.Audit(ctx, base.AuditIDDocumentDelete, auditFields)

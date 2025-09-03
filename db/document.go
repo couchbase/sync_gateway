@@ -140,8 +140,8 @@ func (sd *SyncData) CV() string {
 	return sd.RevAndVersion.CV()
 }
 
-// VersionString returns the CurrentVersion if available, otherwise falls back to returning the RevTreeID or an empty string.
-func (sd *SyncData) VersionString() string {
+// CVOrRevTreeID() returns the CurrentVersion if available, otherwise falls back to returning the RevTreeID or an empty string.
+func (sd *SyncData) CVOrRevTreeID() string {
 	if sd == nil {
 		return ""
 	}
@@ -1488,8 +1488,8 @@ func (d DocVersion) Body1xKVPair() (bodyVersionKey, bodyVersionStr string) {
 	return BodyRev, d.RevTreeID
 }
 
-// VersionString returns the CurrentVersion if available, otherwise falls back to returning the RevTreeID or an empty string.
-func (d DocVersion) VersionString() string {
+// CVOrRevTreeID returns the CurrentVersion if available, otherwise falls back to returning the RevTreeID or an empty string.
+func (d DocVersion) CVOrRevTreeID() string {
 	if cv, ok := d.GetCV(); ok {
 		return cv.String()
 	}

@@ -1212,7 +1212,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 				testCase.auditableCode(t, docID, docVersion)
 			})
 			postAttachmentVersion, _ := rt.GetDoc(docID)
-			expectedVersion := postAttachmentVersion.VersionString()
+			expectedVersion := postAttachmentVersion.CVOrRevTreeID()
 			requireDocumentEvents(rt, base.AuditIDDocumentCreate, output, docID, expectedVersion, testCase.documentCreateCount)
 			requireDocumentEvents(rt, base.AuditIDDocumentUpdate, output, docID, expectedVersion, testCase.documentUpdateCount)
 		})
