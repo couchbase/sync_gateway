@@ -967,17 +967,50 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	require.Equal(t, bodyExpected, body)
 }
 
+func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync only supported in EE")
+	}
+
+	db, ctx := setupTestDB(t)
+	db.Options.DeltaSyncOptions = DeltaSyncOptions{
+		Enabled:          true,
+		RevMaxAgeSeconds: 300,
+		StoreLegacyRevs:  true,
+	}
+
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	require.NoError(t, db.DbStats.InitDeltaSyncStats())
+
+	rev1, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar", "bar": "buzz", "quux": "quax"})
+	require.NoError(t, err, "Error creating doc1")
+	rev2, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar", "quux": "fuzz", BodyRev: rev1})
+	require.NoError(t, err, "Error updating doc1")
+
+	// force retrieval from backing store
+	db.FlushRevisionCacheForTest()
+
+	// get delta using legacy RevTree IDs - this should force a lookup for CV1 via the pointer backup revision doc
+	delta, _, err := collection.GetDelta(ctx, "doc1", rev1, rev2)
+	require.NoErrorf(t, err, "Error getting delta for doc %q from rev %q to %q", "doc1", rev1, rev2)
+	require.NotNil(t, delta)
+	assert.Equal(t, rev2, delta.ToRevID)
+	assert.Equal(t, []byte(`{"bar":[],"quux":"fuzz"}`), delta.DeltaBytes)
+}
+
 // Test delta sync behavior when the fromRevision is a channel removal.
 func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	testCases := []struct {
 		name          string
 		versionVector bool
 	}{
-		// Revs are backed up by hash of CV now, now way to fetch backup revs by revID till CBG-3748 (backwards compatibility for revID)
-		//{
-		//	name:          "revTree test",
-		//	versionVector: false,
-		//},
+		{
+			name:          "revTree test",
+			versionVector: false,
+		},
 		{
 			name:          "versionVector test",
 			versionVector: true,
@@ -1024,7 +1057,9 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 				require.NoError(t, err, "Error purging old revision JSON")
 			} else {
 				err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
-				require.NoError(t, err, "Error purging old revision JSON")
+				_ = err
+				// TODO: CBG-4840 - Requires restoration of RevTree ID-based old revision storage
+				//require.NoError(t, err, "Error purging old revision JSON")
 			}
 
 			// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
@@ -1039,12 +1074,12 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 			if testCase.versionVector {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
-				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
 				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
-				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID, false)
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
 				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
@@ -1061,12 +1096,12 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 			if testCase.versionVector {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
-				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
 				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
-				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID, false)
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
 				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
@@ -1142,12 +1177,12 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 			if testCase.versionVector {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
-				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
 				require.NoError(t, err)
 				assert.Nil(t, delta)
 				assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
 			} else {
-				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID, false)
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
 				require.NoError(t, err)
 				assert.Nil(t, delta)
 				assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
@@ -1163,12 +1198,12 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 			if testCase.versionVector {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
-				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String(), true)
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
 				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
-				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID, false)
+				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
 				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)

@@ -449,14 +449,15 @@ func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, c
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRev, toRev string, useCVRevCache bool) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRev, toRev string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
 
 	if docID == "" || fromRev == "" || toRev == "" {
 		return nil, nil, nil
 	}
 	var fromRevision DocumentRevision
 	var fromRevVrs Version
-	if useCVRevCache {
+	fromRevIsCV := !base.IsRevTreeID(fromRev)
+	if fromRevIsCV {
 		fromRevVrs, err = ParseVersion(fromRev)
 		if err != nil {
 			return nil, nil, err
@@ -510,7 +511,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
 		var toRevision DocumentRevision
-		if useCVRevCache {
+		if !base.IsRevTreeID(toRev) {
 			cv, err := ParseVersion(toRev)
 			if err != nil {
 				return nil, nil, err
@@ -539,7 +540,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
 			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRev, toRevision, deleted, nil)
-			if useCVRevCache {
+			if fromRevIsCV {
 				db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
 			} else {
 				db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
@@ -583,7 +584,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		revCacheDelta := newRevCacheDelta(deltaBytes, fromRev, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
-		if useCVRevCache {
+		if fromRevIsCV {
 			db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
 		} else {
 			db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
@@ -2044,7 +2045,7 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes(ctx)
 	if err == nil {
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds())
+		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds())
 	}
 	doc.RemoveBody()
 
@@ -2872,7 +2873,11 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 			}
 		}
 		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
+		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
+		// Optionally store a lookup document to find the CV-based revHash by legacy RevTree ID
+		if db.storeLegacyRevTreeData() {
+			_ = db.setOldRevisionJSONPtr(ctx, doc, db.deltaSyncRevMaxAgeSeconds())
+		}
 	}
 	return doc
 }
