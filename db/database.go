@@ -1813,7 +1813,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	if err == nil {
 		base.Audit(ctx, base.AuditIDDocumentResync, base.AuditFields{
 			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: updatedDoc.GetRevTreeID(),
+			base.AuditFieldDocVersion: updatedDoc.VersionString(),
 		})
 	}
 	return updatedHighSeq, unusedSequences, err

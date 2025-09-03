@@ -124,6 +124,7 @@ func (sd *SyncData) SetRevTreeID(revTreeID string) {
 	sd.RevAndVersion.RevTreeID = revTreeID
 }
 
+// GetRevTreeID returns the RevTreeID if available, otherwise returns an empty string.
 func (sd *SyncData) GetRevTreeID() string {
 	if sd == nil {
 		return ""
@@ -131,11 +132,23 @@ func (sd *SyncData) GetRevTreeID() string {
 	return sd.RevAndVersion.RevTreeID
 }
 
+// CV returns the CurrentVersion if available, otherwise returns an empty string.
 func (sd *SyncData) CV() string {
 	if sd == nil {
 		return ""
 	}
 	return sd.RevAndVersion.CV()
+}
+
+// VersionString returns the CurrentVersion if available, otherwise falls back to returning the RevTreeID or an empty string.
+func (sd *SyncData) VersionString() string {
+	if sd == nil {
+		return ""
+	}
+	if cv := sd.RevAndVersion.CV(); cv != "" {
+		return cv
+	}
+	return sd.RevAndVersion.RevTreeID
 }
 
 // determine set of current channels based on removal entries.
@@ -1473,4 +1486,12 @@ func (d DocVersion) Body1xKVPair() (bodyVersionKey, bodyVersionStr string) {
 		return BodyCV, cv.String()
 	}
 	return BodyRev, d.RevTreeID
+}
+
+// VersionString returns the CurrentVersion if available, otherwise falls back to returning the RevTreeID or an empty string.
+func (d DocVersion) VersionString() string {
+	if cv, ok := d.GetCV(); ok {
+		return cv.String()
+	}
+	return d.RevTreeID
 }
