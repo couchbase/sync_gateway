@@ -1478,7 +1478,8 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 
 			if testCase.conflictResolverType == db.ConflictResolverRemoteWins {
 				// here local revIDs gets promoted back to active as the local rev tree is 3-... but remote is 2-...
-				version.RevTreeID = "3-83cfc92a9f5b96a5a7df0e5d01c64cfb"
+				newRev := db.CreateRevIDWithBytes(3, rt1Version.RevTreeID, []byte(db.DeletedDocument))
+				version.RevTreeID = newRev
 				rest.RequireDocVersionEqual(t, version, rt1Doc.ExtractDocVersion())
 				docHistoryLeaves := rt1Doc.History.GetLeaves()
 				require.Len(t, docHistoryLeaves, 2)

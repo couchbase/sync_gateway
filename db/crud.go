@@ -1411,9 +1411,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			} else {
 				// allow conflicting tombstone, just update HLV and add any new revs from history
 				doc.HLV.UpdateWithIncomingHLV(newDocHLV)
-				if err != nil {
-					return nil, nil, false, nil, err
-				}
 				currentRevIndex, parent = doc.findWhereRevBranchesFromHistory(revTreeHistory)
 				_, addNewRevErr := doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
 				if addNewRevErr != nil {
