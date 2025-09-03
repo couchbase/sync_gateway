@@ -242,7 +242,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	dbConfig = DbConfig{
 		Name:           "imdb1",
 		AllowConflicts: base.Ptr(true),
-		BucketConfig:        BucketConfig{Server: &server, Bucket: &bucketName},
+		BucketConfig:   bucketConfig,
 	}
 	_, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 
