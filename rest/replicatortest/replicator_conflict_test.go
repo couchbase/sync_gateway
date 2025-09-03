@@ -1552,9 +1552,9 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 		{
 			name:                    "local wins call",
 			conflictResolver:        `function(conflict) {return conflict.LocalDocument;}`,
-			localBody:               `{"source": "local"}`,
-			expectedBody:            `{"source": "local"}`,
-			remoteBody:              `{"source": "remote"}`,
+			localBody:               `{"source":"local"}`,
+			expectedBody:            `{"source":"local"}`,
+			remoteBody:              `{"source":"remote"}`,
 			expectedDocPushResolved: true,
 			mergeVersionsExpected:   true,
 			newCVGenerated:          true,
@@ -1566,9 +1566,9 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 							mergedDoc.source = "merged";
 							return mergedDoc;
 						}`,
-			localBody:               `{"source": "local"}`,
-			expectedBody:            `{"source": "merged"}`,
-			remoteBody:              `{"source": "remote"}`,
+			localBody:               `{"source":"local"}`,
+			expectedBody:            `{"source":"merged"}`,
+			remoteBody:              `{"source":"remote"}`,
 			expectedDocPushResolved: true,
 			mergeVersionsExpected:   true,
 			newCVGenerated:          true,
@@ -1619,7 +1619,7 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				SourceID: "def",
 				Version:  1234,
 			}
-			_, _, _, err = rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
+			remoteDoc, _, _, err := rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{})
 			require.NoError(t, err)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, testCase.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
@@ -1692,8 +1692,25 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				assert.Equal(t, resolvedDocBodyLocal, resolvedDocBodyRemote)
 			}
 
-			// todo: assert on rev tree here - CBG-4791
-
+			if testCase.newCVGenerated {
+				// merge/local wins will:
+				//	- tombstones local active revision
+				//  - winning merged rev is written as child of remote winning rev
+				remoteGeneration, _ := db.ParseRevID(ctx1, remoteDoc.GetRevTreeID())
+				newRevID := db.CreateRevIDWithBytes(remoteGeneration+1, remoteDoc.GetRevTreeID(), []byte(testCase.expectedBody))
+				require.NoError(t, err)
+				docHistoryLeaves := resolvedDoc.History.GetLeaves()
+				require.Len(t, docHistoryLeaves, 2)
+				rest.AssertRevTreeAfterHLVConflictResolution(t, resolvedDoc, newRevID, localDoc.GetRevTreeID())
+			} else {
+				// remote wins case
+				//	- tombstones local active revision
+				// 	- winning rev is incoming active rev
+				assert.Equal(t, remoteDoc.GetRevTreeID(), resolvedDoc.GetRevTreeID())
+				docHistoryLeaves := resolvedDoc.History.GetLeaves()
+				require.Len(t, docHistoryLeaves, 2)
+				rest.AssertRevTreeAfterHLVConflictResolution(t, resolvedDoc, remoteDoc.GetRevTreeID(), localDoc.GetRevTreeID())
+			}
 		})
 	}
 }

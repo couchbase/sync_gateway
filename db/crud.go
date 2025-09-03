@@ -1809,9 +1809,8 @@ func (db *DatabaseCollectionWithUser) resolveHLVConflict(ctx context.Context, lo
 		newHLV, resolvedError = db.resolveRemoteWinsHLV(ctx, localDoc, incomingDoc)
 		return newHLV, nil, resolvedError
 	case ConflictResolutionMerge:
-		// doc history not used yet CBG-4791 will fix this
-		newHLV, _, resolvedError = db.resolveDocMergeHLV(ctx, localDoc, incomingDoc, nil, resolvedBody)
-		return newHLV, resolvedError
+		newHLV, updatedHistory, resolvedError = db.resolveDocMergeHLV(ctx, localDoc, incomingDoc, revTreeHistory, resolvedBody)
+		return newHLV, updatedHistory, resolvedError
 	default:
 		return nil, nil, fmt.Errorf("Unexpected conflict resolution type: %v", resolutionType)
 	}
@@ -2055,7 +2054,6 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 
 	newHLV := localDoc.HLV.Copy()
 
-	// resolving for local wins
 	base.DebugfCtx(ctx, base.KeyVV, "resolving doc %s with merge, local hlv: %v, incoming hlv: %v", base.UD(localDoc.ID), localDoc.HLV, remoteDoc.HLV)
 	newCV := Version{
 		SourceID: db.dbCtx.EncodedSourceID,
@@ -2073,7 +2071,6 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 // resolveLocalWinsHLV will update remote doc's body and attachments to match the local doc, and return a new HLV for local wins
 func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, localDoc, remoteDoc *Document, revTreeHistory []string) (*HybridLogicalVector, []string, error) {
 
-	// todo: CBG-4791 - use doc history to ensure rev tree is updated correctly
 	docBodyBytes, err := localDoc.BodyBytes(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Unable to retrieve local document body while resolving conflict: %w", err)
