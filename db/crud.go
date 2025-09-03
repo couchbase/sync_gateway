@@ -2461,7 +2461,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		for _, att := range newAttachments {
 			auditFields := base.AuditFields{
 				base.AuditFieldDocID:        doc.ID,
-				base.AuditFieldDocVersion:   newRevID,
+				base.AuditFieldDocVersion:   newRevID, // We can't use CV here because attachment auditing occurs before document update completion, when CV is not yet determined.
 				base.AuditFieldAttachmentID: att.name,
 			}
 			if att.created {
@@ -2718,7 +2718,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	if !isImport {
 		auditFields := base.AuditFields{
 			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: newRevID,
+			base.AuditFieldDocVersion: doc.CVOrRevTreeID(),
 		}
 		if doc.IsDeleted() {
 			base.Audit(ctx, base.AuditIDDocumentDelete, auditFields)
