@@ -374,6 +374,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.AllowConflicts {
 			rt.DatabaseConfig.AllowConflicts = base.Ptr(true)
 		}
+		if rt.DatabaseConfig.StoreLegacyRevTreeData == nil {
+			rt.DatabaseConfig.StoreLegacyRevTreeData = base.Ptr(db.DefaultStoreLegacyRevTreeData)
+		}
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.SgReplicateEnabled)
 

@@ -978,8 +978,8 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 	db.Options.DeltaSyncOptions = DeltaSyncOptions{
 		Enabled:          true,
 		RevMaxAgeSeconds: 300,
-		StoreLegacyRevs:  true,
 	}
+	db.Options.StoreLegacyRevTreeData = true
 
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

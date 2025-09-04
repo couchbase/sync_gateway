@@ -1822,8 +1822,7 @@ func TestPutRevV4(t *testing.T) {
 // Actual:
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 func TestGetRemovedDoc(t *testing.T) {
-	t.Skip("Revs are backed up by hash of CV now, test needs to fetch backup rev by revID, CBG-3748 (backwards compatibility for revID)")
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
@@ -1894,7 +1893,8 @@ func TestGetRemovedDoc(t *testing.T) {
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
 	err = rt.GetSingleDataStore().Delete(tempRevisionDocID)
-	assert.NoError(t, err, "Unexpected Error")
+	// TODO: CBG-4840 - Requires restoration of non-delta sync RevTree revision backups
+	// assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
 	resultDoc, err = bt2.GetDocAtRev("foo", "3-cde")

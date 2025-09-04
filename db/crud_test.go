@@ -1081,8 +1081,15 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 }
 
 func TestGetAvailableRevAttachments(t *testing.T) {
-	t.Skip("Revs are backed up by hash of CV now, test needs to fetch backup rev by revID, CBG-3748 (backwards compatibility for revID)")
 	db, ctx := setupTestDB(t)
+	db.Options.StoreLegacyRevTreeData = true
+
+	// TODO: CBG-4840 Only requires delta sync until restoration of non-delta sync RevTree ID revision body backups"
+	if !base.IsEnterpriseEdition() {
+		t.Skip("CBG-4840 - temp skip see above comment")
+	}
+	db.Options.DeltaSyncOptions = DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}
+
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1104,19 +1111,19 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 
 	// Get available attachments by immediate ancestor revision or parent revision
 	meta, found := collection.getAvailableRevAttachments(ctx, doc, parent)
+	require.True(t, found, "Ancestor should exists")
 	attachment := meta["camera.txt"].(map[string]interface{})
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
 	assert.Equal(t, json.Number("20"), attachment["length"])
 	assert.Equal(t, json.Number("1"), attachment["revpos"])
-	assert.True(t, found, "Ancestor should exists")
 
 	// Get available attachments by immediate ancestor revision
 	meta, found = collection.getAvailableRevAttachments(ctx, doc, ancestor)
+	require.True(t, found, "Ancestor should exists")
 	attachment = meta["camera.txt"].(map[string]interface{})
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
 	assert.Equal(t, json.Number("20"), attachment["length"])
 	assert.Equal(t, json.Number("1"), attachment["revpos"])
-	assert.True(t, found, "Ancestor should exists")
 }
 
 func TestGet1xRevAndChannels(t *testing.T) {
