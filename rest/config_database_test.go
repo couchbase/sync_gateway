@@ -207,6 +207,14 @@ func TestDatabaseConfigValidation(t *testing.T) {
 			},
 			expectedError: "incompatible with enable_shared_bucket_access=false",
 		},
+		{
+			name: "allowing conflicts with allow_conflicts=true",
+			dbConfig: DbConfig{
+				Name:           "db",
+				AllowConflicts: base.Ptr(true),
+			},
+			expectedError: "allow_conflicts cannot be set to true",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

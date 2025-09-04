@@ -796,8 +796,9 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AllowConflicts = base.Ptr(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	dbName := rt.GetDatabase().Name
+	rt.EnableAllowConflicts(dbName)
 
 	// Create a document
 	version := rt.CreateTestDoc("doc1")
@@ -852,8 +853,9 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AllowConflicts = base.Ptr(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	dbName := rt.GetDatabase().Name
+	rt.EnableAllowConflicts(dbName)
 
 	version := rt.CreateTestDoc("doc1")
 
@@ -2058,16 +2060,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 }
 
 func TestAttachmentRemovalWithConflicts(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				AllowConflicts: base.Ptr(true),
-			},
-		},
-	})
+	rt := NewRestTester(t, nil)
 
 	defer rt.Close()
 
+	dbName := rt.GetDatabase().Name
+	rt.EnableAllowConflicts(dbName)
 	const docID = "doc"
 	// Create doc rev 1
 	version := rt.PutDoc(docID, `{"test": "x"}`)
@@ -2129,8 +2127,9 @@ func TestAttachmentsMissing(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AllowConflicts = base.Ptr(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	dbName := rt.GetDatabase().Name
+	rt.EnableAllowConflicts(dbName)
 
 	docID := t.Name()
 	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
@@ -2155,8 +2154,9 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AllowConflicts = base.Ptr(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	dbName := rt.GetDatabase().Name
+	rt.EnableAllowConflicts(dbName)
 
 	docID := t.Name()
 	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
@@ -2446,8 +2446,9 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AllowConflicts = base.Ptr(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	dbName := rt.GetDatabase().Name
+	rt.EnableAllowConflicts(dbName)
 	rt.SetAdminParty(true)
 
 	bt := NewBlipTesterFromSpecWithRT(rt, nil)
