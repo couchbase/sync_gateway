@@ -616,7 +616,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 			}
 
 			// assert on body
-			localDocPreConflictBody = rest.StripInternalProperties(t, localDocPreConflictBody)
+			localDocPreConflictBody, _ = db.StripInternalProperties(localDocPreConflictBody)
 			expectedBytes := base.MustJSONMarshal(t, localDocPreConflictBody)
 			actualBody, err := rt1Doc.BodyBytes(rt1ctx)
 			require.NoError(t, err)
@@ -921,7 +921,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 				assert.Equal(t, val, rt1Doc.HLV.MergeVersions[key], "Expected key or value is missing in merge versions")
 			}
 
-			remoteDocBodyPreConflict = rest.StripInternalProperties(t, remoteDocBodyPreConflict)
+			remoteDocBodyPreConflict, _ = db.StripInternalProperties(remoteDocBodyPreConflict)
 			expectedJsonBody := base.MustJSONMarshal(t, remoteDocBodyPreConflict)
 			actualBody, err := rt1Doc.BodyBytes(rt1ctx)
 			require.NoError(t, err)
@@ -1198,7 +1198,7 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 				assert.Equal(t, value, rt1Doc.HLV.MergeVersions[key], "Expected key %s to have value %d in merge versions", key, value)
 			}
 
-			expectedWinnerPreConflict = rest.StripInternalProperties(t, expectedWinnerPreConflict)
+			expectedWinnerPreConflict, _ = db.StripInternalProperties(expectedWinnerPreConflict)
 			expectedJsonBody := base.MustJSONMarshal(t, expectedWinnerPreConflict)
 			actualBody, err := rt1Doc.BodyBytes(rt1ctx)
 			require.NoError(t, err)
@@ -1299,9 +1299,9 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 			require.NoError(t, err)
 
 			_, localDocBodyPreConflict := rt1.GetDoc(docID) // get body for later comparison + revID assertion
-			localDocBodyPreConflict = rest.StripInternalProperties(t, localDocBodyPreConflict)
+			localDocBodyPreConflict, _ = db.StripInternalProperties(localDocBodyPreConflict)
 			_, remoteDocBodyPreConflict := rt2.GetDoc(docID)
-			remoteDocBodyPreConflict = rest.StripInternalProperties(t, remoteDocBodyPreConflict)
+			remoteDocBodyPreConflict, _ = db.StripInternalProperties(remoteDocBodyPreConflict)
 
 			// Start the replicator
 			require.NoError(t, ar.Start(ctx1))
@@ -1334,6 +1334,8 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 				require.Len(t, attMeta, 2)
 				base.RequireKeysEqual(t, []string{"hello.txt", "world.txt"}, attMeta)
 
+				// remote attachment from body
+				delete(remoteDocBodyPreConflict, db.BodyAttachments)
 				expectedBodyBytes := base.MustJSONMarshal(t, remoteDocBodyPreConflict)
 				require.JSONEq(t, string(expectedBodyBytes), string(actualBody), "Doc body does not match expected for remote wins")
 			} else {
@@ -1342,6 +1344,8 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 				//	- tombstones local active revision
 				//  - winning rev is written as child of remote winning rev
 				remoteGeneration, _ := db.ParseRevID(ctx1, version.RevTreeID)
+				// remote attachment from body
+				delete(localDocBodyPreConflict, db.BodyAttachments)
 				newRevID, err := db.CreateRevID(remoteGeneration+1, version.RevTreeID, localDocBodyPreConflict)
 				require.NoError(t, err)
 				docHistoryLeaves := rt1Doc.History.GetLeaves()
@@ -1931,7 +1935,7 @@ func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisions(t *testing
 				rest.RequireDocVersionEqual(t, rt1Version, resolvedVersion)
 			}
 
-			expectedWinnerPreConflict = rest.StripInternalProperties(t, expectedWinnerPreConflict)
+			expectedWinnerPreConflict, _ = db.StripInternalProperties(expectedWinnerPreConflict)
 			expectedJsonBody := base.MustJSONMarshal(t, expectedWinnerPreConflict)
 			actualBody, err := rt1Doc.BodyBytes(rt1ctx)
 			require.NoError(t, err)

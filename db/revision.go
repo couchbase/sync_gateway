@@ -335,7 +335,7 @@ func (body Body) FixJSONNumbers() {
 
 func CreateRevID(generation int, parentRevID string, body Body) (string, error) {
 	// This should produce the same results as TouchDB.
-	strippedBody, _ := stripInternalProperties(body)
+	strippedBody, _ := StripInternalProperties(body)
 	encoding, err := base.JSONMarshalCanonical(strippedBody)
 	if err != nil {
 		return "", err
@@ -419,8 +419,8 @@ func compareRevIDs(ctx context.Context, id1, id2 string) int {
 	return 0
 }
 
-// stripInternalProperties returns a copy of the given body with all internal underscore-prefixed keys removed, except _attachments and _deleted.
-func stripInternalProperties(b Body) (Body, bool) {
+// StripInternalProperties returns a copy of the given body with all internal underscore-prefixed keys removed, except _attachments and _deleted.
+func StripInternalProperties(b Body) (Body, bool) {
 	return stripSpecialProperties(b, true)
 }
 

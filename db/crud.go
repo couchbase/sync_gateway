@@ -1184,7 +1184,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		}
 
 		// Make up a new _rev, and add it to the history:
-		bodyWithoutInternalProps, wasStripped := stripInternalProperties(body)
+		bodyWithoutInternalProps, wasStripped := StripInternalProperties(body)
 		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
 		if err != nil {
 			return nil, nil, false, nil, err
@@ -1352,15 +1352,15 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
-					// the new document has a dominating hlv, so we can ignore any legacy rev revtree information on the incoming document
+					// the new document has a dominating hlv, so we can just update local revtree with incoming revtree
 					revTreeConflictChecked = true
 					if !alignRevTrees {
 						previousRevTreeID = doc.GetRevTreeID()
 					} else {
 						// align rev tree here for ISGR replications
-						err = doc.alignRevTreeHistoryForHLVWrite(ctx, db, newDoc, revTreeHistory)
-						if err != nil {
-							return nil, nil, false, nil, err
+						alignErr := doc.alignRevTreeHistoryForHLVWrite(ctx, db, newDoc, revTreeHistory)
+						if alignErr != nil {
+							return nil, nil, false, nil, alignErr
 						}
 					}
 				case HLVConflict:
@@ -1384,7 +1384,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 						}
 					} else {
 						revTreeConflictChecked = true
-						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), newDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
+						base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), newDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
 						if conflictResolver.hlvConflictResolver == nil {
 							// cancel rest of update, HLV is in conflict and no resolver is present
 							return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
@@ -1392,7 +1392,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 						// resolve conflict
 						newHLV, updatedHistory, err := db.resolveHLVConflict(ctx, doc, newDoc, conflictResolver.hlvConflictResolver, revTreeHistory)
 						if err != nil {
-							base.InfofCtx(ctx, base.KeyCRUD, "Failed to resolve HLV conflict for doc %s, error: %v", base.UD(doc.ID), err)
+							base.WarnfCtx(ctx, "Failed to resolve HLV conflict for doc %s, error: %v", base.UD(doc.ID), err)
 							return nil, nil, false, nil, err
 						}
 						if len(updatedHistory) > 0 {
@@ -1444,7 +1444,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		var newRev string
 		if !alignRevTrees {
 			// create a new revID for incoming write
-			strippedBody, _ := stripInternalProperties(newDoc._body)
+			strippedBody, _ := StripInternalProperties(newDoc._body)
 			encoding, err := base.JSONMarshalCanonical(strippedBody)
 			if err != nil {
 				return nil, nil, false, nil, err
@@ -1699,7 +1699,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 	if err != nil {
 		return nil, err, nil
 	}
-	bodyWithoutInternalProps, wasStripped := stripInternalProperties(body)
+	bodyWithoutInternalProps, wasStripped := StripInternalProperties(body)
 	canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
 	if err != nil {
 		return nil, err, nil
@@ -2080,7 +2080,8 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 	return newHLV, updatedHistory, nil
 }
 
-// resolveLocalWinsHLV will update remote doc's body and attachments to match the local doc, and return a new HLV for local wins
+// resolveLocalWinsHLV will update remote doc's body and attachments to match the local doc, and return a new HLV for
+// local wins and the new revtree.
 func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, localDoc, remoteDoc *Document, revTreeHistory []string) (*HybridLogicalVector, []string, error) {
 
 	docBodyBytes, err := localDoc.BodyBytes(ctx)

@@ -2830,11 +2830,3 @@ func AssertRevTreeAfterHLVConflictResolution(t *testing.T, doc *db.Document, exp
 	// should only have one active leaf
 	require.Equal(t, 1, activeLeafCount)
 }
-
-func StripInternalProperties(t *testing.T, body db.Body) db.Body {
-	delete(body, db.BodyRev)
-	delete(body, db.BodyId)
-	delete(body, db.BodyCV)
-	delete(body, db.BodyAttachments)
-	return body
-}

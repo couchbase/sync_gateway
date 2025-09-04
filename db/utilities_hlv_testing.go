@@ -195,7 +195,7 @@ func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t *testing.T, ctx context.C
 		}
 
 		// Make up a new _rev, and add it to the history:
-		bodyWithoutInternalProps, wasStripped := stripInternalProperties(body)
+		bodyWithoutInternalProps, wasStripped := StripInternalProperties(body)
 		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
 		if err != nil {
 			return nil, nil, false, nil, err
