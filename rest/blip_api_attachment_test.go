@@ -557,7 +557,6 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires legacy attachment upgrade to HLV (CBG-3806)
 
 	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
@@ -605,7 +604,6 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires legacy attachment upgrade to HLV (CBG-3806)
 
 	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
