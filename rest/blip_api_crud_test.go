@@ -2019,7 +2019,7 @@ func TestSendReplacementRevision(t *testing.T) {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+						// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 						cvHash := base.Crc32cHashString([]byte(version1.CV.String()))
 						err := collection.PurgeOldRevisionJSON(ctx, docID, cvHash)
 						require.NoError(t, err)

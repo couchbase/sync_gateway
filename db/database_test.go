@@ -820,7 +820,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 	cv := docRev2.HLV.GetCurrentVersionString()
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cv)))
 	assert.NoError(t, err, "Purge old revision JSON")
@@ -848,7 +848,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.Equal(t, expectedResult, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 	cv = docRev1.HLV.GetCurrentVersionString()
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cv)))
 	assert.NoError(t, err, "Purge old revision JSON")
@@ -941,7 +941,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 	// Flush the revision cache and purge the old revision backup.
 	db.FlushRevisionCacheForTest()
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	require.NoError(t, err, "Error purging old revision JSON")
 
@@ -1270,7 +1270,7 @@ func TestGetRemoved(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -1280,7 +1280,7 @@ func TestGetRemoved(t *testing.T) {
 	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -1346,7 +1346,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStats)
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -1356,7 +1356,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	assert.NoError(t, err, "Purge old revision JSON")
 
