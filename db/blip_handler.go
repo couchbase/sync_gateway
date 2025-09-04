@@ -1347,10 +1347,25 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	forceAllowConflictingTombstone := newDoc.Deleted && (!bh.conflictResolver.IsEmpty() || bh.clientType == BLIPClientTypeSGR2)
 	if bh.useHLV() && changeIsVector {
 		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList, isBlipRevTreeProperty, bh.conflictResolver)
-	} else if bh.conflictResolver.revTreeConflictResolver != nil {
-		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver.revTreeConflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	} else {
-		_, _, err = bh.collection.PutExistingRev(bh.loggingCtx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
+		docUpdateEvent := ExistingVersionWithUpdateToHLV
+		if bh.useHLV() {
+			docUpdateEvent = ExistingVersionLegacyRev
+		}
+		opts := putDocOptions{
+			newDoc:                         newDoc,
+			revTreeHistory:                 history,
+			forceAllowConflictingTombstone: forceAllowConflictingTombstone,
+			existingDoc:                    rawBucketDoc,
+			docUpdateEvent:                 docUpdateEvent,
+		}
+		if bh.conflictResolver.revTreeConflictResolver != nil {
+			opts.conflictResolver = bh.conflictResolver.revTreeConflictResolver
+			opts.noConflicts = true
+		} else {
+			opts.noConflicts = revNoConflicts
+		}
+		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, opts)
 	}
 	if err != nil {
 		return err

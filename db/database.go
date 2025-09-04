@@ -53,6 +53,7 @@ const (
 	Import DocUpdateType = iota
 	NewVersion
 	ExistingVersion
+	ExistingVersionLegacyRev
 	ExistingVersionWithUpdateToHLV
 	NoHLVUpdateForTest
 )

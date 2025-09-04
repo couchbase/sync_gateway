@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"iter"
 	"maps"
+	"math/bits"
 	"slices"
 	"sort"
 	"strconv"
@@ -23,6 +24,10 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
+
+// encodedRevTreeSourceID is a base64 encoded value representing a revision that came from a 4.x client with a
+// revtree ID.
+const encodedRevTreeSourceID = "Revision+Tree+Encoding"
 
 type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
 
@@ -518,7 +523,7 @@ func extractHLVFromBlipString(versionVectorStr string) (*HybridLogicalVector, []
 		return nil, nil, err
 	}
 	if legacyRevs != nil {
-		return nil, nil, fmt.Errorf("invalid hlv in changes message received, legacy revID found in cv: %q", vectorFields[0])
+		return nil, nil, fmt.Errorf("invalid hlv in changes message received, legacy revIDs found in cv %s", versionVectorStr)
 	}
 	for i, v := range cvmvList {
 		switch i {
@@ -626,7 +631,7 @@ func isLegacyRev(rev string) bool {
 	return true
 }
 
-// Helper functions for version source and value encoding
+// EncodeSource encodes a source ID in base64 for storage.
 func EncodeSource(source string) string {
 	return base64.StdEncoding.EncodeToString([]byte(source))
 }
@@ -900,4 +905,28 @@ func remoteWinsConflictResolutionForHLV(ctx context.Context, docID string, local
 
 	base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of remote wins, resulting HLV: %v", base.UD(docID), newHLV)
 	return newHLV, nil
+}
+
+// LegacyRevToRevTreeEncodedVersion creates a version that has a specific source ID that can be recognized. The version is made up of:
+//
+// - The upper 24 bits of the version are the generation.
+// - The lower 40 bits of the version are the first 40 bits of the digest, which is right padded.
+func LegacyRevToRevTreeEncodedVersion(legacyRev string) (Version, error) {
+	generation, digest, err := parseRevID(legacyRev)
+	if err != nil {
+		return Version{}, err
+	}
+	// trim to 40 bits (10 hex characters)
+	if len(digest) > 10 {
+		digest = digest[:10]
+	}
+	value, err := strconv.ParseUint(digest, 16, 64)
+	if err != nil {
+		return Version{}, err
+	}
+	value = value << (40 - bits.Len64(value)) // right pad zeros
+	return Version{
+		SourceID: encodedRevTreeSourceID,
+		Value:    (uint64(generation) << 40) | value,
+	}, nil
 }
