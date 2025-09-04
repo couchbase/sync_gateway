@@ -1674,6 +1674,18 @@ func TestLegacyRevToVersion(t *testing.T) {
 			legacyRev: "12345-e0c8012361e94df6a1e1c2977169480e",
 			version:   "3039e0c8012361@Revision+Tree+Encoding",
 		},
+		{
+			legacyRev: "16777215-abcd",
+			version:   "ffffffabcd000000@Revision+Tree+Encoding",
+		},
+		{
+			legacyRev: "16777216-abcd",
+			version:   "abcd000000@Revision+Tree+Encoding",
+		},
+		{
+			legacyRev: "16777217-abcd",
+			version:   "1abcd000000@Revision+Tree+Encoding",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.legacyRev, func(t *testing.T) {

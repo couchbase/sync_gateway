@@ -1031,7 +1031,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		// no hlv update event for testing purposes only (used to simulate pre upgraded write)
 		return d, nil
 	default:
-		return nil, base.RedactErrorf("Unexpected docUpdateEvent %v in updateHLV for doc %s", docUpdateEvent, docUpdateEvent)
+		return nil, base.RedactErrorf("Unexpected docUpdateEvent %v in updateHLV for doc %s", docUpdateEvent, base.UD(d.ID))
 	}
 	d.SyncData.SetCV(d.HLV)
 	return d, nil
@@ -1479,7 +1479,7 @@ type putDocOptions struct {
 	revTreeHistory                 []string                 // list of rev tree IDs. The first entry must be the revtree ID that will be added.
 	docUpdateEvent                 DocUpdateType            // new write, existing write, import etc
 	noConflicts                    bool                     // If true, return 409 on any conflict writes
-	forceAllowConflictingTombstone bool                     // If true, allow an incoming tombstone with a conflicting revtree history to overwrite the existing tombstone document
+	forceAllowConflictingTombstone bool                     // If true, do not flag an incoming tombstone as a conflict if the existing document is a tombstone
 	conflictResolver               *ConflictResolver        // If provided, will be used to resolve conflicts if noConflicts is false and a conflict is detected
 	existingDoc                    *sgbucket.BucketDocument // optional, prevents fetching the document from the bucket
 }

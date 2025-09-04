@@ -907,8 +907,10 @@ func remoteWinsConflictResolutionForHLV(ctx context.Context, docID string, local
 	return newHLV, nil
 }
 
-// LegacyRevToRevTreeEncodedVersion creates a version that has a specific source ID that can be recognized, and the value is
-// able to be the revision + digest.
+// LegacyRevToRevTreeEncodedVersion creates a version that has a specific source ID that can be recognized. The version is made up of:
+//
+// - The upper 24 bits of the version are the generation.
+// - The lower 40 bits of the version are the first 40 bits of the digest, which is right padded.
 func LegacyRevToRevTreeEncodedVersion(legacyRev string) (Version, error) {
 	generation, digest, err := parseRevID(legacyRev)
 	if err != nil {

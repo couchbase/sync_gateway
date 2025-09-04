@@ -591,7 +591,7 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 					changesVersion, err := db.ParseVersion(revID)
 					require.NoError(btr.TB(), err, "error converting revID %q to version: %v", revID, err)
 					localHLV := btcc.getHLV(docID)
-					if localHLV == nil && localHLV.GetCurrentVersionString() == "" {
+					if localHLV == nil {
 						knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
 						continue
 					} else if localHLV.DominatesSource(changesVersion) {
@@ -1279,7 +1279,7 @@ func (e proposeChangeBatchEntry) MarshalJSON() ([]byte, error) {
 }
 
 func (e proposeChangeBatchEntry) GoString() string {
-	return fmt.Sprintf("proposeChangeBatchEntry{docID: %q, version:%v,revTreeIDHistory:%v, hlvHistory:%#v, seq:%d, latestServerVersion:%v, isDelete:%t}", e.docID, e.version, e.revTreeIDHistory, e.hlvHistory, e.seq, e.latestServerVersion, e.isDelete)
+	return fmt.Sprintf("proposeChangeBatchEntry{docID:%q, version:%v,revTreeIDHistory:%v, hlvHistory:%#v, seq:%d, latestServerVersion:%v, isDelete:%t}", e.docID, e.version, e.revTreeIDHistory, e.hlvHistory, e.seq, e.latestServerVersion, e.isDelete)
 }
 
 // StartPushWithOpts will begin a push replication with the given options between the client and server
