@@ -1000,6 +1000,21 @@ func TestBulkDocsLegacyRevNoop(t *testing.T) {
 	}, docs)
 }
 
+func TestCreateLegacyRevDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// create legacy rev (without CV)
+	dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	_, _ = dbc.CreateDocNoHLV(t, ctx, "legacydoc", db.Body{"foo": "bar"})
+
+	// fetch doc and assert that no _vv is present
+	ds := dbc.GetCollectionDatastore()
+	_, _, err := ds.GetXattrs(ctx, "legacydoc", []string{base.VvXattrName})
+	require.Error(t, err) // should error as xattr not found
+	base.RequireXattrNotFoundError(t, err)
+}
+
 // TestBulkDocsNoEdits verifies that POSTing /_bulk_docs with new_edits=false stores
 // the provided revisions verbatim, and subsequent posts append the given history without generating new rev IDs.
 func TestBulkDocsNoEdits(t *testing.T) {
