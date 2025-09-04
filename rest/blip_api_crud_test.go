@@ -1892,7 +1892,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetSingleDataStore().Delete(tempRevisionDocID)
+	_ = rt.GetSingleDataStore().Delete(tempRevisionDocID)
 	// TODO: CBG-4840 - Requires restoration of non-delta sync RevTree revision backups
 	// assert.NoError(t, err, "Unexpected Error")
 
