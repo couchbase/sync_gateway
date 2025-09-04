@@ -1012,7 +1012,7 @@ func TestCreateLegacyRevDoc(t *testing.T) {
 	ds := dbc.GetCollectionDatastore()
 	_, _, err := ds.GetXattrs(ctx, "legacydoc", []string{base.VvXattrName})
 	require.Error(t, err) // should error as xattr not found
-	require.True(t, base.IsXattrNotFoundError(err))
+	base.RequireXattrNotFoundError(t, err)
 }
 
 // TestBulkDocsNoEdits verifies that POSTing /_bulk_docs with new_edits=false stores
