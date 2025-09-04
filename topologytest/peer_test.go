@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"iter"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -34,7 +35,7 @@ var totalWaitTime = 8 * time.Second
 var pollInterval = 1 * time.Millisecond
 
 func init() {
-	if !base.UnitTestUrlIsWalrus() || raceEnabled {
+	if !base.UnitTestUrlIsWalrus() || raceEnabled || os.Getenv("CI") != "" {
 		totalWaitTime = 40 * time.Second
 	}
 }
