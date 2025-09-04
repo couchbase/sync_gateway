@@ -1025,7 +1025,6 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest, base.KeyCRUD, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCRUD)
 	rtConfig := RestTesterConfig{GuestEnabled: true}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4 replication only test
 
 	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &rtConfig)
@@ -1034,29 +1033,64 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
-		btcRunner.StartPush(client.id)
+		t.Run("push CBL legacy rev", func(t *testing.T) {
+			btcRunner.StartPush(client.id)
+			defer btcRunner.StopPush(client.id)
 
-		const cblDoc = "cblDoc"
-		cblDocVersion1 := btcRunner.AddRevTreeRev(client.id, cblDoc, EmptyDocVersion(), []byte(`{"action": "create"}`))
-		rt.WaitForVersion(cblDoc, cblDocVersion1)
+			docID := SafeDocumentName(t, t.Name())
+			cblDocVersion1 := btcRunner.AddRevTreeRev(client.id, docID, "abc", EmptyDocVersion(), []byte(`{"action": "create"}`))
+			rt.WaitForVersion(docID, cblDocVersion1)
 
-		cblDocVersion2 := btcRunner.AddRev(client.id, cblDoc, &cblDocVersion1, []byte(`{"action": "update"}`))
-		rt.WaitForVersion(cblDoc, cblDocVersion2)
+			cblDocVersion2 := btcRunner.AddRev(client.id, docID, &cblDocVersion1, []byte(`{"action": "update"}`))
+			rt.WaitForVersion(docID, cblDocVersion2)
+		})
 
-		const sgDoc = "sgDoc"
-		dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-		revTreeID1, _ := dbc.CreateDocNoHLV(t, ctx, sgDoc, db.Body{"action": "create"})
-		sgDocVersion1 := DocVersion{RevTreeID: revTreeID1}
-		btcRunner.StartPull(client.id)
-		btcRunner.WaitForVersion(client.id, sgDoc, sgDocVersion1)
+		t.Run("pull SG legacy rev", func(t *testing.T) {
+			btcRunner.StartPull(client.id)
+			btcRunner.StartPush(client.id)
+			defer btcRunner.UnsubPullChanges(client.id)
+			defer btcRunner.StopPush(client.id)
 
-		// _rev: revTreeID1 to allow updating using CreateDocNoHLV
-		revtreeID2, _ := dbc.CreateDocNoHLV(t, ctx, sgDoc, db.Body{"_rev": revTreeID1, "action": "update"})
-		sgDocVersion2 := DocVersion{RevTreeID: revtreeID2}
-		btcRunner.WaitForVersion(client.id, sgDoc, sgDocVersion2)
+			docID := SafeDocumentName(t, t.Name())
+			dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+			revTreeID1, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"action": "create"})
+			sgDocVersion1 := DocVersion{RevTreeID: revTreeID1}
+			btcRunner.WaitForVersion(client.id, docID, sgDocVersion1)
 
-		sgVersion3 := btcRunner.AddRev(client.id, sgDoc, &sgDocVersion2, []byte(`{"action": "cbl update"}`))
-		require.NotNil(t, sgVersion3)
-		rt.WaitForVersion(sgDoc, sgVersion3)
+			// _rev: revTreeID1 to allow updating using CreateDocNoHLV
+			revtreeID2, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"_rev": revTreeID1, "action": "update"})
+			sgDocVersion2 := DocVersion{RevTreeID: revtreeID2}
+			btcRunner.WaitForVersion(client.id, docID, sgDocVersion2)
+
+			sgVersion3 := btcRunner.AddRev(client.id, docID, &sgDocVersion2, []byte(`{"action": "cbl update"}`))
+			require.NotNil(t, sgVersion3)
+			rt.WaitForVersion(docID, sgVersion3)
+		})
+		t.Run("pull SG legacy rev 2-bcd, both sides have 1-abc", func(t *testing.T) {
+			docID := SafeDocumentName(t, t.Name())
+			dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+			sgVersion1, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"action": "create"})
+			generation, digest := db.ParseRevID(ctx, sgVersion1)
+			require.Equal(t, 1, generation)
+			cblVersion1 := btcRunner.AddRevTreeRev(client.id, docID, digest, EmptyDocVersion(), []byte(`{"action": "create"}`))
+			require.Equal(t, sgVersion1, cblVersion1.RevTreeID)
+			sgVersion2, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"_rev": sgVersion1, "action": "update"})
+			btcRunner.StartPull(client.id)
+			btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: sgVersion2})
+		})
+		t.Run("push CBL legacy rev 2-bcd, both sides have 1-abc", func(t *testing.T) {
+			docID := SafeDocumentName(t, t.Name())
+			dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+			sgVersion1, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"action": "create"})
+			generation, digest := db.ParseRevID(ctx, sgVersion1)
+			require.Equal(t, 1, generation)
+			cblVersion1 := btcRunner.AddRevTreeRev(client.id, docID, digest, EmptyDocVersion(), []byte(`{"action": "create"}`))
+			require.Equal(t, sgVersion1, cblVersion1.RevTreeID)
+
+			cblVersion2 := btcRunner.AddRevTreeRev(client.id, docID, "bcd", &cblVersion1, []byte(`{"action": "update"}`))
+
+			btcRunner.StartPush(client.id)
+			rt.WaitForVersion(docID, cblVersion2)
+		})
 	})
 }

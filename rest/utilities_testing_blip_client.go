@@ -591,14 +591,13 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 					changesVersion, err := db.ParseVersion(revID)
 					require.NoError(btr.TB(), err, "error converting revID %q to version: %v", revID, err)
 					localHLV := btcc.getHLV(docID)
-					if localHLV == nil {
+					if localHLV == nil && localHLV.GetCurrentVersionString() == "" {
 						knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
 						continue
 					} else if localHLV.DominatesSource(changesVersion) {
 						base.DebugfCtx(ctx, base.KeySGTest, "Skipping changes for incoming doc %q with rev %s as we already have a newer version %#v", docID, changesVersion, localHLV)
 						knownRevs[i] = nil // Send back null to signal we don't need this change
 					} else {
-						require.NotEmpty(btr.TB(), localHLV.GetCurrentVersionString())
 						// HLV clients only need to send the current version
 						knownRevs[i] = []interface{}{localHLV.GetCurrentVersionString()}
 					}
@@ -1317,6 +1316,7 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 func (btcc *BlipTesterCollectionClient) sendProposeChanges(ctx context.Context, changesBatch []proposeChangeBatchEntry) *blip.Message {
 	proposeChangesRequest := blip.NewRequest()
 	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
+	proposeChangesRequest.Properties[db.ProposeChangesConflictsIncludeRev] = "true"
 
 	proposeChangesRequestBody, err := base.JSONMarshal(changesBatch)
 	require.NoError(btcc.TB(), err, "error marshalling proposeChanges request body: %v", err)
@@ -1396,7 +1396,7 @@ func (btcc *BlipTesterCollectionClient) sendRevisions(ctx context.Context, chang
 	}
 	rspBody, err := proposeChangesResponse.Body()
 	require.NoError(btcc.TB(), err)
-	var response []int
+	var response []any
 	err = base.JSONUnmarshal(rspBody, &response)
 	require.NoError(btcc.TB(), err, "error unmarshalling proposeChanges response body: %v from %s", err, string(rspBody))
 	for i, change := range changesBatch {
@@ -1405,7 +1405,31 @@ func (btcc *BlipTesterCollectionClient) sendRevisions(ctx context.Context, chang
 			// trailing zeros are removed - treat as 0 from now on
 			status = 0
 		} else {
-			status = response[i]
+			switch changeResponse := response[i].(type) {
+			case float64:
+				status = int(changeResponse)
+			case map[string]any:
+				require.Contains(btcc.TB(), changeResponse, "status")
+				statusFloat, ok := changeResponse["status"].(float64)
+				require.True(btcc.TB(), ok, "non-float status in proposeChanges response: %#+v", changeResponse)
+				status = int(statusFloat)
+				if status == http.StatusConflict {
+					require.Contains(btcc.TB(), changeResponse, "rev")
+					latestVersion, ok := changeResponse["rev"].(string)
+					require.True(btcc.TB(), ok, "missing or non-string rev in proposeChanges response map for index %d in response array, %#+v: %#+v", i, response, changeResponse)
+					if base.IsRevTreeID(latestVersion) {
+						change.latestServerVersion = DocVersion{RevTreeID: latestVersion}
+					} else {
+						v, err := db.ParseVersion(latestVersion)
+						require.NoError(btcc.TB(), err, "error parsing version %q: %v", latestVersion, err)
+						change.latestServerVersion = DocVersion{CV: v}
+					}
+					btcc.sendRevisions(ctx, []proposeChangeBatchEntry{change})
+					continue
+				}
+			default:
+				require.FailNow(btcc.TB(), fmt.Sprintf("unexpected type %T for index %d in proposeChanges response array, %#+v", changeResponse, i, response))
+			}
 		}
 		switch status {
 		case 0:
@@ -1415,6 +1439,7 @@ func (btcc *BlipTesterCollectionClient) sendRevisions(ctx context.Context, chang
 			base.DebugfCtx(ctx, base.KeySGTest, "peer already has doc %s / %v", change.docID, change.version)
 			continue
 		case 409:
+
 			// conflict - puller will need to resolve (if enabled) - resolution pushed independently so we can ignore this one
 			base.DebugfCtx(ctx, base.KeySGTest, "conflict for doc %s clientVersion:%v serverVersion:%v", change.docID, change.version, change.latestServerVersion)
 			continue
@@ -1559,10 +1584,11 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) {
 
 // blipTesterUpsertOptions contains options for adding a document to a local BlipTesterCollectionClient
 type blipTesterUpsertOptions struct {
-	parentVersion *DocVersion
-	body          []byte
-	isDelete      bool
-	legacyRev     bool // if true, create a legacy revtree revision even if client is using HLV
+	parentVersion  *DocVersion
+	body           []byte
+	isDelete       bool
+	legacyRev      bool   // if true, create a legacy revtree revision even if client is using HLV
+	specificDigest string // if specified, use this digest for the revision
 }
 
 // upsertDoc will create or update the doc based on whether parentVersion is passed or not. Enforces MVCC update.
@@ -1604,6 +1630,9 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
 	} else {
 		digest := "abc" // TODO: Generate rev ID digest based on body hash?
+		if opts.specificDigest != "" {
+			digest = opts.specificDigest
+		}
 		newRevID := fmt.Sprintf("%d-%s", newGen, digest)
 		docVersion = DocVersion{RevTreeID: newRevID}
 	}
@@ -1648,15 +1677,13 @@ func (btcc *BlipTesterCollectionClient) AddRev(docID string, parentVersion *DocV
 
 // AddRevTreeRev creates a revision on the client in legacy revision tree format. This is used to create legacy
 // revisions to push to CBL.
-func (btcc *BlipTesterCollectionClient) AddRevTreeRev(docID string, parentVersion *DocVersion, body []byte) DocVersion {
-	if !btcc.UseHLV() {
-		require.FailNow(btcc.TB(), "AddRevTreeRev should only be used when client is using HLV to add legacy revs")
-	}
+func (btcc *BlipTesterCollectionClient) AddRevTreeRev(docID string, digest string, parentVersion *DocVersion, body []byte) DocVersion {
 	newRev := btcc.upsertDoc(docID, blipTesterUpsertOptions{
-		parentVersion: parentVersion,
-		body:          body,
-		isDelete:      false,
-		legacyRev:     true, // force legacy revtree even though client is using HLV
+		parentVersion:  parentVersion,
+		body:           body,
+		isDelete:       false,
+		legacyRev:      true, // force legacy revtree even though client is using HLV
+		specificDigest: digest,
 	})
 	return newRev.version
 }
@@ -2026,8 +2053,8 @@ func (btcRunner *BlipTestClientRunner) AddRev(clientID uint32, docID string, ver
 }
 
 // AddRevTreeRev creates a revision on the client in revtree format. This revision can not have any HLV revisions.
-func (btcRunner *BlipTestClientRunner) AddRevTreeRev(clientID uint32, docID string, version *DocVersion, body []byte) DocVersion {
-	return btcRunner.SingleCollection(clientID).AddRevTreeRev(docID, version, body)
+func (btcRunner *BlipTestClientRunner) AddRevTreeRev(clientID uint32, docID string, digest string, version *DocVersion, body []byte) DocVersion {
+	return btcRunner.SingleCollection(clientID).AddRevTreeRev(docID, digest, version, body)
 }
 
 func (btcrunner *BlipTestClientRunner) DeleteDoc(clientID uint32, docID string, version *DocVersion) DocVersion {
