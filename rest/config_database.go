@@ -174,7 +174,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 			Enabled:          base.Ptr(db.DefaultDeltaSyncEnabled),
 			RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
 		},
-		StoreLegacyRevTreeData:           base.Ptr(db.DefaultStoreLegacyRevs),
+		StoreLegacyRevTreeData:           base.Ptr(db.DefaultStoreLegacyRevTreeData),
 		CompactIntervalDays:              base.Ptr(float32(db.DefaultCompactInterval.Hours() / 24)),
 		SGReplicateEnabled:               base.Ptr(db.DefaultSGReplicateEnabled),
 		SGReplicateWebsocketPingInterval: base.Ptr(int(db.DefaultSGReplicateWebsocketPingInterval.Seconds())),

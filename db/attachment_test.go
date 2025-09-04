@@ -52,13 +52,12 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", revid1)
 
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
 	rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	if deltasEnabled {
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 	} else {
-		// current revs aren't backed up unless both xattrs and deltas are enabled
+		// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
@@ -71,19 +70,18 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	require.NoError(t, err)
 
 	// now in any case - we'll have rev 1 backed up
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
 	rev1OldBody, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	require.NoError(t, err)
 	assert.Contains(t, string(rev1OldBody), "hello.txt")
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 
 	// and rev 2 should be present only for the xattrs and deltas case
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
 	rev2OldBody, err := collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	if deltasEnabled {
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
 	} else {
-		// current revs aren't backed up unless both xattrs and deltas are enabled
+		// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
@@ -193,7 +191,7 @@ func TestAttachments(t *testing.T) {
 	}, atts)
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
-	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 	err = collection.dataStore.Delete(oldRevisionKey("doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString()))))
 	assert.NoError(t, err, "Couldn't compact old revision")
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
