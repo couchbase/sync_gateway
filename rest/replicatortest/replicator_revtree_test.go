@@ -254,7 +254,7 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 	lastSequence, err := rt1collection.LastSequence(rt1ctx)
 	require.NoError(t, err)
 
-	// start pull again, will conflict for hlv but resolve for remote wins and assert that the rev tree
+	// start pull again
 	require.NoError(t, ar.Start(ctx1))
 
 	changesResults = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", lastSequence), "", true)

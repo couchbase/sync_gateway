@@ -761,7 +761,7 @@ func TestAlignRevTreeHistory(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			err := doc.alignRevTreeHistoryForHLVWrite(ctx, collection, doc, tc.incomingRevTree)
+			err := doc.alignRevTreeHistoryForHLVWrite(ctx, collection, doc, tc.incomingRevTree, false)
 			require.NoError(t, err)
 			base.RequireKeysEqual(t, tc.expectedRevTree, doc.History)
 
