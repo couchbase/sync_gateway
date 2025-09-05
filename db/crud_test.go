@@ -1807,8 +1807,11 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 		Version:          incomingVersion,
 		PreviousVersions: pv,
 	}
-
-	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil, false, ConflictResolvers{})
+	opts := PutDocOptions{
+		NewDoc:    newDoc,
+		NewDocHLV: incomingHLV,
+	}
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, opts)
 	assertHTTPError(t, err, 409)
 	require.Nil(t, doc)
 	require.Nil(t, cv)
@@ -1818,7 +1821,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	// TODO: because currentRev isn't being updated, storeOldBodyInRevTreeAndUpdateCurrent isn't
 	//  updating the document body.   Need to review whether it makes sense to keep using
 	// storeOldBodyInRevTreeAndUpdateCurrent, or if this needs a larger overhaul to support VV
-	doc, cv, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil, false, ConflictResolvers{})
+	doc, cv, _, err = collection.PutExistingCurrentVersion(ctx, opts)
 	require.NoError(t, err)
 	assert.Equal(t, "test", cv.SourceID)
 	assert.Equal(t, incomingVersion, cv.Value)
@@ -1840,7 +1843,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 
 	// Attempt to push the same client update, validate server rejects as an already known version and cancels the update.
 	// This case doesn't return error, verify that SyncData hasn't been changed.
-	_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil, false, ConflictResolvers{})
+	_, _, _, err = collection.PutExistingCurrentVersion(ctx, opts)
 	require.NoError(t, err)
 	syncData2, err := collection.GetDocSyncData(ctx, "doc1")
 	require.NoError(t, err)
@@ -1885,8 +1888,12 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 		Version:  1234,
 	}
 
+	opts := PutDocOptions{
+		NewDoc:    newDoc,
+		NewDocHLV: incomingHLV,
+	}
 	// assert that a conflict is correctly identified and the doc and cv are nil
-	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil, nil, false, ConflictResolvers{})
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, opts)
 	assertHTTPError(t, err, 409)
 	require.Nil(t, doc)
 	require.Nil(t, cv)
@@ -1925,8 +1932,13 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 		Version:          incomingVersion,
 		PreviousVersions: pv,
 	}
+	opts := PutDocOptions{
+		NewDoc:      newDoc,
+		NewDocHLV:   incomingHLV,
+		ExistingDoc: &sgbucket.BucketDocument{},
+	}
 	// call PutExistingCurrentVersion with empty existing doc
-	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, &sgbucket.BucketDocument{}, nil, false, ConflictResolvers{})
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, opts)
 	require.NoError(t, err)
 	assert.NotNil(t, doc)
 	// assert on returned CV value

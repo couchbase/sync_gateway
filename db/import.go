@@ -279,7 +279,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			rawBodyForRevID = existingDoc.Body
 		} else {
 			var bodyWithoutInternalProps Body
-			bodyWithoutInternalProps, wasStripped = stripInternalProperties(body)
+			bodyWithoutInternalProps, wasStripped = StripInternalProperties(body)
 			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutInternalProps)
 			if err != nil {
 				return nil, nil, false, nil, err

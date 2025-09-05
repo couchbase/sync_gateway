@@ -2815,3 +2815,18 @@ func AssertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus 
 
 	assert.Equal(t, expectedReason, httpError.Reason)
 }
+
+func AssertRevTreeAfterHLVConflictResolution(t *testing.T, doc *db.Document, expectedActiveRevTreeID, expectedTombstoneParentID string) {
+	activeLeafCount := 0
+	for _, revID := range doc.History.GetLeaves() {
+		revItem := doc.History[revID]
+		if revItem.Deleted {
+			assert.Equal(t, expectedTombstoneParentID, revItem.Parent)
+		} else {
+			activeLeafCount++
+			assert.Equal(t, expectedActiveRevTreeID, revID)
+		}
+	}
+	// should only have one active leaf
+	require.Equal(t, 1, activeLeafCount)
+}
