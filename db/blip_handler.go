@@ -1349,24 +1349,33 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (!bh.conflictResolver.IsEmpty() || bh.clientType == BLIPClientTypeSGR2)
 	if bh.useHLV() && changeIsVector {
-		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList, isBlipRevTreeProperty, bh.conflictResolver, forceAllowConflictingTombstone)
+		opts := PutDocOptions{
+			NewDoc:                         newDoc,
+			RevTreeHistory:                 legacyRevList,
+			ForceAllowConflictingTombstone: forceAllowConflictingTombstone,
+			ExistingDoc:                    rawBucketDoc,
+			NewDocHLV:                      incomingHLV,
+			ConflictResolver:               bh.conflictResolver.hlvConflictResolver,
+			AlignRevTrees:                  isBlipRevTreeProperty,
+		}
+		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, opts)
 	} else {
 		docUpdateEvent := ExistingVersionWithUpdateToHLV
 		if bh.useHLV() {
 			docUpdateEvent = ExistingVersionLegacyRev
 		}
-		opts := putDocOptions{
-			newDoc:                         newDoc,
-			revTreeHistory:                 history,
-			forceAllowConflictingTombstone: forceAllowConflictingTombstone,
-			existingDoc:                    rawBucketDoc,
-			docUpdateEvent:                 docUpdateEvent,
+		opts := PutDocOptions{
+			NewDoc:                         newDoc,
+			RevTreeHistory:                 history,
+			ForceAllowConflictingTombstone: forceAllowConflictingTombstone,
+			ExistingDoc:                    rawBucketDoc,
+			DocUpdateEvent:                 docUpdateEvent,
 		}
 		if bh.conflictResolver.revTreeConflictResolver != nil {
-			opts.conflictResolver = bh.conflictResolver.revTreeConflictResolver
-			opts.noConflicts = true
+			opts.ConflictResolver = bh.conflictResolver.revTreeConflictResolver
+			opts.NoConflicts = true
 		} else {
-			opts.noConflicts = revNoConflicts
+			opts.NoConflicts = revNoConflicts
 		}
 		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, opts)
 	}

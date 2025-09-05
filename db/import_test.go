@@ -166,7 +166,13 @@ func TestOnDemandImportMou(t *testing.T) {
 				case "PutExistingCurrentVersion":
 					hlv := NewHybridLogicalVector()
 					var legacyRevList []string
-					_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, hlv, rawBucketDoc, legacyRevList, false, ConflictResolvers{}, false)
+					opts := PutDocOptions{
+						NewDocHLV:      hlv,
+						NewDoc:         newDoc,
+						RevTreeHistory: legacyRevList,
+						ExistingDoc:    rawBucketDoc,
+					}
+					_, _, _, err = collection.PutExistingCurrentVersion(ctx, opts)
 					assertHTTPError(t, err, 409)
 				default:
 					require.FailNow(t, fmt.Sprintf("unexpected funcName: %s", funcName))

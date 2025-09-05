@@ -1557,7 +1557,11 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 		Version:  1234,
 	}
 	// add local version
-	_, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{}, false)
+	opts := db.PutDocOptions{
+		NewDoc:    newDoc,
+		NewDocHLV: incomingHLV,
+	}
+	_, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, opts)
 	require.NoError(t, err)
 
 	newDoc = db.CreateTestDocument(docID, "", rest.JsonToMap(t, `{"some": "data"}`), false, 0)
@@ -1565,7 +1569,9 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 		SourceID: "def",
 		Version:  1234,
 	}
-	_, _, _, err = rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{}, false)
+	opts.NewDocHLV = incomingHLV
+	opts.NewDoc = newDoc
+	_, _, _, err = rt2Collection.PutExistingCurrentVersion(rt2Ctx, opts)
 	require.NoError(t, err)
 
 	resolver := `function(conflict) {var mergedDoc = new Object(); 
@@ -1685,7 +1691,11 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				Version:  1234,
 			}
 			// add local version
-			localDoc, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{}, false)
+			opts := db.PutDocOptions{
+				NewDoc:    newDoc,
+				NewDocHLV: incomingHLV,
+			}
+			localDoc, _, _, err := rt1Collection.PutExistingCurrentVersion(rt1Ctx, opts)
 			require.NoError(t, err)
 
 			newDoc = db.CreateTestDocument(docID, "", rest.JsonToMap(t, testCase.remoteBody), false, 0)
@@ -1693,7 +1703,11 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				SourceID: "def",
 				Version:  1234,
 			}
-			remoteDoc, _, _, err := rt2Collection.PutExistingCurrentVersion(rt2Ctx, newDoc, incomingHLV, nil, nil, false, db.ConflictResolvers{}, false)
+			opts = db.PutDocOptions{
+				NewDoc:    newDoc,
+				NewDocHLV: incomingHLV,
+			}
+			remoteDoc, _, _, err := rt2Collection.PutExistingCurrentVersion(rt2Ctx, opts)
 			require.NoError(t, err)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, testCase.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
