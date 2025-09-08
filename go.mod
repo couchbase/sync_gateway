@@ -38,7 +38,7 @@ require (
 	golang.org/x/crypto v0.41.0
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
 	golang.org/x/net v0.43.0
-	golang.org/x/oauth2 v0.30.0
+	golang.org/x/oauth2 v0.31.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
