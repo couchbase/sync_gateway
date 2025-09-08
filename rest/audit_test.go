@@ -1212,8 +1212,9 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 				testCase.auditableCode(t, docID, docVersion)
 			})
 			postAttachmentVersion, _ := rt.GetDoc(docID)
-			requireDocumentEvents(rt, base.AuditIDDocumentCreate, output, docID, postAttachmentVersion.RevTreeID, testCase.documentCreateCount)
-			requireDocumentEvents(rt, base.AuditIDDocumentUpdate, output, docID, postAttachmentVersion.RevTreeID, testCase.documentUpdateCount)
+			expectedVersion := postAttachmentVersion.CVOrRevTreeID()
+			requireDocumentEvents(rt, base.AuditIDDocumentCreate, output, docID, expectedVersion, testCase.documentCreateCount)
+			requireDocumentEvents(rt, base.AuditIDDocumentUpdate, output, docID, expectedVersion, testCase.documentUpdateCount)
 		})
 	}
 }
@@ -1436,7 +1437,7 @@ func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID stri
 		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentMetadataRead {
 			continue
 		}
-		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
 		countFound++
 	}
 	require.Equal(rt.TB(), count, countFound)
@@ -1451,7 +1452,7 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentRead {
 			continue
 		}
-		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
 		docVersionsFound = append(docVersionsFound, event[base.AuditFieldDocVersion].(string))
 	}
 	require.Len(rt.TB(), docVersions, len(docVersionsFound), "expected exactly %d document read events, got %d", len(docVersions), len(docVersionsFound))
@@ -1467,7 +1468,7 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
 			continue
 		}
-		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
 		require.Equal(rt.TB(), docVersionStr, event[base.AuditFieldDocVersion].(string))
 		require.Equal(rt.TB(), attachmentName, event[base.AuditFieldAttachmentID])
 		countFound++
@@ -1484,7 +1485,7 @@ func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, 
 		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
 			continue
 		}
-		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
 		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
 		countFound++
 	}
@@ -1569,7 +1570,8 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 	return rt
 }
 
-func TestAuditBlipCRUD(t *testing.T) {
+// TestAuditBlipAttachmentCRUD uses BLIP replication to test attachment CRUD operations and ensures each event is audited correctly.
+func TestAuditBlipAttachmentCRUD(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
 
@@ -1624,11 +1626,6 @@ func TestAuditBlipCRUD(t *testing.T) {
 		}
 		for _, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
-				if btc.UseHLV() {
-					// TODO: CBG-4429 - AuditFieldDocVersion is hardcoded to RevTreeID
-					t.Skip("CBG-4429: AuditFieldDocVersion is hardcoded to RevTreeID - causing mismatch, since the client wrote the doc and got only a CV back in docVersion")
-				}
-
 				docID := strings.ReplaceAll(testCase.name, " ", "_")
 				var docVersion DocVersion
 				if testCase.setupCode != nil {
@@ -1638,10 +1635,15 @@ func TestAuditBlipCRUD(t *testing.T) {
 					testCase.auditableCode(t, docID, docVersion)
 				})
 
-				requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, docVersion.RevTreeID, testCase.attachmentName, testCase.attachmentCreateCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, docVersion.RevTreeID, testCase.attachmentName, testCase.attachmentReadCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, docVersion.RevTreeID, testCase.attachmentName, testCase.attachmentUpdateCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, docVersion.RevTreeID, testCase.attachmentName, testCase.attachmentDeleteCount)
+				// Known issue: CBG-4484 - We cannot use CV (the version returned from the client in vv mode) to assert for version in attachment events.
+				// We don't know the CV when the attachments are being stored and audited (prior to the document write happening).
+				rtVersion, _ := rt.GetDoc(docID)
+				expectedVersion := rtVersion.RevTreeID
+
+				requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, expectedVersion, testCase.attachmentName, testCase.attachmentCreateCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, expectedVersion, testCase.attachmentName, testCase.attachmentReadCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, expectedVersion, testCase.attachmentName, testCase.attachmentUpdateCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, expectedVersion, testCase.attachmentName, testCase.attachmentDeleteCount)
 			})
 		}
 	})
@@ -1878,7 +1880,7 @@ func TestDatabaseAuditChanges(t *testing.T) {
 				for _, event := range events {
 					eventID := base.AuditID(event[base.AuditFieldID].(float64))
 					if eventID == expectedEventID {
-						require.Equal(rt.TB(), event[base.AuditFieldDatabase], "db")
+						require.Equal(rt.TB(), "db", event[base.AuditFieldDatabase])
 						if testCase.expectedEnabledEventList != nil {
 							require.Equal(rt.TB(), testCase.expectedEnabledEventList, event[base.AuditFieldEnabledEvents])
 						}

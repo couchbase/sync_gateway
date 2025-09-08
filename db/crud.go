@@ -1016,6 +1016,22 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		}
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+	case ExistingVersionLegacyRev:
+		revTreeEncodedCV, err := LegacyRevToRevTreeEncodedVersion(d.GetRevTreeID())
+		if err != nil {
+			return nil, err
+		}
+		err = d.HLV.AddVersion(revTreeEncodedCV)
+		if err != nil {
+			return nil, err
+		}
+		// update the cvCAS on the SGWrite event too
+		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+	case NoHLVUpdateForTest:
+		// no hlv update event for testing purposes only (used to simulate pre upgraded write)
+		return d, nil
+	default:
+		return nil, base.RedactErrorf("Unexpected docUpdateEvent %v in updateHLV for doc %s", docUpdateEvent, base.UD(d.ID))
 	}
 	d.SyncData.SetCV(d.HLV)
 	return d, nil
@@ -1446,24 +1462,45 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
-	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc, docUpdateEvent)
+	opts := putDocOptions{
+		newDoc:                         newDoc,
+		revTreeHistory:                 docHistory,
+		noConflicts:                    noConflicts,
+		forceAllowConflictingTombstone: forceAllConflicts,
+		existingDoc:                    existingDoc,
+		docUpdateEvent:                 docUpdateEvent,
+	}
+	return db.PutExistingRevWithConflictResolution(ctx, opts)
 }
 
-// PutExistingRevWithConflictResolution Adds an existing revision to a document along with its history (list of rev IDs.)
+// putDocOptions encapsulates the options for putting a document revision.
+type putDocOptions struct {
+	newDoc                         *Document                // the next contents of the incoming document
+	revTreeHistory                 []string                 // list of rev tree IDs. The first entry must be the revtree ID that will be added.
+	docUpdateEvent                 DocUpdateType            // new write, existing write, import etc
+	noConflicts                    bool                     // If true, return 409 on any conflict writes
+	forceAllowConflictingTombstone bool                     // If true, do not flag an incoming tombstone as a conflict if the existing document is a tombstone
+	conflictResolver               *ConflictResolver        // If provided, will be used to resolve conflicts if noConflicts is false and a conflict is detected
+	existingDoc                    *sgbucket.BucketDocument // optional, prevents fetching the document from the bucket
+}
+
+// PutExistingRevWithConflictResolution adds an existing revision to a document along with its history.
 // If this new revision would result in a conflict:
 //  1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //  2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //  3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
-	newRev := docHistory[0]
+func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, opts putDocOptions) (doc *Document, newRevID string, err error) {
+	newRev := opts.revTreeHistory[0]
 	generation, _ := ParseRevID(ctx, newRev)
 	if generation < 0 {
 		return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 
+	newDoc := opts.newDoc
+	docHistory := opts.revTreeHistory
 	allowImport := db.UseXattrs()
 	updateRevCache := true
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, opts.docUpdateEvent, opts.existingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1504,13 +1541,13 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		// Conflict-free mode check
 
 		// We only bypass conflict resolution for incoming tombstones if the local doc is also a tombstone
-		allowConflictingTombstone := forceAllowConflictingTombstone && doc.IsDeleted()
+		allowConflictingTombstone := opts.forceAllowConflictingTombstone && doc.IsDeleted()
 
-		if !allowConflictingTombstone && db.IsIllegalConflict(ctx, doc, parent, newDoc.Deleted, noConflicts, docHistory) {
-			if conflictResolver == nil {
+		if !allowConflictingTombstone && db.IsIllegalConflict(ctx, doc, parent, newDoc.Deleted, opts.noConflicts, docHistory) {
+			if opts.conflictResolver == nil {
 				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
-			_, updatedHistory, err := db.resolveConflict(ctx, doc, newDoc, docHistory, conflictResolver)
+			_, updatedHistory, err := db.resolveConflict(ctx, doc, newDoc, docHistory, opts.conflictResolver)
 			if err != nil {
 				base.InfofCtx(ctx, base.KeyCRUD, "Error resolving conflict for %s: %v", base.UD(doc.ID), err)
 				return nil, nil, false, nil, err
@@ -2461,7 +2498,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		for _, att := range newAttachments {
 			auditFields := base.AuditFields{
 				base.AuditFieldDocID:        doc.ID,
-				base.AuditFieldDocVersion:   newRevID,
+				base.AuditFieldDocVersion:   newRevID, // We can't use CV here because attachment auditing occurs before document update completion, when CV is not yet determined.
 				base.AuditFieldAttachmentID: att.name,
 			}
 			if att.created {
@@ -2653,6 +2690,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 					updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.GlobalXattrName)
 				}
 			}
+			if docUpdateEvent == NoHLVUpdateForTest {
+				// This is a test seam to allow CRUD operations to push non HLV aware documents
+				// this will simulate a pre upgraded documents
+				delete(updatedDoc.Xattrs, base.VvXattrName)
+			}
 
 			// Warn when sync data is larger than a configured threshold
 			if db.unsupportedOptions() != nil && db.unsupportedOptions().WarningThresholds != nil {
@@ -2718,7 +2760,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	if !isImport {
 		auditFields := base.AuditFields{
 			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: newRevID,
+			base.AuditFieldDocVersion: doc.CVOrRevTreeID(),
 		}
 		if doc.IsDeleted() {
 			base.Audit(ctx, base.AuditIDDocumentDelete, auditFields)

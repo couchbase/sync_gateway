@@ -53,6 +53,7 @@ const (
 	Import DocUpdateType = iota
 	NewVersion
 	ExistingVersion
+	ExistingVersionLegacyRev
 	ExistingVersionWithUpdateToHLV
 	NoHLVUpdateForTest
 )
@@ -70,13 +71,13 @@ const (
 	DefaultSGReplicateEnabled               = true
 	DefaultSGReplicateWebsocketPingInterval = time.Minute * 5
 	DefaultCompactInterval                  = 24 * time.Hour
+	DefaultStoreLegacyRevTreeData           = true // for 4.0, this is opt-out - we can switch to opt-in at a later date
 )
 
 // Default values for delta sync
 var (
 	DefaultDeltaSyncEnabled   = false
 	DefaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24) // 24 hours in seconds
-	DefaultStoreLegacyRevs    = true                 // for 4.0, this is opt-out - we can switch to opt-in at a later date
 )
 
 var (
@@ -206,6 +207,7 @@ type DatabaseContextOptions struct {
 	NumIndexPartitions            *uint32           // Number of partitions for GSI indexes, if not set will default to 1
 	ImportVersion                 uint64            // Version included in import DCP checkpoints, incremented when collections added to db
 	DisablePublicAllDocs          bool              // Disable public access to the _all_docs endpoint for this database
+	StoreLegacyRevTreeData        bool              // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
 }
 
 type ConfigPrincipals struct {
@@ -241,7 +243,6 @@ type UserViewsOptions struct {
 type DeltaSyncOptions struct {
 	Enabled          bool   // Whether delta sync is enabled (EE only)
 	RevMaxAgeSeconds uint32 // The number of seconds deltas for old revs are available for
-	StoreLegacyRevs  bool   // Whether to store additional data to allow legacy RevTree ID support for delta sync
 }
 
 type APIEndpoints struct {
@@ -1813,7 +1814,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	if err == nil {
 		base.Audit(ctx, base.AuditIDDocumentResync, base.AuditFields{
 			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: updatedDoc.GetRevTreeID(),
+			base.AuditFieldDocVersion: updatedDoc.CVOrRevTreeID(),
 		})
 	}
 	return updatedHighSeq, unusedSequences, err

@@ -1826,8 +1826,7 @@ func TestPutRevV4(t *testing.T) {
 // Actual:
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 func TestGetRemovedDoc(t *testing.T) {
-	t.Skip("Revs are backed up by hash of CV now, test needs to fetch backup rev by revID, CBG-3748 (backwards compatibility for revID)")
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
@@ -1897,8 +1896,9 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetSingleDataStore().Delete(tempRevisionDocID)
-	assert.NoError(t, err, "Unexpected Error")
+	_ = rt.GetSingleDataStore().Delete(tempRevisionDocID)
+	// TODO: CBG-4840 - Requires restoration of non-delta sync RevTree revision backups
+	// assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
 	resultDoc, err = bt2.GetDocAtRev("foo", "3-cde")
@@ -2023,7 +2023,7 @@ func TestSendReplacementRevision(t *testing.T) {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility for revID)
+						// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 						cvHash := base.Crc32cHashString([]byte(version1.CV.String()))
 						err := collection.PurgeOldRevisionJSON(ctx, docID, cvHash)
 						require.NoError(t, err)
@@ -2124,7 +2124,8 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"hello":"alice"}`, string(data))
 
-		msg := client.pullReplication.WaitForMessage(5)
+		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version2)
+		require.True(t, ok)
 		client.AssertOnBlipHistory(t, msg, version1)
 	})
 }
@@ -2179,8 +2180,9 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		data := btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"hello":"world!"}`, string(data))
 
-		// assert that history in blip properties is correct
-		msg := client.pullReplication.WaitForMessage(5)
+		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version2)
+		require.True(t, ok)
+
 		client.AssertOnBlipHistory(t, msg, version1)
 	})
 }
@@ -3415,14 +3417,8 @@ func TestBlipMergeVersions(t *testing.T) {
 		btcRunner.StartPull(btc.id)
 		btcRunner.WaitForDoc(btc.id, docID)
 
-		// CBL -> SG: subChanges
-		// SG -> CBL: changes
-		// CBL -> SG: rev
-		messages := btc.pullReplication.GetMessages()
-		require.Len(t, messages, 3)
-		revMsg, ok := btc.pullReplication.GetMessage(3)
-		require.True(t, ok)
-		require.Equal(t, db.MessageRev, revMsg.Profile())
+		revMsg := btcRunner.WaitForBlipRevMessage(btc.id, docID, DocVersion{CV: db.Version{SourceID: "CBL1", Value: 3}})
+
 		require.Equal(t, "3@CBL1", revMsg.Properties[db.RevMessageRev])
 		// mv is not ordered so either string is valid
 		require.Contains(t, []string{"2@DEF,2@GHI;", "2@GHI,2@DEF;"}, revMsg.Properties[db.RevMessageHistory])

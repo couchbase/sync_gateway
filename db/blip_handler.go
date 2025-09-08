@@ -795,8 +795,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	// Disable delta sync for protocol versions < 4, CBG-3748 (backwards compatibility for revID delta sync)
-	if bh.sgCanUseDeltas && bh.useHLV() {
+	if bh.sgCanUseDeltas {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 		bh.replicationStats.HandleChangesDeltaRequestedCount.Add(int64(nRequested))
@@ -845,7 +844,6 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	defer func() {
 		bh.replicationStats.HandleChangesTime.Add(time.Since(startTime).Nanoseconds())
 	}()
-	changesContainLegacyRevs := false // keep track if proposed changes have legacy revs for delta sync purposes
 	versionVectorProtocol := bh.useHLV()
 
 	for i, change := range changeList {
@@ -867,7 +865,6 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 			proposedVersionStr := ExtractCVFromProposeChangesRev(rev)
 			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, proposedVersionStr, parentRevID, rev)
 		} else {
-			changesContainLegacyRevs = true
 			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, rev, parentRevID)
 		}
 		if status == ProposedRev_OK_IsNew {
@@ -899,8 +896,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
-	// Disable delta sync for protocol versions < 4 or changes batches that have legacy revs in them, CBG-3748 (backwards compatibility for revID delta sync)
-	if bh.sgCanUseDeltas && bh.useHLV() && !changesContainLegacyRevs {
+	if bh.sgCanUseDeltas {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
 		response.Properties[ChangesResponseDeltas] = trueProperty
 	}
@@ -1351,10 +1347,25 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	forceAllowConflictingTombstone := newDoc.Deleted && (!bh.conflictResolver.IsEmpty() || bh.clientType == BLIPClientTypeSGR2)
 	if bh.useHLV() && changeIsVector {
 		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc, legacyRevList, isBlipRevTreeProperty, bh.conflictResolver)
-	} else if bh.conflictResolver.revTreeConflictResolver != nil {
-		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver.revTreeConflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	} else {
-		_, _, err = bh.collection.PutExistingRev(bh.loggingCtx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
+		docUpdateEvent := ExistingVersionWithUpdateToHLV
+		if bh.useHLV() {
+			docUpdateEvent = ExistingVersionLegacyRev
+		}
+		opts := putDocOptions{
+			newDoc:                         newDoc,
+			revTreeHistory:                 history,
+			forceAllowConflictingTombstone: forceAllowConflictingTombstone,
+			existingDoc:                    rawBucketDoc,
+			docUpdateEvent:                 docUpdateEvent,
+		}
+		if bh.conflictResolver.revTreeConflictResolver != nil {
+			opts.conflictResolver = bh.conflictResolver.revTreeConflictResolver
+			opts.noConflicts = true
+		} else {
+			opts.noConflicts = revNoConflicts
+		}
+		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, opts)
 	}
 	if err != nil {
 		return err

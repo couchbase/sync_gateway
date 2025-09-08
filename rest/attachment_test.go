@@ -687,12 +687,18 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 }
 
 func TestConflictWithInvalidAttachment(t *testing.T) {
-	t.Skip("Revs are backed up by hash of CV now, test needs to fetch backup rev by revID, CBG-3748 (backwards compatibility for revID)")
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
 	dbConfig.AllowConflicts = base.Ptr(true)
+
+	// TODO: CBG-4840 Only requires delta sync until restoration of non-delta sync RevTree ID revision body backups"
+	if !base.IsEnterpriseEdition() {
+		t.Skip("CBG-4840 - temp skip see above comment")
+	}
+	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true), RevMaxAgeSeconds: base.Ptr(uint32(300))}
+
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	// Create Doc
 	version := rt.CreateTestDoc("doc1")

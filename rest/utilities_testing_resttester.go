@@ -178,7 +178,7 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
 func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 	if version.RevTreeID == "" {
-		require.NotEqual(rt.TB(), "", version.CV.String(), "Expected CV if RevTreeID in WaitForVersion")
+		require.NotEqual(rt.TB(), "", version.CV.String(), "Expected CV if RevTreeID is empty for version %#v in WaitForVersion", version)
 	}
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
@@ -190,9 +190,13 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		if version.RevTreeID != "" {
 			assert.Equal(c, version.RevTreeID, body.ExtractRev())
 		}
-		if !version.CV.IsEmpty() {
-			assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
+		if version.CV.IsEmpty() {
+			return
 		}
+		if !assert.Contains(c, body, db.BodyCV) {
+			return
+		}
+		assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
 	}, 10*time.Second, 50*time.Millisecond)
 }
 
