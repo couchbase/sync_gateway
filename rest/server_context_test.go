@@ -239,6 +239,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Equal(t, rosmar.InMemoryURL, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 
+	// config with disallowed allow_conflicts=true
 	dbConfig = DbConfig{
 		Name:           "imdb1",
 		AllowConflicts: base.Ptr(true),
@@ -246,7 +247,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	}
 	_, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 
-	assert.Error(t, err)
+	assert.Error(t, err, "No error after setting AllowConflicts to true")
 }
 
 func TestStatsLoggerStopped(t *testing.T) {

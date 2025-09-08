@@ -691,7 +691,6 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AllowConflicts = base.Ptr(true)
 
 	// TODO: CBG-4840 Only requires delta sync until restoration of non-delta sync RevTree ID revision body backups"
 	if !base.IsEnterpriseEdition() {
@@ -700,6 +699,7 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true), RevMaxAgeSeconds: base.Ptr(uint32(300))}
 
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	// Create Doc
 	version := rt.CreateTestDoc("doc1")
 
@@ -797,8 +797,7 @@ func TestConflictingBranchAttachments(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	// Create a document
 	version := rt.CreateTestDoc("doc1")
@@ -854,8 +853,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	version := rt.CreateTestDoc("doc1")
 
@@ -2064,8 +2062,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 	defer rt.Close()
 
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	const docID = "doc"
 	// Create doc rev 1
 	version := rt.PutDoc(docID, `{"test": "x"}`)
@@ -2128,8 +2125,7 @@ func TestAttachmentsMissing(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	docID := t.Name()
 	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
@@ -2155,8 +2151,7 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	docID := t.Name()
 	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
@@ -2447,8 +2442,7 @@ func TestProveAttachmentNotFound(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	rt.SetAdminParty(true)
 
 	bt := NewBlipTesterFromSpecWithRT(rt, nil)

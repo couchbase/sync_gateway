@@ -1519,8 +1519,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	// Create user:
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -1640,8 +1639,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	// Create user1
 	rt.CreateUser("user1", []string{"alpha"})
 	rt.CreateUser("user2", []string{"beta"})
@@ -1764,8 +1762,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	testDB := rt.GetDatabase()
 	testDB.RevsLimit = 3
-	dbName := testDB.Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
@@ -2703,8 +2700,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
 
@@ -2868,8 +2864,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	// Create user:
 	ctx := rt.Context()
@@ -3042,8 +3037,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	// /it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	// defer it.Close()
@@ -3179,8 +3173,7 @@ func TestChangesIncludeConflicts(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	// Create conflicted document documents
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/conflictedDoc", `{"channel":["PBS"]}`)

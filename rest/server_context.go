@@ -987,10 +987,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	if config.AllowConflicts != nil {
-		base.WarnfCtx(ctx, "AllowConflicts options is no longer supported. Do not use it in the config")
+		base.WarnfCtx(ctx, "allow_conflicts option is no longer supported. Do not use it in the config")
 		if *config.AllowConflicts {
 			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError((db.DatabaseAllowConflictsError)))
-			return nil, errors.New("Allow conflicts is true")
+			return nil, errors.New("allow_conflicts options is set to true, please remove allow_conflicts option from the database config")
 		}
 	}
 

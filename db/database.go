@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/couchbase/cbgt"
@@ -2487,4 +2488,8 @@ func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpo
 	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, checkpointPrefix)
 	metadata.Purge(ctx, base.DefaultNumWorkers)
 	return nil
+}
+
+func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
+	db.Options.AllowConflicts = base.Ptr(true)
 }

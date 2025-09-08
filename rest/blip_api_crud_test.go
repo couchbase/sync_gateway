@@ -51,8 +51,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
 	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{GuestEnabled: true})
 	defer bt.Close()
-	dbName := bt.restTester.GetDatabase().Name
-	bt.restTester.EnableAllowConflicts(dbName)
+	bt.restTester.GetDatabase().EnableAllowConflicts(bt.TB())
 
 	// Verify Sync Gateway will accept the doc revision that is about to be sent
 	var changeList [][]interface{}
@@ -1681,8 +1680,7 @@ func TestPutRevConflictsMode(t *testing.T) {
 	})
 	defer bt.Close()
 
-	dbName := bt.restTester.GetDatabase().Name
-	bt.restTester.EnableAllowConflicts(dbName)
+	bt.restTester.GetDatabase().EnableAllowConflicts(bt.TB())
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 	assert.True(t, sent)

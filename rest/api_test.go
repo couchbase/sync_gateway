@@ -3423,17 +3423,23 @@ func TestDocCRUDWithCV(t *testing.T) {
 }
 
 // TestAllowConflictsConfig verifies that the database configuration does not allow
-// the `allow_conflicts` property to be set to true.
-// `allow_conflicts` is no longer supported in SGW 4.0
+// the `allow_conflicts` property to be set to true. `allow_conflicts` is no longer
+// supported in SGW 4.0. This test ensures that a config loaded will add the
+// database to invalid configs. The config will be fixed when a database is created
+// without `allow_conflicts`
 func TestAllowConflictsConfig(t *testing.T) {
+
+	ctx := t.Context()
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 	})
 	defer rt.Close()
 
 	const (
-		dbName  = "db1"
-		errResp = "allow_conflicts cannot be set to true"
+		dbName    = "db1"
+		errResp   = "allow_conflicts cannot be set to true"
+		allDBsURL = "/_all_dbs?verbose=true"
 	)
 
 	dbConfig := rt.NewDbConfig()
@@ -3444,31 +3450,13 @@ func TestAllowConflictsConfig(t *testing.T) {
 	RequireStatus(t, resp, http.StatusBadRequest)
 	assert.Contains(t, resp.Body.String(), errResp)
 
-}
-
-// TestDBWithAllowConflicts verifies that the database configuration does not allow
-// the `AllowConflicts` property to be set to true. This test ensures that a config loaded
-// will add the database to invalid configs. The config will be fixed when a database is
-// created without `allow_conflicts`
-func TestDBWithAllowConflicts(t *testing.T) {
-
-	ctx := t.Context()
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
-	})
-	defer rt.Close()
-
-	dbName := "db"
-	allDBsURL := "/_all_dbs?verbose=true"
-
-	dbConfig := rt.NewDbConfig()
+	dbConfig = rt.NewDbConfig()
 	dbConfig.Name = dbName
 
 	rt.CreateDatabase(dbName, dbConfig)
 
 	// Send an admin request to retrieve all databases and verify the response.
-	resp := rt.SendAdminRequest(http.MethodGet, allDBsURL, "")
+	resp = rt.SendAdminRequest(http.MethodGet, allDBsURL, "")
 	RequireStatus(t, resp, http.StatusOK)
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 	bucketName := rt.GetDatabase().Bucket.GetName()

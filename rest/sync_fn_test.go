@@ -261,8 +261,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dbName := rt.GetDatabase().Name
-	rt.EnableAllowConflicts(dbName)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	// rev 1-a
 	version1a := rt.PutDoc(testDocID, `{"`+testdataKey+`":1}`)

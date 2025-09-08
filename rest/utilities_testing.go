@@ -2641,10 +2641,6 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	return config
 }
 
-func (rt *RestTester) EnableAllowConflicts(dbName string) {
-	rt.RestTesterServerContext.databases_[dbName].Options.AllowConflicts = base.Ptr(true)
-}
-
 func setChannelsAllCollections(dbConfig DbConfig, principal *auth.PrincipalConfig, channels ...string) {
 	if dbConfig.Scopes == nil {
 		principal.ExplicitChannels = base.SetOf(channels...)
