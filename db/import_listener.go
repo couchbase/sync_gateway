@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -245,7 +246,9 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		// we have attachments to migrate
 		err := collection.MigrateAttachmentMetadata(ctx, docID, event.Cas, syncData)
 		if err != nil {
-			base.WarnfCtx(ctx, "error migrating attachment metadata from sync data to global sync for doc %s. Error: %v", base.UD(docID), err)
+			if !errors.Is(err, gocb.ErrCasMismatch) {
+				base.WarnfCtx(ctx, "error migrating attachment metadata from sync data to global sync for doc %s. Error: %v", base.UD(docID), err)
+			}
 		}
 	}
 }
