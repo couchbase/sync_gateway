@@ -128,7 +128,9 @@ func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t *testing.T, ctx context.C
 
 	docUpdateEvent := NoHLVUpdateForTest
 	allowImport := db.UseXattrs()
-	updateRevCache := true
+	// we cannot use rev cache for legacy rev writes, the rev cache is architected to always expect a CV on a Put
+	// here we don't thus we end up with inconsistent rev cache state
+	updateRevCache := false
 
 	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, docUpdateEvent, nil, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool

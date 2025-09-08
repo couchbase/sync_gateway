@@ -711,11 +711,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		rev := change[2].(string)
 		var missing, possible []string
 
-		changeIsVector := false
-		if versionVectorProtocol {
-			changeIsVector = strings.Contains(rev, "@")
-		}
-		if !versionVectorProtocol || !changeIsVector {
+		if !versionVectorProtocol {
 			missing, possible = bh.collection.RevDiff(bh.loggingCtx, docID, []string{rev})
 		} else {
 			missing, possible = bh.collection.CheckChangeVersion(bh.loggingCtx, docID, rev)
