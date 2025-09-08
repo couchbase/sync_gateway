@@ -34,7 +34,7 @@ require (
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shirou/gopsutil/v3 v3.24.5
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.41.0
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
 	golang.org/x/net v0.43.0
