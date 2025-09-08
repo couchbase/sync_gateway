@@ -1250,7 +1250,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 // PutExistingCurrentVersion:
 //   - NewDoc: new incoming doc
 //   - NewDocHLV: new incoming doc's HLV
-//   - existsingDoc: existing doc in bucket (if present)
+//   - ExistingDoc: existing doc in bucket (if present)
 //   - RevTreeHistory: list of revID's from the incoming docs history (including docs current rev).
 //   - AlignRevTrees: if this is true then we will align the new write with the incoming docs rev tree. If this is
 //     false and len(RevTreeHistory) > 0 then this means the local version of this doc does not have an HLV so this parameter
@@ -1329,9 +1329,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				doc.HLV = NewHybridLogicalVector()
 			}
 			doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
-			if err != nil {
-				return nil, nil, false, nil, err
-			}
 			if opts.AlignRevTrees {
 				err := doc.alignRevTreeHistoryForHLVWrite(ctx, db, opts.NewDoc, opts.RevTreeHistory, opts.ForceAllowConflictingTombstone)
 				if err != nil {
@@ -1351,9 +1348,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 				// update hlv for all newer incoming source version pairs
 				doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
-				if err != nil {
-					return nil, nil, false, nil, err
-				}
 				// the new document has a dominating hlv, so we can just update local revtree with incoming revtree
 				revTreeConflictChecked = true
 				if !opts.AlignRevTrees {
@@ -1381,9 +1375,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					}
 					revTreeConflictChecked = true
 					doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
-					if err != nil {
-						return nil, nil, false, nil, err
-					}
 				} else {
 					revTreeConflictChecked = true
 					base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), opts.NewDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
@@ -1403,7 +1394,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					}
 					// Update revtree information based on resolved history, note we have already tombstoned
 					// appropriate revisions in conflict resolution above so we just need to find where incoming
-					// history branches from local history and add these revisions thus we need tyo skip history check in
+					// history branches from local history and add these revisions thus we need to skip history check in
 					// alignRevTreeHistoryForHLVWrite.
 					addNewRevErr := doc.alignRevTreeHistoryForHLVWrite(ctx, db, opts.NewDoc, opts.RevTreeHistory, true)
 					if addNewRevErr != nil {
@@ -1826,8 +1817,8 @@ func (db *DatabaseCollectionWithUser) resolveHLVConflict(ctx context.Context, lo
 	}
 }
 
-// resolveConflict runs the conflictResolverFunction with doc and NewDoc.  doc and NewDoc's bodies and revision trees
-// may be changed based on the outcome of conflict resolution - see resolveDocLocalWins, resolveDocRemoteWins and
+// resolveConflict runs the conflictResolverFunction with bodies and revision trees from localDoc and remoteDoc.
+// RevTrees may be changed based on the outcome of conflict resolution - see resolveDocLocalWins, resolveDocRemoteWins and
 // resolveDocMerge for specifics on what is changed under each scenario.
 func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, localDoc *Document, remoteDoc *Document, docHistory []string, resolver *ConflictResolver) (resolvedRevID string, updatedHistory []string, resolveError error) {
 
@@ -3641,7 +3632,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	}
 }
 
-// findWhereRevBranchesFromHistory wil take incoming rev tree history and find where it branches from the local document history
+// findWhereRevBranchesFromHistory will take incoming rev tree history and find where it branches from the local document history
 func (doc *Document) findWhereRevBranchesFromHistory(docHistory []string) (int, string) {
 	currentRevIndex := len(docHistory)
 	parent := ""
