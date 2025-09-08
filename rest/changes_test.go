@@ -206,11 +206,12 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 					},
 				},
 			},
-			AllowConflicts: base.Ptr(true),
 		},
 		}}
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
+
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	wg.Add(2)
 	const docID = "doc1"

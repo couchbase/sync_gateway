@@ -23,6 +23,7 @@ var DatabaseErrorMap = map[databaseErrorCode]string{
 	DatabaseSGRClusterError:            "Error with fetching SGR cluster definition",
 	DatabaseCreateReplicationError:     "Error creating replication during database init",
 	DatabaseOnlineProcessError:         "Error attempting to start online process",
+	DatabaseAllowConflictsError:        "Allow conflicts is set to true",
 }
 
 type databaseErrorCode uint8
@@ -37,6 +38,7 @@ const (
 	DatabaseSGRClusterError            databaseErrorCode = 6
 	DatabaseCreateReplicationError     databaseErrorCode = 7
 	DatabaseOnlineProcessError         databaseErrorCode = 8
+	DatabaseAllowConflictsError        databaseErrorCode = 9
 )
 
 func NewDatabaseError(code databaseErrorCode) *DatabaseError {

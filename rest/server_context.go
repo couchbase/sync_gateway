@@ -986,6 +986,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, replicationErr
 	}
 
+	if config.AllowConflicts != nil {
+		base.WarnfCtx(ctx, "allow_conflicts option is no longer supported. Do not use it in the config")
+		if *config.AllowConflicts {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError((db.DatabaseAllowConflictsError)))
+			return nil, errors.New("allow_conflicts options is set to true, please remove allow_conflicts option from the database config")
+		}
+	}
+
 	// startOnlineProcesses will be set to true if the database should be started, either synchronously or asynchronously
 	startOnlineProcesses := true
 	needsResync := len(collectionsRequiringResync) > 0

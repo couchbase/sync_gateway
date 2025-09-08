@@ -2217,9 +2217,9 @@ func TestHandleGetRevTree(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AllowConflicts = base.Ptr(true)
 
 	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 
 	// Create three revisions of the user foo with different status and updated_at values;
 	reqBodyJson := `{"new_edits": false, "docs": [
