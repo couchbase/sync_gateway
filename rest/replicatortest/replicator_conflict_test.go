@@ -1786,7 +1786,7 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				//  - winning merged rev is written as child of remote winning rev
 				remoteGeneration, _ := db.ParseRevID(ctx1, remoteDoc.GetRevTreeID())
 				newRevID := db.CreateRevIDWithBytes(remoteGeneration+1, remoteDoc.GetRevTreeID(), []byte(testCase.expectedBody))
-				require.NoError(t, err)
+				require.NotEmpty(t, newRevID)
 				docHistoryLeaves := resolvedDoc.History.GetLeaves()
 				require.Len(t, docHistoryLeaves, 2)
 				rest.AssertRevTreeAfterHLVConflictResolution(t, resolvedDoc, newRevID, localDoc.GetRevTreeID())
@@ -2054,7 +2054,7 @@ func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLo
 		generatedRevs = append(generatedRevs, previousRevID)
 	}
 	newRevID := db.CreateRevIDWithBytes(remoteGeneration+1, previousRevID, []byte("{}"))
-	require.NoError(t, err)
+	require.NotEmpty(t, newRevID)
 	docHistoryLeaves := rt1Doc.History.GetLeaves()
 	require.Len(t, docHistoryLeaves, 2)
 	for _, revID := range generatedRevs {
