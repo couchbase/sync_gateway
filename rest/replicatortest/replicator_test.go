@@ -3926,7 +3926,6 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflict(t *testing.T) {
 	base.LongRunningTest(t)
-	t.Skip("CBG-4791: test need rev tree reconciliation changes")
 
 	// scenarios
 	conflictResolutionTests := []struct {
@@ -3942,6 +3941,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 		expectedResolutionType    db.ConflictResolutionType
 		skipActiveLeafAssertion   bool
 		skipBodyAssertion         bool
+		newCVGenerated            bool
 	}{
 		{
 			name:                   "remoteWins",
@@ -3968,6 +3968,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:      `{"source": "merged"}`,
 			expectedLocalVersion:   rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`))), // rev for merged body, with parent 1-b
 			expectedResolutionType: db.ConflictResolutionMerge,
+			newCVGenerated:         true,
 		},
 		{
 			name:                   "localWins",
@@ -3979,6 +3980,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:      `{"source": "local"}`,
 			expectedLocalVersion:   rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 1-b
 			expectedResolutionType: db.ConflictResolutionLocal,
+			newCVGenerated:         true,
 		},
 		{
 			name:                    "twoTombstonesRemoteWin",
@@ -4012,7 +4014,13 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
 
 			// Passive
-			rt2 := rest.NewRestTester(t, nil)
+			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					},
+				},
+			})
 			defer rt2.Close()
 			username := "alice"
 			rt2.CreateUser(username, []string{"*"})
@@ -4026,14 +4034,20 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			srv := httptest.NewServer(rt2.TestPublicHandler())
 			defer srv.Close()
 
-			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			passiveDBURL, err := url.Parse(srv.URL + "/passivedb")
 			require.NoError(t, err)
 
 			// Add basic auth creds to target db URL
 			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 			// Active
-			rt1 := rest.NewRestTester(t, nil)
+			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: "activedb",
+					},
+				},
+			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
 
@@ -4100,7 +4114,16 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
-			rest.RequireDocVersionEqual(t, test.expectedLocalVersion, doc.ExtractDocVersion())
+			actualVersion := doc.ExtractDocVersion()
+			if test.newCVGenerated {
+				test.expectedLocalVersion.CV = db.Version{
+					SourceID: rt1.GetDatabase().EncodedSourceID,
+					Value:    doc.Cas,
+				}
+			} else {
+				test.expectedLocalVersion.CV = rt2Version.CV
+			}
+			rest.RequireDocVersionEqual(t, test.expectedLocalVersion, actualVersion)
 
 			// This is skipped for tombstone tests running with xattr as xattr tombstones don't have a body to assert
 			// against
@@ -4143,7 +4166,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 	base.LongRunningTest(t)
-	t.Skip("CBG-4791: need rev tree reconciliation changes")
 
 	// scenarios
 	conflictResolutionTests := []struct {
@@ -4157,6 +4179,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 		expectedBody          string
 		expectedVersion       rest.DocVersion
 		expectedPushResolved  bool
+		newCVGenerated        bool
 	}{
 		{
 			name:                 "remoteWins",
@@ -4183,6 +4206,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			expectedBody:         `{"source": "merged"}`,
 			expectedVersion:      rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`))), // rev for merged body, with parent 1-b
 			expectedPushResolved: true,
+			newCVGenerated:       true,
 		},
 		{
 			name:                 "localWins",
@@ -4194,6 +4218,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			expectedBody:         `{"source": "local"}`,
 			expectedVersion:      rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 1-b
 			expectedPushResolved: true,
+			newCVGenerated:       true,
 		},
 		{
 			name:                  "localWinsRemoteTombstone",
@@ -4206,6 +4231,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			expectedBody:          `{"source": "local"}`,
 			expectedVersion:       rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 2-b
 			expectedPushResolved:  true,
+			newCVGenerated:        true,
 		},
 	}
 
@@ -4325,6 +4351,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
+			if test.newCVGenerated {
+				test.expectedVersion.CV = db.Version{
+					SourceID: rt1.GetDatabase().EncodedSourceID,
+					Value:    doc.Cas,
+				}
+			} else {
+				test.expectedVersion.CV = rt2Version.CV
+			}
 			rest.RequireDocVersionEqual(t, test.expectedVersion, doc.ExtractDocVersion())
 			requireBodyEqual(t, test.expectedBody, doc)
 			t.Logf("Doc %s is %+v", docID, doc)
@@ -5690,7 +5724,6 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 	base.LongRunningTest(t)
-	t.Skip("CBG-4791: requires rev tree reconciliation")
 
 	createVersion := func(generation int, parentRevID string, body db.Body) rest.DocVersion {
 		rev, err := db.CreateRevID(generation, parentRevID, body)
@@ -5930,6 +5963,10 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
+			test.expectedLocalVersion.CV = db.Version{
+				SourceID: rt1.GetDatabase().EncodedSourceID,
+				Value:    doc.Cas,
+			}
 			rest.RequireDocVersionEqual(t, test.expectedLocalVersion, doc.ExtractDocVersion())
 			ctx := base.TestCtx(t)
 			t.Logf("doc.Body(): %v", doc.Body(ctx))

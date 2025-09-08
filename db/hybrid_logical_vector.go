@@ -896,7 +896,6 @@ func remoteWinsConflictResolutionForHLV(ctx context.Context, docID string, local
 	if localHLV == nil || incomingHLV == nil {
 		return nil, errors.New("local or incoming hlv is nil for resolveConflict")
 	}
-	// todo: CBG-4791 - use doc history to ensure rev tree is updated correctly
 
 	newHLV := localHLV.Copy()
 
