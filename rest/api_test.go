@@ -3485,8 +3485,8 @@ func TestAllowConflictsConfig(t *testing.T) {
 
 	// Recreate the database with the original configuration and verify it is online.
 	rt.CreateDatabase(dbName, dbConfig)
+	rt.WaitForDBOnline()
 	resp = rt.SendAdminRequest(http.MethodGet, allDBsURL, "")
 	RequireStatus(t, resp, http.StatusOK)
-	rt.WaitForDBOnline()
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 }
