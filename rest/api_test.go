@@ -2956,10 +2956,11 @@ func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 	}
 }
 
-// TestCreateDBWithXattrsDisbaled:
+// TestCreateDBWithXattrsDisabled:
 //   - Test that you cannot create a database with xattrs disabled
+//   - Test that an existing database cannot be loaded with xattrs disabled after upgrade
 //   - Assert error code is returned and response contains error string
-func TestCreateDBWithXattrsDisbaled(t *testing.T) {
+func TestCreateDBWithXattrsDisabled(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 	})
@@ -2975,6 +2976,15 @@ func TestCreateDBWithXattrsDisbaled(t *testing.T) {
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	RequireStatus(t, resp, http.StatusInternalServerError)
 	assert.Contains(t, resp.Body.String(), errResp)
+
+	dbConfig = rt.NewDbConfig()
+	resp = rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	rt.RestTesterServerContext.dbConfigs[dbName].DatabaseConfig.EnableXattrs = base.Ptr(false)
+
+	_, err := rt.RestTesterServerContext.ReloadDatabase(t.Context(), dbName, false)
+	assert.Error(t, err, errResp)
 }
 
 // TestPvDeltaReadAndWrite:
