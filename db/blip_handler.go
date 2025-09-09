@@ -711,11 +711,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		rev := change[2].(string)
 		var missing, possible []string
 
-		changeIsVector := false
-		if versionVectorProtocol {
-			changeIsVector = strings.Contains(rev, "@")
-		}
-		if !versionVectorProtocol || !changeIsVector {
+		if !versionVectorProtocol {
 			missing, possible = bh.collection.RevDiff(bh.loggingCtx, docID, []string{rev})
 		} else {
 			missing, possible = bh.collection.CheckChangeVersion(bh.loggingCtx, docID, rev)
@@ -1348,6 +1344,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (!bh.conflictResolver.IsEmpty() || bh.clientType == BLIPClientTypeSGR2)
+	// TOD0: CBG-4828 for legacy rev writes we should be able to use PutExistingCurrentVersion with implicit CV generated from revID
 	if bh.useHLV() && changeIsVector {
 		opts := PutDocOptions{
 			NewDoc:                         newDoc,

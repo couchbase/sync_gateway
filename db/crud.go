@@ -1250,7 +1250,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 // PutExistingCurrentVersion:
 //   - NewDoc: new incoming doc
 //   - NewDocHLV: new incoming doc's HLV
-//   - existsingDoc: existing doc in bucket (if present)
+//   - ExistingDoc: existing doc in bucket (if present)
 //   - RevTreeHistory: list of revID's from the incoming docs history (including docs current rev).
 //   - AlignRevTrees: if this is true then we will align the new write with the incoming docs rev tree. If this is
 //     false and len(RevTreeHistory) > 0 then this means the local version of this doc does not have an HLV so this parameter
@@ -1329,9 +1329,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				doc.HLV = NewHybridLogicalVector()
 			}
 			doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
-			if err != nil {
-				return nil, nil, false, nil, err
-			}
 			if opts.AlignRevTrees {
 				err := doc.alignRevTreeHistoryForHLVWrite(ctx, db, opts.NewDoc, opts.RevTreeHistory, opts.ForceAllowConflictingTombstone)
 				if err != nil {
@@ -1351,9 +1348,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 				// update hlv for all newer incoming source version pairs
 				doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
-				if err != nil {
-					return nil, nil, false, nil, err
-				}
 				// the new document has a dominating hlv, so we can just update local revtree with incoming revtree
 				revTreeConflictChecked = true
 				if !opts.AlignRevTrees {
@@ -1381,9 +1375,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					}
 					revTreeConflictChecked = true
 					doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
-					if err != nil {
-						return nil, nil, false, nil, err
-					}
 				} else {
 					revTreeConflictChecked = true
 					base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), opts.NewDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
@@ -1403,7 +1394,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					}
 					// Update revtree information based on resolved history, note we have already tombstoned
 					// appropriate revisions in conflict resolution above so we just need to find where incoming
-					// history branches from local history and add these revisions thus we need tyo skip history check in
+					// history branches from local history and add these revisions thus we need to skip history check in
 					// alignRevTreeHistoryForHLVWrite.
 					addNewRevErr := doc.alignRevTreeHistoryForHLVWrite(ctx, db, opts.NewDoc, opts.RevTreeHistory, true)
 					if addNewRevErr != nil {
@@ -1826,8 +1817,8 @@ func (db *DatabaseCollectionWithUser) resolveHLVConflict(ctx context.Context, lo
 	}
 }
 
-// resolveConflict runs the conflictResolverFunction with doc and NewDoc.  doc and NewDoc's bodies and revision trees
-// may be changed based on the outcome of conflict resolution - see resolveDocLocalWins, resolveDocRemoteWins and
+// resolveConflict runs the conflictResolverFunction with bodies and revision trees from localDoc and remoteDoc.
+// RevTrees may be changed based on the outcome of conflict resolution - see resolveDocLocalWins, resolveDocRemoteWins and
 // resolveDocMerge for specifics on what is changed under each scenario.
 func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, localDoc *Document, remoteDoc *Document, docHistory []string, resolver *ConflictResolver) (resolvedRevID string, updatedHistory []string, resolveError error) {
 
@@ -3413,6 +3404,38 @@ func (c *DatabaseCollection) checkForUpgrade(ctx context.Context, key string, un
 	return doc, rawDocument
 }
 
+// legacyRevToHybridLogicalVector will take a legacy revID and convert it to a HybridLogicalVector, used for when a
+// document doesn't have hlv defined (it is a legacy pre upgraded doc).
+func legacyRevToHybridLogicalVector(docID, revID string) (hlv *HybridLogicalVector, err error) {
+	version, err := LegacyRevToRevTreeEncodedVersion(revID)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing legacy revID %q to version for doc %s: %v", revID, base.UD(docID), err)
+	}
+	hlv = NewHybridLogicalVector()
+	err = hlv.AddVersion(version)
+	if err != nil {
+		return nil, fmt.Errorf("error adding version to hlv for doc %s: %v", base.UD(docID), err)
+	}
+	return hlv, nil
+}
+
+// parseIncomingChange will parse incoming change version. If the change is legacy rev it will convert the revID to a CV
+// otherwise it will parse the version string.
+func parseIncomingChange(docid, rev string) (cvValue Version, err error) {
+	if base.IsRevTreeID(rev) {
+		cvValue, err = LegacyRevToRevTreeEncodedVersion(rev)
+		if err != nil {
+			return Version{}, base.RedactErrorf("error parsing legacy revID %q to version for doc %s: %v", base.UD(rev), base.UD(docid), err)
+		}
+	} else {
+		cvValue, err = ParseVersion(rev)
+		if err != nil {
+			return Version{}, base.RedactErrorf("error parsing change version for doc %s: %v", base.UD(docid), err)
+		}
+	}
+	return cvValue, nil
+}
+
 func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, docid, rev string) (missing, possible []string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
@@ -3427,18 +3450,20 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 		return
 	}
 	if hlv == nil {
-		// no hlv on local doc, mark as missing but send current rev as known rev (will be handled as legacy
-		// rev document on changes response handler)
-		base.TracefCtx(ctx, base.KeyChanges, "Doc %s has no HLV, marking change version %s as missing", base.UD(docid), base.UD(rev))
-		missing = append(missing, rev)
-		possible = append(possible, syncData.GetRevTreeID())
-		return
+		// no hlv on local doc, convert revID into CV and use that as the local doc hlv
+		hlv, err = legacyRevToHybridLogicalVector(docid, syncData.GetRevTreeID())
+		if err != nil {
+			base.WarnfCtx(ctx, "%s", err)
+			missing = append(missing, rev)
+			return
+		}
 	}
 	// parse in coming version, if it's not known to local doc hlv then it is marked as missing, if it is and is a newer version
 	// then it is also marked as missing
-	cvValue, err := ParseVersion(rev)
+	var cvValue Version
+	cvValue, err = parseIncomingChange(docid, rev)
 	if err != nil {
-		base.WarnfCtx(ctx, "error parse change version for doc %s: %v", base.UD(docid), err)
+		base.WarnfCtx(ctx, "%s", err)
 		missing = append(missing, rev)
 		return
 	}
@@ -3622,7 +3647,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	}
 }
 
-// findWhereRevBranchesFromHistory wil take incoming rev tree history and find where it branches from the local document history
+// findWhereRevBranchesFromHistory will take incoming rev tree history and find where it branches from the local document history
 func (doc *Document) findWhereRevBranchesFromHistory(docHistory []string) (int, string) {
 	currentRevIndex := len(docHistory)
 	parent := ""

@@ -116,6 +116,39 @@ func (rt *RestTester) PutDoc(docID, body string) DocVersion {
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
 }
 
+// CreateDocNoHLV creates a document without an HLV and returns the revID (1-abc).
+func (rt *RestTester) CreateDocNoHLV(docID string, body db.Body) *db.Document {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	_, doc := collection.CreateDocNoHLV(rt.TB(), ctx, docID, body)
+	rt.WaitForPendingChanges()
+	return doc
+}
+
+// GetDocument gets the document using the CRUD API, avoiding REST API.
+func (rt *RestTester) GetDocument(docID string) *db.Document {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+	require.NoError(rt.TB(), err)
+	return doc
+}
+
+// WaitForLegacyRev waits for a legacy revision ID (1-abc) to exist. If the document is not found, the test will fail.
+func (rt *RestTester) WaitForLegacyRev(docID, legacyRevID string, expectedBody []byte) *db.Document {
+	rt.WaitForVersionRevIDOnly(docID, db.DocVersion{RevTreeID: legacyRevID})
+	doc := rt.GetDocument(docID)
+	encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(legacyRevID)
+	require.NoError(rt.TB(), err)
+	expVersion := db.DocVersion{
+		RevTreeID: legacyRevID,
+		CV:        encodedCV,
+	}
+	RequireDocVersionEqual(rt.TB(), expVersion, doc.ExtractDocVersion())
+	actualBytes, err := doc.BodyBytes(rt.Context())
+	require.NoError(rt.TB(), err)
+	require.JSONEq(rt.TB(), string(expectedBody), string(actualBytes))
+	return doc
+}
+
 // PutDocInCollection will upsert the document with a given contents in the given collection.
 func (rt *RestTester) PutDocInCollection(collection, docID, body string) DocVersion {
 	rawResponse := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s.%s/%s", rt.GetDatabase().Name, collection, docID), body)

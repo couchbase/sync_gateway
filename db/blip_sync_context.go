@@ -758,6 +758,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	}
 
 	var revTreeHistoryProperty []string
+	// CBG-4828 - we should not be sending rev tree property for ISGR if local doc is legacy as we already send it in history property
 	if remoteIsLegacyRev && !localIsLegacyRev {
 		// append current revID and rest of rev tree after hlv history
 		revTreeHistory := toHistory(docRev.History, knownRevs, maxHistory)
