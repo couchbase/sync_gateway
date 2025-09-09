@@ -3406,42 +3406,34 @@ func (c *DatabaseCollection) checkForUpgrade(ctx context.Context, key string, un
 
 // legacyRevToHybridLogicalVector will take a legacy revID and convert it to a HybridLogicalVector, used for when a
 // document doesn't have hlv defined (it is a legacy pre upgraded doc).
-func legacyRevToHybridLogicalVector(ctx context.Context, docID, revID string) (hlv *HybridLogicalVector, missing []string, err error) {
+func legacyRevToHybridLogicalVector(docID, revID string) (hlv *HybridLogicalVector, err error) {
 	version, err := LegacyRevToRevTreeEncodedVersion(revID)
 	if err != nil {
-		base.WarnfCtx(ctx, "error parse legacy revID to version for doc %s: %v", base.UD(docID), err)
-		missing = append(missing, revID)
-		return
+		return nil, fmt.Errorf("error parsing legacy revID %q to version for doc %s: %v", revID, base.UD(docID), err)
 	}
 	hlv = NewHybridLogicalVector()
 	err = hlv.AddVersion(version)
 	if err != nil {
-		base.WarnfCtx(ctx, "error add version to hlv for doc %s: %v", base.UD(docID), err)
-		missing = append(missing, revID)
-		return
+		return nil, fmt.Errorf("error adding version to hlv for doc %s: %v", base.UD(docID), err)
 	}
-	return hlv, missing, nil
+	return hlv, nil
 }
 
 // parseIncomingChange will parse incoming change version. If the change is legacy rev it will convert the revID to a CV
 // otherwise it will parse the version string.
-func parseIncomingChange(ctx context.Context, docid, rev string) (cvValue Version, missing []string, err error) {
+func parseIncomingChange(docid, rev string) (cvValue Version, err error) {
 	if base.IsRevTreeID(rev) {
 		cvValue, err = LegacyRevToRevTreeEncodedVersion(rev)
 		if err != nil {
-			base.WarnfCtx(ctx, "error parse legacy rev to version for doc %s: %v", base.UD(docid), err)
-			missing = append(missing, rev)
-			return
+			return Version{}, base.RedactErrorf("error parsing legacy revID %q to version for doc %s: %v", base.UD(rev), base.UD(docid), err)
 		}
 	} else {
 		cvValue, err = ParseVersion(rev)
 		if err != nil {
-			base.WarnfCtx(ctx, "error parse change version for doc %s: %v", base.UD(docid), err)
-			missing = append(missing, rev)
-			return
+			return Version{}, base.RedactErrorf("error parsing change version for doc %s: %v", base.UD(docid), err)
 		}
 	}
-	return cvValue, missing, nil
+	return cvValue, nil
 }
 
 func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, docid, rev string) (missing, possible []string) {
@@ -3459,16 +3451,20 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	}
 	if hlv == nil {
 		// no hlv on local doc, convert revID into CV and use that as the local doc hlv
-		hlv, missing, err = legacyRevToHybridLogicalVector(ctx, docid, syncData.GetRevTreeID())
+		hlv, err = legacyRevToHybridLogicalVector(docid, syncData.GetRevTreeID())
 		if err != nil {
+			base.WarnfCtx(ctx, "%s", err)
+			missing = append(missing, rev)
 			return
 		}
 	}
 	// parse in coming version, if it's not known to local doc hlv then it is marked as missing, if it is and is a newer version
 	// then it is also marked as missing
 	var cvValue Version
-	cvValue, missing, err = parseIncomingChange(ctx, docid, rev)
+	cvValue, err = parseIncomingChange(docid, rev)
 	if err != nil {
+		base.WarnfCtx(ctx, "%s", err)
+		missing = append(missing, rev)
 		return
 	}
 	// CBG-4792: enhance here for conflict check - return conflict rev similar to propose changes here link ticket
