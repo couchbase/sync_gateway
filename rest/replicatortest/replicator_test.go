@@ -810,9 +810,6 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
-	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	defer db.SuspendSequenceBatching()()
-
 	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create docs on remote
@@ -913,9 +910,6 @@ func TestReplicationRebalancePush(t *testing.T) {
 
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
-
-	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 
@@ -1075,13 +1069,6 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
-	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	defer db.SuspendSequenceBatching()()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
 	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 	// Create push replications, verify running, also verify active replicators are created
@@ -1557,8 +1544,6 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Add docs to two channels
@@ -1635,8 +1620,6 @@ func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 
 func TestReplicationConfigChange(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
@@ -1723,9 +1706,6 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
-
-	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 
@@ -2310,7 +2290,6 @@ func TestReplicatorReconnectBehaviour(t *testing.T) {
 //   - puts some docs on the remote rest tester and assert the replicator pulls these docs to prove reconnect was successful
 func TestReconnectReplicator(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
 		name       string
@@ -2704,13 +2683,8 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 			// Increase checkpoint persistence frequency for cross-node status verification
 			defer reduceTestCheckpointInterval(50 * time.Millisecond)()
-
-			// Disable sequence batching for multi-RT tests (pending CBG-1000)
-			defer db.SuspendSequenceBatching()()
 
 			// Passive
 			rt2 := rest.NewRestTester(t,
@@ -3747,8 +3721,6 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	// Passive
 	rt2 := rest.NewRestTester(t,
@@ -5439,8 +5411,6 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 			for _, timeoutVal := range timeoutVals {
 				t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
 
-					base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 					// Passive
 					rt2 := rest.NewRestTester(t, nil)
 					defer rt2.Close()
@@ -5978,7 +5948,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
 	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	t.Skip("CBG-4782: needs rework for version vectors, may be able ot get to work after rev tree reconciliation is done")
 
 	tombstoneTests := []struct {
@@ -6211,7 +6180,6 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name             string   // A unique name to identify the unit test.
@@ -6339,7 +6307,6 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name            string   // A unique name to identify the unit test.
@@ -6831,8 +6798,6 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 }
 
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	base.RequireNumTestBuckets(t, 2)
 	// Passive
 	rt2 := rest.NewRestTester(t, nil)
@@ -6898,7 +6863,6 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	// Passive //
 	passiveRT := rest.NewRestTester(t,
@@ -6977,10 +6941,11 @@ func TestUnprocessableDeltas(t *testing.T) {
 		t.Skipf("Requires EE for some delta sync")
 	}
 
+	// need Sync debugging due to AssertLogContains below
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync)
 	base.RequireNumTestBuckets(t, 2)
 
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Passive //
 	passiveRT := rest.NewRestTester(t,
@@ -7061,7 +7026,6 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 
 	// Copies the behaviour of TestGetRemovedAsUser but with replication and no user
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Passive //
 	passiveRT := rest.NewRestTester(t, nil)
@@ -7419,7 +7383,6 @@ func TestGroupIDReplications(t *testing.T) {
 	}
 	base.RequireNumTestBuckets(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	ctx := base.TestCtx(t)
 	// Create test buckets to replicate between
 	activeBucket := base.GetTestBucket(t)
@@ -7526,7 +7489,6 @@ func TestGroupIDReplications(t *testing.T) {
 
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
@@ -7554,7 +7516,6 @@ func TestSpecifyUserDocsToReplicate(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
 		direction string

@@ -897,9 +897,10 @@ func RequireChangeRev(t *testing.T, expected DocVersion, changeRev db.ChangeByVe
 	require.Equalf(t, expectedStr, changeRev[versionType], "Expected changeRev[%q]==%s, got %s", versionType, expected.RevTreeID, changeRev[versionType])
 }
 
+// WaitForChanges waits for the specific number of changes to appear. Fails the test harness if more or fewer changes appear.
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
 	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
-	if base.UnitTestUrlIsWalrus() {
+	if base.UnitTestUrlIsWalrus() && !base.IsRaceDetectorEnabled(rt.TB()) {
 		// rosmar will never take a long time, so have faster failures
 		waitTime = 1 * time.Second
 	}
