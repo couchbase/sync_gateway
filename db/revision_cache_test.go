@@ -2300,7 +2300,6 @@ func TestRemoveFromRevLookup(t *testing.T) {
 }
 
 func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -2338,10 +2337,7 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 		assert.Equal(t, revIDs[i], docRev.RevID)
 	}
 
-	// here fails because addToHLVMapPostLoad will notice that cv and revID maps mismatch for the 'same' element
-	// when in relation cv lookup doesn't point to the same element, it points to revision 1 fetched above but because
-	// no CV is present hlv map lookup has no way to differentiate between the different doc revisions. Need to explore
-	// using legacy rev tree encoding to cv for legacy revs in rev cache lookups
+	// assert that each legacy rev is populated in both lookup maps
 	for _, revID := range revIDs {
 		docRev, ok := collection.revisionCache.Peek(ctx, docID, revID)
 		require.True(t, ok)
@@ -2355,4 +2351,8 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, revID, docRev.RevID)
 	}
+
+	// assert these were all fetched from the rev cache and not loaded from bucket (no rev cache misses)
+	// 3 misses are from the initial load from bucket after rev cache flush above
+	assert.Equal(t, int64(3), db.DbStats.Cache().RevisionCacheMisses.Value())
 }
