@@ -215,9 +215,12 @@ func (rc *LRURevisionCache) getFromCacheByRev(ctx context.Context, docID, revID 
 		rc.incrRevCacheMemoryUsage(ctx, value.getItemBytes())
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
+		// given err is nil if we get to this code we can safely assign error returned from addToHLVMapPostLoad to err
+		// and in the event we do error adding to the HLV map post load we will remove the value from the rev cache below
+		// and return the error to the caller
 		err = rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
 		if err != nil {
-			base.WarnfCtx(ctx, "Error adding to HLV map post load: %v", err)
+			base.WarnfCtx(ctx, "Error adding to HLV map post load in getFromCacheByRev: %v", err)
 		}
 	}
 
@@ -281,9 +284,12 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 		// check for rev cache memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
 		// add successfully fetched value to CV lookup map too
+		// given err is nil if we get to this code we can safely assign error returned from addToHLVMapPostLoad to err
+		// and in the event we do error adding to the HLV map post load we will remove the value from the rev cache below
+		// and return the error to the caller
 		err = rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
 		if err != nil {
-			base.WarnfCtx(ctx, "Error adding to HLV map post load: %v", err)
+			base.WarnfCtx(ctx, "Error adding to HLV map post load in GetActive: %v", err)
 		}
 	}
 
@@ -481,7 +487,8 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version
 	legacyKey := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 
 	if cv == nil {
-		// we have loaded a legacy rev document, create CV from revID
+		// We have loaded a legacy rev document, create CV from revID, this is necessary to keep the rev cache
+		// lookup maps in sync.
 		encodedCV, err := LegacyRevToRevTreeEncodedVersion(revID)
 		if err != nil {
 			return err

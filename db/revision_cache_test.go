@@ -2321,7 +2321,7 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 		revIDs = append(revIDs, newRev)
 		legacyRev = newRev // OCC val
 	}
-	// simulate doc revs that are backup to bucket pre upgrade
+	// simulate doc revs that are backed up to bucket pre upgrade
 	for i := 0; i < 2; i++ {
 		err := collection.setOldRevisionJSONBody(ctx, docID, revIDs[i], []byte(`{"foo":"bar"}`), collection.oldRevExpirySeconds())
 		require.NoError(t, err)
@@ -2343,7 +2343,7 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, revID, docRev.RevID)
 	}
-	// no peek for CV so just do fetch for CV from, legacy rev CV
+	// no peek for CV so just do fetch for CV from legacy rev CV
 	for _, revID := range revIDs {
 		cvVal, err := LegacyRevToRevTreeEncodedVersion(revID)
 		require.NoError(t, err)
