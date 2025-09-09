@@ -2956,11 +2956,11 @@ func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 	}
 }
 
-// TestCreateDBWithXattrsDisbaled:
+// TestCreateDBWithXattrsDisabled:
 //   - Test that you cannot create a database with xattrs disabled
 //   - Test that an existing database cannot be loaded with xattrs disabled after upgrade
 //   - Assert error code is returned and response contains error string
-func TestCreateDBWithXattrsDisbaled(t *testing.T) {
+func TestCreateDBWithXattrsDisabled(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 	})
