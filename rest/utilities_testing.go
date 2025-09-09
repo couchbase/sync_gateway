@@ -2382,6 +2382,7 @@ func RequireDocVersionEqual(t testing.TB, expected, actual DocVersion) {
 
 // RequireHistoryContains fails test if rev tree does not contain all expected revIDs
 func RequireHistoryContains(t *testing.T, docHistory db.RevTree, expHistoryIDs []string) {
+	require.Lenf(t, docHistory, len(expHistoryIDs), "Expected history to contain %d revIDs, but it had %d.  History: %v", len(expHistoryIDs), len(docHistory), docHistory)
 	for _, revID := range expHistoryIDs {
 		_, ok := docHistory[revID]
 		require.Truef(t, ok, "Expected history to contain revID %s, but it was not found.  History: %v", revID, docHistory)

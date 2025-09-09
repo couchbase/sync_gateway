@@ -90,7 +90,7 @@ func (h *HLVAgent) UpdateWithHLV(ctx context.Context, key string, inputCas uint6
 
 // CreateDocNoHLV is a test only function to create a document without an HLV, this is useful for testing scenarios
 // where documents have not yet been updated post upgrade (pre upgraded doc so no HLV is given to it yet).
-func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t *testing.T, ctx context.Context, docid string, body Body) (newRevID string, doc *Document) {
+func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t testing.TB, ctx context.Context, docid string, body Body) (newRevID string, doc *Document) {
 	delete(body, BodyId)
 
 	// Get the revision ID to match, and the new generation number:
