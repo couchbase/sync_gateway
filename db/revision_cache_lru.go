@@ -215,7 +215,13 @@ func (rc *LRURevisionCache) getFromCacheByRev(ctx context.Context, docID, revID 
 		rc.incrRevCacheMemoryUsage(ctx, value.getItemBytes())
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
-		rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
+		// given err is nil if we get to this code we can safely assign error returned from addToHLVMapPostLoad to err
+		// and in the event we do error adding to the HLV map post load we will remove the value from the rev cache below
+		// and return the error to the caller
+		err = rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error adding to HLV map post load in getFromCacheByRev: %v", err)
+		}
 	}
 
 	if err != nil {
@@ -277,13 +283,18 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 		rc.incrRevCacheMemoryUsage(ctx, value.getItemBytes())
 		// check for rev cache memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
+		// add successfully fetched value to CV lookup map too
+		// given err is nil if we get to this code we can safely assign error returned from addToHLVMapPostLoad to err
+		// and in the event we do error adding to the HLV map post load we will remove the value from the rev cache below
+		// and return the error to the caller
+		err = rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error adding to HLV map post load in GetActive: %v", err)
+		}
 	}
 
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
-	} else {
-		// add successfully fetched value to CV lookup map too
-		rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
 	}
 
 	return docRev, err
@@ -472,8 +483,18 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Version
 }
 
 // addToHLVMapPostLoad will generate and entry in the CV lookup map for a new document entering the cache
-func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version, collectionID uint32) {
+func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version, collectionID uint32) error {
 	legacyKey := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
+
+	if cv == nil {
+		// We have loaded a legacy rev document, create CV from revID, this is necessary to keep the rev cache
+		// lookup maps in sync.
+		encodedCV, err := LegacyRevToRevTreeEncodedVersion(revID)
+		if err != nil {
+			return err
+		}
+		cv = &encodedCV
+	}
 	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.Value, CollectionID: collectionID}
 
 	rc.lock.Lock()
@@ -484,13 +505,13 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version
 	if !revFound {
 		// its possible the element has been evicted if we don't find the element above (high churn on rev cache)
 		// need to return doc revision to caller still but no need repopulate the cache
-		return
+		return nil
 	}
 	// Check if another goroutine has already updated the cv map
 	if cvFound {
 		if cvElem == revElem {
 			// already match, return
-			return
+			return nil
 		}
 		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
@@ -499,6 +520,7 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version
 		// if not found we need to add the element to the hlv lookup
 		rc.hlvCache[key] = revElem
 	}
+	return nil
 }
 
 // Remove removes a value from the revision cache, if present.
@@ -708,7 +730,10 @@ func (value *revCacheValue) asDocumentRevision(delta *RevisionDelta) (DocumentRe
 		Deleted:     value.deleted,
 		Removed:     value.removed,
 		hlvHistory:  value.hlvHistory,
-		CV:          &value.cv,
+	}
+	// only populate CV if we have a value
+	if !value.cv.IsEmpty() {
+		docRev.CV = &value.cv
 	}
 	docRev.Delta = delta
 
