@@ -401,6 +401,7 @@ type sgReplicateManager struct {
 	closeWg                    sync.WaitGroup                // Teardown waitgroup for subscribe and retry goroutines
 	dbContext                  *DatabaseContext              // reference to the parent DatabaseContext
 	CheckpointInterval         time.Duration                 // The value to be used for time-based checkpoints
+	SupportedBLIPSubprotocols  []string                      // Optional specification to force the subprotocol of the active replicator.
 }
 
 // alignState attempts to update the current replicator state to align with the provided targetState, if
@@ -666,6 +667,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval
 
 	rc.onComplete = m.replicationComplete
+	rc.SupportedBLIPProtocols = m.SupportedBLIPSubprotocols
 
 	return rc, nil
 }
