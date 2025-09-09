@@ -15,7 +15,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/db"
 )
 
 // TestISGRPeerOpts has configuration for ISGR peers in a test setup.
@@ -62,7 +61,6 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 // PassiveRT has user 'alice' created with star channel access and is listening on an HTTP port.
 func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 	ctx := base.TestCtx(t)
-	db.SuspendSequenceBatching()()
 	// Set up passive RestTester (rt2)
 	passiveTestBucket := base.GetTestBucket(t)
 	t.Cleanup(func() { passiveTestBucket.Close(ctx) })
