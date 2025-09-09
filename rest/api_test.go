@@ -3487,5 +3487,6 @@ func TestAllowConflictsConfig(t *testing.T) {
 	rt.CreateDatabase(dbName, dbConfig)
 	resp = rt.SendAdminRequest(http.MethodGet, allDBsURL, "")
 	RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForDBOnline()
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 }
