@@ -30,8 +30,8 @@ type TestISGRPeers struct {
 	// PassiveRT represents the peer that receives a replication.
 	PassiveRT *RestTester
 	// PassiveDBURL is used to create replications from ActiveRT to PassiveRT and contains a username+addr.
-	PassiveDBURL string
-}
+		originalPassiveTB := p.PassiveRT.TB()
+		defer p.PassiveRT.UpdateTB(originalPassiveTB)
 
 // Run is equivalent to testing.T.Run() but updates underlying the RestTesters' TB to the new testing.T.
 func (p *TestISGRPeers) Run(t *testing.T, name string, test func(*testing.T)) {
