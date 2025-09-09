@@ -25,8 +25,6 @@ import (
 
 func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate, base.KeyHTTPResp)
-
 	testCases := []struct {
 		name            string
 		replicationType db.ActiveReplicatorDirection
@@ -169,8 +167,6 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 
 func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)
-
 	// Passive
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{
@@ -288,7 +284,6 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 
 func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)
 
 	testCases := []struct {
 		name            string
