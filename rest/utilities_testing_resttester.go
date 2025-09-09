@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -21,7 +20,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,7 +38,8 @@ func (rt *RestTester) Run(name string, test func(*testing.T)) {
 	})
 }
 
-func (rt *RestTester) UpdateTB(t *testing.T) {
+// UpdateTB updates the RestTester underlying TB to the new TB instance, used to run subtests.
+func (rt *RestTester) UpdateTB(t testing.TB) {
 	var tb testing.TB = t
 	rt.testingTB.Store(&tb)
 }
@@ -266,9 +265,15 @@ func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
 	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "blip sender on active replicator not initialized")
 }
 
-// createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
+// CreateReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver)
+}
+
+// DeleteReplication deletes a replication via the REST API with the specified ID
+func (rt *RestTester) DeleteReplication(replicationID string) {
+	resp := rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_replication/"+replicationID, "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
 }
 
 func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
@@ -417,62 +422,6 @@ func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName stri
 		SGVersion:  base.ProductVersion.String(),
 	}
 	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
-}
-
-// setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
-//
-//	activeRT:
-//	  - backed by test bucket
-//	  - has sgreplicate enabled
-//	passiveRT:
-//	  - backed by different test bucket
-//	  - user 'alice' created with star channel access
-//	  - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
-//	returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
-func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
-	// Set up passive RestTester (rt2)
-	passiveTestBucket := base.GetTestBucket(t)
-
-	passiveRTConfig := &RestTesterConfig{
-		CustomTestBucket: passiveTestBucket.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Name: "passivedb",
-		}},
-		SyncFn: channels.DocChannelsSyncFunction,
-	}
-	passiveRT = NewRestTester(t, passiveRTConfig)
-	passiveRT.CreateUser("alice", []string{"*"})
-
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(passiveRT.TestPublicHandler())
-
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
-	passiveDBURL.User = url.UserPassword("alice", RestTesterDefaultUserPassword)
-
-	// Set up active RestTester (rt1)
-	activeTestBucket := base.GetTestBucket(t)
-	activeRTConfig := &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Name: "activedb",
-		}},
-		CustomTestBucket:   activeTestBucket.NoCloseClone(),
-		SgReplicateEnabled: true,
-		SyncFn:             channels.DocChannelsSyncFunction,
-	}
-	activeRT = NewRestTester(t, activeRTConfig)
-	// Initialize RT and bucket
-	_ = activeRT.Bucket()
-
-	teardown = func() {
-		ctx := base.TestCtx(t)
-		activeRT.Close()
-		activeTestBucket.Close(ctx)
-		srv.Close()
-		passiveRT.Close()
-		passiveTestBucket.Close(ctx)
-	}
-	return activeRT, passiveRT, passiveDBURL.String(), teardown
 }
 
 // TakeDbOffline takes the database offline.

@@ -306,8 +306,7 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 	localCollections := []string{"ks1", "ks3"}
 	remoteCollections := []string{"ks2"}
 
-	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, _, remoteDbURLString := rest.SetupSGRPeers(t)
 
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
@@ -342,8 +341,7 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, _, remoteDbURLString := rest.SetupSGRPeers(t)
 
 	localCollection := activeRT.GetSingleDataStore().ScopeName() + "." + activeRT.GetSingleDataStore().CollectionName()
 	localCollections := []string{localCollection}
@@ -382,8 +380,7 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	activeRT, passiveRT, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, passiveRT, remoteDbURLString := rest.SetupSGRPeers(t)
 
 	localCollection := activeRT.GetSingleDataStore().ScopeName() + ".invalid"
 	localCollections := []string{localCollection}

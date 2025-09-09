@@ -2726,10 +2726,8 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 // the stat mapping (processRevStats)
 func TestProcessRevIncrementsStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	activeRT, remoteRT, remoteURLString, teardown := SetupSGRPeers(t)
-	defer teardown()
+	activeRT, remoteRT, remoteURLString := SetupSGRPeers(t)
 	activeCtx := activeRT.Context()
 
 	remoteURL, _ := url.Parse(remoteURLString)

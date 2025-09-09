@@ -472,8 +472,7 @@ func TestPushReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create doc1 on rt1
 	docID1 := t.Name() + "rt1doc"
@@ -515,8 +514,7 @@ func TestPullReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create doc1 on rt2
 	docID1 := t.Name() + "rt2doc"
@@ -552,8 +550,7 @@ func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -594,8 +591,7 @@ func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// update runtime config to limit to 2 concurrent replication connections
 	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
@@ -634,8 +630,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// update runtime config to limit to 2 concurrent replication connections
 	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
@@ -697,8 +692,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create doc1 on rt2
 	docID1 := t.Name() + "rt2doc"
@@ -782,9 +776,7 @@ func TestReplicationStatusActions(t *testing.T) {
 
 // TestReplicationRebalanceToZeroNodes checks that the replication goes into an unassigned state when there are no nodes available to run replications.
 func TestReplicationRebalanceToZeroNodes(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	activeRT, remoteRT, _, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, remoteRT, _ := rest.SetupSGRPeers(t)
 
 	// Build connection string for active RT
 	srv := httptest.NewServer(activeRT.TestPublicHandler())
@@ -821,8 +813,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
@@ -926,8 +917,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create docs on active
 	docABC1 := t.Name() + "ABC1"
@@ -1028,8 +1018,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create 20 docs on rt2
 	docCount := 20
@@ -1094,8 +1083,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 	// Create push replications, verify running, also verify active replicators are created
 	activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
 	activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
@@ -1571,8 +1559,7 @@ func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Add docs to two channels
 	bulkDocs := `
@@ -1651,8 +1638,7 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Add docs to two channels
 	bulkDocs := `
@@ -1741,8 +1727,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
@@ -1902,8 +1887,7 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create doc1 on rt1
 	docID1 := t.Name() + "rt1doc"
@@ -1935,8 +1919,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	rt1, rt2, remoteURLString := rest.SetupSGRPeers(t)
 
 	// Create initial doc on rt1
 	docID := t.Name() + "rt1doc"
@@ -2292,8 +2275,7 @@ func TestReplicatorReconnectBehaviour(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			activeRT, _, remoteURL, teardown := rest.SetupSGRPeers(t)
-			defer teardown()
+			activeRT, _, remoteURL := rest.SetupSGRPeers(t)
 			var resp *rest.TestResponse
 
 			if test.specified {
@@ -2352,8 +2334,7 @@ func TestReconnectReplicator(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			activeRT, remoteRT, remoteURL, teardown := rest.SetupSGRPeers(t)
-			defer teardown()
+			activeRT, remoteRT, remoteURL := rest.SetupSGRPeers(t)
 			var resp *rest.TestResponse
 			const replicationName = "replication1"
 
@@ -2469,8 +2450,7 @@ func TestTotalSyncTimeStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, passiveRT, remoteURL := rest.SetupSGRPeers(t)
 	const repName = "replication1"
 
 	startValue := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
@@ -6490,7 +6470,6 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (non-default conflict resolver)")
 	}
-	t.Skip("CBG-4830: Needs work to run in < 4 or in both 4 and >= 4 protocol")
 
 	type revisionState struct {
 		generation       int
@@ -6586,8 +6565,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			base.RequireNumTestBuckets(t, 2)
 
-			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
-			defer teardown()
+			activeRT, remoteRT, remoteURLString := rest.SetupSGRPeers(t)
 
 			// Create initial revision(s) on local
 			docID := test.name
@@ -6756,7 +6734,6 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 }
 func TestReplicatorConflictAttachment(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	t.Skip("CBG-4830: Needs work to run in < 4 or in both 4 and >= 4 protocol")
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("requires enterprise edition")
 	}
@@ -6783,70 +6760,71 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			expectedAttachmentContent: "goodbye cruel world",
 		},
 	}
+	peers := rest.SetupISGRPeersWithOpts(t, rest.TestISGRPeerOpts{
+		ActivePeerSupportedBLIPSubProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()},
+	})
 
 	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
-			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
-			defer teardown()
-
+		peers.Run(t, test.name, func(t *testing.T) {
 			docID := test.name
 
 			var newVersion rest.DocVersion
 			var parentVersion *rest.DocVersion
 			for gen := 1; gen <= 3; gen++ {
 				newVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-initial", gen))
-				parentVersion = activeRT.PutNewEditsFalse(docID, newVersion, parentVersion, "{}")
+				parentVersion = peers.ActiveRT.PutNewEditsFalse(docID, newVersion, parentVersion, "{}")
 			}
 
-			replicationID := "replication"
-			activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
-			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+			replicationID := "replication_" + rest.SafeDocumentName(t, t.Name())
+			peers.ActiveRT.CreateReplication(replicationID, peers.PassiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
+			defer peers.ActiveRT.DeleteReplication(replicationID)
+			peers.ActiveRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			remoteRT.WaitForVersion(docID, newVersion)
+			peers.PassiveRT.WaitForVersion(docID, newVersion)
 
-			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
+			response := peers.ActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 			rest.RequireStatus(t, response, http.StatusOK)
-			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+			peers.ActiveRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 			nextGen := 4
 
 			localGen := nextGen
 			localParentVersion := newVersion
 			newLocalVersion := rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-local", localGen))
-			_ = activeRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, `{"_attachments": {"attach": {"data":"aGVsbG8gd29ybGQ="}}}`)
+			_ = peers.ActiveRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, `{"_attachments": {"attach": {"data":"aGVsbG8gd29ybGQ="}}}`)
 			localParentVersion = newLocalVersion
 
 			localGen++
 			newLocalVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-local", localGen))
-			_ = activeRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`, localGen-1))
+			_ = peers.ActiveRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`, localGen-1))
 
 			remoteGen := nextGen
 			remoteParentVersion := newVersion
 			newRemoteVersion := rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
-			_ = remoteRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, `{"_attachments": {"attach": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`)
+			_ = peers.PassiveRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, `{"_attachments": {"attach": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`)
 			remoteParentVersion = newRemoteVersion
 
 			remoteGen++
 			newRemoteVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
-			_ = remoteRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
+			_ = peers.PassiveRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
 
-			response = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
+			response = peers.ActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			activeRT.WaitForVersion(docID, test.expectedFinalVersion)
-			remoteRT.WaitForVersion(docID, test.expectedFinalVersion)
+			peers.ActiveRT.WaitForVersion(docID, test.expectedFinalVersion)
+			peers.PassiveRT.WaitForVersion(docID, test.expectedFinalVersion)
 
-			localDoc := activeRT.GetDocBody(docID)
+			localDoc := peers.ActiveRT.GetDocBody(docID)
 			localVersion := localDoc.ExtractRev()
 
-			remoteDoc := remoteRT.GetDocBody(docID)
+			remoteDoc := peers.PassiveRT.GetDocBody(docID)
 			remoteVersion := remoteDoc.ExtractRev()
 
 			assert.Equal(t, localVersion, remoteVersion)
 			remoteRevpos := getTestRevpos(t, remoteDoc, "attach")
 			assert.Equal(t, test.expectedRevPos, remoteRevpos)
 
-			response = activeRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/attach", "")
+			response = peers.ActiveRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/attach", "")
 			assert.Equal(t, test.expectedAttachmentContent, string(response.BodyBytes()))
 		})
 	}
@@ -7392,10 +7370,8 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyReplicate)
 
-	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, passiveRT, remoteURL := rest.SetupSGRPeers(t)
 
 	// increase checkpointing interval temporarily to ensure the checkpointer doesn't fire on an
 	// interval during the running of the test
@@ -8159,8 +8135,7 @@ func adminDBURL(rt *rest.RestTester) *url.URL {
 func TestReplicationConfigUpdatedAt(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	activeRT, _, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
+	activeRT, _, remoteURLString := rest.SetupSGRPeers(t)
 
 	// create a replication and assert the updated at field is present in the config
 	activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
