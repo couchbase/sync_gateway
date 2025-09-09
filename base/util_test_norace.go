@@ -14,6 +14,6 @@ package base
 import "testing"
 
 // IsRaceDetectorEnabled returns true if compiled with -race. Intended to be used for testing only.
-func IsRaceDetectorEnabled(t *testing.T) bool {
+func IsRaceDetectorEnabled(t testing.TB) bool {
 	return false
 }
