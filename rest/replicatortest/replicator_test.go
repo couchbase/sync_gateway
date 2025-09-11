@@ -1701,7 +1701,9 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
 
-	defer db.SuspendSequenceBatching()()
+	restartBatching := db.SuspendSequenceBatching()
+	t.Cleanup(restartBatching)
+
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
