@@ -3491,6 +3491,11 @@ func TestAllowConflictsConfig(t *testing.T) {
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 }
 
+// TestDisableAllowStarChannel verifies that the database configuration does not allow
+// the `enable_star_channel` property to be set to false. The star channel is a special
+// channel in Sync Gateway that provides access to all documents, and disabling it is
+// not supported. This test ensures that an attempt to disable the star channel results
+// in a bad request error.
 func TestDisableAllowStarChannel(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
