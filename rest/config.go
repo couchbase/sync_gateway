@@ -824,7 +824,9 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			if lwm >= hwm {
 				multiError = multiError.Append(fmt.Errorf("cache.channel_cache.compact_high_watermark_pct (%v) must be greater than cache.channel_cache.compact_low_watermark_pct (%v)", hwm, lwm))
 			}
-
+			if dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil && !*dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel {
+				multiError = multiError.Append(fmt.Errorf("enable_star_channel cannot be set to false"))
+			}
 		}
 
 		if dbConfig.CacheConfig.RevCacheConfig != nil {

@@ -3490,3 +3490,30 @@ func TestAllowConflictsConfig(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 }
+
+func TestDisableAllowStarChannel(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		SyncFn:           channels.DocChannelsSyncFunction,
+	})
+	defer rt.Close()
+
+	const (
+		dbName  = "db"
+		errResp = "enable_star_channel cannot be set to false"
+		docID   = "doc1"
+		docBody = `{"channels":["testChannel"]}`
+	)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = dbName
+	dbConfig.CacheConfig = &CacheConfig{
+		ChannelCacheConfig: &ChannelCacheConfig{
+			EnableStarChannel: base.Ptr(false),
+		},
+	}
+
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), errResp)
+}
