@@ -1330,12 +1330,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				// conflict detected between incoming rev and local rev revtrees, allow hlv conflict resolvers
 				// below to fix (for ISGR pull)
 				doc.HLV = NewHybridLogicalVector()
-				cvValue, err := LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
-				cvValue.SourceID = db.dbCtx.EncodedSourceID // give it this nodes sourceID
-				if err != nil {
-					return nil, nil, false, nil, err
-				}
-				err = doc.HLV.AddVersion(cvValue)
+				doc.HLV, err = legacyRevToHybridLogicalVector(opts.NewDoc.ID, doc.GetRevTreeID())
 				if err != nil {
 					return nil, nil, false, nil, err
 				}
@@ -3446,6 +3441,13 @@ func parseIncomingChange(docid, rev string) (cvValue Version, err error) {
 	return cvValue, nil
 }
 
+func (db *DatabaseCollectionWithUser) getHLVWithLocalSourceIDFromLegacyRev(docID, revID string) (hlv *HybridLogicalVector, err error) {
+	// no hlv on local doc, convert revID into CV and use that as the local doc hlv
+	hlv, err = legacyRevToHybridLogicalVector(docID, revID)
+	hlv.SourceID = db.dbCtx.EncodedSourceID
+	return hlv, err
+}
+
 func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, docid, rev string) (missing, possible []string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
@@ -3460,14 +3462,12 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 		return
 	}
 	if hlv == nil {
-		// no hlv on local doc, convert revID into CV and use that as the local doc hlv
-		hlv, err = legacyRevToHybridLogicalVector(docid, syncData.GetRevTreeID())
 		// give local version a sourceID of this node. Needed given if we have a pull replication running and
 		// locally we have 3-def and remote has 3-abc, if we give the legacy rev sourceID to both nodes locally
 		// we will say we don't need 3-abc given 3-def resolves to higher version value (local dominates) but in
 		// reality we need to pull this conflict rev to solve it and push it back up. If we give local hlv our sourceID
 		// then we will say we need 3-abc as it is from a different sourceID and local hlv no longer dominates
-		hlv.SourceID = db.dbCtx.EncodedSourceID
+		hlv, err = db.getHLVWithLocalSourceIDFromLegacyRev(docid, syncData.GetRevTreeID())
 		if err != nil {
 			base.WarnfCtx(ctx, "%s", err)
 			missing = append(missing, rev)
@@ -3489,7 +3489,7 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	// in the form of encodedRev@Revision+Tree+Encoding for incoming rev or encoded@localNodeSourceID for local rev we need to check
 	// also if each version value is equal. If they are equal they were generated from the same revID thus we
 	// do not need this change.
-	if hlv.DominatesSource(cvValue) || db.implicitCVEqual(*localCV, cvValue) {
+	if hlv.DominatesSource(cvValue) || db.revIDGeneratedCVEqual(*localCV, cvValue) {
 		// incoming version is dominated by local doc hlv, so it is not missing
 		return
 	}
@@ -3504,8 +3504,8 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	return
 }
 
-// implicitCVEqual will check if two implicit CVs are equal.
-func (db *DatabaseCollectionWithUser) implicitCVEqual(localCV, incomingCV Version) bool {
+// revIDGeneratedCVEqual will check if two implicit CVs are equal.
+func (db *DatabaseCollectionWithUser) revIDGeneratedCVEqual(localCV, incomingCV Version) bool {
 	if localCV.SourceID != db.dbCtx.EncodedSourceID || incomingCV.SourceID != encodedRevTreeSourceID {
 		return false
 	}

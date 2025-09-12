@@ -1450,7 +1450,7 @@ func (doc *Document) IsInConflict(ctx context.Context, db *DatabaseCollectionWit
 		return HLVNoConflict
 
 	}
-	// we need to check if local CV version was generated from a revIDm if so we need to perform slihtly differnet conflict check
+	// we need to check if local CV version was generated from a revID if so we need to perform slightly different conflict check
 	if doc.HLV.HasRevEncodedCV() {
 		// perform conflict check on rev tree history
 		_, _, isConflictErr := db.revTreeConflictCheck(ctx, putOpts.RevTreeHistory, doc, putOpts.NewDoc.Deleted)

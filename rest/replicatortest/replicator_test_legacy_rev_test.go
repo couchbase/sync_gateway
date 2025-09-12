@@ -714,7 +714,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	const username = "alice"
-	// NOTE: below diagrams only show active rev tree branches not tombstones branches fom the conflict resolution
+	// NOTE: below diagrams only show active rev tree branches not tombstones branches from the conflict resolution
 	testCases := []struct {
 		name       string
 		activeWins bool
@@ -894,7 +894,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	const username = "alice"
-	// NOTE: below diagrams only show active rev tree branches not tombstones branches fom the conflict resolution
+	// NOTE: below diagrams only show active rev tree branches not tombstones branches from the conflict resolution
 	testCases := []struct {
 		name                            string
 		activePeerHasPostUpgradeVersion bool
@@ -1087,7 +1087,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 				require.JSONEq(t, expectedBody, string(rt1BodyBytes))
 				require.JSONEq(t, expectedBody, string(rt2BodyBytes))
 
-				// update doc on active side to ensure we cna push with no conflict
+				// update doc on active side to ensure we can push with no conflict
 				updateVer := rt1.UpdateDoc(docID, upgradedDocVersion, `{"channels": ["alice"], "source": "rt1-updated"}`)
 				rt2.WaitForVersion(docID, updateVer)
 			}
