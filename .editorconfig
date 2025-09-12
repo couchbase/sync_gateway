@@ -1,0 +1,15 @@
+[*.sh]
+# -i=4 / --ident 4
+indent_style = space
+indent_size = 4
+
+# -s / --simplify
+simplify           = true
+# -bn / --binary-next-line
+binary_next_line   = true
+# -cn / --case-indent
+switch_case_indent = true
+# -sr / --space-redirects
+space_redirects    = true
+# -kp / --keep-padding
+keep_padding       = true
