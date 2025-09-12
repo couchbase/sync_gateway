@@ -200,15 +200,15 @@ type DatabaseContextOptions struct {
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 	ConfigPrincipals              *ConfigPrincipals
-	PurgeInterval                 *time.Duration    // Add a custom purge interval, as a testing seam. If nil, this parameter is filled in by Couchbase Server, with a fallback to a default value SG has.
-	LoggingConfig                 *base.DbLogConfig // Per-database log configuration
-	MaxConcurrentChangesBatches   *int              // Maximum number of changes batches to process concurrently per replication
-	MaxConcurrentRevs             *int              // Maximum number of revs to process concurrently per replication
-	NumIndexReplicas              uint              // Number of replicas for GSI indexes
-	NumIndexPartitions            *uint32           // Number of partitions for GSI indexes, if not set will default to 1
-	ImportVersion                 uint64            // Version included in import DCP checkpoints, incremented when collections added to db
-	DisablePublicAllDocs          bool              // Disable public access to the _all_docs endpoint for this database
-	StoreLegacyRevTreeData        bool              // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
+	PurgeInterval                 atomic.Pointer[time.Duration] // The metadata purge interval. Populated by db.GetMetadataPurgeInterval
+	LoggingConfig                 *base.DbLogConfig             // Per-database log configuration
+	MaxConcurrentChangesBatches   *int                          // Maximum number of changes batches to process concurrently per replication
+	MaxConcurrentRevs             *int                          // Maximum number of revs to process concurrently per replication
+	NumIndexReplicas              uint                          // Number of replicas for GSI indexes
+	NumIndexPartitions            *uint32                       // Number of partitions for GSI indexes, if not set will default to 1
+	ImportVersion                 uint64                        // Version included in import DCP checkpoints, incremented when collections added to db
+	DisablePublicAllDocs          bool                          // Disable public access to the _all_docs endpoint for this database
+	StoreLegacyRevTreeData        bool                          // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
 }
 
 type ConfigPrincipals struct {
@@ -1463,7 +1463,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 		return 0, nil
 	}
 
-	purgeInterval := db.GetMetadataPurgeInterval(ctx)
+	purgeInterval := db.GetMetadataPurgeInterval(ctx, false)
 	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", purgeInterval.Hours()/24)
 
 	// Trigger view compaction for all tombstoned documents older than the purge interval
@@ -1586,15 +1586,18 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 }
 
 // GetMetadataPurgeInterval returns the current value for the metadata purge interval for the backing bucket.
-func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context) time.Duration {
+// if useCachedInterval is false, we'll always fetch a new Metadat Purge Interval from the bucket. Otherwise we'll use the last value we got (if any).
+func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, useCachedInterval bool) time.Duration {
 	// look for metadata purge interval preferentially:
 	// 1. value specified in DatabaseContextOptions (testing seam)
 	// 2. bucket level
 	// 3. cluster level
 	// 4. default fallback value
 
-	if db.Options.PurgeInterval != nil {
-		return *db.Options.PurgeInterval
+	if useCachedInterval {
+		if mpi := db.Options.PurgeInterval.Load(); mpi != nil {
+			return *mpi
+		}
 	}
 
 	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
@@ -1605,10 +1608,12 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context) time.Du
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", DefaultPurgeInterval.Hours()/24, err)
 	}
+	mpi := DefaultPurgeInterval
 	if serverPurgeInterval > 0 {
-		return serverPurgeInterval
+		mpi = serverPurgeInterval
 	}
-	return DefaultPurgeInterval
+	db.Options.PurgeInterval.Store(&mpi)
+	return mpi
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
@@ -2326,7 +2331,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	if db.UseXattrs() {
 		// Log the purge interval for tombstone compaction
-		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", db.GetMetadataPurgeInterval(ctx).Hours()/24)
+		mpi := db.GetMetadataPurgeInterval(ctx, false)
+		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", mpi.Hours()/24)
 
 		if db.Options.CompactInterval != 0 {
 			if db.autoImport {
