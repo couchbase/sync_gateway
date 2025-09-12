@@ -20,6 +20,15 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+func skipMobileJenkinsCBG4826(t *testing.T) {
+	// these tests fail on slow machines but could flake under any machine
+	mobileJenkins := "https://mobile.jenkins.couchbase.com/"
+	if os.Getenv("JENKINS_URL") == mobileJenkins {
+		t.Skipf("Skipping topology tests on %s until CBG-4826 is resolved. There are race conditions which occur on slow machines and are pending investigation", mobileJenkins)
+
+	}
+}
+
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
 	runTests, _ := strconv.ParseBool(os.Getenv(base.TbpEnvTopologyTests))
