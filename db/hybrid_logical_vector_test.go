@@ -1695,3 +1695,30 @@ func TestLegacyRevToVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestFindGenerationFromLegacyRev(t *testing.T) {
+	testCases := []struct {
+		name   string
+		rev    string
+		expGen int
+	}{
+		{
+			name:   "simple case",
+			rev:    "1-abcd",
+			expGen: 1,
+		},
+		{
+			name:   "large generation",
+			rev:    "12345-e0c8012361e94df6a1e1c2977169480e",
+			expGen: 12345,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cvVal, err := LegacyRevToRevTreeEncodedVersion(tc.rev)
+			require.NoError(t, err)
+			gen := GetGenerationFromEncodedVersionValue(cvVal.Value)
+			assert.Equal(t, tc.expGen, gen)
+		})
+	}
+}

@@ -4447,3 +4447,116 @@ func TestInitSyncInfoMetaVersionComparison(t *testing.T) {
 		})
 	}
 }
+
+func TestRevTreeConflictCheck(t *testing.T) {
+	testCases := []struct {
+		name             string
+		localHistory     []string
+		incomingHistory  []string
+		localDelete      bool
+		remoteDelete     bool
+		expectedConflict bool
+	}{
+		{
+			name:             "no conflict, simple update",
+			localHistory:     []string{"3-abc", "2-abc", "1-abc"},
+			incomingHistory:  []string{"4-abc", "3-abc", "2-abc", "1-abc"},
+			localDelete:      false,
+			remoteDelete:     false,
+			expectedConflict: false,
+		},
+		{
+			name:             "diff in history",
+			localHistory:     []string{"3-abc", "2-abc", "1-abc"},
+			incomingHistory:  []string{"3-def", "2-def", "1-abc"},
+			localDelete:      false,
+			remoteDelete:     false,
+			expectedConflict: true,
+		},
+		{
+			name:             "complete diff in history",
+			localHistory:     []string{"3-abc", "2-abc", "1-abc"},
+			incomingHistory:  []string{"3-def", "2-def", "1-def"},
+			localDelete:      false,
+			remoteDelete:     false,
+			expectedConflict: true,
+		},
+		{
+			name:             "gap in history",
+			localHistory:     []string{"5-abc", "4-abc", "3-abc", "2-abc", "1-abc"},
+			incomingHistory:  []string{"10-abc", "9-abc"},
+			localDelete:      false,
+			remoteDelete:     false,
+			expectedConflict: true,
+		},
+		{
+			name:             "incoming only has one entry in history, conflict 1",
+			localHistory:     []string{"3-abc", "2-abc", "1-abc"},
+			incomingHistory:  []string{"2-abc"},
+			localDelete:      false,
+			remoteDelete:     false,
+			expectedConflict: true,
+		},
+		{
+			name:             "incoming only has one entry in history, conflict 2",
+			localHistory:     []string{"3-abc", "2-abc", "1-abc"},
+			incomingHistory:  []string{"2-def"},
+			localDelete:      false,
+			remoteDelete:     false,
+			expectedConflict: true,
+		},
+		{
+			name:             "local is deleted and branch is disconnected",
+			localHistory:     []string{"3-abc", "2-abc", "1-abc"},
+			incomingHistory:  []string{"10-abc", "9-abc"},
+			localDelete:      true,
+			remoteDelete:     false,
+			expectedConflict: false,
+		},
+		{
+			name:             "remote is deleted and local branch is not tombstones",
+			localHistory:     []string{"3-abc", "2-abc", "1-abc"},
+			incomingHistory:  []string{"4-abc", "3-abc", "2-abc", "1-abc"},
+			localDelete:      false,
+			remoteDelete:     true,
+			expectedConflict: false,
+		},
+	}
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			doc := NewDocument("doc1")
+			if len(testCase.localHistory) != 0 {
+				doc.SetRevTreeID(testCase.localHistory[0])
+			}
+			if testCase.localDelete {
+				doc.Deleted = true
+				doc.setFlag(channels.Deleted, true)
+			}
+			lenLocalHistory := len(testCase.localHistory)
+
+			parent := ""
+			for i, revID := range testCase.localHistory {
+				err := doc.History.addRevision(revID,
+					RevInfo{
+						ID:      revID,
+						Parent:  parent, // set the parent of this revision to the element of docHistory from the last iteration
+						Deleted: i == lenLocalHistory-1 && testCase.localDelete})
+				require.NoError(t, err)
+				parent = revID
+			}
+
+			_, _, conflictErr := collection.revTreeConflictCheck(t.Context(), testCase.incomingHistory, doc, testCase.remoteDelete)
+			if testCase.expectedConflict {
+				require.Error(t, conflictErr)
+			} else {
+				require.NoError(t, conflictErr)
+			}
+		})
+	}
+
+}
