@@ -2233,11 +2233,12 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 	}
 
 	errMsg := fmt.Sprintf(
-		"Sync Gateway requires mobile XDCR support, but Couchbase Server %d.%d does not support it. Couchbase Server %d.%d is required.",
+		"Sync Gateway requires Couchbase Server %d.%d or later, but found cluster version %d.%d",
+		CBXDCRCompatibleMajorVersion,
+		CBXDCRCompatibleMinorVersion,
 		major,
 		minor,
-		CBXDCRCompatibleMajorVersion,
-		CBXDCRCompatibleMinorVersion)
+	)
 
 	if major < CBXDCRCompatibleMajorVersion {
 		base.ErrorfCtx(ctx, errMsg)
