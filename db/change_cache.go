@@ -51,7 +51,7 @@ const (
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
-var EnableStarChannelLog = true
+const EnableStarChannelLog = true
 
 // Manages a cache of the recent change history of all channels.
 //

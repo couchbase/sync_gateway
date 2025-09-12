@@ -215,6 +215,18 @@ func TestDatabaseConfigValidation(t *testing.T) {
 			},
 			expectedError: "allow_conflicts cannot be set to true",
 		},
+		{
+			name: "setting enable_star_channel to false",
+			dbConfig: DbConfig{
+				Name: "db",
+				CacheConfig: &CacheConfig{
+					ChannelCacheConfig: &ChannelCacheConfig{
+						EnableStarChannel: base.Ptr(false),
+					},
+				},
+			},
+			expectedError: "enable_star_channel cannot be set to false",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -15,30 +15,32 @@ type DatabaseError struct {
 }
 
 var DatabaseErrorMap = map[databaseErrorCode]string{
-	DatabaseBucketConnectionError:      "Error connecting to bucket",
-	DatabaseInvalidDatastore:           "Collection(s) not available",
-	DatabaseInitSyncInfoError:          "Error initializing sync info",
-	DatabaseInitializationIndexError:   "Error initializing database indexes",
-	DatabaseCreateDatabaseContextError: "Error creating database context",
-	DatabaseSGRClusterError:            "Error with fetching SGR cluster definition",
-	DatabaseCreateReplicationError:     "Error creating replication during database init",
-	DatabaseOnlineProcessError:         "Error attempting to start online process",
-	DatabaseAllowConflictsError:        "Allow conflicts is set to true",
+	DatabaseBucketConnectionError:       "Error connecting to bucket",
+	DatabaseInvalidDatastore:            "Collection(s) not available",
+	DatabaseInitSyncInfoError:           "Error initializing sync info",
+	DatabaseInitializationIndexError:    "Error initializing database indexes",
+	DatabaseCreateDatabaseContextError:  "Error creating database context",
+	DatabaseSGRClusterError:             "Error with fetching SGR cluster definition",
+	DatabaseCreateReplicationError:      "Error creating replication during database init",
+	DatabaseOnlineProcessError:          "Error attempting to start online process",
+	DatabaseAllowConflictsError:         "Allow conflicts is set to true",
+	DatabaseEnableStarChannelFalseError: "Enable star channel is set to false",
 }
 
 type databaseErrorCode uint8
 
 // Error codes exposed for each error a database can encounter on load. These codes are consumed by Capella so must remain stable.
 const (
-	DatabaseBucketConnectionError      databaseErrorCode = 1
-	DatabaseInvalidDatastore           databaseErrorCode = 2
-	DatabaseInitSyncInfoError          databaseErrorCode = 3
-	DatabaseInitializationIndexError   databaseErrorCode = 4
-	DatabaseCreateDatabaseContextError databaseErrorCode = 5
-	DatabaseSGRClusterError            databaseErrorCode = 6
-	DatabaseCreateReplicationError     databaseErrorCode = 7
-	DatabaseOnlineProcessError         databaseErrorCode = 8
-	DatabaseAllowConflictsError        databaseErrorCode = 9
+	DatabaseBucketConnectionError       databaseErrorCode = 1
+	DatabaseInvalidDatastore            databaseErrorCode = 2
+	DatabaseInitSyncInfoError           databaseErrorCode = 3
+	DatabaseInitializationIndexError    databaseErrorCode = 4
+	DatabaseCreateDatabaseContextError  databaseErrorCode = 5
+	DatabaseSGRClusterError             databaseErrorCode = 6
+	DatabaseCreateReplicationError      databaseErrorCode = 7
+	DatabaseOnlineProcessError          databaseErrorCode = 8
+	DatabaseAllowConflictsError         databaseErrorCode = 9
+	DatabaseEnableStarChannelFalseError databaseErrorCode = 10
 )
 
 func NewDatabaseError(code databaseErrorCode) *DatabaseError {

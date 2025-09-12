@@ -690,6 +690,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			"Duplicate database name %q", dbName)
 	}
 
+	if config.DbConfig.CacheConfig != nil {
+		if config.DbConfig.CacheConfig.ChannelCacheConfig != nil {
+			if config.DbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil && !*config.DbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel {
+				base.WarnfCtx(ctx, `enable_star_channel config option is set to false, set it to true`)
+				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseEnableStarChannelFalseError))
+				return nil, errors.New("enable_star_channel in cache config is set to false, please set the value to true")
+			}
+		}
+	}
+
 	// Generate database context options from config and server context
 	contextOptions, err := dbcOptionsFromConfig(ctx, sc, &config.DbConfig, dbName)
 	if err != nil {
@@ -1164,11 +1174,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			}
 			if config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil {
 				cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped) * time.Millisecond
-			}
-			// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
-			if config.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil {
-				db.EnableStarChannelLog = *config.CacheConfig.ChannelCacheConfig.EnableStarChannel
-				base.WarnfCtx(ctx, `Deprecation notice: enable_star_channel config option is due to be removed, in future star channel will always be enabled`)
 			}
 			if config.CacheConfig.ChannelCacheConfig.MaxLength != nil {
 				cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheConfig.MaxLength
