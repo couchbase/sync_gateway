@@ -435,10 +435,10 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 
 		if isRemoval {
 			return removalBodyBytes, removalHistory, activeChannels, isRemoval, nil, isDelete, nil, hlv, nil
-		} else {
-			// If this wasn't a removal, return the original error from getRevision
-			return bodyBytes, history, channels, removed, nil, isDelete, nil, hlv, err
 		}
+
+		// If this wasn't a removal, return the original error from getRevision
+		return bodyBytes, history, channels, removed, nil, isDelete, nil, hlv, err
 	}
 	deleted = doc.History[revid].Deleted
 
@@ -447,7 +447,9 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 		return bodyBytes, history, channels, removed, nil, deleted, nil, hlv, getHistoryErr
 	}
 	history = encodeRevisions(ctx, doc.ID, validatedHistory)
-	channels = doc.History[revid].Channels
+	if revChannels, ok := doc.channelsForRevTreeID(revid); ok {
+		channels = revChannels
+	}
 	if doc.HLV != nil {
 		hlv = doc.HLV
 	}

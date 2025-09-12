@@ -45,11 +45,10 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 	doc._body = Body{
 		"testing": true,
 	}
-	doc.SetRevTreeID("1-abc")
+	const revTreeID = "1-abc"
+	doc.SetRevTreeID(revTreeID)
 	doc.History = RevTree{
-		doc.GetRevTreeID(): {
-			Channels: base.SetOf("*"),
-		},
+		revTreeID: {},
 	}
 
 	doc.HLV = &HybridLogicalVector{

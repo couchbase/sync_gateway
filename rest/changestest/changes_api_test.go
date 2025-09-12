@@ -1877,6 +1877,10 @@ func TestChangesIncludeDocs(t *testing.T) {
 	cvHash := base.Crc32cHashString([]byte(cvs[0]))
 	err = collection.PurgeOldRevisionJSON(ctx, "doc_pruned", cvHash)
 	require.NoError(t, err)
+
+	// since 4.0 we cannot differentiate between an old channel removal and a missing document - in this case the document body is not returned
+	expectedResults[5] = `{"seq":12,"id":"doc_pruned","removed":["alpha"],"changes":[{"rev":"2-5afcb73bd3eb50615470e3ba54b80f00"}]}`
+
 	postFlushChanges := rt.GetChanges("/{{.keyspace}}/_changes?include_docs=true", "user1")
 
 	assert.Equal(t, len(expectedResults), len(postFlushChanges.Results))

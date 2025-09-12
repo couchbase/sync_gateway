@@ -1898,18 +1898,15 @@ func TestGetRemovedDoc(t *testing.T) {
 	// TODO: CBG-4840 - Requires restoration of non-delta sync RevTree revision backups
 	// assert.NoError(t, err, "Unexpected Error")
 
-	// Try to get rev 3 via BLIP API and assert that _removed == true
-	resultDoc, err = bt2.GetDocAtRev("foo", "3-cde")
-	assert.NoError(t, err, "Unexpected Error")
-	assert.True(t, resultDoc.IsRemoved())
+	// Try to get rev 3 via BLIP API and assert that there's a norev - modern clients will receive a replacement rev instead
+	_, err = bt2.GetDocAtRev("foo", "3-cde")
+	require.ErrorContains(t, err, "404 missing", "Expected norev 404 error")
 
-	// Try to get rev 3 via REST API, and assert that _removed == true
+	// Try to get rev 3 via REST API, and assert that it's now missing
 	headers := map[string]string{}
 	headers["Authorization"] = GetBasicAuthHeader(t, btSpec.connectingUsername, RestTesterDefaultUserPassword)
 	response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/foo?rev=3-cde", "", headers)
-	restDocument := response.GetRestDocument()
-	assert.True(t, restDocument.IsRemoved())
-
+	RequireStatus(t, response, http.StatusNotFound)
 }
 
 // Reproduce issue SG #3738
@@ -2866,10 +2863,10 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				defer btc.Close()
 
 				// Change noRev handler so it's known when a noRev is received
-				recievedNoRevs := make(chan *blip.Message)
+				receivedNoRevs := make(chan *blip.Message)
 				btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
 					fmt.Println("Received noRev", msg.Properties)
-					recievedNoRevs <- msg
+					receivedNoRevs <- msg
 				}
 
 				version := rt.PutDoc(docName, `{"foo": "bar"}`)
@@ -2889,7 +2886,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 
 				// Wait 3 seconds for noRev to be received
 				select {
-				case msg := <-recievedNoRevs:
+				case msg := <-receivedNoRevs:
 					if test.expectNoRev {
 						assert.Equal(t, docName, msg.Properties["id"])
 					} else {

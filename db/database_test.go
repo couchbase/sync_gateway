@@ -836,16 +836,8 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
-	require.NoError(t, err, "Get1xRevBody")
-	expectedResult = Body{
-		BodyId:      "doc1",
-		BodyRev:     rev2id,
-		BodyRemoved: true,
-		BodyRevisions: Revisions{
-			RevisionsStart: 2,
-			RevisionsIds:   []string{rev2digest, rev1digest}},
-	}
-	assert.Equal(t, expectedResult, body)
+	assertHTTPError(t, err, 404)
+	assert.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
@@ -954,17 +946,8 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Get rev2 of the doc as a user who doesn't have access to this revision.
 	collection.user = userBob
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
-	require.NoError(t, err, "Error getting 1x rev body")
-	bodyExpected = Body{
-		BodyRemoved: true,
-		BodyRevisions: Revisions{
-			RevisionsStart: 2,
-			RevisionsIds:   []string{rev2Digest, rev1Digest},
-		},
-		BodyId:  "doc1",
-		BodyRev: rev2ID,
-	}
-	require.Equal(t, bodyExpected, body)
+	assertHTTPError(t, err, 404)
+	assert.Nil(t, body)
 }
 
 func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
@@ -2083,7 +2066,10 @@ func TestSyncFnOnPush(t *testing.T) {
 		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: base.CasToString(newDoc.HLV.Version)}},
 	}, doc.Channels)
 
-	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
+	// We no longer store channels for the winning revision in the RevTree,
+	// so don't expect it to be in doc.History like it used to be...
+	// The above assertion ensured the doc was *actually* in the correct channel.
+	assert.Nil(t, doc.History["4-four"].Channels)
 }
 
 func TestInvalidChannel(t *testing.T) {

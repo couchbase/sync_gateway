@@ -28,8 +28,8 @@ type RevInfo struct {
 	BodyKey        string // Used when revision body stored externally (doc key used for external storage)
 	Deleted        bool
 	depth          uint32
-	Body           []byte // Used when revision body stored inline (stores bodies)
-	Channels       base.Set
+	Body           []byte   // Used when revision body stored inline (stores bodies)
+	Channels       base.Set // Set only if the revision is a non-winning leaf revision (we don't store channel history per-revision)]
 	HasAttachments bool
 }
 
@@ -44,22 +44,22 @@ type RevTree map[string]*RevInfo
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
 type revTreeList struct {
-	Revs           []string          `json:"revs"`                 // The revision IDs
-	Parents        []int             `json:"parents"`              // Index of parent of each revision (-1 if root)
-	Deleted        []int             `json:"deleted,omitempty"`    // Indexes of revisions that are deletions
-	Bodies_Old     []string          `json:"bodies,omitempty"`     // JSON of each revision (legacy)
-	BodyMap        map[string]string `json:"bodymap,omitempty"`    // JSON of each revision
-	BodyKeyMap     map[string]string `json:"bodyKeyMap,omitempty"` // Keys of revision bodies stored in external documents
-	Channels       []base.Set        `json:"channels"`
-	HasAttachments []int             `json:"hasAttachments,omitempty"` // Indexes of revisions that has attachments
+	Revs           []string            `json:"revs"`                     // The revision IDs
+	Parents        []int               `json:"parents"`                  // Index of parent of each revision (-1 if root)
+	Deleted        []int               `json:"deleted,omitempty"`        // Indexes of revisions that are deletions
+	Bodies_Old     []string            `json:"bodies,omitempty"`         // JSON of each revision (legacy)
+	BodyMap        map[string]string   `json:"bodymap,omitempty"`        // JSON of each revision
+	BodyKeyMap     map[string]string   `json:"bodyKeyMap,omitempty"`     // Keys of revision bodies stored in external documents
+	Channels_Old   []base.Set          `json:"channels,omitempty"`       // Deprecated: Channels for revision history (see ChannelsMap for replacement)
+	ChannelsMap    map[string]base.Set `json:"channelsMap,omitempty"`    // ChannelsMap stores non-winning leaf channels (current channels stored outside history, and no use-case for storing non-leaf channels)
+	HasAttachments []int               `json:"hasAttachments,omitempty"` // Indexes of revisions that has attachments
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
 	n := len(tree)
 	rep := revTreeList{
-		Revs:     make([]string, n),
-		Parents:  make([]int, n),
-		Channels: make([]base.Set, n),
+		Revs:    make([]string, n),
+		Parents: make([]int, n),
 	}
 	revIndexes := map[string]int{"": -1}
 
@@ -81,7 +81,15 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 				rep.BodyKeyMap[strconv.FormatInt(int64(i), 10)] = info.BodyKey
 			}
 		}
-		rep.Channels[i] = info.Channels
+
+		// non-winning leaf revisions
+		if len(info.Channels) > 0 {
+			if rep.ChannelsMap == nil {
+				rep.ChannelsMap = make(map[string]base.Set, 1)
+			}
+			rep.ChannelsMap[strconv.FormatInt(int64(i), 10)] = info.Channels
+		}
+
 		if info.Deleted {
 			if rep.Deleted == nil {
 				rep.Deleted = make([]int, 0, 1)
@@ -126,9 +134,13 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		return
 	}
 
-	// validate revTreeList revs, parents and channels lists are of equal length
-	if !(len(rep.Revs) == len(rep.Parents) && len(rep.Revs) == len(rep.Channels)) {
-		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
+	// validate revTreeList revs and parents lists are of equal length
+	if !(len(rep.Revs) == len(rep.Parents)) {
+		return errors.New("revtreelist data is invalid, revs/parents counts are inconsistent")
+	}
+
+	if len(rep.ChannelsMap) > 0 && len(rep.Channels_Old) > 0 {
+		return errors.New("revtreelist data is invalid, both channelsMap and channels fields are populated - expected only one")
 	}
 
 	*tree = make(RevTree, len(rep.Revs))
@@ -149,9 +161,6 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 				info.BodyKey = bodyKey
 			}
 		}
-		if rep.Channels != nil {
-			info.Channels = rep.Channels[i]
-		}
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
 			info.Parent = rep.Revs[parentIndex]
@@ -170,6 +179,29 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 			info := (*tree)[rep.Revs[i]]
 			info.HasAttachments = true
 			(*tree)[rep.Revs[i]] = info
+		}
+	}
+
+	// populate channels from ChannelsMap (new 4.x format for non-winning leaf channels)
+	for iStr, channels := range rep.ChannelsMap {
+		i, err := strconv.ParseInt(iStr, 10, 64)
+		if err != nil {
+			return err
+		}
+		info := (*tree)[rep.Revs[i]]
+		info.Channels = channels
+	}
+
+	// we shouldn't be in a situation where we have both channels and channelsMap populated, but we still need to handle reading the old format
+	if len(rep.Channels_Old) > 0 {
+		winner, _, _ := tree.winningRevision(context.TODO())
+		leaves := tree.Leaves()
+		for i, channels := range rep.Channels_Old {
+			info := (*tree)[rep.Revs[i]]
+			// Ensure this leaf is not a winner (channels not stored in revtree for winning revision)
+			if _, isLeaf := leaves[info.ID]; isLeaf && info.ID != winner {
+				info.Channels = channels
+			}
 		}
 	}
 	return
@@ -286,6 +318,15 @@ func (tree RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
 
 }
 
+// Leaves returns a map of revisions that are leaves in the tree.
+func (tree RevTree) Leaves() map[string]*RevInfo {
+	m := make(map[string]*RevInfo)
+	tree.forEachLeaf(func(info *RevInfo) {
+		m[info.ID] = info
+	})
+	return m
+}
+
 func (tree RevTree) forEachLeaf(callback func(*RevInfo)) {
 	isParent := map[string]bool{}
 	for _, info := range tree {
@@ -354,20 +395,21 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 }
 
 // Records a revision in a RevTree.
-func (tree RevTree) addRevision(docid string, info RevInfo) (err error) {
+func (tree RevTree) addRevision(docid string, info RevInfo) error {
 	revid := info.ID
 	if revid == "" {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", docid))
-		return
+		return fmt.Errorf("doc: %v, RevTree addRevision, empty revid is illegal", docid)
 	}
 	if tree.contains(revid) {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", docid, revid))
-		return
+		return fmt.Errorf("doc: %v, RevTree addRevision, already contains rev %q", docid, revid)
 	}
-	parent := info.Parent
-	if parent != "" && !tree.contains(parent) {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", docid, parent))
-		return
+	if p := info.Parent; p != "" {
+		parent, ok := tree[p]
+		if !ok {
+			return fmt.Errorf("doc: %v, RevTree addRevision, parent id %q is missing", docid, p)
+		}
+		// we're adding a new child, so strip the channels from the parent - they're now superseded
+		parent.Channels = nil
 	}
 	tree[revid] = &info
 	return nil

@@ -1779,7 +1779,7 @@ func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(r
 // - If the rev handler is called back with the desired docid/revid pair, save that into a variable that will be returned
 // - Block until all pending operations are complete
 // - Return the resultDoc or an empty resultDoc
-func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, err error) {
+func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, resultErr error) {
 
 	docs := map[string]RestDocument{}
 	changesFinishedWg := sync.WaitGroup{}
@@ -1789,10 +1789,19 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 		// Clean up all profile handlers that are registered as part of this test
 		delete(bt.blipContext.HandlerForProfile, "changes")
 		delete(bt.blipContext.HandlerForProfile, "rev")
+		delete(bt.blipContext.HandlerForProfile, "norev")
 	}()
 
 	// -------- Changes handler callback --------
 	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(&changesFinishedWg, &revsFinishedWg)
+
+	// -------- Norev handler callback --------
+	bt.blipContext.HandlerForProfile["norev"] = func(request *blip.Message) {
+		defer revsFinishedWg.Done()
+		if request.Properties["id"] == requestedDocID && request.Properties["rev"] == requestedDocRev {
+			resultErr = fmt.Errorf("got error from norev: %v %v", request.Properties["error"], request.Properties["reason"])
+		}
+	}
 
 	// -------- Rev handler callback --------
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
@@ -1816,7 +1825,6 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 		if docId == requestedDocID && docRev == requestedDocRev {
 			resultDoc = doc
 		}
-
 	}
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
@@ -1831,10 +1839,10 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 		panic("Unable to subscribe to changes.")
 	}
 
-	changesFinishedWg.Wait()
-	revsFinishedWg.Wait()
+	require.NoError(bt.TB(), WaitWithTimeout(&changesFinishedWg, time.Second*30))
+	require.NoError(bt.TB(), WaitWithTimeout(&revsFinishedWg, time.Second*30))
 
-	return resultDoc, nil
+	return resultDoc, resultErr
 
 }
 
