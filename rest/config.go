@@ -1610,11 +1610,13 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 		if err != nil {
 			return nil, err
 		}
+		
+		err = sc.CheckSupportedCouchbaseVersion(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := sc.initializeBootstrapConnection(ctx); err != nil {
-		return nil, err
-	}
-	if err := sc.CheckSupportedCouchbaseVersion(ctx); err != nil {
 		return nil, err
 	}
 

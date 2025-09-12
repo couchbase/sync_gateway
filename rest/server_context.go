@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/shirou/gopsutil/mem"
@@ -2189,11 +2190,6 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 }
 
 func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) error {
-	agent, err := sc.initializeGoCBAgent(ctx)
-	if err != nil {
-		base.WarnfCtx(ctx, fmt.Sprintf("Couldn't initialize gocb agent: %v", err))
-		return err
-	}
 	clusterSpec := base.CouchbaseClusterSpec{
 		Server:        sc.Config.Bootstrap.Server,
 		Username:      sc.Config.Bootstrap.Username,
@@ -2203,26 +2199,50 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 		CACertpath:    sc.Config.Bootstrap.CACertPath,
 		TLSSkipVerify: base.ValDefault(sc.Config.Bootstrap.ServerTLSSkipVerify, false),
 	}
-	version, _, err := base.GetCouchbaseServerVersion(agent, clusterSpec)
+
+	securityConfig, err := base.GoCBv2SecurityConfig(ctx, base.Ptr(clusterSpec.TLSSkipVerify), clusterSpec.CACertpath)
 	if err != nil {
-		err := fmt.Errorf("couldn't get cluster version: %w", err)
-		closeErr := agent.Close()
-		if closeErr != nil {
-			err = fmt.Errorf("%w; couldn't close agent: %v", err, closeErr)
-		}
-		return err
+		return fmt.Errorf("failed to create security config: %v", err)
 	}
-	err = agent.Close()
+
+	authenticator, err := base.GoCBv2Authenticator(clusterSpec.Username, clusterSpec.Password, clusterSpec.X509Certpath, clusterSpec.X509Keypath)
 	if err != nil {
-		base.WarnfCtx(ctx, fmt.Sprintf("Couldn't close gocb agent: %v", err))
+		return fmt.Errorf("failed to create authenticator: %v", err)
+	}
+
+	cluster, err := gocb.Connect(clusterSpec.Server,
+		gocb.ClusterOptions{
+			Authenticator:  authenticator,
+			SecurityConfig: securityConfig,
+		})
+	if err != nil {
+		return fmt.Errorf("failed to create cluster: %v", err)
+	}
+
+	err = cluster.WaitUntilReady(5*time.Second, &gocb.WaitUntilReadyOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to wait for cluster to become ready: %v", err)
+	}
+
+	nodesMetadata, err := cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
+	if err != nil || len(nodesMetadata) == 0 {
+		return fmt.Errorf("failed to get nodes metadata: %v", err)
+	}
+
+	verString := base.ExtractVersion(nodesMetadata[0].Version)
+
+	version, err := base.NewComparableBuildVersionFromString(verString)
+	if err != nil {
+		return fmt.Errorf("failed to parse version: %v", err)
 	}
 	expectedCouchbaseServerVersion, err := base.NewComparableBuildVersionFromString(CBXDCRCompatibleVersion)
 	if err != nil {
 		return fmt.Errorf("couldn't create expected cluster version: %w", err)
 	}
 	if version.Less(expectedCouchbaseServerVersion) {
-		base.ErrorfCtx(ctx, fmt.Sprintf("Sync Gateway requires mobile XDCR support, but Couchbase Server %v does not support it. Couchbase Server %s is required.", version, expectedCouchbaseServerVersion))
-		return fmt.Errorf("sync gateway requires mobile xdcr support, but couchbase server %v does not support it. couchbase server %s is required.", version, expectedCouchbaseServerVersion)
+		msg := fmt.Sprintf("Sync Gateway requires mobile XDCR support, but Couchbase Server %v does not support it. Couchbase Server %s is required.", version, expectedCouchbaseServerVersion)
+		base.ErrorfCtx(ctx, msg)
+		return errors.New(msg)
 	}
 	return nil
 }
