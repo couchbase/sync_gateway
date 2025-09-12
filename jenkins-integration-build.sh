@@ -57,7 +57,7 @@ echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 echo "Downloading tool dependencies..."
 go install -v github.com/axw/gocov/gocov@latest
 go install -v github.com/AlekSi/gocov-xml@latest
-go install -v github.com/gotestyourself/gotestsum@latest
+go install -v gotest.tools/gotestsum@latest
 set +x # Stop outputting all executed shell commands
 
 if [ "${SG_TEST_X509:-}" == "true" ] && [ "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
