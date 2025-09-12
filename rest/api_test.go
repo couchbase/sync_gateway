@@ -3492,11 +3492,11 @@ func TestAllowConflictsConfig(t *testing.T) {
 }
 
 // TestDisableAllowStarChannel verifies that the database configuration does not allow
-// the `enable_star_channel` property to be set to false. The star channel is a special
-// channel in Sync Gateway that provides access to all documents, and disabling it is
-// not supported. This test ensures that an attempt to disable the star channel results
-// in a bad request error.
+// a database to be loaded with the `enable_star_channel` property to be set to false.
+// The star channel is a special channel in Sync Gateway that provides access to all
+// documents, and disabling it is not supported.
 func TestDisableAllowStarChannel(t *testing.T) {
+	ctx := t.Context()
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 		SyncFn:           channels.DocChannelsSyncFunction,
@@ -3506,19 +3506,19 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	const (
 		dbName  = "db"
 		errResp = "enable_star_channel cannot be set to false"
-		docID   = "doc1"
-		docBody = `{"channels":["testChannel"]}`
 	)
 
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Name = dbName
-	dbConfig.CacheConfig = &CacheConfig{
-		ChannelCacheConfig: &ChannelCacheConfig{
-			EnableStarChannel: base.Ptr(false),
-		},
-	}
 
 	resp := rt.CreateDatabase(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusBadRequest)
-	assert.Contains(t, resp.Body.String(), errResp)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Attempting to disable `enable_star_channel`
+	rt.ServerContext().dbConfigs[dbName].DatabaseConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(false)
+
+	// Reloading the database after updating the config
+	_, err := rt.ServerContext().ReloadDatabase(ctx, dbName, false)
+	assert.Error(t, err, errResp)
+	base.DebugfCtx(t.Context(), base.KeySGTest, "additional logs")
 }
