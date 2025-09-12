@@ -1031,8 +1031,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	default:
 		return nil, base.RedactErrorf("Unexpected docUpdateEvent %v in updateHLV for doc %s", docUpdateEvent, base.UD(d.ID))
 	}
-	// TODO: Move GetMetadataPurgeInterval to db ticker to avoid metadata purge interval call to CB Server on writes
-	mpi := db.dbCtx.GetMetadataPurgeInterval(ctx)
+	mpi := db.dbCtx.GetMetadataPurgeInterval(ctx, true)
 	if err := d.HLV.Compact(ctx, d.ID, mpi); err != nil {
 		base.AssertfCtx(ctx, "Unable to compact HLV for doc %s, HLV: %#v: %v", base.UD(d.ID), d.HLV, err)
 	}
