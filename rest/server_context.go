@@ -46,6 +46,8 @@ const defaultBytesStatsReportingInterval = 30 * time.Second
 
 const dbLoadedStateChangeMsg = "DB loaded from config"
 
+const CBXDCRCompatibleVersion = "7.6.4"
+
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
@@ -2214,7 +2216,7 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 	if err != nil {
 		base.WarnfCtx(ctx, fmt.Sprintf("Couldn't close gocb agent: %v", err))
 	}
-	expectedCouchbaseServerVersion, err := base.NewComparableBuildVersionFromString("7.6.5")
+	expectedCouchbaseServerVersion, err := base.NewComparableBuildVersionFromString(CBXDCRCompatibleVersion)
 	if err != nil {
 		return fmt.Errorf("couldn't create expected cluster version: %w", err)
 	}
