@@ -590,10 +590,13 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, allDocsResult.Rows, 3)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	require.NotNil(t, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, "doc4", allDocsResult.Rows[1].ID)
+	require.NotNil(t, allDocsResult.Rows[1].Value.Channels)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[1].Value.Channels)
 	assert.Equal(t, "doc5", allDocsResult.Rows[2].ID)
+	require.NotNil(t, allDocsResult.Rows[2].Value.Channels)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
 
 	// Check all docs limit option
@@ -606,6 +609,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	require.NotNil(t, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs startkey option
@@ -618,6 +622,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc5", allDocsResult.Rows[0].ID)
+	require.NotNil(t, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs startkey option with double quote
@@ -630,6 +635,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc5", allDocsResult.Rows[0].ID)
+	require.NotNil(t, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs endkey option
@@ -642,6 +648,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	require.NotNil(t, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs endkey option
@@ -654,6 +661,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	require.NotNil(t, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check _all_docs with include_docs option:
@@ -681,6 +689,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.Len(t, allDocsResult.Rows, 4)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
+	require.NotNil(t, allDocsResult.Rows[0].Value)
 	assert.Equal(t, "1-e0351a57554e023a77544d33dd21e56c", allDocsResult.Rows[0].Value.Rev)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, "doc1", allDocsResult.Rows[1].Key)
@@ -688,6 +697,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Nil(t, allDocsResult.Rows[1].Value)
 	assert.Equal(t, "doc3", allDocsResult.Rows[2].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
+	require.NotNil(t, allDocsResult.Rows[2].Value)
 	assert.Equal(t, "1-20912648f85f2bbabefb0993ddd37b41", allDocsResult.Rows[2].Value.Rev)
 	assert.Equal(t, "b0gus", allDocsResult.Rows[3].Key)
 	assert.Equal(t, "not_found", allDocsResult.Rows[3].Error)
@@ -704,13 +714,17 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.Len(t, allDocsResult.Rows, 4)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
+	require.NotNil(t, allDocsResult.Rows[0].Value)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, "doc1", allDocsResult.Rows[1].Key)
 	assert.Equal(t, "forbidden", allDocsResult.Rows[1].Error)
+	assert.Nil(t, allDocsResult.Rows[1].Value)
 	assert.Equal(t, "doc3", allDocsResult.Rows[2].ID)
+	require.NotNil(t, allDocsResult.Rows[2].Value)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
 	assert.Equal(t, "b0gus", allDocsResult.Rows[3].Key)
 	assert.Equal(t, "not_found", allDocsResult.Rows[3].Error)
+	assert.Nil(t, allDocsResult.Rows[3].Value)
 
 	// Check POST to _all_docs with limit option:
 	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
@@ -724,6 +738,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
+	assert.NotNil(t, allDocsResult.Rows[0].Value)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check _all_docs as admin:
@@ -738,6 +753,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
 	assert.Equal(t, "doc2", allDocsResult.Rows[1].ID)
 }
+
 func TestChannelAccessChanges(t *testing.T) {
 	base.TestRequiresDCPResync(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)

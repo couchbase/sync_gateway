@@ -1077,16 +1077,10 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 		return nil, nil, nil, false, false, nil
 	}
 
-	// Construct removal body
-	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
-	bodyBytes = []byte(RemovedRedactedDocument)
-
-	activeChannels := make(base.Set)
-	// Add active channels to the channel set if the the revision is available in the revision tree.
-	if revInfo, ok := doc.History[revID]; ok {
-		for channel, _ := range revInfo.Channels {
-			activeChannels[channel] = struct{}{}
-		}
+	activeChannels, ok := doc.channelsForRevTreeID(revID)
+	if !ok {
+		// can't find rev (it was either an unknown rev, or an old non-leaf revision that we can't determine channels for)
+		return nil, nil, nil, false, false, nil
 	}
 
 	// Build revision history for revID
@@ -1100,6 +1094,10 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 		revHistory = []string{revID}
 	}
 	history = encodeRevisions(ctx, doc.ID, revHistory)
+
+	// Construct removal body
+	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
+	bodyBytes = []byte(RemovedRedactedDocument)
 
 	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
@@ -1373,6 +1371,24 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 	}
 
 	return data, syncXattr, vvXattr, mouXattr, globalXattr, nil
+}
+
+// channelsForRevTreeID returns the set of channels the given revision is in for the document
+// Channel information is only stored for leaf nodes in the revision tree, as we don't keep full history of channel information
+func (doc *Document) channelsForRevTreeID(revTreeID string) (base.Set, bool) {
+	if revTreeID == "" || doc.GetRevTreeID() == revTreeID {
+		return doc.getCurrentChannels(), true
+	}
+
+	// lookup in history for other revisions
+	if rev, ok := doc.History[revTreeID]; ok {
+		// return ok only if we found a leaf
+		// since 4.0 we don't store non-leaf channel info and lookups for non-leaf revisions shouldn't succeed
+		return rev.Channels, doc.History.isLeaf(revTreeID)
+	}
+
+	// no rev
+	return nil, false
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate

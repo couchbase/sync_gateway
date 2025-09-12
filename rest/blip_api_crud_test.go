@@ -1898,18 +1898,15 @@ func TestGetRemovedDoc(t *testing.T) {
 	// TODO: CBG-4840 - Requires restoration of non-delta sync RevTree revision backups
 	// assert.NoError(t, err, "Unexpected Error")
 
-	// Try to get rev 3 via BLIP API and assert that _removed == true
+	// Try to get rev 3 via BLIP API and assert that there's a norev - modern clients will recieve a replacement rev instead
 	resultDoc, err = bt2.GetDocAtRev("foo", "3-cde")
-	assert.NoError(t, err, "Unexpected Error")
-	assert.True(t, resultDoc.IsRemoved())
+	require.ErrorContains(t, err, "404 missing", "Expected norev 404 error")
 
-	// Try to get rev 3 via REST API, and assert that _removed == true
+	// Try to get rev 3 via REST API, and assert that it's now missing
 	headers := map[string]string{}
 	headers["Authorization"] = GetBasicAuthHeader(t, btSpec.connectingUsername, RestTesterDefaultUserPassword)
 	response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/foo?rev=3-cde", "", headers)
-	restDocument := response.GetRestDocument()
-	assert.True(t, restDocument.IsRemoved())
-
+	RequireStatus(t, response, http.StatusNotFound)
 }
 
 // Reproduce issue SG #3738

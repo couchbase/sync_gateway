@@ -653,12 +653,10 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 	if doc == nil || user == nil {
 		return nil // A nil User means access control is disabled
 	}
-	if revid == "" {
-		revid = doc.GetRevTreeID()
-	}
-	if rev := doc.History[revid]; rev != nil {
+
+	if revChannels, ok := doc.channelsForRevTreeID(revid); ok {
 		// Authenticate against specific revision:
-		return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, rev.Channels)
+		return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, revChannels)
 	} else {
 		// No such revision; let the caller proceed and return a 404
 		return nil
@@ -2536,7 +2534,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	if len(channelSet) > 0 {
+	isWinningRev := doc.GetRevTreeID() == newRevID
+	if len(channelSet) > 0 && !isWinningRev {
 		doc.History[newRevID].Channels = channelSet
 	}
 
@@ -2848,7 +2847,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			return nil, "", err
 		}
 
-		revChannels := doc.History[newRevID].Channels
+		revChannels, ok := doc.channelsForRevTreeID(newRevID)
+		if !ok {
+			// being inside doc.History[newRevID] != nil should prevent this case, so just assert and continue
+			base.AssertfCtx(ctx, "couldn't find channels for newRevID %q in doc %q RevTree: %v", newRevID, base.UD(doc.ID), base.UD(doc.History))
+		}
 		documentRevision := DocumentRevision{
 			DocID:       docid,
 			RevID:       newRevID,
