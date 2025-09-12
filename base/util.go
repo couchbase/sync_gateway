@@ -1840,8 +1840,3 @@ func IsRevTreeID(s string) bool {
 	}
 	return false
 }
-
-func ExtractVersion(s string) string {
-	parts := strings.Split(s, "-")
-	return parts[0]
-}

@@ -91,8 +91,8 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 
 }
 
-// getClusterVersion returns major and minor versions of connected cluster
-func getClusterVersion(cluster *gocb.Cluster) (int, int, error) {
+// GetClusterVersion returns major and minor versions of connected cluster
+func GetClusterVersion(cluster *gocb.Cluster) (int, int, error) {
 	// Query node meta to find cluster compat version
 	nodesMetadata, err := cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
 	if err != nil || len(nodesMetadata) == 0 {
@@ -126,7 +126,7 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 		WarnfCtx(ctx, "Error waiting for bucket to be ready: %v", err)
 		return nil, err
 	}
-	clusterCompatMajor, clusterCompatMinor, err := getClusterVersion(cluster)
+	clusterCompatMajor, clusterCompatMinor, err := GetClusterVersion(cluster)
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
 		return nil, err

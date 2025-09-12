@@ -47,7 +47,10 @@ const defaultBytesStatsReportingInterval = 30 * time.Second
 
 const dbLoadedStateChangeMsg = "DB loaded from config"
 
-const CBXDCRCompatibleVersion = "7.6.4"
+const (
+	CBXDCRCompatibleMajorVersion = 7
+	CBXDCRCompatibleMinorVersion = 6
+)
 
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
 
@@ -2224,25 +2227,30 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 		return fmt.Errorf("failed to wait for cluster to become ready: %v", err)
 	}
 
-	nodesMetadata, err := cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
-	if err != nil || len(nodesMetadata) == 0 {
-		return fmt.Errorf("failed to get nodes metadata: %v", err)
+	major, minor, err := base.GetClusterVersion(cluster)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster version: %v", err)
 	}
 
-	verString := base.ExtractVersion(nodesMetadata[0].Version)
+	errMsg := fmt.Sprintf(
+		"Sync Gateway requires mobile XDCR support, but Couchbase Server %d.%d does not support it. Couchbase Server %d.%d is required.",
+		major,
+		minor,
+		CBXDCRCompatibleMajorVersion,
+		CBXDCRCompatibleMinorVersion)
 
-	version, err := base.NewComparableBuildVersionFromString(verString)
-	if err != nil {
-		return fmt.Errorf("failed to parse version: %v", err)
+	if major < CBXDCRCompatibleMajorVersion {
+		base.ErrorfCtx(ctx, errMsg)
+		return errors.New(errMsg)
 	}
-	expectedCouchbaseServerVersion, err := base.NewComparableBuildVersionFromString(CBXDCRCompatibleVersion)
-	if err != nil {
-		return fmt.Errorf("couldn't create expected cluster version: %w", err)
+	if minor < CBXDCRCompatibleMinorVersion {
+		base.ErrorfCtx(ctx, errMsg)
+		return errors.New(errMsg)
 	}
-	if version.Less(expectedCouchbaseServerVersion) {
-		msg := fmt.Sprintf("Sync Gateway requires mobile XDCR support, but Couchbase Server %v does not support it. Couchbase Server %s is required.", version, expectedCouchbaseServerVersion)
-		base.ErrorfCtx(ctx, msg)
-		return errors.New(msg)
+
+	err = cluster.Close(&gocb.ClusterCloseOptions{})
+	if err != nil {
+		base.WarnfCtx(ctx, "Couldn't close cluster: %v", err)
 	}
 	return nil
 }

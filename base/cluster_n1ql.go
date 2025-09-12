@@ -47,7 +47,7 @@ func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, colle
 		collectionName: collectionName,
 	}
 
-	major, minor, err := getClusterVersion(cluster)
+	major, minor, err := GetClusterVersion(cluster)
 	if err != nil {
 		return nil, err
 	}
