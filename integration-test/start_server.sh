@@ -45,7 +45,7 @@ WORKSPACE_ROOT="$(pwd)"
 set +e
 AMAZON_LINUX_2=$(grep 'Amazon Linux 2"' /etc/os-release)
 set -e
-if [[ -n "${AMAZON_LINUX_2}" ]]; then
+if [[ -n ${AMAZON_LINUX_2}   ]]; then
     DOCKER_COMPOSE="docker-compose" # use docker-compose v1 for Jenkins AWS Linux 2
 else
     DOCKER_COMPOSE="docker compose"
@@ -62,7 +62,7 @@ set +x # Stop outputting all executed shell commands
 set -e # Abort on errors
 
 # use dockerhub if no registry is specified, allows for pre-release images from alternative registries
-if [[ ! "${COUCHBASE_DOCKER_IMAGE_NAME}" =~ ghcr.io/* && "${DOCKERHUB:-}" != "false" ]]; then
+if [[ ! ${COUCHBASE_DOCKER_IMAGE_NAME} =~ ghcr.io/* && ${DOCKERHUB:-} != "false"     ]]; then
     COUCHBASE_DOCKER_IMAGE_NAME="couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME}"
 fi
 
