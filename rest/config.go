@@ -1614,6 +1614,9 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	if err := sc.initializeBootstrapConnection(ctx); err != nil {
 		return nil, err
 	}
+	if err := sc.CheckSupportedCouchbaseVersion(ctx); err != nil {
+		return nil, err
+	}
 
 	// On successful server context creation, generate startup audit event
 	base.Audit(ctx, base.AuditIDSyncGatewayStartup, sc.StartupAuditFields())

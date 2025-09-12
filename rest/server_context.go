@@ -2186,6 +2186,45 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	return nil
 }
 
+func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) error {
+	agent, err := sc.initializeGoCBAgent(ctx)
+	if err != nil {
+		base.WarnfCtx(ctx, fmt.Sprintf("Couldn't initialize gocb agent: %v", err))
+		return err
+	}
+	clusterSpec := base.CouchbaseClusterSpec{
+		Server:        sc.Config.Bootstrap.Server,
+		Username:      sc.Config.Bootstrap.Username,
+		Password:      sc.Config.Bootstrap.Password,
+		X509Certpath:  sc.Config.Bootstrap.X509CertPath,
+		X509Keypath:   sc.Config.Bootstrap.X509KeyPath,
+		CACertpath:    sc.Config.Bootstrap.CACertPath,
+		TLSSkipVerify: base.ValDefault(sc.Config.Bootstrap.ServerTLSSkipVerify, false),
+	}
+	version, _, err := base.GetCouchbaseServerVersion(agent, clusterSpec)
+	if err != nil {
+		err := fmt.Errorf("couldn't get cluster version: %w", err)
+		closeErr := agent.Close()
+		if closeErr != nil {
+			err = fmt.Errorf("%w; couldn't close agent: %v", err, closeErr)
+		}
+		return err
+	}
+	err = agent.Close()
+	if err != nil {
+		base.WarnfCtx(ctx, fmt.Sprintf("Couldn't close gocb agent: %v", err))
+	}
+	expectedCouchbaseServerVersion, err := base.NewComparableBuildVersionFromString("7.6.5")
+	if err != nil {
+		return fmt.Errorf("couldn't create expected cluster version: %w", err)
+	}
+	if version.Less(expectedCouchbaseServerVersion) {
+		base.ErrorfCtx(ctx, fmt.Sprintf("Sync Gateway requires mobile XDCR support, but Couchbase Server %v does not support it. Couchbase Server %s is required.", version, expectedCouchbaseServerVersion))
+		return fmt.Errorf("sync gateway requires mobile xdcr support, but couchbase server %v does not support it. couchbase server %s is required.", version, expectedCouchbaseServerVersion)
+	}
+	return nil
+}
+
 func (sc *ServerContext) AddServerLogContext(parent context.Context) context.Context {
 	// ServerLogContext is separate from standard LogContext, so this does not reset the log context
 	if sc != nil && sc.LogContextID != "" {
