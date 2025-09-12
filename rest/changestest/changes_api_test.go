@@ -3480,7 +3480,7 @@ func TestTombstoneCompaction(t *testing.T) {
 		rt = rest.NewRestTester(t, nil)
 	}
 	defer rt.Close()
-	rt.GetDatabase().Options.PurgeInterval = base.Ptr(time.Duration(0))
+	rt.GetDatabase().Options.PurgeInterval.Store(base.Ptr(time.Duration(0)))
 
 	for _, test := range tests {
 		for _, runAsScheduledBackgroundTask := range []bool{false, true} {

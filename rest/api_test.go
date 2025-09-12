@@ -3133,8 +3133,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	zero := time.Duration(0)
-	rt.GetDatabase().Options.PurgeInterval = &zero
+	rt.GetDatabase().Options.PurgeInterval.Store(base.Ptr(time.Duration(0)))
 
 	for i := 0; i < 100; i++ {
 		docID := fmt.Sprintf("doc%d", i)
