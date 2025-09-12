@@ -47,7 +47,7 @@ func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbp
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create cluster agent: %w", err)
 	}
-	version, ee, err := getCouchbaseServerVersion(agent, clusterSpec)
+	version, ee, err := GetCouchbaseServerVersion(agent, clusterSpec)
 	if err != nil {
 		err := fmt.Errorf("couldn't get cluster version: %w", err)
 		closeErr := agent.Close()
@@ -157,8 +157,8 @@ func (c *tbpCluster) MgmtRequest(method, path string, contentType string, body i
 	)
 }
 
-// getCouchbaseServerVersion retrieves the Couchbase Server version via a gocbcore.Agent
-func getCouchbaseServerVersion(agent *gocbcore.Agent, clusterSpec CouchbaseClusterSpec) (version *ComparableBuildVersion, ee bool, err error) {
+// GetCouchbaseServerVersion retrieves the Couchbase Server version via a gocbcore.Agent
+func GetCouchbaseServerVersion(agent *gocbcore.Agent, clusterSpec CouchbaseClusterSpec) (version *ComparableBuildVersion, ee bool, err error) {
 	mgmtEps := agent.MgmtEps()
 	if len(mgmtEps) == 0 {
 		return nil, false, fmt.Errorf("no management endpoints available")

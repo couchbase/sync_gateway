@@ -1608,7 +1608,11 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	sc := NewServerContext(ctx, config, persistentConfig)
 
 	if !base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
-		err := sc.initializeGocbAdminConnection(ctx)
+		err := sc.CheckSupportedCouchbaseVersion(ctx)
+		if err != nil {
+			return nil, err
+		}
+		err = sc.initializeGocbAdminConnection(ctx)
 		if err != nil {
 			return nil, err
 		}
