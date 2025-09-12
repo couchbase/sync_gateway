@@ -1899,7 +1899,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	// assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that there's a norev - modern clients will receive a replacement rev instead
-	resultDoc, err = bt2.GetDocAtRev("foo", "3-cde")
+	_, err = bt2.GetDocAtRev("foo", "3-cde")
 	require.ErrorContains(t, err, "404 missing", "Expected norev 404 error")
 
 	// Try to get rev 3 via REST API, and assert that it's now missing
