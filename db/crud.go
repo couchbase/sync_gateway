@@ -1315,14 +1315,34 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				newGeneration = prevGeneration
 			}
 		}
-		revTreeConflictChecked := false
-		var parent string
-		var currentRevIndex int
 
 		// We want skip conflict check for the following scenarios:
 		// 1. incoming doc is a tombstone and local doc is also a tombstone (for ISGR pull replications)
 		// 2. local doc has no hlv
 		allowConflictingTombstone := opts.ForceAllowConflictingTombstone && doc.IsDeleted()
+
+		// if local doc is a pre-upgraded mutation and the rev tree is conflicting with incoming, assign this local
+		// version an implicit hlv based on its rev tree ID + this nodes sourceID to allow HLV conflict resolution to occur
+		// between the two versions.
+		if doc.HLV == nil && doc.Cas != 0 && !allowConflictingTombstone {
+			_, _, conflictErr := db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
+			if conflictErr != nil {
+				// conflict detected between incoming rev and local rev revtrees, allow hlv conflict resolvers
+				// below to fix (for ISGR pull)
+				doc.HLV = NewHybridLogicalVector()
+				cvValue, err := LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
+				cvValue.SourceID = db.dbCtx.EncodedSourceID // give it this nodes sourceID
+				if err != nil {
+					return nil, nil, false, nil, err
+				}
+				err = doc.HLV.AddVersion(cvValue)
+				if err != nil {
+					return nil, nil, false, nil, err
+				}
+				base.DebugfCtx(ctx, base.KeyVV, "No existing HLV for existing doc %s, generated implicit CV from rev tree id, updated CV %#v", base.UD(doc.ID), doc.HLV.ExtractCurrentVersionFromHLV())
+			}
+		}
+		revTreeAlignedForCBL := false
 		if doc.HLV == nil || allowConflictingTombstone {
 			// only add new HLV if no hlv exists on local doc
 			if doc.HLV == nil {
@@ -1336,7 +1356,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 			}
 		} else {
-			conflictStatus := doc.IsInConflict(ctx, opts.NewDocHLV)
+			conflictStatus := doc.IsInConflict(ctx, db, opts.NewDocHLV, opts)
 			switch conflictStatus {
 			case HLVNoConflictRevAlreadyPresent:
 				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(opts.NewDoc.ID), doc.HLV, opts.NewDocHLV)
@@ -1349,7 +1369,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				// update hlv for all newer incoming source version pairs
 				doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
 				// the new document has a dominating hlv, so we can just update local revtree with incoming revtree
-				revTreeConflictChecked = true
 				if !opts.AlignRevTrees {
 					previousRevTreeID = doc.GetRevTreeID()
 				} else {
@@ -1360,11 +1379,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					}
 				}
 			case HLVConflict:
-				// if the legacy rev list is from ISGR property, we should not do a conflict check
+				// if we have been supplied a rev tree from cbl, perform conflict check on rev tree history
 				if len(opts.RevTreeHistory) > 0 && !opts.AlignRevTrees {
-					// TODO: CBG-4828 - conflict resolution for legacy rev documents
-					// conflict check on rev tree history, if there is a rev in rev tree history we have the parent of locally we are not in conflict
-					parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
+					parent, currentRevIndex, err := db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
 					if err != nil {
 						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s, and conflict found in rev tree history", base.UD(doc.ID), opts.NewDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
 						return nil, nil, false, nil, err
@@ -1373,10 +1390,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
-					revTreeConflictChecked = true
+					revTreeAlignedForCBL = true // we have aligned the rev tree for CBL push here so skip later in function
 					doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
 				} else {
-					revTreeConflictChecked = true
 					base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), opts.NewDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
 					if opts.ConflictResolver == nil {
 						// cancel rest of update, HLV is in conflict and no resolver is present
@@ -1405,19 +1421,13 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 			}
 		}
-		// rev tree conflict check if we have rev tree history to check against + finds current rev index to allow us
-		// to add any new revision to rev tree below.
-		// Only check for rev tree conflicts if we haven't already checked above AND if AlignRevTrees is false given
-		// AlignRevTrees can only be true for non legacy rev writes meaning when this is true we should be doing our
-		// conflict checking with incoming HLV
-		if !revTreeConflictChecked && len(opts.RevTreeHistory) > 0 && !opts.AlignRevTrees {
-			parent, currentRevIndex, err = db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
-			if err != nil {
-				return nil, nil, false, nil, err
-			}
-			_, err = doc.addNewerRevisionsToRevTreeHistory(opts.NewDoc, currentRevIndex, parent, opts.RevTreeHistory)
-			if err != nil {
-				return nil, nil, false, nil, err
+		// if we have revtree history available and we are communicating with CBL, we must update the rev tree
+		// to include the new to us revisions from the incoming rev tree history skipping history check given conflict
+		// check is done at this point.
+		if len(opts.RevTreeHistory) > 0 && !opts.AlignRevTrees && !revTreeAlignedForCBL {
+			addNewRevErr := doc.alignRevTreeHistoryForHLVWrite(ctx, db, opts.NewDoc, opts.RevTreeHistory, true)
+			if addNewRevErr != nil {
+				return nil, nil, false, nil, addNewRevErr
 			}
 		}
 
@@ -3452,6 +3462,12 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	if hlv == nil {
 		// no hlv on local doc, convert revID into CV and use that as the local doc hlv
 		hlv, err = legacyRevToHybridLogicalVector(docid, syncData.GetRevTreeID())
+		// give local version a sourceID of this node. Needed given if we have a pull replication running and
+		// locally we have 3-def and remote has 3-abc, if we give the legacy rev sourceID to both nodes locally
+		// we will say we don't need 3-abc given 3-def resolves to higher version value (local dominates) but in
+		// reality we need to pull this conflict rev to solve it and push it back up. If we give local hlv our sourceID
+		// then we will say we need 3-abc as it is from a different sourceID and local hlv no longer dominates
+		hlv.SourceID = db.dbCtx.EncodedSourceID
 		if err != nil {
 			base.WarnfCtx(ctx, "%s", err)
 			missing = append(missing, rev)
@@ -3468,7 +3484,12 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 		return
 	}
 	// CBG-4792: enhance here for conflict check - return conflict rev similar to propose changes here link ticket
-	if hlv.DominatesSource(cvValue) {
+	localCV := hlv.ExtractCurrentVersionFromHLV()
+	// check if local hlv dominates incoming hlv. In the eventuality that an implicit HLV has been given to a legacy rev
+	// in the form of encodedRev@Revision+Tree+Encoding for incoming rev or encoded@localNodeSourceID for local rev we need to check
+	// also if each version value is equal. If they are equal they were generated from the same revID thus we
+	// do not need this change.
+	if hlv.DominatesSource(cvValue) || db.implicitCVEqual(*localCV, cvValue) {
 		// incoming version is dominated by local doc hlv, so it is not missing
 		return
 	}
@@ -3481,6 +3502,17 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 
 	missing = append(missing, rev)
 	return
+}
+
+// implicitCVEqual will check if two implicit CVs are equal.
+func (db *DatabaseCollectionWithUser) implicitCVEqual(localCV, incomingCV Version) bool {
+	if localCV.SourceID != db.dbCtx.EncodedSourceID || incomingCV.SourceID != encodedRevTreeSourceID {
+		return false
+	}
+	if localCV.Value == incomingCV.Value {
+		return true
+	}
+	return false
 }
 
 // ////// REVS_DIFF:

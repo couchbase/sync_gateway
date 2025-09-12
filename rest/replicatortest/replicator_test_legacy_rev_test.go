@@ -503,6 +503,116 @@ func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 	}
 }
 
+// Test Case:
+// Doc1 :-
+//
+//	Push new doc not present on passive with rev 1-abc
+//	This gets written as encoded@Revision+Tree+Encoding on passive for CV and revID 1-abc
+//	Update this doc on active to create 100@activeSource
+//	Push this rev and assert that the rev is not conflicting
+//
+// Doc2 :-
+//
+//	Create doc on passive with rev 1-abc
+//	Pull this doc to active as encoded@Revision+Tree+Encoding for CV and revID 1-abc
+//	Update this doc on passive to create 100@passiveSource
+//	Pull this rev and assert that the rev is not conflicting
+func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	const username = "alice"
+
+	// Passive (SGW2 in diagram above)
+	rt2 := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: channels.DocChannelsSyncFunction,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Name: "passivedb",
+			}},
+		})
+	defer rt2.Close()
+
+	rt2.CreateUser(username, []string{username})
+
+	// Active (SGW1 in diagram above)
+	rt1 := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: channels.DocChannelsSyncFunction,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Name: "activedb",
+			}},
+		})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
+	docIDToPull := rest.SafeDocumentName(t, t.Name()+"_pull")
+
+	// create doc on rt1 with one revision
+	bodyRT1 := db.Body{"channels": []string{username}, "source": "rt1"}
+	rt1InitDoc := rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
+	legacyRevRt1 := rt1InitDoc.GetRevTreeID()
+
+	// create doc on rt2 to pull with one revision
+	bodyRT2 := db.Body{"channels": []string{username}, "source": "rt2"}
+	rt2InitDoc := rt2.CreateDocNoHLV(docIDToPull, bodyRT2)
+	legacyRevRt2 := rt2InitDoc.GetRevTreeID()
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	replicationStats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePushAndPull,
+		RemoteDBURL: userDBURL(rt2, username),
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:    200,
+		Continuous:          true,
+		ReplicationStatsMap: replicationStats,
+		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, ar.Stop())
+	}()
+
+	// Start the replicator
+	require.NoError(t, ar.Start(ctx1))
+
+	rt1.WaitForLegacyRev(docIDToPull, legacyRevRt2, []byte(`{"source":"rt2","channels":["alice"]}`))
+	rt2.WaitForLegacyRev(docIDToPush, legacyRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
+
+	// now update both docs to create a new revision on each side giving them each hlv based off their nodes source
+	cvVersion, err := db.LegacyRevToRevTreeEncodedVersion(legacyRevRt1)
+	require.NoError(t, err)
+	rt1DocVersion := rest.DocVersion{
+		RevTreeID: legacyRevRt1,
+	}
+	updateVer := rt1.UpdateDoc(docIDToPush, rt1DocVersion, `{"channels": ["alice"], "source": "rt1-updated"}`)
+	rt2.WaitForVersion(docIDToPush, updateVer)
+	// check rev tree encoded version is in pv
+	finalRT2Doc := rt2.GetDocument(docIDToPush)
+	assert.Equal(t, cvVersion.Value, finalRT2Doc.HLV.PreviousVersions[cvVersion.SourceID])
+
+	cvVersion, err = db.LegacyRevToRevTreeEncodedVersion(legacyRevRt2)
+	require.NoError(t, err)
+	rt2DocVersion := rest.DocVersion{
+		RevTreeID: legacyRevRt2,
+	}
+	updateVer = rt2.UpdateDoc(docIDToPull, rt2DocVersion, `{"channels": ["alice"], "source": "rt2-updated"}`)
+	rt1.WaitForVersion(docIDToPull, updateVer)
+	finalRT1Doc := rt1.GetDocument(docIDToPull)
+	assert.Equal(t, cvVersion.Value, finalRT1Doc.HLV.PreviousVersions[cvVersion.SourceID])
+
+	// assert no conflicts on either side
+	assert.Equal(t, int64(0), replicationStats.PushConflictCount.Value())
+	assert.Equal(t, int64(2), replicationStats.PulledCount.Value())
+}
+
 /// conflict test cases
 
 // +-----------------+-------------+------+-------------+------+--+--+--+--+--+
@@ -598,4 +708,389 @@ func TestActiveReplicatorPushConflictingPreUpgradedVersion(t *testing.T) {
 		RevTreeID: legacyRevRT2,
 	}
 	rest.RequireDocRevTreeEqual(t, expVersionRT2, rest.DocVersion{RevTreeID: rt2Doc.GetRevTreeID()})
+}
+
+func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	const username = "alice"
+	// NOTE: below diagrams only show active rev tree branches not tombstones branches fom the conflict resolution
+	testCases := []struct {
+		name       string
+		activeWins bool
+	}{
+		// +-----------------+-------------------+--------------------------------+-------------------+--------------------------------+--+--+--+--+--+
+		// |                 | SGW1              |                                | SGW2              |                                |  |  |  |  |  |
+		// +-----------------+-------------------+--------------------------------+-------------------+--------------------------------+--+--+--+--+--+
+		// |                 | Rev Tree          | HLV                            | Rev Tree          | HLV                            |  |  |  |  |  |
+		// +-----------------+-------------------+--------------------------------+-------------------+--------------------------------+--+--+--+--+--+
+		// | Initial State   | 2-def,1-abc       | none                           | 2-abc,1-abc       | none                           |  |  |  |  |  |
+		// +-----------------+-------------------+--------------------------------+-------------------+--------------------------------+--+--+--+--+--+
+		// | Expected Result | 3-def,2-def,1-abc | encoded@Revision+Tree+Encoding | 3-def,2-def,1-abc | encoded@Revision+Tree+Encoding |  |  |  |  |  |
+		// +-----------------+-------------------+--------------------------------+-------------------+--------------------------------+--+--+--+--+--+
+		{
+			name:       "active peer has winning rev",
+			activeWins: true,
+		},
+		// +-----------------+-------------+--------------------------------+-------------+------+--+--+--+--+--+
+		// |                 | SGW1        |                                | SGW2        |      |  |  |  |  |  |
+		// +-----------------+-------------+--------------------------------+-------------+------+--+--+--+--+--+
+		// |                 | Rev Tree    | HLV                            | Rev Tree    | HLV  |  |  |  |  |  |
+		// +-----------------+-------------+--------------------------------+-------------+------+--+--+--+--+--+
+		// | Initial State   | 2-abc,1-abc | none                           | 2-def,1-abc | none |  |  |  |  |  |
+		// +-----------------+-------------+--------------------------------+-------------+------+--+--+--+--+--+
+		// | Expected Result | 2-def,1-abc | encoded@Revision+Tree+Encoding | 2-def,1-abc | none |  |  |  |  |  |
+		// +-----------------+-------------+--------------------------------+-------------+------+--+--+--+--+--+
+		{
+			name:       "passive peer has winning rev",
+			activeWins: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Passive (SGW2 in diagram above)
+			rt2 := rest.NewRestTester(t,
+				&rest.RestTesterConfig{
+					SyncFn: channels.DocChannelsSyncFunction,
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					}},
+				})
+			defer rt2.Close()
+
+			rt2.CreateUser(username, []string{username})
+
+			// Active (SGW1 in diagram above)
+			rt1 := rest.NewRestTester(t,
+				&rest.RestTesterConfig{
+					SyncFn: channels.DocChannelsSyncFunction,
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Name: "activedb",
+					}},
+				})
+			defer rt1.Close()
+			ctx1 := rt1.Context()
+
+			docID := rest.SafeDocumentName(t, t.Name())
+
+			var legacyRevRT1, initLegacyRevRT1, legacyRevRT2, initLegacyRevRT2 string
+			if tc.activeWins {
+				// create doc on rt1 with two revisions
+				bodyRT1 := db.Body{"channels": []string{username}}
+				rt1InitDoc := rt1.CreateDocNoHLV(docID, bodyRT1)
+				initLegacyRevRT1 = rt1InitDoc.GetRevTreeID()
+				bodyRT1 = db.Body{db.BodyRev: initLegacyRevRT1, "channels": []string{username}, "source": "rt1"}
+				rt1InitDoc = rt1.CreateDocNoHLV(docID, bodyRT1)
+				legacyRevRT1 = rt1InitDoc.GetRevTreeID()
+
+				// create doc on rt2 with same body to keep revID generation the same as rev1 of the document above
+				bodyRT2 := db.Body{"channels": []string{username}}
+				rt2InitDoc := rt2.CreateDocNoHLV(docID, bodyRT2)
+				initLegacyRevRT2 = rt2InitDoc.GetRevTreeID()
+				bodyRT2 = db.Body{db.BodyRev: initLegacyRevRT2, "channels": []string{username}}
+				rt2InitDoc = rt2.CreateDocNoHLV(docID, bodyRT2)
+				legacyRevRT2 = rt2InitDoc.GetRevTreeID()
+			} else {
+				// create doc on rt2 with two revisions
+				bodyRT2 := db.Body{"channels": []string{username}}
+				rt2InitDoc := rt2.CreateDocNoHLV(docID, bodyRT2)
+				initLegacyRevRT2 = rt2InitDoc.GetRevTreeID()
+				bodyRT2 = db.Body{db.BodyRev: initLegacyRevRT2, "channels": []string{username}, "source": "rt2"}
+				rt2InitDoc = rt2.CreateDocNoHLV(docID, bodyRT2)
+				legacyRevRT2 = rt2InitDoc.GetRevTreeID()
+
+				// create doc on rt1 with same body to keep revID generation the same as rev1 of the document above
+				bodyRT1 := db.Body{"channels": []string{username}}
+				rt1InitDoc := rt1.CreateDocNoHLV(docID, bodyRT1)
+				initLegacyRevRT1 = rt1InitDoc.GetRevTreeID()
+				bodyRT1 = db.Body{db.BodyRev: initLegacyRevRT1, "channels": []string{username}}
+				rt1InitDoc = rt1.CreateDocNoHLV(docID, bodyRT1)
+				legacyRevRT1 = rt1InitDoc.GetRevTreeID()
+			}
+
+			// build conflict resolver functions
+			resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
+			require.NoError(t, err)
+			resolverFuncRevID, err := db.NewConflictResolverFunc(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
+			require.NoError(t, err)
+
+			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+			require.NoError(t, err)
+			replicationStats, err := stats.DBReplicatorStats(t.Name())
+			require.NoError(t, err)
+
+			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: userDBURL(rt2, username),
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				ChangesBatchSize:           200,
+				Continuous:                 true,
+				ReplicationStatsMap:        replicationStats,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				ConflictResolverFuncForHLV: resolverFunc,
+				ConflictResolverFunc:       resolverFuncRevID,
+			})
+			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, ar.Stop())
+			}()
+
+			// Start the replicator
+			require.NoError(t, ar.Start(ctx1))
+
+			if tc.activeWins {
+				base.RequireWaitForStat(t, func() int64 {
+					return replicationStats.ConflictResolvedLocalCount.Value()
+				}, 1)
+				verPostConflictRes, _ := rt1.GetDoc(docID)
+				rt2.WaitForLegacyRev(docID, verPostConflictRes.RevTreeID, []byte(`{"channels":["alice"],"source":"rt1"}`))
+				rt2Doc := rt2.GetDocument(docID)
+				rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, legacyRevRT2, verPostConflictRes.RevTreeID})
+
+				// add doc for some replication activity on pull to assert that local doesn't change after remote is written with legacy CV
+				newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
+				rt1.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt1
+
+				// assert active side doc hasn't changed
+				rt1Doc := rt1.GetDocument(docID)
+				rest.RequireDocRevTreeEqual(t, rest.DocVersion{RevTreeID: verPostConflictRes.RevTreeID}, rest.DocVersion{RevTreeID: rt1Doc.GetRevTreeID()})
+				tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
+				rest.RequireHistoryContains(t, rt1Doc.History, []string{legacyRevRT1, initLegacyRevRT1, verPostConflictRes.RevTreeID, legacyRevRT2, tombstonedID})
+				// we should have legacy encoded rev tree locally now given the resolved conflict above writes a new
+				// revision of the doc locally
+				cvVer, err := db.LegacyRevToRevTreeEncodedVersion(rt1Doc.GetRevTreeID())
+				require.NoError(t, err)
+				assert.Equal(t, cvVer.String(), rt1Doc.HLV.GetCurrentVersionString())
+			} else {
+				base.RequireWaitForStat(t, func() int64 {
+					return replicationStats.ConflictResolvedRemoteCount.Value()
+				}, 1)
+
+				rt1.WaitForLegacyRev(docID, legacyRevRT2, []byte(`{"channels":["alice"],"source":"rt2"}`))
+				rt1Doc := rt1.GetDocument(docID)
+				tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
+				rest.RequireHistoryContains(t, rt1Doc.History, []string{initLegacyRevRT1, legacyRevRT1, legacyRevRT2, tombstonedID})
+
+				// add doc for some replication activity on push to assert that local doesn't change after remote is written with legacy CV
+				newDocVersion := rt1.PutDoc("newdoc", `{"channels": ["alice"]}`)
+				rt2.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt2
+
+				// assert passive side doc hasn't changed
+				rt2Doc := rt2.GetDocument(docID)
+				rest.RequireDocRevTreeEqual(t, rest.DocVersion{RevTreeID: legacyRevRT2}, rest.DocVersion{RevTreeID: rt2Doc.GetRevTreeID()})
+				rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, legacyRevRT2})
+				// legacy cv written to rt1 will correspond to local rev tree ID thus no HLV should be written yet
+				assert.Nil(t, rt2Doc.HLV)
+			}
+
+		})
+	}
+}
+
+func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	const username = "alice"
+	// NOTE: below diagrams only show active rev tree branches not tombstones branches fom the conflict resolution
+	testCases := []struct {
+		name                            string
+		activePeerHasPostUpgradeVersion bool
+	}{
+		// +-----------------+-------------------+----------------------------------------+-------------------+----------------------------------------+--+--+--+--+--+
+		// |                 | SGW1              |                                        | SGW2              |                                        |  |  |  |  |  |
+		// +-----------------+-------------------+----------------------------------------+-------------------+----------------------------------------+--+--+--+--+--+
+		// |                 | Rev Tree          | HLV                                    | Rev Tree          | HLV                                    |  |  |  |  |  |
+		// +-----------------+-------------------+----------------------------------------+-------------------+----------------------------------------+--+--+--+--+--+
+		// | Initial State   | 2-def,1-abc       | 100@SGW1                               | 2-abc,1-abc       | none                                   |  |  |  |  |  |
+		// +-----------------+-------------------+----------------------------------------+-------------------+----------------------------------------+--+--+--+--+--+
+		// | Expected Result | 3-abc,2-abc,1-abc | encodedFromRev3@Revision+Tree+Encoding | 3-abc,2-abc,1-abc | encodedFromRev3@Revision+Tree+Encoding |  |  |  |  |  |
+		// +-----------------+-------------------+----------------------------------------+-------------------+----------------------------------------+--+--+--+--+--+
+		{
+			name:                            "active peer has post upgrade version that wins",
+			activePeerHasPostUpgradeVersion: true,
+		},
+		// +-----------------+-------------+----------+-------------+----------+--+--+--+--+--+
+		// |                 | SGW1        |          | SGW2        |          |  |  |  |  |  |
+		// +-----------------+-------------+----------+-------------+----------+--+--+--+--+--+
+		// |                 | Rev Tree    | HLV      | Rev Tree    | HLV      |  |  |  |  |  |
+		// +-----------------+-------------+----------+-------------+----------+--+--+--+--+--+
+		// | Initial State   | 2-abc,1-abc | none     | 2-def,1-abc | 100@SGW2 |  |  |  |  |  |
+		// +-----------------+-------------+----------+-------------+----------+--+--+--+--+--+
+		// | Expected Result | 2-def,1-abc | 100@SGW2 | 2-def,1-abc | 100@SGW2 |  |  |  |  |  |
+		// +-----------------+-------------+----------+-------------+----------+--+--+--+--+--+
+		{
+			name:                            "passive peer has post upgrade version that wins",
+			activePeerHasPostUpgradeVersion: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Passive (SGW2 in diagram above)
+			rt2 := rest.NewRestTester(t,
+				&rest.RestTesterConfig{
+					SyncFn: channels.DocChannelsSyncFunction,
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Name: "passivedb",
+					}},
+				})
+			defer rt2.Close()
+
+			rt2.CreateUser(username, []string{username})
+
+			// Active (SGW1 in diagram above)
+			rt1 := rest.NewRestTester(t,
+				&rest.RestTesterConfig{
+					SyncFn: channels.DocChannelsSyncFunction,
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Name: "activedb",
+					}},
+				})
+			defer rt1.Close()
+			ctx1 := rt1.Context()
+
+			docID := rest.SafeDocumentName(t, t.Name())
+
+			var legacyRevRT1, initLegacyRevRT1, legacyRevRT2, initLegacyRevRT2, expectedBody string
+			var upgradedDocVersion rest.DocVersion
+
+			if tc.activePeerHasPostUpgradeVersion {
+				// create doc rt1 with two revisions and second revision has HLV
+				bodyRT1 := db.Body{"channels": []string{username}}
+				rt1InitDoc := rt1.CreateDocNoHLV(docID, bodyRT1)
+				initLegacyRevRT1 = rt1InitDoc.GetRevTreeID()
+				upgradedDocVersion = rt1.PutDoc(docID, fmt.Sprintf(`{"%s":"%s", "channels": ["alice"], "source": "rt1"}`, db.BodyRev, initLegacyRevRT1))
+				expectedBody = fmt.Sprintf(`{"channels": ["alice"], "source": "rt1"}`)
+				legacyRevRT1 = upgradedDocVersion.RevTreeID
+
+				// create doc on rt2 with same body for rev1 to keep revID generation the same as rev1 of the document above
+				// but have both revisions be pre upgraded versions
+				bodyRT2 := db.Body{"channels": []string{username}}
+				rt2InitDoc := rt2.CreateDocNoHLV(docID, bodyRT2)
+				initLegacyRevRT2 = rt2InitDoc.GetRevTreeID()
+				bodyRT2 = db.Body{db.BodyRev: initLegacyRevRT2, "channels": []string{username}, "source": "rt2"}
+				rt2InitDoc = rt2.CreateDocNoHLV(docID, bodyRT2)
+				legacyRevRT2 = rt2InitDoc.GetRevTreeID()
+			} else {
+				// create doc rt2 with two revisions and second revision has HLV
+				bodyRT2 := db.Body{"channels": []string{username}}
+				rt2InitDoc := rt2.CreateDocNoHLV(docID, bodyRT2)
+				initLegacyRevRT2 = rt2InitDoc.GetRevTreeID()
+				upgradedDocVersion = rt2.PutDoc(docID, fmt.Sprintf(`{"%s":"%s", "channels": ["alice"], "source": "rt2"}`, db.BodyRev, initLegacyRevRT2))
+				expectedBody = fmt.Sprintf(`{"channels": ["alice"], "source": "rt2"}`)
+
+				// create doc on rt1 with same body for rev1 to keep revID generation the same as rev1 of the document above
+				// but have both revisions be pre upgraded versions
+				bodyRT1 := db.Body{"channels": []string{username}}
+				rt1InitDoc := rt1.CreateDocNoHLV(docID, bodyRT1)
+				initLegacyRevRT1 = rt1InitDoc.GetRevTreeID()
+				bodyRT1 = db.Body{db.BodyRev: initLegacyRevRT1, "channels": []string{username}, "source": "rt1"}
+				rt1InitDoc = rt1.CreateDocNoHLV(docID, bodyRT1)
+				legacyRevRT1 = rt1InitDoc.GetRevTreeID()
+			}
+
+			// build conflict resolver functions
+			resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
+			require.NoError(t, err)
+			resolverFuncRevID, err := db.NewConflictResolverFunc(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
+			require.NoError(t, err)
+
+			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+			require.NoError(t, err)
+			replicationStats, err := stats.DBReplicatorStats(t.Name())
+			require.NoError(t, err)
+
+			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: userDBURL(rt2, username),
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				ChangesBatchSize:           200,
+				Continuous:                 true,
+				ReplicationStatsMap:        replicationStats,
+				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				ConflictResolverFuncForHLV: resolverFunc,
+				ConflictResolverFunc:       resolverFuncRevID,
+			})
+			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, ar.Stop())
+			}()
+
+			// Start the replicator
+			require.NoError(t, ar.Start(ctx1))
+
+			if tc.activePeerHasPostUpgradeVersion {
+				base.RequireWaitForStat(t, func() int64 {
+					return replicationStats.ConflictResolvedLocalCount.Value()
+				}, 1)
+				replicatedDoc := rt1.GetDocument(docID)
+				verPostConflictRes := replicatedDoc.ExtractDocVersion()
+				// wait for this resolution to be pushed back to passive peer
+				rt2.WaitForVersion(docID, verPostConflictRes)
+
+				// assert original upgraded version in PV history
+				assert.Equal(t, upgradedDocVersion.CV.Value, replicatedDoc.HLV.PreviousVersions[upgradedDocVersion.CV.SourceID])
+
+				rt2Doc := rt2.GetDocument(docID)
+				rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, legacyRevRT2, verPostConflictRes.RevTreeID})
+				// assert that original upgraded version is in HLV pv on passive too
+				assert.Equal(t, upgradedDocVersion.CV.Value, rt2Doc.HLV.PreviousVersions[upgradedDocVersion.CV.SourceID])
+
+				rt2BodyBytes, err := rt2Doc.BodyBytes(rt2.Context())
+				require.NoError(t, err)
+
+				// add doc for some replication activity on pull to assert that local doesn't change after remote is written with legacy CV
+				newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
+				rt1.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt1
+
+				// assert active side doc hasn't changed
+				rt1Doc := rt1.GetDocument(docID)
+				rest.RequireDocVersionEqual(t, verPostConflictRes, rt1Doc.ExtractDocVersion())
+				tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
+				rest.RequireHistoryContains(t, rt1Doc.History, []string{legacyRevRT1, initLegacyRevRT1, verPostConflictRes.RevTreeID, legacyRevRT2, tombstonedID})
+
+				// assert that the body is as expected each side
+				rt1BodyBytes, err := rt1Doc.BodyBytes(rt1.Context())
+				require.NoError(t, err)
+				require.JSONEq(t, expectedBody, string(rt1BodyBytes))
+				require.JSONEq(t, expectedBody, string(rt2BodyBytes))
+			} else {
+				base.RequireWaitForStat(t, func() int64 {
+					return replicationStats.ConflictResolvedRemoteCount.Value()
+				}, 1)
+				rt1.WaitForVersion(docID, upgradedDocVersion)
+
+				rt1Doc := rt1.GetDocument(docID)
+				tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
+				rest.RequireHistoryContains(t, rt1Doc.History, []string{initLegacyRevRT1, legacyRevRT1, upgradedDocVersion.RevTreeID, tombstonedID})
+
+				rt1BodyBytes, err := rt1Doc.BodyBytes(rt1.Context())
+				require.NoError(t, err)
+
+				// add doc for some replication activity on push to assert that remote doesn't change after remote wins conflict res is done
+				newDocVersion := rt1.PutDoc("newdoc", `{"channels": ["alice"]}`)
+				rt2.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt2
+
+				// assert passive side doc hasn't changed
+				rt2Doc := rt2.GetDocument(docID)
+				rest.RequireDocVersionEqual(t, upgradedDocVersion, rt2Doc.ExtractDocVersion())
+				rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, upgradedDocVersion.RevTreeID})
+
+				// assert that the body is as expected each side
+				rt2BodyBytes, err := rt2Doc.BodyBytes(rt2.Context())
+				require.NoError(t, err)
+				require.JSONEq(t, expectedBody, string(rt1BodyBytes))
+				require.JSONEq(t, expectedBody, string(rt2BodyBytes))
+
+				// update doc on active side to ensure we cna push with no conflict
+				updateVer := rt1.UpdateDoc(docID, upgradedDocVersion, `{"channels": ["alice"], "source": "rt1-updated"}`)
+				rt2.WaitForVersion(docID, updateVer)
+			}
+		})
+	}
 }

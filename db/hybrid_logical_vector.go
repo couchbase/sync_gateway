@@ -929,3 +929,10 @@ func LegacyRevToRevTreeEncodedVersion(legacyRev string) (Version, error) {
 		Value:    (uint64(generation) << 40) | value,
 	}, nil
 }
+
+func (hlv *HybridLogicalVector) HasRevEncodedCV() bool {
+	if hlv == nil {
+		return false
+	}
+	return hlv.SourceID == encodedRevTreeSourceID
+}

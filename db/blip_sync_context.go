@@ -374,6 +374,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			//	- [] indicating the document is not present on the client
 			//	- [revID] indicating the clients wants this doc but already has a revision and this revision is a pre
 			// 	upgraded revision (a document without a HLV yet as it hasn't been updated since upgrade)
+			//  - [cv] indicating the client wants this doc but already has a revision and this revision has this cv specified
 			//	ISGR ONLY:
 			// 	- [cv, revID] indicating the clients wants this doc but already has a revision and this revision. First
 			//	element must always be a CV here which will be used for delta sync if enabled. The subsequent revID
@@ -658,7 +659,6 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	var originalErr error
 	var docRev DocumentRevision
 	var localIsLegacyRev bool
-	// some of this legacy rev handling is due to change pending CBG-4784
 	if base.IsRevTreeID(revID) {
 		localIsLegacyRev = true
 	}
@@ -758,14 +758,20 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	}
 
 	var revTreeHistoryProperty []string
-	// CBG-4828 - we should not be sending rev tree property for ISGR if local doc is legacy as we already send it in history property
+	// If the remote side of the replication has this document but it's a legacy version of the document, we need to send the full rev tree history
+	// after the hlv history so the remote side can identify iof the document is in conflict or not. We should only do
+	// this when the local revision is not a legacy revision as if local revision is also legacy revision we will have built
+	// the full rev tree history above to send in the history property.
 	if remoteIsLegacyRev && !localIsLegacyRev {
 		// append current revID and rest of rev tree after hlv history
 		revTreeHistory := toHistory(docRev.History, knownRevs, maxHistory)
 		history = append(history, docRev.RevID)
 		history = append(history, revTreeHistory...)
-	} else if bsc.sendRevTreeProperty() {
-		// if no legacy revs being sent and we are communicating with SGW client we should send revision history in the rev message
+	} else if bsc.sendRevTreeProperty() && !localIsLegacyRev {
+		// If we are commentating in > 4 subprotocol versions and the client is another SGW peer, we have a revTree
+		// property we can populate with the rev tree to keep rev tree reconciled on the replication. This property
+		// should only be sent if the local + remote revisions are not a legacy revisions as the rev tree in this case will be
+		// sent in history property.
 		revTreeHistoryProperty = append(revTreeHistoryProperty, docRev.RevID) // we need current rev
 		revTreeHistoryProperty = append(revTreeHistoryProperty, toHistory(docRev.History, knownRevs, maxHistory)...)
 	}
