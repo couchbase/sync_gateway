@@ -1329,7 +1329,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			if conflictErr != nil {
 				// conflict detected between incoming rev and local rev revtrees, allow hlv conflict resolvers
 				// below to fix (for ISGR pull)
-				doc.HLV = NewHybridLogicalVector()
 				doc.HLV, err = legacyRevToHybridLogicalVector(opts.NewDoc.ID, doc.GetRevTreeID())
 				if err != nil {
 					return nil, nil, false, nil, err
@@ -3462,12 +3461,7 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 		return
 	}
 	if hlv == nil {
-		// give local version a sourceID of this node. Needed given if we have a pull replication running and
-		// locally we have 3-def and remote has 3-abc, if we give the legacy rev sourceID to both nodes locally
-		// we will say we don't need 3-abc given 3-def resolves to higher version value (local dominates) but in
-		// reality we need to pull this conflict rev to solve it and push it back up. If we give local hlv our sourceID
-		// then we will say we need 3-abc as it is from a different sourceID and local hlv no longer dominates
-		hlv, err = db.getHLVWithLocalSourceIDFromLegacyRev(docid, syncData.GetRevTreeID())
+		hlv, err = legacyRevToHybridLogicalVector(docid, syncData.GetRevTreeID())
 		if err != nil {
 			base.WarnfCtx(ctx, "%s", err)
 			missing = append(missing, rev)
@@ -3484,12 +3478,7 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 		return
 	}
 	// CBG-4792: enhance here for conflict check - return conflict rev similar to propose changes here link ticket
-	localCV := hlv.ExtractCurrentVersionFromHLV()
-	// check if local hlv dominates incoming hlv. In the eventuality that an implicit HLV has been given to a legacy rev
-	// in the form of encodedRev@Revision+Tree+Encoding for incoming rev or encoded@localNodeSourceID for local rev we need to check
-	// also if each version value is equal. If they are equal they were generated from the same revID thus we
-	// do not need this change.
-	if hlv.DominatesSource(cvValue) || db.revIDGeneratedCVEqual(*localCV, cvValue) {
+	if localVersionDominates(hlv, cvValue) {
 		// incoming version is dominated by local doc hlv, so it is not missing
 		return
 	}
@@ -3504,15 +3493,28 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	return
 }
 
-// revIDGeneratedCVEqual will check if two implicit CVs are equal.
-func (db *DatabaseCollectionWithUser) revIDGeneratedCVEqual(localCV, incomingCV Version) bool {
-	if localCV.SourceID != db.dbCtx.EncodedSourceID || incomingCV.SourceID != encodedRevTreeSourceID {
-		return false
+// localVersionDominates will check if local HLV dominates incoming change CV, if it does it will also do some work to
+// check if the two versions we are comparing are actually revID generated versions. If so and they don;t correspond
+// to the same revID (i.e. they were not both generated from the same revID) then it will check if the generations of
+// the revIDs were the same, if they are then we want this change (ISGR wants to pull conflicting revisions).
+func localVersionDominates(localHLV *HybridLogicalVector, changeCV Version) bool {
+	localDominates := localHLV.DominatesSource(changeCV)
+	if localDominates {
+		localCV := *localHLV.ExtractCurrentVersionFromHLV()
+		if localHLV.HasRevEncodedCV() && changeCV.SourceID == encodedRevTreeSourceID && !localCV.Equal(changeCV) {
+			// check rev generation is the same, if it is then we want the change
+			localGen := GetGenerationFromEncodedVersionValue(localHLV.Version)
+			incomingGen := GetGenerationFromEncodedVersionValue(changeCV.Value)
+			// if we get here then both versions are revID generated but they are not from the same revID, ISGR wants
+			// changes that are conflicting so if the generations are the same we want this change
+			// otherwise we don't
+			// e.g. local has 3-def (gen 3) and change is 3-abc (gen 3) we want the change
+			if localGen == incomingGen {
+				return false
+			}
+		}
 	}
-	if localCV.Value == incomingCV.Value {
-		return true
-	}
-	return false
+	return localDominates
 }
 
 // ////// REVS_DIFF:

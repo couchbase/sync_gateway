@@ -933,3 +933,7 @@ func LegacyRevToRevTreeEncodedVersion(legacyRev string) (Version, error) {
 func (hlv *HybridLogicalVector) HasRevEncodedCV() bool {
 	return hlv.SourceID == encodedRevTreeSourceID
 }
+
+func GetGenerationFromEncodedVersionValue(value uint64) int {
+	return int((value >> 40) & 0xFFFFFF)
+}
