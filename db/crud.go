@@ -3440,13 +3440,6 @@ func parseIncomingChange(docid, rev string) (cvValue Version, err error) {
 	return cvValue, nil
 }
 
-func (db *DatabaseCollectionWithUser) getHLVWithLocalSourceIDFromLegacyRev(docID, revID string) (hlv *HybridLogicalVector, err error) {
-	// no hlv on local doc, convert revID into CV and use that as the local doc hlv
-	hlv, err = legacyRevToHybridLogicalVector(docID, revID)
-	hlv.SourceID = db.dbCtx.EncodedSourceID
-	return hlv, err
-}
-
 func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, docid, rev string) (missing, possible []string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
