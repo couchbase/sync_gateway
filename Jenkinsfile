@@ -51,12 +51,9 @@ pipeline {
                 }
                 stage('Go Tools') {
                     steps {
-                        // unhandled error checker
-                        sh 'go install github.com/kisielk/errcheck@latest'
                         // goveralls is used to send coverprofiles to coveralls.io
                         sh 'go install github.com/mattn/goveralls@latest'
-                        // Jenkins test reporting tools
-                        sh 'go install github.com/tebeka/go2xunit@latest'
+                        sh 'go install gotest.tools/gotestsum@latest'
                     }
                 }
             }
@@ -93,16 +90,16 @@ pipeline {
                                 withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
+                                    sh 'mkdir -p reports'
+
                                     // Build CE coverprofiles
-                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... > verbose_ce.out.raw || true'
+                                    def testExitCode = sh(
+                                      'gotestsum --junitfile=reports/verbose_ce.out --junitfile-project-name CE --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... 2>&1 > verbose_ce.out',
+                                      returnStatus: true
+                                    )
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
-
-                                    sh 'mkdir -p reports'
-
-                                    // strip non-printable characters from the raw verbose test output
-                                    sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ce.out.raw > verbose_ce.out'
 
                                     // Grab test fail/total counts so we can print them later
                                     sh "grep '\\-\\-\\- PASS: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-pass.count"
@@ -115,19 +112,13 @@ pipeline {
                                         env.TEST_CE_SKIP = readFile 'test-ce-skip.count'
                                         env.TEST_CE_TOTAL = readFile 'test-ce-total.count'
                                     }
-
-                                    // Generate junit-formatted test report
-                                    script {
-                                        try {
-                                            sh 'which go2xunit' // check if go2xunit is installed
-                                            sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
-                                        } catch (Exception e) {
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
-                                            // archive verbose test logs in the event of a test failure
-                                            archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
-                                            unstable("At least one CE unit test failed")
-                                        }
+                                    if (testExitCode == 0) {
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
+                                    } else {
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
+                                        // archive verbose test logs in the event of a test failure
+                                        archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
+                                        unstable("At least one CE unit test failed")
                                     }
 
                                     // Publish CE coverage to coveralls.io
@@ -144,15 +135,15 @@ pipeline {
                                 withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
-                                    // Build EE coverprofiles
-                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... > verbose_ee.out.raw || true"
-
-                                    sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
-
                                     sh 'mkdir -p reports'
 
-                                    // strip non-printable characters from the raw verbose test output
-                                    sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ee.out.raw > verbose_ee.out'
+                                    // Build EE coverprofiles
+                                    def testExitCode = sh(
+                                        "gotestsum --junitfile=reports/verbose_ee.xml --junit-project-name EE --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... 2>&1 > verbose_ee.out",
+                                        returnStatus: true
+                                    )
+
+                                    sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
                                     // Grab test fail/total counts so we can print them later
                                     sh "grep '\\-\\-\\- PASS: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-pass.count"
@@ -166,17 +157,13 @@ pipeline {
                                         env.TEST_EE_TOTAL = readFile 'test-ee-total.count'
                                     }
 
-                                    // Generate junit-formatted test report
-                                    script {
-                                        try {
-                                            sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
-                                        } catch (Exception e) {
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
-                                            // archive verbose test logs in the event of a test failure
-                                            archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
-                                            unstable("At least one EE unit test failed")
-                                        }
+                                    if (testExitCode == 0) {
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
+                                    } else {
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
+                                        // archive verbose test logs in the event of a test failure
+                                        archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
+                                        unstable("At least one EE unit test failed")
                                     }
                                 }
                             }
