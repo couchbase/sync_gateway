@@ -29,6 +29,7 @@ const (
 	kMaxRecentSequences            = 20    // Maximum number of sequences stored in RecentSequences before pruning is triggered
 	kMinRecentSequences            = 5     // Minimum number of sequences that should be left stored in RecentSequences during compaction
 	unusedSequenceWarningThreshold = 10000 // Warn when releasing more than this many sequences due to existing sequence on the document
+	minPVEntriesBeforeCompaction   = 5     // Minimum number of sources in the previous versions before timestamp-based compaction is considered
 )
 
 // ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
@@ -1031,9 +1032,12 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	default:
 		return nil, base.RedactErrorf("Unexpected docUpdateEvent %v in updateHLV for doc %s", docUpdateEvent, base.UD(d.ID))
 	}
-	mpi := db.dbCtx.GetMetadataPurgeInterval(ctx, true)
-	if err := d.HLV.Compact(ctx, d.ID, mpi); err != nil {
-		base.AssertfCtx(ctx, "Unable to compact HLV for doc %s, HLV: %#v: %v", base.UD(d.ID), d.HLV, err)
+	// clean up PV only if we have more than a handful of source IDs - reduce Compaction and false-conflict risk where we don't need it
+	if len(d.HLV.PreviousVersions) > minPVEntriesBeforeCompaction {
+		mpi := db.dbCtx.GetMetadataPurgeInterval(ctx, true)
+		if err := d.HLV.Compact(ctx, d.ID, mpi); err != nil {
+			base.AssertfCtx(ctx, "Unable to compact HLV for doc %s, HLV: %#v: %v", base.UD(d.ID), d.HLV, err)
+		}
 	}
 	d.SyncData.SetCV(d.HLV)
 	return d, nil
