@@ -11,6 +11,7 @@ package topologytest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -246,10 +247,16 @@ func (p *CouchbaseServerPeer) waitForCV(dsName sgbucket.DataStoreName, docID str
 // Close will shut down the peer and close any active replications on the peer.
 func (p *CouchbaseServerPeer) Close() {
 	for _, r := range p.pullReplications {
-		assert.NoError(p.TB(), r.Stop(p.Context()))
+		err := r.Stop(p.Context())
+		if err != nil && !errors.Is(err, xdcr.ErrReplicationNotRunning) {
+			assert.NoError(p.TB(), err)
+		}
 	}
 	for _, r := range p.pushReplications {
-		assert.NoError(p.TB(), r.Stop(p.Context()))
+		err := r.Stop(p.Context())
+		if err != nil && !errors.Is(err, xdcr.ErrReplicationNotRunning) {
+			assert.NoError(p.TB(), err)
+		}
 	}
 }
 

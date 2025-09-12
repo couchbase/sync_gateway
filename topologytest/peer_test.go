@@ -410,7 +410,9 @@ func createPeerReplications(t *testing.T, peers map[string]Peer, configs []PeerR
 		require.True(t, ok, "active peer %s not found", config.activePeer)
 		passivePeer, ok := peers[config.passivePeer]
 		require.True(t, ok, "passive peer %s not found", config.passivePeer)
-		replications = append(replications, activePeer.CreateReplication(passivePeer, config.config))
+		repl := activePeer.CreateReplication(passivePeer, config.config)
+		t.Cleanup(repl.Stop)
+		replications = append(replications, repl)
 	}
 	return replications
 }

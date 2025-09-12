@@ -158,9 +158,9 @@ func (btcc *BlipTesterCollectionClient) OneShotChangesSince(ctx context.Context,
 // The channel will be closed when the iteration is finished. In the case of a continuous iteration, the channel will remain open until the context is cancelled.
 func (btcc *BlipTesterCollectionClient) changesSince(ctx context.Context, since clientSeq, continuous bool) chan *proposeChangeBatchEntry {
 	ch := make(chan *proposeChangeBatchEntry)
-	btcc.goroutineWg.Add(1)
+	btcc.pushGoroutineWg.Add(1)
 	go func() {
-		defer btcc.goroutineWg.Done()
+		defer btcc.pushGoroutineWg.Done()
 		sinceVal := since
 		defer close(ch)
 		for {
@@ -366,13 +366,13 @@ func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.Hybr
 type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
-	ctx         context.Context
-	ctxCancel   context.CancelFunc
-	goroutineWg sync.WaitGroup
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 
-	pushRunning   base.AtomicBool
-	pushCtx       context.Context
-	pushCtxCancel context.CancelFunc
+	pushRunning     base.AtomicBool
+	pushGoroutineWg sync.WaitGroup
+	pushCtx         context.Context
+	pushCtxCancel   context.CancelFunc
 
 	collection    string
 	collectionIdx int
@@ -1042,13 +1042,13 @@ func (btc *BlipTesterClient) TB() testing.TB {
 
 // Close shuts down all the clients and clears all messages stored.
 func (btc *BlipTesterClient) Close() {
-	btc.tearDownBlipClientReplications()
 	for _, collectionClient := range btc.collectionClients {
 		collectionClient.Close()
 	}
 	if btc.nonCollectionAwareClient != nil {
 		btc.nonCollectionAwareClient.Close()
 	}
+	btc.tearDownBlipClientReplications()
 }
 
 // TB returns testing.TB for the current test
@@ -1291,12 +1291,16 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 	sinceFromStr, err := db.ParsePlainSequenceID(opts.Since)
 	require.NoError(btcc.TB(), err)
 	seq := clientSeq(sinceFromStr.SafeSequence())
-	btcc.goroutineWg.Add(1)
+	btcc.pushGoroutineWg.Add(1)
 	go func() {
 		defer func() {
-			btcc.pushRunning.Set(false)
+			waitTime := time.Second * 5
+			if assert.NoError(btcc.TB(), WaitWithTimeout(&btcc.pushGoroutineWg, waitTime),
+				"timed out waiting for push replication goroutines to finish after %v", waitTime) {
+				btcc.pushRunning.Set(false)
+			}
 		}()
-		defer btcc.goroutineWg.Done()
+		defer btcc.pushGoroutineWg.Done()
 		// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
 		changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
 		base.DebugfCtx(ctx, base.KeySGTest, "Starting push replication iteration with since=%v", seq)
