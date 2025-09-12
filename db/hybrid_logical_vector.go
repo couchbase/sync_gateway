@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -302,6 +303,18 @@ func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 	}
 	return existingValueForSource >= version.Value
 
+}
+
+// Compact removes Source ID entries from PV if they are older than the provided purgeInterval.
+func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, purgeInterval time.Duration) error {
+	timestampThreshold := uint64(time.Now().Add(-purgeInterval).UnixNano())
+	for sourceID, version := range hlv.PreviousVersions {
+		if version < timestampThreshold {
+			base.DebugfCtx(ctx, base.KeyAll, "Compacting HLV for doc %v - removed source %q with version %d older than %d", docID, sourceID, version, timestampThreshold)
+			delete(hlv.PreviousVersions, sourceID)
+		}
+	}
+	return nil
 }
 
 // AddVersion adds newVersion as the current version to the in memory representation of the HLV.
