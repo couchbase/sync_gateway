@@ -1182,6 +1182,11 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 			docSize, revID, docCV := createDocAndReturnSizeAndRev(t, ctx, "doc1", collection, Body{"test": "doc"})
 			assert.Equal(t, int64(docSize), cacheStats.RevisionCacheTotalMemory.Value())
 
+			if testCase.UseCVCache {
+				t.Logf("something something")
+				require.False(t, true)
+				t.Fatalf("blah")
+			}
 			// Test Get with item in the cache
 			var docRev DocumentRevision
 			if testCase.UseCVCache {
