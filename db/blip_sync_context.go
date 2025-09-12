@@ -768,7 +768,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		history = append(history, docRev.RevID)
 		history = append(history, revTreeHistory...)
 	} else if bsc.sendRevTreeProperty() && !localIsLegacyRev {
-		// If we are commentating in > 4 subprotocol versions and the client is another SGW peer, we have a revTree
+		// If we are communicating in > 4 subprotocol versions and the client is another SGW peer, we have a revTree
 		// property we can populate with the rev tree to keep rev tree reconciled on the replication. This property
 		// should only be sent if the local + remote revisions are not a legacy revisions as the rev tree in this case will be
 		// sent in history property.
