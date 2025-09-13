@@ -95,7 +95,7 @@ pipeline {
 
                                       // Build CE coverprofiles
                                       def testExitCode = sh(
-                                        'gotestsum --junitfile=reports/verbose_ce.out --junitfile-project-name CE --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... 2>&1 > verbose_ce.out',
+                                        script: 'gotestsum --junitfile=reports/verbose_ce.out --junitfile-project-name CE --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... 2>&1 > verbose_ce.out',
                                         returnStatus: true
                                       )
 
@@ -142,7 +142,7 @@ pipeline {
 
                                         // Build EE coverprofiles
                                         def testExitCode = sh(
-                                            "gotestsum --junitfile=reports/verbose_ee.xml --junit-project-name EE --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... 2>&1 > verbose_ee.out",
+                                            script: "gotestsum --junitfile=reports/verbose_ee.xml --junit-project-name EE --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... 2>&1 > verbose_ee.out",
                                             returnStatus: true
                                         )
 
