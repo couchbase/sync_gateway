@@ -85,85 +85,89 @@ pipeline {
                     stages {
                         stage('CE') {
                             when { branch 'main' }
-                            steps{
-                                // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
+                            steps {
+                                script {
+                                  // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
+                                  withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                      githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
-                                    sh 'mkdir -p reports'
+                                      sh 'mkdir -p reports'
 
-                                    // Build CE coverprofiles
-                                    def testExitCode = sh(
-                                      'gotestsum --junitfile=reports/verbose_ce.out --junitfile-project-name CE --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... 2>&1 > verbose_ce.out',
-                                      returnStatus: true
-                                    )
+                                      // Build CE coverprofiles
+                                      def testExitCode = sh(
+                                        'gotestsum --junitfile=reports/verbose_ce.out --junitfile-project-name CE --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... 2>&1 > verbose_ce.out',
+                                        returnStatus: true
+                                      )
 
-                                    // Print total coverage stats
-                                    sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
+                                      // Print total coverage stats
+                                      sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
 
-                                    // Grab test fail/total counts so we can print them later
-                                    sh "grep '\\-\\-\\- PASS: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-pass.count"
-                                    sh "grep '\\-\\-\\- FAIL: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-fail.count"
-                                    sh "grep '\\-\\-\\- SKIP: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-skip.count"
-                                    sh "grep '=== RUN' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-total.count"
-                                    script {
-                                        env.TEST_CE_PASS = readFile 'test-ce-pass.count'
-                                        env.TEST_CE_FAIL = readFile 'test-ce-fail.count'
-                                        env.TEST_CE_SKIP = readFile 'test-ce-skip.count'
-                                        env.TEST_CE_TOTAL = readFile 'test-ce-total.count'
+                                      // Grab test fail/total counts so we can print them later
+                                      sh "grep '\\-\\-\\- PASS: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-pass.count"
+                                      sh "grep '\\-\\-\\- FAIL: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-fail.count"
+                                      sh "grep '\\-\\-\\- SKIP: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-skip.count"
+                                      sh "grep '=== RUN' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-total.count"
+                                      script {
+                                          env.TEST_CE_PASS = readFile 'test-ce-pass.count'
+                                          env.TEST_CE_FAIL = readFile 'test-ce-fail.count'
+                                          env.TEST_CE_SKIP = readFile 'test-ce-skip.count'
+                                          env.TEST_CE_TOTAL = readFile 'test-ce-total.count'
+                                      }
+                                      if (testExitCode == 0) {
+                                          githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
+                                      } else {
+                                          githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
+                                          // archive verbose test logs in the event of a test failure
+                                          archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
+                                          unstable("At least one CE unit test failed")
+                                      }
+
+                                      // Publish CE coverage to coveralls.io
+                                      // Replace covermode values with set just for coveralls to reduce the variability in reports.
+                                      sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
+                                      sh 'which goveralls' // check if goveralls is installed
+                                      sh 'goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=$COVERALLS_TOKEN || true'
                                     }
-                                    if (testExitCode == 0) {
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
-                                    } else {
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
-                                        // archive verbose test logs in the event of a test failure
-                                        archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
-                                        unstable("At least one CE unit test failed")
-                                    }
-
-                                    // Publish CE coverage to coveralls.io
-                                    // Replace covermode values with set just for coveralls to reduce the variability in reports.
-                                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
-                                    sh 'which goveralls' // check if goveralls is installed
-                                    sh 'goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=$COVERALLS_TOKEN || true'
                                 }
                             }
                         }
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
+                                script {
+                                    withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
-                                    sh 'mkdir -p reports'
+                                        sh 'mkdir -p reports'
 
-                                    // Build EE coverprofiles
-                                    def testExitCode = sh(
-                                        "gotestsum --junitfile=reports/verbose_ee.xml --junit-project-name EE --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... 2>&1 > verbose_ee.out",
-                                        returnStatus: true
-                                    )
+                                        // Build EE coverprofiles
+                                        def testExitCode = sh(
+                                            "gotestsum --junitfile=reports/verbose_ee.xml --junit-project-name EE --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... 2>&1 > verbose_ee.out",
+                                            returnStatus: true
+                                        )
 
-                                    sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
+                                        sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
-                                    // Grab test fail/total counts so we can print them later
-                                    sh "grep '\\-\\-\\- PASS: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-pass.count"
-                                    sh "grep '\\-\\-\\- FAIL: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-fail.count"
-                                    sh "grep '\\-\\-\\- SKIP: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-skip.count"
-                                    sh "grep '=== RUN' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-total.count"
-                                    script {
-                                        env.TEST_EE_PASS = readFile 'test-ee-pass.count'
-                                        env.TEST_EE_FAIL = readFile 'test-ee-fail.count'
-                                        env.TEST_EE_SKIP = readFile 'test-ee-skip.count'
-                                        env.TEST_EE_TOTAL = readFile 'test-ee-total.count'
-                                    }
+                                        // Grab test fail/total counts so we can print them later
+                                        sh "grep '\\-\\-\\- PASS: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-pass.count"
+                                        sh "grep '\\-\\-\\- FAIL: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-fail.count"
+                                        sh "grep '\\-\\-\\- SKIP: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-skip.count"
+                                        sh "grep '=== RUN' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-total.count"
+                                        script {
+                                            env.TEST_EE_PASS = readFile 'test-ee-pass.count'
+                                            env.TEST_EE_FAIL = readFile 'test-ee-fail.count'
+                                            env.TEST_EE_SKIP = readFile 'test-ee-skip.count'
+                                            env.TEST_EE_TOTAL = readFile 'test-ee-total.count'
+                                        }
 
-                                    if (testExitCode == 0) {
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
-                                    } else {
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
-                                        // archive verbose test logs in the event of a test failure
-                                        archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
-                                        unstable("At least one EE unit test failed")
+                                        if (testExitCode == 0) {
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
+                                        } else {
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
+                                            unstable("At least one EE unit test failed")
+                                        }
                                     }
                                 }
                             }
