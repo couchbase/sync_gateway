@@ -20,6 +20,7 @@ pipeline {
     stages {
         stage('SCM') {
             steps {
+                cleanWs(disableDeferredWipeout: true)
                 sh 'git rev-parse HEAD > .git/commit-id'
                 script {
                     env.SG_COMMIT = readFile '.git/commit-id'
