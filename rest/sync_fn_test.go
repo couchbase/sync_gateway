@@ -401,8 +401,7 @@ func TestSyncFnTimeout(t *testing.T) {
 		AssertHTTPErrorReason(t, response, 500, "JS sync function timed out")
 		syncFnFinishedWG.Done()
 	}()
-	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*15)
-	assert.NoError(t, timeoutErr)
+	WaitWithTimeout(t, &syncFnFinishedWG, time.Second*15)
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
