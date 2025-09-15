@@ -120,10 +120,6 @@ func QueryBucketItemCount(ctx context.Context, n1qlStore N1QLStore) (itemCount i
 }
 
 func IsMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {
-	return isMinimumVersion(major, minor, requiredMajor, requiredMinor)
-}
-
-func isMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {
 	if major < requiredMajor {
 		return false
 	}

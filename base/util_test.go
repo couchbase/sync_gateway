@@ -338,20 +338,20 @@ func TestReflectExpiry(t *testing.T) {
 func TestIsMinimumVersion(t *testing.T) {
 
 	// Expected true
-	assert.True(t, isMinimumVersion(1, 0, 0, 0), "Invalid minimum version check - expected true")
-	assert.True(t, isMinimumVersion(1, 0, 1, 0), "Invalid minimum version check - expected true")
-	assert.True(t, isMinimumVersion(2, 5, 2, 5), "Invalid minimum version check - expected true")
-	assert.True(t, isMinimumVersion(3, 0, 2, 5), "Invalid minimum version check - expected true")
-	assert.True(t, isMinimumVersion(3, 5, 3, 4), "Invalid minimum version check - expected true")
-	assert.True(t, isMinimumVersion(5, 5, 4, 4), "Invalid minimum version check - expected true")
-	assert.True(t, isMinimumVersion(0, 0, 0, 0), "Invalid minimum version check - expected true")
+	assert.True(t, IsMinimumVersion(1, 0, 0, 0), "Invalid minimum version check - expected true")
+	assert.True(t, IsMinimumVersion(1, 0, 1, 0), "Invalid minimum version check - expected true")
+	assert.True(t, IsMinimumVersion(2, 5, 2, 5), "Invalid minimum version check - expected true")
+	assert.True(t, IsMinimumVersion(3, 0, 2, 5), "Invalid minimum version check - expected true")
+	assert.True(t, IsMinimumVersion(3, 5, 3, 4), "Invalid minimum version check - expected true")
+	assert.True(t, IsMinimumVersion(5, 5, 4, 4), "Invalid minimum version check - expected true")
+	assert.True(t, IsMinimumVersion(0, 0, 0, 0), "Invalid minimum version check - expected true")
 
 	// Expected false
-	assert.True(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
-	assert.True(t, !isMinimumVersion(5, 0, 6, 0), "Invalid minimum version check - expected false")
-	assert.True(t, !isMinimumVersion(4, 5, 5, 0), "Invalid minimum version check - expected false")
-	assert.True(t, !isMinimumVersion(5, 0, 5, 1), "Invalid minimum version check - expected false")
-	assert.True(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !IsMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !IsMinimumVersion(5, 0, 6, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !IsMinimumVersion(4, 5, 5, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !IsMinimumVersion(5, 0, 5, 1), "Invalid minimum version check - expected false")
+	assert.True(t, !IsMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
 }
 
 func TestSanitizeRequestURL(t *testing.T) {
