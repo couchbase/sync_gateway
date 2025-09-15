@@ -245,7 +245,7 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		}
 		return len(agent.N1qlEps()) > 0
 	case sgbucket.BucketStoreFeatureN1qlIfNotExistsDDL:
-		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 1)
+		return IsMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 1)
 	// added in Couchbase Server 6.6
 	case sgbucket.BucketStoreFeatureCreateDeletedWithXattr:
 		status, err := b.bucket.Internal().CapabilityStatus(gocb.CapabilityCreateAsDeleted)
@@ -255,9 +255,9 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		return status == gocb.CapabilityStatusSupported
 	case sgbucket.BucketStoreFeaturePreserveExpiry, sgbucket.BucketStoreFeatureCollections:
 		// TODO: Change to capability check when GOCBC-1218 merged
-		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 0)
+		return IsMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 0)
 	case sgbucket.BucketStoreFeatureSystemCollections, sgbucket.BucketStoreFeatureMultiXattrSubdocOperations:
-		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 6)
+		return IsMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 6)
 	case sgbucket.BucketStoreFeatureMobileXDCR:
 		return b.supportsHLV
 	default:

@@ -51,8 +51,8 @@ func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, colle
 	if err != nil {
 		return nil, err
 	}
-	clusterOnlyn1qlStore.supportsCollections = isMinimumVersion(uint64(major), uint64(minor), 7, 0)
-	clusterOnlyn1qlStore.supportsIfNotExistsInDDL = isMinimumVersion(uint64(major), uint64(minor), 7, 1)
+	clusterOnlyn1qlStore.supportsCollections = IsMinimumVersion(uint64(major), uint64(minor), 7, 0)
+	clusterOnlyn1qlStore.supportsIfNotExistsInDDL = IsMinimumVersion(uint64(major), uint64(minor), 7, 1)
 
 	return clusterOnlyn1qlStore, nil
 
