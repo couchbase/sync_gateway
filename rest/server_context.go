@@ -2245,7 +2245,7 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 		minor,
 	)
 
-	if base.IsMinimumVersion(uint64(major), uint64(minor), CBXDCRCompatibleMajorVersion, CBXDCRCompatibleMinorVersion) {
+	if !base.IsMinimumVersion(uint64(major), uint64(minor), CBXDCRCompatibleMajorVersion, CBXDCRCompatibleMinorVersion) {
 		base.ErrorfCtx(ctx, errMsg)
 		return errors.New(errMsg)
 	}
