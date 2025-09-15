@@ -24,7 +24,7 @@ func skipMobileJenkinsCBG4826(t *testing.T) {
 	// these tests fail on slow machines but could flake under any machine
 	mobileJenkins := "https://mobile.jenkins.couchbase.com/"
 	if os.Getenv("JENKINS_URL") == mobileJenkins {
-		t.Skipf("Skipping topology tests on %s until CBG-4826 is resolved. There are race conditions which occur on slow machines and are pending investigation", mobileJenkins)
+		t.Skipf("Skipping topology tests on %s until CBG-4856 is resolved. There are race conditions which occur on slow machines and are pending investigation", mobileJenkins)
 
 	}
 }
