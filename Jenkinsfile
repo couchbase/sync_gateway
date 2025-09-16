@@ -8,9 +8,9 @@ pipeline {
     environment {
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
-        EE_BUILD_TAG = "cb_sg_enterprise"
-        SGW_REPO = "github.com/couchbase/sync_gateway"
-        GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
+        EE_BUILD_TAG = 'cb_sg_enterprise'
+        SGW_REPO = 'github.com/couchbase/sync_gateway'
+        GH_ACCESS_TOKEN_CREDENTIAL = 'github_cb-robot-sg_access_token'
     }
 
     tools {
@@ -20,7 +20,7 @@ pipeline {
     stages {
         stage('SCM') {
             steps {
-                sh "git rev-parse HEAD > .git/commit-id"
+                sh 'git rev-parse HEAD > .git/commit-id'
                 script {
                     env.SG_COMMIT = readFile '.git/commit-id'
                     // Set BRANCH variable to target branch if this build is a PR
@@ -37,9 +37,9 @@ pipeline {
             stages {
                 stage('Go Modules') {
                     steps {
-                        sh "which go"
-                        sh "go version"
-                        sh "go env"
+                        sh 'which go'
+                        sh 'go version'
+                        sh 'go env'
                         sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                             sh '''
                                 [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
@@ -88,7 +88,7 @@ pipeline {
                     stages {
                         stage('CE') {
                             when { branch 'main' }
-                            steps{
+                            steps {
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
                                 withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
@@ -121,12 +121,12 @@ pipeline {
                                         try {
                                             sh 'which go2xunit' // check if go2xunit is installed
                                             sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS + '/' + env.TEST_CE_TOTAL + ' passed (' + env.TEST_CE_SKIP + ' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL + '/' + env.TEST_CE_TOTAL + ' failed (' + env.TEST_CE_SKIP + ' skipped)', status: 'FAILURE')
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
-                                            unstable("At least one CE unit test failed")
+                                            unstable('At least one CE unit test failed')
                                         }
                                     }
 
@@ -170,12 +170,12 @@ pipeline {
                                     script {
                                         try {
                                             sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS + '/' + env.TEST_EE_TOTAL + ' passed (' + env.TEST_EE_SKIP + ' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL + '/' + env.TEST_EE_TOTAL + ' failed (' + env.TEST_EE_SKIP + ' skipped)', status: 'FAILURE')
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
-                                            unstable("At least one EE unit test failed")
+                                            unstable('At least one EE unit test failed')
                                         }
                                     }
                                 }
@@ -198,12 +198,12 @@ pipeline {
                 }
             }
         }
-        stage('Benchmarks'){
+        stage('Benchmarks') {
             when { branch 'main' }
-            steps{
+            steps {
                 echo 'Queueing Benchmark Run test for branch "main" ...'
-                // TODO: Add this back with new system
-                // build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
+            // TODO: Add this back with new system
+            // build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
             }
         }
     }
@@ -221,7 +221,7 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: "danger", message: "Failed tests in main SGW pipeline: ${currentBuild.fullDisplayName}\nAt least one test failed: ${env.BUILD_URL}"
+                    slackSend color: 'danger', message: "Failed tests in main SGW pipeline: ${currentBuild.fullDisplayName}\nAt least one test failed: ${env.BUILD_URL}"
                 }
             }
         }
@@ -230,7 +230,7 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: "danger", message: "Build failure!!!\nA build failure occurred in the main SGW pipeline: ${currentBuild.fullDisplayName}\nSomething went wrong building: ${env.BUILD_URL}"
+                    slackSend color: 'danger', message: "Build failure!!!\nA build failure occurred in the main SGW pipeline: ${currentBuild.fullDisplayName}\nSomething went wrong building: ${env.BUILD_URL}"
                 }
             }
         }
@@ -238,12 +238,12 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: "danger", message: "main SGW pipeline build aborted: ${currentBuild.fullDisplayName}\nCould be due to build timeout: ${env.BUILD_URL}"
+                    slackSend color: 'danger', message: "main SGW pipeline build aborted: ${currentBuild.fullDisplayName}\nCould be due to build timeout: ${env.BUILD_URL}"
                 }
             }
         }
         cleanup {
             cleanWs(disableDeferredWipeout: true)
-	      }
+        }
     }
 }

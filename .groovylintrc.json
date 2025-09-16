@@ -1,0 +1,10 @@
+{
+  "extends": "recommended",
+  "rules": {
+    "CompileStatic": "off",
+    "DuplicateMapLiteral": "off",
+    "DuplicateStringLiteral": "off",
+    "LineLength": "off",
+    "NestedBlockDepth": "off"
+  }
+}
