@@ -3,7 +3,7 @@ pipeline {
 
     options {
         timeout(time: 60, unit: 'MINUTES')
-        disableConcurrentBuilds()
+        disableConcurrentBuilds(abortPrevious: true)
     }
 
     environment {
