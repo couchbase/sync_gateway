@@ -183,7 +183,7 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 	return &rt
 }
 
-// NewRestTesterDefaultCollection creates a rest tester backed by a single database and a single _default._deafult collection.
+// NewRestTesterDefaultCollection creates a rest tester backed by a single database and a single _default._default collection.
 func NewRestTesterDefaultCollection(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return newRestTester(tb, restConfig, useSingleCollectionDefaultOnly, 1)
 }
