@@ -689,7 +689,9 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 	// Wait for the migration's _globalSync xattr update to replicate to the target
 	requireWaitForXDCRDocsWritten(t, xdcr, 3)
 
-	// check that we can fetch the attachment now - and the verison information remains the same
+	// check that we can fetch the attachment now - and the version information remained the same
+	// Note: The versions remaining the same means that clients that observe the missing attachment never get it until a subsequent doc update
+	// The benefit of doing this though, is that every other client (who has had this attachment) doesn't get a no-op document update post-migration.
 	b, _, _, _, _, dstPostMigrateSeq, dstPostMigrateRev, _, err := dstColl.Get1xRevAndChannels(dstCtx, docID, "", false)
 	require.NoError(t, err)
 	atts := db.GetAttachmentsFromInlineBody(t, b)
