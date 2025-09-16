@@ -22,12 +22,12 @@ import (
 
 // Bits in LogEntry.Flags
 const (
-	Deleted  = 1 << iota // This rev is a deletion
-	Removed              // Doc was removed from this channel
-	Hidden               // This rev is not the default (hidden by a conflict)
-	Conflict             // Document is in conflict at this time
-	Branched             // Revision tree is branched
-	Added                // Doc was added to this channel
+	Deleted           = 1 << iota // This rev is a deletion
+	Removed                       // Doc was removed from this channel
+	Hidden                        // This rev is not the default (hidden by a conflict)
+	Conflict                      // Document is in conflict at this time
+	Branched                      // Revision tree is branched
+	VVUpdateWithoutCV             // This rev is the result of a local/remote wins conflict resolution and has an updated vv but not a CV update
 
 )
 

@@ -2067,7 +2067,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 		return nil, nil, err
 	}
 
-	base.DebugfCtx(ctx, base.KeyVV, "successfully merged doc doc %s, resulting HLV: %v", base.UD(localDoc.ID), newHLV)
+	base.DebugfCtx(ctx, base.KeyVV, "successfully merged doc %s, resulting HLV: %#v", base.UD(localDoc.ID), newHLV)
 	return newHLV, updatedHistory, nil
 }
 
@@ -2087,10 +2087,15 @@ func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, l
 	revTreeHistory = append([]string{newRevID}, revTreeHistory...)
 	remoteDoc.RevID = newRevID
 
-	newHLV, err := localWinsConflictResolutionForHLV(ctx, localDoc.HLV, remoteDoc.HLV, localDoc.ID, db.dbCtx.EncodedSourceID)
+	newHLV, err := localWinsConflictResolutionForHLV(ctx, localDoc.HLV, remoteDoc.HLV, localDoc.ID)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// remove the local doc from the revision cache, given the hlv is changing by CV is staying same so old reference
+	// to this cv in rev cache is stale
+	db.revisionCache.RemoveWithCV(ctx, localDoc.ID, localDoc.HLV.ExtractCurrentVersionFromHLV())
+	localDoc.localWinsConflict = true
 
 	localWinsConflictResolutionDocumentHandling(ctx, localDoc, remoteDoc, revTreeHistory, docBodyBytes, newRevID)
 
@@ -2147,6 +2152,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags(ctx context.Context) {
 	doc.setFlag(channels.Deleted, doc.History[revtreeID].Deleted)
 	doc.setFlag(channels.Conflict, inConflict)
 	doc.setFlag(channels.Branched, branched)
+	doc.setFlag(channels.VVUpdateWithoutCV, doc.localWinsConflict)
 	if doc.hasFlag(channels.Deleted) {
 		doc.SyncData.TombstonedAt = time.Now().Unix()
 	} else {
@@ -2865,7 +2871,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Attachments: doc.Attachments(),
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
-			hlvHistory:  doc.HLV.ToHistoryForHLV(),
+			HlvHistory:  doc.HLV.ToHistoryForHLV(),
 			CV:          &Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version},
 		}
 

@@ -29,6 +29,16 @@ import (
 // revtree ID.
 const encodedRevTreeSourceID = "Revision+Tree+Encoding"
 
+type HLVHistoryUpdated uint16
+
+const (
+	versionAddedToPV HLVHistoryUpdated = iota
+	sourceIsCV
+	versionInMVOlder
+	versionInMVNewer
+	versionInPVNewer
+)
+
 type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
 
 // sorted will iterate through the map returning entries in a stable sorted order. Used by testing to make it easier
@@ -787,10 +797,23 @@ func (hlv *HybridLogicalVector) UpdateHistory(incomingHLV *HybridLogicalVector) 
 	if incomingHLV.SourceID != "" {
 		hlv.AddVersionToPV(incomingHLV.SourceID, incomingHLV.Version) // CV
 	}
+
+	invalidateMV := false
+
 	// MV
 	for source, version := range incomingHLV.MergeVersions {
-		hlv.AddVersionToPV(source, version)
+		if hlv.AddVersionToPV(source, version) == versionInMVOlder {
+			invalidateMV = true
+			break
+		}
 	}
+	if invalidateMV {
+		hlv.InvalidateMV()
+		for source, version := range incomingHLV.MergeVersions {
+			hlv.AddVersionToPV(source, version)
+		}
+	}
+
 	// PV
 	for source, version := range incomingHLV.PreviousVersions {
 		hlv.AddVersionToPV(source, version)
@@ -800,30 +823,34 @@ func (hlv *HybridLogicalVector) UpdateHistory(incomingHLV *HybridLogicalVector) 
 // AddVersionToPV wil add the specified version to history if:
 //   - the source is not present in hlv.CV or hlv.MV
 //   - version is newer than any existing version in PV for the same source
-func (hlv *HybridLogicalVector) AddVersionToPV(sourceID string, version uint64) {
+func (hlv *HybridLogicalVector) AddVersionToPV(sourceID string, version uint64) HLVHistoryUpdated {
 
 	// Don't add history if source is present in CV
 	if hlv.SourceID == sourceID {
-		return
+		return sourceIsCV
 	}
 
 	// Don't add history if source is present in MV
-	for source := range hlv.MergeVersions {
+	for source, mvVersion := range hlv.MergeVersions {
 		if source == sourceID {
-			return
+			if mvVersion >= version {
+				return versionInMVNewer
+			}
+			return versionInMVOlder
 		}
 	}
 
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(HLVVersions)
 		hlv.PreviousVersions[sourceID] = version
-		return
+		return versionAddedToPV
 	}
 
-	if _, found := hlv.PreviousVersions[sourceID]; !found || hlv.PreviousVersions[sourceID] < version {
+	if pvVersion, found := hlv.PreviousVersions[sourceID]; !found || pvVersion < version {
 		hlv.PreviousVersions[sourceID] = version
+		return versionAddedToPV
 	}
-
+	return versionInPVNewer
 }
 
 // UpdateWithIncomingHLV will update hlv to the incoming HLV preserving any history on hlv that is not present on the
@@ -866,27 +893,15 @@ func DefaultLWWConflictResolutionType(ctx context.Context, conflict Conflict) (B
 
 // localWinsConflictResolutionForHLV will alter the HLV for a local wins conflict resolution. Preserving local MV
 // unless incoming MV has a src common with local MV and has a higher version, in which case local MV is invalidated and moved to PV.
-// In the eventuality that local CV is <= to incoming CV, a new CV will be created with this db's sourceID
-func localWinsConflictResolutionForHLV(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector, docID, sourceID string) (*HybridLogicalVector, error) {
-	if localHLV == nil || incomingHLV == nil {
-		return nil, errors.New("local or incoming hlv is nil for resolveConflict")
+func localWinsConflictResolutionForHLV(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector, docID string) (*HybridLogicalVector, error) {
+	if localHLV == nil {
+		return nil, errors.New("localHLV is nil for localWinsConflictResolutionForHLV")
+	} else if incomingHLV == nil {
+		return nil, errors.New("incomingHLV is nil for localWinsConflictResolutionForHLV")
 	}
-
-	newHLV := localHLV.Copy()
-
-	// resolving for local wins
-	base.DebugfCtx(ctx, base.KeyVV, "resolving doc %s for local wins, local hlv: %v, incoming hlv: %v", base.UD(docID), localHLV, incomingHLV)
-	newCV := Version{
-		SourceID: sourceID,
-		Value:    expandMacroCASValueUint64,
-	}
-	err := newHLV.MergeWithIncomingHLV(newCV, incomingHLV)
-	if err != nil {
-		return nil, err
-	}
-
-	base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of local wins, resulting HLV: %v", base.UD(docID), newHLV)
-
+	newHLV := incomingHLV.Copy()
+	newHLV.UpdateWithIncomingHLV(localHLV)
+	base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of local wins, resulting HLV: %#v", base.UD(docID), newHLV)
 	return newHLV, nil
 }
 

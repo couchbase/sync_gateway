@@ -282,12 +282,13 @@ type Document struct {
 	rawUserXattr       []byte              // Raw user xattr as retrieved from the bucket
 	MetadataOnlyUpdate *MetadataOnlyUpdate // Contents of _mou xattr, marshalled/unmarshalled with document from xattrs
 
-	HLV            *HybridLogicalVector // Contents of _vv xattr,
-	Deleted        bool
-	DocExpiry      uint32
-	RevID          string
-	inlineSyncData bool
-	RevSeqNo       uint64 // Server rev seq no for a document
+	HLV               *HybridLogicalVector // Contents of _vv xattr,
+	Deleted           bool
+	DocExpiry         uint32
+	RevID             string
+	inlineSyncData    bool
+	localWinsConflict bool   // True if this document is the result of a local-wins conflict resolution
+	RevSeqNo          uint64 // Server rev seq no for a document
 }
 
 // GlobalSyncData is the structure for the system xattr that is migrated with XDCR.

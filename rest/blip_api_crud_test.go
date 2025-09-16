@@ -3545,33 +3545,25 @@ func TestBlipPullConflict(t *testing.T) {
 		client := btcRunner.SingleCollection(btc.id)
 		preConflictCBLVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(cblBody))
 		require.NotEqual(t, sgVersion, preConflictCBLVersion)
+		_, preConflictHLV, _ := client.GetDoc(docID)
+		require.Empty(t, preConflictHLV.PreviousVersions)
+		require.Empty(t, preConflictHLV.MergeVersions)
 
 		btcRunner.StartOneshotPull(btc.id)
 
+		// expect resolution as CBL wins (local wins)
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			_, _, postConflictCBLVersion := client.GetDoc(docID)
-			assert.Greater(c, postConflictCBLVersion.CV.Value, preConflictCBLVersion.CV.Value)
-		}, time.Second*10, time.Millisecond*10, "Expected sgVersion and cblVersion to be different")
-
-		postConflictDoc, postConflictHLV, postConflictVersion := client.GetDoc(docID)
-		require.Equal(t, cblBody, string(postConflictDoc))
-		// after resolving the conflict, the CBL version should remain the same but the ver of the CV is
-		// updated to be newer than the pre-conflict CBL version
-		require.Equal(t, preConflictCBLVersion.CV.SourceID, postConflictVersion.CV.SourceID)
-		require.Greater(t, postConflictVersion.CV.Value, preConflictCBLVersion.CV.Value, "PreConflictHLV %#v PostConflictHLV %#v", preConflictCBLVersion, postConflictHLV)
-		require.Empty(t, postConflictHLV.PreviousVersions, "postConflictHLV: %#+v\n", postConflictHLV)
-		require.Equal(t, db.HLVVersions{
-			sgVersion.CV.SourceID:             sgVersion.CV.Value,
-			preConflictCBLVersion.CV.SourceID: preConflictCBLVersion.CV.Value,
-		}, postConflictHLV.MergeVersions)
-
-		btcRunner.StartPush(btc.id)
-		rt.WaitForVersion(docID, *postConflictVersion)
-
-		collection, ctx := rt.GetSingleTestDatabaseCollection()
-		bucketDoc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-		require.NoError(t, err)
-		require.True(t, bucketDoc.HLV.Equal(postConflictHLV), "Expected bucket doc HLV to match post-conflict HLV, got %#v, expected %#v", bucketDoc.HLV, postConflictHLV)
+			body, postConflictHLV, _ := client.GetDoc(docID)
+			assert.Equal(c, db.HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           preConflictCBLVersion.CV.Value,
+				SourceID:          preConflictCBLVersion.CV.SourceID,
+				PreviousVersions: db.HLVVersions{
+					sgVersion.CV.SourceID: sgVersion.CV.Value,
+				},
+			}, *postConflictHLV)
+			assert.Equal(c, string(body), cblBody)
+		}, time.Second*10, time.Millisecond*10)
 	})
 }
 

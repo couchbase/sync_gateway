@@ -3897,6 +3897,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 		skipActiveLeafAssertion   bool
 		skipBodyAssertion         bool
 		newCVGenerated            bool
+		localWinsHLV              bool
+		tombstoneCase             bool
 	}{
 		{
 			name:                   "remoteWins",
@@ -3935,7 +3937,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:      `{"source": "local"}`,
 			expectedLocalVersion:   rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 1-b
 			expectedResolutionType: db.ConflictResolutionLocal,
-			newCVGenerated:         true,
+			localWinsHLV:           true,
 		},
 		{
 			name:                    "twoTombstonesRemoteWin",
@@ -3948,6 +3950,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalVersion:    rest.NewDocVersionFromFakeRev("1-b"),
 			skipActiveLeafAssertion: true,
 			skipBodyAssertion:       base.TestUseXattrs(),
+			tombstoneCase:           true,
 		},
 		{
 			name:                    "twoTombstonesLocalWin",
@@ -3960,6 +3963,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalVersion:    rest.NewDocVersionFromFakeRev("1-b"),
 			skipActiveLeafAssertion: true,
 			skipBodyAssertion:       base.TestUseXattrs(),
+			tombstoneCase:           true,
 		},
 	}
 
@@ -4009,6 +4013,11 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Create revision on rt1 (local)
 			rt1version := rt1.PutNewEditsFalse(docID, test.localVersion, rest.EmptyDocVersion(), test.localRevisionBody)
 			rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1version)
+
+			var rt1CVVersion rest.DocVersion
+			if !test.tombstoneCase {
+				rt1CVVersion, _ = rt1.GetDoc(docID)
+			}
 
 			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
@@ -4070,10 +4079,16 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			actualVersion := doc.ExtractDocVersion()
-			if test.newCVGenerated {
+			var expValue uint64
+			if test.localWinsHLV {
+				expValue = rt1CVVersion.CV.Value
+			} else {
+				expValue = doc.Cas
+			}
+			if test.newCVGenerated || test.localWinsHLV {
 				test.expectedLocalVersion.CV = db.Version{
 					SourceID: rt1.GetDatabase().EncodedSourceID,
-					Value:    doc.Cas,
+					Value:    expValue,
 				}
 			} else {
 				test.expectedLocalVersion.CV = rt2Version.CV
@@ -4122,6 +4137,12 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 	base.LongRunningTest(t)
 
+	type conflictWinner int
+	const (
+		local conflictWinner = iota
+		remote
+		merge
+	)
 	// scenarios
 	conflictResolutionTests := []struct {
 		name                  string
@@ -4135,6 +4156,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 		expectedVersion       rest.DocVersion
 		expectedPushResolved  bool
 		newCVGenerated        bool
+		winner                conflictWinner
 	}{
 		{
 			name:                 "remoteWins",
@@ -4146,6 +4168,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			expectedBody:         `{"source": "remote"}`,
 			expectedVersion:      rest.NewDocVersionFromFakeRev("1-b"),
 			expectedPushResolved: false,
+			winner:               remote,
 		},
 		{
 			name:               "merge",
@@ -4161,7 +4184,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			expectedBody:         `{"source": "merged"}`,
 			expectedVersion:      rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`))), // rev for merged body, with parent 1-b
 			expectedPushResolved: true,
-			newCVGenerated:       true,
+			winner:               merge,
 		},
 		{
 			name:                 "localWins",
@@ -4173,7 +4196,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			expectedBody:         `{"source": "local"}`,
 			expectedVersion:      rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 1-b
 			expectedPushResolved: true,
-			newCVGenerated:       true,
+			winner:               local,
 		},
 		{
 			name:                  "localWinsRemoteTombstone",
@@ -4186,7 +4209,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			expectedBody:          `{"source": "local"}`,
 			expectedVersion:       rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 2-b
 			expectedPushResolved:  true,
-			newCVGenerated:        true,
+			winner:                local,
 		},
 	}
 
@@ -4306,12 +4329,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
-			if test.newCVGenerated {
+			switch test.winner {
+			case merge:
 				test.expectedVersion.CV = db.Version{
 					SourceID: rt1.GetDatabase().EncodedSourceID,
 					Value:    doc.Cas,
 				}
-			} else {
+			case local:
+				test.expectedVersion.CV = rt1Version.CV
+			case remote:
 				test.expectedVersion.CV = rt2Version.CV
 			}
 			rest.RequireDocVersionEqual(t, test.expectedVersion, doc.ExtractDocVersion())
