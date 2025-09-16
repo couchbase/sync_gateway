@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -305,15 +306,21 @@ func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 }
 
 // Compact removes Source ID entries from PV if they are older than the provided purgeInterval.
-func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, compactTimestampUnixNano uint64) error {
-	if compactTimestampUnixNano == 0 {
-		// Disables HLV compaction
-		return nil
+func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, purgeInterval time.Duration) {
+	// disabled/noop
+	if purgeInterval == 0 {
+		return
 	}
+	compactTimestamp := time.Now().Add(-purgeInterval).UnixNano()
+	hlv.compactWithValue(ctx, docID, uint64(compactTimestamp))
+}
 
+// compactWithValue removes Source ID entries from PV if they are older than the provided value
+// this differs from Compact in that it takes a raw value instead of a duration - for easier unit testing purposes.
+func (hlv *HybridLogicalVector) compactWithValue(ctx context.Context, docID string, compactToValue uint64) {
 	pvCountBefore := len(hlv.PreviousVersions)
 	for sourceID, version := range hlv.PreviousVersions {
-		if version < compactTimestampUnixNano {
+		if version < compactToValue {
 			base.TracefCtx(ctx, base.KeyCRUD, "Compacted HLV source %s@%d in PV for doc %q", sourceID, version, base.UD(docID))
 			delete(hlv.PreviousVersions, sourceID)
 		} else {
@@ -322,8 +329,7 @@ func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, compa
 	}
 	pvCountAfter := len(hlv.PreviousVersions)
 
-	base.DebugfCtx(ctx, base.KeyCRUD, "Compacted %d of %d HLV sources from PV for doc %q older than %s", pvCountBefore-pvCountAfter, pvCountBefore, base.UD(docID), compactTimestampUnixNano)
-	return nil
+	base.DebugfCtx(ctx, base.KeyCRUD, "Compacted %d of %d HLV sources from PV for doc %q older than %d", pvCountBefore-pvCountAfter, pvCountBefore, base.UD(docID), compactToValue)
 }
 
 // AddVersion adds newVersion as the current version to the in memory representation of the HLV.

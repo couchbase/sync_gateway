@@ -93,7 +93,7 @@ func TestInternalHLVFunctions(t *testing.T) {
 
 func TestHLVCompact(t *testing.T) {
 	// halfway through the HLV "timestamp" range for this test
-	purgeInterval := uint64(25)
+	compactValue := uint64(25)
 
 	hlv := HybridLogicalVector{
 		SourceID: "sourceA",
@@ -114,11 +114,11 @@ func TestHLVCompact(t *testing.T) {
 	startingHLV := hlv.Copy()
 
 	// test no-op condition - this is only really used in tests that want to avoid compacting on writes - production code defaults to 30d purge interval
-	require.NoError(t, hlv.Compact(base.TestCtx(t), t.Name(), 0))
+	hlv.compactWithValue(base.TestCtx(t), t.Name(), 0)
 	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
 
 	// run again and purge half the PVs
-	require.NoError(t, hlv.Compact(base.TestCtx(t), t.Name(), purgeInterval))
+	hlv.compactWithValue(base.TestCtx(t), t.Name(), compactValue)
 	assert.Equal(t, len(startingHLV.PreviousVersions)-3, len(hlv.PreviousVersions))
 	assert.Contains(t, hlv.PreviousVersions, "sourceD")
 	assert.Contains(t, hlv.PreviousVersions, "sourceE")
