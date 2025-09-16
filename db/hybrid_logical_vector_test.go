@@ -91,6 +91,48 @@ func TestInternalHLVFunctions(t *testing.T) {
 	require.Equal(t, hlv.PreviousVersions, expectedPV)
 }
 
+func TestHLVCompact(t *testing.T) {
+	// halfway through the HLV "timestamp" range for this test
+	purgeInterval := uint64(25)
+
+	hlv := HybridLogicalVector{
+		SourceID: "sourceA",
+		Version:  100,
+		MergeVersions: map[string]uint64{
+			"sourceB": 90,
+			"sourceC": 80,
+		},
+		PreviousVersions: map[string]uint64{
+			"sourceD": 50,
+			"sourceE": 40,
+			"sourceF": 30,
+			"sourceH": 20, // compaction candidate
+			"sourceI": 10, // compaction candidate
+			"sourceJ": 5,  // compaction candidate
+		},
+	}
+	startingHLV := hlv.Copy()
+
+	// test no-op condition - this is only really used in tests that want to avoid compacting on writes - production code defaults to 30d purge interval
+	require.NoError(t, hlv.Compact(base.TestCtx(t), t.Name(), 0))
+	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
+
+	// run again and purge half the PVs
+	require.NoError(t, hlv.Compact(base.TestCtx(t), t.Name(), purgeInterval))
+	assert.Equal(t, len(startingHLV.PreviousVersions)-3, len(hlv.PreviousVersions))
+	assert.Contains(t, hlv.PreviousVersions, "sourceD")
+	assert.Contains(t, hlv.PreviousVersions, "sourceE")
+	assert.Contains(t, hlv.PreviousVersions, "sourceF")
+	assert.NotContains(t, hlv.PreviousVersions, "sourceH")
+	assert.NotContains(t, hlv.PreviousVersions, "sourceI")
+	assert.NotContains(t, hlv.PreviousVersions, "sourceJ")
+
+	// Ensure Compact didn't touch anything else in the HLV
+	assert.Equal(t, startingHLV.SourceID, hlv.SourceID)
+	assert.Equal(t, startingHLV.Version, hlv.Version)
+	assert.Equal(t, startingHLV.MergeVersions, hlv.MergeVersions)
+}
+
 // TestHLVIsDominating:
 //   - Tests cases where one HLV is said to be 'dominating' over another
 //   - Assert that all scenarios returns false from IsInConflict method, as we have a HLV that is dominating in each case

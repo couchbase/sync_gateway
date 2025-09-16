@@ -20,7 +20,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -306,14 +305,24 @@ func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 }
 
 // Compact removes Source ID entries from PV if they are older than the provided purgeInterval.
-func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, purgeInterval time.Duration) error {
-	timestampThreshold := uint64(time.Now().Add(-purgeInterval).UnixNano())
+func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, compactTimestampUnixNano uint64) error {
+	if compactTimestampUnixNano == 0 {
+		// Disables HLV compaction
+		return nil
+	}
+
+	pvCountBefore := len(hlv.PreviousVersions)
 	for sourceID, version := range hlv.PreviousVersions {
-		if version < timestampThreshold {
-			base.DebugfCtx(ctx, base.KeyAll, "Compacting HLV for doc %v - removed source %q with version %d older than %d", docID, sourceID, version, timestampThreshold)
+		if version < compactTimestampUnixNano {
+			base.TracefCtx(ctx, base.KeyCRUD, "Compacted HLV source %s@%d in PV for doc %q", sourceID, version, base.UD(docID))
 			delete(hlv.PreviousVersions, sourceID)
+		} else {
+			base.TracefCtx(ctx, base.KeyCRUD, "HLV source %s@%d within purge interval for doc %q - not compacting", sourceID, version, base.UD(docID))
 		}
 	}
+	pvCountAfter := len(hlv.PreviousVersions)
+
+	base.DebugfCtx(ctx, base.KeyCRUD, "Compacted %d of %d HLV sources from PV for doc %q older than %s", pvCountBefore-pvCountAfter, pvCountBefore, base.UD(docID), compactTimestampUnixNano)
 	return nil
 }
 

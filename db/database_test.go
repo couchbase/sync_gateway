@@ -3380,7 +3380,8 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	db.Options.PurgeInterval.Store(base.Ptr(time.Duration(0)))
+	// force compaction
+	db.Options.TestPurgeIntervalOverride = base.Ptr(time.Duration(0))
 
 	for i := 0; i < 300; i++ {
 		docID := fmt.Sprintf("doc%d", i)
@@ -3792,7 +3793,8 @@ func TestImportCompactPanic(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	db.Options.PurgeInterval.Store(base.Ptr(time.Duration(0)))
+	// force compaction
+	db.Options.TestPurgeIntervalOverride = base.Ptr(time.Duration(0))
 
 	// Create a document, then delete it, to create a tombstone
 	rev, doc, err := collection.Put(ctx, "test", Body{})
