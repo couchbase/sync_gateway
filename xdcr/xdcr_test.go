@@ -623,6 +623,89 @@ func TestReplicateXattrs(t *testing.T) {
 	}
 }
 
+// TestXDCRBeforeAttachmentMigration verifies that when XDCR runs before attachment metadata
+// migration (_sync.attachments -> _globalSync.attachments_meta), the document replicates to the
+// target without attachment links, and after migration the update is replicated and attachments
+// become available on the target.
+func TestXDCRBeforeAttachmentMigration(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	srcBucket, srcDs, dstBucket, dstDs := getTwoBucketDataStores(t)
+	ctx := base.TestCtx(t)
+
+	srcDB, srcCtx := db.CreateTestDatabase(t, base.NoCloseClone(srcBucket), db.DatabaseContextOptions{EnableXattr: true, Scopes: db.GetScopesOptions(t, srcBucket, 1)})
+	defer srcDB.Close(srcCtx)
+	srcColl, srcCtx := db.GetSingleDatabaseCollectionWithUser(srcCtx, t, srcDB)
+
+	dstDB, dstCtx := db.CreateTestDatabase(t, base.NoCloseClone(dstBucket), db.DatabaseContextOptions{EnableXattr: true, Scopes: db.GetScopesOptions(t, dstBucket, 1)})
+	defer dstDB.Close(dstCtx)
+	dstColl, dstCtx := db.GetSingleDatabaseCollectionWithUser(dstCtx, t, dstDB)
+
+	docID := t.Name() + "-doc"
+	attName := "camera.txt"
+	body := db.Body{"test": "doc", "_attachments": map[string]any{attName: map[string]any{"data": "Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}
+	_, _, err := srcColl.Put(srcCtx, docID, body)
+	require.NoError(t, err)
+
+	// get xattrs, remove the global xattr and move attachments back to sync data in the bucket
+	xattrs, cas, err := srcColl.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.GlobalXattrName)
+	require.Contains(t, xattrs, base.SyncXattrName)
+
+	var bucketSyncData db.SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))
+	var globalXattr db.GlobalSyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
+
+	bucketSyncData.AttachmentsPre4dot0 = globalXattr.Attachments
+	syncBytes := base.MustJSONMarshal(t, bucketSyncData)
+	xattrBytes := map[string][]byte{
+		base.SyncXattrName: syncBytes,
+	}
+	// add new update sync data but also remove global xattr from doc
+	_, err = srcColl.GetCollectionDatastore().WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"test":"doc"}`), xattrBytes, []string{base.GlobalXattrName}, nil)
+	require.NoError(t, err)
+
+	// Start XDCR to replicate doc in pre-migrated state
+	xdcr := startXDCR(t, srcBucket, dstBucket, XDCROptions{Mobile: MobileOn})
+	defer func() { assert.NoError(t, xdcr.Stop(ctx)) }()
+
+	// Wait for both the attachment doc and the main doc to replicate
+	requireWaitForXDCRDocsWritten(t, xdcr, 2)
+
+	// Verify doc is present and attachment wasn't found - via REST-like call Get1xRevAndChannels
+	b, _, _, _, _, dstPreMigrateSeq, dstPreMigrateRev, _, err := dstColl.Get1xRevAndChannels(dstCtx, docID, "", false)
+	require.NoError(t, err)
+	attsLocal := db.GetAttachmentsFromInlineBody(t, b)
+	require.Len(t, attsLocal, 0)
+
+	// Perform attachment metadata migration on the source
+	_, _, fromCas, err := srcDs.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+	sd := db.GetRawSyncXattr(t, srcDs, docID)
+	require.NoError(t, srcColl.MigrateAttachmentMetadata(srcColl.AddCollectionContext(srcCtx), docID, fromCas, &sd))
+
+	// Wait for the migration's _globalSync xattr update to replicate to the target
+	requireWaitForXDCRDocsWritten(t, xdcr, 3)
+
+	// check that we can fetch the attachment now - and the version information remained the same
+	// Note: The versions remaining the same means that clients that observe the missing attachment never get it until a subsequent doc update
+	// The benefit of doing this though, is that every other client (who has had this attachment) doesn't get a no-op document update post-migration.
+	b, _, _, _, _, dstPostMigrateSeq, dstPostMigrateRev, _, err := dstColl.Get1xRevAndChannels(dstCtx, docID, "", false)
+	require.NoError(t, err)
+	atts := db.GetAttachmentsFromInlineBody(t, b)
+	require.Len(t, atts, 1)
+	assert.Contains(t, atts, attName)
+
+	// Also assert _globalSync.attachments_meta present on target
+	attachmentsAfter := db.GetRawGlobalSyncAttachments(t, dstDs, docID)
+	require.Contains(t, attachmentsAfter, attName)
+
+	assert.Equal(t, dstPreMigrateSeq, dstPostMigrateSeq)
+	assert.Equal(t, dstPreMigrateRev, dstPostMigrateRev)
+}
+
 // TestVVMultiActor verifies that updates by multiple actors (updates to different clusters/buckets) are properly
 // reflected in the HLV (cv and pv).
 func TestVVMultiActor(t *testing.T) {
