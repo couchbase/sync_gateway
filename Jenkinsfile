@@ -52,12 +52,9 @@ pipeline {
                 }
                 stage('Go Tools') {
                     steps {
-                        // unhandled error checker
-                        sh 'go install github.com/kisielk/errcheck@latest'
                         // goveralls is used to send coverprofiles to coveralls.io
                         sh 'go install github.com/mattn/goveralls@latest'
-                        // Jenkins test reporting tools
-                        sh 'go install github.com/tebeka/go2xunit@latest'
+                        sh 'go install gotest.tools/gotestsum@latest'
                     }
                 }
             }
@@ -90,89 +87,85 @@ pipeline {
                         stage('CE') {
                             when { branch 'main' }
                             steps {
-                                // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
+                                script {
+                                    // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
+                                    withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
-                                    // Build CE coverprofiles
-                                    sh '2>&1 go test -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... > verbose_ce.out.raw || true'
+                                        sh 'mkdir -p reports'
+                                        // --junitfile-project-name is used so that Jenkins doesn't collapse CE and EE results together.
+                                        def testExitCode = sh(
+                                            script: 'gotestsum --junitfile=test-ce.xml --junitfile-project-name CE --junitfile-testcase-classname relative --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 ./... > verbose_ce.out',
+                                            returnStatus: true,
+                                        )
 
-                                    // Print total coverage stats
-                                    sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
+                                        // convert the junit file to prepend CE- to all test names to differentiate from EE tests
+                                        sh '''xmlstarlet ed -u '//testcase/@classname' -x 'concat("CE-", .)' test-ce.xml > reports/test-ce.xml'''
 
-                                    sh 'mkdir -p reports'
+                                        // Print total coverage stats
+                                        sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
 
-                                    // strip non-printable characters from the raw verbose test output
-                                    sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ce.out.raw > verbose_ce.out'
-
-                                    // Grab test fail/total counts so we can print them later
-                                    sh "grep '\\-\\-\\- PASS: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-pass.count"
-                                    sh "grep '\\-\\-\\- FAIL: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-fail.count"
-                                    sh "grep '\\-\\-\\- SKIP: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-skip.count"
-                                    sh "grep '=== RUN' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-total.count"
-                                    script {
+                                        // Grab test fail/total counts so we can print them later
+                                        sh "grep '\\-\\-\\- PASS: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-pass.count"
+                                        sh "grep '\\-\\-\\- FAIL: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-fail.count"
+                                        sh "grep '\\-\\-\\- SKIP: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-skip.count"
+                                        sh "grep '=== RUN' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-total.count"
                                         env.TEST_CE_PASS = readFile 'test-ce-pass.count'
                                         env.TEST_CE_FAIL = readFile 'test-ce-fail.count'
                                         env.TEST_CE_SKIP = readFile 'test-ce-skip.count'
                                         env.TEST_CE_TOTAL = readFile 'test-ce-total.count'
-                                    }
 
-                                    // Generate junit-formatted test report
-                                    script {
-                                        try {
-                                            sh 'which go2xunit' // check if go2xunit is installed
-                                            sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
+                                        if (testExitCode == 0) {
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS + '/' + env.TEST_CE_TOTAL + ' passed (' + env.TEST_CE_SKIP + ' skipped)', status: 'SUCCESS')
-                                        } catch (Exception e) {
+                                    } else {
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL + '/' + env.TEST_CE_TOTAL + ' failed (' + env.TEST_CE_SKIP + ' skipped)', status: 'FAILURE')
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
                                             unstable('At least one CE unit test failed')
                                         }
-                                    }
 
-                                    // Publish CE coverage to coveralls.io
-                                    // Replace covermode values with set just for coveralls to reduce the variability in reports.
-                                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
-                                    sh 'which goveralls' // check if goveralls is installed
-                                    sh 'goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=$COVERALLS_TOKEN || true'
+                                        // Publish CE coverage to coveralls.io
+                                        // Replace covermode values with set just for coveralls to reduce the variability in reports.
+                                        sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
+                                        sh 'which goveralls' // check if goveralls is installed
+                                        sh 'goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=$COVERALLS_TOKEN || true'
+                                    }
                                 }
                             }
                         }
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
+                                script {
+                                    withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
-                                    // Build EE coverprofiles
-                                    sh "2>&1 go test -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... > verbose_ee.out.raw || true"
+                                        sh 'mkdir -p reports'
+                                        // --junitfile-project-name is used so that Jenkins doesn't collapse CE and EE results together.
+                                        def testExitCode = sh(
+                                          script: "gotestsum --junitfile=test-ee.xml --junitfile-project-name EE --junitfile-testcase-classname relative --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 ./... 2>&1 > verbose_ee.out",
+                                          returnStatus: true,
+                                        )
 
-                                    sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
+                                        // convert the junit file to prepend EE- to all test names to differentiate from EE tests
+                                        sh '''xmlstarlet ed -u '//testcase/@classname' -x 'concat("EE-", .)' test-ee.xml > reports/test-ee.xml'''
 
-                                    sh 'mkdir -p reports'
+                                        sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
-                                    // strip non-printable characters from the raw verbose test output
-                                    sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ee.out.raw > verbose_ee.out'
-
-                                    // Grab test fail/total counts so we can print them later
-                                    sh "grep '\\-\\-\\- PASS: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-pass.count"
-                                    sh "grep '\\-\\-\\- FAIL: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-fail.count"
-                                    sh "grep '\\-\\-\\- SKIP: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-skip.count"
-                                    sh "grep '=== RUN' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-total.count"
-                                    script {
+                                        // Grab test fail/total counts so we can print them later
+                                        sh "grep '\\-\\-\\- PASS: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-pass.count"
+                                        sh "grep '\\-\\-\\- FAIL: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-fail.count"
+                                        sh "grep '\\-\\-\\- SKIP: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-skip.count"
+                                        sh "grep '=== RUN' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-total.count"
                                         env.TEST_EE_PASS = readFile 'test-ee-pass.count'
                                         env.TEST_EE_FAIL = readFile 'test-ee-fail.count'
                                         env.TEST_EE_SKIP = readFile 'test-ee-skip.count'
                                         env.TEST_EE_TOTAL = readFile 'test-ee-total.count'
-                                    }
 
-                                    // Generate junit-formatted test report
-                                    script {
-                                        try {
-                                            sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
+                                        // Generate junit-formatted test report
+                                        if (testExitCode == 0) {
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS + '/' + env.TEST_EE_TOTAL + ' passed (' + env.TEST_EE_SKIP + ' skipped)', status: 'SUCCESS')
-                                        } catch (Exception e) {
+                                    } else {
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL + '/' + env.TEST_EE_TOTAL + ' failed (' + env.TEST_EE_SKIP + ' skipped)', status: 'FAILURE')
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
