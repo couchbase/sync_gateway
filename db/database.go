@@ -1590,7 +1590,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 // if forceRefresh is set, we'll always fetch a new Metadata Purge Interval from the bucket, even if we had one cached.
 func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRefresh bool) time.Duration {
 	// look for metadata purge interval preferentially:
-	// 1. value specified in DatabaseContextOptions (testing seam)
+	// 1. test override value specified in DatabaseContextOptions
 	// 2. cached metadata purge interval (if forceRefresh is false)
 	// 3. bucket level
 	// 4. cluster level
@@ -1599,8 +1599,12 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRe
 		return *db.Options.TestPurgeIntervalOverride
 	}
 
-	if mpi := db.CachedPurgeInterval.Load(); !forceRefresh && mpi != nil {
-		return *mpi
+	// fetch cached value if available
+	if !forceRefresh {
+		mpi := db.CachedPurgeInterval.Load()
+		if mpi != nil {
+			return *mpi
+		}
 	}
 
 	// fetch from server
@@ -1608,7 +1612,6 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRe
 	if !ok {
 		return DefaultPurgeInterval
 	}
-
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", DefaultPurgeInterval.Hours()/24, err)
