@@ -1699,6 +1699,30 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 }
 
+func TestSendBranchedTreeNoConflicts(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		connectingUsername: "user1",
+	})
+	defer bt.Close()
+
+	//bt.restTester.GetDatabase().EnableAllowConflicts(bt.TB())
+
+	sent, _, resp, err := bt.SendRevWithHistory("doc1", "2-abc", []string{"1-abc"}, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.NoError(t, err)                            // no error
+	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
+
+	sent, _, resp, err = bt.SendRevWithHistory("doc1", "3-def", []string{"2-def", "1-abc"}, []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	require.NoError(t, err)                            // no error
+	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
+
+	doc := bt.restTester.GetDocument("doc1")
+	fmt.Println(doc.History)
+}
+
 // TestPutRevV4:
 //   - Create blip tester to run with V4 protocol
 //   - Use send rev with CV defined in rev field and history field with PV/MV defined
