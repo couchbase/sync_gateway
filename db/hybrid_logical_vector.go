@@ -318,6 +318,10 @@ func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, purge
 // compactWithValue removes Source ID entries from PV if they are older than the provided value
 // this differs from Compact in that it takes a raw value instead of a duration - for easier unit testing purposes.
 func (hlv *HybridLogicalVector) compactWithValue(ctx context.Context, docID string, compactToValue uint64) {
+	// disabled/noop
+	if compactToValue == 0 {
+		return
+	}
 	pvCountBefore := len(hlv.PreviousVersions)
 	for sourceID, version := range hlv.PreviousVersions {
 		if version < compactToValue {
