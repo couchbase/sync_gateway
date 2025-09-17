@@ -158,6 +158,7 @@ type DatabaseContext struct {
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
+	CachedPurgeInterval          atomic.Pointer[time.Duration]  // If set, the cached value of the purge interval to avoid repeated lookups
 }
 
 type Scope struct {
@@ -200,16 +201,15 @@ type DatabaseContextOptions struct {
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 	ConfigPrincipals              *ConfigPrincipals
-	CachedPurgeInterval           atomic.Pointer[time.Duration] // The metadata purge interval. Populated by db.GetMetadataPurgeInterval
-	TestPurgeIntervalOverride     *time.Duration                // If set, use this value for CachedPurgeInterval - test seam to force specific purge interval for tests
-	LoggingConfig                 *base.DbLogConfig             // Per-database log configuration
-	MaxConcurrentChangesBatches   *int                          // Maximum number of changes batches to process concurrently per replication
-	MaxConcurrentRevs             *int                          // Maximum number of revs to process concurrently per replication
-	NumIndexReplicas              uint                          // Number of replicas for GSI indexes
-	NumIndexPartitions            *uint32                       // Number of partitions for GSI indexes, if not set will default to 1
-	ImportVersion                 uint64                        // Version included in import DCP checkpoints, incremented when collections added to db
-	DisablePublicAllDocs          bool                          // Disable public access to the _all_docs endpoint for this database
-	StoreLegacyRevTreeData        bool                          // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
+	TestPurgeIntervalOverride     *time.Duration    // If set, use this value for db.GetMetadataPurgeInterval - test seam to force specific purge interval for tests
+	LoggingConfig                 *base.DbLogConfig // Per-database log configuration
+	MaxConcurrentChangesBatches   *int              // Maximum number of changes batches to process concurrently per replication
+	MaxConcurrentRevs             *int              // Maximum number of revs to process concurrently per replication
+	NumIndexReplicas              uint              // Number of replicas for GSI indexes
+	NumIndexPartitions            *uint32           // Number of partitions for GSI indexes, if not set will default to 1
+	ImportVersion                 uint64            // Version included in import DCP checkpoints, incremented when collections added to db
+	DisablePublicAllDocs          bool              // Disable public access to the _all_docs endpoint for this database
+	StoreLegacyRevTreeData        bool              // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
 }
 
 type ConfigPrincipals struct {
@@ -1599,7 +1599,7 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRe
 		return *db.Options.TestPurgeIntervalOverride
 	}
 
-	if mpi := db.Options.CachedPurgeInterval.Load(); !forceRefresh && mpi != nil {
+	if mpi := db.CachedPurgeInterval.Load(); !forceRefresh && mpi != nil {
 		return *mpi
 	}
 
@@ -1619,7 +1619,7 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRe
 		mpi = serverPurgeInterval
 	}
 
-	db.Options.CachedPurgeInterval.Store(&mpi)
+	db.CachedPurgeInterval.Store(&mpi)
 	return mpi
 }
 
