@@ -117,7 +117,7 @@ func TestHLVCompact(t *testing.T) {
 	hlv.compactWithValue(base.TestCtx(t), t.Name(), 0)
 	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
 
-	// since we have <= 5 PVs, compact should be a no-op
+	// since we have < 5 PVs, compact should be a no-op, even if there are candidates based on the value
 	hlv.compactWithValue(base.TestCtx(t), t.Name(), compactValue)
 	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
 
@@ -137,9 +137,11 @@ func TestHLVCompact(t *testing.T) {
 	assert.Contains(t, hlv.PreviousVersions, "sourceD")
 	assert.Contains(t, hlv.PreviousVersions, "sourceE") // Was a candidate for compaction but retained 3 PVs
 	assert.Contains(t, hlv.PreviousVersions, "sourceF") // Was a candidate for compaction but retained 3 PVs
+	assert.NotContains(t, hlv.PreviousVersions, "sourceG")
 	assert.NotContains(t, hlv.PreviousVersions, "sourceH")
 	assert.NotContains(t, hlv.PreviousVersions, "sourceI")
 	assert.NotContains(t, hlv.PreviousVersions, "sourceJ")
+	assert.NotContains(t, hlv.PreviousVersions, "sourceK")
 
 	// Ensure Compact didn't touch anything else in the HLV
 	assert.Equal(t, startingHLV.SourceID, hlv.SourceID)
