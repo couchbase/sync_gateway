@@ -157,6 +157,8 @@ fi
 # If rosmar tests were run, then prepend classname with integration to tell them apart
 if [ "${RUN_WALRUS}" == "true" ]; then
     xmlstarlet ed -u '//testcase/@classname' -x 'concat("integration-EE-", .)' integration.xml > "${INT_LOG_FILE_NAME}.xml"
+else
+    cp integration.xml "${INT_LOG_FILE_NAME}.xml"
 fi
 
 # Get coverage
