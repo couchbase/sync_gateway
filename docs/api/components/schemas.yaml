@@ -1018,9 +1018,10 @@ Database:
               type: integer
               default: 60
             enable_star_channel:
-              description: Used to control whether Sync Gateway should use the all documents (*) channel.
+              description: Used to control whether Sync Gateway should use the all documents (*) channel. This is not configurable and the value is set to `true`.
               type: boolean
               default: true
+              deprecated: true
             expiry_seconds:
               description: The amount of time (in seconds) to keep entries in the cache beyond the minimum retained.
               type: integer
@@ -1742,12 +1743,12 @@ Database:
       type: integer
       default: 75
     allow_conflicts:
-      description: This controls whether to allow conflicting document revisions. This option is going to be removed from sync gateway, and conflicts will not be allowed.
+      description: This controls whether to allow conflicting document revisions. This option is removed from sync gateway, and conflicts will not be allowed.
       type: boolean
       default: false
       deprecated: true
     enable_shared_bucket_access:
-      description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata.
+      description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata. The extended attributes cannot be disabled.
       type: boolean
       default: true
       deprecated: true
