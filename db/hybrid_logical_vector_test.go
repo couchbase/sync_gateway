@@ -92,7 +92,9 @@ func TestInternalHLVFunctions(t *testing.T) {
 }
 
 func TestHLVCompact(t *testing.T) {
-	// halfway through the HLV "timestamp" range for this test
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD)
+
+	// compact anything <= 25 - normally this would be a timestamp (to compare against CAS values)
 	compactValue := uint64(25)
 
 	hlv := HybridLogicalVector{
@@ -103,12 +105,10 @@ func TestHLVCompact(t *testing.T) {
 			"sourceC": 80,
 		},
 		PreviousVersions: map[string]uint64{
-			"sourceD": 50,
-			"sourceE": 40,
-			"sourceF": 30,
-			"sourceH": 20, // compaction candidate
-			"sourceI": 10, // compaction candidate
-			"sourceJ": 5,  // compaction candidate
+			"sourceD": 26, // within purge interval, should be kept
+			"sourceE": 25, // compaction candidate - on boundary
+			"sourceF": 24, // compaction candidate
+			"sourceG": 15, // compaction candidate
 		},
 	}
 	startingHLV := hlv.Copy()
@@ -117,12 +117,26 @@ func TestHLVCompact(t *testing.T) {
 	hlv.compactWithValue(base.TestCtx(t), t.Name(), 0)
 	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
 
-	// run again and purge half the PVs
+	// since we have <= 5 PVs, compact should be a no-op
 	hlv.compactWithValue(base.TestCtx(t), t.Name(), compactValue)
-	assert.Equal(t, len(startingHLV.PreviousVersions)-3, len(hlv.PreviousVersions))
+	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
+
+	// add more PVs to allow compaction
+	hlv.PreviousVersions["sourceH"] = 10 // compaction candidate
+	hlv.PreviousVersions["sourceI"] = 5  // compaction candidate
+	hlv.PreviousVersions["sourceJ"] = 3  // compaction candidate
+	hlv.PreviousVersions["sourceK"] = 2  // compaction candidate
+	// sanity-check test data
+	require.GreaterOrEqual(t, len(hlv.PreviousVersions), minPVEntriesBeforeCompaction)
+
+	// run again and purge PVs older than compactValue
+	// but ensure we retain at least 3 PV entries
+	hlv.compactWithValue(base.TestCtx(t), t.Name(), compactValue)
+	assert.Equal(t, minPVEntriesRetained, len(hlv.PreviousVersions))
+
 	assert.Contains(t, hlv.PreviousVersions, "sourceD")
-	assert.Contains(t, hlv.PreviousVersions, "sourceE")
-	assert.Contains(t, hlv.PreviousVersions, "sourceF")
+	assert.Contains(t, hlv.PreviousVersions, "sourceE") // Was a candidate for compaction but retained 3 PVs
+	assert.Contains(t, hlv.PreviousVersions, "sourceF") // Was a candidate for compaction but retained 3 PVs
 	assert.NotContains(t, hlv.PreviousVersions, "sourceH")
 	assert.NotContains(t, hlv.PreviousVersions, "sourceI")
 	assert.NotContains(t, hlv.PreviousVersions, "sourceJ")
