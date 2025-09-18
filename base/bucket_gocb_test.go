@@ -2631,4 +2631,7 @@ func TestWriteUpdateWithXattrsDocumentTombstone(t *testing.T) {
 	require.NoError(t, err)
 	require.JSONEq(t, string(xattrModifiedBody), string(xattrs[xattr1Key]))
 	require.NotContains(t, xattrs, xattr2Key)
+	WarnfCtx(ctx, "example warnfCtx output")
+	t.Log("example t.Log output")
+	require.True(t, false, "force a testisfy failure")
 }

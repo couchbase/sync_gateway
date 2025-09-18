@@ -85,7 +85,8 @@ pipeline {
                 stage('Unit') {
                     stages {
                         stage('CE') {
-                            when { branch 'main' }
+                            // commented to show CBG-4852 CE test failures also
+                            // when { branch 'main' }
                             steps {
                                 script {
                                     // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
@@ -95,7 +96,9 @@ pipeline {
                                         sh 'mkdir -p reports'
                                         // --junitfile-project-name is used so that Jenkins doesn't collapse CE and EE results together.
                                         def testExitCode = sh(
-                                            script: 'gotestsum --junitfile=test-ce.xml --junitfile-project-name CE --junitfile-testcase-classname relative --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 ./... > verbose_ce.out',
+                                            // switch ... to base package to show CBG-4852 CE test failures quicker
+                                            // script: 'gotestsum --junitfile=test-ce.xml --junitfile-project-name CE --junitfile-testcase-classname relative --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 ./... > verbose_ce.out',
+                                            script: 'gotestsum --junitfile=test-ce.xml --junitfile-project-name CE --junitfile-testcase-classname relative --format standard-verbose -- -shuffle=on -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 ./base > verbose_ce.out',
                                             returnStatus: true,
                                         )
 
@@ -143,7 +146,9 @@ pipeline {
                                         sh 'mkdir -p reports'
                                         // --junitfile-project-name is used so that Jenkins doesn't collapse CE and EE results together.
                                         def testExitCode = sh(
-                                          script: "gotestsum --junitfile=test-ee.xml --junitfile-project-name EE --junitfile-testcase-classname relative --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 ./... 2>&1 > verbose_ee.out",
+                                          // CBG-4852 demonstrate failure faster with just base package instead of ...
+                                          //script: "gotestsum --junitfile=test-ee.xml --junitfile-project-name EE --junitfile-testcase-classname relative --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 ./... 2>&1 > verbose_ee.out",
+                                          script: "gotestsum --junitfile=test-ee.xml --junitfile-project-name EE --junitfile-testcase-classname relative --format standard-verbose -- -shuffle=on -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 ./base 2>&1 > verbose_ee.out",
                                           returnStatus: true,
                                         )
 
