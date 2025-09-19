@@ -1019,13 +1019,6 @@ Database:
                 When the cache size, determined by `max_number` returns to a value lower than the percentage of it set here, the cache eviction process is stopped.
               type: integer
               default: 60
-            enable_star_channel:
-              description: |-
-                Since Sync Gateway 4.0, this option no longer has an effect, the star channel is always enabled.
-                If this value is set to false, a database can only exist in the offline state until this configuration is modified.
-              type: boolean
-              default: true
-              deprecated: true
             expiry_seconds:
               description: The amount of time (in seconds) to keep entries in the cache beyond the minimum retained.
               type: integer
@@ -1054,6 +1047,13 @@ Database:
               description: The minimum number of entries to maintain in the cache per channel.
               type: integer
               default: 50
+            enable_star_channel:
+              description: |-
+                Since Sync Gateway 4.0, this option no longer has an effect, the star channel is always enabled.
+                If this value is set to false, a database can only exist in the offline state until this configuration is modified.
+              type: boolean
+              default: true
+              deprecated: true
             query_limit:
               description: |-
                 **Deprecated in favour of the database setting `query_pagination_limit`**
