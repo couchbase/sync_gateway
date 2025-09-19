@@ -994,9 +994,11 @@ Database:
       type: string
     cache:
       type: object
+      x-requirePropertiesSorted: true
       properties:
         channel_cache:
           description: The channel cache config settings.
+          x-requirePropertiesSorted: true
           type: object
           properties:
             compact_high_watermark_pct:
@@ -1018,7 +1020,9 @@ Database:
               type: integer
               default: 60
             enable_star_channel:
-              description: Used to control whether Sync Gateway should use the all documents (*) channel. This is not configurable and the value is set to `true`.
+              description: |-
+                Since Sync Gateway 4.0, this option no longer has an effect, the star channel is always enabled.
+                If this value is set to false, a database can only exist in the offline state until this configuration is modified.
               type: boolean
               default: true
               deprecated: true
@@ -1743,12 +1747,16 @@ Database:
       type: integer
       default: 75
     allow_conflicts:
-      description: This controls whether to allow conflicting document revisions. This option is removed from sync gateway, and conflicts will not be allowed.
+      description: |-
+        Since Sync Gateway 4.0, this option has no effect.
+        If this option is set to true on an existing database, the database must be modified to remove this parameter in order allow the database to come online. Otherwise, the database will be in the offline state.
       type: boolean
       default: false
       deprecated: true
     enable_shared_bucket_access:
-      description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata. The extended attributes cannot be disabled.
+      description: |-
+        Since Sync Gateway 4.0, this option has no effect.
+        If this option is set to true on an existing database, the database must be modified to remove this parameter in order allow the database to come online. Otherwise, the database will be in the offline state.
       type: boolean
       default: true
       deprecated: true
