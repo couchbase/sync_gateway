@@ -22,13 +22,13 @@ import (
 
 // Bits in LogEntry.Flags
 const (
-	Deleted  = 1 << iota // This rev is a deletion
-	Removed              // Doc was removed from this channel
-	Hidden               // This rev is not the default (hidden by a conflict)
-	Conflict             // Document is in conflict at this time
-	Branched             // Revision tree is branched
-	Added                // Doc was added to this channel
-
+	Deleted     = 1 << iota // This rev is a deletion
+	Removed                 // Doc was removed from this channel
+	Hidden                  // This rev is not the default (hidden by a conflict)
+	Conflict                // Document is in conflict at this time
+	Branched                // Revision tree is branched
+	Added                   // Doc was added to this channel
+	UnchangedCV             // This rev has updated metadata but the CV doesn't change
 )
 
 // LogEntry stores information about a change to a document in a cache.

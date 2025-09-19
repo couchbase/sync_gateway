@@ -208,7 +208,7 @@ type DocumentRevision struct {
 	Removed     bool  // True if the revision is a removal.
 	MemoryBytes int64 // storage of the doc rev bytes measurement, includes size of delta when present too
 	CV          *Version
-	hlvHistory  string
+	HlvHistory  string
 }
 
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
@@ -390,7 +390,7 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 		AttachmentStorageMeta: toRevAttStorageMeta,
 		ToChannels:            toRevision.Channels,
 		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
-		HlvHistory:            toRevision.hlvHistory,
+		HlvHistory:            toRevision.HlvHistory,
 		ToDeleted:             deleted,
 	}
 	revDelta.CalculateDeltaBytes()

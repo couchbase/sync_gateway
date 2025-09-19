@@ -729,7 +729,7 @@ func (value *revCacheValue) asDocumentRevision(delta *RevisionDelta) (DocumentRe
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
-		hlvHistory:  value.hlvHistory,
+		HlvHistory:  value.hlvHistory,
 	}
 	// only populate CV if we have a value
 	if !value.cv.IsEmpty() {
@@ -802,7 +802,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.deleted = docRev.Deleted
 		value.err = nil
 		value.itemBytes.Store(docRev.MemoryBytes)
-		value.hlvHistory = docRev.hlvHistory
+		value.hlvHistory = docRev.HlvHistory
 	}
 	value.lock.Unlock()
 	value.canEvict.Store(true) // now we have stored the doc revision in the cache, we can allow eviction

@@ -1151,7 +1151,7 @@ func TestHLVInvalidateMV(t *testing.T) {
 	}
 }
 
-func TestAddVersion(t *testing.T) {
+func TestHLVAddVersion(t *testing.T) {
 	testCases := []struct {
 		name        string
 		initialHLV  string
@@ -1304,7 +1304,7 @@ func TestAddVersion(t *testing.T) {
 	}
 }
 
-func TestIsInConflict(t *testing.T) {
+func TestHLVIsInConflict(t *testing.T) {
 	testCases := []struct {
 		name        string
 		localHLV    string
@@ -1426,7 +1426,7 @@ func TestIsInConflict(t *testing.T) {
 	}
 }
 
-func TestHLVUpdateFromIncomingRemoteWins(t *testing.T) {
+func TestHLVUpdateFromIncoming(t *testing.T) {
 	testCases := []struct {
 		name        string
 		existingHLV string
@@ -1489,6 +1489,66 @@ func TestHLVUpdateFromIncomingRemoteWins(t *testing.T) {
 			existingHLV: "3@c;2@b,6@a",
 			incomingHLV: "4@c,2@b,1@a",
 			finalHLV:    "4@c,2@b,1@a",
+		},
+		{
+			name:        "incoming doc has MV existing does not",
+			existingHLV: "10@xyz;8@foo,9@bar",
+			incomingHLV: "20@abc,10@def,11@efg;5@foo",
+			finalHLV:    "20@abc,10@def,11@efg;10@xyz,8@foo,9@bar",
+		},
+		{
+			name:        "incoming HLV had CV in common with existing HLV PV",
+			existingHLV: "11@xyz;7@foo,10@abc",
+			incomingHLV: "20@abc;5@foo",
+			finalHLV:    "20@abc;11@xyz,7@foo",
+		},
+		{
+			name:        "existing HLV had CV in common with incoming HLV PV",
+			incomingHLV: "20@abc;5@foo,10@xyz",
+			existingHLV: "11@xyz;7@foo",
+			finalHLV:    "20@abc;11@xyz,7@foo",
+		},
+		{
+			name:        "incoming hlv has MV entry less than existing hlv",
+			incomingHLV: "10@abc,1@def,3@efg;1@foo",
+			existingHLV: "2@xyz,8@def,9@efg;1@foo",
+			finalHLV:    "10@abc;2@xyz,8@def,9@efg,1@foo",
+		},
+		{
+			name:        "incoming hlv has PV entry less than existing hlv PV entry",
+			incomingHLV: "10@abc;1@foo,3@def",
+			existingHLV: "2@xyz;8@def,9@efg,4@foo",
+			finalHLV:    "10@abc;2@xyz,4@foo,8@def,9@efg",
+		},
+		{
+			name:        "local hlv has MV entry greater than remote hlv",
+			incomingHLV: "10@abc,10@def,11@efg;1@foo",
+			existingHLV: "2@xyz,8@def,9@efg;1@bar",
+			finalHLV:    "10@abc,10@def,11@efg;2@xyz,1@bar,1@foo",
+		},
+		{
+			name:        "local hlv has PV entry greater than remote hlv PV entry",
+			incomingHLV: "10@abc;10@foo,11@def",
+			existingHLV: "2@xyz;8@def,9@efg",
+			finalHLV:    "10@abc;2@xyz,11@def,9@efg,10@foo",
+		},
+		{
+			name:        "both local and remote have mv and no common sources",
+			incomingHLV: "10@abc,10@def,11@efg;1@foo",
+			existingHLV: "2@xyz,8@lmn,9@pqr;1@bar",
+			finalHLV:    "10@abc,10@def,11@efg;2@xyz,8@lmn,9@pqr,1@bar,1@foo",
+		},
+		{
+			name:        "both local and remote have no common sources in PV",
+			incomingHLV: "10@abc;1@foo",
+			existingHLV: "20@xyz;2@bar",
+			finalHLV:    "10@abc;20@xyz,1@foo,2@bar",
+		},
+		{
+			name:        "local hlv has cv less than remote hlv",
+			incomingHLV: "10@abc;1@foo",
+			existingHLV: "20@xyz;2@foo",
+			finalHLV:    "10@abc;20@xyz,2@foo",
 		},
 	}
 
@@ -1623,98 +1683,6 @@ func TestHLVUpdateFromIncomingNewCV(t *testing.T) {
 
 			require.NoError(t, localHLV.MergeWithIncomingHLV(test.newCV, incomingHLV))
 			require.True(t, localHLV.Equal(expectedHLV), "Expected HLV %s, actual HLV %s", test.finalHLV, hlvAsBlipString(t, localHLV))
-		})
-	}
-}
-
-func TestLocalWinsConflictResolutionForHLV(t *testing.T) {
-	testCases := []struct {
-		name        string
-		localHLV    string
-		remoteHLV   string
-		expectedHLV string
-	}{
-		{
-			name:        "local doc has MV remote does not",
-			localHLV:    "20@abc,10@def,11@efg;5@foo",
-			remoteHLV:   "10@xyz;8@foo,9@bar",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,10@xyz,20@abc;10@def,11@efg,8@foo,9@bar",
-		},
-		{
-			name:        "local doc has no MV and remote does",
-			localHLV:    "20@abc;5@foo",
-			remoteHLV:   "11@xyz,10@def,11@efg;7@foo",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,11@xyz,20@abc;10@def,11@efg,7@foo",
-		},
-		{
-			name:        "local HLV had CV in common with remote HLV PV",
-			localHLV:    "20@abc;5@foo",
-			remoteHLV:   "11@xyz;7@foo,10@abc",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,11@xyz,20@abc;7@foo",
-		},
-		{
-			name:        "remote HLV had CV in common with local HLV PV",
-			localHLV:    "20@abc;5@foo,10@xyz",
-			remoteHLV:   "11@xyz;7@foo",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,20@abc,11@xyz;7@foo",
-		},
-		{
-			name:        "local hlv has MV entry less than remote hlv",
-			localHLV:    "10@abc,1@def,3@efg;1@foo",
-			remoteHLV:   "2@xyz,8@def,9@efg;1@foo",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,2@xyz,10@abc;8@def,9@efg,1@foo",
-		},
-		{
-			name:        "local hlv has PV entry less than remote hlv PV entry",
-			localHLV:    "10@abc;1@foo,3@def",
-			remoteHLV:   "2@xyz;8@def,9@efg,4@foo",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,2@xyz,10@abc;4@foo,8@def,9@efg",
-		},
-		{
-			name:        "local hlv has MV entry greater than remote hlv",
-			localHLV:    "10@abc,10@def,11@efg;1@foo",
-			remoteHLV:   "2@xyz,8@def,9@efg;1@bar",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,10@abc,2@xyz;11@efg,1@foo,1@bar,10@def",
-		},
-		{
-			name:        "local hlv has PV entry greater than remote hlv PV entry",
-			localHLV:    "10@abc;10@foo,11@def",
-			remoteHLV:   "2@xyz;8@def,9@efg",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,10@abc,2@xyz;11@def,9@efg,10@foo",
-		},
-		{
-			name:        "both local and remote have mv and no common sources",
-			localHLV:    "10@abc,10@def,11@efg;1@foo",
-			remoteHLV:   "2@xyz,8@lmn,9@pqr;1@bar",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,10@abc,2@xyz;10@def,11@efg,8@lmn,9@pqr,1@bar,1@foo",
-		},
-		{
-			name:        "both lcoal and remote have no common sources in PV",
-			localHLV:    "10@abc;1@foo",
-			remoteHLV:   "20@xyz;2@bar",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,10@abc,20@xyz;1@foo,2@bar",
-		},
-		{
-			name:        "local hlv has cv less than remote hlv",
-			localHLV:    "10@abc;1@foo",
-			remoteHLV:   "20@xyz;2@foo",
-			expectedHLV: "FFFFFFFFFFFFFFFF@testSource,10@abc,20@xyz;2@foo",
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			localHLV, _, err := extractHLVFromBlipString(tc.localHLV)
-			require.NoError(t, err)
-			remoteHLV, _, err := extractHLVFromBlipString(tc.remoteHLV)
-			require.NoError(t, err)
-
-			localWinsHLV, err := localWinsConflictResolutionForHLV(t.Context(), localHLV, remoteHLV, "testDoc", "testSource")
-			require.NoError(t, err)
-
-			expectedHLV, _, err := extractHLVFromBlipString(tc.expectedHLV)
-			require.NoError(t, err)
-
-			require.Equal(t, expectedHLV, localWinsHLV)
 		})
 	}
 }

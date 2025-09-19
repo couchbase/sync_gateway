@@ -752,8 +752,8 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	if !bsc.useHLV() || localIsLegacyRev {
 		history = toHistory(docRev.History, knownRevs, maxHistory)
 	} else {
-		if docRev.hlvHistory != "" {
-			history = append(history, docRev.hlvHistory)
+		if docRev.HlvHistory != "" {
+			history = append(history, docRev.HlvHistory)
 		}
 	}
 

@@ -2042,10 +2042,8 @@ func (db *DatabaseCollectionWithUser) resolveRemoteWinsHLV(ctx context.Context, 
 	}
 	remoteRevID := remoteDoc.RevID
 
-	newHLV, err := remoteWinsConflictResolutionForHLV(ctx, remoteDoc.ID, localDoc.HLV, remoteDoc.HLV)
-	if err != nil {
-		return nil, err
-	}
+	newHLV := localDoc.HLV.Copy()
+	newHLV.UpdateWithIncomingHLV(remoteDoc.HLV)
 	base.DebugfCtx(ctx, base.KeyReplicate, "Resolved HLV conflict for doc %s as remoteWins - remote rev is %s, previous local rev %s tombstoned by %s", base.UD(localDoc.ID), remoteRevID, localRevID, tombstoneRevID)
 	return newHLV, nil
 }
@@ -2072,7 +2070,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 		return nil, nil, err
 	}
 
-	base.DebugfCtx(ctx, base.KeyVV, "successfully merged doc doc %s, resulting HLV: %v", base.UD(localDoc.ID), newHLV)
+	base.DebugfCtx(ctx, base.KeyVV, "successfully merged doc %s, resulting HLV: %#v", base.UD(localDoc.ID), newHLV)
 	return newHLV, updatedHistory, nil
 }
 
@@ -2092,10 +2090,13 @@ func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, l
 	revTreeHistory = append([]string{newRevID}, revTreeHistory...)
 	remoteDoc.RevID = newRevID
 
-	newHLV, err := localWinsConflictResolutionForHLV(ctx, localDoc.HLV, remoteDoc.HLV, localDoc.ID, db.dbCtx.EncodedSourceID)
-	if err != nil {
-		return nil, nil, err
-	}
+	newHLV := remoteDoc.HLV.Copy()
+	newHLV.UpdateWithIncomingHLV(localDoc.HLV)
+
+	// remove the local doc from the revision cache, given the hlv is changing but the CV is staying same so the old reference
+	// to this cv in rev cache is stale
+	db.revisionCache.RemoveWithCV(ctx, localDoc.ID, localDoc.HLV.ExtractCurrentVersionFromHLV())
+	localDoc.localWinsConflict = true
 
 	localWinsConflictResolutionDocumentHandling(ctx, localDoc, remoteDoc, revTreeHistory, docBodyBytes, newRevID)
 
@@ -2152,6 +2153,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags(ctx context.Context) {
 	doc.setFlag(channels.Deleted, doc.History[revtreeID].Deleted)
 	doc.setFlag(channels.Conflict, inConflict)
 	doc.setFlag(channels.Branched, branched)
+	doc.setFlag(channels.UnchangedCV, doc.localWinsConflict)
 	if doc.hasFlag(channels.Deleted) {
 		doc.SyncData.TombstonedAt = time.Now().Unix()
 	} else {
@@ -2870,7 +2872,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Attachments: doc.Attachments(),
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
-			hlvHistory:  doc.HLV.ToHistoryForHLV(),
+			HlvHistory:  doc.HLV.ToHistoryForHLV(),
 			CV:          &Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version},
 		}
 
