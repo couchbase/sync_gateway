@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -28,6 +29,11 @@ import (
 // encodedRevTreeSourceID is a base64 encoded value representing a revision that came from a 4.x client with a
 // revtree ID.
 const encodedRevTreeSourceID = "Revision+Tree+Encoding"
+
+const (
+	minPVEntriesBeforeCompaction = 5 // minPVEntriesBeforeCompaction is the minimum number of sources in previous versions before timestamp-based compaction is considered.
+	minPVEntriesRetained         = 3 // minPVEntriesRetained defines the minimum number of PV entries that should be retained after compaction, to avoid removing all history for infrequently updated/replicated documents.
+)
 
 type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
 
@@ -302,6 +308,51 @@ func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 	}
 	return existingValueForSource >= version.Value
 
+}
+
+// Compact removes Source ID entries from PV if they are older than the provided purgeInterval.
+func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, purgeInterval time.Duration) {
+	// disabled/noop
+	if purgeInterval == 0 {
+		return
+	}
+	compactTimestamp := time.Now().Add(-purgeInterval).UnixNano()
+	hlv.compactWithValue(ctx, docID, uint64(compactTimestamp))
+}
+
+// compactWithValue removes Source ID entries from PV if they are older than the provided value
+// this differs from Compact in that it takes a raw value instead of a duration - for easier unit testing purposes.
+func (hlv *HybridLogicalVector) compactWithValue(ctx context.Context, docID string, compactToValue uint64) {
+	// disabled/noop
+	pvCountBefore := len(hlv.PreviousVersions)
+	if compactToValue == 0 || pvCountBefore < minPVEntriesBeforeCompaction {
+		return
+	}
+
+	// Build candidate list (entries older than threshold)
+	var candidates []Version
+	for s, v := range hlv.PreviousVersions {
+		if v < compactToValue {
+			candidates = append(candidates, Version{SourceID: s, Value: v})
+			base.TracefCtx(ctx, base.KeyCRUD, "HLV PV %s@%d eligible for compaction for doc %q", s, v, base.UD(docID))
+		} else {
+			base.TracefCtx(ctx, base.KeyCRUD, "HLV PV %s@%d within purge interval for doc %q - not compacting", s, v, base.UD(docID))
+		}
+	}
+
+	// sort oldest to newest
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Value < candidates[j].Value })
+
+	for _, c := range candidates {
+		if len(hlv.PreviousVersions) <= minPVEntriesRetained {
+			base.TracefCtx(ctx, base.KeyCRUD, "HLV PV compaction reached minimum retained entries (%d) for doc %q - stopping compaction", minPVEntriesRetained, base.UD(docID))
+			break
+		}
+		base.TracefCtx(ctx, base.KeyCRUD, "Compacting HLV source %s@%d in PV for doc %q", c.SourceID, c.Value, base.UD(docID))
+		delete(hlv.PreviousVersions, c.SourceID)
+	}
+
+	base.DebugfCtx(ctx, base.KeyCRUD, "Compacted %d of %d HLV sources from PV for doc %q older than %d", pvCountBefore-len(hlv.PreviousVersions), pvCountBefore, base.UD(docID), compactToValue)
 }
 
 // AddVersion adds newVersion as the current version to the in memory representation of the HLV.

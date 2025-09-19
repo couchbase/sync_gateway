@@ -1031,6 +1031,11 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	default:
 		return nil, base.RedactErrorf("Unexpected docUpdateEvent %v in updateHLV for doc %s", docUpdateEvent, base.UD(d.ID))
 	}
+	// clean up PV only if we have more than a handful of source IDs - reduce Compaction and false-conflict risk where we don't need it
+	if len(d.HLV.PreviousVersions) > minPVEntriesBeforeCompaction {
+		mpi := db.dbCtx.GetMetadataPurgeInterval(ctx, false)
+		d.HLV.Compact(ctx, d.ID, mpi)
+	}
 	d.SyncData.SetCV(d.HLV)
 	return d, nil
 }

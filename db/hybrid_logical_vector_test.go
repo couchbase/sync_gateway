@@ -91,6 +91,64 @@ func TestInternalHLVFunctions(t *testing.T) {
 	require.Equal(t, hlv.PreviousVersions, expectedPV)
 }
 
+func TestHLVCompact(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD)
+
+	// compact anything <= 25 - normally this would be a timestamp (to compare against CAS values)
+	compactValue := uint64(25)
+
+	hlv := HybridLogicalVector{
+		SourceID: "sourceA",
+		Version:  100,
+		MergeVersions: map[string]uint64{
+			"sourceB": 90,
+			"sourceC": 80,
+		},
+		PreviousVersions: map[string]uint64{
+			"sourceD": 26, // within purge interval, should be kept
+			"sourceE": 25, // compaction candidate - on boundary
+			"sourceF": 24, // compaction candidate
+			"sourceG": 15, // compaction candidate
+		},
+	}
+	startingHLV := hlv.Copy()
+
+	// test no-op condition - this is only really used in tests that want to avoid compacting on writes - production code defaults to 30d purge interval
+	hlv.compactWithValue(base.TestCtx(t), t.Name(), 0)
+	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
+
+	// since we have < 5 PVs, compact should be a no-op, even if there are candidates based on the value
+	hlv.compactWithValue(base.TestCtx(t), t.Name(), compactValue)
+	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
+
+	// add more PVs to allow compaction
+	hlv.PreviousVersions["sourceH"] = 10 // compaction candidate
+	hlv.PreviousVersions["sourceI"] = 5  // compaction candidate
+	hlv.PreviousVersions["sourceJ"] = 3  // compaction candidate
+	hlv.PreviousVersions["sourceK"] = 2  // compaction candidate
+	// sanity-check test data
+	require.GreaterOrEqual(t, len(hlv.PreviousVersions), minPVEntriesBeforeCompaction)
+
+	// run again and purge PVs older than compactValue
+	// but ensure we retain at least 3 PV entries
+	hlv.compactWithValue(base.TestCtx(t), t.Name(), compactValue)
+	assert.Equal(t, minPVEntriesRetained, len(hlv.PreviousVersions))
+
+	assert.Contains(t, hlv.PreviousVersions, "sourceD")
+	assert.Contains(t, hlv.PreviousVersions, "sourceE") // Was a candidate for compaction but retained 3 PVs
+	assert.Contains(t, hlv.PreviousVersions, "sourceF") // Was a candidate for compaction but retained 3 PVs
+	assert.NotContains(t, hlv.PreviousVersions, "sourceG")
+	assert.NotContains(t, hlv.PreviousVersions, "sourceH")
+	assert.NotContains(t, hlv.PreviousVersions, "sourceI")
+	assert.NotContains(t, hlv.PreviousVersions, "sourceJ")
+	assert.NotContains(t, hlv.PreviousVersions, "sourceK")
+
+	// Ensure Compact didn't touch anything else in the HLV
+	assert.Equal(t, startingHLV.SourceID, hlv.SourceID)
+	assert.Equal(t, startingHLV.Version, hlv.Version)
+	assert.Equal(t, startingHLV.MergeVersions, hlv.MergeVersions)
+}
+
 // TestHLVIsDominating:
 //   - Tests cases where one HLV is said to be 'dominating' over another
 //   - Assert that all scenarios returns false from IsInConflict method, as we have a HLV that is dominating in each case
