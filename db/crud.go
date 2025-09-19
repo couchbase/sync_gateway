@@ -1380,7 +1380,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				if len(opts.RevTreeHistory) > 0 && !opts.AlignRevTrees {
 					parent, currentRevIndex, err := db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
 					if err != nil {
-						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s, and conflict found in rev tree history", base.UD(doc.ID), opts.NewDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
+						base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, and conflict found in rev tree history", base.UD(doc.ID))
 						return nil, nil, false, nil, err
 					}
 					_, err = doc.addNewerRevisionsToRevTreeHistory(opts.NewDoc, currentRevIndex, parent, opts.RevTreeHistory)
@@ -1390,7 +1390,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					revTreeAlignedForCBL = true // we have aligned the rev tree for CBL push here so skip later in function
 					doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
 				} else {
-					base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), opts.NewDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
+					base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
 					if opts.ConflictResolver == nil {
 						// cancel rest of update, HLV is in conflict and no resolver is present
 						return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
