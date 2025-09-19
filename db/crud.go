@@ -2153,7 +2153,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags(ctx context.Context) {
 	doc.setFlag(channels.Deleted, doc.History[revtreeID].Deleted)
 	doc.setFlag(channels.Conflict, inConflict)
 	doc.setFlag(channels.Branched, branched)
-	doc.setFlag(channels.VVUpdateWithoutCV, doc.localWinsConflict)
+	doc.setFlag(channels.UnchangedCV, doc.localWinsConflict)
 	if doc.hasFlag(channels.Deleted) {
 		doc.SyncData.TombstonedAt = time.Now().Unix()
 	} else {

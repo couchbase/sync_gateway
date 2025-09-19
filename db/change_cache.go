@@ -506,8 +506,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		collection.revisionCache.RemoveRevOnly(ctx, docID, syncData.GetRevTreeID())
 	}
 	// remove the local doc from the revision cache if the change is a result of a conflict resolution that resulted
-	// in local/remote wins, given the HLV will have been updated but CV not changed
-	if syncData.Flags&channels.VVUpdateWithoutCV != 0 {
+	// in local wins, given the HLV will have been updated but CV not changed
+	if syncData.Flags&channels.UnchangedCV != 0 {
 		vrs := Version{
 			SourceID: syncData.RevAndVersion.CurrentSource,
 			Value:    base.HexCasToUint64(syncData.RevAndVersion.CurrentVersion),
