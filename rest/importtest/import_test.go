@@ -2136,8 +2136,7 @@ func TestImportFilterTimeout(t *testing.T) {
 		rest.AssertStatus(t, response, 404)
 		syncFnFinishedWG.Done()
 	}()
-	timeoutErr := rest.WaitWithTimeout(&syncFnFinishedWG, time.Second*15)
-	assert.NoError(t, timeoutErr)
+	rest.WaitWithTimeout(t, &syncFnFinishedWG, time.Second*15)
 }
 
 func TestImportRollback(t *testing.T) {
