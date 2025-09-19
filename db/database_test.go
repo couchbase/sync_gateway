@@ -3376,9 +3376,8 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	zero := time.Duration(0)
 	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{
-		PurgeInterval: &zero,
+		TestPurgeIntervalOverride: base.Ptr(time.Duration(0)),
 	})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -3786,11 +3785,10 @@ func TestImportCompactPanic(t *testing.T) {
 		t.Skip("requires xattrs")
 	}
 
-	zero := time.Duration(0)
 	// Set the compaction and purge interval unrealistically low to reproduce faster
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
-		CompactInterval: 1,
-		PurgeInterval:   &zero,
+		CompactInterval:           1,
+		TestPurgeIntervalOverride: base.Ptr(time.Duration(0)),
 	})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

@@ -1039,6 +1039,10 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 			ctx1 := rt1.Context()
 			ctx2 := rt2.Context()
 
+			// disable purge interval so we can avoid HLV compaction for the artificially low HLV values in this test
+			rt1.GetDatabase().Options.TestPurgeIntervalOverride = base.Ptr(time.Duration(0))
+			rt2.GetDatabase().Options.TestPurgeIntervalOverride = base.Ptr(time.Duration(0))
+
 			docID := "doc1_"
 			version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 			rt2.WaitForPendingChanges()

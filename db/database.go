@@ -158,6 +158,7 @@ type DatabaseContext struct {
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
+	CachedPurgeInterval          atomic.Pointer[time.Duration]  // If set, the cached value of the purge interval to avoid repeated lookups
 }
 
 type Scope struct {
@@ -200,7 +201,7 @@ type DatabaseContextOptions struct {
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 	ConfigPrincipals              *ConfigPrincipals
-	PurgeInterval                 *time.Duration    // Add a custom purge interval, as a testing seam. If nil, this parameter is filled in by Couchbase Server, with a fallback to a default value SG has.
+	TestPurgeIntervalOverride     *time.Duration    // If set, use this value for db.GetMetadataPurgeInterval - test seam to force specific purge interval for tests
 	LoggingConfig                 *base.DbLogConfig // Per-database log configuration
 	MaxConcurrentChangesBatches   *int              // Maximum number of changes batches to process concurrently per replication
 	MaxConcurrentRevs             *int              // Maximum number of revs to process concurrently per replication
@@ -1463,7 +1464,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 		return 0, nil
 	}
 
-	purgeInterval := db.GetMetadataPurgeInterval(ctx)
+	purgeInterval := db.GetMetadataPurgeInterval(ctx, true)
 	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", purgeInterval.Hours()/24)
 
 	// Trigger view compaction for all tombstoned documents older than the purge interval
@@ -1586,17 +1587,27 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 }
 
 // GetMetadataPurgeInterval returns the current value for the metadata purge interval for the backing bucket.
-func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context) time.Duration {
+// if forceRefresh is set, we'll always fetch a new Metadata Purge Interval from the bucket, even if we had one cached.
+func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRefresh bool) time.Duration {
 	// look for metadata purge interval preferentially:
-	// 1. value specified in DatabaseContextOptions (testing seam)
-	// 2. bucket level
-	// 3. cluster level
-	// 4. default fallback value
-
-	if db.Options.PurgeInterval != nil {
-		return *db.Options.PurgeInterval
+	// 1. test override value specified in DatabaseContextOptions
+	// 2. cached metadata purge interval (if forceRefresh is false)
+	// 3. bucket level
+	// 4. cluster level
+	// 5. default fallback value
+	if db.Options.TestPurgeIntervalOverride != nil {
+		return *db.Options.TestPurgeIntervalOverride
 	}
 
+	// fetch cached value if available
+	if !forceRefresh {
+		mpi := db.CachedPurgeInterval.Load()
+		if mpi != nil {
+			return *mpi
+		}
+	}
+
+	// fetch from server
 	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
 	if !ok {
 		return DefaultPurgeInterval
@@ -1605,10 +1616,14 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context) time.Du
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", DefaultPurgeInterval.Hours()/24, err)
 	}
+
+	mpi := DefaultPurgeInterval
 	if serverPurgeInterval > 0 {
-		return serverPurgeInterval
+		mpi = serverPurgeInterval
 	}
-	return DefaultPurgeInterval
+
+	db.CachedPurgeInterval.Store(&mpi)
+	return mpi
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
@@ -2326,7 +2341,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	if db.UseXattrs() {
 		// Log the purge interval for tombstone compaction
-		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", db.GetMetadataPurgeInterval(ctx).Hours()/24)
+		mpi := db.GetMetadataPurgeInterval(ctx, true)
+		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", mpi.Hours()/24)
 
 		if db.Options.CompactInterval != 0 {
 			if db.autoImport {

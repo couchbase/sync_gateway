@@ -1031,6 +1031,11 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	default:
 		return nil, base.RedactErrorf("Unexpected docUpdateEvent %v in updateHLV for doc %s", docUpdateEvent, base.UD(d.ID))
 	}
+	// clean up PV only if we have more than a handful of source IDs - reduce Compaction and false-conflict risk where we don't need it
+	if len(d.HLV.PreviousVersions) > minPVEntriesBeforeCompaction {
+		mpi := db.dbCtx.GetMetadataPurgeInterval(ctx, false)
+		d.HLV.Compact(ctx, d.ID, mpi)
+	}
 	d.SyncData.SetCV(d.HLV)
 	return d, nil
 }
@@ -2037,10 +2042,8 @@ func (db *DatabaseCollectionWithUser) resolveRemoteWinsHLV(ctx context.Context, 
 	}
 	remoteRevID := remoteDoc.RevID
 
-	newHLV, err := remoteWinsConflictResolutionForHLV(ctx, remoteDoc.ID, localDoc.HLV, remoteDoc.HLV)
-	if err != nil {
-		return nil, err
-	}
+	newHLV := localDoc.HLV.Copy()
+	newHLV.UpdateWithIncomingHLV(remoteDoc.HLV)
 	base.DebugfCtx(ctx, base.KeyReplicate, "Resolved HLV conflict for doc %s as remoteWins - remote rev is %s, previous local rev %s tombstoned by %s", base.UD(localDoc.ID), remoteRevID, localRevID, tombstoneRevID)
 	return newHLV, nil
 }
@@ -2087,12 +2090,10 @@ func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, l
 	revTreeHistory = append([]string{newRevID}, revTreeHistory...)
 	remoteDoc.RevID = newRevID
 
-	newHLV, err := localWinsConflictResolutionForHLV(ctx, localDoc.HLV, remoteDoc.HLV, localDoc.ID)
-	if err != nil {
-		return nil, nil, err
-	}
+	newHLV := remoteDoc.HLV.Copy()
+	newHLV.UpdateWithIncomingHLV(localDoc.HLV)
 
-	// remove the local doc from the revision cache, given the hlv is changing by CV is staying same so old reference
+	// remove the local doc from the revision cache, given the hlv is changing but the CV is staying same so the old reference
 	// to this cv in rev cache is stale
 	db.revisionCache.RemoveWithCV(ctx, localDoc.ID, localDoc.HLV.ExtractCurrentVersionFromHLV())
 	localDoc.localWinsConflict = true
