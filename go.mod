@@ -9,8 +9,8 @@ require (
 	github.com/couchbase/cbgt v1.4.10
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20250325132327-d73efab2df06
-	github.com/couchbase/gocb/v2 v2.10.1
-	github.com/couchbase/gocbcore/v10 v10.8.0
+	github.com/couchbase/gocb/v2 v2.11.1
+	github.com/couchbase/gocbcore/v10 v10.8.1
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20250522135601-8c9a5acda2c2
@@ -49,15 +49,15 @@ require (
 	github.com/couchbase/blance v0.1.6 // indirect
 	github.com/couchbase/cbauth v0.1.13 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
-	github.com/couchbase/gocbcoreps v0.1.3 // indirect
+	github.com/couchbase/gocbcoreps v0.1.4 // indirect
 	github.com/couchbase/goprotostellar v1.0.2 // indirect
 	github.com/couchbase/tools-common/cloud/v5 v5.0.3 // indirect
 	github.com/couchbase/tools-common/fs v1.0.2 // indirect
 	github.com/couchbase/tools-common/testing v1.0.1 // indirect
 	github.com/couchbase/tools-common/types v1.1.4 // indirect
-	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20240607131231-fb385523de28 // indirect
+	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/go-logr/logr v1.4.1 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
@@ -75,7 +75,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
-	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/sergi/go-diff v1.2.0 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
@@ -83,18 +82,19 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
-	go.opentelemetry.io/otel v1.24.0 // indirect
-	go.opentelemetry.io/otel/metric v1.24.0 // indirect
-	go.opentelemetry.io/otel/trace v1.24.0 // indirect
+	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0 // indirect
+	go.opentelemetry.io/otel v1.37.0 // indirect
+	go.opentelemetry.io/otel/metric v1.37.0 // indirect
+	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240401170217-c3f982113cda // indirect
-	google.golang.org/grpc v1.63.2 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250811230008-5f3141c8851a // indirect
+	google.golang.org/grpc v1.74.2 // indirect
+	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
