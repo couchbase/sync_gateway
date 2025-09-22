@@ -325,7 +325,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		}, db.GetAttachmentsFromInlineBody(t, data))
 
 		// Check EE is delta, and CE is full-body replication
-		msg := btcRunner.WaitForBlipRevMessage(client.id, doc1ID, version2)
+		msg := btcRunner.WaitForPullRevMessage(client.id, doc1ID, version2)
 		sgCanUseDeltas := base.IsEnterpriseEdition()
 		if sgCanUseDeltas {
 			// Check the request was sent with the correct deltaSrc property
@@ -408,7 +408,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":1234567890123}]}`, string(data))
-		msg := btcRunner.WaitForBlipRevMessage(client.id, docID, version2)
+		msg := btcRunner.WaitForPullRevMessage(client.id, docID, version2)
 
 		// Check EE is delta, and CE is full-body replication
 		sgCanUseDeltas := base.IsEnterpriseEdition()
@@ -589,7 +589,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"_removed":true}`, string(data))
 
-		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version)
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, version)
 		require.True(t, ok)
 		msgBody, err := msg.Body()
 
@@ -665,7 +665,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
 
-		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version)
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, version)
 		require.True(t, ok)
 
 		msgBody, err := msg.Body()
@@ -778,7 +778,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 		data = btcRunner.WaitForVersion(client1.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
-		msg := btcRunner.WaitForBlipRevMessage(client1.id, docID, version)
+		msg := btcRunner.WaitForPullRevMessage(client1.id, docID, version)
 
 		if !assert.Equal(t, db.MessageRev, msg.Profile()) {
 			t.Logf("unexpected profile for message %v in %v",
@@ -799,7 +799,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		btcRunner.StartOneshotPull(client2.id)
 		data = btcRunner.WaitForVersion(client2.id, docID, version)
 		assert.Equal(t, `{}`, string(data))
-		msg = btcRunner.WaitForBlipRevMessage(client2.id, docID, version)
+		msg = btcRunner.WaitForPullRevMessage(client2.id, docID, version)
 
 		if !assert.Equal(t, db.MessageRev, msg.Profile()) {
 			t.Logf("unexpected profile for message %v in %v",
@@ -897,7 +897,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(data))
-		msg := btcRunner.WaitForBlipRevMessage(client.id, docID, version2)
+		msg := btcRunner.WaitForPullRevMessage(client.id, docID, version2)
 
 		// Check EE is delta
 		// Check the request was sent with the correct deltaSrc property
@@ -921,7 +921,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		// Run another one shot pull to get the 2nd revision - validate it comes as delta, and uses cached version
 		client2.ClientDeltas = true
 		btcRunner.StartOneshotPull(client2.id)
-		msg2 := btcRunner.WaitForBlipRevMessage(client2.id, docID, version2)
+		msg2 := btcRunner.WaitForPullRevMessage(client2.id, docID, version2)
 
 		// Check the request was sent with the correct deltaSrc property
 		if sgCanUseDeltas {
@@ -989,7 +989,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		btcRunner.StartPushWithOpts(client.id, BlipTesterPushOptions{Continuous: false})
 
 		// Check EE is delta, and CE is full-body replication
-		msg := client.pushReplication.WaitForBlipRevMessage(docID, newRev)
+		msg := btcRunner.WaitForPushRevMessage(client.id, docID, newRev)
 
 		if base.IsEnterpriseEdition() && sgCanUseDeltas {
 			// Check the request was sent with the correct deltaSrc property
@@ -1119,7 +1119,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		version2 := btcRunner.AddRev(client.id, docID, &version1, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 		// MSG1: proposeChanges
 		// MSG2: rev
-		msg := client.pushReplication.WaitForBlipRevMessage(docID, version2)
+		msg := btcRunner.WaitForPushRevMessage(client.id, docID, version2)
 		require.Equal(t, db.MessageRev, msg.Profile())
 
 		// wait for the reply, indicating the message was written
