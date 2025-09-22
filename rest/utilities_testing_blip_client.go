@@ -195,8 +195,8 @@ type clientDocRev struct {
 	HLV         db.HybridLogicalVector // The full HLV for the revision, populated when mode = HLV
 	body        []byte
 	isDelete    bool
-	pullMessage *blip.Message // rev or norev message associated with this revision is successfully pushed and the response is received
-	pushMessage *blip.Message // rev or norev message associated with this revision is successfully pulled and written to BlipTesterCollectionClient
+	pullMessage *blip.Message // rev or norev message associated with this revision is successfully pulled and the response is received and processed by BlipTesterCollectionClient
+	pushMessage *blip.Message // rev or norev message associated with this revision is successfully pushed to Sync Gateway and a response has been received
 }
 
 // clientDoc represents a document stored on the client - it may also contain older versions of the document.
@@ -1988,7 +1988,7 @@ func (btcc *BlipTesterCollectionClient) WaitForPullRevMessage(docID string, vers
 		}
 		rev, ok := doc._revisionsBySeq[seq]
 		require.True(btcc.TB(), ok, "seq %q for docID %q found but no rev in _seqStore. This should be impossible in design of BlipTesterCollectionClient", seq, docID)
-		if !assert.NotNil(c, rev.pullMessage, "pullMessage for %s %v is nil for docID:%+v, version: %+v", docID, version) {
+		if !assert.NotNil(c, rev.pullMessage, "pullMessage for is nil for docID:%+v, version: %+v", docID, version) {
 			return
 		}
 		msg = rev.pullMessage
