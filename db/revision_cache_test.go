@@ -627,14 +627,6 @@ func TestBypassRevisionCache(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.Options.StoreLegacyRevTreeData = true
-
-	// TODO: CBG-4840 Only requires delta sync until restoration of non-delta sync RevTree ID revision body backups"
-	if !base.IsEnterpriseEdition() {
-		t.Skip("CBG-4840 - temp skip see above comment")
-	}
-	db.Options.DeltaSyncOptions = DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}
-
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	backingStoreMap := CreateTestSingleBackingStoreMap(collection, testCollectionID)
 

@@ -210,17 +210,13 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	// 1. Create revision with history
 	docID := t.Name()
 	version := rt.PutDoc(docID, `{"val":-1}`)
-	cv := version.CV.String()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	for i := 0; i < 10; i++ {
+		prevVersion := version
 		version = rt.UpdateDoc(docID, version, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
-		// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-		cvHash := base.Crc32cHashString([]byte(cv))
-		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, cvHash)
-		require.NoError(t, purgeErr)
-		cv = version.CV.String()
+		require.NoError(t, collection.PurgeOldRevisionJSON(ctx, docID, prevVersion.RevTreeID))
 	}
 
 	// 2. Modify doc via SDK

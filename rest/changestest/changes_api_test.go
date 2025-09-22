@@ -1873,9 +1873,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
 	rt.GetDatabase().FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	cvHash := base.Crc32cHashString([]byte(cvs[0]))
-	err = collection.PurgeOldRevisionJSON(ctx, "doc_pruned", cvHash)
+	err = collection.PurgeOldRevisionJSON(ctx, "doc_pruned", prunedRevId)
 	require.NoError(t, err)
 
 	// since 4.0 we cannot differentiate between an old channel removal and a missing document - in this case the document body is not returned

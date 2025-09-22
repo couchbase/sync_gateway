@@ -1894,9 +1894,8 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	_ = rt.GetSingleDataStore().Delete(tempRevisionDocID)
-	// TODO: CBG-4840 - Requires restoration of non-delta sync RevTree revision backups
-	// assert.NoError(t, err, "Unexpected Error")
+	err = rt.GetSingleDataStore().Delete(tempRevisionDocID)
+	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that there's a norev - modern clients will receive a replacement rev instead
 	_, err = bt2.GetDocAtRev("foo", "3-cde")
@@ -2018,9 +2017,7 @@ func TestSendReplacementRevision(t *testing.T) {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-						cvHash := base.Crc32cHashString([]byte(version1.CV.String()))
-						err := collection.PurgeOldRevisionJSON(ctx, docID, cvHash)
+						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
 						require.NoError(t, err)
 						rt.GetDatabase().FlushRevisionCacheForTest()
 					}

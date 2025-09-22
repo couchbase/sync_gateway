@@ -125,7 +125,6 @@ func TestBackupOldRevision(t *testing.T) {
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {
-		// TODO: CBG-4840 - Revs are backed only up by hash of CV for non-delta sync cases
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
@@ -135,17 +134,19 @@ func TestBackupOldRevision(t *testing.T) {
 	docRev2, _, err := collection.PutExistingRevWithBody(ctx, docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
-	// now in all cases we'll have rev 1 backed up (for at least 5 minutes)
-	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+	// now in all cases we'll have revtree ID 1 backed up (for at least 5 minutes)
+	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
+	if deltasEnabled && xattrsEnabled {
+		// and optionally keyed by CV
+		_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+	}
 	require.NoError(t, err)
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
 	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {
-		// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}

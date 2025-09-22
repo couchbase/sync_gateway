@@ -774,7 +774,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -782,7 +782,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -820,9 +820,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	cv := docRev2.HLV.GetCurrentVersionString()
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cv)))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
@@ -840,9 +838,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	cv = docRev1.HLV.GetCurrentVersionString()
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(cv)))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
@@ -881,7 +877,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev1ID,
 	}
-	rev2ID, docRev2, err := collection.Put(ctx, "doc1", rev2Body)
+	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the third revision of doc1 on channel ABC.
@@ -933,8 +929,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 	// Flush the revision cache and purge the old revision backup.
 	db.FlushRevisionCacheForTest()
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
 	// Try with a user who has access to this revision.
@@ -957,12 +952,13 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 		t.Skip("Delta sync only supported in EE")
 	}
 
-	db, ctx := setupTestDB(t)
-	db.Options.DeltaSyncOptions = DeltaSyncOptions{
-		Enabled:          true,
-		RevMaxAgeSeconds: 300,
-	}
-	db.Options.StoreLegacyRevTreeData = true
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: 300,
+		},
+		StoreLegacyRevTreeData: base.Ptr(true),
+	})
 
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -986,6 +982,10 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 
 // Test delta sync behavior when the fromRevision is a channel removal.
 func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync only supported in EE")
+	}
+
 	testCases := []struct {
 		name          string
 		versionVector bool
@@ -1001,7 +1001,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			db, ctx := setupTestDB(t)
+			db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
 			defer db.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1040,9 +1040,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 				require.NoError(t, err, "Error purging old revision JSON")
 			} else {
 				err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
-				_ = err
-				// TODO: CBG-4840 - Requires restoration of RevTree ID-based old revision storage
-				//require.NoError(t, err, "Error purging old revision JSON")
+				require.NoError(t, err, "Error purging old revision JSON")
 			}
 
 			// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
@@ -1207,7 +1205,7 @@ func TestGetRemoved(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -1215,7 +1213,7 @@ func TestGetRemoved(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -1253,8 +1251,7 @@ func TestGetRemoved(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
@@ -1263,8 +1260,7 @@ func TestGetRemoved(t *testing.T) {
 	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
@@ -1283,7 +1279,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, docRev1, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -1291,7 +1287,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyDeleted: true,
 		BodyRev:     rev1id,
 	}
-	rev2id, docRev2, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -1329,8 +1325,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
 	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStats)
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
@@ -1339,8 +1334,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	err = collection.PurgeOldRevisionJSON(ctx, "doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)

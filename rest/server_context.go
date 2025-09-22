@@ -1440,7 +1440,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
 		NumIndexReplicas:            config.numIndexReplicas(),
 		DisablePublicAllDocs:        disablePublicAllDocs,
-		StoreLegacyRevTreeData:      base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData),
+		StoreLegacyRevTreeData:      base.Ptr(base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData)),
 	}
 
 	if config.Index != nil && config.Index.NumPartitions != nil {
