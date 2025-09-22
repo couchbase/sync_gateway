@@ -711,7 +711,7 @@ Replication:
         default: |-
           For Sync Gateway versions < 4.x, in priority order, this will cause
             - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
-            - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest Revision Tree ID will win.
+            - The revision with the longest revision history to win. This means the revision with the most changes and therefore the highest Revision Tree ID will win.
 
           For Sync Gateway versions >= 4.x, this will use
             - Timestamp based conflict resolution (often referred to as "last write wins", or LWW). Which uses a document timestamp from most recent document revisions to compare.
