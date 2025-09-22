@@ -661,8 +661,8 @@ func HasUserXattrChanged(userXattr []byte, prevUserXattrHash string) bool {
 	return userXattrCrc32cHash(userXattr) != prevUserXattrHash
 }
 
-// SyncData.IsSGWrite - used during feed-based import
-func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
+// IsSGWrite determines if a document was written by Sync Gateway or via an SDK.
+func (s *SyncData) IsSGWrite(ctx context.Context, cas uint64, rawBody []byte, rawUserXattr []byte, rawHLV []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 
 	// If cas matches, it was a SG write
 	if cas == s.GetSyncCas() {
@@ -677,18 +677,35 @@ func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (i
 	if HasUserXattrChanged(rawUserXattr, s.Crc32cUserXattr) {
 		return false, false, false
 	}
+	if rawHLV != nil {
+		limitedHLV := struct {
+			Version  string `json:"ver"`
+			SourceID string `json:"src"`
+		}{}
+		if err := base.JSONUnmarshal(rawHLV, &limitedHLV); err != nil {
+			base.WarnfCtx(ctx, "Unable to unmarshal HLV xattr during SG write check. HLV: %s Error: %v", string(rawHLV), err)
+			// If we can't unmarshal the HLV, assume it has changed and import
+			return false, false, false
+		}
+		if limitedHLV.SourceID != s.RevAndVersion.CurrentSource {
+			return false, false, false
+		}
+		if limitedHLV.Version != s.RevAndVersion.CurrentVersion {
+			return false, false, false
+		}
+	}
 
 	return true, true, false
 }
 
-// doc.IsSGWrite - used during on-demand import.  Doesn't invoke SyncData.IsSGWrite so that we
+// IsSGWrite - used during on-demand import.  Doesn't invoke SyncData.IsSGWrite so that we
 // can complete the inexpensive cas check before the (potential) doc marshalling.
 func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 
 	// If the raw body is available, use SyncData.IsSGWrite
 	if rawBody != nil && len(rawBody) > 0 {
 
-		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr)
+		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(ctx, doc.Cas, rawBody, doc.rawUserXattr, nil)
 		if !isSgWriteFeed {
 			base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
 		}
