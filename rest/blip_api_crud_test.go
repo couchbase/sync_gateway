@@ -2046,7 +2046,7 @@ func TestSendReplacementRevision(t *testing.T) {
 					_ = btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version2)
 
 					// rev message with a replacedRev property referring to the originally requested rev
-					msg2, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
+					msg2, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version2)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageRev, msg2.Profile())
 					assert.Equal(t, version2.RevTreeID, msg2.Properties[db.RevMessageRev])
@@ -2054,7 +2054,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 					// the blip test framework records a message entry for the originally requested rev as well, but it should point to the message sent for rev 2
 					// this is an artifact of the test framework to make assertions for tests not explicitly testing replacement revs easier
-					msg1, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1)
+					msg1, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version1)
 					require.True(t, ok)
 					assert.Equal(t, msg1, msg2)
 
@@ -2066,11 +2066,11 @@ func TestSendReplacementRevision(t *testing.T) {
 					assert.Nil(t, data)
 
 					// no message for rev 2
-					_, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
+					_, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version2)
 					require.False(t, ok)
 
 					// norev message for the requested rev
-					msg, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1)
+					msg, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version1)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageNoRev, msg.Profile())
 
@@ -2119,7 +2119,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"hello":"alice"}`, string(data))
 
-		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version2)
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, version2)
 		require.True(t, ok)
 		client.AssertOnBlipHistory(t, msg, version1)
 	})
@@ -2175,7 +2175,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		data := btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"hello":"world!"}`, string(data))
 
-		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version2)
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, version2)
 		require.True(t, ok)
 
 		client.AssertOnBlipHistory(t, msg, version1)
@@ -3180,10 +3180,10 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 		require.NoError(t, err)
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForBlipRevMessage(btc.id, docID, version)
+		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, version)
 		require.Equal(t, db.MessageNoRev, msg.Profile())
 
-		msg = btcRunner.WaitForBlipRevMessage(btc.id, docID2, version2)
+		msg = btcRunner.WaitForPullRevMessage(btc.id, docID2, version2)
 		require.Equal(t, db.MessageNoRev, msg.Profile())
 	})
 }
@@ -3300,7 +3300,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				btcRunner.StartOneshotPull(btc2.id)
 
-				msg := btcRunner.WaitForBlipRevMessage(btc2.id, docID, revID)
+				msg := btcRunner.WaitForPullRevMessage(btc2.id, docID, revID)
 				require.Equal(t, db.MessageNoRev, msg.Profile())
 			})
 		}
@@ -3410,7 +3410,7 @@ func TestBlipMergeVersions(t *testing.T) {
 		btcRunner.StartPull(btc.id)
 		btcRunner.WaitForDoc(btc.id, docID)
 
-		revMsg := btcRunner.WaitForBlipRevMessage(btc.id, docID, DocVersion{CV: db.Version{SourceID: "CBL1", Value: 3}})
+		revMsg := btcRunner.WaitForPullRevMessage(btc.id, docID, DocVersion{CV: db.Version{SourceID: "CBL1", Value: 3}})
 
 		require.Equal(t, "3@CBL1", revMsg.Properties[db.RevMessageRev])
 		// mv is not ordered so either string is valid
