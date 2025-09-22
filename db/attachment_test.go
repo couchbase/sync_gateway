@@ -52,12 +52,21 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", revid1)
 
-	rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+	// current revision backups depend on delta sync (to support deltas to SDK updates)
 	if deltasEnabled {
+		rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		require.NoError(t, err)
+		assert.Contains(t, string(rev1OldBody), "hello.txt")
+
+		rev1OldBody, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 	} else {
-		// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
+		_, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		require.Error(t, err)
+		assert.Equal(t, "404 missing", err.Error())
+
+		_, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
@@ -66,22 +75,31 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-	docRev2, _, err := collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", revid1}, true, ExistingVersionWithUpdateToHLV)
+	docRev2, revid2, err := collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", revid1}, true, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
-	// now in any case - we'll have rev 1 backed up
-	rev1OldBody, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
-	require.NoError(t, err)
-	assert.Contains(t, string(rev1OldBody), "hello.txt")
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
+	// rev 1 should be backed up even without delta sync now (by revTree ID - but not CV)
+	if !deltasEnabled {
+		rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		require.NoError(t, err)
+		assert.Contains(t, string(rev1OldBody), "hello.txt")
+	}
 
-	// and rev 2 should be present only for the xattrs and deltas case
-	rev2OldBody, err := collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+	// again, only backup current winning revision if delta sync
 	if deltasEnabled {
+		rev2OldBody, err := collection.getOldRevisionJSON(ctx, docID, revid2)
+		require.NoError(t, err)
+		assert.Contains(t, string(rev2OldBody), "hello.txt")
+
+		rev2OldBody, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
 	} else {
-		// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
+		_, err := collection.getOldRevisionJSON(ctx, docID, revid2)
+		require.Error(t, err)
+		assert.Equal(t, "404 missing", err.Error())
+
+		_, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
@@ -100,7 +118,7 @@ func TestAttachments(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	rev1id, docRev1, err := collection.Put(ctx, "doc1", body)
+	rev1id, _, err := collection.Put(ctx, "doc1", body)
 	require.NoError(t, err)
 
 	log.Printf("Retrieve doc...")
@@ -191,8 +209,7 @@ func TestAttachments(t *testing.T) {
 	}, atts)
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
-	// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-	err = collection.dataStore.Delete(oldRevisionKey("doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString()))))
+	err = collection.dataStore.Delete(oldRevisionKey("doc1", rev1id))
 	assert.NoError(t, err, "Couldn't compact old revision")
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body
@@ -718,7 +735,7 @@ func TestStoreAttachments(t *testing.T) {
 func TestMigrateBodyAttachments(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	const docKey = "TestAttachmentMigrate"
+	const docKey = "TestMigrateBodyAttachments"
 
 	setupFn := func(t *testing.T) (db *Database, ctx context.Context) {
 		db, ctx = setupTestDB(t)
@@ -968,7 +985,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 
-	const docKey = "TestAttachmentMigrate"
+	const docKey = "TestMigrateBodyAttachmentsMerge"
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -1107,7 +1124,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 // TestMigrateBodyAttachmentsMergeConflicting will set up a document with the same attachment name in both pre-2.5 and post-2.5 metadata, making sure that the metadata with the most recent revpos is chosen.
 func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 
-	const docKey = "TestAttachmentMigrate"
+	const docKey = "TestMigrateBodyAttachmentsMergeConflicting"
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

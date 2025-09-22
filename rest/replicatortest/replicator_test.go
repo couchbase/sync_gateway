@@ -7080,8 +7080,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	activeRT.WaitForVersion(docID, version3)
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
-	cvHash := base.Crc32cHashString([]byte(version2.CV.String()))
-	err := collection.PurgeOldRevisionJSON(activeCtx, docID, cvHash)
+	err := collection.PurgeOldRevisionJSON(activeCtx, docID, version2.RevTreeID)
 	require.NoError(t, err)
 
 	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{

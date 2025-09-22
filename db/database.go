@@ -209,7 +209,7 @@ type DatabaseContextOptions struct {
 	NumIndexPartitions            *uint32           // Number of partitions for GSI indexes, if not set will default to 1
 	ImportVersion                 uint64            // Version included in import DCP checkpoints, incremented when collections added to db
 	DisablePublicAllDocs          bool              // Disable public access to the _all_docs endpoint for this database
-	StoreLegacyRevTreeData        bool              // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
+	StoreLegacyRevTreeData        *bool             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
 }
 
 type ConfigPrincipals struct {

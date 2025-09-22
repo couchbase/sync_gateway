@@ -198,7 +198,7 @@ func (c *DatabaseCollection) deltaSyncRevMaxAgeSeconds() uint32 {
 
 // storeLegacyRevTreeData returns true if legacy revision tree pointer data is stored. This is controlled at the database level.
 func (c *DatabaseCollection) storeLegacyRevTreeData() bool {
-	return c.dbCtx.Options.StoreLegacyRevTreeData
+	return base.ValDefault(c.dbCtx.Options.StoreLegacyRevTreeData, DefaultStoreLegacyRevTreeData)
 }
 
 // eventMgr manages nofication events. This is controlled at database level.

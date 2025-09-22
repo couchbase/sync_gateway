@@ -915,7 +915,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, doc.HLV.GetCurrentVersionString(), json)
+	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.GetRevTreeID() {
@@ -2962,7 +2962,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 	}
 	doc.SyncData.SetCV(doc.HLV)
 
-	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for delta generation purposes
+	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for future deltaSrc purposes
 	// we don't need to store revision body backups without delta sync in 4.0, since all clients know how to use the sendReplacementRevs feature
 	backupRev := db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() != 0
 	if db.UseXattrs() && backupRev {

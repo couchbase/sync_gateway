@@ -692,12 +692,6 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 
-	// TODO: CBG-4840 Only requires delta sync until restoration of non-delta sync RevTree ID revision body backups"
-	if !base.IsEnterpriseEdition() {
-		t.Skip("CBG-4840 - temp skip see above comment")
-	}
-	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true), RevMaxAgeSeconds: base.Ptr(uint32(300))}
-
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	// Create Doc
