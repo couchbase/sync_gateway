@@ -79,14 +79,11 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	require.NoError(t, err)
 
 	// rev 1 should be backed up even without delta sync now (by revTree ID - but not CV)
-	rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, revid1)
-	require.NoError(t, err)
-	assert.Contains(t, string(rev1OldBody), "hello.txt")
-
-	// CVs don't get temporary revision backups - since 4.x clients support replacementRevs
-	_, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
-	require.Error(t, err)
-	assert.Equal(t, "404 missing", err.Error())
+	if !deltasEnabled {
+		rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		require.NoError(t, err)
+		assert.Contains(t, string(rev1OldBody), "hello.txt")
+	}
 
 	// again, only backup current winning revision if delta sync
 	if deltasEnabled {

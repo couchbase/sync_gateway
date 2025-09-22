@@ -261,7 +261,6 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 	}
 
 	if !db.storeLegacyRevTreeData() {
-
 		// Not storing legacy revtree data - nothing to do
 		return
 	}
@@ -271,8 +270,8 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 		return
 	}
 
-	// store the old document revision by revtree ID for in-flight replications
-	_ = db.setOldRevisionJSONBody(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds())
+	// store or refresh the old document revision by revtree ID for in-flight replications
+	_ = db.refreshOldRevisionJSON(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds())
 	return
 }
 

@@ -1806,11 +1806,9 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err, "Error updating doc")
 	// Generate more revs than revs_limit (3)
 	revid = prunedRevId
-	var cvs []string
 	for i := 0; i < 5; i++ {
 		docVersion := rt.UpdateDoc("doc_pruned", db.DocVersion{RevTreeID: revid}, `{"type": "pruned", "channels":["gamma"]}`)
 		revid = docVersion.RevTreeID
-		cvs = append(cvs, docVersion.CV.String())
 	}
 
 	// Doc w/ attachment
