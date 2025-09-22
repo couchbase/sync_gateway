@@ -709,9 +709,14 @@ Replication:
         - custom
       x-enumDescriptions:
         default: |-
-          In priority order, this will cause
+          For Sync Gateway versions < 4.x, in priority order, this will cause
             - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
             - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest Revision Tree ID will win.
+          
+          For Sync Gateway versions >= 4.x, this will use
+            - Timestamp based conflict resolution (often referred to as "last write wins", or LWW). Which uses a document timestamp from most recent document revisions to compare.
+            - The revision with the most recent timestamp wins.
+            - If replicating a document that was last updated/written pre upgrade to SG 4.x, the default policy for versions < 4.x will be used.
         localWins: This will result in local revisions always being the winner in any conflict.
         remoteWins: This will result in remote revisions always being the winner in any conflict.
         custom: This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter.
@@ -744,6 +749,8 @@ Replication:
         ```
 
         Using complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.
+        
+        If a document merge is being done, the `_rev` and `_cv` properties should not be included in the returned document body as Sync Gateway will generate new values for these.
 
         This is an Enterprise Edition only feature.
       type: string
