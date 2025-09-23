@@ -1993,7 +1993,6 @@ func TestSendReplacementRevision(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // TODO: CBG-4833 - Fails when legacy rev ID is sent as a replacement rev
 	btcRunner.Run(func(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
@@ -2046,8 +2045,13 @@ func TestSendReplacementRevision(t *testing.T) {
 					msg2, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version2)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageRev, msg2.Profile())
-					assert.Equal(t, version2.RevTreeID, msg2.Properties[db.RevMessageRev])
-					assert.Equal(t, version1.RevTreeID, msg2.Properties[db.RevMessageReplacedRev])
+					if btc.UseHLV() {
+						assert.Equal(t, version2.CV.String(), msg2.Properties[db.RevMessageRev])
+						assert.Equal(t, version1.CV.String(), msg2.Properties[db.RevMessageReplacedRev])
+					} else {
+						assert.Equal(t, version2.RevTreeID, msg2.Properties[db.RevMessageRev])
+						assert.Equal(t, version1.RevTreeID, msg2.Properties[db.RevMessageReplacedRev])
+					}
 
 					// the blip test framework records a message entry for the originally requested rev as well, but it should point to the message sent for rev 2
 					// this is an artifact of the test framework to make assertions for tests not explicitly testing replacement revs easier
