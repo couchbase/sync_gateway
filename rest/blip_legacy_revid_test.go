@@ -329,7 +329,6 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	})
 	defer bt.Close()
 	rt := bt.restTester
-	ds := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	const (
 		docID  = "doc1"
@@ -345,7 +344,7 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	rev1ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(ctx, docID, []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, docID)
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Have CBL send an update to that doc, with history in revTreeID format
@@ -365,7 +364,7 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	rev1ID = docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(ctx, docID2, []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, docID2)
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Have CBL send an update to that doc, with history in HLV + revTreeID format
@@ -386,7 +385,7 @@ func TestProcessRevWithLegacyHistory(t *testing.T) {
 	rev1ID = docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(ctx, docID3, []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, docID3)
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	history = []string{"1000@CBL2", "2-abc", rev1ID}
@@ -482,7 +481,6 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	})
 	defer bt.Close()
 	rt := bt.restTester
-	ds := rt.GetSingleDataStore()
 	const (
 		docID  = "doc1"
 		docID2 = "doc2"
@@ -500,7 +498,7 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	docVersion = rt.UpdateDoc(docID, docVersion, `{"some": "update2"}`)
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(base.TestCtx(t), docID, []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, docID)
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	history := []string{rev2ID, rev1ID}
@@ -529,7 +527,7 @@ func TestProcessRevWithLegacyHistoryConflict(t *testing.T) {
 	docVersion = rt.UpdateDoc(docID3, docVersion, `{"some": "update"}`)
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(base.TestCtx(t), docID3, []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, docID3)
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	history = []string{"1000@CBL2", rev1ID}
@@ -757,13 +755,12 @@ func TestCBLHasPreUpgradeMutationThatHasNotBeenReplicated(t *testing.T) {
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	ds := rt.GetSingleDataStore()
 
 	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(ctx, "doc1", []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, "doc1")
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	history := []string{rev1ID}
@@ -793,7 +790,6 @@ func TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows(t *testing.T) {
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	ds := rt.GetSingleDataStore()
 
 	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
@@ -802,7 +798,7 @@ func TestCBLHasOfPreUpgradeMutationThatSGWAlreadyKnows(t *testing.T) {
 	rev2ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(ctx, "doc1", []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, "doc1")
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	history := []string{rev1ID}
@@ -831,7 +827,6 @@ func TestPushOfPostUpgradeMutationThatHasCommonAncestorToSGWVersion(t *testing.T
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	ds := rt.GetSingleDataStore()
 
 	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
@@ -840,7 +835,7 @@ func TestPushOfPostUpgradeMutationThatHasCommonAncestorToSGWVersion(t *testing.T
 	rev2ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(ctx, "doc1", []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, "doc1")
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// send 100@CBL1
@@ -869,7 +864,6 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPreUpgradeSGWMutation(t *
 	defer bt.Close()
 	rt := bt.restTester
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	ds := rt.GetSingleDataStore()
 
 	docVersion := rt.PutDoc("doc1", `{"test": "doc"}`)
 	rev1ID := docVersion.RevTreeID
@@ -881,7 +875,7 @@ func TestPushDocConflictBetweenPreUpgradeCBLMutationAndPreUpgradeSGWMutation(t *
 	rev3ID := docVersion.RevTreeID
 
 	// remove hlv here to simulate a legacy rev
-	require.NoError(t, ds.RemoveXattrs(ctx, "doc1", []string{base.VvXattrName}, docVersion.CV.Value))
+	removeHLV(rt, "doc1")
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// send rev 3-def
@@ -1093,4 +1087,23 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			rt.WaitForVersion(docID, cblVersion2)
 		})
 	})
+}
+
+// removeHLV removes _vv and clears _sync.ver and _sync.src from a document. Consider instead using CreateDocNoHLV
+func removeHLV(rt *RestTester, docID string) {
+	ds := rt.GetSingleDataStore()
+	ctx := base.TestCtx(rt.TB())
+	cas, err := ds.Get(docID, nil)
+	require.NoError(rt.TB(), err)
+	require.NoError(rt.TB(), ds.RemoveXattrs(ctx, docID, []string{base.VvXattrName}, cas))
+	xattrs, cas, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(rt.TB(), err)
+	var syncData *db.SyncData
+	require.NoError(rt.TB(), base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+	syncData.RevAndVersion.CurrentSource = ""
+	syncData.RevAndVersion.CurrentVersion = ""
+	_, err = ds.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{
+		base.SyncXattrName: base.MustJSONMarshal(rt.TB(), syncData),
+	}, db.DefaultMutateInOpts())
+	require.NoError(rt.TB(), err)
 }

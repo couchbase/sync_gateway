@@ -395,7 +395,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		if syncData == nil {
 			return
 		}
-		isSGWrite, _, _ := syncData.IsSGWrite(ctx, event.Cas, doc.Body, rawUserXattr, doc.Xattrs[base.VvXattrName])
+		isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, doc.Body, rawUserXattr)
 		if !isSGWrite {
 			return
 		}

@@ -138,7 +138,7 @@ func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t testing.TB, ctx context.C
 
 		// Is this doc an sgWrite?
 		if doc != nil {
-			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
+			isSgWrite, crc32Match, _ = db.IsSGWrite(ctx, doc, nil)
 			if crc32Match {
 				db.dbStats().Database().Crc32MatchCount.Add(1)
 			}
