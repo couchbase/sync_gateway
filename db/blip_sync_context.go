@@ -872,7 +872,7 @@ func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, know
 	// revtree clients. For HLV clients, use the cv as deltaSrc
 	if bsc.useDeltas && len(knownRevsArray) > 0 {
 		if revID, ok := knownRevsArray[0].(string); ok {
-			if bsc.useHLV() {
+			if bsc.useHLV() && !base.IsRevTreeID(revID) {
 				// extract cv from the known revs array
 				msgHLV, _, deltaSrcErr := extractHLVFromBlipString(revID)
 				if deltaSrcErr != nil {
