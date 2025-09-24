@@ -102,6 +102,15 @@ func (rt *RestTester) DeleteDoc(docID, revID string) {
 		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID), ""), http.StatusOK)
 }
 
+func (rt *RestTester) DeleteDocWithResponse(docID, revID string) (response PutDocResponse) {
+	rawResponse := rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID), "")
+	RequireStatus(rt.TB, rawResponse, 200)
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
+	require.True(rt.TB, response.Ok)
+	require.NotEmpty(rt.TB, response.Rev)
+	return response
+}
+
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 	var dbroot DatabaseRoot
 	resp := rt.SendAdminRequest("GET", "/"+dbname+"/", "")

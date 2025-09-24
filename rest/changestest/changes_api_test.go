@@ -4355,3 +4355,81 @@ func TestDocChangedLogging(t *testing.T) {
 		require.NoError(t, rt.WaitForPendingChanges())
 	})
 }
+
+// Verify tombstone-only query backfill works as intended
+func TestChangesQueryBackfillTombstones(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache)
+
+	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// Create user:
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "ABC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	var rev1ID string
+	// Write 100 docs to the bucket in channel ABC
+	for i := 1; i <= 100; i++ {
+		putResp := rt.PutDoc(fmt.Sprintf("abc%d", i), `{"channels":["ABC"]}`)
+		rev1ID = putResp.Rev
+	}
+
+	rt.WaitForPendingChanges()
+
+	// Flush the channel cache
+	//assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Issue a since=0 changes request.  Validate that all documents are returned, and they are all rev 1
+	changes.Results = nil
+	changesJSON := `{"since":0}`
+	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 100)
+	for _, entry := range changes.Results {
+		changesRev := entry.Changes[0]["rev"]
+		require.Equal(t, changesRev, rev1ID)
+	}
+
+	// Delete all documents
+	for i := 1; i <= 100; i++ {
+		rt.DeleteDoc(fmt.Sprintf("abc%d", i), rev1ID)
+	}
+	rt.WaitForPendingChanges()
+
+	// Issue a since=0 changes request.  Validate that all documents are returned, and they are all tombstones
+	changes.Results = nil
+	changesJSON = `{"since":0}`
+	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 100)
+	for _, entry := range changes.Results {
+		require.True(t, entry.Deleted, fmt.Sprintf("Received entry that was not tombstone: %+v", entry))
+	}
+
+	// Wait for cache eviction, then try again
+	time.Sleep(25 * time.Second)
+
+	// Issue a since=0 changes request.  Validate that all documents are returned, and they are all tombstones
+	changes.Results = nil
+	changesJSON = `{"since":0}`
+	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 100)
+	for _, entry := range changes.Results {
+		require.True(t, entry.Deleted, fmt.Sprintf("Received entry that was not tombstone: %+v", entry))
+	}
+
+}

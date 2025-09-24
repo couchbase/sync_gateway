@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -290,6 +291,7 @@ func (c *singleChannelCacheImpl) pruneCacheAge(ctx context.Context) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	log.Printf("running pruneCacheAge for channel %q, initial cache length is %v.", base.UD(c.channelID), len(c.logs))
 	// time-based cache pruning doesn't make sense when MinLength >= MaxLength
 	if c.options.ChannelCacheMinLength >= c.options.ChannelCacheMaxLength {
 		return
@@ -298,6 +300,9 @@ func (c *singleChannelCacheImpl) pruneCacheAge(ctx context.Context) {
 	pruned := 0
 	// Remove all entries who've been in the cache longer than channelCacheAge, except
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
+	if len(c.logs) > 0 {
+		log.Printf("evicting based on age: %v, oldest entry is %v", c.options.ChannelCacheAge, time.Since(c.logs[0].TimeReceived))
+	}
 	for len(c.logs) > c.options.ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.ChannelCacheAge {
 		c.validFrom = c.logs[0].Sequence + 1
 		c.UpdateCacheUtilization(c.logs[0], -1)

@@ -391,3 +391,93 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	changes.RequireDocIDs(t, []string{"doc1", "doc"})
 	changes.RequireRevID(t, []string{docVrs.Rev, doc1Vrs.Rev})
 }
+
+func TestCBSE20590(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		GuestEnabled:     false,
+		SyncFn:           `function(doc) { channel(doc.channels) }`,
+	})
+	defer rt.Close()
+
+	const (
+		dbName = "db1"
+	)
+
+	dbConfig := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase(dbName, dbConfig), http.StatusCreated)
+
+	err := rt.WaitForDBOnline()
+	require.NoError(t, err)
+
+	btc1, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:        "user",
+		Channels:        []string{"ABC"},
+		ClientDeltas:    false,
+		SendRevocations: true,
+	})
+	require.NoError(t, err)
+
+	btc2, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:        "user",
+		Channels:        []string{"ABC"},
+		ClientDeltas:    false,
+		SendRevocations: true,
+	})
+	require.NoError(t, err)
+
+	var rev1ID string
+	// Create 100 docs, pull to both clients
+	for i := 1; i <= 100; i++ {
+		docID := fmt.Sprintf("foo_%d", i)
+		putResp := rt.PutDoc(docID, `{"channels":["ABC"]}`)
+		rev1ID = putResp.Rev
+	}
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	err = btc1.StartOneshotPull()
+	require.NoError(t, err)
+
+	err = btc2.StartOneshotPull()
+	require.NoError(t, err)
+
+	// Wait for rev 1 of all 100 docs on both blip test clients
+	for i := 1; i <= 100; i++ {
+		docID := fmt.Sprintf("foo_%d", i)
+		btc1.WaitForRev(docID, rev1ID)
+		btc2.WaitForRev(docID, rev1ID)
+	}
+
+	// Delete 100 docs
+	var rev2ID string
+	for i := 1; i <= 100; i++ {
+		docID := fmt.Sprintf("foo_%d", i)
+		deleteResp := rt.DeleteDocWithResponse(docID, rev1ID)
+		rev2ID = deleteResp.Rev
+	}
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	err = btc1.StartPullSince("false", "101", "false")
+	require.NoError(t, err)
+	// Wait for rev 2 of all 100 docs on btc1
+	for i := 1; i <= 100; i++ {
+		docID := fmt.Sprintf("foo_%d", i)
+		btc1.WaitForRev(docID, rev2ID)
+	}
+
+	// Wait for channel cache eviction, then try again
+	time.Sleep(25 * time.Second)
+
+	err = btc2.StartPullSince("false", "101", "false")
+	require.NoError(t, err)
+	// Wait for rev 2 of all 100 docs on btc2
+	for i := 1; i <= 100; i++ {
+		docID := fmt.Sprintf("foo_%d", i)
+		btc2.WaitForRev(docID, rev2ID)
+	}
+
+}

@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -161,8 +162,10 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			btcr.docsLock.RLock() // TODO: Move locking to accessor methods
 		outer:
 			for i, changesReq := range changesReqs {
+				seq := changesReq[0]
 				docID := changesReq[1].(string)
 				revID := changesReq[2].(string)
+				log.Printf("changes sequence: %v.  doc/rev: %s / %s", seq, docID, revID)
 
 				deletedInt := 0
 				if len(changesReq) > 3 {
@@ -215,6 +218,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			response.Properties["deltas"] = "true"
 		}
 
+		log.Printf("changes response knownRevs: %v.", knownRevs)
 		b, err := base.JSONMarshal(knownRevs)
 		if err != nil {
 			panic(err)
@@ -235,6 +239,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		docID := msg.Properties[db.RevMessageID]
 		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
+
+		log.Printf("rev message for doc/rev: %s / %s", docID, revID)
 
 		body, err := msg.Body()
 		if err != nil {
@@ -1292,4 +1298,32 @@ func (btc *BlipTesterCollectionClient) sendPullMsg(msg *blip.Message) error {
 func (btc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) error {
 	btc.addCollectionProperty(msg)
 	return btc.parent.pushReplication.sendMsg(msg)
+}
+
+func (btc *BlipTesterCollectionClient) GetDocCount() int {
+	btc.docsLock.RLock()
+	defer btc.docsLock.RUnlock()
+
+	return len(btc.docs)
+}
+
+// WaitForRev blocks until the given doc ID and rev ID have been stored by the client, and returns the data when found.
+func (btc *BlipTesterCollectionClient) WaitForDocCount(expected int) bool {
+
+	if btc.GetDocCount() == expected {
+		return true
+	}
+	ticker := time.NewTicker(50 * time.Millisecond)
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for doc count to reach: %v count: %v", expected, btc.GetDocCount())
+			return false
+		case <-ticker.C:
+			if btc.GetDocCount() == expected {
+				return true
+			}
+		}
+	}
 }

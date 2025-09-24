@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -27,7 +28,7 @@ const (
 var (
 	DefaultChannelCacheMinLength       = 50               // Keep at least this many entries in cache
 	DefaultChannelCacheMaxLength       = 500              // Don't put more than this many entries in cache
-	DefaultChannelCacheAge             = 60 * time.Second // Keep entries at least this long
+	DefaultChannelCacheAge             = 10 * time.Second // Keep entries at least this long
 	DefaultChannelCacheMaxNumber       = 50000            // Default of 50k channel caches
 	DefaultCompactHighWatermarkPercent = 80               // Default compaction high watermark (percent of MaxNumber)
 	DefaultCompactLowWatermarkPercent  = 60               // Default compaction low watermark (percent of MaxNumber)
@@ -127,6 +128,7 @@ func newChannelCache(ctx context.Context, dbName string, options ChannelCacheOpt
 		cacheStats:           cacheStats,
 	}
 	bgt, err := NewBackgroundTask(ctx, "CleanAgedItems", channelCache.cleanAgedItems, options.ChannelCacheAge, channelCache.terminator)
+	log.Printf("Starting background task to clean aged items every %s", options.ChannelCacheAge)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +304,7 @@ func (c *channelCacheImpl) GetCachedChanges(ctx context.Context, channel channel
 // CleanAgedItems prunes the caches based on age of items. Error returned to fulfill BackgroundTaskFunc signature.
 func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 
+	log.Printf("running cleanAgedItems")
 	callback := func(v interface{}) bool {
 		channelCache := AsSingleChannelCache(ctx, v)
 		if channelCache == nil {
