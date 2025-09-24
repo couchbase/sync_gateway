@@ -2191,13 +2191,14 @@ func TestIsSGWrite(t *testing.T) {
 		}
 	})
 	t.Run("no _sync.rev.src", func(t *testing.T) {
+		// this is a corrupt _sync.rev, so assume that it was a _vv at some point and import just in case
 		doc := createNewTestDocument(t, db, body)
 		doc.RevAndVersion.CurrentSource = ""
 		doc.Cas = 1 // force mismatch cas
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
 				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
-				require.True(t, isSGWrite, "Expected doc to be identified as SG write for body %q", string(testCase.docBody))
+				require.False(t, isSGWrite, "Expected doc not to be identified as SG write for body %q since _sync.rev.src is empty", string(testCase.docBody))
 			})
 		}
 	})
@@ -2208,7 +2209,7 @@ func TestIsSGWrite(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
 				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
-				require.True(t, isSGWrite, "Expected doc to be identified as SG write for body %q since _sync.rev.ver is empty", string(testCase.docBody))
+				require.False(t, isSGWrite, "Expected doc not to be identified as SG write for body %q since _sync.rev.ver is empty", string(testCase.docBody))
 			})
 		}
 	})
@@ -2239,12 +2240,12 @@ func TestSyncDataCVEqual(t *testing.T) {
 			syncData: SyncData{
 				RevAndVersion: channels.RevAndVersion{
 					CurrentSource:  "testSourceID",
-					CurrentVersion: "0x1",
+					CurrentVersion: "0x0100000000000000",
 				},
 			},
 			cvSourceID: "testSourceID",
 			cvValue:    1,
-			cvEqual:    false,
+			cvEqual:    true,
 		},
 		{
 			name: "syncData sourceID mismatch",
@@ -2256,7 +2257,7 @@ func TestSyncDataCVEqual(t *testing.T) {
 			},
 			cvSourceID: "testSourceID2",
 			cvValue:    1,
-			cvEqual:    true,
+			cvEqual:    false,
 		},
 		{
 			name: "syncData sourceID mismatch",
@@ -2268,24 +2269,16 @@ func TestSyncDataCVEqual(t *testing.T) {
 			},
 			cvSourceID: "testSourceID",
 			cvValue:    1,
-			cvEqual:    true,
-		},
-		{
-			name: "syncData equal",
-			syncData: SyncData{
-				RevAndVersion: channels.RevAndVersion{
-					CurrentSource:  "sourceID",
-					CurrentVersion: "0x1",
-				},
-			},
-			cvSourceID: "sourceID",
-			cvValue:    1,
-			cvEqual:    true,
+			cvEqual:    false,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			assert.True(t, testCase.syncData.CVEqual(testCase.cvSourceID, testCase.cvValue))
+			cv := Version{
+				SourceID: testCase.cvSourceID,
+				Value:    testCase.cvValue,
+			}
+			require.Equal(t, testCase.cvEqual, testCase.syncData.CVEqual(cv))
 		})
 	}
 }

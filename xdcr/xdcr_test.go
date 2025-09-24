@@ -690,7 +690,7 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 	requireWaitForXDCRDocsWritten(t, xdcr, 3)
 
 	// check that we can fetch the attachment now
-	// Due to CBG-4864, this writes a new revision since _vv.ver > _sync.rev.ver even though the body didn't change.
+	// Due to CBG-4878, this writes a new revision since _vv.ver > _sync.rev.ver even though the body didn't change.
 	// This isn't ideal and it would be better to not have this issue a new revision.
 	//
 	// Note: The versions remaining the same means that clients that observe the missing attachment never get it until a subsequent doc update
@@ -705,7 +705,7 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 	attachmentsAfter := db.GetRawGlobalSyncAttachments(t, dstDs, docID)
 	require.Contains(t, attachmentsAfter, attName)
 
-	// CBG-4864 causes these to not be equal but equality would be better.
+	// CBG-4878 causes these to not be equal but equality would be better.
 	assert.NotEqual(t, dstPreMigrateSeq, dstPostMigrateSeq)
 	assert.NotEqual(t, dstPreMigrateRev, dstPostMigrateRev)
 }
