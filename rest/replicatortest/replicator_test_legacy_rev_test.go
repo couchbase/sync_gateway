@@ -333,7 +333,6 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnBothSidesAlreadyKnownRev(t
 
 func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	const username = "alice"
 
@@ -1098,7 +1097,6 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 
 func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	const username = "alice"
 
@@ -1187,7 +1185,6 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 
 func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	const username = "alice"
 
