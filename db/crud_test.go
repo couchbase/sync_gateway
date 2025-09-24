@@ -2154,8 +2154,7 @@ func TestIsSGWrite(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	body := []byte(`{"some": "data"}`)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	body := []byte(`{"some":"data"}`)
 	testCases := []struct {
 		name    string
 		docBody []byte
@@ -2174,19 +2173,20 @@ func TestIsSGWrite(t *testing.T) {
 		doc := createNewTestDocument(t, db, body)
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := collection.IsSGWrite(ctx, doc, testCase.docBody)
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
 				require.True(t, isSGWrite, "Expected doc to be identified as SG write for body %q", string(testCase.docBody))
 			})
 		}
 	})
 	t.Run("no HLV", func(t *testing.T) {
+		// falls back to body crc32 comparison
 		doc := createNewTestDocument(t, db, body)
 		doc.HLV = nil
 		doc.Cas = 1 // force mismatch cas
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := collection.IsSGWrite(ctx, doc, testCase.docBody)
-				require.False(t, isSGWrite, "Expected doc to be identified an SDK write for body %q", string(testCase.docBody))
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.True(t, isSGWrite, "Expected doc to be identified an SDK write for body %q", string(testCase.docBody))
 			})
 		}
 	})
@@ -2196,8 +2196,8 @@ func TestIsSGWrite(t *testing.T) {
 		doc.Cas = 1 // force mismatch cas
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := collection.IsSGWrite(ctx, doc, testCase.docBody)
-				require.False(t, isSGWrite, "Expected doc to be identified as SG write for body %q", string(testCase.docBody))
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.True(t, isSGWrite, "Expected doc to be identified as SG write for body %q", string(testCase.docBody))
 			})
 		}
 	})
@@ -2207,8 +2207,8 @@ func TestIsSGWrite(t *testing.T) {
 		doc.Cas = 1 // force mismatch cas
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := collection.IsSGWrite(ctx, doc, testCase.docBody)
-				require.False(t, isSGWrite, "Expected doc to be identified as SG write for body %q", string(testCase.docBody))
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.True(t, isSGWrite, "Expected doc to be identified as SG write for body %q since _sync.rev.ver is empty", string(testCase.docBody))
 			})
 		}
 	})
@@ -2218,21 +2218,21 @@ func TestIsSGWrite(t *testing.T) {
 		doc.Cas = 1 // force mismatch cas
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := collection.IsSGWrite(ctx, doc, testCase.docBody)
-				require.False(t, isSGWrite, "Expected doc to be identified as SG write for body %q", string(testCase.docBody))
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.False(t, isSGWrite, "Expected doc to not be identified as SG write for body %q due to mismatched _sync.rev.ver", string(testCase.docBody))
 			})
 		}
 	})
 
 }
 
-func TestSyncDataCVOutdated(t *testing.T) {
+func TestSyncDataCVEqual(t *testing.T) {
 	testCases := []struct {
 		name       string
 		syncData   SyncData
 		cvSourceID string
 		cvValue    uint64
-		outdated   bool
+		cvEqual    bool
 	}{
 		{
 			name: "syncData CV matches",
@@ -2244,7 +2244,7 @@ func TestSyncDataCVOutdated(t *testing.T) {
 			},
 			cvSourceID: "testSourceID",
 			cvValue:    1,
-			outdated:   false,
+			cvEqual:    false,
 		},
 		{
 			name: "syncData sourceID mismatch",
@@ -2256,7 +2256,7 @@ func TestSyncDataCVOutdated(t *testing.T) {
 			},
 			cvSourceID: "testSourceID2",
 			cvValue:    1,
-			outdated:   true,
+			cvEqual:    true,
 		},
 		{
 			name: "syncData sourceID mismatch",
@@ -2268,13 +2268,24 @@ func TestSyncDataCVOutdated(t *testing.T) {
 			},
 			cvSourceID: "testSourceID",
 			cvValue:    1,
-			outdated:   true,
+			cvEqual:    true,
+		},
+		{
+			name: "syncData equal",
+			syncData: SyncData{
+				RevAndVersion: channels.RevAndVersion{
+					CurrentSource:  "sourceID",
+					CurrentVersion: "0x1",
+				},
+			},
+			cvSourceID: "sourceID",
+			cvValue:    1,
+			cvEqual:    true,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			outdated := testCase.syncData.CVOutdated(testCase.cvSourceID, testCase.cvValue)
-			assert.True(t, outdated)
+			assert.True(t, testCase.syncData.CVEqual(testCase.cvSourceID, testCase.cvValue))
 		})
 	}
 }

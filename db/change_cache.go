@@ -395,7 +395,15 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		if syncData == nil {
 			return
 		}
-		isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, doc.Body, rawUserXattr)
+		var cv *Version
+		vv := doc.Xattrs[base.VvXattrName]
+		if len(vv) > 0 {
+			cv, err = getCurrentVersionFromVVXattr(vv)
+			if err != nil {
+				base.WarnfCtx(ctx, "Error unmarshalling %s xattr (%q) for doc %q: %v", base.VvXattrName, string(vv), base.UD(docID), err)
+			}
+		}
+		isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, doc.Body, rawUserXattr, cv)
 		if !isSGWrite {
 			return
 		}

@@ -202,7 +202,16 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			il.importStats.ImportErrorCount.Add(1)
 			return
 		}
-		isSGWrite, crc32Match = syncData.needsImport(ctx, event.Cas, rawDoc.Body, rawDoc.Xattrs[collection.userXattrKey()], rawDoc.Xattrs[base.VvXattrName])
+		var cv *Version
+		vv := rawDoc.Xattrs[base.VvXattrName]
+		if len(vv) > 0 {
+			cv, err = getCurrentVersionFromVVXattr(vv)
+			if err != nil {
+				base.WarnfCtx(ctx, "Error parsing version xattr for doc %s - not importing. Continuing without doing version vector consistency check between _vv and _sync: %s", base.UD(event.Key), err)
+				return
+			}
+		}
+		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, rawDoc.Body, rawDoc.Xattrs[collection.userXattrKey()], cv)
 		if crc32Match {
 			il.dbStats.Crc32MatchCount.Add(1)
 		}

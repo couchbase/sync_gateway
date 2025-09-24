@@ -979,3 +979,17 @@ func (hlv *HybridLogicalVector) HasRevEncodedCV() bool {
 func GetGenerationFromEncodedVersionValue(value uint64) int {
 	return int((value >> 40) & 0xFFFFFF)
 }
+
+// getCurrentVersionFromVVXattr will extract only the current version from a full version vector xattr, used to
+// optimize unmarshalling when only the current version is needed.
+func getCurrentVersionFromVVXattr(hlvData []byte) (*Version, error) {
+	limitedHLV := struct {
+		Version  string `json:"ver"`
+		SourceID string `json:"src"`
+	}{}
+	err := base.JSONUnmarshal(hlvData, &limitedHLV)
+	if err != nil {
+		return nil, err
+	}
+	return &Version{SourceID: limitedHLV.SourceID, Value: base.HexCasToUint64(limitedHLV.Version)}, nil
+}

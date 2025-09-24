@@ -661,39 +661,16 @@ func HasUserXattrChanged(userXattr []byte, prevUserXattrHash string) bool {
 	return userXattrCrc32cHash(userXattr) != prevUserXattrHash
 }
 
-// CVOutdated returns true if the provided CV does not match _sync.rev.ver and _sync.rev.src. The caller is responsible for testing if the values are non-empty.
-// This compares _vv.ver and _vv.src to _sync.rev.ver and _sync.rev.src
-func (s *SyncData) CVOutdated(cvSourceID string, cvVersion uint64) bool {
+// CVEqual returns true if the provided CV does not match _sync.rev.ver and _sync.rev.src. The caller is responsible for testing if the values are non-empty.
+func (s *SyncData) CVEqual(cvSourceID string, cvVersion uint64) bool {
 	if cvSourceID != s.RevAndVersion.CurrentSource {
 		return true
 	}
 	return cvVersion != base.HexCasToUint64(s.RevAndVersion.CurrentVersion)
 }
 
-// needsImport checks if a document needs to be imported. Used when Document.IsSGWrite can not be used.
-func (s *SyncData) needsImport(ctx context.Context, cas uint64, rawBody []byte, rawUserXattr []byte, rawHLV []byte) (isSGWrite bool, crc32Match bool) {
-	isSGWrite, crc32Match, _ = s.IsSGWrite(cas, rawBody, rawUserXattr)
-	if !isSGWrite || rawHLV == nil {
-		return isSGWrite, crc32Match
-	}
-	limitedHLV := struct {
-		Version  string `json:"ver"`
-		SourceID string `json:"src"`
-	}{}
-	if err := base.JSONUnmarshal(rawHLV, &limitedHLV); err != nil {
-		base.WarnfCtx(ctx, "Unable to unmarshal HLV xattr during SG write check. HLV: %s Error: %v", string(rawHLV), err)
-		// If we can't unmarshal the HLV, assume it has changed and import
-		return false, crc32Match
-	}
-	hasOutdatedCV := s.CVOutdated(limitedHLV.SourceID, base.HexCasToUint64(limitedHLV.Version))
-	if hasOutdatedCV {
-		return false, crc32Match
-	}
-	return true, crc32Match
-}
-
-// IsSGWrite determines if a document was written by Sync Gateway or via an SDK.
-func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
+// IsSGWrite determines if a document was written by Sync Gateway or via an SDK. CV is an optional parameter to check. This would represent _vv.ver and _vv.src
+func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte, cv *Version) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 
 	// If cas matches, it was a SG write
 	if cas == s.GetSyncCas() {
@@ -713,23 +690,16 @@ func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (i
 }
 
 // IsSGWrite - used during on-demand import. Check SyncData and HLV to determine if the document was written by Sync Gateway or by a Couchbase Server SDK write.
-func (doc *Document) IsSGWrite(ctx context.Context, cv Version, rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
+func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
+	var cv *Version
+	if doc.RevAndVersion.CurrentSource != "" && doc.RevAndVersion.CurrentVersion != "" && doc.HLV != nil {
+		sourceID, version := doc.HLV.GetCurrentVersion()
+		cv = &Version{SourceID: sourceID, Value: version}
+	}
 
 	// If the raw body is available, use SyncData.IsSGWrite
 	if rawBody != nil && len(rawBody) > 0 {
-		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr)
-		if !isSgWriteFeed {
-			base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%d syncCas:%d", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
-			return false, crc32MatchFeed, bodyChangedFeed
-		}
-		if doc.RevAndVersion.CurrentSource == "" || doc.RevAndVersion.CurrentVersion == "" {
-			// Doc wasn't a version vector before calling this function, so we can't use _sync.ver / _sync.src to determine if it was an SG write
-			return true, crc32MatchFeed, bodyChangedFeed
-		}
-		if doc.CVOutdated(cv.SourceID, cv.Value) {
-			base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on mismatch between version vector %#v and sync metadata %#v", base.UD(doc.ID), cv, doc.RevAndVersion)
-			return false, crc32MatchFeed, bodyChangedFeed
-		}
+		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr, cv)
 		return isSgWriteFeed, crc32MatchFeed, bodyChangedFeed
 	}
 
@@ -762,9 +732,15 @@ func (doc *Document) IsSGWrite(ctx context.Context, cv Version, rawBody []byte) 
 		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
 		return false, true, false
 	}
-	if doc.CVOutdated(cv.SourceID, cv.Value) {
-		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on version vector %#v not matching sync metadata cv %s", base.UD(doc.ID), cv, doc.RevAndVersion.CV())
-		return false, true, false
+	if doc.RevAndVersion.CurrentSource == "" || doc.RevAndVersion.CurrentVersion == "" {
+		return true, true, false
+	}
+
+	if cv != nil {
+		if !doc.CVEqual(cv.SourceID, cv.Value) {
+			base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on mismatch between version vector cv %s and sync metadata cv %s", base.UD(doc.ID), doc.HLV.GetCurrentVersionString(), doc.RevAndVersion.CV())
+			return false, true, false
+		}
 	}
 	return true, true, false
 }

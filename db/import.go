@@ -231,7 +231,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		}
 
 		// Is this doc an SG Write?
-		isSgWrite, crc32Match, bodyChanged := db.IsSGWrite(ctx, doc, existingDoc.Body)
+		isSgWrite, crc32Match, bodyChanged := doc.IsSGWrite(ctx, existingDoc.Body)
 		if crc32Match {
 			db.dbStats().Database().Crc32MatchCount.Add(1)
 		}

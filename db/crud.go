@@ -66,15 +66,6 @@ func (c *DatabaseCollection) GetDocument(ctx context.Context, docid string, unma
 	return doc, err
 }
 
-// IsSGWrite is used to determine if the document was written by Sync Gateway or needs to be imported.
-func (c *DatabaseCollection) IsSGWrite(ctx context.Context, doc *Document, rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
-	cv := Version{SourceID: c.dbCtx.EncodedSourceID, Value: doc.Cas}
-	if doc.HLV != nil {
-		cv = *doc.HLV.ExtractCurrentVersionFromHLV()
-	}
-	return doc.IsSGWrite(ctx, cv, rawBody)
-}
-
 // GetDocumentWithRaw returns the document from the bucket. This may perform an on-demand import.
 func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	key := realDocID(docid)
@@ -86,7 +77,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		if err != nil {
 			return nil, nil, err
 		}
-		isSgWrite, crc32Match, _ := c.IsSGWrite(ctx, doc, rawBucketDoc.Body)
+		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
 		if crc32Match {
 			c.dbStats().Database().Crc32MatchCount.Add(1)
 		}
@@ -98,7 +89,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 			if err != nil {
 				return nil, nil, err
 			}
-			isSgWrite, _, _ := c.IsSGWrite(ctx, doc, rawBucketDoc.Body)
+			isSgWrite, _, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
 			if !isSgWrite {
 				var importErr error
 				doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
@@ -189,7 +180,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 			return emptySyncData, unmarshalErr
 		}
 
-		isSgWrite, crc32Match, _ := c.IsSGWrite(ctx, doc, rawDoc)
+		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
 		if crc32Match {
 			c.dbStats().Database().Crc32MatchCount.Add(1)
 		}
@@ -1137,7 +1128,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 
 		// Is this doc an sgWrite?
 		if doc != nil {
-			isSgWrite, crc32Match, _ = db.IsSGWrite(ctx, doc, nil)
+			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
 			if crc32Match {
 				db.dbStats().Database().Crc32MatchCount.Add(1)
 			}
@@ -1293,7 +1284,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 
 		// Is this doc an sgWrite?
 		if doc != nil {
-			isSgWrite, crc32Match, _ = db.IsSGWrite(ctx, doc, nil)
+			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
 			if crc32Match {
 				db.dbStats().Database().Crc32MatchCount.Add(1)
 			}
@@ -1530,7 +1521,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 
 		// Is this doc an sgWrite?
 		if doc != nil {
-			isSgWrite, crc32Match, _ = db.IsSGWrite(ctx, doc, nil)
+			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
 			if crc32Match {
 				db.dbStats().Database().Crc32MatchCount.Add(1)
 			}
