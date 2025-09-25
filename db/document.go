@@ -683,6 +683,7 @@ func (s *SyncData) IsSGWrite(ctx context.Context, cas uint64, rawBody []byte, ra
 	}
 
 	if HasUserXattrChanged(rawUserXattr, s.Crc32cUserXattr) {
+		// technically the crc32 matches but return false on crc32Match so Crc32MatchCount is not incremented, to mark that it would be imported
 		return false, false, false
 	}
 
@@ -690,11 +691,12 @@ func (s *SyncData) IsSGWrite(ctx context.Context, cas uint64, rawBody []byte, ra
 		extractedCV, err := cv.ExtractCV()
 		if !errors.Is(err, base.ErrNotFound) {
 			if err != nil {
-				base.WarnfCtx(ctx, "Error extracting cv during IsSGWrite write check: %v", err)
+				base.InfofCtx(ctx, base.KeyImport, "Unable to extract cv during IsSGWrite write check - skipping cv match check: %v", err)
 				return true, true, false
 			}
 			if !s.CVEqual(*extractedCV) {
-				return false, true, false
+				// technically the crc32 matches but return false so Crc32MatchCount is not incremented, to mark that it would be imported
+				return false, false, false
 			}
 		}
 	}
@@ -735,6 +737,7 @@ func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite b
 	}
 
 	if HasUserXattrChanged(doc.rawUserXattr, doc.Crc32cUserXattr) {
+		// technically the crc32 matches but return false for crc32Match so Crc32MatchCount is not incremented. The document is not a match and wil get imported.
 		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
 		return false, false, false
 	}

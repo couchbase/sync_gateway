@@ -395,12 +395,14 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		if syncData == nil {
 			return
 		}
+		var rawVV *rawHLV
 		vv := doc.Xattrs[base.VvXattrName]
 		if len(vv) > 0 {
-			isSGWrite, _, _ := syncData.IsSGWrite(ctx, event.Cas, doc.Body, rawUserXattr, base.Ptr(rawHLV(vv)))
-			if !isSGWrite {
-				return
-			}
+			rawVV = base.Ptr(rawHLV(vv))
+		}
+		isSGWrite, _, _ := syncData.IsSGWrite(ctx, event.Cas, doc.Body, rawUserXattr, rawVV)
+		if !isSGWrite {
+			return
 		}
 	}
 

@@ -248,7 +248,7 @@ func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 	return &currVersion
 }
 
-// ExtractCV is used to sastify CV only interface. Since it can never return an error, consider ExtractCurrentVersionFromHLV or GetCurrentVersion instead.
+// ExtractCV is used to sastify CV only interface. Consider using ExtractCurrentVersionFromHLV or GetCurrentVersion instead if you know hlv is not nil.
 func (hlv *HybridLogicalVector) ExtractCV() (*Version, error) {
 	if hlv == nil {
 		return nil, base.ErrNotFound
@@ -990,7 +990,7 @@ func GetGenerationFromEncodedVersionValue(value uint64) int {
 
 type rawHLV []byte
 
-// GetCurrentVersion returns the current version from the HLV by unmarshalling a raw _vv xattr.
+// GetCurrentVersion returns the current version from the HLV by unmarshalling a raw _vv xattr. If the rawHLV is nil, returns ErrNotFound.
 func (r *rawHLV) ExtractCV() (*Version, error) {
 	if r == nil {
 		return nil, base.ErrNotFound
