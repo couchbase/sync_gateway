@@ -512,7 +512,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			SourceID: syncData.RevAndVersion.CurrentSource,
 			Value:    base.HexCasToUint64(syncData.RevAndVersion.CurrentVersion),
 		}
-		collection.revisionCache.RemoveWithCV(ctx, docID, &vrs)
+		collection.revisionCache.RemoveCVOnly(ctx, docID, &vrs)
 	}
 
 	change := &LogEntry{
