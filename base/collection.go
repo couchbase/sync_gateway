@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -350,6 +351,42 @@ func (b *GocbV2Bucket) GetMaxVbno() (uint16, error) {
 	}
 
 	return uint16(vbNo), nil
+}
+
+func (b *GocbV2Bucket) GetCCVStartingCas(ctx context.Context) (map[uint16]uint64, error) {
+	uri := "/pools/default/buckets/" + b.GetName()
+	output, status, err := b.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return nil, fmt.Errorf("error executing query for vbucket CAS, status code: %d error: %v output: %s", status, err, string(output))
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("error executing query for vbucket CAS, status code: %d output: %s", status, string(output))
+	}
+	var bucketInfo struct {
+		EnableCrossClusterVersioning bool     `json:"enableCrossClusterVersioning"`
+		MaxCas                       []string `json:"vBucketsMaxCas"`
+	}
+	err = JSONUnmarshal(output, &bucketInfo)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing output from bucket %q error:%v", string(output), err)
+	}
+
+	numVBuckets, err := b.GetMaxVbno()
+	if err != nil {
+		return nil, fmt.Errorf("error getting vbucket count: %v", err)
+	}
+	if len(bucketInfo.MaxCas) != int(numVBuckets) {
+		return nil, fmt.Errorf("error getting vbucket CAS, expected %d vbucket CAS values, got %q", numVBuckets, bucketInfo.MaxCas)
+	}
+	highCas := make(map[uint16]uint64, len(bucketInfo.MaxCas))
+	for i, casStr := range bucketInfo.MaxCas {
+		cas, err := strconv.ParseUint(casStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing vbucket CAS value %q for vbucket %d: %v", casStr, i, err)
+		}
+		highCas[uint16(i)] = cas
+	}
+	return highCas, nil
 }
 
 func (b *GocbV2Bucket) getConfigSnapshot() (*gocbcore.ConfigSnapshot, error) {

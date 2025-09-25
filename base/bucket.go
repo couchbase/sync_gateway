@@ -61,6 +61,7 @@ type CouchbaseBucketStore interface {
 	HttpClient(context.Context) *http.Client
 	GetSpec() BucketSpec
 	GetMaxVbno() (uint16, error)
+	GetCCVStartingCas(context.Context) (map[uint16]uint64, error)
 
 	// GetStatsVbSeqno retrieves the high sequence number for all vbuckets and returns
 	// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
@@ -576,3 +577,5 @@ func GetNewDatabaseSleeperFunc() RetrySleeper {
 		5,  // InitialRetrySleepTimeMS
 	)
 }
+
+var _ CouchbaseBucketStore = &GocbV2Bucket{}

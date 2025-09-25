@@ -2651,3 +2651,15 @@ func TestVersionPruningWindow(t *testing.T) {
 	// it's assumed that anywhere this test is running has a default pruning window (30 days) - but this at least ensures we can retrieve it
 	assert.Equal(t, time.Hour*24*30, vpw)
 }
+
+func TestGetCCVStartingCAS(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	cbStore, ok := AsCouchbaseBucketStore(bucket)
+	require.True(t, ok)
+	cas, err := cbStore.GetCCVStartingCas(ctx)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+}
