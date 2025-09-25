@@ -2632,3 +2632,22 @@ func TestWriteUpdateWithXattrsDocumentTombstone(t *testing.T) {
 	require.JSONEq(t, string(xattrModifiedBody), string(xattrs[xattr1Key]))
 	require.NotContains(t, xattrs, xattr2Key)
 }
+
+func TestVersionPruningWindow(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	cbStore, ok := AsCouchbaseBucketStore(bucket)
+	require.True(t, ok)
+
+	vpw, err := cbStore.VersionPruningWindow(ctx)
+	require.NoError(t, err)
+
+	// it's assumed that anywhere this test is running has a default pruning window (30 days) - but this at least ensures we can retrieve it
+	assert.Equal(t, time.Hour*24*30, vpw)
+}

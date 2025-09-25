@@ -69,6 +69,7 @@ const (
 	// used as default metadata purge interval when the server’s purge
 	// interval (either bucket specific or cluster wide) is not available.
 	DefaultPurgeInterval                    = 30 * 24 * time.Hour
+	DefaultVersionPruningWindow             = DefaultPurgeInterval
 	DefaultSGReplicateEnabled               = true
 	DefaultSGReplicateWebsocketPingInterval = time.Minute * 5
 	DefaultCompactInterval                  = 24 * time.Hour
@@ -159,6 +160,7 @@ type DatabaseContext struct {
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
 	CachedPurgeInterval          atomic.Pointer[time.Duration]  // If set, the cached value of the purge interval to avoid repeated lookups
+	CachedVersionPruningWindow   atomic.Pointer[time.Duration]  // If set, the cached value of the version pruning window to avoid repeated lookups
 }
 
 type Scope struct {
@@ -1624,6 +1626,37 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRe
 
 	db.CachedPurgeInterval.Store(&mpi)
 	return mpi
+}
+
+// GetVersionPruningWindow returns the current value for the XDCR Version Pruning Window for the backing bucket.
+// if forceRefresh is set, we'll always fetch a new value from the bucket, even if we had one cached.
+func (db *DatabaseContext) GetVersionPruningWindow(ctx context.Context, forceRefresh bool) time.Duration {
+	// fetch cached value if available
+	if !forceRefresh {
+		vpw := db.CachedVersionPruningWindow.Load()
+		if vpw != nil {
+			return *vpw
+		}
+	}
+
+	// fetch from server
+	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
+	if !ok {
+		return DefaultVersionPruningWindow
+	}
+
+	serverVersionPruningWindow, err := cbStore.VersionPruningWindow(ctx)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to retrieve server's version pruning window - using default %.2f days. %s", DefaultVersionPruningWindow.Hours()/24, err)
+	}
+
+	vpw := DefaultVersionPruningWindow
+	if serverVersionPruningWindow > 0 {
+		vpw = serverVersionPruningWindow
+	}
+
+	db.CachedVersionPruningWindow.Store(&vpw)
+	return vpw
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {

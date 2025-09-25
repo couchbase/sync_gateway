@@ -55,6 +55,7 @@ type WrappingDatastore interface {
 type CouchbaseBucketStore interface {
 	GetName() string
 	MgmtEps() ([]string, error)
+	VersionPruningWindow(ctx context.Context) (time.Duration, error)
 	MetadataPurgeInterval(ctx context.Context) (time.Duration, error)
 	MaxTTL(context.Context) (int, error)
 	HttpClient(context.Context) *http.Client

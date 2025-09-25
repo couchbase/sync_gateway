@@ -468,10 +468,33 @@ func (b *GocbV2Bucket) QueryEpsCount() (int, error) {
 	return len(agent.N1qlEps()), nil
 }
 
-// Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
-// found, retrieves the cluster-wide value.
+// MetadataPurgeInterval gets the metadata purge interval for the bucket. Checks for a bucket-specific value before the cluster value.
 func (b *GocbV2Bucket) MetadataPurgeInterval(ctx context.Context) (time.Duration, error) {
 	return getMetadataPurgeInterval(ctx, b)
+}
+
+// VersionPruningWindow gets the version pruning window for the bucket.
+func (b *GocbV2Bucket) VersionPruningWindow(ctx context.Context) (time.Duration, error) {
+	uri := fmt.Sprintf("/pools/default/buckets/%s", b.GetName())
+	respBytes, statusCode, err := b.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return 0, err
+	}
+
+	if statusCode == http.StatusForbidden {
+		WarnfCtx(ctx, "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve version pruning window.", UD(uri))
+	} else if statusCode != http.StatusOK {
+		return 0, errors.New(fmt.Sprintf("failed with status code, %d, statusCode", statusCode))
+	}
+
+	var response struct {
+		VersionPruningWindowHrs int64 `json:"versionPruningWindowHrs,omitempty"`
+	}
+	if err := JSONUnmarshal(respBytes, &response); err != nil {
+		return 0, err
+	}
+
+	return time.Duration(response.VersionPruningWindowHrs) * time.Hour, nil
 }
 
 func (b *GocbV2Bucket) MaxTTL(ctx context.Context) (int, error) {
