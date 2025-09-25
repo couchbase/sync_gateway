@@ -600,6 +600,7 @@ func (rc *LRURevisionCache) removeFromRevLookup(ctx context.Context, docID, revI
 	delete(rc.cache, key)
 }
 
+// removeFromCVLookup will only remove the entry from the CV lookup map, if present. Underlying element must stay in list for eviction to work.
 func (rc *LRURevisionCache) removeFromCVLookup(ctx context.Context, docID string, cv *Version, collectionID uint32) {
 	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.Value, CollectionID: collectionID}
 	rc.lock.Lock()
