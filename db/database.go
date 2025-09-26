@@ -161,7 +161,7 @@ type DatabaseContext struct {
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
 	CachedPurgeInterval          atomic.Pointer[time.Duration]  // If set, the cached value of the purge interval to avoid repeated lookups
 	CachedVersionPruningWindow   atomic.Pointer[time.Duration]  // If set, the cached value of the version pruning window to avoid repeated lookups
-	CachedCCVStartingCas         atomic.Pointer[uint64]         // If set, the cached value of the purge interval to avoid repeated lookups
+	CachedCCVStartingCas         atomic.Pointer[uint64]         // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
 	CachedCCVEnabled             atomic.Pointer[bool]           // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 }
 
