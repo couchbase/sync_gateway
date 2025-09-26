@@ -248,6 +248,14 @@ func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 	return &currVersion
 }
 
+// ExtractCV is used to sastify CV only interface. Consider using ExtractCurrentVersionFromHLV or GetCurrentVersion instead if you know hlv is not nil.
+func (hlv *HybridLogicalVector) ExtractCV() (*Version, error) {
+	if hlv == nil {
+		return nil, base.ErrNotFound
+	}
+	return hlv.ExtractCurrentVersionFromHLV(), nil
+}
+
 // HybridLogicalVector is the in memory format for the hLv.
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64      // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
@@ -979,3 +987,30 @@ func (hlv *HybridLogicalVector) HasRevEncodedCV() bool {
 func GetGenerationFromEncodedVersionValue(value uint64) int {
 	return int((value >> 40) & 0xFFFFFF)
 }
+
+type rawHLV []byte
+
+// GetCurrentVersion returns the current version from the HLV by unmarshalling a raw _vv xattr. If the rawHLV is nil, returns ErrNotFound.
+func (r *rawHLV) ExtractCV() (*Version, error) {
+	if r == nil {
+		return nil, base.ErrNotFound
+	}
+	limitedHLV := struct {
+		Version  string `json:"ver"`
+		SourceID string `json:"src"`
+	}{}
+	err := base.JSONUnmarshal(*r, &limitedHLV)
+	if err != nil {
+		return nil, fmt.Errorf("could not extract ver and src from _vv xattr (%q): %w", string(*r), err)
+	}
+	return &Version{SourceID: limitedHLV.SourceID, Value: base.HexCasToUint64(limitedHLV.Version)}, nil
+}
+
+// cvExtractor can extract a current version different HLV representations.
+type cvExtractor interface {
+	// ExtractVersion returns the current version from the HLV.
+	ExtractCV() (*Version, error)
+}
+
+var _ cvExtractor = &rawHLV{}
+var _ cvExtractor = &HybridLogicalVector{}
