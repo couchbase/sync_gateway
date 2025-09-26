@@ -52,7 +52,7 @@ const (
 )
 
 const (
-	unknownSourceID = "unknownSource" // used if the document was written before ECCV was enabled
+	unknownSourceID = "Unknown+Source" // used if the document was written before ECCV was enabled
 )
 
 type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
