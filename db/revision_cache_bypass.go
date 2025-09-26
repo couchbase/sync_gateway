@@ -132,6 +132,10 @@ func (rc *BypassRevisionCache) RemoveRevOnly(ctx context.Context, docID, revID s
 	// no-op
 }
 
+func (rc *BypassRevisionCache) RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32) {
+	// no-op
+}
+
 func (rc *BypassRevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32) {
 	// no-op
 }

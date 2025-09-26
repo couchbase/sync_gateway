@@ -97,6 +97,10 @@ func (sc *ShardedLRURevisionCache) RemoveRevOnly(ctx context.Context, docID, rev
 	sc.getShard(docID).RemoveRevOnly(ctx, docID, revID, collectionID)
 }
 
+func (sc *ShardedLRURevisionCache) RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32) {
+	sc.getShard(docID).RemoveCVOnly(ctx, docID, cv, collectionID)
+}
+
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
 	backingStores        map[uint32]RevisionCacheBackingStore
@@ -533,6 +537,10 @@ func (rc *LRURevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *
 	rc.removeFromCacheByCV(ctx, docID, cv, collectionID)
 }
 
+func (rc *LRURevisionCache) RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32) {
+	rc.removeFromCVLookup(ctx, docID, cv, collectionID)
+}
+
 // RemoveRevOnly removes a rev from revision cache lookup map, if present.
 func (rc *LRURevisionCache) RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32) {
 	// This will only remove the entry from the rev lookup map, not the lru list
@@ -587,9 +595,19 @@ func (rc *LRURevisionCache) removeFromRevLookup(ctx context.Context, docID, revI
 	key := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
-	// only delete from rev lookup map, if we delete underlying element in list, the now elem in the HLV lookup map
+	// only delete from rev lookup map, if we delete underlying element in list, the elem in the HLV lookup map
 	// will never be evicted leading to potential unbounded growth of HLV lookup map
 	delete(rc.cache, key)
+}
+
+// removeFromCVLookup will only remove the entry from the CV lookup map, if present. Underlying element must stay in list for eviction to work.
+func (rc *LRURevisionCache) removeFromCVLookup(ctx context.Context, docID string, cv *Version, collectionID uint32) {
+	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.Value, CollectionID: collectionID}
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	// only delete from cv lookup map, if we delete underlying element in list, the item left in the revID lookup map for
+	// this item will never be evicted leading to potential unbounded growth of revID lookup map
+	delete(rc.hlvCache, key)
 }
 
 // removeValue removes a value from the revision cache, if present and the value matches the the value. If there's an item in the revision cache with a matching docID and revID but the document is different, this item will not be removed from the rev cache.
@@ -627,7 +645,16 @@ func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, nu
 		}
 		hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: value.collectionID}
 		revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
-		delete(rc.hlvCache, hlvKey)
+		if elem := rc.hlvCache[hlvKey]; elem != nil {
+			revValue := elem.Value.(*revCacheValue)
+			// we need to check if the value pointed to by the cv lookup map is the same value we're evicting, this is
+			// because we can currently have two items with the same docID and CV, but different revIDs due to
+			// local wins conflict resolution not generating a new CV but generating a new revID.
+			if revValue.revID == value.revID {
+				// this cv lookup item matches the value we're evicting, so remove it
+				delete(rc.hlvCache, hlvKey)
+			}
+		}
 		if elem := rc.cache[revKey]; elem != nil {
 			revValue := elem.Value.(*revCacheValue)
 			// we need to check if the value pointed to by the rev lookup map is the same value we're evicting, this is
@@ -888,7 +915,17 @@ func (rc *LRURevisionCache) performEviction(ctx context.Context) {
 			}
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
 			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: value.collectionID}
-			delete(rc.hlvCache, hlvKey)
+			// same below but for hlv lookup map
+			if elem := rc.hlvCache[hlvKey]; elem != nil {
+				revValue := elem.Value.(*revCacheValue)
+				// we need to check if the value pointed to by the cv lookup map is the same value we're evicting, this is
+				// because we can currently have two items with the same docID and CV, but different revIDs due to
+				// local wins conflict resolution not generating a new CV but generating a new revID.
+				if revValue.revID == value.revID {
+					// this cv lookup item matches the value we're evicting, so remove it
+					delete(rc.hlvCache, hlvKey)
+				}
+			}
 			if elem := rc.cache[revKey]; elem != nil {
 				revValue := elem.Value.(*revCacheValue)
 				// we need to check if the value pointed to by the rev lookup map is the same value we're evicting, this is

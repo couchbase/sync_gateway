@@ -2347,3 +2347,72 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 	// 3 misses are from the initial load from bucket after rev cache flush above
 	assert.Equal(t, int64(3), db.DbStats.Cache().RevisionCacheMisses.Value())
 }
+
+func TestRaceRemovingStaleCVValue(t *testing.T) {
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	backingStoreMap := CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 10,
+		MaxBytes:     0,
+	}
+	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
+
+	ctx := base.TestCtx(t)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+		wg.Done()
+	}()
+
+	go func() {
+		cache.RemoveCVOnly(ctx, "doc1", &Version{Value: 123, SourceID: "test"}, testCollectionID)
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+}
+
+func TestEvictionWhenStaleCVRemoved(t *testing.T) {
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	backingStoreMap := CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 2,
+		MaxBytes:     0,
+	}
+	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
+
+	ctx := base.TestCtx(t)
+
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: 1245, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+
+	// remove cv from lookup map for doc1
+	cache.RemoveCVOnly(ctx, "doc1", &Version{Value: 123, SourceID: "test"}, testCollectionID)
+
+	assert.Equal(t, 2, cache.lruList.Len())
+	assert.Equal(t, 2, len(cache.cache))
+	assert.Equal(t, 1, len(cache.hlvCache))
+	// assert that doc2 is only item in hlv lookup
+	_, ok := cache.hlvCache[IDandCV{DocID: "doc2", Source: "test", Version: 1245, CollectionID: testCollectionID}]
+	assert.True(t, ok)
+
+	// add new doc revision for doc1 (same cv different revID simulating local wins scenario) to trigger eviction on doc1 first revision
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data"}`), DocID: "doc1", RevID: "2-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+
+	assert.Equal(t, 2, cache.lruList.Len())
+	assert.Equal(t, 2, len(cache.cache))
+	assert.Equal(t, 2, len(cache.hlvCache))
+
+	// assert doc1 entry in hlv map has revID 2-abc
+	val := cache.hlvCache[IDandCV{DocID: "doc1", Source: "test", Version: 123, CollectionID: testCollectionID}]
+	revValue := val.Value.(*revCacheValue)
+	assert.Equal(t, "2-abc", revValue.revID)
+	// assert doc1 entry in revID map has revID 2-abc
+	valRevEntry := cache.cache[IDAndRev{DocID: "doc1", RevID: "2-abc", CollectionID: testCollectionID}]
+	revValueRevEntry := valRevEntry.Value.(*revCacheValue)
+	assert.Equal(t, "2-abc", revValueRevEntry.revID)
+}
