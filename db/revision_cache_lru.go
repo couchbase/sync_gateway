@@ -648,7 +648,7 @@ func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, nu
 		if elem := rc.hlvCache[hlvKey]; elem != nil {
 			revValue := elem.Value.(*revCacheValue)
 			// we need to check if the value pointed to by the cv lookup map is the same value we're evicting, this is
-			// because we can have can currently have two items with the same docID and CV, but different revIDs due to
+			// because we can currently have two items with the same docID and CV, but different revIDs due to
 			// local wins conflict resolution not generating a new CV but generating a new revID.
 			if revValue.revID == value.revID {
 				// this cv lookup item matches the value we're evicting, so remove it
@@ -919,7 +919,7 @@ func (rc *LRURevisionCache) performEviction(ctx context.Context) {
 			if elem := rc.hlvCache[hlvKey]; elem != nil {
 				revValue := elem.Value.(*revCacheValue)
 				// we need to check if the value pointed to by the cv lookup map is the same value we're evicting, this is
-				// because we can have can currently have two items with the same docID and CV, but different revIDs due to
+				// because we can currently have two items with the same docID and CV, but different revIDs due to
 				// local wins conflict resolution not generating a new CV but generating a new revID.
 				if revValue.revID == value.revID {
 					// this cv lookup item matches the value we're evicting, so remove it
