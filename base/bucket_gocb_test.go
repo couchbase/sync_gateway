@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -2653,13 +2654,20 @@ func TestVersionPruningWindow(t *testing.T) {
 }
 
 func TestGetCCVStartingCAS(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
 	cbStore, ok := AsCouchbaseBucketStore(bucket)
 	require.True(t, ok)
-	cas, err := cbStore.GetCCVStartingCas(ctx)
+
+	_, _, startingCAS, err := cbStore.GetCCVSettings(ctx)
 	require.NoError(t, err)
-	require.NotZero(t, cas)
+
+	require.NotZero(t, startingCAS)
+	require.NotEqual(t, uint64(math.MaxUint64), startingCAS) // ensure this test isn't returning the default/fallback value
 }

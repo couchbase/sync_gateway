@@ -161,6 +161,8 @@ type DatabaseContext struct {
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
 	CachedPurgeInterval          atomic.Pointer[time.Duration]  // If set, the cached value of the purge interval to avoid repeated lookups
 	CachedVersionPruningWindow   atomic.Pointer[time.Duration]  // If set, the cached value of the version pruning window to avoid repeated lookups
+	CachedCCVStartingCas         atomic.Pointer[uint64]         // If set, the cached value of the purge interval to avoid repeated lookups
+	CachedCCVEnabled             atomic.Pointer[bool]           // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 }
 
 type Scope struct {
@@ -1663,6 +1665,40 @@ func (db *DatabaseContext) GetVersionPruningWindow(ctx context.Context, forceRef
 
 	db.CachedVersionPruningWindow.Store(&vpw)
 	return vpw
+}
+
+// GetCCVSettings returns the CCV enabled setting and the high CCV CAS for the backing bucket.
+func (db *DatabaseContext) GetCCVSettings(ctx context.Context, forceRefresh bool) (bool, uint64) {
+	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
+	if !ok {
+		// rosmar always supports ECCV so return enabled = true, starting CAS = 0 to ensure all documents are processed correctly
+		return true, 0
+	}
+
+	// Fetch cached values if available
+	if !forceRefresh {
+		enabled := db.CachedCCVEnabled.Load()
+		cas := db.CachedCCVStartingCas.Load()
+		if enabled != nil && cas != nil {
+			return *enabled, *cas
+		}
+	}
+
+	// Fetch from Couchbase Server
+	supported, enabled, maxCAS, err := cbStore.GetCCVSettings(ctx)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to retrieve server's CCV Starting CAS - using 0 as starting CAS. %s", err)
+		return false, 0
+	}
+
+	db.CachedCCVEnabled.Store(&enabled)
+	db.CachedCCVStartingCas.Store(&maxCAS)
+
+	if !supported {
+		return false, 0
+	}
+
+	return enabled, maxCAS
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {

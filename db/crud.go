@@ -992,7 +992,13 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		if !hasHLV || (!cvCASMatch && !mouMatch) {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
-			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
+			ccvEnabled, ccvCAS := db.dbCtx.GetCCVSettings(ctx, false)
+			// use unknown source ID when CCV is enabled but doc cas is less than CCV CAS
+			if ccvEnabled && d.Cas < ccvCAS {
+				newVVEntry.SourceID = unknownSourceID
+			} else {
+				newVVEntry.SourceID = db.dbCtx.EncodedSourceID
+			}
 			newVVEntry.Value = d.Cas
 			err := d.HLV.AddVersion(newVVEntry)
 			if err != nil {
