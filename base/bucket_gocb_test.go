@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"strings"
 	"testing"
@@ -2665,9 +2664,16 @@ func TestGetCCVStartingCAS(t *testing.T) {
 	cbStore, ok := AsCouchbaseBucketStore(bucket)
 	require.True(t, ok)
 
-	_, _, startingCAS, err := cbStore.GetCCVSettings(ctx)
+	eccv, startingCAS, err := cbStore.GetCCVSettings(ctx)
 	require.NoError(t, err)
+	require.True(t, eccv)
 
-	require.NotZero(t, startingCAS)
-	require.NotEqual(t, uint64(math.MaxUint64), startingCAS) // ensure this test isn't returning the default/fallback value
+	numVBuckets, err := cbStore.GetMaxVbno()
+	require.NoError(t, err)
+	require.Len(t, startingCAS, int(numVBuckets))
+	for vbNo := range numVBuckets {
+		cas, ok := startingCAS[VBNo(vbNo)]
+		require.True(t, ok, "Expected starting CAS for vbucket %d", vbNo)
+		require.NotEqual(t, uint64(0), cas, "Expected non-zero starting CAS for vbucket %d", vbNo)
+	}
 }

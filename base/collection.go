@@ -176,13 +176,6 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	}
 	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*(*numPools))
 
-	// Query to see if mobile XDCR bucket setting is set and store on bucket object
-	// FIXME: supportsHLV and the related capability are never used - this seems unnecessary to keep around
-	gocbv2Bucket.supportsHLV, _, _, err = gocbv2Bucket.GetCCVSettings(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	return gocbv2Bucket, nil
 }
 
@@ -332,15 +325,14 @@ func (b *GocbV2Bucket) GetMaxVbno() (uint16, error) {
 }
 
 // GetCCVSettings returns the highest CAS value across all vBuckets for a bucket with CCV enabled.
-// ccvSupported returns false if the server does not know what CCV is (pre 7.6.1)
-func (b *GocbV2Bucket) GetCCVSettings(ctx context.Context) (ccvSupported, ccvEnabled bool, maxCAS uint64, err error) {
+func (b *GocbV2Bucket) GetCCVSettings(ctx context.Context) (ccvEnabled bool, maxCAS map[VBNo]uint64, err error) {
 	uri := "/pools/default/buckets/" + b.GetName()
 	output, status, err := b.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
-		return false, false, 0, RedactErrorf("unable to get CCV starting cas for bucket %q: %w", UD(b.GetName()), err)
+		return false, nil, RedactErrorf("unable to get CCV starting cas for bucket %q: %w", UD(b.GetName()), err)
 	}
 	if status != http.StatusOK {
-		return false, false, 0, RedactErrorf("unable to get CCV starting cas for bucket %q, status %d", UD(b.GetName()), status)
+		return false, nil, RedactErrorf("unable to get CCV starting cas for bucket %q, status %d", UD(b.GetName()), status)
 	}
 
 	var response struct {
@@ -348,40 +340,38 @@ func (b *GocbV2Bucket) GetCCVSettings(ctx context.Context) (ccvSupported, ccvEna
 		VBucketsMaxCas               []string `json:"vBucketsMaxCas"`
 	}
 	if err := JSONUnmarshal(output, &response); err != nil {
-		return false, false, 0, RedactErrorf("unable to parse bucket info JSON for %q: %w", UD(b.GetName()), err)
+		return false, nil, RedactErrorf("unable to parse bucket info JSON for %q: %w", UD(b.GetName()), err)
 	}
 
 	// In Server < 7.6.1 this field will not be present at all
 	if response.EnableCrossClusterVersioning == nil {
-		return false, false, 0, nil
+		return false, nil, nil
 	}
 	// CCV supported but not enabled
 	if !*response.EnableCrossClusterVersioning {
 		InfofCtx(ctx, KeyAll, "Bucket %q does not have enableCrossClusterVersioning set", UD(b.GetName()))
-		return true, false, 0, nil
+		return false, nil, nil
 	}
 
 	numVBuckets, err := b.GetMaxVbno()
 	if err != nil {
-		return false, false, 0, fmt.Errorf("error getting vbucket count: %v", err)
+		return false, nil, fmt.Errorf("error getting vbucket count: %v", err)
 	}
 	// we'd always expect a CAS value per vbucket if CCV is enabled and has propagated correctly - so fail if that's not the case
 	if len(response.VBucketsMaxCas) != int(numVBuckets) {
-		return false, false, 0, fmt.Errorf("error getting vbucket CAS, expected %d vbucket CAS values, got %q", numVBuckets, response.VBucketsMaxCas)
+		return false, nil, fmt.Errorf("error getting vbucket CAS, expected %d vbucket CAS values, got %q", numVBuckets, response.VBucketsMaxCas)
 	}
 
-	var highCAS uint64
+	highCAS := make(map[VBNo]uint64, numVBuckets)
 	for i, casStr := range response.VBucketsMaxCas {
 		cas, err := strconv.ParseUint(casStr, 10, 64)
 		if err != nil {
-			return false, false, 0, fmt.Errorf("error parsing vbucket CAS value %q for vBucket %d: %v", casStr, i, err)
+			return false, nil, fmt.Errorf("error parsing vbucket CAS value %q for vBucket %d: %v", casStr, i, err)
 		}
-		if cas > highCAS {
-			highCAS = cas
-		}
+		highCAS[VBNo(i)] = cas
 	}
 
-	return true, true, highCAS, nil
+	return true, highCAS, nil
 }
 
 func (b *GocbV2Bucket) getConfigSnapshot() (*gocbcore.ConfigSnapshot, error) {
