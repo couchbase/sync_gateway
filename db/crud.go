@@ -1033,8 +1033,8 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	}
 	// clean up PV only if we have more than a handful of source IDs - reduce Compaction and false-conflict risk where we don't need it
 	if len(d.HLV.PreviousVersions) > minPVEntriesBeforeCompaction {
-		mpi := db.dbCtx.GetMetadataPurgeInterval(ctx, false)
-		d.HLV.Compact(ctx, d.ID, mpi)
+		vpw := db.dbCtx.GetVersionPruningWindow(ctx, false)
+		d.HLV.Compact(ctx, d.ID, vpw)
 	}
 	d.SyncData.SetCV(d.HLV)
 	return d, nil
