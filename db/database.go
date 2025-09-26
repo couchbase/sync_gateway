@@ -442,10 +442,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	if err != nil {
 		return nil, err
 	}
-	dbContext.numVBuckets, err = bucket.GetMaxVbno()
-	if err != nil {
-		return nil, err
-	}
 
 	// set up cancellable context based on the background context (context lifecycle for the database
 	// must be distinct from the request context associated with the db create/update).  Used to trigger

@@ -30,7 +30,7 @@ func (v *VBucketCAS) Load(ctx context.Context, vbNo VBNo) uint64 {
 	}
 	cas, ok := rawCas.(uint64)
 	if !ok {
-		AssertfCtx(ctx, "VBucketCAS: Invalid CAS type %#v for vbucket %d", cas, vbNo)
+		AssertfCtx(ctx, "VBucketCAS: Invalid CAS type %#v for vbucket %d", rawCas, vbNo)
 		return 0
 	}
 	return cas
