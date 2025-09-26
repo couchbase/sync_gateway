@@ -482,7 +482,7 @@ func (b *GocbV2Bucket) VersionPruningWindow(ctx context.Context) (time.Duration,
 	}
 
 	if statusCode == http.StatusForbidden {
-		WarnfCtx(ctx, "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve version pruning window.", UD(uri))
+		return 0, RedactErrorf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve version pruning window.", UD(uri))
 	} else if statusCode != http.StatusOK {
 		return 0, fmt.Errorf("failed with status code %d", statusCode)
 	}
