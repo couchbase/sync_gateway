@@ -997,7 +997,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 			if db.dbCtx.CachedCCVEnabled.Load() {
 				vbNo := sgbucket.VBHash(d.ID, db.dbCtx.numVBuckets)
 				ccvStartingCas := db.dbCtx.CachedCCVStartingCas.Load(ctx, base.VBNo(vbNo))
-				if d.Cas < ccvStartingCas {
+				if d.Cas <= ccvStartingCas {
 					sourceID = unknownSourceID
 				}
 			}
