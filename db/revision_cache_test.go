@@ -2290,6 +2290,33 @@ func TestRemoveFromRevLookup(t *testing.T) {
 	assert.Equal(t, 10, len(cache.hlvCache))
 }
 
+func TestIncorrectStatsWhenAddingToLookupMapKeyThatExists(t *testing.T) {
+	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	backingStoreMap := CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 20,
+		MaxBytes:     0,
+	}
+	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
+
+	// NOTE: the below should never happen really in normal processing at the cache but test is forcing a scenario to
+	// force a code path
+	ctx := base.TestCtx(t)
+	// add entry, remove from cv lookup then add same entry again (but diff body)
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.RemoveCVOnly(ctx, "doc1", &Version{Value: 123, SourceID: "test"}, testCollectionID)
+	// adding with different body but same revID, docID and CV will cause the addToRevMapPostLoad function to pick up
+	// that the revID entry for this key points to a different element and thus it will remove the old element from the cache
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data1000"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+
+	// assert that the stats are correct
+	assert.Equal(t, 1, cache.lruList.Len())
+	assert.Equal(t, 1, len(cache.cache))
+	assert.Equal(t, 1, len(cache.hlvCache))
+	assert.Equal(t, int64(1), cacheNumItems.Value())
+	assert.Equal(t, int64(19), memoryBytesCounted.Value())
+}
+
 func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,

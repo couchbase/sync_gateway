@@ -222,7 +222,7 @@ func (rc *LRURevisionCache) getFromCacheByRev(ctx context.Context, docID, revID 
 		// given err is nil if we get to this code we can safely assign error returned from addToHLVMapPostLoad to err
 		// and in the event we do error adding to the HLV map post load we will remove the value from the rev cache below
 		// and return the error to the caller
-		err = rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
+		err = rc.addToHLVMapPostLoad(ctx, docID, docRev.RevID, docRev.CV, collectionID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error adding to HLV map post load in getFromCacheByRev: %v", err)
 		}
@@ -253,7 +253,7 @@ func (rc *LRURevisionCache) getFromCacheByCV(ctx context.Context, docID string, 
 		rc.incrRevCacheMemoryUsage(ctx, value.getItemBytes())
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
-		rc.addToRevMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
+		rc.addToRevMapPostLoad(ctx, docID, docRev.RevID, docRev.CV, collectionID)
 	}
 
 	return docRev, err
@@ -291,7 +291,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 		// given err is nil if we get to this code we can safely assign error returned from addToHLVMapPostLoad to err
 		// and in the event we do error adding to the HLV map post load we will remove the value from the rev cache below
 		// and return the error to the caller
-		err = rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV, collectionID)
+		err = rc.addToHLVMapPostLoad(ctx, docID, docRev.RevID, docRev.CV, collectionID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error adding to HLV map post load in GetActive: %v", err)
 		}
@@ -329,7 +329,7 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 	value.store(docRev)
 
 	// add new doc version to the rev id lookup map
-	rc.addToRevMapPostLoad(docRev.DocID, docRev.RevID, docRev.CV, collectionID)
+	rc.addToRevMapPostLoad(ctx, docRev.DocID, docRev.RevID, docRev.CV, collectionID)
 
 	// check for rev cache memory based eviction
 	rc.revCacheMemoryBasedEviction(ctx)
@@ -457,7 +457,7 @@ func (rc *LRURevisionCache) getValueByCV(ctx context.Context, docID string, cv *
 }
 
 // addToRevMapPostLoad will generate and entry in the Rev lookup map for a new document entering the cache
-func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Version, collectionID uint32) {
+func (rc *LRURevisionCache) addToRevMapPostLoad(ctx context.Context, docID, revID string, cv *Version, collectionID uint32) {
 	legacyKey := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.Value, CollectionID: collectionID}
 
@@ -479,6 +479,8 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Version
 		}
 		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
+		rc._decrRevCacheMemoryUsage(ctx, -revElem.Value.(*revCacheValue).getItemBytes())
+		rc.cacheNumItems.Add(-1)
 		rc.lruList.Remove(revElem)
 	} else {
 		// if not found we need to add the element to the rev lookup (for PUT code path)
@@ -487,7 +489,7 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Version
 }
 
 // addToHLVMapPostLoad will generate and entry in the CV lookup map for a new document entering the cache
-func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version, collectionID uint32) error {
+func (rc *LRURevisionCache) addToHLVMapPostLoad(ctx context.Context, docID, revID string, cv *Version, collectionID uint32) error {
 	legacyKey := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 
 	if cv == nil {
@@ -519,6 +521,8 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version
 		}
 		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
+		rc._decrRevCacheMemoryUsage(ctx, -revElem.Value.(*revCacheValue).getItemBytes())
+		rc.cacheNumItems.Add(-1)
 		rc.lruList.Remove(revElem)
 	} else {
 		// if not found we need to add the element to the hlv lookup
