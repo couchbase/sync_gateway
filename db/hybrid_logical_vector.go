@@ -51,6 +51,10 @@ const (
 	minPVEntriesRetained         = 3 // minPVEntriesRetained defines the minimum number of PV entries that should be retained after compaction, to avoid removing all history for infrequently updated/replicated documents.
 )
 
+const (
+	unknownSourceID = "Unknown+Source" // used if the document was written before ECCV was enabled
+)
+
 type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
 
 // sorted will iterate through the map returning entries in a stable sorted order. Used by testing to make it easier

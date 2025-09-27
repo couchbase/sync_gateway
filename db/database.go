@@ -161,6 +161,9 @@ type DatabaseContext struct {
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
 	CachedPurgeInterval          atomic.Pointer[time.Duration]  // If set, the cached value of the purge interval to avoid repeated lookups
 	CachedVersionPruningWindow   atomic.Pointer[time.Duration]  // If set, the cached value of the version pruning window to avoid repeated lookups
+	CachedCCVStartingCas         *base.VBucketCAS               // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
+	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
+	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 }
 
 type Scope struct {
@@ -416,19 +419,28 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
 	dbContext := &DatabaseContext{
-		Name:                dbName,
-		UUID:                cbgt.NewUUID(),
-		MetadataStore:       metadataStore,
-		Bucket:              bucket,
-		BucketUUID:          bucketUUID,
-		EncodedSourceID:     sourceID,
-		StartTime:           time.Now(),
-		autoImport:          autoImport,
-		Options:             options,
-		DbStats:             dbStats,
-		CollectionByID:      make(map[uint32]*DatabaseCollection),
-		ServerUUID:          serverUUID,
-		UserFunctionTimeout: defaultUserFunctionTimeout,
+		Name:                 dbName,
+		UUID:                 cbgt.NewUUID(),
+		MetadataStore:        metadataStore,
+		Bucket:               bucket,
+		BucketUUID:           bucketUUID,
+		EncodedSourceID:      sourceID,
+		StartTime:            time.Now(),
+		autoImport:           autoImport,
+		Options:              options,
+		DbStats:              dbStats,
+		CollectionByID:       make(map[uint32]*DatabaseCollection),
+		ServerUUID:           serverUUID,
+		UserFunctionTimeout:  defaultUserFunctionTimeout,
+		CachedCCVStartingCas: &base.VBucketCAS{},
+	}
+	dbContext.numVBuckets, err = bucket.GetMaxVbno()
+	if err != nil {
+		return nil, err
+	}
+	err = dbContext.updateCCVSettings(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	// set up cancellable context based on the background context (context lifecycle for the database
@@ -1663,6 +1675,30 @@ func (db *DatabaseContext) GetVersionPruningWindow(ctx context.Context, forceRef
 
 	db.CachedVersionPruningWindow.Store(&vpw)
 	return vpw
+}
+
+// updateCCVSettings performs a management query to determine the latest crossClusterVersioning and max cas settings.
+func (db *DatabaseContext) updateCCVSettings(ctx context.Context) error {
+	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
+	if !ok {
+		db.CachedCCVEnabled.Store(false)
+		return nil
+	}
+
+	// Fetch from Couchbase Server
+	enabled, maxCAS, err := cbStore.GetCCVSettings(ctx)
+	if err != nil {
+		return fmt.Errorf("Unable to retrieve server's CCV Starting CAS: %w", err)
+	}
+
+	db.CachedCCVEnabled.Store(enabled)
+	if !enabled {
+		db.CachedCCVStartingCas.Clear()
+	}
+	for vbNo, cas := range maxCAS {
+		db.CachedCCVStartingCas.Store(vbNo, cas)
+	}
+	return nil
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {

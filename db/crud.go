@@ -992,7 +992,16 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		if !hasHLV || (!cvCASMatch && !mouMatch) {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
-			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
+			sourceID := db.dbCtx.EncodedSourceID
+			// use unknown source ID when CCV is enabled but doc cas is less than CCV CAS
+			if db.dbCtx.CachedCCVEnabled.Load() {
+				vbNo := sgbucket.VBHash(d.ID, db.dbCtx.numVBuckets)
+				ccvStartingCas := db.dbCtx.CachedCCVStartingCas.Load(ctx, base.VBNo(vbNo))
+				if d.Cas <= ccvStartingCas {
+					sourceID = unknownSourceID
+				}
+			}
+			newVVEntry.SourceID = sourceID
 			newVVEntry.Value = d.Cas
 			err := d.HLV.AddVersion(newVVEntry)
 			if err != nil {
