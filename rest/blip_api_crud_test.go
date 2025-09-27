@@ -71,13 +71,12 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.Len(t, changeRow, 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
 
 	// Send the doc revision in a rev request
-	_, _, revResponse, err := bt.SendRev(
+	revResponse := bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
 		blip.Properties{},
 	)
-	assert.NoError(t, err)
 
 	_, err = revResponse.Body()
 	assert.NoError(t, err, "Error unmarshalling response body")
@@ -151,8 +150,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Wait until we got the expected callback on the "changes" profile handler
-	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*5)
-	assert.NoError(t, timeoutErr, "Timed out waiting")
+	WaitWithTimeout(t, &receivedChangesRequestWg, time.Second*5)
 }
 
 // Start subChanges w/ continuous=true, batchsize=10
@@ -244,21 +242,16 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	for i := 1; i < 1500; i++ {
 		// // Add a change: Send an unsolicited doc revision in a rev request
 		receivedChangesWg.Add(1)
-		_, _, revResponse, err := bt.SendRev(
+		bt.SendRev(
 			fmt.Sprintf("foo-%d", i),
 			"1-abc",
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		require.NoError(t, err)
-
-		_, err = revResponse.Body()
-		assert.NoError(t, err, "Error unmarshalling response body")
-
 	}
 
 	// Wait until all expected changes are received by change handler
-	require.NoError(t, WaitWithTimeout(&receivedChangesWg, time.Second*30))
+	WaitWithTimeout(t, &receivedChangesWg, time.Second*30)
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
@@ -290,7 +283,6 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
-	nonIntegerSequenceReceived := false
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
@@ -313,13 +305,9 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
-				if ok {
-					assert.True(t, receivedSeq > lastReceivedSeq)
-					lastReceivedSeq = receivedSeq
-				} else {
-					nonIntegerSequenceReceived = true
-					log.Printf("Unexpected non-integer sequence received: %v", change[0])
-				}
+				require.True(t, ok, "Expected sequence to be float64, was %T", change[0])
+				assert.True(t, receivedSeq > lastReceivedSeq)
+				lastReceivedSeq = receivedSeq
 
 				// Verify doc id and rev id have expected vals
 				docID := change[1].(string)
@@ -354,15 +342,12 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// Add documents
 	for docID := range docIdsReceived {
 		// // Add a change: Send an unsolicited doc revision in a rev request
-		_, _, revResponse, err := bt.SendRev(
+		bt.SendRev(
 			docID,
 			"1-abc",
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		require.NoError(t, err)
-		_, err = revResponse.Body()
-		assert.NoError(t, err, "Error unmarshalling response body")
 		receivedChangesWg.Add(1)
 	}
 
@@ -381,9 +366,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Wait until all expected changes are received by change handler
-	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*60)
-	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
+	WaitWithTimeout(t, &receivedChangesWg, time.Second*60)
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
@@ -399,30 +382,8 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// Validate that the 'caught up' message was sent
 	assert.True(t, receivedCaughtUpChange)
 
-	// Create a few more changes, validate that they aren't sent (subChanges has been closed).
-	// Validated by the prefix matching in the subChanges callback, as well as waitgroup check below.
-	for i := 0; i < 5; i++ {
-		// // Add a change: Send an unsolicited doc revision in a rev request
-		_, _, revResponse, err := bt.SendRev(
-			fmt.Sprintf("postOneShot_%d", i),
-			"1-abc",
-			[]byte(`{"key": "val"}`),
-			blip.Properties{},
-		)
-		require.NoError(t, err)
-		_, err = revResponse.Body()
-		assert.NoError(t, err, "Error unmarshalling response body")
-		receivedChangesWg.Add(1)
-	}
-
-	// Wait long enough to ensure the changes aren't being sent
-	expectedTimeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*1)
-	if expectedTimeoutErr == nil {
-		t.Errorf("Received additional changes after one-shot should have been closed.")
-	}
-
-	// Validate integer sequences
-	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
+	require.Equal(t, int64(1), bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplTotalOneShot.Value())
+	require.Equal(t, int64(0), bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplActiveOneShot.Value())
 }
 
 // Test subChanges w/ docID filter
@@ -453,7 +414,6 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
-	nonIntegerSequenceReceived := false
 
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
@@ -477,13 +437,9 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
-				if ok {
-					assert.True(t, receivedSeq > lastReceivedSeq)
-					lastReceivedSeq = receivedSeq
-				} else {
-					nonIntegerSequenceReceived = true
-					log.Printf("Unexpected non-integer sequence received: %v", change[0])
-				}
+				require.True(t, ok, "Expected sequence to be float64, was %T", change[0])
+				assert.True(t, receivedSeq > lastReceivedSeq)
+				lastReceivedSeq = receivedSeq
 
 				// Verify doc id and rev id have expected vals
 				docID := change[1].(string)
@@ -528,15 +484,12 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	// Add documents
 	for _, docID := range docIDsSent {
 		// // Add a change: Send an unsolicited doc revision in a rev request
-		_, _, revResponse, err := bt.SendRev(
+		bt.SendRev(
 			docID,
 			"1-abc",
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		assert.NoError(t, err)
-		_, err = revResponse.Body()
-		assert.NoError(t, err, "Error unmarshalling response body")
 	}
 	receivedChangesWg.Add(len(docIDsExpected))
 
@@ -565,13 +518,13 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Wait until all expected changes are received by change handler
-	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*15)
-	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
+	WaitWithTimeout(t, &receivedChangesWg, time.Second*15)
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
 	assert.True(t, numBatchesReceivedSnapshot >= 2)
+	// Validate that the 'caught up' message was sent
+	assert.True(t, receivedCaughtUpChange)
 
 	// Validate all expected documents were received.
 	for docID, received := range docIDsReceived {
@@ -583,8 +536,6 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	// Validate that the 'caught up' message was sent
 	assert.True(t, receivedCaughtUpChange)
 
-	// Validate integer sequences
-	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 }
 
 // Push proposed changes and ensure that the server accepts them
@@ -765,13 +716,12 @@ func TestPublicPortAuthentication(t *testing.T) {
 	defer btUser1.Close()
 
 	// Send the user1 doc
-	_, _, _, err := btUser1.SendRev(
+	btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
 		blip.Properties{},
 	)
-	require.NoError(t, err, "Error sending revision")
 
 	btUser2 := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{
 		connectingUsername: user2,
@@ -779,13 +729,12 @@ func TestPublicPortAuthentication(t *testing.T) {
 	defer btUser2.Close()
 
 	// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access
-	_, _, _, err = btUser2.SendRev(
+	btUser2.SendRev(
 		"foo2",
 		"1-abcd",
 		[]byte(`{"key": "val", "channels": ["NBC"]}`),
 		blip.Properties{},
 	)
-	require.NoError(t, err, "Error sending revision")
 
 	// Assert that user1 received a single expected change
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
@@ -831,13 +780,9 @@ function(doc, oldDoc) {
 	defer bt.Close()
 
 	// Attempt to send a doc, should be rejected
-	_, _, _, sendErr := bt.SendRev(
-		"foo",
-		"1-abc",
-		[]byte(`{"key": "val"}`),
-		blip.Properties{},
-	)
-	assert.Error(t, sendErr, "Expected error sending rev (403 sg missing channel access)")
+	rq := bt.newRevMessage("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
+	bt.Send(rq)
+	require.Equal(t, "403", rq.Response().Properties["Error-Code"], "Expected 403 error code on rev send when user has no channel access, %s", rq.Properties["Error-Code"])
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
@@ -858,13 +803,12 @@ function(doc, oldDoc) {
 	require.True(t, db.WaitForUserWaiterChange(userWaiter))
 
 	// Attempt to send the doc again, should succeed if the blip context also received notification
-	_, _, _, sendErr = bt.SendRev(
+	bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
 		blip.Properties{},
 	)
-	assert.NoError(t, sendErr)
 
 	// Validate that the doc was written (GET request doesn't get a 404)
 	getResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/foo", "")
@@ -991,11 +935,8 @@ function(doc, oldDoc) {
 	rt.WaitForPendingChanges()
 
 	// Wait until all expected changes are received by change handler
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
-	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
-
-	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*5)
-	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
+	WaitWithTimeout(t, &receivedChangesWg, time.Second*5)
+	WaitWithTimeout(t, &revsFinishedWg, time.Second*5)
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
@@ -1115,13 +1056,12 @@ function(doc, oldDoc) {
 	// Simulate sending docs from the client
 	receivedChangesWg.Add(100)
 	revsFinishedWg.Add(100)
-	beforeChangesSent := time.Now().UnixMilli()
 	// Sending revs may take a while if using views (GSI=false) due to the CBS views engine taking a while to execute the queries
 	// regarding rebuilding the users access grants (due to the constant invalidation of this).
 	// This blip tester is running as the user so the users access grants are rebuilt instantly when invalidated instead of the usual lazy-loading.
 	for i := 0; i < 100; i++ {
 		docID := fmt.Sprintf("foo_%d", i)
-		_, _, _, sendErr := bt.SendRev(
+		bt.SendRev(
 			docID,
 			"1-abc",
 			[]byte(`{"accessUser": "user1",
@@ -1129,16 +1069,11 @@ function(doc, oldDoc) {
 			"channels":["`+docID+`"]}`),
 			blip.Properties{},
 		)
-		require.NoError(t, sendErr)
 	}
 
 	// Wait until all expected changes are received by change handler
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
-	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
-	fmt.Println("Revs sent and changes received in", time.Now().UnixMilli()-beforeChangesSent, "ms")
-
-	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*30)
-	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
+	WaitWithTimeout(t, &receivedChangesWg, time.Second*30)
+	WaitWithTimeout(t, &revsFinishedWg, time.Second*30)
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
@@ -1162,10 +1097,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	defer bt.Close()
 
 	// Send non-deleted rev
-	sent, _, resp, err := bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
-	assert.True(t, sent)
-	assert.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/sendAndGetRev?rev=1-abc", "")
@@ -1177,16 +1109,14 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	// Tombstone the document
 	history := []string{"1-abc"}
-	sent, _, resp, err = bt.SendRevWithHistory("sendAndGetRev", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"deleted": "true"})
-	assert.True(t, sent)
-	assert.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	bt.SendRevWithHistory("sendAndGetRev", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"deleted": "true"})
 
 	// Get the tombstoned document
 	response = bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/sendAndGetRev?rev=2-bcd", "")
 	RequireStatus(t, response, 200)
 	responseBody = RestDocument{}
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
+	require.Contains(t, responseBody, db.BodyDeleted)
 	deletedValue, deletedOK := responseBody[db.BodyDeleted].(bool)
 	assert.True(t, deletedOK)
 	assert.True(t, deletedValue)
@@ -1222,12 +1152,11 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 		docID := fmt.Sprintf("%s-%d", t.Name(), i)
 		go func() {
 			defer wg.Done()
-			_, _, _, err := bt.SendRev(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
-			require.NoError(t, err)
+			bt.SendRev(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 		}()
 	}
 
-	require.NoError(t, WaitWithTimeout(&wg, time.Second*30))
+	WaitWithTimeout(t, &wg, time.Second*30)
 
 	throttleCount := rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledCount.Value()
 	throttleTime := rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledTime.Value()
@@ -1258,10 +1187,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	defer bt.Close()
 
 	// Send non-deleted rev
-	sent, _, resp, err := bt.SendRev("largeNumberRev", "1-abc", []byte(`{"key": "val", "largeNumber":9223372036854775807, "channels": ["user1"]}`), blip.Properties{})
-	assert.True(t, sent)
-	assert.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	bt.SendRev("largeNumberRev", "1-abc", []byte(`{"key": "val", "largeNumber":9223372036854775807, "channels": ["user1"]}`), blip.Properties{})
 
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/largeNumberRev?rev=1-abc", "")
@@ -1309,9 +1235,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 
 	// Create new checkpoint
 	checkpointBody := []byte(`{"client_seq":"1000"}`)
-	sent, _, resp, err := bt.SetCheckpoint("testclient", "", checkpointBody)
-	assert.True(t, sent)
-	assert.NoError(t, err)
+	resp := bt.SetCheckpoint("testclient", "", checkpointBody)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	checkpointRev := resp.Rev()
@@ -1321,15 +1245,13 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/checkpoint%252Ftestclient", "")
 	RequireStatus(t, response, 200)
 	var responseBody map[string]interface{}
-	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
+	err := base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	require.NoError(t, err)
 	assert.Equal(t, "1000", responseBody["client_seq"])
 
 	// Attempt to update the checkpoint with previous rev
 	checkpointBody = []byte(`{"client_seq":"1005"}`)
-	sent, _, resp, err = bt.SetCheckpoint("testclient", checkpointRev, checkpointBody)
-	assert.True(t, sent)
-	assert.NoError(t, err)
+	resp = bt.SetCheckpoint("testclient", checkpointRev, checkpointBody)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 	checkpointRev = resp.Rev()
 	assert.Equal(t, "0-2", checkpointRev)
@@ -1393,13 +1315,12 @@ func TestReloadUser(t *testing.T) {
 	require.True(t, db.WaitForUserWaiterChange(userWaiter))
 
 	// Add a doc in the PBS channel
-	_, _, addRevResponse, err := bt.SendRev(
+	addRevResponse := bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
 		blip.Properties{},
 	)
-	assert.NoError(t, err)
 
 	// Make assertions on response to make sure the change was accepted
 	addRevResponseBody, err := addRevResponse.Body()
@@ -1432,27 +1353,24 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
-	_, _, _, err := bt.SendRev(
+	bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
 		blip.Properties{},
 	)
 
-	require.NoError(t, err)
-
 	// Put document that triggers access grant for user to channel PBS
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
 	// Add another doc in the PBS channel
-	_, _, _, err = bt.SendRev(
+	bt.SendRev(
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
 		blip.Properties{},
 	)
-	require.NoError(t, err)
 
 	// Make sure we can see it by getting changes
 	changes := bt.WaitForNumChanges(2)
@@ -1475,7 +1393,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	dataStore := bt.restTester.GetSingleDataStore()
 
 	// Add a doc in the PBS channel
-	_, _, _, _ = bt.SendRev(
+	bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
@@ -1487,7 +1405,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	RequireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
-	_, _, _, _ = bt.SendRev(
+	bt.SendRev(
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
@@ -1655,21 +1573,11 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 	})
 	defer bt.Close()
 
-	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
-	assert.True(t, sent)
-	require.NoError(t, err)                            // no error
-	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
+	bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 
-	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
-	assert.True(t, sent)
-	assert.NotEqual(t, nil, err)                          // conflict error
-	assert.Equal(t, "409", resp.Properties["Error-Code"]) // conflict
-
-	sent, _, resp, err = bt.SendRev("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
-	assert.True(t, sent)
-	assert.NotEqual(t, nil, err)                          // conflict error
-	assert.Equal(t, "409", resp.Properties["Error-Code"]) // conflict
-
+	// expected failure
+	bt.SendRevExpectConflict("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
+	bt.SendRevExpectConflict("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
 }
 
 func TestPutRevConflictsMode(t *testing.T) {
@@ -1682,21 +1590,11 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 	bt.restTester.GetDatabase().EnableAllowConflicts(bt.TB())
 
-	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
-	assert.True(t, sent)
-	require.NoError(t, err)                            // no error
-	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
+	bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 
-	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
-	assert.True(t, sent)
-	assert.NoError(t, err)                             // no error
-	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
+	bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
 
-	sent, _, resp, err = bt.SendRev("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
-	assert.True(t, sent)
-	assert.NotEqual(t, nil, err)                          // conflict error
-	assert.Equal(t, "409", resp.Properties["Error-Code"]) // conflict
-
+	bt.SendRevExpectConflict("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
 }
 
 // TestPutRevV4:
@@ -1719,10 +1617,7 @@ func TestPutRevV4(t *testing.T) {
 
 	// 1. Send rev with history
 	history := "1@b, 2@a"
-	sent, _, resp, err := bt.SendRev(docID, "3@c", []byte(`{"key": "val"}`), blip.Properties{"history": history})
-	assert.True(t, sent)
-	require.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	bt.SendRev(docID, "3@c", []byte(`{"key": "val"}`), blip.Properties{"history": history})
 
 	// Validate against the bucket doc's HLV
 	doc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
@@ -1735,10 +1630,7 @@ func TestPutRevV4(t *testing.T) {
 	}, *doc.HLV)
 
 	// 2. Update the document with a non-conflicting revision, where only cv is updated
-	sent, _, resp, err = bt.SendRev(docID, "4@c", []byte(`{"key": "val"}`), blip.Properties{"history": history})
-	assert.True(t, sent)
-	require.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	bt.SendRev(docID, "4@c", []byte(`{"key": "val"}`), blip.Properties{"history": history})
 
 	// Validate against the bucket doc's HLV
 	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
@@ -1752,10 +1644,7 @@ func TestPutRevV4(t *testing.T) {
 
 	// 3. Update the document again with a non-conflicting revision from a different source (previous cv moved to pv)
 	updatedHistory := "1@b, 2@a, 4@c"
-	sent, _, resp, err = bt.SendRev(docID, "1@d", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
-	assert.True(t, sent)
-	require.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	bt.SendRev(docID, "1@d", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
 
 	// Validate against the bucket doc's HLV
 	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
@@ -1769,10 +1658,7 @@ func TestPutRevV4(t *testing.T) {
 
 	// 4. Update the document again with a non-conflicting revision from a different source, and additional sources in history (previous cv moved to pv, and pv expanded)
 	updatedHistory = "1@b, 2@a, 4@c, 1@d"
-	sent, _, resp, err = bt.SendRev(docID, "1@e", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
-	assert.True(t, sent)
-	require.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	bt.SendRev(docID, "1@e", []byte(`{"key": "val"}`), blip.Properties{"history": updatedHistory})
 
 	// Validate against the bucket doc's HLV
 	doc, _, err = collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
@@ -1785,18 +1671,12 @@ func TestPutRevV4(t *testing.T) {
 	}, *doc.HLV)
 
 	// 5. Attempt to update the document again with a conflicting revision from a different source (previous cv not in pv), expect conflict
-	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("1@pqr"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
-	assert.True(t, sent)
-	require.Error(t, err)
-	assert.Equal(t, "409", resp.Properties["Error-Code"])
+	bt.SendRevExpectConflict(docID, db.EncodeTestVersion("1@pqr"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
 
 	// 6. Test sending rev with merge versions included in history (note new key)
 	newDocID := t.Name() + "_2"
 	mvHistory := "3@d, 3@e; 1@b, 2@a"
-	sent, _, resp, err = bt.SendRev(newDocID, "3@c", []byte(`{"key": "val"}`), blip.Properties{"history": mvHistory})
-	assert.True(t, sent)
-	require.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	bt.SendRev(newDocID, "3@c", []byte(`{"key": "val"}`), blip.Properties{"history": mvHistory})
 
 	// assert on bucket doc
 	doc, _, err = collection.GetDocWithXattrs(ctx, newDocID, db.DocUnmarshalNoHistory)
@@ -1853,17 +1733,11 @@ func TestGetRemovedDoc(t *testing.T) {
 	defer bt2.Close()
 
 	// Add rev-1 in channel user1
-	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
-	assert.True(t, sent)
-	require.NoError(t, err)                        // no error
-	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+	bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 
 	// Add rev-2 in channel user1
 	history := []string{"1-abc"}
-	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"noconflicts": "true"})
-	assert.True(t, sent)
-	require.NoError(t, err)                        // no error
-	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+	bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"noconflicts": "true"})
 
 	// wait for rev 2 to arrive to cache cache
 	rt.WaitForPendingChanges()
@@ -1875,17 +1749,11 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Add rev-3, remove from channel user1 and put into channel another_channel
 	history = []string{"2-bcd", "1-abc"}
-	sent, _, resp, err = bt.SendRevWithHistory("foo", "3-cde", history, []byte(`{"key": "val", "channels": ["another_channel"]}`), blip.Properties{"noconflicts": "true"})
-	assert.True(t, sent)
-	assert.NoError(t, err)                         // no error
-	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+	bt.SendRevWithHistory("foo", "3-cde", history, []byte(`{"key": "val", "channels": ["another_channel"]}`), blip.Properties{"noconflicts": "true"})
 
 	// Add rev-4, keeping it in channel another_channel
 	history = []string{"3-cde", "2-bcd", "1-abc"}
-	sent, _, resp, err = bt.SendRevWithHistory("foo", "4-def", history, []byte("{}"), blip.Properties{"noconflicts": "true", "deleted": "true"})
-	assert.True(t, sent)
-	assert.NoError(t, err)                         // no error
-	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+	bt.SendRevWithHistory("foo", "4-def", history, []byte("{}"), blip.Properties{"noconflicts": "true", "deleted": "true"})
 
 	rt.WaitForPendingChanges()
 
@@ -1929,9 +1797,7 @@ func TestMissingNoRev(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		docID := fmt.Sprintf("doc-%d", i)
 		docRev := fmt.Sprintf("1-abc%d", i)
-		sent, _, resp, err := bt.SendRev(docID, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
-		assert.True(t, sent)
-		require.NoError(t, err, "resp is %s", resp)
+		bt.SendRev(docID, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
 	}
 
 	// Pull docs, expect to pull 5 docs since none of them has purged yet.
@@ -3350,21 +3216,19 @@ func TestPutRevBlip(t *testing.T) {
 	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{GuestEnabled: true, blipProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()}})
 	defer bt.Close()
 
-	_, _, _, err := bt.SendRev(
+	bt.SendRev(
 		"foo",
 		"2@stZPWD8vS/O3nsx9yb2Brw",
 		[]byte(`{"key": "val"}`),
 		blip.Properties{},
 	)
-	require.NoError(t, err)
 
-	_, _, _, err = bt.SendRev(
+	bt.SendRev(
 		"foo",
 		"fa1@stZPWD8vS/O3nsx9yb2Brw",
 		[]byte(`{"key": "val2"}`),
 		blip.Properties{},
 	)
-	require.NoError(t, err)
 }
 
 func TestBlipMergeVersions(t *testing.T) {

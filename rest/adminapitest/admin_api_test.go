@@ -457,8 +457,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 		wg.Done()
 	}()
 
-	err := rest.WaitWithTimeout(&wg, time.Second*30)
-	assert.NoError(t, err, "Error waiting for waitgroup")
+	rest.WaitWithTimeout(t, &wg, time.Second*30)
 	rest.RequireStatus(t, goroutineresponse1, http.StatusOK)
 	rest.RequireStatus(t, goroutineresponse2, http.StatusOK)
 

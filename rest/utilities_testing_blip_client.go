@@ -1293,10 +1293,8 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 	go func() {
 		defer func() {
 			waitTime := time.Second * 5
-			if assert.NoError(btcc.TB(), WaitWithTimeout(&btcc.pushGoroutineWg, waitTime),
-				"timed out waiting for push replication goroutines to finish after %v", waitTime) {
-				btcc.pushRunning.Set(false)
-			}
+			WaitWithTimeout(btcc.TB(), &btcc.pushGoroutineWg, waitTime)
+			btcc.pushRunning.Set(false)
 		}()
 		defer btcc.pushGoroutineWg.Done()
 		// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
