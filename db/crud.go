@@ -1085,7 +1085,7 @@ func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Conte
 	}
 	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
 	if err != nil {
-		return base.RedactErrorf("Failed to Marshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+		return base.RedactErrorf("Failed to marshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
 	}
 
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
