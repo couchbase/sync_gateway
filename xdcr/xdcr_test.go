@@ -686,7 +686,7 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 	sd := db.GetRawSyncXattr(t, srcDs, docID)
 	require.NoError(t, srcColl.MigrateAttachmentMetadata(srcColl.AddCollectionContext(srcCtx), docID, fromCas, &sd))
 
-	// Since metadata migration writes _mou, the document will be processed but Wait for the migration's _globalSync xattr update to replicate to the target
+	// Since metadata migration writes _mou, the document will be processed. Wait for the migration's _globalSync xattr update to replicate to the target.
 	requireWaitForXDCRDocsProcessed(t, xdcr, 4)
 
 	stats, err := xdcr.Stats(ctx)
