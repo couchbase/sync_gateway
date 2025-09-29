@@ -1097,6 +1097,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 
 func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta sync only supported in EE")

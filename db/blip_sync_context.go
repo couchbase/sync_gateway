@@ -597,11 +597,12 @@ func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, 
 	properties := blipRevMessageProperties(history, revDelta.ToDeleted, seq, "", revTreeProperty)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
-	base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
 	if bsc.useHLV() {
+		base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToCV, deltaSrcRevID)
 		return bsc.sendRevisionWithProperties(ctx, sender, docID, revDelta.ToCV, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
 			properties, seq, resendFullRevisionFunc)
 	} else {
+		base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
 		return bsc.sendRevisionWithProperties(ctx, sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
 			properties, seq, resendFullRevisionFunc)
 	}
