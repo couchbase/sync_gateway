@@ -3499,7 +3499,7 @@ func (db *DatabaseCollectionWithUser) CheckChangeVersion(ctx context.Context, do
 	// remote should only send rev 4,5 in rev tree property on the subsequent rev message for this document, we also need to
 	// send cv as first element for delta sync purposes. Only send CV if this is not legacy rev change
 	if !localIsLegacy && !changeIsLegacy {
-		// we should only send CV in response when we are communicating with HLV's both sides of the reapplication
+		// we should only send CV in response when we are communicating with HLV's both sides of the replication
 		possible = append(possible, hlv.GetCurrentVersionString())
 	}
 	possible = append(possible, syncData.GetRevTreeID())
