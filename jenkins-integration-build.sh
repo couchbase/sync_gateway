@@ -10,32 +10,42 @@
 DEFAULT_PACKAGE_TIMEOUT="45m"
 
 set -u
+set -e # Abort on errors
 
 if [ "${1:-}" == "-m" ]; then
     echo "Running in automated master integration mode"
     # Set automated setting parameters
-    SG_COMMIT="master"
     TARGET_PACKAGE="..."
     TARGET_TEST="ALL"
     RUN_WALRUS="true"
-    USE_GO_MODULES="true"
     DETECT_RACES="false"
     SG_EDITION="EE"
-    XATTRS="true"
     RUN_COUNT="1"
     # CBS server settings
     COUCHBASE_SERVER_PROTOCOL="couchbase"
     COUCHBASE_SERVER_VERSION="enterprise-7.6.6"
-    SG_TEST_BUCKET_POOL_SIZE="3"
-    SG_TEST_BUCKET_POOL_DEBUG="true"
+    export SG_TEST_BUCKET_POOL_DEBUG="true"
     GSI="true"
     TLS_SKIP_VERIFY="false"
     SG_CBCOLLECT_ALWAYS="false"
 fi
 
-set -e # Abort on errors
-set -x # Output all executed shell commands
+REQUIRED_VARS=(
+    COUCHBASE_SERVER_PROTOCOL
+    COUCHBASE_SERVER_VERSION
+    GSI
+    TARGET_TEST
+    TARGET_PACKAGE
+    TLS_SKIP_VERIFY
+    SG_EDITION
+)
 
+for var in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!var:-}" ]; then
+        echo "${var} environment variable is required to be set."
+        exit 1
+    fi
+done
 # Use Git SSH and define private repos
 git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
 export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
@@ -44,37 +54,21 @@ export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 SG_COMMIT_HASH=$(git rev-parse HEAD)
 echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
-# Use Go modules (3.1 and above) or bootstrap for legacy Sync Gateway versions (3.0 and below)
-if [ "${USE_GO_MODULES:-}" == "false" ]; then
-    mkdir -p sgw_int_testing # Make the directory if it does not exist
-    cp bootstrap.sh sgw_int_testing/bootstrap.sh
-    cd sgw_int_testing
-    chmod +x bootstrap.sh
-    ./bootstrap.sh -c ${SG_COMMIT} -e ee
-    export GO111MODULE=off
-    go get -u -v github.com/tebeka/go2xunit
-    go get -u -v github.com/axw/gocov/gocov
-    go get -u -v github.com/AlekSi/gocov-xml
-else
-    # Install tools to use
-    go install github.com/axw/gocov/gocov@latest
-    go install github.com/AlekSi/gocov-xml@latest
-    go install gotest.tools/gotestsum@latest
-fi
+echo "Downloading tool dependencies..."
+go install github.com/axw/gocov/gocov@latest
+go install github.com/AlekSi/gocov-xml@latest
+go install gotest.tools/gotestsum@latest
 
-if [ "${SG_TEST_X509:-}" == "true" -a "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
+if [ "${SG_TEST_X509:-}" == "true" ] && [ "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
     echo "Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests"
     exit 1
 fi
 
 # Set environment vars
-GO_TEST_FLAGS="-v -p 1 -count=${RUN_COUNT:-1}"
+GO_TEST_FLAGS=(-v -p 1 "-count=${RUN_COUNT:-1}")
 INT_LOG_FILE_NAME="verbose_int"
 
-if [ -d "godeps" ]; then
-    export GOPATH=$(pwd)/godeps
-fi
-export PATH=$PATH:$(go env GOPATH)/bin:~/go/bin
+export PATH=$PATH:~/go/bin
 echo "PATH: $PATH"
 
 if [ "${TEST_DEBUG:-}" == "true" ]; then
@@ -83,22 +77,22 @@ if [ "${TEST_DEBUG:-}" == "true" ]; then
 fi
 
 if [ "${TARGET_TEST}" != "ALL" ]; then
-    GO_TEST_FLAGS="${GO_TEST_FLAGS} -run ${TARGET_TEST}"
+    GO_TEST_FLAGS+=(-run "${TARGET_TEST}")
 fi
 
 if [ "${PACKAGE_TIMEOUT:-}" != "" ]; then
-    GO_TEST_FLAGS="${GO_TEST_FLAGS} -test.timeout=${PACKAGE_TIMEOUT}"
+    GO_TEST_FLAGS+=(-test.timeout="${PACKAGE_TIMEOUT}")
 else
     echo "Defaulting package timeout to ${DEFAULT_PACKAGE_TIMEOUT}"
-    GO_TEST_FLAGS="${GO_TEST_FLAGS} -test.timeout=${DEFAULT_PACKAGE_TIMEOUT}"
+    GO_TEST_FLAGS+=(-test.timeout="${DEFAULT_PACKAGE_TIMEOUT}")
 fi
 
 if [ "${DETECT_RACES:-}" == "true" ]; then
-    GO_TEST_FLAGS="${GO_TEST_FLAGS} -race"
+    GO_TEST_FLAGS=(-race)
 fi
 
 if [ "${FAIL_FAST:-}" == "true" ]; then
-    GO_TEST_FLAGS="${GO_TEST_FLAGS} -failfast"
+    GO_TEST_FLAGS+=(-failfast)
 fi
 
 if [ "${SG_TEST_PROFILE_FREQUENCY:-}" == "true" ]; then
@@ -106,15 +100,15 @@ if [ "${SG_TEST_PROFILE_FREQUENCY:-}" == "true" ]; then
 fi
 
 if [ "${RUN_WALRUS}" == "true" ]; then
-    set +e
+    set +e -x
+    set -x +e
     # EE
-    gotestsum --junitfile=rosmar-ee.xml --junitfile-project-name rosmar-EE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode,cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ee.out 2>&1
+    gotestsum --junitfile=rosmar-ee.xml --junitfile-project-name rosmar-EE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode,cb_sg_enterprise "${GO_TEST_FLAGS[@]}" "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" > verbose_unit_ee.out 2>&1
     xmlstarlet ed -u '//testcase/@classname' -x 'concat("rosmar-EE-", .)' rosmar-ee.xml > verbose_unit_ee.xml
     # CE
-    gotestsum --junitfile=rosmar-ce.xml --junitfile-project-name rosmar-CE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out 2>&1
+    gotestsum --junitfile=rosmar-ce.xml --junitfile-project-name rosmar-CE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode "${GO_TEST_FLAGS[@]}" "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" > verbose_unit_ce.out 2>&1
     xmlstarlet ed -u '//testcase/@classname' -x 'concat("rosmar-CE-", .)' rosmar-ce.xml > verbose_unit_ce.xml
-    set -e
-
+    set -e +x
 fi
 
 # Run CBS
@@ -129,25 +123,25 @@ else
 fi
 
 # Set up test environment variables for CBS runs
-export SG_TEST_USE_XATTRS=${XATTRS}
 export SG_TEST_USE_GSI=${GSI}
 export SG_TEST_COUCHBASE_SERVER_URL="${COUCHBASE_SERVER_PROTOCOL}://127.0.0.1"
 export SG_TEST_BACKING_STORE="Couchbase"
-export SG_TEST_BUCKET_POOL_SIZE=${SG_TEST_BUCKET_POOL_SIZE}
-export SG_TEST_BUCKET_POOL_DEBUG=${SG_TEST_BUCKET_POOL_DEBUG}
 export SG_TEST_TLS_SKIP_VERIFY=${TLS_SKIP_VERIFY}
 
 if [ "${SG_EDITION}" == "EE" ]; then
-    GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_devmode,cb_sg_enterprise"
+    GO_TEST_FLAGS+=(-tags "cb_sg_devmode,cb_sg_enterprise")
 else
-    GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_devmode"
+    GO_TEST_FLAGS+=(-tags cb_sg_devmode)
 fi
 
-gotestsum --junitfile=integration.xml --junitfile-project-name integration --junitfile-testcase-classname relative --format standard-verbose -- ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+set -x # Output all executed shell commands
+gotestsum --junitfile=integration.xml --junitfile-project-name integration --junitfile-testcase-classname relative --format standard-verbose -- "${GO_TEST_FLAGS[@]}" -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true
 fi
+
+set +x # Stop outputting all executed shell commands
 
 # Collect CBS logs if server error occurred
 if [ "${SG_CBCOLLECT_ALWAYS:-}" == "true" ] || grep -a -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out"; then
@@ -163,7 +157,7 @@ fi
 
 # Get coverage
 ~/go/bin/gocov convert "coverage_int.out" | ~/go/bin/gocov-xml > coverage_int.xml
-if [ "${RUN_WALRUS}" == "true" ]; then
+if [ "${RUN_WALRUS:-}" == "true" ]; then
     ~/go/bin/gocov convert "coverage_walrus_ee.out" | ~/go/bin/gocov-xml > "coverage_walrus_ee.xml"
     ~/go/bin/gocov convert "coverage_walrus_ce.out" | ~/go/bin/gocov-xml > "coverage_walrus_ce.xml"
 fi
