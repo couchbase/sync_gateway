@@ -41,10 +41,6 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	rtB := rest.NewRestTester(t, &rest.RestTesterConfig{AutoImport: base.Ptr(false)})
 	defer rtB.Close()
 
-	// Force ECCV (Rosmar) - Should be handled as part of CBG-4839 since changing it triggers assertion failures in other tests because of the CAS map
-	rtA.GetDatabase().CachedCCVEnabled.Store(true)
-	rtB.GetDatabase().CachedCCVEnabled.Store(true)
-
 	ctx := base.TestCtx(t)
 	opts := XDCROptions{Mobile: MobileOn}
 
