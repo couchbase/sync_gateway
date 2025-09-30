@@ -110,12 +110,12 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	require.NoError(t, xdcrBtoA.Start(ctx))
 
 	// wait for XDCR stats to ensure attachment data also made it over
-	var expectedDocsWritten uint64 = 0     // attachment deletion (or lack of)
+	var expectedDocsWritten uint64 = 0 // attachment deletion (or lack of)
 	// Rosmar's XDCR implementation differs in two ways:
 	// 1. Stats don't get reset on restart
 	// 2. No DCP checkpointing - so there's always more TargetNewerDocs than expected even if we reset stats
 	if !base.TestUseCouchbaseServer() {
-		expectedDocsWritten = expectedDocsWritten + 2         // (old replication stats: 1 doc + 1 attachment)
+		expectedDocsWritten = expectedDocsWritten + 2 // (old replication stats: 1 doc + 1 attachment)
 	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcrAtoB.Stats(ctx)
