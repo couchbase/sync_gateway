@@ -1681,7 +1681,11 @@ func (db *DatabaseContext) GetVersionPruningWindow(ctx context.Context, forceRef
 func (db *DatabaseContext) updateCCVSettings(ctx context.Context) error {
 	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
 	if !ok {
-		db.CachedCCVEnabled.Store(false)
+		// for rosmar, ECCV is always enabled, mark starting cas as 0
+		db.CachedCCVEnabled.Store(true)
+		for vbNo := range db.numVBuckets {
+			db.CachedCCVStartingCas.Store(base.VBNo(vbNo), 0)
+		}
 		return nil
 	}
 
