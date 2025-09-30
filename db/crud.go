@@ -1075,7 +1075,7 @@ func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Conte
 	}
 	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
 	if err != nil {
-		base.WarnfCtx(ctx, "Could not determine revSeqNo found when attempting to migrate sync data attachments to global xattr for doc %q. Assuming 0. Error: %v", base.UD(docID), err)
+		base.InfofCtx(ctx, base.KeyCRUD, "Could not determine revSeqNo found when attempting to migrate sync data attachments to global xattr for doc %q. Assuming 0. Error: %v", base.UD(docID), err)
 	}
 
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
