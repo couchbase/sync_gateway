@@ -11,10 +11,13 @@ package rest
 import (
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/require"
 )
 
 // TestISGRPeerOpts has configuration for ISGR peers in a test setup.
@@ -31,6 +34,59 @@ type TestISGRPeers struct {
 	PassiveRT *RestTester
 	// PassiveDBURL is used to create replications from ActiveRT to PassiveRT and contains a username+addr.
 	PassiveDBURL string
+}
+
+type SGRTestRunner struct {
+	t                           *testing.T
+	initialisedInsideRunnerCode bool
+	SkipSubtest                 map[string]bool
+	SupportedSubprotocols       []string
+}
+
+// NewSGRTestRunner returns a new SGRTestRunner instance.
+func NewSGRTestRunner(t *testing.T) *SGRTestRunner {
+	return &SGRTestRunner{
+		t:           t,
+		SkipSubtest: make(map[string]bool),
+	}
+}
+
+func (runner *SGRTestRunner) TB() testing.TB {
+	return runner.t
+}
+
+func (runner *SGRTestRunner) Run(test func(t *testing.T)) {
+	if runner.initialisedInsideRunnerCode {
+		require.FailNow(runner.TB(), "must not initialise SGRPeers outside Run() method")
+	}
+
+	runner.initialisedInsideRunnerCode = true
+	defer func() {
+		// reset bool post test run to ensure no once can setup SetupSGRPeers outside run method upon completion of Run()
+		runner.initialisedInsideRunnerCode = false
+	}()
+
+	if !runner.SkipSubtest[RevtreeSubtestName] {
+		runner.t.Run(RevtreeSubtestName, func(t *testing.T) {
+			runner.SupportedSubprotocols = []string{db.CBMobileReplicationV3.SubprotocolString()}
+			test(t)
+		})
+	}
+	if !runner.SkipSubtest[VersionVectorSubtestName] {
+		runner.t.Run(VersionVectorSubtestName, func(t *testing.T) {
+			runner.SupportedSubprotocols = []string{db.CBMobileReplicationV4.SubprotocolString()}
+			test(t)
+		})
+	}
+}
+
+func (runner *SGRTestRunner) WaitForVersion(docID string, rt *RestTester, version DocVersion) {
+	if !slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString()) {
+		// only assert on rev tree IDs when we're not replicating using v4 protocol
+		rt.WaitForVersionRevIDOnly(docID, version)
+		return
+	}
+	rt.WaitForVersion(docID, version)
 }
 
 // Run is equivalent to testing.T.Run() but updates underlying the RestTesters' TB to the new testing.T.
@@ -52,8 +108,13 @@ func (p *TestISGRPeers) Run(t *testing.T, name string, test func(*testing.T)) {
 //	  - backed by different test bucket
 //	  - user 'alice' created with star channel access
 //	  - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
-func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string) {
-	peers := SetupISGRPeersWithOpts(t, TestISGRPeerOpts{})
+func (runner *SGRTestRunner) SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string) {
+	if !runner.initialisedInsideRunnerCode {
+		require.FailNow(runner.TB(), "must initialise ISGRPeers inside Run() method")
+	}
+	peers := SetupISGRPeersWithOpts(t, TestISGRPeerOpts{
+		ActivePeerSupportedBLIPSubProtocols: runner.SupportedSubprotocols,
+	})
 	return peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 }
 
