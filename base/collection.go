@@ -361,9 +361,9 @@ func (b *GocbV2Bucket) GetCCVSettings(ctx context.Context) (ccvEnabled bool, max
 	highCAS := make(map[VBNo]uint64, numVBuckets)
 	// we'd always expect a CAS value per vbucket if CCV is enabled and has propagated correctly
 	// except after a bucket flushed in Server < 7.6.8 see MB-64705
-	// Treating this as ECCV=false, which will mean imports will all get tagged with bucket SourceID.
+	// Treating this as ECCV=true with startingCas=0, which will mean imports will all get tagged with bucket SourceID.
 	if len(response.VBucketsMaxCas) != int(numVBuckets) {
-		InfofCtx(ctx, KeyBucket, "Bucket %q has enableCrossClusterVersioning set but unexpected number of vbucket CAS values - expected %d, got %+v. Running with enableCrossClusterVersioning=false.", MD(b.GetName()), numVBuckets, response.VBucketsMaxCas)
+		InfofCtx(ctx, KeyBucket, "Bucket %q has enableCrossClusterVersioning=true but unexpected number of vbucket CAS values - expected %d, got %+v. Treating all imports as originating on this Couchbase Server cluster.", MD(b.GetName()), numVBuckets, response.VBucketsMaxCas)
 		for i := range numVBuckets {
 			highCAS[VBNo(i)] = 0
 		}
