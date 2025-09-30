@@ -178,7 +178,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		*/
 
 		if conflictResolutionSourceCas <= conflictResolutionTargetCas {
-			base.InfofCtx(ctx, base.KeyVV, "XDCR doc:%s skipping replication since sourceCas (%d) < targetCas (%d)", docID, conflictResolutionSourceCas, conflictResolutionTargetCas)
+			base.InfofCtx(ctx, base.KeyVV, "XDCR doc:%s skipping replication since sourceCas (%d) <= targetCas (%d)", docID, conflictResolutionSourceCas, conflictResolutionTargetCas)
 			r.targetNewerDocs.Add(1)
 			return true
 		} /* else if sourceCas == targetCas {

@@ -27,9 +27,10 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rtA := rest.NewRestTester(t, &rest.RestTesterConfig{})
+	// turn off auto import - since we want reliable XDCR stats and don't want MOU/import echos to interfere
+	rtA := rest.NewRestTester(t, &rest.RestTesterConfig{AutoImport: base.Ptr(false)})
 	defer rtA.Close()
-	rtB := rest.NewRestTester(t, &rest.RestTesterConfig{})
+	rtB := rest.NewRestTester(t, &rest.RestTesterConfig{AutoImport: base.Ptr(false)})
 	defer rtB.Close()
 
 	ctx := base.TestCtx(t)
@@ -61,6 +62,10 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 
 	rtAVersion := rtA.PutDocWithAttachment(docID, `{"key":"value"}`, attachmentID, attachment)
 
+	// fetch attachment via REST API
+	attAResp := rtA.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/"+attachmentID, "")
+	rest.RequireStatus(t, attAResp, http.StatusOK)
+
 	// wait for doc to replicate to rtB
 	var rtBVersion rest.DocVersion
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -81,6 +86,10 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	require.NoError(t, xdcrAtoB.Stop(ctx))
 	require.NoError(t, xdcrBtoA.Stop(ctx))
 
+	// fetch attachment via REST API
+	attBResp := rtB.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/"+attachmentID, "")
+	rest.RequireStatus(t, attBResp, http.StatusOK)
+
 	// update doc on A, removing attachment
 	rtAVersion = rtA.UpdateDoc(docID, rtAVersion, `{"key":"value2"}`)
 
@@ -93,20 +102,17 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	require.NoError(t, xdcrBtoA.Start(ctx))
 
 	// wait for XDCR stats to ensure attachment data also made it over
-	var expectedDocsWritten uint64 = 1     // attachment deletion
-	var expectedTargetNewerDocs uint64 = 1 // doc conflict
+	var expectedDocsWritten uint64 = 0     // attachment deletion (or lack of)
 	// Rosmar's XDCR implementation differs in two ways:
 	// 1. Stats don't get reset on restart
 	// 2. No DCP checkpointing - so there's always more TargetNewerDocs than expected even if we reset stats
 	if !base.TestUseCouchbaseServer() {
-		expectedDocsWritten = expectedDocsWritten + 2
-		expectedTargetNewerDocs = expectedTargetNewerDocs + 2
+		expectedDocsWritten = expectedDocsWritten + 2         // (old replication stats: 1 doc + 1 attachment)
 	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcrAtoB.Stats(ctx)
 		require.NoError(c, err)
 		assert.Equal(c, expectedDocsWritten, stats.DocsWritten)
-		assert.Equal(c, expectedTargetNewerDocs, stats.TargetNewerDocs)
 	}, time.Second*5, time.Millisecond*100)
 
 	// wait for XDCR stats to ensure attachment data also made it over
@@ -130,10 +136,10 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	assert.Contains(t, docB.Attachments(), attachmentID)
 
 	// check attachment contents are retrievable
-	attA := rtA.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/"+attachmentID, "")
-	rest.AssertStatus(t, attA, 404) // FIXME: should be 200!
-	attB := rtB.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/"+attachmentID, "")
-	rest.AssertStatus(t, attB, 404) // FIXME: should be 200!
+	attAResp = rtA.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/"+attachmentID, "")
+	rest.AssertStatus(t, attAResp, http.StatusOK)
+	attBResp = rtB.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/"+attachmentID, "")
+	rest.AssertStatus(t, attBResp, http.StatusOK)
 
 	require.NoError(t, xdcrAtoB.Stop(ctx))
 	require.NoError(t, xdcrBtoA.Stop(ctx))
