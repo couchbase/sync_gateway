@@ -2685,6 +2685,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	skipObsoleteAttachmentsRemoval := false
 	isNewDocCreation := false
 
+	// Don't remove obsolete attachments if using ECCV - the other cluster may still need them!
+	if db.dbCtx.CachedCCVEnabled.Load() {
+		skipObsoleteAttachmentsRemoval = true
+	}
+
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
