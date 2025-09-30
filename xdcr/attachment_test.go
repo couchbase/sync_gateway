@@ -41,6 +41,10 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	rtB := rest.NewRestTester(t, &rest.RestTesterConfig{AutoImport: base.Ptr(false)})
 	defer rtB.Close()
 
+	// Force ECCV (Rosmar) - Should be handled as part of CBG-4839 since changing it triggers assertion failures in other tests because of the CAS map
+	rtA.GetDatabase().CachedCCVEnabled.Store(true)
+	rtB.GetDatabase().CachedCCVEnabled.Store(true)
+
 	ctx := base.TestCtx(t)
 	opts := XDCROptions{Mobile: MobileOn}
 
@@ -87,7 +91,7 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 		stats, err := xdcrAtoB.Stats(ctx)
 		require.NoError(c, err)
 		// doc and attachment doc
-		assert.Equal(c, uint64(2), stats.DocsWritten)
+		assert.Equalf(c, uint64(2), stats.DocsWritten, "expected doc and attachment to be replicated")
 	}, time.Second*5, time.Millisecond*100)
 
 	// stop replication
@@ -117,21 +121,21 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	if !base.TestUseCouchbaseServer() {
 		expectedDocsWritten = expectedDocsWritten + 2 // (old replication stats: 1 doc + 1 attachment)
 	}
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcrAtoB.Stats(ctx)
 		require.NoError(c, err)
-		assert.Equal(c, expectedDocsWritten, stats.DocsWritten)
+		assert.Equalf(c, expectedDocsWritten, stats.DocsWritten, "unexpected additional mutation replicated (an attachment delete?)")
 	}, time.Second*5, time.Millisecond*100)
 
 	// wait for XDCR stats to ensure attachment data also made it over
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcrBtoA.Stats(ctx)
 		require.NoError(c, err)
-		assert.Equal(c, uint64(1), stats.DocsWritten) // resolved conflict
+		assert.Equalf(c, uint64(1), stats.DocsWritten, "expected resolved conflict to be replicated back to A")
 	}, time.Second*5, time.Millisecond*100)
 
 	// wait for doc (resolved conflict) to replicate back to rtA
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		currentRtAVersion, _ := rtA.GetDoc(docID)
 		assert.Equal(c, rtBVersion.CV.String(), currentRtAVersion.CV.String())
 	}, time.Second*10, time.Millisecond*100)
