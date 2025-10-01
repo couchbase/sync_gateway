@@ -2242,7 +2242,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 			// Wait for document to be expired - this bucket get should also trigger the expiry purge interval
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				_, _, err := dataStore.GetRaw(t.Name())
+				_, _, err := dataStore.GetRaw(docID)
 				assert.True(c, base.IsDocNotFoundError(err), "expected err %v to be doc not found", err)
 			}, time.Second*10, time.Millisecond*10)
 
