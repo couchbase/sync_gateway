@@ -2233,6 +2233,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			lastImportCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
 
 			rt.GetDatabase().CachedCCVEnabled.Store(tc.eccv)
 			docID := db.SafeDocumentName(t, t.Name())
@@ -2247,7 +2248,8 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 			}, time.Second*10, time.Millisecond*10)
 
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+				newImportCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() - lastImportCount
+				assert.Equal(c, int64(1), newImportCount)
 			}, time.Second*10, time.Millisecond*5)
 			att2Key := db.MakeAttachmentKey(db.AttVersion2, docID, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
 
