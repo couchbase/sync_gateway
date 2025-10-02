@@ -98,7 +98,7 @@
           channel("public")
         }
       }
-      `,
+      `
     },
     "connect2015": {
       "server":"couchbase://172.23.121.38:8091",
@@ -183,7 +183,7 @@
       "bucket":"grocery-sync",
       "users": {
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]}
-      },
+      }
     },
     "todolite": {
       "server":"couchbase://172.23.121.38:8091",
@@ -240,7 +240,7 @@
           access(user, "profiles"); // TODO this should use roles
         }
       }
-    `,
+    `
     }
   }
 }
