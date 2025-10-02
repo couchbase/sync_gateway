@@ -472,8 +472,8 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 		attachmentBody:   attachmentBody,
 		attachmentDigest: digest,
 	}
-	sent, _, _ := bt.SendRevWithAttachment(input)
-	assert.True(t, sent)
+	resp := bt.SendRevWithAttachment(input)
+	require.NotContains(t, resp.Properties, "Error-Code")
 
 	// Get all docs and attachment via subChanges request
 	allDocs := bt.WaitForNumDocsViaChanges(1)

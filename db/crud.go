@@ -1051,7 +1051,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 
 // MigrateAttachmentMetadata will move any attachment metadata defined in sync data to global sync xattr
 func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Context, docID string, cas uint64, syncData *SyncData) error {
-	xattrs, _, err := c.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	xattrs, _, err := c.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName, base.VirtualXattrRevSeqNo})
 	if err != nil && !base.IsXattrNotFoundError(err) {
 		return err
 	}
@@ -1073,14 +1073,32 @@ func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Conte
 	if err != nil {
 		return base.RedactErrorf("Failed to Marshal sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
 	}
+	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyCRUD, "Could not determine revSeqNo found when attempting to migrate sync data attachments to global xattr for doc %q. Assuming 0. Error: %v", base.UD(docID), err)
+	}
+
+	metadataOnlyUpdate := &MetadataOnlyUpdate{
+		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
+		PreviousHexCAS:   syncData.Cas,
+		PreviousRevSeqNo: revSeqNo,
+	}
+	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
+	if err != nil {
+		return base.RedactErrorf("Failed to marshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+	}
 
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
 	opts := &sgbucket.MutateInOptions{}
-	spec := macroExpandSpec(base.SyncXattrName)
+	spec := append(macroExpandSpec(base.SyncXattrName), sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 	opts.MacroExpansion = spec
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
 
-	updatedXattr := map[string][]byte{base.SyncXattrName: rawSyncXattr, base.GlobalXattrName: globalXattr}
+	updatedXattr := map[string][]byte{
+		base.SyncXattrName:   rawSyncXattr,
+		base.GlobalXattrName: globalXattr,
+		base.MouXattrName:    rawMouXattr,
+	}
 	_, err = c.dataStore.UpdateXattrs(ctx, docID, 0, cas, updatedXattr, opts)
 	return err
 }
@@ -2666,6 +2684,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	xattrBytes := 0 // Track size of xattr written, for write stats
 	skipObsoleteAttachmentsRemoval := false
 	isNewDocCreation := false
+
+	// Don't remove obsolete attachments if using ECCV - the other cluster may still need them!
+	if db.dbCtx.CachedCCVEnabled.Load() {
+		skipObsoleteAttachmentsRemoval = true
+	}
 
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64

@@ -119,9 +119,6 @@ func TestFeedImport(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if base.UnitTestUrlIsWalrus() {
-				t.Skip("rosmar does not support vBuckets and unknownSource")
-			}
 			docID := SafeDocumentName(t, t.Name())
 			db.CachedCCVEnabled.Store(testCase.eccv)
 			for vBucket := range db.numVBuckets {
@@ -282,9 +279,6 @@ func TestOnDemandImport(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if base.UnitTestUrlIsWalrus() {
-				t.Skip("rosmar does not support vBuckets and unknownSource")
-			}
 			docID := SafeDocumentName(t, t.Name())
 			db.CachedCCVEnabled.Store(testCase.eccv)
 			for vBucket := range db.numVBuckets {

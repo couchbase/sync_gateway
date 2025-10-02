@@ -1577,9 +1577,7 @@ Database:
           $ref: '#/Replication'
     revs_limit:
       description: |-
-        The maximum depth a document's revision tree can grow too.
-
-        The minimum is `20` if conflicts are allowed and 0 if not. It is not recommended to go below `100` when conflicts are allowed. The default is `100` if conflicts are allowed and `50` if not.
+        The maximum depth a document's revision tree can grow to.
       type: number
       default: 50
       minimum: 0

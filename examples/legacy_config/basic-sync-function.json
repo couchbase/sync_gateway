@@ -32,9 +32,7 @@
       expiry(doc.expiry)
 	}
       }
-    `,
-    "allow_conflicts": false,
-    "revs_limit": 20
+    `
     }
   }
 }

@@ -806,15 +806,11 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equal(t, "g1", changes.Results[0].ID)
 
 	// Look up sequences for created docs
-	deltaGrantDocSeq, err := rt.SequenceForDoc("delta")
-	assert.NoError(t, err, "Error retrieving document sequence")
-	gammaGrantDocSeq, err := rt.SequenceForDoc("gamma")
-	assert.NoError(t, err, "Error retrieving document sequence")
+	deltaGrantDocSeq := rt.SequenceForDoc("delta")
+	gammaGrantDocSeq := rt.SequenceForDoc("gamma")
 
-	alphaDocSeq, err := rt.SequenceForDoc("a1")
-	assert.NoError(t, err, "Error retrieving document sequence")
-	gammaDocSeq, err := rt.SequenceForDoc("g1")
-	assert.NoError(t, err, "Error retrieving document sequence")
+	alphaDocSeq := rt.SequenceForDoc("a1")
+	gammaDocSeq := rt.SequenceForDoc("g1")
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
@@ -843,8 +839,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	response = rt.SendRequest(http.MethodPut, "/{{.keyspace}}/alpha", str)
 	RequireStatus(t, response, http.StatusCreated)
 
-	alphaGrantDocSeq, err := rt.SequenceForDoc("alpha")
-	assert.NoError(t, err, "Error retrieving document sequence")
+	alphaGrantDocSeq := rt.SequenceForDoc("alpha")
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")

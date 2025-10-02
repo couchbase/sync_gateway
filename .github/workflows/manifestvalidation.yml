@@ -1,0 +1,46 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included in
+# the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+# file, in accordance with the Business Source License, use of this software
+# will be governed by the Apache License, Version 2.0, included in the file
+# licenses/APL2.txt.
+
+name: manifestvalidation
+permissions:
+  contents: read
+
+on:
+  push:
+    paths:
+      - 'manifest/**'
+      - '.github/workflows/manifestvalidation.yml'
+    branches:
+      - 'master'
+      - 'main'
+      - 'release/*'
+      - 'feature/*'
+      - 'CBG*'
+      - 'ci-*'
+  pull_request:
+    paths:
+      - 'manifest/**'
+      - '.github/workflows/manifestvalidation.yml'
+    branches:
+      - 'master'
+      - 'main'
+      - 'release/*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'release/')}}
+
+jobs:
+  manifest_validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure manifest product-config properties are sorted
+        id: validate
+        run: |
+          diff <(jq --sort-keys . manifest/product-config.json) <(jq . manifest/product-config.json)

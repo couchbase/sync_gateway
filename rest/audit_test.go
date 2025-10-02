@@ -1126,7 +1126,10 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, postAttachmentVersion.RevTreeID, attachmentName, testCase.attachmentCreateCount)
 			requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, postAttachmentVersion.RevTreeID, attachmentName, testCase.attachmentReadCount)
 			requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, postAttachmentVersion.RevTreeID, attachmentName, testCase.attachmentUpdateCount)
-			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevTreeID, attachmentName, testCase.attachmentDeleteCount)
+			// attachments get auto-deleted only without CCV
+			if !rt.GetDatabase().CachedCCVEnabled.Load() {
+				requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevTreeID, attachmentName, testCase.attachmentDeleteCount)
+			}
 
 		})
 	}

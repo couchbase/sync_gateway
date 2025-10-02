@@ -21,8 +21,6 @@
           ]
         }
       },
-      "allow_conflicts": false,
-      "revs_limit": 20,
       "cache":{
         "channel_cache":{
           "max_number": 50000,
@@ -33,8 +31,7 @@
           "expiry_seconds":60,
           "max_wait_pending":5,
           "max_num_pending":10000,
-          "max_wait_skipped":60,
-          "enable_star_channel":true
+          "max_wait_skipped":60
         },
         "rev_cache":{
           "size":5000,
