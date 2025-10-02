@@ -43,4 +43,4 @@ jobs:
       - name: Ensure manifest product-config properties are sorted
         id: validate
         run: |
-          diff <(jq --sort-keys --indent 4 . manifest/product-config.json) <(jq . manifest/product-config.json)
+          diff <(jq --sort-keys . manifest/product-config.json) <(jq . manifest/product-config.json)
