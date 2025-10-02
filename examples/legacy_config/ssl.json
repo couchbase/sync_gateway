@@ -9,15 +9,13 @@
   "SSLKey": "examples/ssl/privkey.pem",
   "databases": {
     "db": {
-      "server": "walrus:",
+      "server": "couchbase://localhost:8091",
       "users": {
         "GUEST": {
           "disabled": false,
           "admin_channels": ["*"]
         }
-      },
-      "allow_conflicts": false,
-      "revs_limit": 20
+      }
     }
   }
 }
