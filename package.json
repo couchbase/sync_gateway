@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "@prettier/plugin-xml": "^3.4.2",
+    "@redocly/cli": "^2.2.3",
+    "prettier": "3.6.2"
+  }
+}

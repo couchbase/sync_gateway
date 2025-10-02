@@ -1,0 +1,8 @@
+# prettier barfs on `<?xml` in these files for some reason
+*.wxs
+
+# The `db/functions/*.js` file is not strictly valid JS syntax - depends on Go embed and variable substitution to become valid
+*.fmt.js
+
+go.mod
+go.sum

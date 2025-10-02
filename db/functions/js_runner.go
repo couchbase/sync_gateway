@@ -35,15 +35,17 @@ const kUserFunctionCacheSize = 2
 // Maximum nesting of JS user function calls (not the JS stack depth)
 var kUserFunctionMaxCallDepth = 20
 
-// The outermost JavaScript code. Evaluating it returns a function, which is then called by the
-// Runner every time it's invoked. Contains `%s` where the actual function source code goes.
+// kJavaScriptWrapperFormatString is the format string containing the outermost JavaScript code.
+// Evaluating it returns a function, which is then called by the runner every time it's invoked.
 //
-//go:embed js_wrapper.js
-var kJavaScriptWrapper string
+// Contains `%s` where the actual function source code goes.
+//
+//go:embed js_wrapper.fmt.js
+var kJavaScriptWrapperFormatString string
 
 // Creates a JSServer instance wrapping a userJSRunner, for user JS functions.
 func newFunctionJSServer(ctx context.Context, name string, what string, sourceCode string) (*sgbucket.JSServer, error) {
-	js := fmt.Sprintf(kJavaScriptWrapper, sourceCode)
+	js := fmt.Sprintf(kJavaScriptWrapperFormatString, sourceCode)
 	jsServer := sgbucket.NewJSServer(ctx, js, 0, kUserFunctionCacheSize,
 		func(ctx context.Context, fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 			return newJSRunner(ctx, name, what, fnSource)

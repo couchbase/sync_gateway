@@ -1,0 +1,62 @@
+name: prettier
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  push:
+    branches:
+      - 'master'
+      - 'main'
+      - 'release/*'
+      - 'feature/*'
+      - 'CBG*'
+      - 'ci-*'
+  pull_request:
+    branches:
+      - 'master'
+      - 'main'
+      - 'release/*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'release/')}}
+
+
+jobs:
+  prettier:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Prettier validation
+        uses: creyD/prettier_action@v4.6
+        with:
+          dry: True
+      - name: Find Comment
+        if: failure() && github.event_name == 'pull_request'
+        uses: peter-evans/find-comment@v3
+        id: fc
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: Prettier Formatting Validation
+      - name: Create or update comment
+        if: failure() && github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body: |
+            ## Prettier Formatting Validation
+
+            The Prettier formatting check has identified files that do not conform to the project's coding style guidelines.
+
+            To automatically format locally, run:
+
+            ```sh
+            npm install
+            prettier --write .
+            ```
