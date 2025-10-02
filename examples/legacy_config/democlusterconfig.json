@@ -18,9 +18,7 @@
       "bucket":"gaggle",
       "users": {
         "GUEST": {"disabled": false, "admin_channels": ["*"]}
-      },
-      "allow_conflicts": false,
-      "revs_limit": 20
+      }
     },
     "connect2014": {
       "server": "couchbase://localhost",
@@ -101,11 +99,9 @@
         }
       }
       `,
-      "allow_conflicts": false,
-      "revs_limit": 20
     },
     "connect2015": {
-      "server":"http://172.23.121.38:8091",
+      "server":"couchbase://172.23.121.38:8091",
       "bucket":"connect2015",
       "users": {
         "GUEST": {"disabled": true}
@@ -180,21 +176,17 @@
           channel("public")
         }
       }
-      `,
-      "allow_conflicts": false,
-      "revs_limit": 20
+      `
     },
     "grocery-sync": {
-      "server":"http://172.23.121.38:8091",
+      "server":"couchbase://172.23.121.38:8091",
       "bucket":"grocery-sync",
       "users": {
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]}
       },
-      "allow_conflicts": false,
-      "revs_limit": 20
     },
     "todolite": {
-      "server":"http://172.23.121.38:8091",
+      "server":"couchbase://172.23.121.38:8091",
       "bucket":"todolite",
       "users": {
         "GUEST": {"disabled": true}
@@ -249,8 +241,6 @@
         }
       }
     `,
-    "allow_conflicts": false,
-    "revs_limit": 20
     }
   }
 }
