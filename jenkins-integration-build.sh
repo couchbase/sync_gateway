@@ -88,7 +88,7 @@ else
 fi
 
 if [ "${DETECT_RACES:-}" == "true" ]; then
-    GO_TEST_FLAGS=(-race)
+    GO_TEST_FLAGS+=(-race)
 fi
 
 if [ "${FAIL_FAST:-}" == "true" ]; then
@@ -101,7 +101,6 @@ fi
 
 if [ "${RUN_WALRUS}" == "true" ]; then
     set +e -x
-    set -x +e
     # EE
     gotestsum --junitfile=rosmar-ee.xml --junitfile-project-name rosmar-EE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode,cb_sg_enterprise "${GO_TEST_FLAGS[@]}" "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" > verbose_unit_ee.out 2>&1
     xmlstarlet ed -u '//testcase/@classname' -x 'concat("rosmar-EE-", .)' rosmar-ee.xml > verbose_unit_ee.xml
@@ -134,7 +133,7 @@ else
     GO_TEST_FLAGS+=(-tags cb_sg_devmode)
 fi
 
-set -x # Output all executed shell commands
+set +e -x # Output all executed shell commands
 gotestsum --junitfile=integration.xml --junitfile-project-name integration --junitfile-testcase-classname relative --format standard-verbose -- "${GO_TEST_FLAGS[@]}" -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."

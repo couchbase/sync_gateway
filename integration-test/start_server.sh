@@ -85,7 +85,7 @@ docker exec couchbase curl --fail --silent --retry-all-errors --connect-timeout 
 docker exec couchbase couchbase-cli cluster-init --cluster-username Administrator --cluster-password password --cluster-ramsize 3072 --cluster-index-ramsize 3072 --cluster-fts-ramsize 256 --services data,index,query
 docker exec couchbase couchbase-cli setting-index --cluster couchbase://localhost --username Administrator --password password --index-threads 4 --index-log-level verbose --index-max-rollback-points 10 --index-storage-setting default --index-memory-snapshot-interval 150 --index-stable-snapshot-interval 40000
 
-curl -u Administrator:password http://127.0.0.1:8091/node/controller/rename -d 'hostname=127.0.0.1'
+docker exec couchbase curl -u Administrator:password http://127.0.0.1:8091/node/controller/rename -d 'hostname=127.0.0.1'
 
 if [ "${MULTI_NODE:-}" == "true" ]; then
     REPLICA1_NAME=couchbase-replica1
