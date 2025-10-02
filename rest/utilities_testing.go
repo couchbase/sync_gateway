@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -140,7 +141,7 @@ func (rt *RestTester) TB() testing.TB {
 	return *rt.testingTB.Load()
 }
 
-// restTesterDefaultUserPassword is usable as a default password for SendUserRequest
+// RestTesterDefaultUserPassword is usable as a default password for SendUserRequest
 const RestTesterDefaultUserPassword = "letmein"
 
 // NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
@@ -182,12 +183,12 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 	return &rt
 }
 
-// NewRestTester returns a rest tester backed by a single database and a single default collection.
+// NewRestTesterDefaultCollection creates a rest tester backed by a single database and a single _default._default collection.
 func NewRestTesterDefaultCollection(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return newRestTester(tb, restConfig, useSingleCollectionDefaultOnly, 1)
 }
 
-// NewRestTester multiple collections a rest tester backed by a single database and any number of collections and the names of the keyspaces of collections created.
+// NewRestTesterMultipleCollections creates a rest tester backed by a single database with the specified number of collections.
 func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfig, numCollections int) *RestTester {
 	if !base.TestsUseNamedCollections() {
 		tb.Skip("This test requires named collections and is running against a bucket type that does not support them")
@@ -298,9 +299,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
 
 	// Allow EE-only config even in CE for testing using group IDs.
-	if err := sc.Validate(base.TestCtx(rt.TB()), true); err != nil {
-		panic("invalid RestTester StartupConfig: " + err.Error())
-	}
+	require.NoError(rt.TB(), sc.Validate(base.TestCtx(rt.TB()), true))
 
 	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
 	sc.Auth.BcryptCost = bcrypt.MinCost
@@ -594,27 +593,27 @@ func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	return ds
 }
 
+// WaitForDoc will wait for the specific docID to be available in the change cache by comparing the sequence number in the bucket to latest sequence processed by channel cache. Consider replacing with WaitForPendingChanges.
 func (rt *RestTester) WaitForDoc(docid string) {
-	seq, err := rt.SequenceForDoc(docid)
-	require.NoError(rt.TB(), err, "Error getting sequence for doc %s", docid)
+	seq := rt.SequenceForDoc(docid)
 	rt.WaitForSequence(seq)
 }
 
-func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
+// SequenceForDoc returns the current sequence for a document from the bucket, failing the test if the document doesn't exist.
+func (rt *RestTester) SequenceForDoc(docid string) (seq uint64) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	doc, err := collection.GetDocument(ctx, docid, db.DocUnmarshalAll)
-	if err != nil {
-		return 0, err
-	}
-	return doc.Sequence, nil
+	require.NoError(rt.TB(), err, "Error getting doc %q", docid)
+	return doc.Sequence
 }
 
-// Wait for sequence to be buffered by the channel cache
+// WaitForSequence waits for the sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	require.NoError(rt.TB(), collection.WaitForSequence(ctx, seq))
 }
 
+// WaitForPendingChanges waits all outstanding changes to be buffered by the channel cache.
 func (rt *RestTester) WaitForPendingChanges() {
 	ctx := rt.Context()
 	for _, collection := range rt.GetDbCollections() {
@@ -1593,7 +1592,8 @@ func (bt *BlipTester) addCollectionProperty(msg *blip.Message) *blip.Message {
 	return msg
 }
 
-func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []byte) (sent bool, req *db.SetCheckpointMessage, res *db.SetCheckpointResponse, err error) {
+// SetCheckpoint sends a setCheckpoint message with the checkpoint docID and a specific and returns the response. Blocks waiting for the response, and checks error status.
+func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []byte) *db.SetCheckpointResponse {
 
 	scm := db.NewSetCheckpointMessage()
 	scm.SetCompressed(true)
@@ -1602,60 +1602,76 @@ func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []
 	scm.SetBody(body)
 	bt.addCollectionProperty(scm.Message)
 
-	sent = bt.sender.Send(scm.Message)
-	if !sent {
-		return sent, scm, nil, fmt.Errorf("Failed to send setCheckpoint for client: %v", client)
-	}
+	require.True(bt.TB(), bt.sender.Send(scm.Message))
 
-	scr := &db.SetCheckpointResponse{Message: scm.Response()}
-	return true, scm, scr, nil
-
+	resp := scm.Response()
+	body, err := resp.Body()
+	require.NoError(bt.TB(), err)
+	require.NotContains(bt.TB(), resp.Properties, "Error-Code", "Error in response to setCheckpoint request. Properties:%v Body:%s", resp.Properties, body)
+	return &db.SetCheckpointResponse{Message: resp}
 }
 
-// The docHistory should be in the same format as expected by db.PutExistingRevWithBody(), or empty if this is the first revision
-func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
+// newRevMessage constructs a rev message configured with the current collection and default set of parameters. properties will overwrite any default properties set by this function.
+func (bt *BlipTester) newRevMessage(docID, docRev string, body []byte, properties blip.Properties) *blip.Message {
 
 	revRequest := blip.NewRequest()
 	revRequest.SetCompressed(true)
 	revRequest.SetProfile("rev")
 
-	revRequest.Properties["id"] = docId
+	revRequest.Properties["id"] = docID
 	revRequest.Properties["rev"] = docRev
 	revRequest.Properties["deleted"] = "false"
-	if len(revHistory) > 0 {
-		revRequest.Properties["history"] = strings.Join(revHistory, ",")
-	}
-	// Override any properties which have been supplied explicitly
-	for k, v := range properties {
-		revRequest.Properties[k] = v
-	}
+	maps.Copy(revRequest.Properties, properties)
 	bt.addCollectionProperty(revRequest)
-
 	revRequest.SetBody(body)
-	sent = bt.sender.Send(revRequest)
-	if !sent {
-		return sent, revRequest, nil, fmt.Errorf("Failed to send revRequest for doc: %v", docId)
-	}
-	revResponse := revRequest.Response()
-	if revResponse.SerialNumber() != revRequest.SerialNumber() {
-		return sent, revRequest, revResponse, fmt.Errorf("revResponse.SerialNumber() != revRequest.SerialNumber().  %v != %v", revResponse.SerialNumber(), revRequest.SerialNumber())
-	}
-
-	// Make sure no errors.  Just panic for now, but if there are tests that expect errors and want
-	// to use SendRev(), this could be returned.
-	if errorCode, ok := revResponse.Properties["Error-Code"]; ok {
-		body, _ := revResponse.Body()
-		return sent, revRequest, revResponse, fmt.Errorf("Unexpected error sending rev: %v\n%s", errorCode, body)
-	}
-
-	return sent, revRequest, revResponse, nil
-
+	return revRequest
 }
 
-func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
+// SendRevWithHistory sends an unsolicited rev message and waits for the response. The docHistory should be in the same format as expected by db.PutExistingRevWithBody(), or empty if this is the first revision
+func (bt *BlipTester) SendRevWithHistory(docID, docRev string, revHistory []string, body []byte, properties blip.Properties) (res *blip.Message) {
+	require.NotContains(bt.TB(), properties, "history", "If specifying history, use BlipTester.SendRev")
+	if len(revHistory) > 0 {
+		properties[db.RevMessageHistory] = strings.Join(revHistory, ",")
+	}
+	return bt.SendRev(docID, docRev, body, properties)
+}
 
-	return bt.SendRevWithHistory(docId, docRev, []string{}, body, properties)
+// SendRev sends an unsolicited rev message and waits for the response. The docHistory should be in the same format as expected by db.PutExistingRevWithBody(), or empty if this is the first revision
+func (bt *BlipTester) SendRev(docID, docRev string, body []byte, properties blip.Properties) (res *blip.Message) {
+	revRequest := bt.newRevMessage(docID, docRev, body, properties)
+	bt.Send(revRequest)
+	revResponse := revRequest.Response()
+	rspBody, err := revResponse.Body()
+	require.NoError(bt.TB(), err)
+	require.Empty(bt.TB(), revResponse.Properties["Error-Code"], "Error in response to rev request. Properties:%v Body:%s", revResponse.Properties, rspBody)
+	return revResponse
+}
 
+// SendRevExpectConflict sends an unsolicited rev message and waits for the response, expecting a conflict error (409). The docHistory should be in the same format as expected by db.PutExistingRevWithBody(), or empty if this is the first revision
+func (bt *BlipTester) SendRevExpectConflict(docID, docRev string, body []byte, properties blip.Properties) (res *blip.Message) {
+	revRequest := bt.newRevMessage(docID, docRev, body, properties)
+	bt.Send(revRequest)
+	revResponse := revRequest.Response()
+	rspBody, err := revResponse.Body()
+	require.NoError(bt.TB(), err)
+	require.Equal(bt.TB(), "409", revResponse.Properties["Error-Code"], "Expected conflict in response to rev request. Properties:%v Body:%s", revResponse.Properties, rspBody)
+	return revResponse
+}
+
+// Send a blip message but do not wait for a response.
+func (bt *BlipTester) Send(rq *blip.Message) {
+	require.True(bt.TB(), bt.sender.Send(rq))
+}
+
+// Run is equivalent to testing.T.Run() but updates the underlying RestTester's TB.
+func (bt *BlipTester) Run(name string, test func(*testing.T)) {
+	mainT := bt.restTester.TB().(*testing.T)
+	mainT.Run(name, func(t *testing.T) {
+		var tb testing.TB = t
+		old := bt.restTester.testingTB.Swap(&tb)
+		defer func() { bt.restTester.testingTB.Store(old) }()
+		test(t)
+	})
 }
 
 // PrincipalConfigForWrite is used by GetUserPayload, GetRolePayload to remove the omitempty for ExplicitRoleNames
@@ -1723,14 +1739,13 @@ func addChannelsToPrincipal(config PrincipalConfigForWrite, ds sgbucket.DataStor
 	return payload, nil
 }
 
-func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {
+// getChangesHandler returns a changes handler which will respond to all changes messages and ask to be set rev or norev messages.
+func getChangesHandler(t testing.TB, changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {
 	return func(request *blip.Message) {
 		// Send a response telling the other side we want ALL revisions
 
 		body, err := request.Body()
-		if err != nil {
-			panic(fmt.Sprintf("Error getting request body: %v", err))
-		}
+		require.NoError(t, err, "Error getting request body")
 
 		if string(body) == "null" {
 			changesFinishedWg.Done()
@@ -1742,9 +1757,7 @@ func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(r
 			// unmarshal into json array
 			changesBatch := [][]interface{}{}
 
-			if err := base.JSONUnmarshal(body, &changesBatch); err != nil {
-				panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
-			}
+			require.NoError(t, base.JSONUnmarshal(body, &changesBatch))
 
 			responseVal := [][]interface{}{}
 			for _, change := range changesBatch {
@@ -1756,16 +1769,14 @@ func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(r
 			response := request.Response()
 			responseValBytes, err := base.JSONMarshal(responseVal)
 			log.Printf("responseValBytes: %s", responseValBytes)
-			if err != nil {
-				panic(fmt.Sprintf("Error marshalling response: %v", err))
-			}
+			require.NoError(t, err, "Error marshalling response")
 			response.SetBody(responseValBytes)
 
 		}
 	}
 }
 
-// Get a doc at a particular revision from Sync Gateway.
+// GetDocAtRev sets up blip handlers to get a doc at a particular revision from Sync Gateway. Consider using BlipTesterClient to do this behavior.
 //
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 //
@@ -1793,7 +1804,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 	}()
 
 	// -------- Changes handler callback --------
-	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(&changesFinishedWg, &revsFinishedWg)
+	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(bt.TB(), &changesFinishedWg, &revsFinishedWg)
 
 	// -------- Norev handler callback --------
 	bt.blipContext.HandlerForProfile["norev"] = func(request *blip.Message) {
@@ -1808,14 +1819,9 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
-		if err != nil {
-			panic(fmt.Sprintf("Unexpected err getting request body: %v", err))
-		}
+		require.NoError(bt.TB(), err, "Error getting request body")
 		var doc RestDocument
-		err = base.JSONUnmarshal(body, &doc)
-		if err != nil {
-			panic(fmt.Sprintf("Unexpected err: %v", err))
-		}
+		require.NoError(bt.TB(), base.JSONUnmarshal(body, &doc))
 		docId := request.Properties["id"]
 		docRev := request.Properties["rev"]
 		doc.SetID(docId)
@@ -1834,16 +1840,11 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 	subChangesRequest.Properties["continuous"] = "false"
 	bt.addCollectionProperty(subChangesRequest)
 
-	sent := bt.sender.Send(subChangesRequest)
-	if !sent {
-		panic("Unable to subscribe to changes.")
-	}
+	bt.Send(subChangesRequest)
 
-	require.NoError(bt.TB(), WaitWithTimeout(&changesFinishedWg, time.Second*30))
-	require.NoError(bt.TB(), WaitWithTimeout(&revsFinishedWg, time.Second*30))
-
+	WaitWithTimeout(bt.TB(), &changesFinishedWg, time.Second*30)
+	WaitWithTimeout(bt.TB(), &revsFinishedWg, time.Second*30)
 	return resultDoc, resultErr
-
 }
 
 type SendRevWithAttachmentInput struct {
@@ -1857,8 +1858,9 @@ type SendRevWithAttachmentInput struct {
 	body             []byte
 }
 
+// SendRevWithAttachment will send a single rev message and block until the attachments are returned. The rev message is returned and must be checked for errors.
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
-func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (sent bool, req, res *blip.Message) {
+func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (res *blip.Message) {
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
@@ -1876,10 +1878,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	doc := NewRestDocument()
 	if len(input.body) > 0 {
-		unmarshalErr := json.Unmarshal(input.body, &doc)
-		if unmarshalErr != nil {
-			panic(fmt.Sprintf("Error unmarshalling body into restDocument.  Error: %v", unmarshalErr))
-		}
+		require.NoError(bt.TB(), json.Unmarshal(input.body, &doc))
 	}
 
 	doc.SetAttachments(db.AttachmentMap{
@@ -1887,37 +1886,32 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 	})
 
 	docBody, err := base.JSONMarshal(doc)
-	if err != nil {
-		panic(fmt.Sprintf("Error marshalling doc.  Error: %v", err))
-	}
+	require.NoError(bt.TB(), err, "Error marshalling doc")
 
 	getAttachmentWg := sync.WaitGroup{}
 
 	bt.blipContext.HandlerForProfile["getAttachment"] = func(request *blip.Message) {
 		defer getAttachmentWg.Done()
-		if request.Properties["digest"] != myAttachment.Digest {
-			panic(fmt.Sprintf("Unexpected digest.  Got: %v, expected: %v", request.Properties["digest"], myAttachment.Digest))
-		}
+		require.Equal(bt.TB(), myAttachment.Digest, request.Properties["digest"])
 		response := request.Response()
 		response.SetBody([]byte(input.attachmentBody))
 	}
 
 	// Push a rev with an attachment.
 	getAttachmentWg.Add(1)
-	sent, req, res, _ = bt.SendRevWithHistory(
-		input.docId,
-		input.revId,
-		input.history,
-		docBody,
-		blip.Properties{},
-	)
+	rq := bt.newRevMessage(input.docId, input.revId, docBody, blip.Properties{
+		db.RevMessageHistory: strings.Join(input.history, ","),
+	})
+	bt.Send(rq)
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()
 
-	return sent, req, res
-
+	return rq.Response()
 }
 
+// WaitForNumChanges waits for at least the number of document changes and returns the changes as they are in the changes messages:
+//
+//	[[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
 func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]interface{}) {
 
 	retryWorker := func() (shouldRetry bool, err error, value [][]any) {
@@ -1958,9 +1952,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 	for changeMsg := range chanChanges {
 
 		body, err := changeMsg.Body()
-		if err != nil {
-			panic(fmt.Sprintf("Error getting request body: %v", err))
-		}
+		require.NoError(bt.TB(), err, "Error getting request body")
 
 		if string(body) == "null" {
 			// the other side indicated that it's done sending changes.
@@ -1972,9 +1964,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 		// unmarshal into json array
 		changesBatch := [][]interface{}{}
 
-		if err := base.JSONUnmarshal(body, &changesBatch); err != nil {
-			panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
-		}
+		require.NoError(bt.TB(), base.JSONUnmarshal(body, &changesBatch), "Error unmarshalling changes. Body: %v", string(body))
 
 		collectedChanges = append(collectedChanges, changesBatch...)
 
@@ -1994,7 +1984,7 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 	return docs
 }
 
-// Get all documents and their attachments via the following steps:
+// PullDocs gets all documents and their attachments via the following steps:
 //
 // - Invoking one-shot subChanges request
 // - Responding to all incoming "changes" requests from peer to request the changed rev, and accumulate rev body
@@ -2020,21 +2010,17 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	// -------- Changes handler callback --------
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
-	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(&changesFinishedWg, &revsFinishedWg)
+	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(bt.TB(), &changesFinishedWg, &revsFinishedWg)
 
 	// -------- Rev handler callback --------
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
-		if err != nil {
-			panic(fmt.Sprintf("Unexpected err getting request body: %v", err))
-		}
+		require.NoError(bt.TB(), err)
+
 		var doc RestDocument
-		err = base.JSONUnmarshal(body, &doc)
-		if err != nil {
-			panic(fmt.Sprintf("Unexpected err: %v", err))
-		}
+		require.NoError(bt.TB(), base.JSONUnmarshal(body, &doc))
 		docId := request.Properties["id"]
 		docRev := request.Properties["rev"]
 		doc.SetID(docId)
@@ -2045,9 +2031,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 		docsLock.Unlock()
 
 		attachments, err := doc.GetAttachments()
-		if err != nil {
-			panic(fmt.Sprintf("Unexpected err: %v", err))
-		}
+		require.NoError(bt.TB(), err)
 
 		for _, attachment := range attachments {
 
@@ -2059,16 +2043,10 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 				getAttachmentRequest.Properties[db.GetAttachmentID] = docId
 			}
 			bt.addCollectionProperty(getAttachmentRequest)
-			sent := bt.sender.Send(getAttachmentRequest)
-			if !sent {
-				panic("Unable to get attachment.")
-			}
+			bt.Send(getAttachmentRequest)
 			getAttachmentResponse := getAttachmentRequest.Response()
 			getAttachmentBody, getAttachmentErr := getAttachmentResponse.Body()
-			if getAttachmentErr != nil {
-				panic(fmt.Sprintf("Unexpected err: %v", err))
-			}
-			log.Printf("getAttachmentBody: %s", getAttachmentBody)
+			require.NoError(bt.TB(), getAttachmentErr, "Error getting attachment body")
 			attachment.Data = getAttachmentBody
 		}
 
@@ -2095,10 +2073,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 	subChangesRequest.Properties["continuous"] = "false"
 	bt.addCollectionProperty(subChangesRequest)
 
-	sent := bt.sender.Send(subChangesRequest)
-	if !sent {
-		panic("Unable to subscribe to changes.")
-	}
+	bt.Send(subChangesRequest)
 
 	changesFinishedWg.Wait()
 
@@ -2120,9 +2095,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
-			if err != nil {
-				panic(fmt.Sprintf("Error marshalling response: %v", err))
-			}
+			require.NoError(bt.TB(), err)
 			response.SetBody(emptyResponseValBytes)
 		}
 
@@ -2139,19 +2112,10 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 		subChangesRequest.Properties["continuous"] = "false"
 	}
 
-	sent := bt.sender.Send(subChangesRequest)
-	if !sent {
-		panic("Unable to subscribe to changes.")
-	}
+	bt.Send(subChangesRequest)
 	subChangesResponse := subChangesRequest.Response()
-	if subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber() {
-		panic(fmt.Sprintf("subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber().  %v != %v", subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber()))
-	}
-	errCode := subChangesResponse.Properties[db.BlipErrorCode]
-	if errCode != "" {
-		bt.restTester.TB().Fatalf("Error sending subChanges request: %s", errCode)
-	}
-
+	require.Equal(bt.TB(), subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	require.NotContains(bt.TB(), subChangesResponse.Properties, db.BlipErrorCode, "Error in response to subChanges request. Properties:%v", subChangesResponse.Properties)
 }
 
 // Helper for comparing BLIP changes received with expected BLIP changes
@@ -2293,8 +2257,8 @@ func (d RestDocument) IsRemoved() bool {
 	return removed.(bool)
 }
 
-// Wait for the WaitGroup, or return an error if the wg.Wait() doesn't return within timeout
-func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
+// WaitWithTimeout calls for the WaitGroup.Wait() and fails the test if the Wait does not return within the timeout.
+func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
 
 	// Create a channel so that a goroutine waiting on the waitgroup can send it's result (if any)
 	wgFinished := make(chan bool)
@@ -2308,11 +2272,10 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 	defer timer.Stop()
 	select {
 	case <-wgFinished:
-		return nil
+		return
 	case <-timer.C:
-		return fmt.Errorf("Timed out waiting after %v", timeout)
+		require.FailNow(t, fmt.Sprintf("Timed out waiting after %.2f sec", timeout.Seconds()))
 	}
-
 }
 
 // NewHTTPTestServerOnListener returns a new httptest server, which is configured to listen on the given listener.
@@ -2552,8 +2515,8 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 	return collections
 }
 
-// Reads continuous changes feed response into slice of ChangeEntry
-func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
+// ReadContinuousChanges reads the output continuous changes feed rest response into slice of ChangeEntry
+func (rt *RestTester) ReadContinuousChanges(response *TestResponse) []db.ChangeEntry {
 	var change db.ChangeEntry
 	changes := make([]db.ChangeEntry, 0)
 	reader := bufio.NewReader(response.Body)
@@ -2563,30 +2526,23 @@ func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.Change
 			// done
 			break
 		}
-		if readError != nil {
-			// unexpected read error
-			return changes, readError
-		}
+		require.NoError(rt.TB(), readError)
 		entry = bytes.TrimSpace(entry)
 		if len(entry) > 0 {
-			err := base.JSONUnmarshal(entry, &change)
-			if err != nil {
-				return changes, err
-			}
+			require.NoError(rt.TB(), base.JSONUnmarshal(entry, &change))
 			changes = append(changes, change)
 			log.Printf("Got change ==> %v", change)
 		}
 
 	}
-	return changes, nil
+	return changes
 }
 
 // RequireContinuousFeedChangesCount Calls a changes feed on every collection and asserts that the nth expected change is
 // the number of changes for the nth collection.
 func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username string, keyspace int, expectedChanges int, timeout int) {
 	resp := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace%d}}/_changes?feed=continuous&timeout=%d", keyspace, timeout), "", username)
-	changes, err := rt.ReadContinuousChanges(resp)
-	assert.NoError(t, err)
+	changes := rt.ReadContinuousChanges(resp)
 	require.Len(t, changes, expectedChanges)
 }
 

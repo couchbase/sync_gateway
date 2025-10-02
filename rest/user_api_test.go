@@ -859,8 +859,7 @@ function(doc, oldDoc) {
 			log.Printf("Invoking _changes?feed=continuous&since=%s&timeout=2000", since)
 			changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard")
 
-			changes, err := rt.ReadContinuousChanges(changesResponse)
-			assert.NoError(t, err)
+			changes := rt.ReadContinuousChanges(changesResponse)
 
 			changesAccumulated = append(changesAccumulated, changes...)
 
@@ -943,8 +942,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 		} else {
 			// case 2 - ensure no error processing the changes response.  The number of entries may vary, depending
 			// on whether the changes loop performed an additional iteration before catching the deleted user.
-			_, err := rt.ReadContinuousChanges(changesResponse)
-			assert.NoError(t, err)
+			rt.ReadContinuousChanges(changesResponse)
 		}
 	}()
 
