@@ -3752,7 +3752,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 			_, err = database.Compact(ctx, false, nil, base.NewSafeTerminator(), false)
 			require.NoError(t, err)
 
-			assert.EqualValues(t, test.expectedPurgeIntervalAfterCompact, dbc.GetMetadataPurgeInterval(ctx))
+			assert.EqualValues(t, test.expectedPurgeIntervalAfterCompact, dbc.GetMetadataPurgeInterval(ctx, true))
 		})
 	}
 }

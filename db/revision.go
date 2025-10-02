@@ -253,40 +253,26 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 	}
 }
 
-// Makes a backup of revision body for use by delta sync, and in-flight replications requesting an old revision.
-// Backup policy depends on whether delta sync and/or shared_bucket_access is enabled
-//
-//	delta=false || delta_rev_max_age_seconds=0
-//	   - old revision stored, with expiry OldRevExpirySeconds
-//	delta=true && shared_bucket_access=true
-//	   - new revision stored (as duplicate), with expiry rev_max_age_seconds
-//	delta=true && shared_bucket_access=false
-//	   - old revision stored, with expiry rev_max_age_seconds
+// Makes a backup of revision body for use by in-flight replications requesting an old revision (for clients not supporting replacementRevs)
 func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, oldRev string, oldBody []byte) {
-	// Without delta sync, store the old rev for in-flight replication purposes
-	if !db.deltaSyncEnabled() || db.deltaSyncRevMaxAgeSeconds() == 0 {
-		if len(oldBody) > 0 {
-			oldRevHash := base.Crc32cHashString([]byte(oldRev))
-			_ = db.setOldRevisionJSONBody(ctx, docId, oldRevHash, oldBody, db.oldRevExpirySeconds())
-		}
+	if db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() > 0 {
+		// See postWriteUpdateHLV - we're writing a CV and RevTreeID backup there to support delta sync
 		return
 	}
 
-	// Otherwise, store the revs for delta generation purposes, with a longer expiry
-
-	// Special handling for Xattrs so that SG still has revisions that were updated by an SDK write
-	if db.UseXattrs() {
-		// Refresh the expiry on the previous revision backup
-		oldRevHash := base.Crc32cHashString([]byte(oldRev))
-		_ = db.refreshOldRevisionJSON(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
+	if !db.storeLegacyRevTreeData() {
+		// Not storing legacy revtree data - nothing to do
 		return
 	}
 
-	// Non-xattr only need to store the previous revision, as all writes come through SG
-	if len(oldBody) > 0 {
-		oldRevHash := base.Crc32cHashString([]byte(oldRev))
-		_ = db.setOldRevisionJSONBody(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
+	// skip backup if this was a deletion
+	if len(oldBody) == 0 {
+		return
 	}
+
+	// store or refresh the old document revision by revtree ID for in-flight replications
+	_ = db.refreshOldRevisionJSON(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds())
+	return
 }
 
 // setOldRevisionJSONBody stores the raw JSON body of a revision that has been archived to a separate doc.

@@ -55,7 +55,11 @@ type RevisionCache interface {
 	// RemoveWithCV evicts a revision from the cache using its current version.
 	RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32)
 
+	// RemoveRevOnly removes the specified key from the revID lookup map in the cache
 	RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32)
+
+	// RemoveCVOnly removes the specified key from the HLV lookup map in the cache
+	RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta)
@@ -178,6 +182,10 @@ func (c *collectionRevisionCache) RemoveRevOnly(ctx context.Context, docID, revI
 	(*c.revCache).RemoveRevOnly(ctx, docID, revID, c.collectionID)
 }
 
+func (c *collectionRevisionCache) RemoveCVOnly(ctx context.Context, docID string, cv *Version) {
+	(*c.revCache).RemoveCVOnly(ctx, docID, cv, c.collectionID)
+}
+
 // RemoveWithCV is for per collection access to Remove method
 func (c *collectionRevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *Version) {
 	(*c.revCache).RemoveWithCV(ctx, docID, cv, c.collectionID)
@@ -208,7 +216,7 @@ type DocumentRevision struct {
 	Removed     bool  // True if the revision is a removal.
 	MemoryBytes int64 // storage of the doc rev bytes measurement, includes size of delta when present too
 	CV          *Version
-	hlvHistory  string
+	HlvHistory  string
 }
 
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
@@ -390,7 +398,7 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 		AttachmentStorageMeta: toRevAttStorageMeta,
 		ToChannels:            toRevision.Channels,
 		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
-		HlvHistory:            toRevision.hlvHistory,
+		HlvHistory:            toRevision.HlvHistory,
 		ToDeleted:             deleted,
 	}
 	revDelta.CalculateDeltaBytes()

@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestFeedImport(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport, base.KeyVV)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
@@ -61,7 +62,7 @@ func TestFeedImport(t *testing.T) {
 
 	// fetch the xattrs directly doc to confirm import (to avoid triggering on-demand import)
 	var syncData SyncData
-	xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.VirtualXattrRevSeqNo})
+	xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.VirtualXattrRevSeqNo, base.VvXattrName})
 	require.NoError(t, err)
 	syncXattr, ok := xattrs[base.SyncXattrName]
 	require.True(t, ok)
@@ -71,7 +72,7 @@ func TestFeedImport(t *testing.T) {
 	require.NotZero(t, revSeqNo, "RevSeqNo should not be zero for imported doc")
 
 	// verify mou and rev seqno
-	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName, base.VirtualXattrRevSeqNo, base.VvXattrName})
 	if db.UseMou() {
 		var mou *MetadataOnlyUpdate
 		require.NoError(t, err)
@@ -86,10 +87,59 @@ func TestFeedImport(t *testing.T) {
 		// Expect not found fetching mou xattr
 		require.Error(t, err)
 	}
+	require.Contains(t, xattrs, base.VvXattrName)
+	var hlv HybridLogicalVector
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
+	require.Equal(t, db.EncodedSourceID, hlv.SourceID)
+
+	testCases := []struct {
+		name             string
+		eccv             bool
+		startingCAS      uint64
+		expectedSourceID string
+	}{
+		{
+			name:             "ECCV enabled, high cas",
+			eccv:             true,
+			startingCAS:      math.MaxUint64,
+			expectedSourceID: unknownSourceID,
+		},
+		{
+			name:             "ECCV disabled",
+			eccv:             false,
+			startingCAS:      0,
+			expectedSourceID: db.EncodedSourceID,
+		},
+		{
+			name:             "ECCV enabled, low cas",
+			eccv:             true,
+			startingCAS:      1,
+			expectedSourceID: db.EncodedSourceID,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			docID := SafeDocumentName(t, t.Name())
+			db.CachedCCVEnabled.Store(testCase.eccv)
+			for vBucket := range db.numVBuckets {
+				db.CachedCCVStartingCas.Store(base.VBNo(vBucket), testCase.startingCAS)
+			}
+			initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
+			_, err = collection.dataStore.WriteCas(docID, 0, 0, []byte(`{"foo":"bar"}`), 0)
+			require.NoError(t, err)
+			base.RequireWaitForStat(t, db.DbStats.SharedBucketImport().ImportCount.Value, initialImportCount+1)
+
+			xattrs, _, err = collection.dataStore.GetXattrs(ctx, docID, []string{base.VvXattrName})
+			require.NoError(t, err)
+			require.Contains(t, xattrs, base.VvXattrName)
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
+			require.Equal(t, testCase.expectedSourceID, hlv.SourceID)
+		})
+	}
 }
 
-// TestOnDemandImportMou ensures that _mou is written correctly during an on-demand import
-func TestOnDemandImportMou(t *testing.T) {
+// TestOnDemandImport ensures that _mou is written correctly during an on-demand import
+func TestOnDemandImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
 	base.SkipImportTestsIfNotEnabled(t)
 
@@ -124,6 +174,7 @@ func TestOnDemandImportMou(t *testing.T) {
 		} else {
 			require.Nil(t, doc.MetadataOnlyUpdate)
 		}
+		require.Equal(t, db.EncodedSourceID, doc.HLV.SourceID)
 	})
 
 	// On-demand write
@@ -180,7 +231,7 @@ func TestOnDemandImportMou(t *testing.T) {
 
 				// fetch the mou xattr directly doc to confirm import (to avoid triggering on-demand get import)
 				// verify mou
-				xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName})
+				xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName, base.VvXattrName})
 				if db.UseMou() {
 					require.NoError(t, err)
 					mouXattr, mouOk := xattrs[base.MouXattrName]
@@ -194,10 +245,54 @@ func TestOnDemandImportMou(t *testing.T) {
 					// expect not found fetching mou xattr
 					require.Error(t, err)
 				}
+				var hlv HybridLogicalVector
+				require.Contains(t, xattrs, base.VvXattrName)
+				require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
+				require.Equal(t, db.EncodedSourceID, hlv.SourceID)
 			})
 		}
 	})
+	testCases := []struct {
+		name             string
+		eccv             bool
+		startingCAS      uint64
+		expectedSourceID string
+	}{
+		{
+			name:             "ECCV enabled, high cas",
+			eccv:             true,
+			startingCAS:      math.MaxUint64,
+			expectedSourceID: unknownSourceID,
+		},
+		{
+			name:             "ECCV disabled",
+			eccv:             false,
+			startingCAS:      0,
+			expectedSourceID: db.EncodedSourceID,
+		},
+		{
+			name:             "ECCV enabled, low cas",
+			eccv:             true,
+			startingCAS:      1,
+			expectedSourceID: db.EncodedSourceID,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			docID := SafeDocumentName(t, t.Name())
+			db.CachedCCVEnabled.Store(testCase.eccv)
+			for vBucket := range db.numVBuckets {
+				db.CachedCCVStartingCas.Store(base.VBNo(vBucket), testCase.startingCAS)
+			}
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			_, err := collection.dataStore.WriteCas(docID, 0, 0, []byte(`{"foo":"bar"}`), 0)
+			require.NoError(t, err)
 
+			doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+			require.NoError(t, err)
+			require.Equal(t, testCase.expectedSourceID, doc.HLV.SourceID)
+		})
+	}
 }
 
 // There are additional tests that exercise the import functionality in rest/import_test.go

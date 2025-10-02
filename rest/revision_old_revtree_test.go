@@ -37,7 +37,7 @@ func TestGetOldRevisionBodyByRevTreeID(t *testing.T) {
 			name:                   "store_legacy_revtree_data=true, delta_sync=false",
 			storeLegacyRevTreeData: true,
 			deltaSyncEnabled:       false,
-			expectedToFindOldRev:   false, // TODO: CBG-4840 - Should be true - Requires restoration of non-delta sync rev storage
+			expectedToFindOldRev:   true,
 		},
 		{
 			name:                   "store_legacy_revtree_data=false, delta_sync=true",

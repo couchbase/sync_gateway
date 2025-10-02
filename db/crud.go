@@ -915,7 +915,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, doc.HLV.GetCurrentVersionString(), json)
+	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.GetRevTreeID() {
@@ -992,7 +992,16 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		if !hasHLV || (!cvCASMatch && !mouMatch) {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
-			newVVEntry.SourceID = db.dbCtx.EncodedSourceID
+			sourceID := db.dbCtx.EncodedSourceID
+			// use unknown source ID when CCV is enabled but doc cas is less than CCV CAS
+			if db.dbCtx.CachedCCVEnabled.Load() {
+				vbNo := sgbucket.VBHash(d.ID, db.dbCtx.numVBuckets)
+				ccvStartingCas := db.dbCtx.CachedCCVStartingCas.Load(ctx, base.VBNo(vbNo))
+				if d.Cas <= ccvStartingCas {
+					sourceID = unknownSourceID
+				}
+			}
+			newVVEntry.SourceID = sourceID
 			newVVEntry.Value = d.Cas
 			err := d.HLV.AddVersion(newVVEntry)
 			if err != nil {
@@ -1031,13 +1040,18 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	default:
 		return nil, base.RedactErrorf("Unexpected docUpdateEvent %v in updateHLV for doc %s", docUpdateEvent, base.UD(d.ID))
 	}
+	// clean up PV only if we have more than a handful of source IDs - reduce Compaction and false-conflict risk where we don't need it
+	if len(d.HLV.PreviousVersions) > minPVEntriesBeforeCompaction {
+		vpw := db.dbCtx.GetVersionPruningWindow(ctx, false)
+		d.HLV.Compact(ctx, d.ID, vpw)
+	}
 	d.SyncData.SetCV(d.HLV)
 	return d, nil
 }
 
 // MigrateAttachmentMetadata will move any attachment metadata defined in sync data to global sync xattr
 func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Context, docID string, cas uint64, syncData *SyncData) error {
-	xattrs, _, err := c.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	xattrs, _, err := c.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName, base.VirtualXattrRevSeqNo})
 	if err != nil && !base.IsXattrNotFoundError(err) {
 		return err
 	}
@@ -1059,14 +1073,32 @@ func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Conte
 	if err != nil {
 		return base.RedactErrorf("Failed to Marshal sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
 	}
+	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyCRUD, "Could not determine revSeqNo found when attempting to migrate sync data attachments to global xattr for doc %q. Assuming 0. Error: %v", base.UD(docID), err)
+	}
+
+	metadataOnlyUpdate := &MetadataOnlyUpdate{
+		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
+		PreviousHexCAS:   syncData.Cas,
+		PreviousRevSeqNo: revSeqNo,
+	}
+	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
+	if err != nil {
+		return base.RedactErrorf("Failed to marshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+	}
 
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
 	opts := &sgbucket.MutateInOptions{}
-	spec := macroExpandSpec(base.SyncXattrName)
+	spec := append(macroExpandSpec(base.SyncXattrName), sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 	opts.MacroExpansion = spec
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
 
-	updatedXattr := map[string][]byte{base.SyncXattrName: rawSyncXattr, base.GlobalXattrName: globalXattr}
+	updatedXattr := map[string][]byte{
+		base.SyncXattrName:   rawSyncXattr,
+		base.GlobalXattrName: globalXattr,
+		base.MouXattrName:    rawMouXattr,
+	}
 	_, err = c.dataStore.UpdateXattrs(ctx, docID, 0, cas, updatedXattr, opts)
 	return err
 }
@@ -1375,7 +1407,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				if len(opts.RevTreeHistory) > 0 && !opts.AlignRevTrees {
 					parent, currentRevIndex, err := db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
 					if err != nil {
-						base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %s, local version %s, and conflict found in rev tree history", base.UD(doc.ID), opts.NewDocHLV.GetCurrentVersionString(), doc.HLV.GetCurrentVersionString())
+						base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, and conflict found in rev tree history", base.UD(doc.ID))
 						return nil, nil, false, nil, err
 					}
 					_, err = doc.addNewerRevisionsToRevTreeHistory(opts.NewDoc, currentRevIndex, parent, opts.RevTreeHistory)
@@ -1385,7 +1417,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					revTreeAlignedForCBL = true // we have aligned the rev tree for CBL push here so skip later in function
 					doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
 				} else {
-					base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, incoming version %v, local version %v", base.UD(doc.ID), opts.NewDocHLV.ExtractCurrentVersionFromHLV(), doc.HLV.ExtractCurrentVersionFromHLV())
+					base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
 					if opts.ConflictResolver == nil {
 						// cancel rest of update, HLV is in conflict and no resolver is present
 						return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
@@ -2037,10 +2069,8 @@ func (db *DatabaseCollectionWithUser) resolveRemoteWinsHLV(ctx context.Context, 
 	}
 	remoteRevID := remoteDoc.RevID
 
-	newHLV, err := remoteWinsConflictResolutionForHLV(ctx, remoteDoc.ID, localDoc.HLV, remoteDoc.HLV)
-	if err != nil {
-		return nil, err
-	}
+	newHLV := localDoc.HLV.Copy()
+	newHLV.UpdateWithIncomingHLV(remoteDoc.HLV)
 	base.DebugfCtx(ctx, base.KeyReplicate, "Resolved HLV conflict for doc %s as remoteWins - remote rev is %s, previous local rev %s tombstoned by %s", base.UD(localDoc.ID), remoteRevID, localRevID, tombstoneRevID)
 	return newHLV, nil
 }
@@ -2067,7 +2097,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 		return nil, nil, err
 	}
 
-	base.DebugfCtx(ctx, base.KeyVV, "successfully merged doc doc %s, resulting HLV: %v", base.UD(localDoc.ID), newHLV)
+	base.DebugfCtx(ctx, base.KeyVV, "successfully merged doc %s, resulting HLV: %#v", base.UD(localDoc.ID), newHLV)
 	return newHLV, updatedHistory, nil
 }
 
@@ -2087,10 +2117,13 @@ func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, l
 	revTreeHistory = append([]string{newRevID}, revTreeHistory...)
 	remoteDoc.RevID = newRevID
 
-	newHLV, err := localWinsConflictResolutionForHLV(ctx, localDoc.HLV, remoteDoc.HLV, localDoc.ID, db.dbCtx.EncodedSourceID)
-	if err != nil {
-		return nil, nil, err
-	}
+	newHLV := remoteDoc.HLV.Copy()
+	newHLV.UpdateWithIncomingHLV(localDoc.HLV)
+
+	// remove the local doc from the revision cache, given the hlv is changing but the CV is staying same so the old reference
+	// to this cv in rev cache is stale
+	db.revisionCache.RemoveWithCV(ctx, localDoc.ID, localDoc.HLV.ExtractCurrentVersionFromHLV())
+	localDoc.localWinsConflict = true
 
 	localWinsConflictResolutionDocumentHandling(ctx, localDoc, remoteDoc, revTreeHistory, docBodyBytes, newRevID)
 
@@ -2147,6 +2180,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags(ctx context.Context) {
 	doc.setFlag(channels.Deleted, doc.History[revtreeID].Deleted)
 	doc.setFlag(channels.Conflict, inConflict)
 	doc.setFlag(channels.Branched, branched)
+	doc.setFlag(channels.UnchangedCV, doc.localWinsConflict)
 	if doc.hasFlag(channels.Deleted) {
 		doc.SyncData.TombstonedAt = time.Now().Unix()
 	} else {
@@ -2651,6 +2685,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	skipObsoleteAttachmentsRemoval := false
 	isNewDocCreation := false
 
+	// Don't remove obsolete attachments if using ECCV - the other cluster may still need them!
+	if db.dbCtx.CachedCCVEnabled.Load() {
+		skipObsoleteAttachmentsRemoval = true
+	}
+
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
@@ -2865,7 +2904,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Attachments: doc.Attachments(),
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
-			hlvHistory:  doc.HLV.ToHistoryForHLV(),
+			HlvHistory:  doc.HLV.ToHistoryForHLV(),
 			CV:          &Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version},
 		}
 
@@ -2955,7 +2994,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 	}
 	doc.SyncData.SetCV(doc.HLV)
 
-	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for delta generation purposes
+	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for future deltaSrc purposes
 	// we don't need to store revision body backups without delta sync in 4.0, since all clients know how to use the sendReplacementRevs feature
 	backupRev := db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() != 0
 	if db.UseXattrs() && backupRev {

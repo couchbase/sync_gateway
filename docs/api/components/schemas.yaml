@@ -709,9 +709,10 @@ Replication:
         - custom
       x-enumDescriptions:
         default: |-
-          In priority order, this will cause
-            - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
-            - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest Revision Tree ID will win.
+          This will use:
+            - Timestamp based conflict resolution (often referred to as "last write wins", or LWW). Which uses a document timestamp from most recent document revisions to compare.
+            - The revision with the most recent timestamp wins.
+            - If replicating a document that was last updated/written pre upgrade to SG 4.x, the default policy for versions < 4.x will be used.
         localWins: This will result in local revisions always being the winner in any conflict.
         remoteWins: This will result in remote revisions always being the winner in any conflict.
         custom: This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter.
@@ -744,6 +745,8 @@ Replication:
         ```
 
         Using complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.
+
+        If a document merge is being done, the `_rev` and `_cv` properties should not be included in the returned document body as Sync Gateway will generate new values for these.
 
         This is an Enterprise Edition only feature.
       type: string
@@ -994,9 +997,11 @@ Database:
       type: string
     cache:
       type: object
+      x-requirePropertiesSorted: true
       properties:
         channel_cache:
           description: The channel cache config settings.
+          x-requirePropertiesSorted: true
           type: object
           properties:
             compact_high_watermark_pct:
@@ -1017,10 +1022,6 @@ Database:
                 When the cache size, determined by `max_number` returns to a value lower than the percentage of it set here, the cache eviction process is stopped.
               type: integer
               default: 60
-            enable_star_channel:
-              description: Used to control whether Sync Gateway should use the all documents (*) channel.
-              type: boolean
-              default: true
             expiry_seconds:
               description: The amount of time (in seconds) to keep entries in the cache beyond the minimum retained.
               type: integer
@@ -1049,6 +1050,13 @@ Database:
               description: The minimum number of entries to maintain in the cache per channel.
               type: integer
               default: 50
+            enable_star_channel:
+              description: |-
+                Since Sync Gateway 4.0, this option no longer has an effect, the star channel is always enabled.
+                If this value is set to false, a database can only exist in the offline state until this configuration is modified.
+              type: boolean
+              default: true
+              deprecated: true
             query_limit:
               description: |-
                 **Deprecated in favour of the database setting `query_pagination_limit`**
@@ -1742,12 +1750,16 @@ Database:
       type: integer
       default: 75
     allow_conflicts:
-      description: This controls whether to allow conflicting document revisions. This option is going to be removed from sync gateway, and conflicts will not be allowed.
+      description: |-
+        Since Sync Gateway 4.0, this option has no effect.
+        If this option is set to true on an existing database, the database must be modified to remove this parameter in order allow the database to come online. Otherwise, the database will be in the offline state.
       type: boolean
       default: false
       deprecated: true
     enable_shared_bucket_access:
-      description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata.
+      description: |-
+        Since Sync Gateway 4.0, this option has no effect.
+        If this option is set to true on an existing database, the database must be modified to remove this parameter in order allow the database to come online. Otherwise, the database will be in the offline state.
       type: boolean
       default: true
       deprecated: true

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -175,12 +176,6 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	}
 	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*(*numPools))
 
-	// Query to see if mobile XDCR bucket setting is set and store on bucket object
-	err = gocbv2Bucket.queryHLVBucketSetting(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	return gocbv2Bucket, nil
 }
 
@@ -265,29 +260,6 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	}
 }
 
-// queryHLVBucketSetting sends request to server to check for enableCrossClusterVersioning bucket setting
-func (b *GocbV2Bucket) queryHLVBucketSetting(ctx context.Context) error {
-	url := fmt.Sprintf("/pools/default/buckets/%s", b.GetName())
-	output, statusCode, err := b.MgmtRequest(ctx, http.MethodGet, url, "application/x-www-form-urlencoded", nil)
-	if err != nil || statusCode != http.StatusOK {
-		return fmt.Errorf("error executing query for mobile XDCR bucket setting, status code: %d error: %v output: %s", statusCode, err, string(output))
-	}
-
-	type bucket struct {
-		SupportsHLV *bool `json:"enableCrossClusterVersioning,omitempty"`
-	}
-	var bucketSettings bucket
-	err = JSONUnmarshal(output, &bucketSettings)
-	if err != nil {
-		return err
-	}
-	// In Server < 7.6.1 this field will not be present, but if it is not configured on the bucket, it will return false
-	if bucketSettings.SupportsHLV != nil {
-		b.supportsHLV = *bucketSettings.SupportsHLV
-	}
-	return nil
-}
-
 func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	groupID := ""
 	return StartGocbDCPFeed(ctx, b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
@@ -350,6 +322,63 @@ func (b *GocbV2Bucket) GetMaxVbno() (uint16, error) {
 	}
 
 	return uint16(vbNo), nil
+}
+
+// GetCCVSettings returns the highest CAS value across all vBuckets for a bucket with CCV enabled.
+func (b *GocbV2Bucket) GetCCVSettings(ctx context.Context) (ccvEnabled bool, maxCAS map[VBNo]uint64, err error) {
+	uri := "/pools/default/buckets/" + b.GetName()
+	output, status, err := b.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return false, nil, RedactErrorf("unable to get CCV starting cas for bucket %q: %w", UD(b.GetName()), err)
+	}
+	if status != http.StatusOK {
+		return false, nil, RedactErrorf("unable to get CCV starting cas for bucket %q, status %d", UD(b.GetName()), status)
+	}
+
+	var response struct {
+		EnableCrossClusterVersioning *bool    `json:"enableCrossClusterVersioning"`
+		VBucketsMaxCas               []string `json:"vBucketsMaxCas"`
+	}
+	if err := JSONUnmarshal(output, &response); err != nil {
+		return false, nil, RedactErrorf("unable to parse bucket info JSON for %q: %w", UD(b.GetName()), err)
+	}
+
+	// In Server < 7.6.1 this field will not be present at all
+	if response.EnableCrossClusterVersioning == nil {
+		return false, nil, nil
+	}
+	// CCV supported but not enabled
+	if !*response.EnableCrossClusterVersioning {
+		InfofCtx(ctx, KeyAll, "Bucket %q does not have enableCrossClusterVersioning set", UD(b.GetName()))
+		return false, nil, nil
+	}
+
+	numVBuckets, err := b.GetMaxVbno()
+	if err != nil {
+		return false, nil, fmt.Errorf("error getting vbucket count: %v", err)
+	}
+
+	highCAS := make(map[VBNo]uint64, numVBuckets)
+	// we'd always expect a CAS value per vbucket if CCV is enabled and has propagated correctly
+	// except after a bucket flushed in Server < 7.6.8 see MB-64705
+	// Treating this as ECCV=true with startingCas=0, which will mean imports will all get tagged with bucket SourceID.
+	if len(response.VBucketsMaxCas) != int(numVBuckets) {
+		InfofCtx(ctx, KeyBucket, "Bucket %q has enableCrossClusterVersioning=true but unexpected number of vbucket CAS values - expected %d, got %+v. Treating all imports as originating on this Couchbase Server cluster.", MD(b.GetName()), numVBuckets, response.VBucketsMaxCas)
+		for i := range numVBuckets {
+			highCAS[VBNo(i)] = 0
+		}
+		return true, highCAS, nil
+	}
+
+	for i, casStr := range response.VBucketsMaxCas {
+		cas, err := strconv.ParseUint(casStr, 10, 64)
+		if err != nil {
+			return false, nil, fmt.Errorf("error parsing vbucket CAS value %q for vBucket %d: %v", casStr, i, err)
+		}
+		highCAS[VBNo(i)] = cas
+	}
+
+	return true, highCAS, nil
 }
 
 func (b *GocbV2Bucket) getConfigSnapshot() (*gocbcore.ConfigSnapshot, error) {
@@ -468,10 +497,33 @@ func (b *GocbV2Bucket) QueryEpsCount() (int, error) {
 	return len(agent.N1qlEps()), nil
 }
 
-// Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
-// found, retrieves the cluster-wide value.
+// MetadataPurgeInterval gets the metadata purge interval for the bucket. Checks for a bucket-specific value before the cluster value.
 func (b *GocbV2Bucket) MetadataPurgeInterval(ctx context.Context) (time.Duration, error) {
 	return getMetadataPurgeInterval(ctx, b)
+}
+
+// VersionPruningWindow gets the version pruning window for the bucket.
+func (b *GocbV2Bucket) VersionPruningWindow(ctx context.Context) (time.Duration, error) {
+	uri := fmt.Sprintf("/pools/default/buckets/%s", b.GetName())
+	respBytes, statusCode, err := b.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return 0, err
+	}
+
+	if statusCode == http.StatusForbidden {
+		return 0, RedactErrorf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve version pruning window.", UD(uri))
+	} else if statusCode != http.StatusOK {
+		return 0, fmt.Errorf("failed with status code %d", statusCode)
+	}
+
+	var response struct {
+		VersionPruningWindowHrs int64 `json:"versionPruningWindowHrs,omitempty"`
+	}
+	if err := JSONUnmarshal(respBytes, &response); err != nil {
+		return 0, err
+	}
+
+	return time.Duration(response.VersionPruningWindowHrs) * time.Hour, nil
 }
 
 func (b *GocbV2Bucket) MaxTTL(ctx context.Context) (int, error) {

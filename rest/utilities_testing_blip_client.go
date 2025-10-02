@@ -190,12 +190,13 @@ type clientSeq uint64
 
 // clientDocRev represents a revision of a document stored on this client, including any metadata associated with this specific revision.
 type clientDocRev struct {
-	clientSeq clientSeq
-	version   DocVersion
-	HLV       db.HybridLogicalVector // The full HLV for the revision, populated when mode = HLV
-	body      []byte
-	isDelete  bool
-	message   *blip.Message // rev or norev message associated with this revision when replicated
+	clientSeq   clientSeq
+	version     DocVersion
+	HLV         db.HybridLogicalVector // The full HLV for the revision, populated when mode = HLV
+	body        []byte
+	isDelete    bool
+	pullMessage *blip.Message // rev or norev message associated with this revision is successfully pulled and the response is received and processed by BlipTesterCollectionClient
+	pushMessage *blip.Message // rev or norev message associated with this revision is successfully pushed to Sync Gateway and a response has been received
 }
 
 // clientDoc represents a document stored on the client - it may also contain older versions of the document.
@@ -355,11 +356,7 @@ func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.Hybr
 		updatedHLV.UpdateWithIncomingHLV(incomingHLV)
 		return incomingBody, *updatedHLV
 	}
-	newCV := db.Version{
-		SourceID: btcc.parent.SourceID,
-		Value:    uint64(btcc.hlc.Now()),
-	}
-	require.NoError(btcc.TB(), updatedHLV.MergeWithIncomingHLV(newCV, incomingHLV))
+	incomingHLV.UpdateWithIncomingHLV(updatedHLV)
 	return latestLocalRev.body, *updatedHLV
 }
 
@@ -959,7 +956,8 @@ func (btcc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, ve
 	require.True(btcc.TB(), ok, "docID %q not found in _seqFromDocID", docID)
 	doc._latestServerVersion = version
 	rev := doc._revisionsBySeq[doc._seqsByVersions[version]]
-	rev.message = msg
+	rev.pushMessage = msg
+	doc._revisionsBySeq[doc._seqsByVersions[version]] = rev
 }
 
 // newBlipTesterReplication creates a new BlipTesterReplicator with the given id and BlipTesterClient. Used to instantiate a push or pull replication for the client.
@@ -1889,18 +1887,6 @@ func (btcc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte) {
 	return data
 }
 
-// GetMessage returns the message stored in the Client under the given serial number
-func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
-	btr.messagesLock.RLock()
-	defer btr.messagesLock.RUnlock()
-
-	if msg, ok := btr.messages[serialNumber]; ok {
-		return msg, ok
-	}
-
-	return nil, false
-}
-
 // GetMessages returns a map of all messages stored in the Client keyed by serial number. These messages are mutable, but the response of the messages has been received so they should be effectively immutable.
 func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]*blip.Message {
 	btr.messagesLock.RLock()
@@ -1935,61 +1921,81 @@ func (btr *BlipTesterReplicator) GetAllMessagesSummary() string {
 	return output.String()
 }
 
-// WaitForBlipRevMessage blocks until the given doc ID and rev ID has been stored by the replicator, and returns the message when found. If message body is not found after 10 seconds, test will fail.
-// Consider usage of BlipTesterCollectionClient.WaitForBlipRevMessage if you do not need to verify a specific push or pull message.
-func (btr *BlipTesterReplicator) WaitForBlipRevMessage(docID string, version DocVersion) (msg *blip.Message) {
-	require.EventuallyWithT(btr.TB(), func(c *assert.CollectT) {
-		// make copy of map, since the replicator could be writing to it while we're iterating
-		for _, m := range btr.GetMessages() {
-			if m.Profile() != db.MessageRev {
-				continue
-			}
-			if m.Properties[db.RevMessageID] != docID {
-				continue
-			}
-			revID := m.Properties[db.RevMessageRev]
-			if version.RevTreeID != "" {
-				if assert.Equal(c, version.RevTreeID, revID) {
-					msg = m
-					break
-				}
-				continue
-			}
-			assert.False(c, version.CV.IsEmpty(), "version.CV and version.RevTree are empty for docID: %s, revID: %s", docID, revID)
-			if assert.Equal(c, version.CV.String(), revID) {
-				msg = m
-				break
-			}
-		}
-		assert.NotNil(c, msg, "Could not find docID:%s version:%#v", docID, version)
-	}, 10*time.Second, 5*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message: docID:%s version:%#v", docID, version)
-	require.NotNil(btr.TB(), msg, "Could not find docID:%s version:%#v", docID, version)
-	return msg
-}
-
 func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messagesLock.Lock()
 	defer btr.messagesLock.Unlock()
 	btr.messages[msg.SerialNumber()] = msg
 }
 
-// WaitForBlipRevMessage will return the blip message associated with a specified doc version after the revision
-// is stored locally for the BlipTesterCollectionClient. This will find a pull rev message correctly, but may not
-// find the relevant push replication rev message.
-// See btc.pushReplication.WaitForBlipRevMessage.
+// WaitForPushRevMessage will return the blip message associated with a specified doc version after the revision
+// is pushed successfully.
 // If the message is not found after 10 seconds, the test will fail.
-func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (msg *blip.Message) {
-	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
-		var ok bool
-		msg, ok = btc.GetBlipRevMessage(docID, docVersion)
-		assert.True(c, ok, "Could not find docID:%+v, Version: %+v", docID, docVersion)
-	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for BLIP message docID: %v, Version: %v", docID, docVersion)
-	require.NotNil(btc.TB(), msg, "msg is nil for docID:%+v, version: %+v", docID, docVersion)
+func (btcc *BlipTesterCollectionClient) WaitForPushRevMessage(docID string, version DocVersion) *blip.Message {
+	var msg *blip.Message
+	require.EventuallyWithT(btcc.TB(), func(c *assert.CollectT) {
+		btcc.seqLock.RLock()
+		defer btcc.seqLock.RUnlock()
+		doc, ok := btcc._getClientDoc(docID)
+		if !assert.True(c, ok, "docID %q not found", docID) {
+			return
+		}
+		var lookupVersion DocVersion
+		if btcc.UseHLV() {
+			lookupVersion = DocVersion{CV: version.CV}
+		} else {
+			lookupVersion = DocVersion{RevTreeID: version.RevTreeID}
+		}
+
+		seq, ok := doc._seqsByVersions[lookupVersion]
+		if !assert.True(c, ok, "Found %s but not %v version", docID, version) {
+			return
+		}
+		rev, ok := doc._revisionsBySeq[seq]
+		require.True(btcc.TB(), ok, "seq %q for docID %q found but no rev in _seqStore. This should be impossible in design of BlipTesterCollectionClient", seq, docID)
+		if !assert.NotNil(c, rev.pushMessage, "pushMessage for %s %v is not present", docID, version) {
+			return
+		}
+		msg = rev.pushMessage
+
+	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for push rev message")
 	return msg
 }
 
-// GetBlipRevMessage returns the rev message that wrote the given docID/DocVersion on the client.
-func (btcc *BlipTesterCollectionClient) GetBlipRevMessage(docID string, version DocVersion) (msg *blip.Message, found bool) {
+// WaitForPullRevMessage will return the blip message associated with a specified doc version after the revision
+// is stored locally for the BlipTesterCollectionClient.
+// If the message is not found after 10 seconds, the test will fail.
+func (btcc *BlipTesterCollectionClient) WaitForPullRevMessage(docID string, version DocVersion) *blip.Message {
+	var msg *blip.Message
+	require.EventuallyWithT(btcc.TB(), func(c *assert.CollectT) {
+		btcc.seqLock.RLock()
+		defer btcc.seqLock.RUnlock()
+		doc, ok := btcc._getClientDoc(docID)
+		if !assert.True(c, ok, "docID %q not found", docID) {
+			return
+		}
+		var lookupVersion DocVersion
+		if btcc.UseHLV() {
+			lookupVersion = DocVersion{CV: version.CV}
+		} else {
+			lookupVersion = DocVersion{RevTreeID: version.RevTreeID}
+		}
+
+		seq, ok := doc._seqsByVersions[lookupVersion]
+		if !assert.True(c, ok, "Found %s but not %v version", docID, version) {
+			return
+		}
+		rev, ok := doc._revisionsBySeq[seq]
+		require.True(btcc.TB(), ok, "seq %q for docID %q found but no rev in _seqStore. This should be impossible in design of BlipTesterCollectionClient", seq, docID)
+		if !assert.NotNil(c, rev.pullMessage, "pullMessage for is nil for docID:%+v, version: %+v", docID, version) {
+			return
+		}
+		msg = rev.pullMessage
+	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for pull rev message")
+	return msg
+}
+
+// GetPullRevMessage returns the last successful rev message that wrote the given docID/DocVersion on the client.
+func (btcc *BlipTesterCollectionClient) GetPullRevMessage(docID string, version DocVersion) (msg *blip.Message, found bool) {
 	btcc.seqLock.RLock()
 	defer btcc.seqLock.RUnlock()
 
@@ -2003,12 +2009,11 @@ func (btcc *BlipTesterCollectionClient) GetBlipRevMessage(docID string, version 
 
 		if seq, ok := doc._seqsByVersions[lookupVersion]; ok {
 			if rev, ok := doc._revisionsBySeq[seq]; ok {
-				require.NotNil(btcc.TB(), rev.message, "rev.message is nil for docID:%+v, version: %+v", docID, version)
-				return rev.message, true
+				require.NotNil(btcc.TB(), rev.pullMessage, "rev.pullMessage is nil for docID:%+v, version: %+v", docID, version)
+				return rev.pullMessage, true
 			}
 		}
 	}
-
 	return nil, false
 }
 
@@ -2034,14 +2039,19 @@ func (btcRunner *BlipTestClientRunner) WaitForDoc(clientID uint32, docID string)
 	return btcRunner.SingleCollection(clientID).WaitForDoc(docID)
 }
 
-// WaitForBlipRevMessage blocks until the given doc ID and rev ID has been stored by the client, and returns the message when found. If document is not found after 10 seconds, test will fail.
-func (btcRunner *BlipTestClientRunner) WaitForBlipRevMessage(clientID uint32, docID string, version DocVersion) *blip.Message {
-	return btcRunner.SingleCollection(clientID).WaitForBlipRevMessage(docID, version)
+// WaitForPullRevMessage blocks until the given doc ID and rev ID has been stored by the client as part of a pull replication and returns the message when found. If document is not found after 10 seconds, test will fail.
+func (btcRunner *BlipTestClientRunner) WaitForPullRevMessage(clientID uint32, docID string, version DocVersion) *blip.Message {
+	return btcRunner.SingleCollection(clientID).WaitForPullRevMessage(docID, version)
 }
 
-// GetBlipRevMessage returns the rev message that wrote the given docID/DocVersion on the client.
-func (btcRunner *BlipTestClientRunner) GetBlipRevMessage(clientID uint32, docID string, version DocVersion) (msg *blip.Message, found bool) {
-	return btcRunner.SingleCollection(clientID).GetBlipRevMessage(docID, version)
+// WaitForPushRevMessage blocks until the given doc ID and rev ID has been stored by the client as part of a push replication and returns the message when found. If document is not found after 10 seconds, test will fail.
+func (btcRunner *BlipTestClientRunner) WaitForPushRevMessage(clientID uint32, docID string, version DocVersion) *blip.Message {
+	return btcRunner.SingleCollection(clientID).WaitForPushRevMessage(docID, version)
+}
+
+// GetPullRevMessage returns the rev message that wrote the given docID/DocVersion on the client.
+func (btcRunner *BlipTestClientRunner) GetPullRevMessage(clientID uint32, docID string, version DocVersion) (msg *blip.Message, found bool) {
+	return btcRunner.SingleCollection(clientID).GetPullRevMessage(docID, version)
 }
 
 func (btcRunner *BlipTestClientRunner) StartOneshotPull(clientID uint32) {
@@ -2181,12 +2191,12 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{
-		clientSeq: newClientSeq,
-		isDelete:  opts.isDelete,
-		message:   opts.msg,
-		body:      newBody,
-		HLV:       updatedHLV,
-		version:   newVersion,
+		clientSeq:   newClientSeq,
+		isDelete:    opts.isDelete,
+		pullMessage: opts.msg,
+		body:        newBody,
+		HLV:         updatedHLV,
+		version:     newVersion,
 	}
 
 	if !hasLocalDoc {

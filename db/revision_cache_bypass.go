@@ -47,7 +47,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	}
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
-		docRev.hlvHistory = hlv.ToHistoryForHLV()
+		docRev.HlvHistory = hlv.ToHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -74,7 +74,7 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 	}
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
-		docRev.hlvHistory = hlv.ToHistoryForHLV()
+		docRev.HlvHistory = hlv.ToHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -101,7 +101,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 	}
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
-		docRev.hlvHistory = hlv.ToHistoryForHLV()
+		docRev.HlvHistory = hlv.ToHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -129,6 +129,10 @@ func (rc *BypassRevisionCache) RemoveWithRev(ctx context.Context, docID, revID s
 }
 
 func (rc *BypassRevisionCache) RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32) {
+	// no-op
+}
+
+func (rc *BypassRevisionCache) RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32) {
 	// no-op
 }
 

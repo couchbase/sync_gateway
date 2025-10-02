@@ -56,13 +56,10 @@ if [ "${USE_GO_MODULES:-}" == "false" ]; then
     go get -u -v github.com/axw/gocov/gocov
     go get -u -v github.com/AlekSi/gocov-xml
 else
-    # Install tools to use after job has completed
-    # go2xunit will fail with 1.23 with name mismatch (try disabling parallel mode), but without any t.Parallel()
-    go install golang.org/dl/go1.22.8@latest
-    ~/go/bin/go1.22.8 download
-    ~/go/bin/go1.22.8 install -v github.com/tebeka/go2xunit@latest
-    go install -v github.com/axw/gocov/gocov@latest
-    go install -v github.com/AlekSi/gocov-xml@latest
+    # Install tools to use
+    go install github.com/axw/gocov/gocov@latest
+    go install github.com/AlekSi/gocov-xml@latest
+    go install gotest.tools/gotestsum@latest
 fi
 
 if [ "${SG_TEST_X509:-}" == "true" -a "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
@@ -77,7 +74,7 @@ INT_LOG_FILE_NAME="verbose_int"
 if [ -d "godeps" ]; then
     export GOPATH=$(pwd)/godeps
 fi
-export PATH=$PATH:$(go env GOPATH)/bin
+export PATH=$PATH:$(go env GOPATH)/bin:~/go/bin
 echo "PATH: $PATH"
 
 if [ "${TEST_DEBUG:-}" == "true" ]; then
@@ -109,10 +106,15 @@ if [ "${SG_TEST_PROFILE_FREQUENCY:-}" == "true" ]; then
 fi
 
 if [ "${RUN_WALRUS}" == "true" ]; then
+    set +e
     # EE
-    go test -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode,cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ee.out.raw 2>&1 | true
+    gotestsum --junitfile=rosmar-ee.xml --junitfile-project-name rosmar-EE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode,cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ee.out 2>&1
+    xmlstarlet ed -u '//testcase/@classname' -x 'concat("rosmar-EE-", .)' rosmar-ee.xml > verbose_unit_ee.xml
     # CE
-    go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
+    gotestsum --junitfile=rosmar-ce.xml --junitfile-project-name rosmar-CE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out 2>&1
+    xmlstarlet ed -u '//testcase/@classname' -x 'concat("rosmar-CE-", .)' rosmar-ce.xml > verbose_unit_ce.xml
+    set -e
+
 fi
 
 # Run CBS
@@ -141,26 +143,22 @@ else
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_devmode"
 fi
 
-go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+gotestsum --junitfile=integration.xml --junitfile-project-name integration --junitfile-testcase-classname relative --format standard-verbose -- ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true
 fi
 
 # Collect CBS logs if server error occurred
-if [ "${SG_CBCOLLECT_ALWAYS:-}" == "true" ] || grep -a -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out.raw"; then
+if [ "${SG_CBCOLLECT_ALWAYS:-}" == "true" ] || grep -a -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out"; then
     docker exec -t couchbase /opt/couchbase/bin/cbcollect_info /workspace/cbcollect.zip
 fi
 
-# Generate xunit test report that can be parsed by the JUnit Plugin
-LC_CTYPE=C tr -dc [:print:][:space:] < ${INT_LOG_FILE_NAME}.out.raw > ${INT_LOG_FILE_NAME}.out # Strip non-printable characters
-~/go/bin/go2xunit -input "${INT_LOG_FILE_NAME}.out" -output "${INT_LOG_FILE_NAME}.xml"
+# If rosmar tests were run, then prepend classname with integration to tell them apart
 if [ "${RUN_WALRUS}" == "true" ]; then
-    # Strip non-printable characters before xml creation
-    LC_CTYPE=C tr -dc [:print:][:space:] < "verbose_unit_ee.out.raw" > "verbose_unit_ee.out"
-    LC_CTYPE=C tr -dc [:print:][:space:] < "verbose_unit_ce.out.raw" > "verbose_unit_ce.out"
-    ~/go/bin/go2xunit -input "verbose_unit_ee.out" -output "verbose_unit_ee.xml"
-    ~/go/bin/go2xunit -input "verbose_unit_ce.out" -output "verbose_unit_ce.xml"
+    xmlstarlet ed -u '//testcase/@classname' -x 'concat("integration-EE-", .)' integration.xml > "${INT_LOG_FILE_NAME}.xml"
+else
+    cp integration.xml "${INT_LOG_FILE_NAME}.xml"
 fi
 
 # Get coverage

@@ -395,7 +395,12 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		if syncData == nil {
 			return
 		}
-		isSGWrite, _, _ := syncData.IsSGWrite(event.Cas, doc.Body, rawUserXattr)
+		var rawVV *rawHLV
+		vv := doc.Xattrs[base.VvXattrName]
+		if len(vv) > 0 {
+			rawVV = base.Ptr(rawHLV(vv))
+		}
+		isSGWrite, _, _ := syncData.IsSGWrite(ctx, event.Cas, doc.Body, rawUserXattr, rawVV)
 		if !isSGWrite {
 			return
 		}
@@ -504,6 +509,15 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	// Now add the entry for the new doc revision:
 	if len(rawUserXattr) > 0 {
 		collection.revisionCache.RemoveRevOnly(ctx, docID, syncData.GetRevTreeID())
+	}
+	// remove the local doc from the revision cache if the change is a result of a conflict resolution that resulted
+	// in local wins, given the HLV will have been updated but CV not changed
+	if syncData.Flags&channels.UnchangedCV != 0 {
+		vrs := Version{
+			SourceID: syncData.RevAndVersion.CurrentSource,
+			Value:    base.HexCasToUint64(syncData.RevAndVersion.CurrentVersion),
+		}
+		collection.revisionCache.RemoveCVOnly(ctx, docID, &vrs)
 	}
 
 	change := &LogEntry{

@@ -704,7 +704,12 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		}
 
 		replacedRevID = revID
-		revID = replacementRev.RevID
+		// Send replacement as CV where possible
+		if bsc.useHLV() && !replacementRev.CV.IsEmpty() {
+			revID = replacementRev.CV.String()
+		} else {
+			revID = replacementRev.RevID
+		}
 		docRev = replacementRev
 	} else if originalErr != nil {
 		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), originalErr)
@@ -752,8 +757,8 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	if !bsc.useHLV() || localIsLegacyRev {
 		history = toHistory(docRev.History, knownRevs, maxHistory)
 	} else {
-		if docRev.hlvHistory != "" {
-			history = append(history, docRev.hlvHistory)
+		if docRev.HlvHistory != "" {
+			history = append(history, docRev.HlvHistory)
 		}
 	}
 

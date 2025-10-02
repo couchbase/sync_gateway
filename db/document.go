@@ -282,12 +282,13 @@ type Document struct {
 	rawUserXattr       []byte              // Raw user xattr as retrieved from the bucket
 	MetadataOnlyUpdate *MetadataOnlyUpdate // Contents of _mou xattr, marshalled/unmarshalled with document from xattrs
 
-	HLV            *HybridLogicalVector // Contents of _vv xattr,
-	Deleted        bool
-	DocExpiry      uint32
-	RevID          string
-	inlineSyncData bool
-	RevSeqNo       uint64 // Server rev seq no for a document
+	HLV               *HybridLogicalVector // Contents of _vv xattr,
+	Deleted           bool
+	DocExpiry         uint32
+	RevID             string
+	inlineSyncData    bool
+	localWinsConflict bool   // True if this document is the result of a local-wins conflict resolution
+	RevSeqNo          uint64 // Server rev seq no for a document
 }
 
 // GlobalSyncData is the structure for the system xattr that is migrated with XDCR.
@@ -660,8 +661,16 @@ func HasUserXattrChanged(userXattr []byte, prevUserXattrHash string) bool {
 	return userXattrCrc32cHash(userXattr) != prevUserXattrHash
 }
 
-// SyncData.IsSGWrite - used during feed-based import
-func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
+// CVEqual returns true if the provided CV does not match _sync.rev.ver and _sync.rev.src. The caller is responsible for testing if the values are non-empty.
+func (s *SyncData) CVEqual(cv Version) bool {
+	if cv.SourceID != s.RevAndVersion.CurrentSource {
+		return false
+	}
+	return cv.Value == base.HexCasToUint64(s.RevAndVersion.CurrentVersion)
+}
+
+// IsSGWrite determines if a document was written by Sync Gateway or via an SDK. CV is an optional parameter to check. This would represent _vv.ver and _vv.src
+func (s *SyncData) IsSGWrite(ctx context.Context, cas uint64, rawBody []byte, rawUserXattr []byte, cv cvExtractor) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 
 	// If cas matches, it was a SG write
 	if cas == s.GetSyncCas() {
@@ -674,24 +683,31 @@ func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (i
 	}
 
 	if HasUserXattrChanged(rawUserXattr, s.Crc32cUserXattr) {
+		// technically the crc32 matches but return false on crc32Match so Crc32MatchCount is not incremented, to mark that it would be imported
 		return false, false, false
 	}
 
+	if s.RevAndVersion.CurrentVersion != "" || s.RevAndVersion.CurrentSource != "" {
+		extractedCV, err := cv.ExtractCV()
+		if !errors.Is(err, base.ErrNotFound) {
+			if err != nil {
+				base.InfofCtx(ctx, base.KeyImport, "Unable to extract cv during IsSGWrite write check - skipping cv match check: %v", err)
+				return true, true, false
+			}
+			if !s.CVEqual(*extractedCV) {
+				// technically the crc32 matches but return false so Crc32MatchCount is not incremented, to mark that it would be imported
+				return false, false, false
+			}
+		}
+	}
 	return true, true, false
 }
 
-// doc.IsSGWrite - used during on-demand import.  Doesn't invoke SyncData.IsSGWrite so that we
-// can complete the inexpensive cas check before the (potential) doc marshalling.
+// IsSGWrite - used during on-demand import. Check SyncData and HLV to determine if the document was written by Sync Gateway or by a Couchbase Server SDK write.
 func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
-
 	// If the raw body is available, use SyncData.IsSGWrite
 	if rawBody != nil && len(rawBody) > 0 {
-
-		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr)
-		if !isSgWriteFeed {
-			base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
-		}
-
+		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(ctx, doc.Cas, rawBody, doc.rawUserXattr, doc.HLV)
 		return isSgWriteFeed, crc32MatchFeed, bodyChangedFeed
 	}
 
@@ -716,15 +732,25 @@ func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite b
 
 	// If the current body crc32c matches the one in doc.SyncData, this was an SG write (i.e. has already been imported)
 	if currentBodyCrc32c != doc.SyncData.Crc32c {
-		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
+		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on crc32 hash", base.UD(doc.ID))
 		return false, false, true
 	}
 
 	if HasUserXattrChanged(doc.rawUserXattr, doc.Crc32cUserXattr) {
+		// technically the crc32 matches but return false for crc32Match so Crc32MatchCount is not incremented. The document is not a match and wil get imported.
 		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
 		return false, false, false
 	}
+	if doc.RevAndVersion.CurrentSource == "" && doc.RevAndVersion.CurrentVersion == "" {
+		return true, true, false
+	}
 
+	if doc.HLV != nil {
+		if !doc.CVEqual(*doc.HLV.ExtractCurrentVersionFromHLV()) {
+			base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on mismatch between version vector cv %s and sync metadata cv %s", base.UD(doc.ID), doc.HLV.GetCurrentVersionString(), doc.RevAndVersion.CV())
+			return false, true, false
+		}
+	}
 	return true, true, false
 }
 

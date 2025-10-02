@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -28,6 +29,31 @@ import (
 // encodedRevTreeSourceID is a base64 encoded value representing a revision that came from a 4.x client with a
 // revtree ID.
 const encodedRevTreeSourceID = "Revision+Tree+Encoding"
+
+// HLVHistoryUpdated represents the outcome of adding a version to an HLV
+type HLVHistoryUpdated uint16
+
+const (
+	// versionAddedToPV indicates the version was added to the HLV history
+	versionAddedToPV HLVHistoryUpdated = iota
+	// sourceIsCV means the version wasn't added to the HLV history as the source matched the current version source
+	sourceIsCV
+	// versionInMVOlder means that the version wasn't added to the HLV history since a matching source existing in MV. That version in MV was equal or older than the version being added.
+	versionInMVOlder
+	// versionInMVNewer means that the version wasn't added to the HLV history since a matching source existing in MV. That version in MV was newer than the version being added.
+	versionInMVNewer
+	// versionInPVNewer means the version wasn't added to the HLV history since a matching source existing in PV with a newer version number.
+	versionInPVNewer
+)
+
+const (
+	minPVEntriesBeforeCompaction = 5 // minPVEntriesBeforeCompaction is the minimum number of sources in previous versions before timestamp-based compaction is considered.
+	minPVEntriesRetained         = 3 // minPVEntriesRetained defines the minimum number of PV entries that should be retained after compaction, to avoid removing all history for infrequently updated/replicated documents.
+)
+
+const (
+	unknownSourceID = "Unknown+Source" // used if the document was written before ECCV was enabled
+)
 
 type HLVVersions map[string]uint64 // map of source ID to version uint64 version value
 
@@ -226,6 +252,14 @@ func (hlv *HybridLogicalVector) ExtractCurrentVersionFromHLV() *Version {
 	return &currVersion
 }
 
+// ExtractCV is used to sastify CV only interface. Consider using ExtractCurrentVersionFromHLV or GetCurrentVersion instead if you know hlv is not nil.
+func (hlv *HybridLogicalVector) ExtractCV() (*Version, error) {
+	if hlv == nil {
+		return nil, base.ErrNotFound
+	}
+	return hlv.ExtractCurrentVersionFromHLV(), nil
+}
+
 // HybridLogicalVector is the in memory format for the hLv.
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64      // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
@@ -302,6 +336,51 @@ func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
 	}
 	return existingValueForSource >= version.Value
 
+}
+
+// Compact removes Source ID entries from PV if they are older than the provided purgeInterval.
+func (hlv *HybridLogicalVector) Compact(ctx context.Context, docID string, purgeInterval time.Duration) {
+	// disabled/noop
+	if purgeInterval == 0 {
+		return
+	}
+	compactTimestamp := time.Now().Add(-purgeInterval).UnixNano()
+	hlv.compactWithValue(ctx, docID, uint64(compactTimestamp))
+}
+
+// compactWithValue removes Source ID entries from PV if they are older than the provided value
+// this differs from Compact in that it takes a raw value instead of a duration - for easier unit testing purposes.
+func (hlv *HybridLogicalVector) compactWithValue(ctx context.Context, docID string, compactToValue uint64) {
+	// disabled/noop
+	pvCountBefore := len(hlv.PreviousVersions)
+	if compactToValue == 0 || pvCountBefore < minPVEntriesBeforeCompaction {
+		return
+	}
+
+	// Build candidate list (entries older than threshold)
+	var candidates []Version
+	for s, v := range hlv.PreviousVersions {
+		if v < compactToValue {
+			candidates = append(candidates, Version{SourceID: s, Value: v})
+			base.TracefCtx(ctx, base.KeyCRUD, "HLV PV %s@%d eligible for compaction for doc %q", s, v, base.UD(docID))
+		} else {
+			base.TracefCtx(ctx, base.KeyCRUD, "HLV PV %s@%d within purge interval for doc %q - not compacting", s, v, base.UD(docID))
+		}
+	}
+
+	// sort oldest to newest
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Value < candidates[j].Value })
+
+	for _, c := range candidates {
+		if len(hlv.PreviousVersions) <= minPVEntriesRetained {
+			base.TracefCtx(ctx, base.KeyCRUD, "HLV PV compaction reached minimum retained entries (%d) for doc %q - stopping compaction", minPVEntriesRetained, base.UD(docID))
+			break
+		}
+		base.TracefCtx(ctx, base.KeyCRUD, "Compacting HLV source %s@%d in PV for doc %q", c.SourceID, c.Value, base.UD(docID))
+		delete(hlv.PreviousVersions, c.SourceID)
+	}
+
+	base.DebugfCtx(ctx, base.KeyCRUD, "Compacted %d of %d HLV sources from PV for doc %q older than %d", pvCountBefore-len(hlv.PreviousVersions), pvCountBefore, base.UD(docID), compactToValue)
 }
 
 // AddVersion adds newVersion as the current version to the in memory representation of the HLV.
@@ -787,10 +866,23 @@ func (hlv *HybridLogicalVector) UpdateHistory(incomingHLV *HybridLogicalVector) 
 	if incomingHLV.SourceID != "" {
 		hlv.AddVersionToPV(incomingHLV.SourceID, incomingHLV.Version) // CV
 	}
+
+	invalidateMV := false
+
 	// MV
 	for source, version := range incomingHLV.MergeVersions {
-		hlv.AddVersionToPV(source, version)
+		if hlv.AddVersionToPV(source, version) == versionInMVOlder {
+			invalidateMV = true
+			break
+		}
 	}
+	if invalidateMV {
+		hlv.InvalidateMV()
+		for source, version := range incomingHLV.MergeVersions {
+			hlv.AddVersionToPV(source, version)
+		}
+	}
+
 	// PV
 	for source, version := range incomingHLV.PreviousVersions {
 		hlv.AddVersionToPV(source, version)
@@ -800,30 +892,34 @@ func (hlv *HybridLogicalVector) UpdateHistory(incomingHLV *HybridLogicalVector) 
 // AddVersionToPV wil add the specified version to history if:
 //   - the source is not present in hlv.CV or hlv.MV
 //   - version is newer than any existing version in PV for the same source
-func (hlv *HybridLogicalVector) AddVersionToPV(sourceID string, version uint64) {
+func (hlv *HybridLogicalVector) AddVersionToPV(sourceID string, version uint64) HLVHistoryUpdated {
 
 	// Don't add history if source is present in CV
 	if hlv.SourceID == sourceID {
-		return
+		return sourceIsCV
 	}
 
 	// Don't add history if source is present in MV
-	for source := range hlv.MergeVersions {
+	for source, mvVersion := range hlv.MergeVersions {
 		if source == sourceID {
-			return
+			if mvVersion >= version {
+				return versionInMVNewer
+			}
+			return versionInMVOlder
 		}
 	}
 
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(HLVVersions)
 		hlv.PreviousVersions[sourceID] = version
-		return
+		return versionAddedToPV
 	}
 
-	if _, found := hlv.PreviousVersions[sourceID]; !found || hlv.PreviousVersions[sourceID] < version {
+	if pvVersion, found := hlv.PreviousVersions[sourceID]; !found || pvVersion < version {
 		hlv.PreviousVersions[sourceID] = version
+		return versionAddedToPV
 	}
-
+	return versionInPVNewer
 }
 
 // UpdateWithIncomingHLV will update hlv to the incoming HLV preserving any history on hlv that is not present on the
@@ -864,48 +960,6 @@ func DefaultLWWConflictResolutionType(ctx context.Context, conflict Conflict) (B
 	return conflict.LocalDocument, nil
 }
 
-// localWinsConflictResolutionForHLV will alter the HLV for a local wins conflict resolution. Preserving local MV
-// unless incoming MV has a src common with local MV and has a higher version, in which case local MV is invalidated and moved to PV.
-// In the eventuality that local CV is <= to incoming CV, a new CV will be created with this db's sourceID
-func localWinsConflictResolutionForHLV(ctx context.Context, localHLV, incomingHLV *HybridLogicalVector, docID, sourceID string) (*HybridLogicalVector, error) {
-	if localHLV == nil || incomingHLV == nil {
-		return nil, errors.New("local or incoming hlv is nil for resolveConflict")
-	}
-
-	newHLV := localHLV.Copy()
-
-	// resolving for local wins
-	base.DebugfCtx(ctx, base.KeyVV, "resolving doc %s for local wins, local hlv: %v, incoming hlv: %v", base.UD(docID), localHLV, incomingHLV)
-	newCV := Version{
-		SourceID: sourceID,
-		Value:    expandMacroCASValueUint64,
-	}
-	err := newHLV.MergeWithIncomingHLV(newCV, incomingHLV)
-	if err != nil {
-		return nil, err
-	}
-
-	base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of local wins, resulting HLV: %v", base.UD(docID), newHLV)
-
-	return newHLV, nil
-}
-
-// remoteWinsConflictResolutionForHLV will alter the HLV for a remote wins conflict resolution. Preserving incoming MV
-// unless local MV has a src common with incoming MV and has a higher version, in which case incoming MV is invalidated and moved to PV.
-func remoteWinsConflictResolutionForHLV(ctx context.Context, docID string, localHLV, incomingHLV *HybridLogicalVector) (*HybridLogicalVector, error) {
-	if localHLV == nil || incomingHLV == nil {
-		return nil, errors.New("local or incoming hlv is nil for resolveConflict")
-	}
-
-	newHLV := localHLV.Copy()
-
-	// resolve for remote wins
-	newHLV.UpdateWithIncomingHLV(incomingHLV)
-
-	base.DebugfCtx(ctx, base.KeyVV, "resolved conflict for doc %s in favour of remote wins, resulting HLV: %v", base.UD(docID), newHLV)
-	return newHLV, nil
-}
-
 // LegacyRevToRevTreeEncodedVersion creates a version that has a specific source ID that can be recognized. The version is made up of:
 //
 // - The upper 24 bits of the version are the generation.
@@ -937,3 +991,30 @@ func (hlv *HybridLogicalVector) HasRevEncodedCV() bool {
 func GetGenerationFromEncodedVersionValue(value uint64) int {
 	return int((value >> 40) & 0xFFFFFF)
 }
+
+type rawHLV []byte
+
+// GetCurrentVersion returns the current version from the HLV by unmarshalling a raw _vv xattr. If the rawHLV is nil, returns ErrNotFound.
+func (r *rawHLV) ExtractCV() (*Version, error) {
+	if r == nil {
+		return nil, base.ErrNotFound
+	}
+	limitedHLV := struct {
+		Version  string `json:"ver"`
+		SourceID string `json:"src"`
+	}{}
+	err := base.JSONUnmarshal(*r, &limitedHLV)
+	if err != nil {
+		return nil, fmt.Errorf("could not extract ver and src from _vv xattr (%q): %w", string(*r), err)
+	}
+	return &Version{SourceID: limitedHLV.SourceID, Value: base.HexCasToUint64(limitedHLV.Version)}, nil
+}
+
+// cvExtractor can extract a current version different HLV representations.
+type cvExtractor interface {
+	// ExtractVersion returns the current version from the HLV.
+	ExtractCV() (*Version, error)
+}
+
+var _ cvExtractor = &rawHLV{}
+var _ cvExtractor = &HybridLogicalVector{}

@@ -692,12 +692,6 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 
-	// TODO: CBG-4840 Only requires delta sync until restoration of non-delta sync RevTree ID revision body backups"
-	if !base.IsEnterpriseEdition() {
-		t.Skip("CBG-4840 - temp skip see above comment")
-	}
-	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true), RevMaxAgeSeconds: base.Ptr(uint32(300))}
-
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	rt.GetDatabase().EnableAllowConflicts(rt.TB())
 	// Create Doc
@@ -2061,60 +2055,76 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	rt := NewRestTester(t, nil)
 
 	defer rt.Close()
-
 	rt.GetDatabase().EnableAllowConflicts(rt.TB())
-	const docID = "doc"
-	// Create doc rev 1
-	version := rt.PutDoc(docID, `{"test": "x"}`)
 
-	// Create doc rev 2 with attachment
-	version = rt.UpdateDoc(docID, version, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
-
-	// Create doc rev 3 referencing previous attachment
-	losingVersion3 := rt.UpdateDoc(docID, version, `{"_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`)
-
-	// Create doc conflicting with previous revid referencing previous attachment too
-	winningVersion3 := rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("3-b"), &version, `{"_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "Winning Rev": true}`)
-
-	// Update the winning rev 3 and ensure attachment remains around as the other leaf still references this attachment
-	finalVersion4 := rt.UpdateDoc(docID, *winningVersion3, `{"update": 2}`)
-
-	type docResp struct {
-		Attachments db.AttachmentMap `json:"_attachments"`
+	testCases := []struct {
+		name string
+		eccv bool
+	}{
+		{name: "no eccv", eccv: false},
+		{name: "eccv", eccv: true},
 	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt.GetDatabase().CachedCCVEnabled.Store(tc.eccv)
 
-	var doc1 docResp
-	// Get losing rev and ensure attachment is still there and has not been deleted
-	resp := rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+losingVersion3.RevTreeID, "", map[string]string{"Accept": "application/json"})
-	RequireStatus(t, resp, http.StatusOK)
+			docID := db.SafeDocumentName(t, t.Name())
+			// Create doc rev 1
+			version := rt.PutDoc(docID, `{"test": "x"}`)
 
-	err := base.JSONUnmarshal(resp.BodyBytes(), &doc1)
-	assert.NoError(t, err)
-	require.Contains(t, doc1.Attachments, "hello.txt")
-	require.Equal(t, db.DocAttachment{
-		Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
-		Length: 11,
-		Revpos: 2,
-		Data:   []byte("hello world"),
-	}, doc1.Attachments["hello.txt"])
+			// Create doc rev 2 with attachment
+			version = rt.UpdateDoc(docID, version, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
 
-	attachmentKey := db.MakeAttachmentKey(2, "doc", doc1.Attachments["hello.txt"].Digest)
+			// Create doc rev 3 referencing previous attachment
+			losingVersion3 := rt.UpdateDoc(docID, version, `{"_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`)
 
-	var doc2 docResp
-	// Get winning rev and ensure attachment is indeed removed from this rev
-	resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+finalVersion4.RevTreeID, "", map[string]string{"Accept": "application/json"})
-	RequireStatus(t, resp, http.StatusOK)
+			// Create doc conflicting with previous revid referencing previous attachment too
+			winningVersion3 := rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("3-b"), &version, `{"_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "Winning Rev": true}`)
 
-	err = base.JSONUnmarshal(resp.BodyBytes(), &doc2)
-	assert.NoError(t, err)
-	require.NotContains(t, doc2.Attachments, "hello.txt")
+			// Update the winning rev 3 and ensure attachment remains around as the other leaf still references this attachment
+			finalVersion4 := rt.UpdateDoc(docID, *winningVersion3, `{"update": 2}`)
 
-	// Now remove the attachment in the losing rev by deleting the revision and ensure the attachment gets deleted
-	rt.DeleteDoc(docID, losingVersion3)
+			type docResp struct {
+				Attachments db.AttachmentMap `json:"_attachments"`
+			}
 
-	_, _, err = rt.GetSingleDataStore().GetRaw(attachmentKey)
-	assert.Error(t, err)
-	assert.True(t, base.IsDocNotFoundError(err))
+			var doc1 docResp
+			// Get losing rev and ensure attachment is still there and has not been deleted
+			resp := rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/"+docID+"?attachments=true&rev="+losingVersion3.RevTreeID, "", map[string]string{"Accept": "application/json"})
+			RequireStatus(t, resp, http.StatusOK)
+
+			err := base.JSONUnmarshal(resp.BodyBytes(), &doc1)
+			assert.NoError(t, err)
+			require.Contains(t, doc1.Attachments, "hello.txt")
+			require.Equal(t, db.DocAttachment{
+				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				Length: 11,
+				Revpos: 2,
+				Data:   []byte("hello world"),
+			}, doc1.Attachments["hello.txt"])
+
+			attachmentKey := db.MakeAttachmentKey(2, docID, doc1.Attachments["hello.txt"].Digest)
+
+			var doc2 docResp
+			// Get winning rev and ensure attachment is indeed removed from this rev
+			resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/"+docID+"?attachments=true&rev="+finalVersion4.RevTreeID, "", map[string]string{"Accept": "application/json"})
+			RequireStatus(t, resp, http.StatusOK)
+
+			err = base.JSONUnmarshal(resp.BodyBytes(), &doc2)
+			assert.NoError(t, err)
+			require.NotContains(t, doc2.Attachments, "hello.txt")
+
+			// Now remove the attachment in the losing rev by deleting the revision and ensure the attachment gets deleted
+			rt.DeleteDoc(docID, losingVersion3)
+
+			_, _, err = rt.GetSingleDataStore().GetRaw(attachmentKey)
+			if rt.GetDatabase().CachedCCVEnabled.Load() {
+				require.NoError(t, err, "Attachment should not be deleted as eccv is enabled")
+			} else {
+				base.RequireDocNotFoundError(t, err)
+			}
+		})
+	}
 }
 
 func TestAttachmentsMissing(t *testing.T) {
@@ -2214,36 +2224,45 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 	dataStore := rt.GetSingleDataStore()
 
-	// Create doc with attachment and expiry
-	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 1}`)
-	RequireStatus(t, resp, http.StatusCreated)
-
-	// Wait for document to be expired - this bucket get should also trigger the expiry purge interval
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		_, _, err := dataStore.GetRaw(t.Name())
-		assert.True(c, base.IsDocNotFoundError(err), "expected err %v to be doc not found", err)
-	}, time.Second*10, time.Millisecond*10)
-
-	if base.TestUseXattrs() {
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
-		}, time.Second*10, time.Millisecond*5)
-	} else {
-		// Trigger OnDemand Import for that doc to trigger tombstone
-		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name(), "")
-		RequireStatus(t, resp, http.StatusNotFound)
+	testCases := []struct {
+		name string
+		eccv bool
+	}{
+		{name: "no-eccv", eccv: false},
+		{name: "eccv", eccv: true},
 	}
-	att2Key := db.MakeAttachmentKey(db.AttVersion2, t.Name(), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			lastImportCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
 
-	// With xattrs doc will be imported and will be captured as tombstone and therefore purge attachments
-	// Otherwise attachment will not be purged
-	_, _, err := dataStore.GetRaw(att2Key)
-	if base.TestUseXattrs() {
-		base.RequireDocNotFoundError(t, err)
-	} else {
-		assert.NoError(t, err)
+			rt.GetDatabase().CachedCCVEnabled.Store(tc.eccv)
+			docID := db.SafeDocumentName(t, t.Name())
+			// Create doc with attachment and expiry
+			resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 1}`)
+			RequireStatus(t, resp, http.StatusCreated)
+
+			// Wait for document to be expired - this bucket get should also trigger the expiry purge interval
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				_, _, err := dataStore.GetRaw(docID)
+				assert.True(c, base.IsDocNotFoundError(err), "expected err %v to be doc not found", err)
+			}, time.Second*10, time.Millisecond*10)
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				newImportCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() - lastImportCount
+				assert.Equal(c, int64(1), newImportCount)
+			}, time.Second*10, time.Millisecond*5)
+			att2Key := db.MakeAttachmentKey(db.AttVersion2, docID, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+
+			// With xattrs doc will be imported and will be captured as tombstone and therefore purge attachments
+			// Otherwise attachment will not be purged
+			_, _, err := dataStore.GetRaw(att2Key)
+			if rt.GetDatabase().CachedCCVEnabled.Load() {
+				assert.NoError(t, err)
+			} else {
+				base.RequireDocNotFoundError(t, err)
+			}
+		})
 	}
-
 }
 
 // TestUpdateViaBlipMigrateAttachment:

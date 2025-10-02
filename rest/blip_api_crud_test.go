@@ -1762,9 +1762,8 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	_ = rt.GetSingleDataStore().Delete(tempRevisionDocID)
-	// TODO: CBG-4840 - Requires restoration of non-delta sync RevTree revision backups
-	// assert.NoError(t, err, "Unexpected Error")
+	err = rt.GetSingleDataStore().Delete(tempRevisionDocID)
+	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that there's a norev - modern clients will receive a replacement rev instead
 	_, err = bt2.GetDocAtRev("foo", "3-cde")
@@ -1860,7 +1859,6 @@ func TestSendReplacementRevision(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // TODO: CBG-4833 - Fails when legacy rev ID is sent as a replacement rev
 	btcRunner.Run(func(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
@@ -1884,9 +1882,7 @@ func TestSendReplacementRevision(t *testing.T) {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						// TODO: CBG-4840 - Revs are backed only up by hash of CV (not legacy rev IDs) for non-delta sync cases
-						cvHash := base.Crc32cHashString([]byte(version1.CV.String()))
-						err := collection.PurgeOldRevisionJSON(ctx, docID, cvHash)
+						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
 						require.NoError(t, err)
 						rt.GetDatabase().FlushRevisionCacheForTest()
 					}
@@ -1912,15 +1908,20 @@ func TestSendReplacementRevision(t *testing.T) {
 					_ = btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version2)
 
 					// rev message with a replacedRev property referring to the originally requested rev
-					msg2, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
+					msg2, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version2)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageRev, msg2.Profile())
-					assert.Equal(t, version2.RevTreeID, msg2.Properties[db.RevMessageRev])
-					assert.Equal(t, version1.RevTreeID, msg2.Properties[db.RevMessageReplacedRev])
+					if btc.UseHLV() {
+						assert.Equal(t, version2.CV.String(), msg2.Properties[db.RevMessageRev])
+						assert.Equal(t, version1.CV.String(), msg2.Properties[db.RevMessageReplacedRev])
+					} else {
+						assert.Equal(t, version2.RevTreeID, msg2.Properties[db.RevMessageRev])
+						assert.Equal(t, version1.RevTreeID, msg2.Properties[db.RevMessageReplacedRev])
+					}
 
 					// the blip test framework records a message entry for the originally requested rev as well, but it should point to the message sent for rev 2
 					// this is an artifact of the test framework to make assertions for tests not explicitly testing replacement revs easier
-					msg1, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1)
+					msg1, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version1)
 					require.True(t, ok)
 					assert.Equal(t, msg1, msg2)
 
@@ -1932,11 +1933,11 @@ func TestSendReplacementRevision(t *testing.T) {
 					assert.Nil(t, data)
 
 					// no message for rev 2
-					_, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
+					_, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version2)
 					require.False(t, ok)
 
 					// norev message for the requested rev
-					msg, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1)
+					msg, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version1)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageNoRev, msg.Profile())
 
@@ -1985,7 +1986,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"hello":"alice"}`, string(data))
 
-		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version2)
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, version2)
 		require.True(t, ok)
 		client.AssertOnBlipHistory(t, msg, version1)
 	})
@@ -2041,7 +2042,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		data := btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"hello":"world!"}`, string(data))
 
-		msg, ok := btcRunner.GetBlipRevMessage(client.id, docID, version2)
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, version2)
 		require.True(t, ok)
 
 		client.AssertOnBlipHistory(t, msg, version1)
@@ -3046,10 +3047,10 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 		require.NoError(t, err)
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForBlipRevMessage(btc.id, docID, version)
+		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, version)
 		require.Equal(t, db.MessageNoRev, msg.Profile())
 
-		msg = btcRunner.WaitForBlipRevMessage(btc.id, docID2, version2)
+		msg = btcRunner.WaitForPullRevMessage(btc.id, docID2, version2)
 		require.Equal(t, db.MessageNoRev, msg.Profile())
 	})
 }
@@ -3166,7 +3167,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				btcRunner.StartOneshotPull(btc2.id)
 
-				msg := btcRunner.WaitForBlipRevMessage(btc2.id, docID, revID)
+				msg := btcRunner.WaitForPullRevMessage(btc2.id, docID, revID)
 				require.Equal(t, db.MessageNoRev, msg.Profile())
 			})
 		}
@@ -3274,7 +3275,7 @@ func TestBlipMergeVersions(t *testing.T) {
 		btcRunner.StartPull(btc.id)
 		btcRunner.WaitForDoc(btc.id, docID)
 
-		revMsg := btcRunner.WaitForBlipRevMessage(btc.id, docID, DocVersion{CV: db.Version{SourceID: "CBL1", Value: 3}})
+		revMsg := btcRunner.WaitForPullRevMessage(btc.id, docID, DocVersion{CV: db.Version{SourceID: "CBL1", Value: 3}})
 
 		require.Equal(t, "3@CBL1", revMsg.Properties[db.RevMessageRev])
 		// mv is not ordered so either string is valid
@@ -3409,33 +3410,25 @@ func TestBlipPullConflict(t *testing.T) {
 		client := btcRunner.SingleCollection(btc.id)
 		preConflictCBLVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(cblBody))
 		require.NotEqual(t, sgVersion, preConflictCBLVersion)
+		_, preConflictHLV, _ := client.GetDoc(docID)
+		require.Empty(t, preConflictHLV.PreviousVersions)
+		require.Empty(t, preConflictHLV.MergeVersions)
 
 		btcRunner.StartOneshotPull(btc.id)
 
+		// expect resolution as CBL wins (local wins)
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			_, _, postConflictCBLVersion := client.GetDoc(docID)
-			assert.Greater(c, postConflictCBLVersion.CV.Value, preConflictCBLVersion.CV.Value)
-		}, time.Second*10, time.Millisecond*10, "Expected sgVersion and cblVersion to be different")
-
-		postConflictDoc, postConflictHLV, postConflictVersion := client.GetDoc(docID)
-		require.Equal(t, cblBody, string(postConflictDoc))
-		// after resolving the conflict, the CBL version should remain the same but the ver of the CV is
-		// updated to be newer than the pre-conflict CBL version
-		require.Equal(t, preConflictCBLVersion.CV.SourceID, postConflictVersion.CV.SourceID)
-		require.Greater(t, postConflictVersion.CV.Value, preConflictCBLVersion.CV.Value, "PreConflictHLV %#v PostConflictHLV %#v", preConflictCBLVersion, postConflictHLV)
-		require.Empty(t, postConflictHLV.PreviousVersions, "postConflictHLV: %#+v\n", postConflictHLV)
-		require.Equal(t, db.HLVVersions{
-			sgVersion.CV.SourceID:             sgVersion.CV.Value,
-			preConflictCBLVersion.CV.SourceID: preConflictCBLVersion.CV.Value,
-		}, postConflictHLV.MergeVersions)
-
-		btcRunner.StartPush(btc.id)
-		rt.WaitForVersion(docID, *postConflictVersion)
-
-		collection, ctx := rt.GetSingleTestDatabaseCollection()
-		bucketDoc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-		require.NoError(t, err)
-		require.True(t, bucketDoc.HLV.Equal(postConflictHLV), "Expected bucket doc HLV to match post-conflict HLV, got %#v, expected %#v", bucketDoc.HLV, postConflictHLV)
+			body, postConflictHLV, _ := client.GetDoc(docID)
+			assert.Equal(c, db.HybridLogicalVector{
+				CurrentVersionCAS: 0,
+				Version:           preConflictCBLVersion.CV.Value,
+				SourceID:          preConflictCBLVersion.CV.SourceID,
+				PreviousVersions: db.HLVVersions{
+					sgVersion.CV.SourceID: sgVersion.CV.Value,
+				},
+			}, *postConflictHLV)
+			assert.Equal(c, string(body), cblBody)
+		}, time.Second*10, time.Millisecond*10)
 	})
 }
 

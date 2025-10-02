@@ -927,7 +927,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 		if !bsc.useHLV() {
 			history = toHistory(redactedRev.History, knownRevs, maxHistory)
 		} else {
-			history = append(history, redactedRev.hlvHistory)
+			history = append(history, redactedRev.HlvHistory)
 		}
 		if bsc.sendRevTreeProperty() {
 			revTreeProperty = append(revTreeProperty, redactedRev.RevID)

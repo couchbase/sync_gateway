@@ -2229,7 +2229,7 @@ func TestRevocationMessage(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 
 		// Wait for doc revision to come over
-		_ = btcRunner.WaitForBlipRevMessage(btc.id, "doc", version)
+		_ = btcRunner.WaitForPullRevMessage(btc.id, "doc", version)
 
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")

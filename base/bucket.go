@@ -55,11 +55,13 @@ type WrappingDatastore interface {
 type CouchbaseBucketStore interface {
 	GetName() string
 	MgmtEps() ([]string, error)
+	VersionPruningWindow(ctx context.Context) (time.Duration, error)
 	MetadataPurgeInterval(ctx context.Context) (time.Duration, error)
 	MaxTTL(context.Context) (int, error)
 	HttpClient(context.Context) *http.Client
 	GetSpec() BucketSpec
 	GetMaxVbno() (uint16, error)
+	GetCCVSettings(ctx context.Context) (ccvEnabled bool, maxCAS map[VBNo]uint64, err error)
 
 	// GetStatsVbSeqno retrieves the high sequence number for all vbuckets and returns
 	// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
@@ -575,3 +577,5 @@ func GetNewDatabaseSleeperFunc() RetrySleeper {
 		5,  // InitialRetrySleepTimeMS
 	)
 }
+
+var _ CouchbaseBucketStore = &GocbV2Bucket{}

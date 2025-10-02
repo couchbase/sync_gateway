@@ -141,7 +141,7 @@ func (rt *RestTester) TB() testing.TB {
 	return *rt.testingTB.Load()
 }
 
-// restTesterDefaultUserPassword is usable as a default password for SendUserRequest
+// RestTesterDefaultUserPassword is usable as a default password for SendUserRequest
 const RestTesterDefaultUserPassword = "letmein"
 
 // NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
@@ -188,7 +188,7 @@ func NewRestTesterDefaultCollection(tb testing.TB, restConfig *RestTesterConfig)
 	return newRestTester(tb, restConfig, useSingleCollectionDefaultOnly, 1)
 }
 
-// NewRestTesterMultipleCollections creates rest tester backed by a single database and any number of collections and the names of the keyspaces of collections created.
+// NewRestTesterMultipleCollections creates a rest tester backed by a single database with the specified number of collections.
 func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfig, numCollections int) *RestTester {
 	if !base.TestsUseNamedCollections() {
 		tb.Skip("This test requires named collections and is running against a bucket type that does not support them")

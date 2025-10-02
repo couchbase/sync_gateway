@@ -202,7 +202,13 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			il.importStats.ImportErrorCount.Add(1)
 			return
 		}
-		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, rawDoc.Body, rawDoc.Xattrs[collection.userXattrKey()])
+		var cv cvExtractor
+		vv := rawDoc.Xattrs[base.VvXattrName]
+		if len(vv) > 0 {
+			cv = base.Ptr(rawHLV(vv))
+		}
+
+		isSGWrite, crc32Match, _ = syncData.IsSGWrite(ctx, event.Cas, rawDoc.Body, rawDoc.Xattrs[collection.userXattrKey()], cv)
 		if crc32Match {
 			il.dbStats.Crc32MatchCount.Add(1)
 		}

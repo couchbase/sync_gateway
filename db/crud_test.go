@@ -1084,14 +1084,6 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.Options.StoreLegacyRevTreeData = true
-
-	// TODO: CBG-4840 Only requires delta sync until restoration of non-delta sync RevTree ID revision body backups"
-	if !base.IsEnterpriseEdition() {
-		t.Skip("CBG-4840 - temp skip see above comment")
-	}
-	db.Options.DeltaSyncOptions = DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}
-
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Create the very first revision of the document with attachment; let's call this as rev 1-a
@@ -2135,6 +2127,158 @@ func TestGetCVActivePathway(t *testing.T) {
 				assert.ErrorContains(t, err, ErrForbidden.Error())
 				assert.Equal(t, DocumentRevision{}, revision)
 			}
+		})
+	}
+}
+
+// createNewTestDocument creates a valid document for testing.
+func createNewTestDocument(t *testing.T, db *Database, body []byte) *Document {
+	collection, ctx := GetSingleDatabaseCollectionWithUser(base.TestCtx(t), t, db)
+	ctx = base.UserLogCtx(ctx, "gotest", base.UserDomainBuiltin, nil)
+	ctx = base.DatabaseLogCtx(ctx, db.Name, nil)
+	name := SafeDocumentName(t, t.Name())
+	var b Body
+	require.NoError(t, base.JSONUnmarshal(body, &b))
+	_, _, err := collection.Put(ctx, name, b)
+	require.NoError(t, err)
+	doc, err := collection.GetDocument(ctx, name, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.NotNil(t, doc.HLV)
+	require.NotEmpty(t, doc.RevAndVersion.CurrentSource)
+	require.NotEmpty(t, doc.RevAndVersion.CurrentVersion)
+	return doc
+}
+
+func TestIsSGWrite(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	body := []byte(`{"some":"data"}`)
+	testCases := []struct {
+		name    string
+		docBody []byte
+	}{
+		{
+			name:    "normal body",
+			docBody: body,
+		},
+		{
+			name:    "nil body",
+			docBody: nil,
+		},
+	}
+
+	t.Run("standard Put", func(t *testing.T) {
+		doc := createNewTestDocument(t, db, body)
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.True(t, isSGWrite, "Expected doc to be identified as SG write for body %q", string(testCase.docBody))
+			})
+		}
+	})
+	t.Run("no HLV", func(t *testing.T) {
+		// falls back to body crc32 comparison
+		doc := createNewTestDocument(t, db, body)
+		doc.HLV = nil
+		doc.Cas = 1 // force mismatch cas
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.True(t, isSGWrite, "Expected doc to be identified an SDK write for body %q", string(testCase.docBody))
+			})
+		}
+	})
+	t.Run("no _sync.rev.src", func(t *testing.T) {
+		// this is a corrupt _sync.rev, so assume that it was a _vv at some point and import just in case
+		doc := createNewTestDocument(t, db, body)
+		doc.RevAndVersion.CurrentSource = ""
+		doc.Cas = 1 // force mismatch cas
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.False(t, isSGWrite, "Expected doc not to be identified as SG write for body %q since _sync.rev.src is empty", string(testCase.docBody))
+			})
+		}
+	})
+	t.Run("no _sync.rev.ver", func(t *testing.T) {
+		doc := createNewTestDocument(t, db, body)
+		doc.RevAndVersion.CurrentVersion = ""
+		doc.Cas = 1 // force mismatch cas
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.False(t, isSGWrite, "Expected doc not to be identified as SG write for body %q since _sync.rev.ver is empty", string(testCase.docBody))
+			})
+		}
+	})
+	t.Run("mismatch sync.rev.ver", func(t *testing.T) {
+		doc := createNewTestDocument(t, db, body)
+		doc.RevAndVersion.CurrentVersion = "0x1234"
+		doc.Cas = 1 // force mismatch cas
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
+				require.False(t, isSGWrite, "Expected doc to not be identified as SG write for body %q due to mismatched _sync.rev.ver", string(testCase.docBody))
+			})
+		}
+	})
+
+}
+
+func TestSyncDataCVEqual(t *testing.T) {
+	testCases := []struct {
+		name       string
+		syncData   SyncData
+		cvSourceID string
+		cvValue    uint64
+		cvEqual    bool
+	}{
+		{
+			name: "syncData CV matches",
+			syncData: SyncData{
+				RevAndVersion: channels.RevAndVersion{
+					CurrentSource:  "testSourceID",
+					CurrentVersion: "0x0100000000000000",
+				},
+			},
+			cvSourceID: "testSourceID",
+			cvValue:    1,
+			cvEqual:    true,
+		},
+		{
+			name: "syncData sourceID mismatch",
+			syncData: SyncData{
+				RevAndVersion: channels.RevAndVersion{
+					CurrentSource:  "testSourceID",
+					CurrentVersion: "0x1",
+				},
+			},
+			cvSourceID: "testSourceID2",
+			cvValue:    1,
+			cvEqual:    false,
+		},
+		{
+			name: "syncData sourceID mismatch",
+			syncData: SyncData{
+				RevAndVersion: channels.RevAndVersion{
+					CurrentSource:  "testSourceID",
+					CurrentVersion: "0x2",
+				},
+			},
+			cvSourceID: "testSourceID",
+			cvValue:    1,
+			cvEqual:    false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			cv := Version{
+				SourceID: testCase.cvSourceID,
+				Value:    testCase.cvValue,
+			}
+			require.Equal(t, testCase.cvEqual, testCase.syncData.CVEqual(cv))
 		})
 	}
 }
