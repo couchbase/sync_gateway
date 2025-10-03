@@ -2605,47 +2605,54 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 func TestProcessRevIncrementsStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	activeRT, remoteRT, remoteURLString := SetupSGRPeers(t)
-	activeCtx := activeRT.Context()
+	sgrRunner := NewSGRTestRunner(t)
 
-	remoteURL, _ := url.Parse(remoteURLString)
+	sgrRunner.Run(func(t *testing.T) {
+		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		activeCtx := activeRT.Context()
+		remoteURL, err := url.Parse(remoteURLString)
+		require.NoError(t, err)
 
-	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		replicationID := SafeDocumentName(t, t.Name())
 
-	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-		ID:                  t.Name(),
-		Direction:           db.ActiveReplicatorTypePull,
-		ActiveDB:            &db.Database{DatabaseContext: activeRT.GetDatabase()},
-		RemoteDBURL:         remoteURL,
-		Continuous:          true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
+		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(replicationID)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+			ID:                     replicationID,
+			Direction:              db.ActiveReplicatorTypePull,
+			ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
+			RemoteDBURL:            remoteURL,
+			Continuous:             true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+
+		// Confirm all stats starting on 0
+		require.NotNil(t, ar.Pull)
+		pullStats := ar.Pull.GetStats()
+		require.EqualValues(t, 0, pullStats.HandleRevCount.Value())
+		require.EqualValues(t, 0, pullStats.HandleRevBytes.Value())
+		require.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
+
+		const docID = "doc"
+		version := remoteRT.CreateTestDoc(docID)
+
+		assert.NoError(t, ar.Start(activeCtx))
+		defer func() { require.NoError(t, ar.Stop()) }()
+
+		activeRT.WaitForPendingChanges()
+		sgrRunner.WaitForVersion(docID, activeRT, version)
+
+		base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)
+		assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())
+		// Confirm connected client count has not increased, which uses same processRev code
+		assert.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 	})
-	require.NoError(t, err)
-
-	// Confirm all stats starting on 0
-	require.NotNil(t, ar.Pull)
-	pullStats := ar.Pull.GetStats()
-	require.EqualValues(t, 0, pullStats.HandleRevCount.Value())
-	require.EqualValues(t, 0, pullStats.HandleRevBytes.Value())
-	require.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
-
-	const docID = "doc"
-	version := remoteRT.CreateTestDoc(docID)
-
-	assert.NoError(t, ar.Start(activeCtx))
-	defer func() { require.NoError(t, ar.Stop()) }()
-
-	activeRT.WaitForPendingChanges()
-	activeRT.WaitForVersion(docID, version)
-
-	base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)
-	assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())
-	// Confirm connected client count has not increased, which uses same processRev code
-	assert.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 }
 
 // Attempt to send rev as GUEST when read-only guest is enabled
