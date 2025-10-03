@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
@@ -1018,88 +1019,85 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 	}
 
 	const username = "alice"
-
-	// Passive (SGW2 in diagram above)
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				Name: "passivedb",
-				DeltaSync: &rest.DeltaSyncConfig{
-					Enabled: base.Ptr(true),
-				},
-			}},
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+			ActiveRestTesterConfig: &rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					Name: "activedb",
+					DeltaSync: &rest.DeltaSyncConfig{
+						Enabled: base.Ptr(true),
+					},
+				}},
+			},
+			PassiveRestTesterConfig: &rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					Name: "passivedb",
+					DeltaSync: &rest.DeltaSyncConfig{
+						Enabled: base.Ptr(true),
+					},
+				}},
+			},
 		})
-	defer rt2.Close()
+		ctx1 := rt1.Context()
 
-	rt2.CreateUser(username, []string{username})
+		docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
 
-	// Active (SGW1 in diagram above)
-	rt1 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				Name: "activedb",
-				DeltaSync: &rest.DeltaSyncConfig{
-					Enabled: base.Ptr(true),
-				},
-			}},
+		// create doc on rt1 with one revision
+		bodyRT1 := db.Body{"channels": []string{username}, "source": "rt1"}
+		rt1InitDoc := rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
+		legacyInitRevRt1 := rt1InitDoc.GetRevTreeID()
+		// create another rev to ensure we have a rev to delta from
+		bodyRT1 = db.Body{db.BodyRev: legacyInitRevRt1, "channels": []string{username}, "source": "rt1"}
+		rt1InitDoc = rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
+		legacyRevRt1 := rt1InitDoc.GetRevTreeID()
+
+		// create rev on rt2 that will resolve to same revID as rev one above simulating the following:
+		// 1. doc created on rt1, pushed to rt2
+		// 2. doc updated on rt1 to create rev2, but upgrade happens before being pushed to rt2
+		// 3. doc is pushed post upgrade to rt2 and the delta from rev1 to rev2 is sent
+		bodyRT2 := db.Body{"channels": []string{username}, "source": "rt1"}
+		rt2InitDoc := rt2.CreateDocNoHLV(docIDToPush, bodyRT2)
+		legacyRevRt2 := rt2InitDoc.GetRevTreeID()
+
+		require.Equal(t, legacyInitRevRt1, legacyRevRt2)
+
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+		require.NoError(t, err)
+		replicationStats, err := stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          t.Name(),
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    replicationStats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			DeltasEnabled:          true,
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, ar.Stop())
+		}()
 
-	docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
+		// Start the replicator
+		require.NoError(t, ar.Start(ctx1))
 
-	// create doc on rt1 with one revision
-	bodyRT1 := db.Body{"channels": []string{username}, "source": "rt1"}
-	rt1InitDoc := rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
-	legacyInitRevRt1 := rt1InitDoc.GetRevTreeID()
-	// create another rev to ensure we have a rev to delta from
-	bodyRT1 = db.Body{db.BodyRev: legacyInitRevRt1, "channels": []string{username}, "source": "rt1"}
-	rt1InitDoc = rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
-	legacyRevRt1 := rt1InitDoc.GetRevTreeID()
+		rt2.WaitForLegacyRev(docIDToPush, legacyRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
 
-	// create rev on rt2 that will resolve to same revID as rev one above simulating the following:
-	// 1. doc created on rt1, pushed to rt2
-	// 2. doc updated on rt1 to create rev2, but upgrade happens before being pushed to rt2
-	// 3. doc is pushed post upgrade to rt2 and the delta from rev1 to rev2 is sent
-	bodyRT2 := db.Body{"channels": []string{username}, "source": "rt1"}
-	rt2InitDoc := rt2.CreateDocNoHLV(docIDToPush, bodyRT2)
-	legacyRevRt2 := rt2InitDoc.GetRevTreeID()
-
-	require.Equal(t, legacyInitRevRt1, legacyRevRt2)
-
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	replicationStats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		ReplicationStatsMap: replicationStats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-		DeltasEnabled:       true,
+		base.RequireWaitForStat(t, func() int64 {
+			return replicationStats.PushDeltaSentCount.Value()
+		}, 1)
 	})
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, ar.Stop())
-	}()
-
-	// Start the replicator
-	require.NoError(t, ar.Start(ctx1))
-
-	rt2.WaitForLegacyRev(docIDToPush, legacyRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
-
-	base.RequireWaitForStat(t, func() int64 {
-		return replicationStats.PushDeltaSentCount.Value()
-	}, 1)
 }
 
 func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
@@ -1110,82 +1108,79 @@ func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 	}
 
 	const username = "alice"
-
-	// Passive (SGW2 in diagram above)
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				Name: "passivedb",
-				DeltaSync: &rest.DeltaSyncConfig{
-					Enabled: base.Ptr(true),
-				},
-			}},
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+			ActiveRestTesterConfig: &rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					Name: "activedb",
+					DeltaSync: &rest.DeltaSyncConfig{
+						Enabled: base.Ptr(true),
+					},
+				}},
+			},
+			PassiveRestTesterConfig: &rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					Name: "passivedb",
+					DeltaSync: &rest.DeltaSyncConfig{
+						Enabled: base.Ptr(true),
+					},
+				}},
+			},
 		})
-	defer rt2.Close()
+		ctx1 := rt1.Context()
 
-	rt2.CreateUser(username, []string{username})
+		docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
 
-	// Active (SGW1 in diagram above)
-	rt1 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				Name: "activedb",
-				DeltaSync: &rest.DeltaSyncConfig{
-					Enabled: base.Ptr(true),
-				},
-			}},
+		// create doc on rt1 with one revision
+		bodyRT1 := db.Body{"channels": []string{username}, "source": "rt1"}
+		rt1InitDoc := rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
+		legacyInitRevRt1 := rt1InitDoc.GetRevTreeID()
+
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+		require.NoError(t, err)
+		replicationStats, err := stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          t.Name(),
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    replicationStats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			DeltasEnabled:          true,
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, ar.Stop())
+		}()
 
-	docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
+		// Start the replicator
+		require.NoError(t, ar.Start(ctx1))
 
-	// create doc on rt1 with one revision
-	bodyRT1 := db.Body{"channels": []string{username}, "source": "rt1"}
-	rt1InitDoc := rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
-	legacyInitRevRt1 := rt1InitDoc.GetRevTreeID()
+		rt2.WaitForLegacyRev(docIDToPush, legacyInitRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
 
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	replicationStats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		// flush revision cache to remove old reference to rev 1 in rev cache
+		rt1.GetDatabase().FlushRevisionCacheForTest()
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		ReplicationStatsMap: replicationStats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-		DeltasEnabled:       true,
+		// update doc on rt1 to create a second revision with HLV
+		// This should:
+		// 1. update doc on rt1 to give HLV based of rt1 sourceID
+		// 2. push doc to rt2 with delta from rev1 to rev2
+		upgradeVersion := rt1.UpdateDoc(docIDToPush, db.DocVersion{RevTreeID: legacyInitRevRt1}, `{"channels": ["alice"], "source": "rt1-updated"}`)
+		rt1.WaitForVersion(docIDToPush, upgradeVersion)
+
+		base.RequireWaitForStat(t, func() int64 {
+			return replicationStats.PushDeltaSentCount.Value()
+		}, 1)
 	})
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, ar.Stop())
-	}()
-
-	// Start the replicator
-	require.NoError(t, ar.Start(ctx1))
-
-	rt2.WaitForLegacyRev(docIDToPush, legacyInitRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
-
-	// flush revision cache to remove old reference to rev 1 in rev cache
-	rt1.GetDatabase().FlushRevisionCacheForTest()
-
-	// update doc on rt1 to create a second revision with HLV
-	// This should:
-	// 1. update doc on rt1 to give HLV based of rt1 sourceID
-	// 2. push doc to rt2 with delta from rev1 to rev2
-	upgradeVersion := rt1.UpdateDoc(docIDToPush, db.DocVersion{RevTreeID: legacyInitRevRt1}, `{"channels": ["alice"], "source": "rt1-updated"}`)
-	rt1.WaitForVersion(docIDToPush, upgradeVersion)
-
-	base.RequireWaitForStat(t, func() int64 {
-		return replicationStats.PushDeltaSentCount.Value()
-	}, 1)
 }

@@ -72,7 +72,7 @@ func (runner *SGRTestRunner) Run(test func(t *testing.T)) {
 
 	runner.initialisedInsideRunnerCode = true
 	defer func() {
-		// reset bool post test run to ensure no once can setup SetupSGRPeers outside run method upon completion of Run()
+		// reset bool post test run to ensure no one can setup SetupSGRPeers outside run method upon completion of Run()
 		runner.initialisedInsideRunnerCode = false
 	}()
 
@@ -96,7 +96,7 @@ func (runner *SGRTestRunner) RunSubprotocolV3(test func(t *testing.T)) {
 	}
 	runner.initialisedInsideRunnerCode = true
 	defer func() {
-		// reset bool post test run to ensure no once can setup SetupSGRPeers outside
+		// reset bool post test run to ensure no one can setup SetupSGRPeers outside
 		runner.initialisedInsideRunnerCode = false
 	}()
 	if !runner.SkipSubtest[RevtreeSubtestName] {
@@ -114,7 +114,7 @@ func (runner *SGRTestRunner) RunSubprotocolV4(test func(t *testing.T)) {
 
 	runner.initialisedInsideRunnerCode = true
 	defer func() {
-		// reset bool post test run to ensure no once can setup SetupSGRPeers outside run method upon completion of Run()
+		// reset bool post test run to ensure no one can setup SetupSGRPeers outside run method upon completion of Run()
 		runner.initialisedInsideRunnerCode = false
 	}()
 

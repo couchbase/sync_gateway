@@ -2184,10 +2184,11 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 			ActiveDB: &db.Database{
 				DatabaseContext: rt1.GetDatabase(),
 			},
-			Continuous:          false,
-			PurgeOnRemoval:      true,
-			ReplicationStatsMap: dbstats,
-			CollectionsEnabled:  base.TestsUseNamedCollections(),
+			Continuous:             false,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
 
 		ar, err := db.NewActiveReplicator(ctx1, activeReplCfg)
